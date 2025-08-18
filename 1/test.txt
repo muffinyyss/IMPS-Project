@@ -3,3 +3,7 @@ flow chart : https://drive.google.com/file/d/1f9LcWpQWhsXsBykDtNzglcP-e6204pRM/v
 Use Case : https://app.diagrams.net/?src=about#G1PCQXgmUHKXEqRseU-egwmofu2l235XUS#%7B%22pageId%22%3A%22NtKB_CFUf5B4VyUHXwCI%22%7D
 
 slide : https://www.canva.com/design/DAGvL2-0HAo/z-41Eu7SDcDpBlMosGbtaA/edit?utm_content=DAGvL2-0HAo&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
+
+wireframe : https://www.canva.com/design/DAGvWeNbFMw/t7ZD_2XMvIfX1bPi35ZIHg/edit?utm_content=DAGvWeNbFMw&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
+
+wireframe : https://www.figma.com/design/ld9PeyxhZuVYkWjL3M7GG9/wireframe_iMPS?node-id=0-1&t=CbdXnHsygRr7oeVF-1
