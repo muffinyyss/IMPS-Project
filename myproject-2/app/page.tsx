@@ -5,8 +5,8 @@ export default function Page() {
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
         <h2 className="mb-2 text-2xl font-bold tracking-tight text-zinc-600">hello world</h2>
         <p className="text-zinc-600">Lorem ipsum dolor sit amet consectetur adipisicing elit. Labore unde quis reprehenderit eius assumenda. Accusantium fuga vero consectetur nostrum. Accusantium architecto reiciendis quas facere iure ut similique quasi et ducimus?</p>
-        <Link href="mainPage/about" 
-              className="mt-4 inline-block rounded-lg bg-blue-600 px-5 py-2 text-white shadow hover:bg-blue-700 transition">
+        <Link href="mainPage/about"
+          className="mt-4 inline-block rounded-lg bg-blue-600 px-5 py-2 text-white shadow hover:bg-blue-700 transition">
           Go to About
         </Link>
       </div>
@@ -21,6 +21,43 @@ export default function Page() {
           </article>
         ))}
       </div>
+      <div className="w-full max-w-sm mx-auto p-6 bg-white rounded-lg shadow">
+        <h1 className="text-xl font-semibold mb-4">Login</h1>
+
+        <form className="space-y-4">
+          <div>
+            <label htmlFor="username" className="block mb-1 text-sm font-medium text-gray-700">
+              Username
+            </label>
+            <input
+              id="username"
+              type="text"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter your username"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="password" className="block mb-1 text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter your password"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+          >
+            Sign In
+          </button>
+        </form>
+      </div>
+
     </section>
   );
 }
