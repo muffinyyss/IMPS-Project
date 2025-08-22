@@ -49,12 +49,18 @@ export default function Page() {
             />
           </div>
 
-          <button
+          {/* <button
             type="submit"
             className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
           >
             Sign In
-          </button>
+          </button> */}
+          <div className="">
+            <Link href="mainPage/about"
+              className="w-full mt-4 text-center inline-block rounded-lg bg-blue-600 px-5 py-2 text-white shadow hover:bg-blue-700 transition">
+              Login
+            </Link>
+          </div>
         </form>
       </div>
 
