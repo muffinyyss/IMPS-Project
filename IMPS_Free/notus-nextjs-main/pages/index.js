@@ -1,6 +1,7 @@
 /* eslint-disable react/jsx-no-target-blank */
 import React from "react";
 import Link from "next/link";
+import PropTypes from "prop-types";
 
 import IndexNavbar from "components/Navbars/IndexNavbar.js";
 import Footer from "components/Footers/Footer.js";
@@ -14,11 +15,10 @@ export default function Index() {
           <div className="w-full md:w-8/12 lg:w-6/12 xl:w-6/12 px-4">
             <div className="pt-32 sm:pt-0">
               <h2 className="font-semibold text-4xl text-blueGray-600">
-                Notus NextJS - A beautiful extension for Tailwind CSS.
+                Ai Maintenance as a service Platform
               </h2>
               <p className="mt-4 text-lg leading-relaxed text-blueGray-500">
-                Notus NextJS is Free and Open Source. It does not change any of
-                the CSS from{" "}
+                Journey to the edge of wonder and witness the Aurora Borealis, where nature’s most dazzling light show awaits to captivate your senses and ignite  your imagination.{" "}
                 <a
                   href="https://tailwindcss.com/?ref=creativetim"
                   className="text-blueGray-600"
@@ -34,13 +34,13 @@ export default function Index() {
                 <a
                   href="https://www.creative-tim.com/learning-lab/tailwind/nextjs/overview/notus?ref=nnjs-index"
                   target="_blank"
-                  className="get-started text-white font-bold px-6 py-4 rounded outline-none focus:outline-none mr-1 mb-1 bg-blueGray-400 active:bg-blueGray-500 uppercase text-sm shadow hover:shadow-lg ease-linear transition-all duration-150"
+                  className="get-started text-white font-bold px-6 py-4 rounded-full outline-none focus:outline-none mr-1 mb-1 bg-blueGray-400 active:bg-blueGray-500 uppercase text-sm shadow hover:shadow-lg ease-linear transition-all duration-150"
                 >
                   Get started
                 </a>
                 <a
                   href="https://github.com/creativetimofficial/notus-nextjs?ref=nnjs-index"
-                  className="github-star ml-1 text-white font-bold px-6 py-4 rounded outline-none focus:outline-none mr-1 mb-1 bg-blueGray-700 active:bg-blueGray-600 uppercase text-sm shadow hover:shadow-lg"
+                  className="github-star ml-1 text-white font-bold px-6 py-4 rounded-full outline-none focus:outline-none mr-1 mb-1 bg-blueGray-700 active:bg-blueGray-600 uppercase text-sm shadow hover:shadow-lg"
                   target="_blank"
                 >
                   Github Star
@@ -50,10 +50,11 @@ export default function Index() {
           </div>
         </div>
         <img
-          className="absolute top-0 b-auto right-0 pt-16 sm:w-6/12 -mt-48 sm:mt-0 w-10/12 max-h-860-px"
-          src="/img/pattern_nextjs.png"
+          className="absolute top-2 b-auto right-0 pt-16 sm:w-6/12 -mt-48 sm:mt-0 w-10/12 max-h-860-px"
+          src="/img/images.png"
           alt="..."
         />
+
       </section>
 
       <section className="mt-48 md:mt-40 pb-40 relative bg-blueGray-100">
@@ -76,7 +77,7 @@ export default function Index() {
             ></polygon>
           </svg>
         </div>
-        <div className="container mx-auto">
+        {/* <div className="container mx-auto">
           <div className="flex flex-wrap items-center">
             <div className="w-10/12 md:w-6/12 lg:w-4/12 px-12 md:px-4 mr-auto ml-auto -mt-32">
               <div className="relative flex flex-col min-w-0 break-words bg-white w-full mb-6 shadow-lg rounded-lg bg-blueGray-700">
@@ -173,7 +174,53 @@ export default function Index() {
               </div>
             </div>
           </div>
-        </div>
+        </div> */}
+
+        {/* PRICING */}
+        {/* <div>
+          <section id="pricing" className="py-12 sm:py-16 lg:py-24 bg-gray-50">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <h2 className="text-center text-3xl sm:text-4xl font-bold tracking-tight">
+                Subscribe Package
+              </h2>
+
+              <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+                <PricingCard price={199} title="Starter" features={["Basic monitoring", "Email alerts", "Single site"]} />
+                <PricingCard
+                  highlight
+                  price={599}
+                  title="Pro"
+                  features={["Advanced analytics", "Priority support", "Multi‑site"]}
+                />
+                <PricingCard price={970} title="Enterprise" features={["24/7 SLA", "Custom reports", "Unlimited sites"]} />
+              </div>
+            </div>
+          </section>
+        </div> */}
+
+        <section className="container mx-auto px-4 py-16">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <PricingCard
+              price={0}
+              title="Free"
+              features={["1 user", "Basic analytics", "Community support"]}
+            />
+            <PricingCard
+              price={499}
+              title="Pro"
+              features={["5 users", "Priority support", "Advanced analytics"]}
+              highlight
+            />
+            <PricingCard
+              price={199}
+              title="Starter"
+              features={["3 users", "Email support", "Standard analytics"]}
+            />
+          </div>
+        </section>
+
+
+
 
         <div className="container mx-auto overflow-hidden pb-20">
           <div className="flex flex-wrap items-center">
@@ -663,5 +710,117 @@ export default function Index() {
       </section>
       <Footer />
     </>
+  );
+}
+
+
+
+// function PricingCard({ price, title, features, highlight = false }) {
+//   return (
+//     <div
+//       className={[
+//         "rounded-2xl border bg-white p-6 sm:p-7 shadow-sm",
+//         highlight ? "border-gray-900 ring-2 ring-gray-900" : "border-gray-200",
+//       ].join(" ")}
+//     >
+//       <div className="flex items-baseline gap-2">
+//         <div className="text-3xl font-extrabold">฿ {price}</div>
+//         <div className="text-gray-500">/Month.</div>
+//       </div>
+
+//       <h3 className="mt-2 text-lg font-semibold">{title}</h3>
+
+//       <ul className="mt-5 space-y-2 text-sm text-gray-600">
+//         {features.map((f) => (
+//           <li key={f} className="flex items-start gap-2">
+//             <svg width="18" height="18" viewBox="0 0 24 24" className="mt-0.5" aria-hidden="true">
+//               <path
+//                 d="M20 6L9 17l-5-5"
+//                 fill="none"
+//                 stroke="currentColor"
+//                 strokeWidth="1.8"
+//                 strokeLinecap="round"
+//                 strokeLinejoin="round"
+//               />
+//             </svg>
+//             <span>{f}</span>
+//           </li>
+//         ))}
+//       </ul>
+
+//       <Link
+//         href="/signin" // ถ้าหน้าคุณจริงๆคือ /auth/login เปลี่ยนเป็น "/auth/login"
+//         className={[
+//           "mt-6 inline-flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition",
+//           highlight ? "bg-gray-900 text-white hover:bg-black" : "border border-gray-300 text-gray-900 hover:bg-gray-50",
+//         ].join(" ")}
+//       >
+//         Choose Plan
+//       </Link>
+//     </div>
+//   );
+// }
+
+// // (ไม่บังคับ) ตรวจชนิด props ตอนรันจริง
+// PricingCard.propTypes = {
+//   price: PropTypes.number.isRequired,
+//   title: PropTypes.string.isRequired,
+//   features: PropTypes.arrayOf(PropTypes.string).isRequired,
+//   highlight: PropTypes.bool,
+// };
+
+
+function PricingCard({ price, title, features, highlight = false }) {
+  return (
+    <div
+      className={[
+        "rounded-2xl border bg-white p-6 sm:p-7 shadow-sm",
+        highlight ? "border-gray-900 ring-2 ring-gray-900" : "border-gray-200",
+      ].join(" ")}
+    >
+      <div className="flex items-baseline gap-2">
+        <div className="text-3xl font-extrabold">฿ {price}</div>
+        <div className="text-gray-500">/Month.</div>
+      </div>
+
+      <h3 className="mt-2 text-lg font-semibold">{title}</h3>
+
+      <ul className="mt-5 space-y-2 text-sm text-gray-600">
+        {features.map((f) => (
+          <li key={f} className="flex items-start gap-2">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              className="mt-0.5"
+              aria-hidden="true"
+            >
+              <path
+                d="M20 6L9 17l-5-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span>{f}</span>
+          </li>
+        ))}
+      </ul>
+
+      {/* ปุ่มเลือกแผน จะพาไปหน้า /auth/login */}
+      <Link
+        href="/auth/login"
+        className={[
+          "mt-6 inline-flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition",
+          highlight
+            ? "bg-gray-900 text-white hover:bg-black"
+            : "border border-gray-300 text-gray-900 hover:bg-gray-50",
+        ].join(" ")}
+      >
+        Choose Plan
+      </Link>
+    </div>
   );
 }
