@@ -37,7 +37,8 @@ export default function Landing() {
       </nav>
 
       {/* HERO */}
-      <section className="tw-mx-auto tw-max-w-7xl tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-10 tw-items-center tw-px-4 tw-pt-10 md:tw-pt-16 mt-5">
+      <section className="tw-mx-auto tw-max-w-7xl tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-10 tw-items-center
+             tw-px-4 tw-pt-20 md:tw-pt-28  tw-mt-32 md:tw-mt-40">
         {/* Left text */}
         <div className="tw-order-2 md:tw-order-1">
           <Typography
