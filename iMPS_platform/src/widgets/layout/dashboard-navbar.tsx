@@ -118,7 +118,7 @@ export function DashboardNavbar() {
           >
             <Cog6ToothIcon className="tw-h-5 tw-w-5 tw-text-gray-900" />
           </IconButton>
-          <Menu>
+          {/* <Menu>
             <MenuHandler>
               <span>
                 <Badge>
@@ -148,7 +148,7 @@ export function DashboardNavbar() {
                 </Typography>
               </MenuItem>
             </MenuList>
-          </Menu>
+          </Menu> */}
         </div>
       </div>
     </Navbar>
