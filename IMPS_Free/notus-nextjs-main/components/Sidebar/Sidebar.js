@@ -65,6 +65,7 @@ export default function Sidebar() {
                 </div>
               </div>
             </div>
+            
             {/* Form */}
             <form className="mt-6 mb-4 md:hidden">
               <div className="mb-3 pt-0">

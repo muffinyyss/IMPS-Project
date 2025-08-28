@@ -31,11 +31,11 @@ export default function InnerContent({
       {!isSimpleLayout && (
         <Sidenav
           routes={routes}
-          brandImg={
-            sidenavType === "dark"
-              ? "/img/logo-ct.png"
-              : "/img/logo-ct-dark.png"
-          }
+          // brandImg={
+          //   sidenavType === "dark"
+          //     ? "/img/logo-ct.png"
+          //     : "/img/logo-ct-dark.png"
+          // }
         />
       )}
       <div className={`${isSimpleLayout ? "m-0" : "tw-p-4 xl:tw-ml-80"}`}>

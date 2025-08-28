@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
+import React from "react";
 import Link from "next/link";
 
 // @material-tailwind/react
@@ -9,24 +10,17 @@ import {
   Typography,
 } from "@/components/MaterialTailwind";
 
-export default function BasicSignupPage() {
+export default function BasicPage() {
   return (
     <section className="tw-grid tw-grid-cols-1 xl:tw-grid-cols-2 tw-items-center tw-h-full">
-      <div className="tw-p-8 tw-hidden xl:tw-block">
-        <img
-          src="/img/pattern.png"
-          alt="image"
-          className="tw-object-cover tw-object-center tw-max-h-[calc(100vh-4rem)] tw-w-full tw-rounded-2xl"
-        />
-      </div>
       <div className="tw-w-full tw-min-h-screen tw-grid tw-place-items-center">
         <div className="tw-w-full">
           <div className="tw-text-center">
             <Typography variant="h2" className="!tw-font-bold tw-mb-4">
-              Join Us Today
+              Sign In
             </Typography>
-            <Typography className="tw-text-lg tw-font-normal !tw-text-blue-gray-500">
-              Enter your email and password to register.
+            <Typography className="tw-text-lg !tw-font-normal !tw-text-blue-gray-500">
+              Enter your username and password to Sign In.
             </Typography>
           </div>
           <form className="tw-mt-8 tw-mb-2 tw-mx-auto tw-w-80 tw-max-w-screen-lg lg:tw-w-1/2">
@@ -36,31 +30,60 @@ export default function BasicSignupPage() {
                 color="blue-gray"
                 className="-tw-mb-3 !tw-font-medium"
               >
-                Your email
+                Your username
               </Typography>
-              <Input size="lg" label="Your email" />
+              <Input size="lg" label="Your username" />
+              <Typography
+                variant="small"
+                color="blue-gray"
+                className="-mb!-3 font-medium"
+              >
+                Password
+              </Typography>
+              <Input type="password" size="lg" label="Password" />
             </div>
-            <Checkbox
+            {/* <Checkbox
               label={
                 <Typography
                   variant="small"
-                  className="tw-flex tw-items-center tw-justify-start tw-font-medium !tw-text-blue-gray-500"
+                  className="tw-flex !tw-text-blue-gray-500 tw-items-center tw-justify-start !tw-font-medium"
                 >
                   I agree the&nbsp;
                   <a
                     href="#"
-                    className="tw-font-meduim !tw-text-blue-gray-500 tw-transition-colors hover:tw-text-gray-900 tw-underline"
+                    className="!tw-font-medium !tw-text-blue-gray-500 tw-transition-colors hover:tw-text-gray-900 tw-underline"
                   >
                     Terms and Conditions
                   </a>
                 </Typography>
               }
               containerProps={{ className: "-tw-ml-2.5" }}
-            />
+            /> */}
             <Button className="tw-mt-6" fullWidth>
-              Register Now
+              Sign In
             </Button>
-            <div className="tw-space-y-4 tw-mt-8">
+
+            <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-mt-6">
+              <Checkbox
+                label={
+                  <Typography
+                    variant="small"
+                    color="gray"
+                    className="tw-flex tw-items-center tw-justify-start !tw-font-medium"
+                  >
+                    Subscribe me to newsletter
+                  </Typography>
+                }
+                containerProps={{ className: "-tw-ml-2.5" }}
+              />
+              {/* <Typography
+                variant="small"
+                className="!tw-font-medium tw-text-gray-900"
+              >
+                <a href="#">Forgot Password</a>
+              </Typography> */}
+            </div>
+            {/* <div className="tw-space-y-4 tw-mt-8">
               <Button
                 size="lg"
                 color="white"
@@ -114,21 +137,25 @@ export default function BasicSignupPage() {
                 <img src="/img/twitter-logo.svg" alt="Twitter logo" />
                 <span>Sign in With Twitter</span>
               </Button>
-            </div>
-            <Typography
-              variant="paragraph"
-              className="tw-text-center !tw-text-blue-gray-500 tw-font-medium tw-mt-4"
-            >
-              Already have an account?
+            </div> */}
+            <Typography className="tw-text-center !tw-text-blue-gray-500 !tw-font-medium tw-mt-4">
+              Not registered?
               <Link
-                href="/auth/signin/basic"
-                className="tw-text-blue-gray-900 tw-ml-1"
+                href="/auth/signup/basic-signup"
+                className="tw-text-gray-900 tw-ml-1"
               >
-                Sign in
+                Create account
               </Link>
             </Typography>
           </form>
         </div>
+      </div>
+      <div className="tw-p-8 tw-hidden xl:tw-block">
+        <img
+          src="/img/pattern.png"
+          alt="image"
+          className="tw-object-cover tw-object-center tw-max-h-[calc(100vh-4rem)] tw-w-full tw-rounded-2xl"
+        />
       </div>
     </section>
   );

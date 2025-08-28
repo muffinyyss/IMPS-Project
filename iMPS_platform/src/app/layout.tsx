@@ -33,8 +33,7 @@ export default function RootLayout({
         />
         <link rel="icon" type="image/svg+xml" href="/img/favicon.png" />
         <title>
-          Material Tailwind Dashboard NextJS PRO: Premium Tailwind CSS and
-          NextJS Admin Template
+          iMPS
         </title>
       </head>
       <body className={roboto.className}>

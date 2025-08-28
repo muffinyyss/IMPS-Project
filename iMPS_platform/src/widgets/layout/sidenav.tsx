@@ -50,7 +50,7 @@ type PropTypes = {
 
 export default function Sidenav({
   brandImg = "/img/logo-ct.png",
-  brandName = "Material Tailwind PRO",
+  brandName = "iMPS",
 }: PropTypes) {
   const pathname = usePathname();
   const [controller, dispatch] = useMaterialTailwindController();
@@ -106,8 +106,8 @@ export default function Sidenav({
         href="/"
         className="tw-mb-2 tw-flex tw-items-center tw-gap-1 !tw-p-4"
       >
-        <img src={brandImg} className="tw-h-7 tw-w-7" alt="logo" />
-        <Typography variant="h6" color="blue-gray">
+        {/* <img src={brandImg} className="tw-h-7 tw-w-7" alt="logo" /> */}
+        <Typography variant="h2" color="blue-gray" className="tw-w-full tw-text-center">
           {brandName}
         </Typography>
       </Link>
