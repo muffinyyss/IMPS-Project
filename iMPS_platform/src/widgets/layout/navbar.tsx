@@ -58,6 +58,12 @@ const pagesMenuItems = [
     path: "/dashboard/analytics",
   },
   {
+    title: "Chargers",
+    description: "Find the perfect solution for your needs.",
+    icon: RectangleGroupIcon,
+    path: "/dashboard/chargers",
+  },
+  {
     title: "Sales",
     description: "Meet and learn about our dedication",
     icon: CurrencyDollarIcon,
