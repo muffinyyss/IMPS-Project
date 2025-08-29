@@ -1,6 +1,27 @@
 "use client";
 import Link from "next/link";
-import { Typography, Button } from "@/components/MaterialTailwind";
+import { Button } from "@/components/MaterialTailwind";
+import { Fragment, useState } from "react";
+
+// @material-tailwind/react
+import {
+  Card,
+  Tab,
+  TabsHeader,
+  Tabs,
+  Typography,
+  CardBody,
+  Accordion,
+  AccordionHeader,
+  AccordionBody,
+} from "@material-tailwind/react";
+
+// @heroicons/react
+import { PricingCard } from "@/widgets/cards";
+
+// @heroicons/react
+import { ChevronDownIcon } from "@heroicons/react/24/outline";
+import { AuthFooter, Navbar } from "@/widgets/layout";
 
 export default function Landing() {
   return (
@@ -37,8 +58,8 @@ export default function Landing() {
       </nav>
 
       {/* HERO */}
-      <section className="tw-mx-auto tw-max-w-7xl tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-10 tw-items-center
-             tw-px-4 tw-pt-20 md:tw-pt-28  tw-mt-32 md:tw-mt-40">
+      <section 
+        className="tw-mx-auto tw-max-w-7xl tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-10 tw-items-center tw-px-4 tw-pt-20 md:tw-pt-28  tw-mt-32 md:tw-mt-40">
         {/* Left text */}
         <div className="tw-order-2 md:tw-order-1">
           <Typography
@@ -66,5 +87,6 @@ export default function Landing() {
         </div>
       </section>
     </div>
+    
   );
 }
