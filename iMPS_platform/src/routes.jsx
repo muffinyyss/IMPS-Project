@@ -91,7 +91,7 @@ export const routes = [
   {
     name: "MDB/CCB",
     icon: <RectangleGroupIcon {...icon} />,
-    path: "#",
+    path: "/dashboard/mdb",
   },
   {
     name: "Ai Module",
