@@ -195,14 +195,19 @@ export function DashboardNavbar() {
 
   // ทำ title จาก segment สุดท้าย (อ่านง่ายกว่าเดิม)
   const segs = pathname.split("/").filter(Boolean);
-  const title = segs[segs.length - 1]?.replace(/-/g, " ");
+  let title = segs[segs.length - 1]?.replace(/-/g, " ");
+
+  // ถ้าอยู่ใน path ที่ขึ้นต้นด้วย "mdb" ให้ title เป็นตัวใหญ่หมด
+  if (segs[1] === "mdb") {
+    title = title.toUpperCase();
+  }
 
   return (
     <Navbar
       color={fixedNavbar ? "white" : "transparent"}
       className={`tw-rounded-xl !tw-transition-all !tw-max-w-full ${fixedNavbar
-          ? "!tw-sticky tw-top-4 tw-z-40 !tw-py-3 tw-shadow-md tw-shadow-blue-gray-500/5"
-          : "!tw-px-0 !tw-py-1"
+        ? "!tw-sticky tw-top-4 tw-z-40 !tw-py-3 tw-shadow-md tw-shadow-blue-gray-500/5"
+        : "!tw-px-0 !tw-py-1"
         }`}
       fullWidth
       blurred={fixedNavbar}
@@ -241,6 +246,9 @@ export function DashboardNavbar() {
               {title}
             </Typography>
           )}
+          {/* <Typography variant="small" color="red">
+            Debug segs: {JSON.stringify(segs)}
+          </Typography> */}
         </div>
 
         <div className="!tw-flex tw-items-center">
@@ -273,7 +281,7 @@ export function DashboardNavbar() {
           </IconButton>
         </div>
 
-        
+
       </div>
     </Navbar>
   );
