@@ -76,7 +76,7 @@ export const routes = [
   {
     name: "PM report",
     icon: <RectangleGroupIcon {...icon} />,
-    path: "#",
+    path: "/dashboard/pm-report",
   },
   {
     name: "Test report",
