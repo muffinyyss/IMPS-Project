@@ -1,5 +1,8 @@
+"use client";
+
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
+import { useMemo, useRef, useState } from "react";
 
 // @material-tailwind/react
 import {
@@ -7,9 +10,63 @@ import {
   Checkbox,
   Button,
   Typography,
+  Select,
+  Option,
 } from "@/components/MaterialTailwind";
 
+
 export default function BasicSignupPage() {
+
+  const stations = [
+    "สถานีกรุงเทพ",
+    "สถานีเชียงใหม่",
+    "สถานีโคราช",
+    "สถานีหาดใหญ่",
+    "สถานีพิษณุโลก",
+    "สถานีนครสวรรค์",
+    "สถานีสุราษฎร์ธานี",
+  ];
+
+  // state สำหรับ combobox เดียว
+  const [query, setQuery] = useState("");          // ค่าที่พิมพ์/เลือก
+  const [open, setOpen] = useState(false);         // เปิด/ปิด dropdown
+  const [active, setActive] = useState(-1);        // ไอเท็มที่กำลังโฟกัส (คีย์บอร์ด)
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const filtered = useMemo(() => {
+    if (!query) return stations;
+    return stations.filter((s) =>
+      s.toLowerCase().includes(query.toLowerCase())
+    );
+  }, [query, stations]);
+
+  const selectItem = (value: string) => {
+    setQuery(value);
+    setOpen(false);
+    setActive(-1);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      setOpen(true);
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((prev) => Math.min(prev + 1, filtered.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === "Enter") {
+      if (open && active >= 0 && filtered[active]) {
+        e.preventDefault();
+        selectItem(filtered[active]);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
   return (
     <section className="tw-grid tw-grid-cols-1 xl:tw-grid-cols-2 tw-items-center tw-h-full">
       <div className="tw-p-8 tw-hidden xl:tw-block">
@@ -74,15 +131,62 @@ export default function BasicSignupPage() {
               <Input size="lg" label="Your password" />
             </div>
 
-            <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-6">
+            <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-2 tw-relative">
               <Typography
                 variant="small"
                 color="blue-gray"
-                className="-tw-mb-3 !tw-font-medium"
+                className="-tw-mb-1 !tw-font-medium"
               >
-                Confirm password
+                เลือกสถานี
               </Typography>
-              <Input size="lg" label="Your confirm password" />
+
+              <Input
+                inputRef={inputRef}
+                size="lg"
+                label="พิมพ์เพื่อค้นหา / เลือกสถานี"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setOpen(true);
+                  setActive(-1);
+                }}
+                onFocus={() => setOpen(true)}
+                onKeyDown={onKeyDown}
+                onBlur={() => {
+                  // หน่วงเล็กน้อยเพื่อให้คลิก option ทันก่อน blur ปิด
+                  setTimeout(() => setOpen(false), 120);
+                }}
+                crossOrigin=""
+              />
+
+              {open && (
+                <div
+                  className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-2 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto"
+                  role="listbox"
+                >
+                  {filtered.length > 0 ? (
+                    filtered.map((item, idx) => (
+                      <button
+                        type="button"
+                        key={item}
+                        role="option"
+                        aria-selected={idx === active}
+                        className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 ${idx === active ? "tw-bg-blue-gray-50" : ""
+                          }`}
+                        onMouseEnter={() => setActive(idx)}
+                        onMouseDown={(e) => e.preventDefault()} // กัน blur
+                        onClick={() => selectItem(item)}
+                      >
+                        {item}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="tw-px-3 tw-py-2 tw-text-blue-gray-500">
+                      ไม่พบสถานีที่ค้นหา
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <Checkbox
