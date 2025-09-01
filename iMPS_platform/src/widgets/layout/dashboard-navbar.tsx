@@ -200,8 +200,9 @@ export function DashboardNavbar() {
   // ถ้าอยู่ใน path ที่ขึ้นต้นด้วย "mdb" ให้ title เป็นตัวใหญ่หมด
   if (segs[1] === "mdb") {
     title = title.toUpperCase();
+  } else if(segs[1] === "pm-report"){
+    title = "PM Report"
   }
-
   return (
     <Navbar
       color={fixedNavbar ? "white" : "transparent"}
