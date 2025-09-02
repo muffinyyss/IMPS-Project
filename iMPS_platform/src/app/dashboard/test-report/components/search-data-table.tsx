@@ -158,7 +158,7 @@ export function SearchDataTables() {
         </CardHeader>
 
         <CardBody className="tw-flex tw-items-center tw-px-4 tw-justify-between">
-          
+
           <div className="tw-flex tw-gap-4 tw-w-full tw-items-center">
             <select
               value={table.getState().pagination.pageSize}
