@@ -81,7 +81,7 @@ export const routes = [
   {
     name: "Test report",
     icon: <RectangleGroupIcon {...icon} />,
-    path: "#",
+    path: "/dashboard/test-report",
   },
   {
     name: "Monitor(CBM)",
