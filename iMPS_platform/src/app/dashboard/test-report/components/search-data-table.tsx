@@ -62,55 +62,36 @@ export function SearchDataTables() {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
+      accessorFn: (row) => row.position,
+      id: "test_report",
+      header: () => "test report",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      minSize: 160,
+    },
+    
+    {
       // ถ้าข้อมูลคุณมี key เป็น name จริง ๆ ให้ใช้ accessorKey ก็ได้
       // accessorKey: "name",
       accessorFn: (row) => row.name,
       id: "date",
-      header: () => "date",
+      header: () => "result",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 50,
       minSize: 50,
       maxSize: 65,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
+    
     {
-      accessorFn: (row) => row.position,
-      id: "pm_report",
-      header: () => "pm report",
+      // ถ้าข้อมูลคุณมี key เป็น name จริง ๆ ให้ใช้ accessorKey ก็ได้
+      // accessorKey: "name",
+      accessorFn: (row) => row.name,
+      id: "date",
+      header: () => "result",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      minSize: 160,
-    },
-    {
-      accessorFn: (row) => row.office, // ถ้า field นี้คือ URL ของไฟล์
-      id: "pdf",
-      header: () => "pdf",
-      enableSorting: false,
-      cell: (info: CellContext<TData, unknown>) => {
-        const url = info.getValue() as string | undefined;
-        const hasUrl = typeof url === "string" && url.length > 0;
-
-        return (
-          <a
-            href={hasUrl ? url : undefined}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            onClick={(e) => {
-              if (!hasUrl) e.preventDefault();
-            }}
-            className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-          ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-            aria-disabled={!hasUrl}
-            title={hasUrl ? "Download PDF" : "No file"}
-          >
-            <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-            <span className="tw-sr-only">Download PDF</span>
-          </a>
-        );
-      },
-      size: 80,
-      minSize: 64,
-      maxSize: 120,
+      size: 50,
+      minSize: 50,
+      maxSize: 65,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
   ];
@@ -150,11 +131,11 @@ export function SearchDataTables() {
             </Typography>
           </div>
 
-          <Button className="tw-flex tw-gap-2"
+          {/* <Button className="tw-flex tw-gap-2"
             variant="gradient"
             size="lg">
             +add
-          </Button>
+          </Button> */}
         </CardHeader>
 
         <CardBody className="tw-flex tw-items-center tw-px-4 tw-justify-between">
