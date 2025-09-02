@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import React from "react";
 import { Typography } from "@material-tailwind/react";
 import { ClockIcon } from "@heroicons/react/24/outline";
-import { statisticsChartsData } from "@/data";
+import { data_MDB } from "@/data";
 
 const StatisticsChartCard = dynamic(
   () => import("../../../../widgets/charts/statistics-chart"),
@@ -81,7 +81,7 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
 export default function StatisticChart({ startDate, endDate }: Props) {
   return (
     <div className="tw-grid tw-grid-cols-1 tw-gap-6 md:tw-grid-cols-2 xl:tw-grid-cols-3">
-      {statisticsChartsData.map((item) => {
+      {data_MDB.map((item) => {
         const filteredChart = filterApexChartByDate(
           item.chart,
           startDate,
@@ -98,9 +98,9 @@ export default function StatisticChart({ startDate, endDate }: Props) {
                   </dt>
                   <dd
                     className="
-              tw-text-sm tw-text-blue-gray-700
-              tw-tabular-nums tw-break-words tw-leading-snug
-            "
+                      tw-text-sm tw-text-blue-gray-700
+                      tw-tabular-nums tw-break-words tw-leading-snug
+                    "
                     title={m.value} // เผื่อ hover ดูค่าเต็ม
                   >
                     {m.value}
