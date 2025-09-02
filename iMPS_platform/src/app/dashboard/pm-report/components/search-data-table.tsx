@@ -134,16 +134,26 @@ export function SearchDataTables() {
   return (
     <>
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
-        <CardHeader floated={false} shadow={false} className="tw-p-2">
-          <Typography color="blue-gray" variant="h5">
-            PM Report Documents
-          </Typography>
-          <Typography
-            variant="small"
-            className="!tw-text-blue-gray-500 !tw-font-normal tw-mb-4 tw-mt-1"
-          >
-            ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM Report)
-          </Typography>
+        <CardHeader
+          floated={false}
+          shadow={false}
+          className="tw-p-2 tw-flex tw-items-center tw-justify-between">
+          <div>
+            <Typography color="blue-gray" variant="h5">
+              PM Report Documents
+            </Typography>
+            <Typography
+              variant="small"
+              className="!tw-text-blue-gray-500 !tw-font-normal tw-mb-4 tw-mt-1"
+            >
+              ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM Report)
+            </Typography>
+          </div>
+
+          <Button className="tw-flex tw-gap-2"
+            variant="gradient">
+            +add
+          </Button>
         </CardHeader>
 
         <CardBody className="tw-flex tw-items-center tw-px-4 tw-justify-between">
@@ -175,9 +185,6 @@ export function SearchDataTables() {
               crossOrigin={undefined}
             />
           </div>
-          <Button className="tw-ml-3 tw-flex tw-gap-2" variant="gradient">
-            add
-          </Button>
         </CardBody>
 
         <CardFooter className="tw-p-0">
