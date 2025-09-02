@@ -51,11 +51,11 @@ export default function InnerContent({ children }: { children: React.ReactNode }
 
         {children}
 
-        {!isSimpleLayout && (
+        {/* {!isSimpleLayout && (
           <div className="tw-text-blue-gray-600">
             <Footer />
           </div>
-        )}
+        )} */}
       </div>
     </div>
   );

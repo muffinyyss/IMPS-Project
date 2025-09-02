@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState } from "react";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 
@@ -9,6 +10,10 @@ import {
   getSortedRowModel,
   useReactTable,
   flexRender,
+  type ColumnDef,
+  type CellContext,
+  type Row,
+  type SortingState,
 } from "@tanstack/react-table";
 
 import { AppDataTable } from "@/data";
@@ -29,12 +34,15 @@ import {
   ChevronUpDownIcon,
 } from "@heroicons/react/24/solid";
 
+// ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
+type TData = (typeof AppDataTable)[number];
+
 export function SearchDataTables() {
-  const [sorting, setSorting] = useState([]);
-  const [data] = useState(() => [...AppDataTable]);
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [data] = useState<TData[]>(() => [...AppDataTable]);
   const [filtering, setFiltering] = useState("");
 
-  const columns = [
+  const columns: ColumnDef<TData, unknown>[] = [
     {
       id: "no",
       header: () => "No.",
@@ -42,37 +50,42 @@ export function SearchDataTables() {
       size: 25,
       minSize: 10,
       maxSize: 25,
-      cell: (info: any) => {
-        const pageRows = info.table.getRowModel().rows;
-        const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
+      cell: (info: CellContext<TData, unknown>) => {
+        const pageRows = info.table.getRowModel().rows as Row<TData>[];
+        // ให้ type กับ r เพื่อไม่ให้เป็น any
+        const indexInPage = pageRows.findIndex(
+          (r: (typeof pageRows)[number]) => r.id === info.row.id
+        );
         const { pageIndex, pageSize } = info.table.getState().pagination;
         return pageIndex * pageSize + indexInPage + 1;
       },
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row: any) => row.name,
+      // ถ้าข้อมูลคุณมี key เป็น name จริง ๆ ให้ใช้ accessorKey ก็ได้
+      // accessorKey: "name",
+      accessorFn: (row) => row.name,
       id: "date",
       header: () => "date",
-      cell: (info: any) => info.getValue(),
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 50,
       minSize: 50,
       maxSize: 65,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row: any) => row.position,
+      accessorFn: (row) => row.position,
       id: "pm_report",
       header: () => "pm report",
-      cell: (info: any) => info.getValue(),
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       minSize: 160,
     },
     {
-      accessorFn: (row: any) => row.office,
+      accessorFn: (row) => row.office, // ถ้า field นี้คือ URL ของไฟล์
       id: "pdf",
       header: () => "pdf",
       enableSorting: false,
-      cell: (info: any) => {
+      cell: (info: CellContext<TData, unknown>) => {
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
 
@@ -109,7 +122,6 @@ export function SearchDataTables() {
       globalFilter: filtering,
       sorting: sorting,
     },
-    // @ts-ignore
     onSortingChange: setSorting,
     onGlobalFilterChange: setFiltering,
     getSortedRowModel: getSortedRowModel(),
@@ -124,14 +136,13 @@ export function SearchDataTables() {
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
         <CardHeader floated={false} shadow={false} className="tw-p-2">
           <Typography color="blue-gray" variant="h5">
-            Datatable Search
+            PM Report Documents
           </Typography>
           <Typography
             variant="small"
             className="!tw-text-blue-gray-500 !tw-font-normal tw-mb-4 tw-mt-1"
           >
-            A lightweight, extendable, dependency-free javascript HTML table
-            plugin.
+            ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM Report)
           </Typography>
         </CardHeader>
 
@@ -164,6 +175,9 @@ export function SearchDataTables() {
               crossOrigin={undefined}
             />
           </div>
+          <Button className="tw-ml-3 tw-flex tw-gap-2" variant="gradient">
+            add
+          </Button>
         </CardBody>
 
         <CardFooter className="tw-p-0">
@@ -191,26 +205,23 @@ export function SearchDataTables() {
                             ? header.column.getToggleSortingHandler()
                             : undefined
                         }
-                        className={`tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium ${
-                          align === "center"
-                            ? "tw-text-center"
-                            : align === "right"
+                        className={`tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium ${align === "center"
+                          ? "tw-text-center"
+                          : align === "right"
                             ? "tw-text-right"
                             : "tw-text-left"
-                        }`}
+                          }`}
                       >
                         {canSort ? (
                           <Typography
                             color="blue-gray"
                             className={`tw-flex tw-items-center tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                              ${
-                                // CHANGED: ปรับการจัดแนวด้วย justify-* ตาม meta.headerAlign
-                                align === "center"
-                                  ? "tw-justify-center"
-                                  : align === "right"
+                              ${align === "center"
+                                ? "tw-justify-center"
+                                : align === "right"
                                   ? "tw-justify-end"
                                   : "tw-justify-start"
-                              }`} // CHANGED
+                              }`}
                           >
                             {flexRender(
                               header.column.columnDef.header,
@@ -221,13 +232,12 @@ export function SearchDataTables() {
                         ) : (
                           <Typography
                             color="blue-gray"
-                            className={`tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${
-                              align === "center"
-                                ? "tw-text-center"
-                                : align === "right"
+                            className={`tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center"
+                              ? "tw-text-center"
+                              : align === "right"
                                 ? "tw-text-right"
                                 : "tw-text-left"
-                            }`}
+                              }`}
                           >
                             {flexRender(
                               header.column.columnDef.header,
@@ -245,42 +255,40 @@ export function SearchDataTables() {
             <tbody>
               {table.getRowModel().rows.length
                 ? table.getRowModel().rows.map((row) => (
-                    <tr key={row.id}>
-                      {row.getVisibleCells().map((cell) => {
-                        const align =
-                          (cell.column.columnDef as any).meta?.cellAlign ?? "left";
-                        return (
-                          <td
-                            key={cell.id}
-                            style={{ width: cell.column.getSize() }}
-                            className={`!tw-border-y !tw-border-x-0 ${
-                              align === "center"
-                                ? "tw-text-center"
-                                : align === "right"
+                  <tr key={row.id}>
+                    {row.getVisibleCells().map((cell) => {
+                      const align =
+                        (cell.column.columnDef as any).meta?.cellAlign ?? "left";
+                      return (
+                        <td
+                          key={cell.id}
+                          style={{ width: cell.column.getSize() }}
+                          className={`!tw-border-y !tw-border-x-0 ${align === "center"
+                            ? "tw-text-center"
+                            : align === "right"
+                              ? "tw-text-right"
+                              : "tw-text-left"
+                            }`}
+                        >
+                          <Typography
+                            variant="small"
+                            className={`!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4 ${align === "center"
+                              ? "tw-text-center"
+                              : align === "right"
                                 ? "tw-text-right"
                                 : "tw-text-left"
-                            }`}
-                          >
-                            <Typography
-                              variant="small"
-                              className={`!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4 ${
-                                align === "center"
-                                  ? "tw-text-center"
-                                  : align === "right"
-                                  ? "tw-text-right"
-                                  : "tw-text-left"
                               }`}
-                            >
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext()
-                              )}
-                            </Typography>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </Typography>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
                 : null}
             </tbody>
           </table>
@@ -318,5 +326,6 @@ export function SearchDataTables() {
     </>
   );
 }
+
 
 export default SearchDataTables;

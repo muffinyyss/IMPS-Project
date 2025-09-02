@@ -143,4 +143,43 @@ export const statisticsChartsData = [
   },
 ];
 
-export default statisticsChartsData;
+export const data_MDB = [
+  {
+    color: "white",
+    title: "Voltage Line to Neutral (V)",
+    description: "Last Campaign Performance",
+    footer: "campaign sent 2 days ago",
+    chart: websiteViewsChart,
+    metrics: [
+      { label: "L1", value: "205.11 V" },
+      { label: "L2", value: "219.91 V" },
+      { label: "L3", value: "242.44 V" },
+    ],
+  },
+  {
+    color: "white",
+    title: "Current (A)",
+    description: "15% increase in today sales",
+    footer: "updated 4 min ago",
+    chart: dailySalesChart,
+    metrics: [
+      { label: "I1", value: "89.52 A" },
+      { label: "I2", value: "87.69 A" },
+      { label: "I3", value: "88.62 A" },
+    ],
+  },
+  {
+    color: "white",
+    title: "Energy (W)",
+    description: "Last Campaign Performance",
+    footer: "just updated",
+    chart: completedTasksChart,
+    metrics: [
+      { label: "W1", value: "20661.73 W" },
+      { label: "W2", value: "20189.51 W" },
+      { label: "W3", value: "20576.95 W" },
+    ],
+  },
+];
+
+export default { statisticsChartsData, data_MDB };

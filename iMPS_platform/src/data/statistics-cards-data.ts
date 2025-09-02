@@ -4,6 +4,11 @@ import {
   ChartBarIcon,
   UserPlusIcon,
 } from "@heroicons/react/24/solid";
+import { WrenchScrewdriverIcon, CalendarDaysIcon } from "@heroicons/react/24/outline";
+import { CpuChipIcon } from "@heroicons/react/24/solid";
+import type { ElementType } from "react";
+// import type { ComponentType, SVGProps } from "react";
+
 
 export const statisticsCardsData = [
   {
@@ -50,4 +55,37 @@ export const statisticsCardsData = [
   },
 ];
 
-export default statisticsCardsData;
+export type PMReportData = {
+  firmware: {
+    plc: string;
+    rpi: string;
+    router: string;
+  };
+  pm: {
+    latest: string;
+    next: string;
+  };
+  icons?: {
+    firmware?: ElementType;
+    date?: ElementType;    
+  };
+};
+
+export const data_pmReport: PMReportData = {
+  firmware: {
+    plc: "PLC120kW_20240418",
+    rpi: "V26012567a1",
+    router: "RUT9R00.07.06.11",
+  },
+  pm: {
+    latest: "20/12/2567",
+    next: "15/01/2568",
+  },
+  icons: {
+    firmware: WrenchScrewdriverIcon,
+    date: CalendarDaysIcon,
+  },
+};
+
+
+export default { statisticsCardsData, data_pmReport };
