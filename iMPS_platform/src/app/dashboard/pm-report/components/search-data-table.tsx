@@ -151,7 +151,8 @@ export function SearchDataTables() {
           </div>
 
           <Button className="tw-flex tw-gap-2"
-            variant="gradient">
+            variant="gradient"
+            size="lg">
             +add
           </Button>
         </CardHeader>
