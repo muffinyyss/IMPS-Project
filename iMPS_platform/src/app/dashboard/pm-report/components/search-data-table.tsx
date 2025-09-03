@@ -33,6 +33,8 @@ import {
   ChevronRightIcon,
   ChevronUpDownIcon,
 } from "@heroicons/react/24/solid";
+import Link from "next/link";
+
 
 // ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
 type TData = (typeof AppDataTable)[number];
@@ -150,11 +152,12 @@ export function SearchDataTables() {
             </Typography>
           </div>
 
-          <Button className="tw-flex tw-gap-2"
-            variant="gradient"
-            size="lg">
-            +add
-          </Button>
+          <Link href="input_PMreport">
+            <Button className="tw-flex tw-gap-2" variant="gradient" size="lg">
+              +add
+            </Button>
+          </Link>
+
         </CardHeader>
 
         <CardBody className="tw-flex tw-items-center tw-px-4 tw-justify-between">
