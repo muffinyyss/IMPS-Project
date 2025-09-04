@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
+import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 
 // @material-tailwind/react
 import {
@@ -13,9 +14,11 @@ import {
   Select,
   Option,
 } from "@/components/MaterialTailwind";
+import { useRouter } from "next/navigation";
 
 
 export default function BasicSignupPage() {
+  const router = useRouter();
 
   const stations = [
     "สถานีกรุงเทพ",
@@ -76,7 +79,22 @@ export default function BasicSignupPage() {
           className="tw-object-cover tw-object-center tw-max-h-[calc(100vh-4rem)] tw-w-full tw-rounded-2xl"
         />
       </div>
-      <div className="tw-w-full tw-min-h-screen tw-grid tw-place-items-center">
+      <div className="tw-w-full tw-min-h-screen tw-grid tw-place-items-center tw-relative">
+
+        <div className="tw-absolute tw-top-4 tw-left-4 tw-z-10 tw-mt-4">
+          <Link href="/">
+            <Button
+              variant="outlined"
+              size="sm"
+              className="tw-flex tw-items-center tw-gap-2"
+            >
+              <ArrowLeftIcon className="tw-h-5 tw-w-5" />
+            </Button>
+          </Link>
+
+        </div>
+
+
         <div className="tw-w-full">
           <div className="tw-text-center">
             <Typography variant="h2" className="!tw-font-bold tw-mb-4">

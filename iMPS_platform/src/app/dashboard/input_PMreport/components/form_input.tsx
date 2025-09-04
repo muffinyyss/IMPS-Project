@@ -68,42 +68,11 @@ export function SearchDataTables() {
 
                 </CardHeader>
 
-                {/* <CardBody className="tw-flex tw-items-center tw-px-4 tw-justify-between">
-          <div className="tw-flex tw-gap-4 tw-w-full tw-items-center">
-            <select
-              value={table.getState().pagination.pageSize}
-              onChange={(e) => table.setPageSize(Number(e.target.value))}
-              className="tw-border tw-p-2 tw-border-blue-gray-100 tw-rounded-lg tw-max-w-[70px] tw-w-full"
-            >
-              {[5, 10, 15, 20, 25].map((pageSize) => (
-                <option key={pageSize} value={pageSize}>
-                  {pageSize}
-                </option>
-              ))}
-            </select>
-            <Typography
-              variant="small"
-              className="!tw-text-blue-gray-500 !tw-font-normal"
-            >
-              entries per page
-            </Typography>
-          </div>
-          <div className="tw-w-52">
-            <Input
-              variant="outlined"
-              value={filtering}
-              onChange={(e) => setFiltering(e.target.value)}
-              label="Search"
-              crossOrigin={undefined}
-            />
-          </div>
-        </CardBody> */}
-
                 <CardBody className="tw-flex tw-items-center tw-px-4 tw-justify-between">
                     <div className="tw-mb-4 tw-mt-8 tw-flex tw-w-full tw-flex-col md:tw-flex-row">
                         {/* Left Column: Question */}
                         <div className="tw-w-full md:tw-w-1/2 tw-flex tw-items-center tw-justify-end tw-mr-4">
-                            {/* <span className="tw-text-lg tw-font-medium tw-text-gray-700">Incoming cable Insulation Test/การทดสอบความเป็นฉนวนของสาย Incoming ที่แรงดัน500Vต้องได้ไม่น้อยกว่า100MΩ(ก่อนPM)</span> */}
+                            <span className="tw-text-lg tw-font-small tw-text-gray-700">Incoming cable Insulation Test/การทดสอบความเป็นฉนวนของสาย Incoming ที่แรงดัน500Vต้องได้ไม่น้อยกว่า100MΩ(ก่อนPM)</span>
                         </div>
 
                         {/* Right Column: Input */}
