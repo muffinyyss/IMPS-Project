@@ -287,7 +287,7 @@ export default function PMReportForm() {
                     />
                     <div className="tw-grid tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                         {/* <div className="tw-flex tw-items-center tw-gap-2"> */}
-                        {/* <Input
+                            <Input
                                 label="L1/L2"
                                 value={voltage.L1L2}
                                 onChange={(e) => setVoltage({ ...voltage, L1L2: e.target.value })}
@@ -302,27 +302,8 @@ export default function PMReportForm() {
                                 <option value="V">V</option>
                                 <option value="MΩ">MΩ</option>
                                 <option value="kΩ">kΩ</option>
-                            </select> */}
-                        {/* </div> */}
-                        <div className="tw-flex tw-items-center tw-gap-2">
-                            <Input
-                                label="L1/L2"
-                                value={voltage.L1L2}
-                                onChange={(e) => setVoltage({ ...voltage, L1L2: e.target.value })}
-                                crossOrigin=""
-                                className="tw-w-24 tw-text-sm"   // 👈 input สั้นลง + ฟอนต์เล็ก
-                            />
-                            <select
-                                value={voltage.unit_L1L2 || "V"}
-                                onChange={(e) => setVoltage({ ...voltage, unit_L1L2: e.target.value })}
-                                className="tw-w-16 tw-border tw-rounded-lg tw-px-1 tw-py-1 tw-bg-white tw-text-sm" // 👈 dropdown เล็กลง
-                            >
-                                <option value="V">V</option>
-                                <option value="MΩ">MΩ</option>
-                                <option value="kΩ">kΩ</option>
                             </select>
-                        </div>
-
+                        {/* </div> */}
 
                         <Input label="L1/L2 (V)" value={voltage.L1L2} onChange={(e) => setVoltage({ ...voltage, L1L2: e.target.value })} crossOrigin="" />
 
