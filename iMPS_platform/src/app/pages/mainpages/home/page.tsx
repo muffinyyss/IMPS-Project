@@ -93,7 +93,7 @@ export default function Landing() {
     <div className="tw-min-h-screen tw-bg-white">
 
       {/* HERO */}
-      <section className="tw-mx-auto tw-max-w-7xl tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-10 tw-items-center tw-px-4 tw-pt-20 md:tw-pt-28 tw-mt-32 md:tw-mt-40">
+      <section className="tw-mx-auto tw-max-w-7xl tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-10 tw-items-center tw-px-4 tw-pt-20 md:tw-pt-28 tw-mt-32 md:tw-mt-5">
         {/* Left text */}
         <div className="tw-order-2 md:tw-order-1">
           <Typography
@@ -113,7 +113,7 @@ export default function Landing() {
         {/* Right image */}
         <div className="tw-order-1 md:tw-order-2 tw-flex tw-justify-center">
           <img
-            src="/img/images.png"
+            src="/img/charger.jpg"
             alt="images"
             className="tw-w-auto tw-max-h-[560px] tw-object-contain"
           />

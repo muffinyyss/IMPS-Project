@@ -23,7 +23,7 @@ export default function BasicPage() {
             size="sm"
             className="tw-flex tw-items-center tw-gap-2"
           >
-            <ArrowLeftIcon className="tw-h-5 tw-w-5" /> {/* 👈 ลูกศร */}
+            <ArrowLeftIcon className="tw-h-5 tw-w-5" />
           </Button>
         </Link>
       </div>

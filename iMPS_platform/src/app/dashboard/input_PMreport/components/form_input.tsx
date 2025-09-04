@@ -286,7 +286,7 @@ export default function PMReportForm() {
                         onRemarkChange={(v) => setRows({ ...rows, r5: { ...rows.r5, remark: v } })}
                     />
                     <div className="tw-grid tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
-                        {/* <div className="tw-flex tw-items-center tw-gap-2"> */}
+                        <div className="tw-flex tw-items-center tw-gap-2">
                             <Input
                                 label="L1/L2"
                                 value={voltage.L1L2}
@@ -303,7 +303,7 @@ export default function PMReportForm() {
                                 <option value="MΩ">MΩ</option>
                                 <option value="kΩ">kΩ</option>
                             </select>
-                        {/* </div> */}
+                        </div>
 
                         <Input label="L1/L2 (V)" value={voltage.L1L2} onChange={(e) => setVoltage({ ...voltage, L1L2: e.target.value })} crossOrigin="" />
 
