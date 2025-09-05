@@ -632,7 +632,6 @@ function InputWithUnit<U extends string>({
     );
 }
 
-
 /** Toggle Pass/Fail + Remark (ใช้ซ้ำได้) */
 function PassFailRow({
     label,
@@ -653,20 +652,26 @@ function PassFailRow({
                 <Typography className="tw-font-medium">{label}</Typography>
 
                 <div className="tw-flex tw-gap-2">
+                    {/* PASS: เขียวเมื่อเลือก */}
                     <Button
                         size="sm"
+                        color="green"
                         variant={value === "PASS" ? "filled" : "outlined"}
                         className="tw-min-w-[84px]"
                         onClick={() => onChange("PASS")}
+                        aria-pressed={value === "PASS"}
                     >
                         PASS
                     </Button>
+
+                    {/* FAIL: แดงเมื่อเลือก (เหมือนเดิม) */}
                     <Button
                         size="sm"
                         color="red"
                         variant={value === "FAIL" ? "filled" : "outlined"}
                         className="tw-min-w-[84px]"
                         onClick={() => onChange("FAIL")}
+                        aria-pressed={value === "FAIL"}
                     >
                         FAIL
                     </Button>
@@ -684,6 +689,7 @@ function PassFailRow({
         </div>
     );
 }
+
 
 export default function PMReportForm() {
     const router = useRouter();
