@@ -545,8 +545,8 @@ import { ArrowLeftIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outlin
 
 /** --- ค่าคงที่ & ยูทิล --- */
 const UNITS = {
-    voltage: ["V", "MΩ", "kΩ", "Ω"] as const,          // เผื่อกรณีอยากเปลี่ยนหน่วยแรงดันเป็นอย่างอื่น
-    insulation: ["MΩ", "kΩ", "Ω"] as const,            // ฉนวนเป็นโอห์ม/เมกะโอห์ม
+    voltage: ["V", "MΩ", "kΩ"] as const,          // เผื่อกรณีอยากเปลี่ยนหน่วยแรงดันเป็นอย่างอื่น
+    insulation: ["MΩ", "kΩ"] as const,            // ฉนวนเป็นโอห์ม/เมกะโอห์ม
 };
 
 type UnitVoltage = (typeof UNITS.voltage)[number];
@@ -602,62 +602,36 @@ function InputWithUnit<U extends string>({
     onValueChange: (v: string) => void;
     onUnitChange: (u: U) => void;
 }) {
-    // return (
-    //     <div className="tw-flex tw-items-center tw-gap-2 tw-w-full">
-    //         {/* ทำให้ช่องกรอก "สั้นลง" แบบคงที่ตาม breakpoint */}
-    //         <div className="tw-w-[110px] sm:tw-w-[130px] md:tw-w-[150px] lg:tw-w-[160px]">
-    //             <Input
-    //                 size="sm"
-    //                 label={`${label} (${unit})`}
-    //                 value={value}
-    //                 onChange={(e) => onValueChange(e.target.value)}
-    //                 crossOrigin=""
-    //                 className="tw-w-full"
-    //             />
-    //         </div>
-
-    //         {/* หน่วย: กว้างคงที่ และไม่หด */}
-    //         <select
-    //             value={unit}
-    //             onChange={(e) => onUnitChange(e.target.value as U)}
-    //             className="tw-w-[56px] sm:tw-w-[64px] tw-shrink-0 tw-h-11 tw-border tw-rounded-lg tw-px-2 tw-bg-white tw-text-sm"
-    //         >
-    //             {units.map((u) => (
-    //                 <option key={u} value={u}>
-    //                     {u}
-    //                 </option>
-    //             ))}
-    //         </select>
-    //     </div>
-    // );
     return (
-    <div className="tw-flex tw-items-center tw-gap-2 tw-min-w-0">
-      {/* ทำช่องกรอกให้ "สั้นลง" ชัดเจนตาม breakpoint */}
-      <div className="tw-w-[110px] sm:tw-w-[120px] md:tw-w-[140px] lg:tw-w-[100px] tw-min-w-0">
-        <Input
-          label={`${label} (${unit})`}
-          value={value}
-          onChange={(e) => onValueChange(e.target.value)}
-          crossOrigin=""
-          className="tw-w-full"
-        />
-      </div>
+        <div className="tw-flex tw-items-center tw-gap-2 tw-min-w-0">
+            {/* ช่องกรอก 'สั้น' ตามรูป */}
+            <Input
+                label={`${label}`}
+                value={value}
+                onChange={(e) => onValueChange(e.target.value)}
+                crossOrigin=""
+                containerProps={{
+                    className: "tw-w-[120px] !tw-min-w-0",
+                }}
+                className="!tw-w-full"
+            />
 
-      {/* หน่วย: กว้างคงที่และไม่หด เพื่อไม่ให้ไปทับช่อง */}
-      <select
-        value={unit}
-        onChange={(e) => onUnitChange(e.target.value as U)}
-        className="tw-w-[56px] sm:tw-w-[64px] tw-shrink-0 tw-h-11 tw-border tw-rounded-lg tw-px-2 tw-bg-white tw-text-sm"
-      >
-        {units.map((u) => (
-          <option key={u} value={u}>
-            {u}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
+            {/* หน่วย (V / MΩ / kΩ) */}
+            <select
+                value={unit}
+                onChange={(e) => onUnitChange(e.target.value as U)}
+                className="tw-h-10 tw-w-[60px] tw-shrink-0 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-2 tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-500"
+            >
+                {units.map((u) => (
+                    <option key={u} value={u}>
+                        {u}
+                    </option>
+                ))}
+            </select>
+        </div>
+    );
 }
+
 
 /** Toggle Pass/Fail + Remark (ใช้ซ้ำได้) */
 function PassFailRow({
@@ -750,15 +724,15 @@ export default function PMReportForm() {
         initMeasureState(VOLTAGE_FIELDS, "V")
     ); // 5) ก่อน PM
 
-    const [insulIn, setInsulIn] = useState<MeasureState<UnitInsul>>(
+    const [insulIn, setInsulIn] = useState<MeasureState<UnitVoltage>>(
         initMeasureState(INSUL_FIELDS, "MΩ")
     ); // 6) ฉนวน incoming (ก่อน PM)
 
-    const [insulCharge, setInsulCharge] = useState<MeasureState<UnitInsul>>(
+    const [insulCharge, setInsulCharge] = useState<MeasureState<UnitVoltage>>(
         initMeasureState(CHARGE_FIELDS, "MΩ")
     ); // 7) ฉนวนสายชาร์จ
 
-    const [insulInPost, setInsulInPost] = useState<MeasureState<UnitInsul>>(
+    const [insulInPost, setInsulInPost] = useState<MeasureState<UnitVoltage>>(
         initMeasureState(INSUL_FIELDS, "MΩ")
     ); // 11) ฉนวน incoming (หลัง PM)
 
@@ -801,11 +775,11 @@ export default function PMReportForm() {
             <div className="tw-sticky tw-top-0 tw-z-20 tw-bg-transparent tw-pt-3 tw-pb-2">
                 <div
                     className="
-            tw-flex tw-items-center tw-justify-between
-            tw-bg-white tw-border tw-border-blue-gray-100
-            tw-rounded-2xl tw-shadow-sm
-            tw-px-4 tw-py-3
-          "
+                        tw-flex tw-items-center tw-justify-between
+                        tw-bg-white tw-border tw-border-blue-gray-100
+                        tw-rounded-2xl tw-shadow-sm
+                        tw-px-4 tw-py-3
+                    "
                 >
                     <Button
                         variant="text"
@@ -972,7 +946,7 @@ export default function PMReportForm() {
                                 label={labelDict[k]}
                                 value={insulIn[k].value}
                                 unit={insulIn[k].unit}
-                                units={UNITS.insulation}
+                                units={UNITS.voltage}
                                 onValueChange={(v) => patchInsulIn(k, { value: v })}
                                 onUnitChange={(u) => patchInsulIn(k, { unit: u })}
                             />
@@ -1009,7 +983,7 @@ export default function PMReportForm() {
                                 label={labelDict[k]}
                                 value={insulCharge[k].value}
                                 unit={insulCharge[k].unit}
-                                units={UNITS.insulation}
+                                units={UNITS.voltage}
                                 onValueChange={(v) => patchInsulCharge(k, { value: v })}
                                 onUnitChange={(u) => patchInsulCharge(k, { unit: u })}
                             />
@@ -1070,7 +1044,7 @@ export default function PMReportForm() {
                                 label={labelDict[k]}
                                 value={insulInPost[k].value}
                                 unit={insulInPost[k].unit}
-                                units={UNITS.insulation}
+                                units={UNITS.voltage}
                                 onValueChange={(v) => patchInsulInPost(k, { value: v })}
                                 onUnitChange={(u) => patchInsulInPost(k, { unit: u })}
                             />
