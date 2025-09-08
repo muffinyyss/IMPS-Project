@@ -2,12 +2,12 @@
 import { Card, CardBody, Typography } from "@/components/MaterialTailwind";
 
 // component
-import FormInputPMReport from "./components/form_input";
+import CheckList from "./components/checkList";
 
 export default function NewProduct() {
   return (
     <>
-      <FormInputPMReport />
+      <CheckList />
     </>
 
   
