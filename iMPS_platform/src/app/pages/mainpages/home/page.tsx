@@ -37,9 +37,7 @@ export default function Landing() {
   useEffect(() => {
     fetch("http://localhost:8000")
     .then((res) => res.json())
-    .then((data) => {
-      console.log(data);
-      setUsers(data.username)});
+    .then((data) => setUsers(data.username));
   },[]);
 
   const [open, setOpen] = useState(0);

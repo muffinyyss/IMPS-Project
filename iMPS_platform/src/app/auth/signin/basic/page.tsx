@@ -1,8 +1,10 @@
+"use client";
+
 /* eslint-disable @next/next/no-img-element */
-import React from "react";
+import React,{useState} from "react";
 import Link from "next/link";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
-
+import { useRouter } from "next/navigation";
 // @material-tailwind/react
 import {
   Input,
@@ -10,8 +12,41 @@ import {
   Button,
   Typography,
 } from "@/components/MaterialTailwind";
+import { headers } from "next/headers";
 
 export default function BasicPage() {
+  const [username,setUsername] = useState("");
+  const [password,setPassword] = useState("");
+  const [message,setMessage] = useState("");
+  const router = useRouter();
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    try{
+      const res = await fetch("http://localhost:8000/login/",{
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({username,password}),
+      });
+
+      if (res.ok){
+        const data = await res.json();
+        setMessage(data.message);
+
+        localStorage.setItem("user",JSON.stringify(data));
+
+        router.push("/pages/mainpages/home");
+      }else{
+        setMessage("Login failed ❌");
+      }
+    }catch (err) {
+      console.error(err);
+      setMessage("Server error");
+    }
+  };
+
+
   return (
     <section className="tw-grid tw-grid-cols-1 xl:tw-grid-cols-2 tw-items-center tw-h-full">
 
@@ -38,7 +73,7 @@ export default function BasicPage() {
               Enter your username and password to Sign In.
             </Typography>
           </div>
-          <form className="tw-mt-8 tw-mb-2 tw-mx-auto tw-w-80 tw-max-w-screen-lg lg:tw-w-1/2">
+          <form className="tw-mt-8 tw-mb-2 tw-mx-auto tw-w-80 tw-max-w-screen-lg lg:tw-w-1/2" onSubmit={handleSubmit}>
             <div className="tw-mb-1 tw-flex tw-flex-col tw-gap-6">
               <Typography
                 variant="small"
@@ -47,7 +82,11 @@ export default function BasicPage() {
               >
                 Your username
               </Typography>
-              <Input size="lg" label="Your username" />
+              <Input size="lg" label="Your username" 
+              type="text" 
+              value={username} 
+              onChange={(e) => setUsername(e.target.value)}
+              />
               <Typography
                 variant="small"
                 color="blue-gray"
@@ -55,12 +94,15 @@ export default function BasicPage() {
               >
                 Password
               </Typography>
-              <Input type="password" size="lg" label="Password" />
+              <Input type="password" size="lg" label="Password"
+              value={password}
+              onChange={(e) => setPassword((e.target.value))} />
             </div>
 
-            <Button className="tw-mt-6" fullWidth>
+            <Button className="tw-mt-6" fullWidth type="submit">
               Sign In
             </Button>
+            {message && <p>{message}</p>}
 
             <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-mt-6">
               <Checkbox
