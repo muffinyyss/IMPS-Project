@@ -16,14 +16,11 @@ import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 
 /** --- ค่าคงที่ & ยูทิล --- */
 const UNITS = {
-    voltage: ["V", "MΩ", "kΩ"] as const,      // ใช้ชุดหน่วยเดียวสำหรับทุกกลุ่ม
+    voltage: ["V", "MΩ", "kΩ"] as const,
 };
-
 type UnitVoltage = (typeof UNITS.voltage)[number];
-
 type MeasureState<U extends string> = Record<string, { value: string; unit: U }>;
 
-/** สร้าง state เริ่มต้นของชุดฟิลด์ */
 function initMeasureState<U extends string>(
     keys: string[],
     defaultUnit: U
@@ -31,12 +28,10 @@ function initMeasureState<U extends string>(
     return Object.fromEntries(keys.map((k) => [k, { value: "", unit: defaultUnit }])) as MeasureState<U>;
 }
 
-/** รายการฟิลด์แต่ละกลุ่ม */
 const VOLTAGE_FIELDS = ["L1L2", "L1L3", "L2L3", "L1N", "L2N", "L3N", "L1G", "L2G", "L3G", "NG"];
 const INSUL_FIELDS = ["L1G", "L2G", "L3G", "L1N", "L2N", "L3N", "L1L2", "L1L3", "L2L3", "GN"];
 const CHARGE_FIELDS = ["h1_DCpG", "h1_DCmG", "h2_DCpG", "h2_DCmG"];
 
-/** แปลง key เป็น label ที่อ่านง่าย */
 const labelDict: Record<string, string> = {
     L1L2: "L1/L2",
     L1L3: "L1/L3",
@@ -55,7 +50,7 @@ const labelDict: Record<string, string> = {
     h2_DCmG: "Head 2: DC-/G",
 };
 
-/** อินพุตตัวเลข + dropdown หน่วย (ใช้ซ้ำได้) */
+/** อินพุตตัวเลข + หน่วย: อยู่บรรทัดเดียว แบ่ง 2 คอลัมน์ (มือถือก็เช่นกัน) */
 function InputWithUnit<U extends string>({
     label,
     value,
@@ -72,19 +67,29 @@ function InputWithUnit<U extends string>({
     onUnitChange: (u: U) => void;
 }) {
     return (
-        <div className="tw-flex tw-items-center tw-gap-2 tw-min-w-0">
+        <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
+            {/* คอลัมน์ซ้าย: ช่องกรอกค่า */}
             <Input
+                type="number"
+                inputMode="decimal"
+                step="any"
                 label={`${label}`}
                 value={value}
                 onChange={(e) => onValueChange(e.target.value)}
+                onWheel={(e) => (e.target as HTMLInputElement).blur()}
                 crossOrigin=""
-                containerProps={{ className: "tw-w-[120px] !tw-min-w-0" }}
+                containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
                 className="!tw-w-full"
             />
+
+            {/* คอลัมน์ขวา: หน่วย */}
             <select
                 value={unit}
                 onChange={(e) => onUnitChange(e.target.value as U)}
-                className="tw-h-10 tw-w-[60px] tw-shrink-0 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-2 tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-500"
+                className="
+                    tw-col-span-1 tw-h-10 tw-rounded-lg tw-border tw-border-blue-gray-200
+                    tw-bg-white tw-px-2 tw-text-sm focus:tw-outline-none focus:tw-ring-2
+                    focus:tw-ring-blue-500/30 focus:tw-border-blue-500 "
             >
                 {units.map((u) => (
                     <option key={u} value={u}>
@@ -96,7 +101,8 @@ function InputWithUnit<U extends string>({
     );
 }
 
-/** Toggle Pass/Fail + Remark (ใช้ซ้ำได้) */
+
+/** Toggle Pass/Fail + Remark (responsive) */
 function PassFailRow({
     label,
     value,
@@ -111,15 +117,16 @@ function PassFailRow({
     onRemarkChange?: (v: string) => void;
 }) {
     return (
-        <div className="tw-space-y-2 tw-py-3 tw-border-b tw-border-blue-gray-50">
-            <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+        <div className="tw-space-y-3 tw-py-3 tw-border-b tw-border-blue-gray-50">
+            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
                 <Typography className="tw-font-medium">{label}</Typography>
-                <div className="tw-flex tw-gap-2">
+
+                <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
                     <Button
                         size="sm"
                         color="green"
                         variant={value === "PASS" ? "filled" : "outlined"}
-                        className="tw-min-w-[84px]"
+                        className="tw-w-1/2 sm:tw-w-auto sm:tw-min-w-[84px]"
                         onClick={() => onChange("PASS")}
                         aria-pressed={value === "PASS"}
                     >
@@ -129,7 +136,7 @@ function PassFailRow({
                         size="sm"
                         color="red"
                         variant={value === "FAIL" ? "filled" : "outlined"}
-                        className="tw-min-w-[84px]"
+                        className="tw-w-1/2 sm:tw-w-auto sm:tw-min-w-[84px]"
                         onClick={() => onChange("FAIL")}
                         aria-pressed={value === "FAIL"}
                     >
@@ -150,43 +157,9 @@ function PassFailRow({
     );
 }
 
-/** Change pager */
-function Pager({
-    page, total, onPrev, onNext,
-}: {
-    page: number;      // เริ่มนับจาก 1
-    total: number;
-    onPrev: () => void;
-    onNext: () => void;
-}) {
-    return (
-        <div className="tw-flex tw-items-center tw-gap-2">
-            <span className="tw-font-semibold">Page {page} of {total}</span>
-            <button
-                className="tw-h-9 tw-w-9 tw-rounded-lg tw-border tw-border-blue-gray-200 disabled:tw-opacity-40"
-                onClick={onPrev}
-                disabled={page === 1}
-                aria-label="Previous"
-            >
-                ‹
-            </button>
-            <button
-                className="tw-h-9 tw-w-9 tw-rounded-lg tw-border tw-border-blue-gray-200 disabled:tw-opacity-40"
-                onClick={onNext}
-                disabled={page === total}
-                aria-label="Next"
-            >
-                ›
-            </button>
-        </div>
-    );
-}
-
-
-export default function PMReportForm() {
+export default function checkList() {
     const router = useRouter();
 
-    // --- Job Info ---
     const [job, setJob] = useState({
         workOrder: "",
         sn: "",
@@ -196,7 +169,6 @@ export default function PMReportForm() {
         inspector: "",
     });
 
-    // --- Checklist states ---
     const [rows, setRows] = useState<
         Record<string, { pf: "PASS" | "FAIL" | ""; remark: string }>
     >({
@@ -217,28 +189,22 @@ export default function PMReportForm() {
         r15: { pf: "", remark: "" },
     });
 
-    // --- Measurements (ใช้ชนิด UnitVoltage เดียวกันทั้งหมด) ---
     const [voltage, setVoltage] = useState<MeasureState<UnitVoltage>>(
         initMeasureState(VOLTAGE_FIELDS, "V")
-    ); // 5) ก่อน PM
-
+    );
     const [insulIn, setInsulIn] = useState<MeasureState<UnitVoltage>>(
         initMeasureState(INSUL_FIELDS, "V")
-    ); // 6) ฉนวน incoming (ก่อน PM)
-
+    );
     const [insulCharge, setInsulCharge] = useState<MeasureState<UnitVoltage>>(
         initMeasureState(CHARGE_FIELDS, "V")
-    ); // 7) ฉนวนสายชาร์จ
-
+    );
     const [insulInPost, setInsulInPost] = useState<MeasureState<UnitVoltage>>(
         initMeasureState(INSUL_FIELDS, "V")
-    ); // 11) ฉนวน incoming (หลัง PM)
-
+    );
     const [voltagePost, setVoltagePost] = useState<MeasureState<UnitVoltage>>(
         initMeasureState(VOLTAGE_FIELDS, "V")
-    ); // 12) หลัง PM
+    );
 
-    /** อัปเดต state แบบย่อย */
     const patchMeasure =
         <U extends string>(
             setter: React.Dispatch<React.SetStateAction<MeasureState<U>>>
@@ -253,7 +219,6 @@ export default function PMReportForm() {
     const patchInsulInPost = patchMeasure(setInsulInPost);
     const patchInsulCharge = patchMeasure(setInsulCharge);
 
-    /** ฟังก์ชันช่วย: เซ็ต "ทุกช่อง" ในกลุ่มให้เป็นหน่วยเดียวกัน */
     function syncAllUnits<U extends string>(
         setter: React.Dispatch<React.SetStateAction<MeasureState<U>>>,
         keys: string[],
@@ -268,7 +233,6 @@ export default function PMReportForm() {
         });
     }
 
-    /** ทำให้หน่วยของ "ทั้งกลุ่ม" ตามช่องแรกเสมอ */
     const handleVoltageUnitChange = (key: string, u: UnitVoltage) => {
         const firstKey = VOLTAGE_FIELDS[0];
         if (key !== firstKey) patchVoltage(firstKey, { unit: u });
@@ -308,77 +272,14 @@ export default function PMReportForm() {
         alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
     };
 
-    const [step, setStep] = useState(0); // 0-based
-    const steps = [
-        // step 1
-        <React.Fragment key="s1">
-            {/* ใส่ส่วน Job Info + Checklist ที่มีข้อ 1–4 */}
-            {/* ...โค้ดเดิมของคุณ (Card ข้อมูลงาน + Checklist) ... */}
-        </React.Fragment>,
-
-        // step 2
-        <React.Fragment key="s2">
-            {/* ใส่ข้อ 5–7 */}
-            {/* ...โค้ดเดิมของคุณ (ข้อ 5,6,7) ... */}
-        </React.Fragment>,
-
-        // step 3
-        <React.Fragment key="s3">
-            {/* ใส่ข้อ 8–15 */}
-            {/* ...โค้ดเดิมของคุณ (ข้อ 8–15) ... */}
-        </React.Fragment>,
-    ];
-
-    const total = steps.length;
-
     return (
         <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
-            {/* Top bar actions */}
-            <div className="tw-sticky tw-top-0 tw-z-20 tw-bg-transparent tw-pt-3 tw-pb-2">
-                <div
-                    className="
-                        tw-flex tw-items-center tw-justify-between
-                        tw-bg-white tw-border tw-border-blue-gray-100
-                        tw-rounded-2xl tw-shadow-sm
-                        tw-px-4 tw-py-3
-                    "
-                >
-                    <Button
-                        variant="text"
-                        onClick={() => router.back()}
-                        className="tw-bg-white tw-border tw-border-blue-gray-200 tw-rounded-xl tw-shadow-none tw-h-9 tw-px-4 tw-min-w-0 tw-flex tw-items-center tw-justify-center hover:tw-bg-blue-gray-50"
-                    >
-                        <ArrowLeftIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-800" />
-                    </Button>
-
-                    <Typography variant="h5">PM Report</Typography>
-
-                    <Button color="green" className="tw-gap-2" onClick={onSave}>
-                        Save
-                    </Button>
-                </div>
-            </div>
-
-            {steps[step]}
-
-            {/* Company Info */}
-            <Card className="tw-mt-3 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                <CardBody className="tw-space-y-1">
-                    <Typography className="tw-font-semibold">
-                        บริษัท อีแกท ไดมอนด์ เซอร์วิส จำกัด (สำนักงานใหญ่) — Tax ID: 0125552017292
-                    </Typography>
-                    <Typography className="!tw-text-blue-gray-600">
-                        56/25 หมู่ 20 ต.คลองหนึ่ง อ.คลองหลวง จ.ปทุมธานี 12120
-                    </Typography>
-                </CardBody>
-            </Card>
-
             {/* Job Info */}
             <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
                 <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
                     <Typography variant="h6">ข้อมูลงาน</Typography>
                     <Typography variant="small" className="!tw-text-blue-gray-500">
-                        กรอกให้ง่ายบนมือถือ — ช่องกว้าง แตะง่าย
+                        กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM
                     </Typography>
                 </CardHeader>
                 <CardBody className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
@@ -410,7 +311,7 @@ export default function PMReportForm() {
                 </CardHeader>
                 <CardBody className="tw-space-y-4">
                     <PassFailRow label="ผลการตรวจ" value={rows.r5.pf} onChange={(v) => setRows({ ...rows, r5: { ...rows.r5, pf: v } })} remark={rows.r5.remark} onRemarkChange={(v) => setRows({ ...rows, r5: { ...rows.r5, remark: v } })} />
-                    <div className="tw-grid tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                         {VOLTAGE_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`pre-${k}`}
@@ -435,7 +336,7 @@ export default function PMReportForm() {
                 </CardHeader>
                 <CardBody className="tw-space-y-4">
                     <PassFailRow label="ผลการทดสอบ" value={rows.r6.pf} onChange={(v) => setRows({ ...rows, r6: { ...rows.r6, pf: v } })} remark={rows.r6.remark} onRemarkChange={(v) => setRows({ ...rows, r6: { ...rows.r6, remark: v } })} />
-                    <div className="tw-grid tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                         {INSUL_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`ins-pre-${k}`}
@@ -465,7 +366,7 @@ export default function PMReportForm() {
                 </CardHeader>
                 <CardBody className="tw-space-y-4">
                     <PassFailRow label="ผลการทดสอบ" value={rows.r7.pf} onChange={(v) => setRows({ ...rows, r7: { ...rows.r7, pf: v } })} remark={rows.r7.remark} onRemarkChange={(v) => setRows({ ...rows, r7: { ...rows.r7, remark: v } })} />
-                    <div className="tw-grid tw-grid-cols-2 md:tw-grid-cols-4 tw-gap-3">
+                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-4 tw-gap-3">
                         {CHARGE_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`charge-${k}`}
@@ -502,7 +403,7 @@ export default function PMReportForm() {
                 </CardHeader>
                 <CardBody className="tw-space-y-4">
                     <PassFailRow label="ผลการทดสอบ" value={rows.r11.pf} onChange={(v) => setRows({ ...rows, r11: { ...rows.r11, pf: v } })} remark={rows.r11.remark} onRemarkChange={(v) => setRows({ ...rows, r11: { ...rows.r11, remark: v } })} />
-                    <div className="tw-grid tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                         {INSUL_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`ins-post-${k}`}
@@ -525,7 +426,7 @@ export default function PMReportForm() {
                 </CardHeader>
                 <CardBody className="tw-space-y-4">
                     <PassFailRow label="ผลการตรวจ" value={rows.r12.pf} onChange={(v) => setRows({ ...rows, r12: { ...rows.r12, pf: v } })} remark={rows.r12.remark} onRemarkChange={(v) => setRows({ ...rows, r12: { ...rows.r12, remark: v } })} />
-                    <div className="tw-grid tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                         {VOLTAGE_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`post-${k}`}
@@ -567,38 +468,6 @@ export default function PMReportForm() {
                     />
                 </CardBody>
             </Card>
-
-            {/* แถบควบคุม page (วางบน/ล่างก็ได้) */}
-            <div className="tw-flex tw-justify-between tw-items-center tw-mt-6">
-                <Pager
-                    page={step + 1}
-                    total={total}
-                    onPrev={() => setStep((s) => Math.max(0, s - 1))}
-                    onNext={() => setStep((s) => Math.min(total - 1, s + 1))}
-                />
-                <div className="tw-hidden md:tw-flex tw-gap-3">
-                    <Button variant="outlined" onClick={() => setStep(0)}>กลับหน้าแรก</Button>
-                    <Button color="green" onClick={onSave}>Save</Button>
-                </div>
-            </div>
-
-            {/* Bottom sticky save bar for mobile */}
-            <div className="tw-fixed tw-bottom-0 tw-left-0 tw-right-0 tw-z-30 tw-bg-white tw-border-t tw-border-blue-gray-100 tw-p-3 md:tw-hidden">
-                <Button color="green" className="tw-w-full tw-gap-2" onClick={onSave}>
-                    บันทึก PM Report
-                </Button>
-            </div>
-
-            {/* <CardFooter className="tw-hidden md:tw-flex tw-justify-end tw-gap-3 tw-pt-6">
-
-                
-                <Link href="/pm">
-                    <Button variant="outlined">ยกเลิก</Button>
-                </Link>
-                <Button color="green" className="tw-gap-2" onClick={onSave}>
-                    บันทึก
-                </Button>
-            </CardFooter> */}
         </section>
     );
 }
