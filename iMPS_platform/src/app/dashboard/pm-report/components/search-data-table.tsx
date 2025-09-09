@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 
 import {
@@ -35,14 +35,48 @@ import {
 } from "@heroicons/react/24/solid";
 import Link from "next/link";
 
-
 // ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
 type TData = (typeof AppDataTable)[number];
 
 export function SearchDataTables() {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [data] = useState<TData[]>(() => [...AppDataTable]);
+  // 🔧 เปลี่ยน: data มาจาก API ไม่ใช้ค่าคงที่
+  const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
+
+  // 🔧 เพิ่ม: ดึงข้อมูลจาก FastAPI แล้ว map → ฟิลด์ที่ตารางใช้อยู่ (name/position/office)
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/"); // แก้ URL ให้ตรงของคุณ
+        if (!res.ok) {
+          // ใช้ข้อมูลเดิมเป็น fallback ถ้า API ล้มเหลว
+          setData([...AppDataTable] as TData[]);
+          return;
+        }
+        const json = (await res.json()) as { username?: string[] };
+
+        const rows: TData[] = (json.username ?? []).map((u) =>
+        ({
+          // คอลัมน์ "date" อ่านจาก row.name
+          name: u,
+          // คอลัมน์ "pm report" อ่านจาก row.position
+          position: u,
+          // คอลัมน์ "pdf" อ่านจาก row.office (URL ไฟล์) — ตอนนี้ยังไม่มีเลยเว้นว่าง
+          office: "",
+        } as TData)
+        );
+
+        setData(rows);
+      } catch (e) {
+        console.error(e);
+        // fallback: ใช้ข้อมูลเดิมจาก AppDataTable
+        setData([...AppDataTable] as TData[]);
+      }
+    };
+
+    load();
+  }, []);
 
   const columns: ColumnDef<TData, unknown>[] = [
     {
@@ -54,7 +88,6 @@ export function SearchDataTables() {
       maxSize: 25,
       cell: (info: CellContext<TData, unknown>) => {
         const pageRows = info.table.getRowModel().rows as Row<TData>[];
-        // ให้ type กับ r เพื่อไม่ให้เป็น any
         const indexInPage = pageRows.findIndex(
           (r: (typeof pageRows)[number]) => r.id === info.row.id
         );
@@ -64,12 +97,11 @@ export function SearchDataTables() {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      // ถ้าข้อมูลคุณมี key เป็น name จริง ๆ ให้ใช้ accessorKey ก็ได้
-      // accessorKey: "name",
       accessorFn: (row) => row.name,
       id: "date",
       header: () => "date",
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      cell: (info: CellContext<TData, unknown>) =>
+        info.getValue() as React.ReactNode,
       size: 50,
       minSize: 50,
       maxSize: 65,
@@ -79,11 +111,12 @@ export function SearchDataTables() {
       accessorFn: (row) => row.position,
       id: "pm_report",
       header: () => "pm report",
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      cell: (info: CellContext<TData, unknown>) =>
+        info.getValue() as React.ReactNode,
       minSize: 160,
     },
     {
-      accessorFn: (row) => row.office, // ถ้า field นี้คือ URL ของไฟล์
+      accessorFn: (row) => row.office, // URL ไฟล์
       id: "pdf",
       header: () => "pdf",
       enableSorting: false,
@@ -101,7 +134,10 @@ export function SearchDataTables() {
               if (!hasUrl) e.preventDefault();
             }}
             className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-          ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+          ${hasUrl
+                ? "tw-text-red-600 hover:tw-text-red-800"
+                : "tw-text-blue-gray-300 tw-cursor-not-allowed"
+              }`}
             aria-disabled={!hasUrl}
             title={hasUrl ? "Download PDF" : "No file"}
           >
@@ -115,8 +151,6 @@ export function SearchDataTables() {
       maxSize: 120,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-
-    
   ];
 
   const table = useReactTable({
@@ -141,7 +175,8 @@ export function SearchDataTables() {
         <CardHeader
           floated={false}
           shadow={false}
-          className="tw-p-2 tw-flex tw-items-center tw-justify-between">
+          className="tw-p-2 tw-flex tw-items-center tw-justify-between"
+        >
           <div>
             <Typography color="blue-gray" variant="h5">
               PM Report Documents
@@ -159,7 +194,6 @@ export function SearchDataTables() {
               +add
             </Button>
           </Link>
-
         </CardHeader>
 
         <CardBody className="tw-flex tw-items-center tw-px-4 tw-justify-between">
@@ -207,7 +241,8 @@ export function SearchDataTables() {
                   {headerGroup.headers.map((header) => {
                     const canSort = header.column.getCanSort();
                     const align =
-                      (header.column.columnDef as any).meta?.headerAlign ?? "left";
+                      (header.column.columnDef as any).meta?.headerAlign ??
+                      "left";
 
                     return (
                       <th
@@ -240,7 +275,10 @@ export function SearchDataTables() {
                               header.column.columnDef.header,
                               header.getContext()
                             )}
-                            <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
+                            <ChevronUpDownIcon
+                              strokeWidth={2}
+                              className="tw-h-4 tw-w-4"
+                            />
                           </Typography>
                         ) : (
                           <Typography
@@ -271,7 +309,8 @@ export function SearchDataTables() {
                   <tr key={row.id}>
                     {row.getVisibleCells().map((cell) => {
                       const align =
-                        (cell.column.columnDef as any).meta?.cellAlign ?? "left";
+                        (cell.column.columnDef as any).meta?.cellAlign ??
+                        "left";
                       return (
                         <td
                           key={cell.id}
@@ -311,7 +350,8 @@ export function SearchDataTables() {
           <span className="tw-flex tw-items-center tw-gap-1">
             <Typography className="!tw-font-bold">Page</Typography>
             <strong>
-              {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+              {table.getState().pagination.pageIndex + 1} of{" "}
+              {table.getPageCount()}
             </strong>
           </span>
           <div className="tw-flex tw-items-center tw-gap-2">
@@ -339,6 +379,5 @@ export function SearchDataTables() {
     </>
   );
 }
-
 
 export default SearchDataTables;
