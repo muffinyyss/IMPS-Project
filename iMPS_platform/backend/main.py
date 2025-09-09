@@ -9,7 +9,10 @@ from pymongo import MongoClient
 from pydantic import BaseModel
 from bson.objectid import ObjectId
 from fastapi.middleware.cors import CORSMiddleware
+
 from pdf.pdf_routes import router as pdf_router
+
+
 import bcrypt
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
@@ -103,11 +106,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 app.include_router(pdf_router)
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+
 
 
 
