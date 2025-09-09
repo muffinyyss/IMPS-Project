@@ -21,6 +21,7 @@ const text = {
   className: "tw-w-5 tw-grid place-items-center !tw-font-medium",
 };
 
+
 export const routes = [
   {
     // layout: "dashboard",
@@ -632,4 +633,5 @@ export const routes = [
 //     external: true,
 //   },
 ];
+
 export default routes;
