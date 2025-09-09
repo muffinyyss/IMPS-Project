@@ -43,6 +43,7 @@ export default function BasicPage() {
         localStorage.setItem("user",JSON.stringify(data));
 
 
+
         alert("Login success ✅");
         localStorage.setItem("username", data.username)
 
