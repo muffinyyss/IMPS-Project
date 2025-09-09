@@ -12,16 +12,19 @@ import {
   Button,
   Typography,
 } from "@/components/MaterialTailwind";
-import { headers } from "next/headers";
+// import { headers } from "next/headers";
 
 export default function BasicPage() {
   const [username,setUsername] = useState("");
   const [password,setPassword] = useState("");
   const [message,setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setMessage("");
+    setLoading(true);
 
     try{
       const formData = new URLSearchParams();
@@ -36,20 +39,37 @@ export default function BasicPage() {
         body: formData.toString(),
       });
 
-      if (res.ok){
-        const data = await res.json();
-        setMessage(data.message);
-
-        localStorage.setItem("user",JSON.stringify(data));
-
-        alert("Login success ✅");
-        router.push("/pages/mainpages/home");
-      }else{
-        setMessage("Login failed ❌");
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setMessage(data?.detail || "Login failed ❌");
+        setLoading(false);
+        return;
       }
+
+      if (data?.access_token) localStorage.setItem("accessToken", data.access_token);
+      if (data?.refresh_token) localStorage.setItem("refreshToken", data.refresh_token);
+
+      if (data?.user) localStorage.setItem("user", JSON.stringify(data.user));
+
+      setMessage(data?.message || "Login success ✅");
+
+      router.push("/pages/mainpages/home");
+      // if (res.ok){
+      //   const data = await res.json();
+      //   setMessage(data.message);
+
+      //   localStorage.setItem("user",JSON.stringify(data));
+
+      //   alert("Login success ✅");
+      //   router.push("/pages/mainpages/home");
+      // }else{
+      //   setMessage("Login failed ❌");
+      // }
     }catch (err) {
       console.error(err);
       setMessage("Server error");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -106,10 +126,16 @@ export default function BasicPage() {
               onChange={(e) => setPassword((e.target.value))} />
             </div>
 
-            <Button className="tw-mt-6" fullWidth type="submit">
+            {/* <Button className="tw-mt-6" fullWidth type="submit">
               Sign In
             </Button>
-            {message && <p>{message}</p>}
+            {message && <p>{message}</p>} */}
+
+            <Button className="tw-mt-6" fullWidth type="submit" disabled={loading}>
+              {loading ? "Signing in..." : "Sign In"}
+            </Button>
+
+            {!!message && <p className="tw-mt-3">{message}</p>}
 
             <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-mt-6">
               <Checkbox

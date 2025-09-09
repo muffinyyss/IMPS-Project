@@ -65,7 +65,12 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     return {
         "message": "Login success ✅",
         "access_token": access_token,
-        "refresh_token": refresh_token
+        "refresh_token": refresh_token, 
+        "user":{
+            "username": user["username"],
+            "role":user["role"],
+            "company": user["company"]
+        }
     }
 
 @app.post("/refresh")
