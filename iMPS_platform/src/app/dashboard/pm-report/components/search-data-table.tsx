@@ -115,6 +115,8 @@ export function SearchDataTables() {
       maxSize: 120,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
+
+    
   ];
 
   const table = useReactTable({

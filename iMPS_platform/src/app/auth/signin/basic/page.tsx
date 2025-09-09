@@ -35,6 +35,7 @@ export default function BasicPage() {
         setMessage(data.message);
 
         localStorage.setItem("user",JSON.stringify(data));
+        localStorage.setItem("username", data.username)
 
         router.push("/pages/mainpages/home");
       }else{

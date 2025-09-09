@@ -3,6 +3,8 @@ from pymongo import MongoClient
 from pydantic import BaseModel
 from bson.objectid import ObjectId
 from fastapi.middleware.cors import CORSMiddleware
+from pdf.pdf_routes import router as pdf_router
+
 app = FastAPI()
 
 client = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
@@ -20,6 +22,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(pdf_router)
 
 class LoginRequest(BaseModel):
     username: str
