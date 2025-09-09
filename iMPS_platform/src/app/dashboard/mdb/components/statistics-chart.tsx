@@ -121,18 +121,7 @@ export default function StatisticChart({ startDate, endDate }: Props) {
             description={descriptionNode}   // <-- ส่ง JSX ที่มี 3 ค่า
             chart={filteredChart}
             color={item.color as any}
-            footer={
-              <Typography
-                variant="small"
-                className="tw-flex tw-items-center !tw-font-normal tw-text-blue-gray-600"
-              >
-                <ClockIcon
-                  strokeWidth={2}
-                  className="tw-h-4 tw-w-4 tw-text-blue-gray-400"
-                />
-                &nbsp;{item.footer}
-              </Typography>
-            }
+            footer={null}
           />
         );
       })}
