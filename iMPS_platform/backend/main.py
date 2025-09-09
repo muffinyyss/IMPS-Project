@@ -1,6 +1,6 @@
-from fastapi import FastAPI,HTTPException,Depends
-
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import FastAPI,HTTPException,Depends, status
+from fastapi.encoders import jsonable_encoder 
+from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
 from jose import JWTError,jwt
 from datetime import datetime,timedelta, UTC
 from passlib.hash import bcrypt
@@ -30,9 +30,11 @@ client = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
 db = client["iMPS"]
 users_collection = db["users"]
 station_collection = db["stations"]
+MDB_collection = db["MDB"]
 # @app.get("/")
 # async def homepage():
 #     return {"message": "Helloo World"}
+
 
 def create_access_token(data: dict, expires_delta: int = 15):
     expire = datetime.utcnow() + timedelta(minutes=expires_delta)
@@ -43,6 +45,13 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # หรือ ["*"] ชั่วคราวเพื่อทดสอบ
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 @app.post("/login/")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = users_collection.find_one({"username": form_data.username})
@@ -59,7 +68,14 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     # update refresh token in DB
     users_collection.update_one(
         {"_id": user["_id"]},
-        {"$push": {"refreshTokens": {"token": refresh_token, "expiresAt": datetime.utcnow() + timedelta(days=1)}}}
+        # {"$push": {"refreshTokens": {"token": refresh_token, "expiresAt": datetime.utcnow() + timedelta(days=1)}}}
+        {"$set": {
+        "refreshTokens": [{
+            "token": refresh_token,  # แนะนำให้เก็บแบบ hash ดูหัวข้อ Security ด้านล่าง
+            "createdAt": datetime.utcnow(),
+            "expiresAt": datetime.utcnow() + timedelta(days=7),
+        }]
+    }}
     )
 
     return {
@@ -69,7 +85,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         "user":{
             "username": user["username"],
             "role":user["role"],
-            "company": user["company"]
+            "company": user["company"],
+            "station_id": user["station_id"]
         }
     }
 
@@ -118,33 +135,11 @@ class LoginRequest(BaseModel):
 
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # หรือ ["*"] ชั่วคราวเพื่อทดสอบ
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 app.include_router(pdf_router)
 
 class LoginRequest(BaseModel):
     username: str
     password: str
-
-
-
-# @app.post("/login/")
-# async def login_user(data: LoginRequest):
-#     user = users_collection.find_one({"username": data.username})
-
-#     if not user or user["password"] != data.password:
-#         raise HTTPException(status_code=401,detail="Invalid username or password")
-#     if not user or user["password"] != data.password:
-#         raise HTTPException(status_code=401,detail="Invalid username or password")
-    
-#     return {"message": "Login success","username":user["username"]}
-#     return {"message": "Login success","username":user["username"]}
 
 @app.get("/")
 async def users():
@@ -188,3 +183,13 @@ async def get_stations(q:str = ""):
     query = {"name":{"$regex":  q, "$options": "i"}} if q else {}
     stations = station_collection.find(query,{"_id":0,"name":1})
     return [station["name"] for station in stations]
+
+
+@app.get("/MDB/")
+def list_mdb(limit: int = 1000000):
+    cursor = MDB_collection.find({}, {"password": 0}).limit(limit)  # ซ่อน password ถ้ามี
+    docs = list(cursor)  # ดึงทั้งก้อน
+    if not docs:
+        raise HTTPException(status_code=404, detail="users not found")
+    return {"MDB": jsonable_encoder(docs, custom_encoder={ObjectId: str})}
+    
