@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React from "react";
-
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 type NavItem = { label: string; href: string };
+type User = { username: string; role?: string; company?: string };
 
 const navItems: NavItem[] = [
   { label: "Home", href: "/pages/mainpages/home" },
@@ -15,6 +16,23 @@ const navItems: NavItem[] = [
 
 export default function SiteNavbar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  // โหลดสถานะจาก localStorage + sync เมื่อมีการเปลี่ยนแปลงจากแท็บอื่น
+  useEffect(() => {
+    const load = () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        const rawUser = localStorage.getItem("user");
+        setUser(token && rawUser ? JSON.parse(rawUser) : null);
+      } catch {
+        setUser(null);
+      }
+    };
+    load();
+    window.addEventListener("storage", load);
+    return () => window.removeEventListener("storage", load);
+  }, []);
 
   const isActive = (href: string) => {
     if (!pathname) return false;
@@ -24,7 +42,18 @@ export default function SiteNavbar() {
 
   const linkClass = (href: string) =>
     `tw-font-medium hover:tw-text-black ${isActive(href) ? "tw-text-black tw-font-semibold" : "tw-text-gray-700"
-    }`;
+  }`;
+  
+  const handleLogout = async () => {
+    // ถ้ามี endpoint revoke token ค่อยเรียกที่นี่
+    // await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/logout`, { method: "POST", credentials: "include" })
+
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
+    setUser(null);
+    router.push("/auth/signin/basic");
+  };
 
   return (
     <nav className="tw-sticky tw-top-0 tw-z-40 tw-bg-white">
@@ -49,7 +78,7 @@ export default function SiteNavbar() {
         </ul>
 
         {/* Right actions (แสดงปุ่ม Login เฉย ๆ ไม่ผูกกับสถานะผู้ใช้) */}
-        <div className="tw-flex tw-justify-end">
+        {/* <div className="tw-flex tw-justify-end">
           <Link
             href="/auth/signin/basic"
             className="tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-5 tw-h-10 
@@ -58,6 +87,32 @@ export default function SiteNavbar() {
           >
             Login
           </Link>
+        </div> */}
+        <div className="tw-flex tw-justify-end tw-items-center tw-space-x-3">
+          {user ? (
+            <>
+              <span className="tw-text-sm tw-text-gray-700">
+                Hi, <span className="tw-font-semibold">{user.username}</span>
+              </span>
+              <button
+                onClick={handleLogout}
+                className="tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-5 tw-h-10 
+                           tw-shadow-sm tw-inline-flex tw-items-center tw-justify-center tw-text-sm
+                           hover:tw-bg-black hover:tw-text-white hover:tw-border-black"
+              >
+                Logout
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/auth/signin/basic"
+              className="tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-5 tw-h-10 
+                         tw-shadow-sm tw-inline-flex tw-items-center tw-justify-center tw-text-sm
+                         hover:tw-bg-black hover:tw-text-white hover:tw-border-black"
+            >
+              Login
+            </Link>
+          )}
         </div>
       </div>
     </nav>
