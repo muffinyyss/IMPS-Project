@@ -24,10 +24,16 @@ export default function BasicPage() {
     e.preventDefault();
 
     try{
+      const formData = new URLSearchParams();
+      formData.append("username", username);
+      formData.append("password", password);
+
       const res = await fetch("http://localhost:8000/login/",{
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({username,password}),
+        // headers: {"Content-Type": "application/json"},
+        // body: JSON.stringify({username,password}),
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData.toString(),
       });
 
       if (res.ok){
@@ -35,8 +41,13 @@ export default function BasicPage() {
         setMessage(data.message);
 
         localStorage.setItem("user",JSON.stringify(data));
+
+
+
+        alert("Login success ✅");
         localStorage.setItem("username", data.username)
 
+        alert("Login success ✅");
         router.push("/pages/mainpages/home");
       }else{
         setMessage("Login failed ❌");
