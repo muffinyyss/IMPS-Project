@@ -41,7 +41,10 @@ export default function BasicPage() {
         setMessage(data.message);
 
         localStorage.setItem("user",JSON.stringify(data));
+
         alert("Login success ✅");
+        localStorage.setItem("username", data.username)
+
         router.push("/pages/mainpages/home");
       }else{
         setMessage("Login failed ❌");

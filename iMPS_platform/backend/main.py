@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from bson.objectid import ObjectId
 from fastapi.middleware.cors import CORSMiddleware
 
+
 from pdf.pdf_routes import router as pdf_router
 
 
@@ -20,6 +21,10 @@ SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป�
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+
+from pdf.pdf_routes import router as pdf_router
+
 
 app = FastAPI()
 
@@ -106,7 +111,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 app.include_router(pdf_router)
 
