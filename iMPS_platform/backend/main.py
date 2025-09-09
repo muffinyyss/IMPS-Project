@@ -5,13 +5,6 @@ from jose import JWTError,jwt
 from datetime import datetime,timedelta, UTC
 from passlib.hash import bcrypt
 
-from fastapi import FastAPI,HTTPException,Depends
-
-from fastapi.security import OAuth2PasswordRequestForm
-from jose import JWTError,jwt
-from datetime import datetime,timedelta, UTC
-from passlib.hash import bcrypt
-
 from pymongo import MongoClient
 from pydantic import BaseModel
 from bson.objectid import ObjectId
@@ -118,64 +111,7 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-@app.post("/login/")
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = users_collection.find_one({"username": form_data.username})
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    if not bcrypt.checkpw(form_data.password.encode("utf-8"), user["password"].encode("utf-8")):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-
-    # generate tokens
-    access_token = create_access_token({"sub": user["username"]})
-    refresh_token = create_access_token({"sub": user["username"]}, expires_delta=60*24)
-
-    # update refresh token in DB
-    users_collection.update_one(
-        {"_id": user["_id"]},
-        {"$push": {"refreshTokens": {"token": refresh_token, "expiresAt": datetime.utcnow() + timedelta(days=1)}}}
-    )
-
-    return {
-        "message": "Login success ✅",
-        "access_token": access_token,
-        "refresh_token": refresh_token
-    }
-
-@app.post("/refresh")
-async def refresh(refresh_token: str):
-    try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
-
-        user = users_collection.find_one({"username": username})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-
-        # ตรวจสอบว่ามี refresh token ใน users มั้ย
-        token_exists = next(
-            (t for t in user.get("refreshTokens", []) if t["token"] == refresh_token), None
-        )
-        if not token_exists:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
-
-        # ออก access token ใหม่
-        new_access_token = create_access_token(
-            {"sub": username}, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        )
-        return {"access_token": new_access_token}
-
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-@app.post("/logout")
-async def logout(username: str, refresh_token: str):
-    users_collection.update_one(
-        {"username": username},
-        {"$pull": {"refreshTokens": {"token": refresh_token}}}
-    )
-    return {"msg": "Logged out successfully"}
 
 app.add_middleware(
     CORSMiddleware,
