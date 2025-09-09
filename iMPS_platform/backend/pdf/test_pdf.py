@@ -1,29 +1,33 @@
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
-from io import BytesIO
+# from fpdf import FPDF
+# import os
+
+# pdf = FPDF()
+# pdf.add_page()
+
+# # path ไปยังไฟล์ฟอนต์
+# font_path = os.path.join(os.path.dirname(__file__), "fonts", "THSarabunNew.ttf")
+
+# # โหลดฟอนต์ (ไม่ต้องใส่ uni= แล้ว เพราะ fpdf เวอร์ชันใหม่ไม่ใช้แล้ว)
+# pdf.add_font("THSarabun", "", font_path)
+# pdf.set_font("THSarabun", size=16)
+
+# pdf.cell(0, 10, "Hello PDF (รองรับไทยแล้ว)", new_x="LMARGIN", new_y="NEXT")
+# pdf.cell(0, 10, "ทดสอบภาษาไทย: สวัสดีชาวโลก", new_x="LMARGIN", new_y="NEXT")
+
+# pdf.output("test.pdf")
+# print("สร้างไฟล์ test.pdf สำเร็จ")
+
+import os
+from pathlib import Path
 from fpdf import FPDF
 
-app = FastAPI()
+pdf = FPDF()
+pdf.add_page()
 
-@app.get("/download-pdf")
-def download_pdf():
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=16)  # ใช้ Helvetica เพื่อตัดปัญหาฟอนต์
-    pdf.cell(0, 10, "Hello from fpdf2!", ln=True, align="C")
+downloads = str(Path.home() / "Downloads" / "test.pdf")
 
-    buf = BytesIO()
-    pdf.output(buf)
-    buf.seek(0)
+pdf.set_font("Arial", size=16)
+pdf.cell(0, 10, "สวัสดี PDF")
+pdf.output(downloads)
 
-    return StreamingResponse(
-        buf,
-        media_type="application/pdf",
-        headers={'Content-Disposition': 'attachment; filename="test.pdf"'}
-    )
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("pdf_test_min:app", host="127.0.0.1", port=8000, reload=True)
-
-
+print("สร้างไฟล์ที่:", downloads)
