@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 
 // @material-tailwind/react
@@ -28,7 +28,17 @@ function fmt(d: Date) {
     return `${yyyy}-${mm}-${dd}`;
 }
 
+type MdbDoc = {
+    _id: string;
+    // ฟิลด์อื่น ๆ ตามที่ backend ส่งมา:
+    station_id?: number;
+    [key: string]: any;
+};
 export default function MDBPage() {
+    const [mdb, setMdb] = useState<MdbDoc[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [err, setErr] = useState<string | null>(null);
+
     // default: ล่าสุด 30 วัน
     const today = useMemo(() => new Date(), []);
     const thirtyDaysAgo = useMemo(() => {
@@ -50,9 +60,53 @@ export default function MDBPage() {
         setEndDate(v);
     };
 
+    // useEffect(() => {
+    //     fetch("http://localhost:8000/MDB/")
+    //     .then((res) => res.json())
+    //     .then((data) => setMDB(data.station_id));
+    //   },[]);
+
+    useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    // if (!token) {
+    //   setErr("กรุณาเข้าสู่ระบบก่อน");
+    //   setLoading(false);
+    //   return;
+    // }
+
+    (async () => {
+      try {
+        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+        const res = await fetch(`${base}/MDB/`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const rows = Array.isArray(data?.MDB) ? data.MDB : [];
+        setMdb(rows);
+      } catch (e: any) {
+        console.error(e);
+        setErr(e?.message ?? "Fetch failed");
+        setMdb([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+    if (loading) return <p>Loading...</p>;
+
+
     return (
         <div className="tw-mt-8 tw-mb-4">
-
+            {mdb.length === 0 ? (<p>ไม่มีข้อมูล</p>) : (<p>มีข้อมูล</p>)}
+            {/* <ul>
+                {(MDB ?? []).map((doc) => (
+                    <li key={doc._id}>{doc.station_id ?? "-"}</li>
+                ))}
+            </ul> */}
             {/* Statistics Cards */}
             <StatisticsCards
                 tempC={55}
