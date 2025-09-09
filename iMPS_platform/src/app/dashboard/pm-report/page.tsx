@@ -17,8 +17,6 @@ export default function DataTablesPage() {
         Download PDF
       </a>
 
-
-
       <StatisticsCards />
       {/** Search DataTable */}
       <SearchDataTables />
