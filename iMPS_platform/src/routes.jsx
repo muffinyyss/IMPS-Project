@@ -72,7 +72,7 @@ export const routes = [
   {
     name: "Setting",
     icon: <RectangleGroupIcon {...icon} />,
-    path: "#",
+    path: "/dashboard/setting",
   },
   {
     name: "PM report",
