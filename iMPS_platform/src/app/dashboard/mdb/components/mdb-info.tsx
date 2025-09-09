@@ -59,7 +59,7 @@ export default function MDBInfo({
     return (
         <div className={`tw-w-full tw-space-y-6 ${className}`}>
             {/* ===== Top quick stats ===== */}
-            <div className="tw-grid tw-grid-cols-2 lg:tw-grid-cols-4 tw-gap-4">
+            {/* <div className="tw-grid tw-grid-cols-2 lg:tw-grid-cols-4 tw-gap-4">
                 <QuickStat icon={<SunIcon className="tw-h-5 tw-w-5 tw-text-green-600" />} label="Temp." value={tempC} />
                 <QuickStat icon={<CpuChipIcon className="tw-h-5 tw-w-5 tw-text-green-600" />} label="Humidity" value={humidity} />
                 <QuickStat
@@ -79,9 +79,9 @@ export default function MDBInfo({
                         </div>
                     }
                 />
-            </div>
+            </div> */}
 
-            <Divider />
+            {/* <Divider /> */}
 
             {/* ===== Power block ===== */}
             <div className="tw-grid md:tw-grid-cols-2 tw-gap-6">
