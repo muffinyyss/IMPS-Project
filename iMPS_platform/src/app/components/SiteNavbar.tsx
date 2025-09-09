@@ -4,14 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-type NavItem = { label: string; href: string };
+type NavItem = { label: string; href: string; requireAuth?: boolean };
+
 type User = { username: string; role?: string; company?: string };
 
 const navItems: NavItem[] = [
-  { label: "Home", href: "/pages/mainpages/home" },
-  { label: "About", href: "/pages/mainpages/about" },
-  { label: "Contact", href: "/pages/mainpages/contact" },
-  { label: "Dashboard", href: "/dashboard/analytics" },
+  { label: "Home", href: "/pages/mainpages/home", requireAuth: false },
+  { label: "About", href: "/pages/mainpages/about", requireAuth: true },
+  { label: "Contact", href: "/pages/mainpages/contact", requireAuth: true },
+  { label: "Dashboard", href: "/dashboard/analytics", requireAuth: true },
 ];
 
 export default function SiteNavbar() {
@@ -42,8 +43,8 @@ export default function SiteNavbar() {
 
   const linkClass = (href: string) =>
     `tw-font-medium hover:tw-text-black ${isActive(href) ? "tw-text-black tw-font-semibold" : "tw-text-gray-700"
-  }`;
-  
+    }`;
+
   const handleLogout = async () => {
     // ถ้ามี endpoint revoke token ค่อยเรียกที่นี่
     // await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/logout`, { method: "POST", credentials: "include" })
@@ -68,11 +69,30 @@ export default function SiteNavbar() {
 
         {/* Center nav */}
         <ul className="tw-flex tw-items-center tw-space-x-10">
-          {navItems.map((item) => (
+          {/* {navItems.map((item) => (
             <li key={item.href}>
               <Link href={item.href} className={linkClass(item.href)} prefetch={false}>
                 {item.label}
               </Link>
+            </li>
+          ))} */}
+
+          {navItems.map((item) => (
+            <li key={item.href}>
+              {(!item.requireAuth || user) ? (
+                <Link href={item.href} className={linkClass(item.href)} prefetch={false}>
+                  {item.label}
+                </Link>
+              ) : (
+                <span
+                  role="link"
+                  aria-disabled="true"
+                  className="tw-text-gray-400 tw-cursor-not-allowed tw-select-none tw-pointer-events-none"
+                  title="Please login first"
+                >
+                  {item.label}
+                </span>
+              )}
             </li>
           ))}
         </ul>
