@@ -14,7 +14,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pdf.pdf_routes import router as pdf_router
 
 
-
 import bcrypt
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
@@ -24,7 +23,6 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
 from pdf.pdf_routes import router as pdf_router
-
 
 app = FastAPI()
 
@@ -117,11 +115,6 @@ app.include_router(pdf_router)
 class LoginRequest(BaseModel):
     username: str
     password: str
-
-
-
-
-
 
 
 
