@@ -125,10 +125,10 @@ async def logout(username: str, refresh_token: str):
     )
     return {"msg": "Logged out successfully"}
 
-def create_access_token(data: dict, expires_delta: int = 15):
-    expire = datetime.utcnow() + timedelta(minutes=expires_delta)
-    data.update({"exp": expire})
-    return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+# def create_access_token(data: dict, expires_delta: int = 15):
+#     expire = datetime.utcnow() + timedelta(minutes=expires_delta)
+#     data.update({"exp": expire})
+#     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
 
 class LoginRequest(BaseModel):
     username: str
