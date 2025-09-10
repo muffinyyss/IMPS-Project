@@ -54,17 +54,6 @@ export default function BasicPage() {
       setMessage(data?.message || "Login success ✅");
 
       router.push("/pages/mainpages/home");
-      // if (res.ok){
-      //   const data = await res.json();
-      //   setMessage(data.message);
-
-      //   localStorage.setItem("user",JSON.stringify(data));
-
-      //   alert("Login success ✅");
-      //   router.push("/pages/mainpages/home");
-      // }else{
-      //   setMessage("Login failed ❌");
-      // }
     }catch (err) {
       console.error(err);
       setMessage("Server error");

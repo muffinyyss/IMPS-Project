@@ -86,7 +86,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
             "username": user["username"],
             "role":user["role"],
             "company": user["company"],
-            "station_id": user["station_id"]
+            "station_id": user["station_id"],
+            "role": user["role"]
         }
     }
 
@@ -184,12 +185,12 @@ async def get_stations(q:str = ""):
     stations = station_collection.find(query,{"_id":0,"name":1})
     return [station["name"] for station in stations]
 
-
 @app.get("/MDB/")
 def list_mdb(limit: int = 1000000):
     cursor = MDB_collection.find({}, {"password": 0}).limit(limit)  # ซ่อน password ถ้ามี
     docs = list(cursor)  # ดึงทั้งก้อน
     if not docs:
-        raise HTTPException(status_code=404, detail="users not found")
+        raise HTTPException(status_code=404, detail="MDB not found")
+    
     return {"MDB": jsonable_encoder(docs, custom_encoder={ObjectId: str})}
     
