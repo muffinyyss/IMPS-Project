@@ -17,7 +17,7 @@ type Props = {
     humidity: number | string;
     fanOn: boolean;
     rssiDb?: number | string;
-    signalLevel?: 0 | 1 | 2 | 3 | 4;
+    // signalLevel?: 0 | 1 | 2 | 3 | 4;
     totalCurrentA: number | string;
     powerKW: number | string;
     totalEnergyKWh: number | string;
@@ -25,6 +25,9 @@ type Props = {
     pfL1: number | string;
     pfL2: number | string;
     pfL3: number | string;
+    EL1: number | string;
+    EL2: number | string;
+    EL3: number | string;
     thduL1: number | string;
     thduL2: number | string;
     thduL3: number | string;
@@ -40,7 +43,7 @@ export default function MDBInfo({
     humidity,
     fanOn,
     rssiDb = "-",
-    signalLevel = 3,
+    // signalLevel = 3,
     totalCurrentA,
     powerKW,
     totalEnergyKWh,
@@ -48,6 +51,9 @@ export default function MDBInfo({
     pfL1,
     pfL2,
     pfL3,
+    EL1,
+    EL2,
+    EL3,
     thduL1,
     thduL2,
     thduL3,
@@ -84,7 +90,7 @@ export default function MDBInfo({
             {/* <Divider /> */}
 
             {/* ===== Power block ===== */}
-            <div className="tw-grid md:tw-grid-cols-2 tw-gap-6">
+            <div className="tw-grid md:tw-grid-cols-1 tw-gap-6">
                 <div className="tw-space-y-3">
                     <MetricRow icon={<BoltIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Total Current" value={totalCurrentA} unit="A" />
                     <MetricRow icon={<PowerIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Power" value={powerKW} unit="kW" />
@@ -93,7 +99,7 @@ export default function MDBInfo({
                 </div>
 
                 {/* ===== Quality Section ===== */}
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4">
                     {/* PF */}
                     <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                         <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
@@ -103,6 +109,17 @@ export default function MDBInfo({
                             <Row label="pf–L1" value={pfL1} />
                             <Row label="pf–L2" value={pfL2} />
                             <Row label="pf–L3" value={pfL3} />
+                        </div>
+                    </div>
+
+                    <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                        <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                            EL
+                        </Typography>
+                        <div className="tw-space-y-1">
+                            <Row label="EL1" value={EL1} />
+                            <Row label="EL2" value={EL2} />
+                            <Row label="EL3" value={EL3} />
                         </div>
                     </div>
 
