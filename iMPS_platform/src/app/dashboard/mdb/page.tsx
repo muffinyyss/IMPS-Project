@@ -16,6 +16,9 @@ import Table from "./components/table";
 import StatisticsCards from "./components/statistics-cards";
 import VoltageChart from "./components/area-chart";
 import MDBInfo from "./components/mdb-info";
+import { floated } from "@material-tailwind/react/types/components/card";
+import { it } from "node:test";
+import { on } from "events";
 
 // map
 const WorldMap = dynamic(() => import("./components/world-map"), { ssr: false });
@@ -27,6 +30,12 @@ function fmt(d: Date) {
     const dd = String(d.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
 }
+type Me = {
+    username: string;
+    role?: string;
+    company?: string;
+    station_id?: string
+};
 
 type MdbDoc = {
     _id: string;
@@ -35,6 +44,7 @@ type MdbDoc = {
     [key: string]: any;
 };
 export default function MDBPage() {
+    const [userLogin, setUserLogin] = useState<Me | null>(null);
     const [mdb, setMdb] = useState<MdbDoc[]>([]);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState<string | null>(null);
@@ -60,85 +70,121 @@ export default function MDBPage() {
         setEndDate(v);
     };
 
-    // useEffect(() => {
-    //     fetch("http://localhost:8000/MDB/")
-    //     .then((res) => res.json())
-    //     .then((data) => setMDB(data.station_id));
-    //   },[]);
-
     useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    // if (!token) {
-    //   setErr("กรุณาเข้าสู่ระบบก่อน");
-    //   setLoading(false);
-    //   return;
-    // }
+        const fetchUsers = async () => {
+            try {
+                const res = await fetch("http://localhost:8000/MDB/");
+                const data = await res.json();
+                // data = { MDB: [...] }
+                setMdb(data.MDB); // ✅ เก็บ array ของ users ลง state
+            } catch (err) {
+                console.error("Fetch error:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-    (async () => {
-      try {
-        const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-        const res = await fetch(`${base}/MDB/`, {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const rows = Array.isArray(data?.MDB) ? data.MDB : [];
-        setMdb(rows);
-      } catch (e: any) {
-        console.error(e);
-        setErr(e?.message ?? "Fetch failed");
-        setMdb([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+        fetchUsers();
+    }, []);
+
+    // โหลดสถานะจาก localStorage + sync เมื่อมีการเปลี่ยนแปลงจากแท็บอื่น
+    useEffect(() => {
+        const load = () => {
+            try {
+                const token = localStorage.getItem("accessToken");
+                const rawUser = localStorage.getItem("user");
+                setUserLogin(token && rawUser ? JSON.parse(rawUser) : null);
+            } catch {
+                setUserLogin(null);
+            }
+        };
+        load();
+        window.addEventListener("storage", load);
+        return () => window.removeEventListener("storage", load);
+    }, []);
+
     if (loading) return <p>Loading...</p>;
 
+    const station = userLogin ? mdb.find(it => it.station_id === userLogin.station_id) : null;
+    console.log(userLogin);
+    console.log(mdb);
+    // const MDB = {
+    //     tempC: station?.frequency ?? 0,
+    //     humidity: station?.VL1N ?? 0,
+    //     fanOn: on,
+    //     rssiDb:  station?.VL2N ?? 0,
+    //     signalLevel: 4
+    // };
 
+    const MDB = {
+        tempC: station?.temp ?? 0 ,
+        humidity: station?.humi ?? 0 ,
+        fanOn: true ,
+        rssiDb: 0 ,
+        // signalLevel: 4 ,
+        totalCurrentA:station?.I_toal ?? 0 ,
+        powerKW: 0 ,
+        totalEnergyKWh: 0 ,
+        frequencyHz:station?.frequency ?? 0 ,
+        pfL1:station?.PL1N ?? 0 ,
+        pfL2:station?.PL2N ?? 0 ,
+        pfL3:station?.PL3N ?? 0 ,
+        EL1:station?.EL1 ?? 0 ,
+        EL2:station?.EL2 ?? 0 ,
+        EL3:station?.EL3 ?? 0 ,
+        thduL1:station?.THDU_L1N ?? 0 ,
+        thduL2:station?.THDU_L2N ?? 0 ,
+        thduL3:station?.THDU_L3N ?? 0 ,
+        thdiL1:station?.THDI_L1 ?? 0 ,
+        thdiL2:station?.THDI_L2 ?? 0 ,
+        thdiL3:station?.THDI_L3 ?? 0 ,
+    };
     return (
+
         <div className="tw-mt-8 tw-mb-4">
-            {mdb.length === 0 ? (<p>ไม่มีข้อมูล</p>) : (<p>มีข้อมูล</p>)}
-            {/* <ul>
-                {(MDB ?? []).map((doc) => (
-                    <li key={doc._id}>{doc.station_id ?? "-"}</li>
+            {/* {userLogin ? userLogin.station_id : 0}
+           
+
+            <ul>
+                {(mdb ?? []).map((doc) => (
+                    <li key={doc._id}>mdb station_id {doc.station_id ?? "-"}</li>
+
                 ))}
             </ul> */}
+            {/* {mdb.length === 0 ? (<p>ไม่มีข้อมูล</p>) : (<p>mdb มีข้อมูล</p>)}
+            {userLogin ?  (userLogin.station_id) : (null)}
+            {userLogin
+                ? (
+                    mdb.find(it => it.station_id === userLogin.station_id)
+                        ?.station_id ?? <p>ไม่มี</p>
+                )
+                : <p>ไม่มี--</p>
+            } */}
             {/* Statistics Cards */}
-            <StatisticsCards
+            {/* <StatisticsCards
                 tempC={55}
                 humidity={87}
                 fanOn={true}
                 rssiDb={-54}
-                signalLevel={4}
+                signalLevel={3}
+            /> */}
+            {/* {station ? (
+            <StatisticsCards
+                tempC={station.frequency}
+                humidity={87}
+                fanOn={true}
+                rssiDb={-54}
+                signalLevel={3}
             />
+            ) : ( <p>--</p> )} */}
 
+            <StatisticsCards {...MDB} />
 
             {/* Panel ข้อมูล MDB เต็มกว้าง */}
             <Card className="tw-mb-6 tw-border tw-border-blue-gray-100 tw-shadow-sm">
                 <CardBody className="tw-p-4 md:tw-p-6">
                     <MDBInfo
-                        tempC={55}
-                        humidity={87}
-                        fanOn={true}
-                        rssiDb={-54}
-                        signalLevel={4}
-                        totalCurrentA={2.11}
-                        powerKW={0.283}
-                        totalEnergyKWh={"305049.248"}
-                        frequencyHz={"50.04"}
-                        pfL1={0.49}
-                        pfL2={0.98}
-                        pfL3={0}
-                        thduL1={2.3}
-                        thduL2={2.14}
-                        thduL3={2.17}
-                        thdiL1={55.28}
-                        thdiL2={112.62}
-                        thdiL3={100}
+                        {...MDB}
                     />
                 </CardBody>
             </Card>

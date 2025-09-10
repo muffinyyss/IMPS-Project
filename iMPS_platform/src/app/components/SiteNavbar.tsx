@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
 type NavItem = { label: string; href: string; requireAuth?: boolean };
 
 type User = { username: string; role?: string; company?: string };
