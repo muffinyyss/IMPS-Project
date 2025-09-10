@@ -1,35 +1,3 @@
-// "use client";
-
-// import { chargerSettingData } from "@/data";
-// import { InfoCard } from "@/widgets/cards";
-
-// export default function ChargerSetting() {
-//   return (
-//     <div className="tw-space-y-10">
-//       {chargerSettingData.map((sec) => (
-//         <section key={sec.section} className="tw-space-y-4">
-//           {/* หัวข้อ section */}
-//           <h3 className="tw-text-xl tw-font-semibold tw-text-gray-800 tw-border-b tw-pb-2">
-//             {sec.section}
-//           </h3>
-
-//           {/* grid responsive */}
-//           <div className="tw-grid gap-6 sm:tw-grid-cols-2 lg:tw-grid-cols-3 xl:tw-grid-cols-4">
-//             {sec.items.map((item, i) => (
-//               <InfoCard
-//                 key={i}
-//                 title={item.title}
-//                 value={item.value}
-//                 unit={item.unit}
-//               />
-//             ))}
-//           </div>
-//         </section>
-//       ))}
-//     </div>
-//   );
-// }
-
 "use client";
 
 import { chargerSettingData } from "@/data";
