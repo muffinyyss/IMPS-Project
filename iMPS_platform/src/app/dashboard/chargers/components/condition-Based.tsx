@@ -16,7 +16,7 @@ import {
     PaintBrushIcon,
 } from "@heroicons/react/24/solid";
 
-// กำหนดประเภทให้กับข้อมูล events
+
 const EVENTS_CARD_DATA = [
     {
         icon: AdjustmentsHorizontalIcon,
@@ -64,7 +64,6 @@ const CBMCard = () => {
                     </Typography>
                 </CardHeader>
                 <CardBody className="!tw-p-0">
-                    {/* ใช้ Flexbox แนวตั้ง */}
                     <div className="tw-flex tw-flex-col space-y-4">
                         {EVENTS_CARD_DATA.map(({ icon, title, description }) => (
                             <div
@@ -92,7 +91,6 @@ const CBMCard = () => {
                                         </Typography>
                                     </div>
                                 </div>
-                                {/* Flexbox สำหรับจัด label และ switch */}
                                 <div className="tw-flex tw-items-center space-x-2">
                                     <Typography variant="small" className="tw-text-sm tw-text-blue-gray-600">
                                         {activeStates[title] ? "Active" : "Inactive"}

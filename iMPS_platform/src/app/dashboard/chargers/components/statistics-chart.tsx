@@ -29,9 +29,9 @@ export default function HealthIndex({
       >
         <div className="tw-flex tw-items-center">
           <img
-            src="/img/heart-rate.png"  // Replace with your image URL
+            src="/img/heart-rate.png"  
             alt="Health Icon"
-            className="tw-h-12 tw-w-12 tw-mr-4"  // No rounded border
+            className="tw-h-12 tw-w-12 tw-mr-4"
           />
           <Typography variant="h6" color="blue-gray">
             Health Index

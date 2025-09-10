@@ -17,9 +17,9 @@ const AICard = () => {
             >
                 <div className="tw-flex tw-items-center">
                     <img
-                        src="/img/AI-icon.png"  // Replace with your image URL
+                        src="/img/AI-icon.png"  
                         alt="PM Icon"
-                        className="tw-h-12 tw-w-12 tw-mr-4"  // No tw-rounded-full class here
+                        className="tw-h-12 tw-w-12 tw-mr-4"  
                     />
                     <Typography variant="h6" color="blue-gray">
                         Artificial Intelligence

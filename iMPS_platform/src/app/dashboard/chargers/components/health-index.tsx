@@ -6,7 +6,7 @@ import { Switch } from "@material-tailwind/react";
 
 type Props = {
   title?: string;
-  initialValue?: number;   // 0–100
+  initialValue?: number;  
   initialOn?: boolean;
 };
 

@@ -14,12 +14,11 @@ const PMCard = () => {
         shadow={false}
         className="tw-px-4 tw-py-3 tw-flex tw-items-center tw-justify-between"
       >
-        {/* Adding image to CardHeader without rounded border */}
         <div className="tw-flex tw-items-center">
           <img
-            src="/img/electrical-mechanic.png"  // Replace with your image URL
+            src="/img/electrical-mechanic.png"  
             alt="PM Icon"
-            className="tw-h-12 tw-w-12 tw-mr-4"  // No tw-rounded-full class here
+            className="tw-h-12 tw-w-12 tw-mr-4" 
           />
           <Typography variant="h6" color="blue-gray">
             PM
