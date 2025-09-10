@@ -106,6 +106,8 @@ export default function MDBPage() {
     if (loading) return <p>Loading...</p>;
 
     const station = userLogin ? mdb.find(it => it.station_id === userLogin.station_id) : null;
+    console.log(userLogin);
+    console.log(mdb);
     // const MDB = {
     //     tempC: station?.frequency ?? 0,
     //     humidity: station?.VL1N ?? 0,
@@ -115,9 +117,9 @@ export default function MDBPage() {
     // };
 
     const MDB = {
-        tempC: 0 ,
-        humidity: 0 ,
-        fanOn: false ,
+        tempC: station?.temp ?? 0 ,
+        humidity: station?.humi ?? 0 ,
+        fanOn: true ,
         rssiDb: 0 ,
         // signalLevel: 4 ,
         totalCurrentA:station?.I_toal ?? 0 ,
@@ -130,9 +132,9 @@ export default function MDBPage() {
         EL1:station?.EL1 ?? 0 ,
         EL2:station?.EL2 ?? 0 ,
         EL3:station?.EL3 ?? 0 ,
-        thduL1:station?.THDV_L1N ?? 0 ,
-        thduL2:station?.THDV_L2N ?? 0 ,
-        thduL3:station?.THDV_L3N ?? 0 ,
+        thduL1:station?.THDU_L1N ?? 0 ,
+        thduL2:station?.THDU_L2N ?? 0 ,
+        thduL3:station?.THDU_L3N ?? 0 ,
         thdiL1:station?.THDI_L1 ?? 0 ,
         thdiL2:station?.THDI_L2 ?? 0 ,
         thdiL3:station?.THDI_L3 ?? 0 ,
@@ -140,20 +142,23 @@ export default function MDBPage() {
     return (
 
         <div className="tw-mt-8 tw-mb-4">
-            {/* <ul>
+            {/* {userLogin ? userLogin.station_id : 0}
+           
+
+            <ul>
                 {(mdb ?? []).map((doc) => (
-                    <li key={doc._id}>{doc.station_id ?? "-"}</li>
+                    <li key={doc._id}>mdb station_id {doc.station_id ?? "-"}</li>
 
                 ))}
             </ul> */}
-            {/* {mdb.length === 0 ? (<p>ไม่มีข้อมูล</p>) : (<p>มีข้อมูล</p>)}
-            {userLogin ? (userLogin.username) : (null)}
+            {/* {mdb.length === 0 ? (<p>ไม่มีข้อมูล</p>) : (<p>mdb มีข้อมูล</p>)}
+            {userLogin ?  (userLogin.station_id) : (null)}
             {userLogin
                 ? (
                     mdb.find(it => it.station_id === userLogin.station_id)
-                        ?.frequency ?? <p>ไม่มี</p>
+                        ?.station_id ?? <p>ไม่มี</p>
                 )
-                : <p>ไม่มี</p>
+                : <p>ไม่มี--</p>
             } */}
             {/* Statistics Cards */}
             {/* <StatisticsCards
