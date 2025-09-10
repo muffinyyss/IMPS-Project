@@ -9,17 +9,14 @@ import {
   Typography,
 } from "@/components/MaterialTailwind";
 
-// @heroicons/react
-import { GlobeAltIcon } from "@heroicons/react/24/outline";
-
 // components
+import StationInfo from "./components/station-info";
 import StatisticChart from "./components/statistics-chart";
-import BookingCards from "./components/booking-cards";
-import Table from "./components/table";
-import StatisticsCards from "./components/statistics-cards";
+import AICard from "./components/AICard";
+import PMCard from "./components/PMCard";
+import CBMCard from "./components/condition-Based";
 
-// map
-const WorldMap = dynamic(() => import("./components/world-map"), {
+const StationImage = dynamic(() => import("./components/station-image"), {
   ssr: false,
 });
 
@@ -27,7 +24,37 @@ export default function ChargersPage() {
   return (
     <div className="tw-mt-8 tw-mb-4">
       {/* Sale by Country */}
-      <Card className="tw-mb-6 tw-border tw-border-blue-gray-100 tw-shadow-sm">
+      <div className="tw-mt-8 tw-mb-4">
+        <div className="tw-mt-6 tw-grid tw-grid-cols-1 tw-gap-y-6 md:tw-grid-cols-2 lg:tw-grid-cols-3 lg:tw-gap-6 tw-items-stretch">
+          <div className="tw-col-span-2 tw-h-full">
+            <StationImage />
+          </div>
+          <div className="tw-col-span-1 tw-h-full">
+            <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-h-full">
+              <CardHeader floated={false} shadow={false} className="tw-px-6 tw-py-4 tw-relative">
+                <Typography variant="h6" color="blue-gray">
+                  Station Information
+                </Typography>
+              </CardHeader>
+              <CardBody className="tw-flex tw-flex-col tw-flex-1 !tw-p-0">
+                <StationInfo
+                  stationName="GIGA EV – LatPhraoWangHin"
+                  model="DC Fast 180 kW"
+                  status="Online"
+                />
+              </CardBody>
+            </Card>
+          </div>
+        </div>
+        <div className="tw-mt-5 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-6">
+          <StatisticChart />
+          <AICard />
+          <PMCard />
+        </div>
+      </div>
+      <CBMCard />
+
+      {/* <Card className="tw-mb-6 tw-border tw-border-blue-gray-100 tw-shadow-sm">
         <div className="tw-flex tw-items-center">
           <CardHeader
             floated={false}
@@ -38,7 +65,7 @@ export default function ChargersPage() {
             <GlobeAltIcon className="tw-h-7 tw-w-7 tw-text-white" />
           </CardHeader>
           <Typography variant="h6" color="blue-gray" className="tw-mt-3">
-            Charger page
+            Charger pageeeeeeeeeeeeeeeeeeeeeeeeeee
           </Typography>
         </div>
         <CardBody className="tw-grid tw-grid-cols-1 tw-items-center tw-justify-between tw-p-4 lg:tw-grid-cols-2">
@@ -47,16 +74,7 @@ export default function ChargersPage() {
           </div>
           <WorldMap />
         </CardBody>
-      </Card>
-
-      {/* Statistics Charts */}
-      <StatisticChart />
-      
-      {/* Statistics Cards */}
-      <StatisticsCards />
-
-      {/* Booking Cards */}
-      <BookingCards />
+      </Card> */}
     </div>
   );
 }
