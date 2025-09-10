@@ -49,9 +49,6 @@ export default function StatisticsCards({
       footerJSX: null,
     },
     {
-      icon: () => (
-        <span className="tw-inline-block tw-h-2.5 tw-w-2.5 tw-rounded-full tw-bg-green-500" />
-      ),
       icon: Fan,
       title: "FAN",
       value: (
