@@ -10,6 +10,7 @@ import {
     SunIcon,
 } from "@heroicons/react/24/solid";
 import { CpuChipIcon } from "@heroicons/react/24/outline";
+import { Fan, BatteryCharging, Lightning } from "@phosphor-icons/react";
 // import { Card, CardHeader, CardContent, CardFooter } from "@/widgets";
 
 
@@ -75,10 +76,25 @@ export default function MDBInfo({
             {/* Power Block Section */}
             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
                 <div className="tw-space-y-3 tw-max-w-[550px]">
-                    <MetricRow icon={<BoltIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Total Current" value={totalCurrentA} unit="A" />
-                    <MetricRow icon={<PowerIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Power Energy" value={powerKW} unit="kW" />
-                    <MetricRow icon={<BoltSlashIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Total Energy" value={totalEnergyKWh} unit="kWh" />
-                    <MetricRow icon={<BoltSlashIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Frequency" value={frequencyHz} unit="Hz" />
+                    {/* <MetricRow icon={<i className="fas fa-wave-square tw-text-yellow-600 tw-h-5 tw-w-5"></i>} label="Total Current" value={totalCurrentA} unit="A" /> */}
+                    <MetricRow
+                        icon={
+                            <svg xmlns="http://www.w3.org/2000/svg" className="icon icon-tabler icon-tabler-wave-saw-tool tw-text-yellow-600" width="25" height="25" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" id="IconChangeColor">
+                                <path stroke="#000000" d="M0 0h24v24H0z" fill="none" id="mainIconPathAttribute" stroke-width="0"></path>
+                                <path d="M3 12h5l4 8v-16l4 8h5" id="mainIconPathAttribute" stroke="#000000"></path>
+                                <filter id="shadow">
+                                    <feDropShadow id="shadowValue" stdDeviation=".5" dx="0" dy="0" flood-color="black"></feDropShadow>
+                                </filter>
+                            </svg>
+                        }
+                        label="Total Current"
+                        value={totalCurrentA}
+                        unit="A"
+                    />
+
+                    <MetricRow icon={<i className="fa-solid fa-bolt tw-text-yellow-600 tw-h-5 tw-w-5"></i>} label="Power Energy" value={powerKW} unit="kW" />
+                    <MetricRow icon={<i className="fas fa-gas-pump tw-text-yellow-600 tw-h-5 tw-w-5"></i>} label="Total Energy" value={totalEnergyKWh} unit="kWh" />
+                    <MetricRow icon={<i className="fa-solid fa-bolt tw-text-yellow-600 tw-h-5 tw-w-5"></i>} label="Frequency" value={frequencyHz} unit="Hz" />
                 </div>
 
                 {/* Status Cards */}
