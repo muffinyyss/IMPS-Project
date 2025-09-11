@@ -1,14 +1,7 @@
 "use client";
 
 import React from "react";
-import { Typography } from "@material-tailwind/react";
 import { StatisticsCard } from "@/widgets/cards";
-import { Fan } from "@phosphor-icons/react";
-
-
-// heroicons
-import { SunIcon, SignalIcon } from "@heroicons/react/24/solid";
-import { CpuChipIcon } from "@heroicons/react/24/outline";
 
 type Props = {
   tempC: number | string;
@@ -27,7 +20,7 @@ export default function StatisticsCards({
 }: Props) {
   const cards = [
     {
-      icon: SunIcon,
+      icon: <i className="fas fa-temperature-low tw-w-6 tw-h-6 tw-text-white tw-text-center tw-mt-2" />,
       title: "Temp.",
       value: (
         <span className="tw-flex tw-items-baseline tw-gap-1">
@@ -38,10 +31,10 @@ export default function StatisticsCards({
       footerJSX: null,
     },
     {
-      icon: CpuChipIcon,
+      icon: <i className="fas fa-cloud-rain tw-w-6 tw-h-6 tw-text-white tw-text-center tw-mt-2" />,
       title: "Humidity",
       value: (
-        <span className="tw-flex tw-items-baseline tw-gap-1">
+        <span className="tw-flex tw-items-baseline tw-gap-1 tw-justify-end">
           <span className="tw-text-xl tw-font-semibold">{humidity}</span>
           <span className="tw-text-sm tw-text-blue-gray-500">%</span>
         </span>
@@ -49,7 +42,7 @@ export default function StatisticsCards({
       footerJSX: null,
     },
     {
-      icon: Fan,
+      icon: <i className="fas fa-fan tw-w-6 tw-h-6 tw-text-white tw-text-center tw-mt-2" />,
       title: "FAN",
       value: (
         <span
@@ -62,7 +55,7 @@ export default function StatisticsCards({
       footerJSX: null,
     },
     {
-      icon: SignalIcon,
+      icon: <i className="fas fa-wifi tw-w-6 tw-h-6 tw-text-white tw-text-center tw-mt-2" />,
       title: "Data",
       value: (
         <span className="tw-flex tw-items-baseline tw-gap-1">
@@ -70,7 +63,7 @@ export default function StatisticsCards({
           <span className="tw-text-sm tw-text-blue-gray-500">db</span>
         </span>
       ),
-      footerJSX: <SignalBars level={signalLevel} />,
+      // footerJSX: <SignalBars level={signalLevel} />,
     },
   ];
 
@@ -82,9 +75,7 @@ export default function StatisticsCards({
           title={title}
           value={value as any}
           color={"gray" as any}
-          icon={React.createElement(icon as any, {
-            className: "tw-w-6 tw-h-6 tw-text-white",
-          })}
+          icon={icon}
           footer={footerJSX}
         />
       ))}
