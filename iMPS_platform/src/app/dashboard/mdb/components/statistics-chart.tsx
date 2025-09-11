@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import React from "react";
+import React, { useState } from "react";
 import { Typography } from "@material-tailwind/react";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import { data_MDB } from "@/data";
@@ -79,8 +79,20 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
 }
 
 export default function StatisticChart({ startDate, endDate }: Props) {
+  const [isFullscreen, setIsFullscreen] = useState(false);  // สถานะการแสดงกราฟในโหมดเต็มหน้าจอ
+  const [selectedChart, setSelectedChart] = useState<any>(null);  // เก็บข้อมูลกราฟที่เลือก
+  const toggleFullscreen = (chart: any) => {
+    setSelectedChart(chart);  // เก็บกราฟที่เลือก
+    setIsFullscreen(!isFullscreen);  // สลับสถานะเต็มหน้าจอ
+  };
+
+  const closeFullscreen = () => {
+    setIsFullscreen(false);  // ปิดโหมดเต็มหน้าจอ
+    setSelectedChart(null);  // ล้างข้อมูลกราฟ
+  };
+
   return (
-    <div className="tw-grid tw-grid-cols-1 tw-gap-6 md:tw-grid-cols-2 xl:tw-grid-cols-3">
+    <div className="tw-grid tw-grid-cols-1 tw-gap-6 md:tw-grid-cols-1 xl:tw-grid-cols-1">
       {data_MDB.map((item) => {
         const filteredChart = filterApexChartByDate(
           item.chart,
@@ -89,7 +101,7 @@ export default function StatisticChart({ startDate, endDate }: Props) {
         );
 
         const descriptionNode = Array.isArray((item as any).metrics) ? (
-          <dl className="tw-mt-1 tw-grid tw-grid-cols-1 tw-gap-y-2 md:tw-grid-cols-3 md:tw-gap-x-6">
+          <dl className="tw-mt-1 tw-grid tw-grid-cols-3 tw-gap-y-2 md:tw-grid-cols-3 md:tw-gap-x-6">
             {(item as any).metrics.map(
               (m: { label: string; value: string }) => (
                 <div key={m.label} className="tw-min-w-0">
@@ -115,16 +127,51 @@ export default function StatisticChart({ startDate, endDate }: Props) {
 
 
         return (
-          <StatisticsChartCard
+          // <StatisticsChartCard
+          //   key={item.title}
+          //   {...item}
+          //   description={descriptionNode}   // <-- ส่ง JSX ที่มี 3 ค่า
+          //   chart={filteredChart}
+          //   color={item.color as any}
+          //   footer={null}
+          // />
+          <div
             key={item.title}
-            {...item}
-            description={descriptionNode}   // <-- ส่ง JSX ที่มี 3 ค่า
-            chart={filteredChart}
-            color={item.color as any}
-            footer={null}
-          />
+            onClick={toggleFullscreen}  // เพิ่มการคลิกเพื่อสลับโหมดเต็มหน้าจอ
+            className="tw-cursor-pointer"
+          >
+            <StatisticsChartCard
+              {...item}
+              description={descriptionNode}
+              chart={filteredChart}
+              color={item.color as any}
+              footer={null}
+            />
+          </div>
         );
+
+
       })}
     </div>
   );
+  {
+    isFullscreen && selectedChart && (
+      <div className="tw-fixed tw-top-0 tw-left-0 tw-w-full tw-h-full tw-bg-white tw-z-50 tw-flex tw-items-center tw-justify-center">
+        <div className="tw-relative tw-w-full tw-h-full tw-p-4">
+          <button
+            onClick={closeFullscreen}
+            className="tw-absolute tw-top-4 tw-right-4 tw-bg-gray-700 tw-text-white tw-p-2 tw-rounded-full"
+          >
+            ปิด
+          </button>
+          {/* <StatisticsChartCard
+            chart={selectedChart}  // ใช้กราฟที่เลือก
+            color="#4A90E2"  // เปลี่ยนสีตามที่ต้องการ
+            footer={null}
+          /> */}
+        </div>
+      </div>
+    );
+  }
+
 }
