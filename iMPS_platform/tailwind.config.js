@@ -10,7 +10,13 @@ module.exports = withMT({
     "./src/theme/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/widgets/**/*.{js,ts,jsx,tsx,mdx}",
   ],
-  theme: {},
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ["var(--font-prompt)", "Prompt", "sans-serif"],
+      },
+    },
+  },
   plugins: [],
   prefix: "tw-",
 });
