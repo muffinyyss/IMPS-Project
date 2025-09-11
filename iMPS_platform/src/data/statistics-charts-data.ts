@@ -35,13 +35,13 @@ const websiteViewsChart = {
   ],
   options: {
     ...chartsConfig,
-    chart: { type: "line", group: "power", zoom: { enabled: false }, toolbar: { show: false } },
+    chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
     colors: ["#0288d1", "#43A047", "#FB8C00"],
     stroke: { lineCap: "round", width: 2, curve: "smooth" },
     markers: { size: 0 },
     xaxis: { type: "datetime", labels: { format: "HH:mm" } },
     yaxis: { labels: { formatter: (v: number) => `${v} V` } },
-    legend: { show: true, position: "top", horizontalAlign: "right" },
+    legend: { show: true, position: "top", horizontalAlign: "left" },
     tooltip: { x: { format: "HH:mm" }, y: { formatter: (v: number) => `${v} V` } },
   },
 };
@@ -78,13 +78,13 @@ const dailySalesChart = {
   ],
   options: {
     ...chartsConfig,
-    chart: { type: "line", group: "power", zoom: { enabled: false }, toolbar: { show: false } },
+    chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
     colors: ["#0288d1", "#43A047", "#FB8C00"],
     stroke: { lineCap: "round", width: 3, curve: "smooth" },
     markers: { size: 5 },
     xaxis: { type: "datetime", labels: { format: "MMM" } },
     yaxis: { labels: { formatter: (v: number) => `${Math.round(v)}` } },
-    legend: { show: true, position: "top", horizontalAlign: "right" },
+    legend: { show: true, position: "top", horizontalAlign: "left" },
     tooltip: { shared: true, intersect: false, x: { format: "MMM" }, y: { formatter: (v: number) => `${v} A` } },
   },
 };
@@ -100,13 +100,13 @@ const completedTaskChart = {
   ],
   options: {
     ...chartsConfig,
-    chart: { type: "line", group: "power", zoom: { enabled: false }, toolbar: { show: false } },
+    chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
     colors: ["#388e3c", "#0288d1", "#FB8C00"],
     stroke: { lineCap: "round", width: 3, curve: "smooth" },
     markers: { size: 5 },
     xaxis: { type: "datetime", labels: { format: "MMM" } },
     yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} W` } },
-    legend: { show: true, position: "top", horizontalAlign: "right" },
+    legend: { show: true, position: "top", horizontalAlign: "left" },
     tooltip: { shared: true, intersect: false, x: { format: "MMM" }, y: { formatter: (v: number) => `${v} W` } },
   },
 };
