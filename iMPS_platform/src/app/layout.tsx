@@ -8,6 +8,7 @@ import ThemeProvider from "@/components/ThemeProvider";
 import theme from "@/theme";
 import { MaterialTailwindControllerProvider } from "@/context";
 import InnerContent from "./content";
+import { Prompt } from "next/font/google";
 
 import "react-calendar/dist/Calendar.css";
 import "./globals.css";
@@ -18,13 +19,20 @@ const roboto = Roboto({
   display: "swap",
 });
 
+// โหลดฟอนต์ Prompt
+const prompt = Prompt({
+  subsets: ["latin", "thai"], // เลือก subset ภาษาไทยด้วย
+  weight: ["300", "400", "500", "600", "700"], // เลือกน้ำหนักตามต้องการ
+  variable: "--font-prompt", // ตั้งชื่อเป็นตัวแปร CSS
+});
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="th" className={`${prompt.variable}`}>
       <head>
         <Script
           defer

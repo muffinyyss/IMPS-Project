@@ -59,6 +59,7 @@ function StatCardClassic({ item }: { item: CardItem }) {
   );
 }
 
+
 export default function StatisticsCards() {
   const cards: CardItem[] = [
     {

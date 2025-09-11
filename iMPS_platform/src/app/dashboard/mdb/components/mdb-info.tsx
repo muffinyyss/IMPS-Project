@@ -10,6 +10,9 @@ import {
     SunIcon,
 } from "@heroicons/react/24/solid";
 import { CpuChipIcon } from "@heroicons/react/24/outline";
+// import { Card, CardHeader, CardContent, CardFooter } from "@/widgets";
+
+
 
 /** ===== Props ===== */
 type Props = {
@@ -35,6 +38,8 @@ type Props = {
     thdiL2: number | string;
     thdiL3: number | string;
     className?: string;
+    mainBreakerStatus: boolean;
+    breakChargerStatus: boolean;
 };
 
 /** ===== Component ===== */
@@ -61,90 +66,130 @@ export default function MDBInfo({
     thdiL2,
     thdiL3,
     className = "",
+    mainBreakerStatus,
+    breakChargerStatus
 }: Props) {
     return (
         <div className={`tw-w-full tw-space-y-6 ${className}`}>
             {/* ===== Top quick stats ===== */}
-            {/* <div className="tw-grid tw-grid-cols-2 lg:tw-grid-cols-4 tw-gap-4">
-                <QuickStat icon={<SunIcon className="tw-h-5 tw-w-5 tw-text-green-600" />} label="Temp." value={tempC} />
-                <QuickStat icon={<CpuChipIcon className="tw-h-5 tw-w-5 tw-text-green-600" />} label="Humidity" value={humidity} />
-                <QuickStat
-                    icon={<FanDot on={fanOn} />}
-                    label="FAN"
-                    value={<Chip size="sm" color={fanOn ? "green" : "blue-gray"} value={fanOn ? "ON" : "OFF"} className="tw-font-medium" />}
-                />
-                <QuickStat
-                    icon={<SignalIcon className="tw-h-5 tw-w-5 tw-text-green-600" />}
-                    label="Data"
-                    value={
-                        <div className="tw-flex tw-items-center tw-gap-2">
-                            <Typography variant="small" color="blue-gray" className="tw-font-semibold">
-                                {rssiDb} <span className="tw-font-normal">db</span>
-                            </Typography>
-                            <SignalBars level={signalLevel} />
-                        </div>
-                    }
-                />
-            </div> */}
-
-            {/* <Divider /> */}
-
-            {/* ===== Power block ===== */}
-            <div className="tw-grid md:tw-grid-cols-1 tw-gap-6">
-                <div className="tw-space-y-3">
+            {/* Power Block Section */}
+            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                <div className="tw-space-y-3 tw-max-w-[550px]">
                     <MetricRow icon={<BoltIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Total Current" value={totalCurrentA} unit="A" />
-                    <MetricRow icon={<PowerIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Power" value={powerKW} unit="kW" />
+                    <MetricRow icon={<PowerIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Power Energy" value={powerKW} unit="kW" />
                     <MetricRow icon={<BoltSlashIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Total Energy" value={totalEnergyKWh} unit="kWh" />
-                    <MetricRow label="Hz" value={frequencyHz} unit="Hz" />
+                    <MetricRow icon={<BoltSlashIcon className="tw-h-5 tw-w-5 tw-text-yellow-600" />} label="Frequency" value={frequencyHz} unit="Hz" />
                 </div>
 
-                {/* ===== Quality Section ===== */}
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4">
-                    {/* PF */}
-                    <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-                        <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                            Power Factor
-                        </Typography>
-                        <div className="tw-space-y-1">
-                            <Row label="pf–L1" value={pfL1} />
-                            <Row label="pf–L2" value={pfL2} />
-                            <Row label="pf–L3" value={pfL3} />
+                {/* Status Cards */}
+                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
+                    {/* Mainbreaker */}
+                    <div className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm tw-flex tw-items-center tw-justify-between">
+                        {/* Left side: icon + label */}
+                        <div className="tw-flex tw-items-center tw-gap-3">
+                            <div className="tw-flex tw-h-12 tw-w-12 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
+                                <BoltIcon className="tw-h-6 tw-w-6 tw-text-gray-700" />
+                            </div>
+                            <Typography variant="small" color="blue-gray" className="tw-font-medium">
+                                Mainbreaker
+                            </Typography>
+                        </div>
+                        {/* Right side: status */}
+                        <div className="tw-flex tw-items-center tw-gap-2">
+                            <span
+                                className={`tw-h-2.5 tw-w-2.5 tw-rounded-full ${mainBreakerStatus ? "tw-bg-green-500" : "tw-bg-red-500"
+                                    }`}
+                            />
+                            <Typography
+                                variant="h6"
+                                className={`tw-font-bold ${mainBreakerStatus ? "tw-text-green-600" : "tw-text-red-500"
+                                    }`}
+                            >
+                                {mainBreakerStatus ? "ON" : "OFF"}
+                            </Typography>
                         </div>
                     </div>
 
-                    <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-                        <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                            EL
-                        </Typography>
-                        <div className="tw-space-y-1">
-                            <Row label="EL1" value={EL1} />
-                            <Row label="EL2" value={EL2} />
-                            <Row label="EL3" value={EL3} />
+                    {/* Break Charger */}
+                    <div className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm tw-flex tw-items-center tw-justify-between">
+                        {/* Left side: icon + label */}
+                        <div className="tw-flex tw-items-center tw-gap-3">
+                            <div className="tw-flex tw-h-12 tw-w-12 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
+                                <PowerIcon className="tw-h-6 tw-w-6 tw-text-gray-700" />
+                            </div>
+                            <Typography variant="small" color="blue-gray" className="tw-font-medium">
+                                Break Charger
+                            </Typography>
+                        </div>
+                        {/* Right side: status */}
+                        <div className="tw-flex tw-items-center tw-gap-2">
+                            <span
+                                className={`tw-h-2.5 tw-w-2.5 tw-rounded-full ${breakChargerStatus ? "tw-bg-green-500" : "tw-bg-red-500"
+                                    }`}
+                            />
+                            <Typography
+                                variant="h6"
+                                className={`tw-font-bold ${breakChargerStatus ? "tw-text-green-600" : "tw-text-red-500"
+                                    }`}
+                            >
+                                {breakChargerStatus ? "ON" : "OFF"}
+                            </Typography>
                         </div>
                     </div>
+                </div>
 
-                    {/* THDU */}
-                    <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-                        <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                            THDU (%)
-                        </Typography>
-                        <div className="tw-space-y-1">
-                            <Row label="L1" value={thduL1} />
-                            <Row label="L2" value={thduL2} />
-                            <Row label="L3" value={thduL3} />
-                        </div>
+
+
+
+            </div>
+
+            {/* Quality Section */}
+            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4">
+                {/* PF */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        Power Factor
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="pf–L1" value={pfL1} />
+                        <Row label="pf–L2" value={pfL2} />
+                        <Row label="pf–L3" value={pfL3} />
                     </div>
+                </div>
 
-                    {/* THDI */}
-                    <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-                        <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                            THDI (%)
-                        </Typography>
-                        <div className="tw-space-y-1">
-                            <Row label="L1" value={thdiL1} highlight />
-                            <Row label="L2" value={thdiL2} highlight />
-                            <Row label="L3" value={thdiL3} highlight />
-                        </div>
+                {/* EL */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        EL (kWh)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="EL1" value={EL1} />
+                        <Row label="EL2" value={EL2} />
+                        <Row label="EL3" value={EL3} />
+                    </div>
+                </div>
+
+                {/* THDU */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        THDU (%)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="L1" value={thduL1} />
+                        <Row label="L2" value={thduL2} />
+                        <Row label="L3" value={thduL3} />
+                    </div>
+                </div>
+
+                {/* THDI */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        THDI (%)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="L1" value={thdiL1} highlight />
+                        <Row label="L2" value={thdiL2} highlight />
+                        <Row label="L3" value={thdiL3} highlight />
                     </div>
                 </div>
             </div>
