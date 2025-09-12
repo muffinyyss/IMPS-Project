@@ -101,12 +101,12 @@ export function DashboardNavbar() {
           <div className="tw-mr-auto md:tw-mr-4 md:tw-w-56">
             <Input label="Search" />
           </div>
-          <Link href="/auth/signin/basic">
+          {/* <Link href="/auth/signin/basic">
             <IconButton variant="text">
               <UserCircleIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-900" />
             </IconButton>
-          </Link>
-          <IconButton
+          </Link> */}
+          {/* <IconButton
             variant="text"
             color="blue-gray"
             className="tw-grid xl:tw-hidden"
@@ -117,14 +117,15 @@ export function DashboardNavbar() {
             ) : (
               <Bars3CenterLeftIcon className="tw-h-6 tw-w-6 tw-text-gray-900" />
             )}
-          </IconButton>
-          <IconButton
+          </IconButton> */}
+
+          {/* <IconButton
             variant="text"
             color="gray"
             onClick={() => setOpenConfigurator(dispatch, true)}
           >
             <Cog6ToothIcon className="tw-h-5 tw-w-5 tw-text-gray-900" />
-          </IconButton>
+          </IconButton> */}
         </div>
 
 
