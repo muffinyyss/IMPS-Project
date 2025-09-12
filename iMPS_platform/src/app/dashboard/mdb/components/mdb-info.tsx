@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Typography, Chip, Tooltip } from "@/components/MaterialTailwind";
+import { Typography, Chip, Tooltip, Card, CardBody } from "@/components/MaterialTailwind";
 import {
     BoltIcon,
     PowerIcon,
@@ -10,7 +10,6 @@ import {
     SunIcon,
 } from "@heroicons/react/24/solid";
 import { CpuChipIcon } from "@heroicons/react/24/outline";
-import { Fan, BatteryCharging, Lightning } from "@phosphor-icons/react";
 
 /** ===== Props ===== */
 type Props = {
@@ -119,61 +118,50 @@ export default function MDBInfo({
 
                 {/* Status Cards */}
                 <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
-                    {/* Mainbreaker */}
-                    <div className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm tw-flex tw-items-center tw-justify-between">
-                        {/* Left side: icon + label */}
-                        <div className="tw-flex tw-items-center tw-gap-3">
-                            <div className="tw-flex tw-h-12 tw-w-12 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
+                    <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm tw-space-y-5">
+                        
+                        {/* Mainbreaker */}
+                        <div className="tw-flex tw-items-center tw-gap-3 tw-mt-5">
+                            <div className="tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
                                 <BoltIcon className="tw-h-6 tw-w-6 tw-text-gray-700" />
                             </div>
-                            <Typography variant="small" color="blue-gray" className="tw-font-medium">
-                                Mainbreaker
-                            </Typography>
+                            <div className="tw-flex tw-flex-col">
+                                <Typography variant="small" color="blue-gray" className="tw-font-medium">
+                                    Mainbreaker
+                                </Typography>
+                                <Typography
+                                    variant="small"
+                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-green-600" : "tw-text-red-500"}`}
+                                >
+                                    Status: {mainBreakerStatus ? "ON" : "OFF"}
+                                </Typography>
+                            </div>
                         </div>
-                        {/* Right side: status */}
-                        <div className="tw-flex tw-items-center tw-gap-2">
-                            <span
-                                className={`tw-h-2.5 tw-w-2.5 tw-rounded-full ${mainBreakerStatus ? "tw-bg-green-500" : "tw-bg-red-500"
-                                    }`}
-                            />
-                            <Typography
-                                variant="h6"
-                                className={`tw-font-bold ${mainBreakerStatus ? "tw-text-green-600" : "tw-text-red-500"
-                                    }`}
-                            >
-                                {mainBreakerStatus ? "ON" : "OFF"}
-                            </Typography>
-                        </div>
-                    </div>
 
-                    {/* Break Charger */}
-                    <div className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm tw-flex tw-items-center tw-justify-between">
-                        {/* Left side: icon + label */}
+                        {/* Divider */}
+                        <div className="tw-border-t tw-border-blue-gray-100 tw-my-4" />
+
+                        {/* Break Charger */}
                         <div className="tw-flex tw-items-center tw-gap-3">
-                            <div className="tw-flex tw-h-12 tw-w-12 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
+                            <div className="tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
                                 <PowerIcon className="tw-h-6 tw-w-6 tw-text-gray-700" />
                             </div>
-                            <Typography variant="small" color="blue-gray" className="tw-font-medium">
-                                Break Charger
-                            </Typography>
-                        </div>
-                        {/* Right side: status */}
-                        <div className="tw-flex tw-items-center tw-gap-2">
-                            <span
-                                className={`tw-h-2.5 tw-w-2.5 tw-rounded-full ${breakChargerStatus ? "tw-bg-green-500" : "tw-bg-red-500"
-                                    }`}
-                            />
-                            <Typography
-                                variant="h6"
-                                className={`tw-font-bold ${breakChargerStatus ? "tw-text-green-600" : "tw-text-red-500"
-                                    }`}
-                            >
-                                {breakChargerStatus ? "ON" : "OFF"}
-                            </Typography>
+                            <div className="tw-flex tw-flex-col">
+                                <Typography variant="small" color="blue-gray" className="tw-font-medium">
+                                    Break Charger
+                                </Typography>
+                                <Typography
+                                    variant="small"
+                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-green-600" : "tw-text-red-500"}`}
+                                >
+                                    Status: {mainBreakerStatus ? "ON" : "OFF"}
+                                </Typography>
+                            </div>
                         </div>
                     </div>
-                
                 </div>
+                {/* Status Cards */}
+
             </div>
 
             {/* Quality Section */}
