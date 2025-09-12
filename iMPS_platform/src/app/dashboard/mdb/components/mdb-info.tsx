@@ -225,7 +225,7 @@ export default function MDBInfo({
                 {/* VL */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        VL (V)
+                        Line-to-Line Voltage (V)
                     </Typography>
                     <div className="tw-space-y-1">
                         <Row label="VL1L2" value={VL1L2} />
