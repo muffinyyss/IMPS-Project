@@ -25,12 +25,20 @@ type Props = {
     pfL1: number | string;
     pfL2: number | string;
     pfL3: number | string;
+    PL1N: number | string;
+    PL2N: number | string;
+    PL3N: number | string;
+    PL123N: number | string;
     EL1: number | string;
     EL2: number | string;
     EL3: number | string;
-    thduL1: number | string;
-    thduL2: number | string;
-    thduL3: number | string;
+    EL123: number | string;
+    VL1L2: number | string;
+    VL2L3: number | string;
+    VL1L3: number | string;
+    thdvL1: number | string;
+    thdvL2: number | string;
+    thdvL3: number | string;
     thdiL1: number | string;
     thdiL2: number | string;
     thdiL3: number | string;
@@ -53,12 +61,20 @@ export default function MDBInfo({
     pfL1,
     pfL2,
     pfL3,
+    PL1N,
+    PL2N,
+    PL3N,
+    PL123N,
     EL1,
     EL2,
     EL3,
-    thduL1,
-    thduL2,
-    thduL3,
+    EL123,
+    VL1L2,
+    VL2L3,
+    VL1L3,
+    thdvL1,
+    thdvL2,
+    thdvL3,
     thdiL1,
     thdiL2,
     thdiL3,
@@ -70,8 +86,9 @@ export default function MDBInfo({
         <div className={`tw-w-full tw-space-y-6 ${className}`}>
             {/* ===== Top quick stats ===== */}
             {/* Power Block Section */}
-            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                <div className="tw-space-y-3 tw-max-w-[550px]">
+            {/* <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 md:tw-gap-6"> */}
+            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-[minmax(0,1fr)_250px] md:tw-gap-6">
+                <div className="tw-space-y-3 tw-w-full">
                     <MetricRow
                         icon={
                             <svg
@@ -117,11 +134,11 @@ export default function MDBInfo({
                 </div>
 
                 {/* Status Cards */}
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
+                <div className="tw-grid tw-grid-cols-1 md:tw-max-w-[250px] tw-gap-10 ">
                     <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm tw-space-y-5">
-                        
+
                         {/* Mainbreaker */}
-                        <div className="tw-flex tw-items-center tw-gap-3 tw-mt-5">
+                        <div className="tw-flex tw-items-center tw-gap-3 tw-mt-3">
                             <div className="tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
                                 <BoltIcon className="tw-h-6 tw-w-6 tw-text-gray-700" />
                             </div>
@@ -142,7 +159,7 @@ export default function MDBInfo({
                         <div className="tw-border-t tw-border-blue-gray-100 tw-my-4" />
 
                         {/* Break Charger */}
-                        <div className="tw-flex tw-items-center tw-gap-3">
+                        <div className="tw-flex tw-items-center tw-gap-3 tw-mt-6">
                             <div className="tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
                                 <PowerIcon className="tw-h-6 tw-w-6 tw-text-gray-700" />
                             </div>
@@ -165,7 +182,7 @@ export default function MDBInfo({
             </div>
 
             {/* Quality Section */}
-            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4">
+            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
                 {/* PF */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
@@ -178,6 +195,19 @@ export default function MDBInfo({
                     </div>
                 </div>
 
+                {/* PLN */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        PLN (W)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="PL1N" value={PL1N} />
+                        <Row label="PL2N" value={PL2N} />
+                        <Row label="PL3N" value={PL3N} />
+                        <Row label="PL123N" value={PL123N} />
+                    </div>
+                </div>
+
                 {/* EL */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
@@ -187,18 +217,32 @@ export default function MDBInfo({
                         <Row label="EL1" value={EL1} />
                         <Row label="EL2" value={EL2} />
                         <Row label="EL3" value={EL3} />
+                        <Row label="EL123" value={EL123} />
+
                     </div>
                 </div>
 
-                {/* THDU */}
+                {/* VL */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        THDU (%)
+                        VL (V)
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1" value={thduL1} />
-                        <Row label="L2" value={thduL2} />
-                        <Row label="L3" value={thduL3} />
+                        <Row label="VL1L2" value={VL1L2} />
+                        <Row label="VL2L3" value={VL2L3} />
+                        <Row label="VL1L3" value={VL1L3} />
+                    </div>
+                </div>
+
+                {/* THDV */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        THDV (%)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="L1" value={thdvL1} />
+                        <Row label="L2" value={thdvL2} />
+                        <Row label="L3" value={thdvL3} />
                     </div>
                 </div>
 
@@ -208,9 +252,9 @@ export default function MDBInfo({
                         THDI (%)
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1" value={thdiL1} highlight />
-                        <Row label="L2" value={thdiL2} highlight />
-                        <Row label="L3" value={thdiL3} highlight />
+                        <Row label="L1" value={thdiL1} />
+                        <Row label="L2" value={thdiL2} />
+                        <Row label="L3" value={thdiL3} />
                     </div>
                 </div>
             </div>
