@@ -4,7 +4,7 @@ import React from "react";
 import { StatisticsCard } from "@/widgets/cards";
 
 type Props = {
-  tempC: number | string;
+  tempc: number | string;
   humidity: number | string;
   fanOn: boolean;
   rssiDb: number | string;
@@ -12,7 +12,7 @@ type Props = {
 };
 
 export default function StatisticsCards({
-  tempC,
+  tempc,
   humidity,
   fanOn,
   rssiDb,
@@ -24,7 +24,7 @@ export default function StatisticsCards({
       title: "Temp.",
       value: (
         <span className="tw-flex tw-items-baseline tw-gap-1">
-          <span className="tw-text-xl tw-font-semibold">{tempC}</span>
+          <span className="tw-text-xl tw-font-semibold">{tempc}</span>
           <span className="tw-text-sm tw-text-blue-gray-500">°C</span>
         </span>
       ),

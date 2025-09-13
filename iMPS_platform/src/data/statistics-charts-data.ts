@@ -1,5 +1,5 @@
 import { chartsConfig } from "@/configs";
-
+import type {MDBType} from "@/app/dashboard/mdb/components/mdb-info";
 /* ============ 1) Voltage (V) ============ */
 const websiteViewsChart = {
   type: "line",
@@ -114,7 +114,7 @@ const completedTaskChart = {
 // alias เดิม
 const completedTasksChart = { ...completedTaskChart };
 
-export const statisticsChartsData = [
+export const statisticsChartsData = (MDB:MDBType) =>  [
   {
     color: "white",
     title: "Voltage Line to Neutral (V)",
@@ -122,9 +122,9 @@ export const statisticsChartsData = [
     // footer: "campaign sent 2 days ago",
     chart: websiteViewsChart,
     metrics: [
-      { label: "L1", value: "205.11 V" },
-      { label: "L2", value: "219.91 V" },
-      { label: "L3", value: "242.44 V" },
+      { label: "L1", value: `${MDB.PL1N} V` },
+      { label: "L2", value: `${MDB.PL2N} V` },
+      { label: "L3", value: `${MDB.PL3N} V` },
     ],
   },
   {
@@ -134,9 +134,9 @@ export const statisticsChartsData = [
     // footer: "updated 4 min ago",
     chart: dailySalesChart,
     metrics: [
-      { label: "I1", value: "89.52 A" },
-      { label: "I2", value: "87.69 A" },
-      { label: "I3", value: "88.62 A" },
+      { label: "I1", value: `${MDB.I1} A` },
+      { label: "I2", value: `${MDB.I2} A` },
+      { label: "I3", value: `${MDB.I3} A` },
     ],
   },
   {
@@ -146,13 +146,13 @@ export const statisticsChartsData = [
     // footer: "just updated",
     chart: completedTasksChart,
     metrics: [
-      { label: "W1", value: "20661.73 W" },
-      { label: "W2", value: "20189.51 W" },
-      { label: "W3", value: "20576.95 W" },
+      { label: "W1", value: `${MDB.EL1} W` },
+      { label: "W2", value: `${MDB.EL2} W` },
+      { label: "W3", value: `${MDB.EL3} W` },
     ],
   },
 ];
 
-export const data_MDB = [...statisticsChartsData];
+export const data_MDB = (MDB: MDBType) => statisticsChartsData(MDB);
 
-export default { statisticsChartsData, data_MDB };
+export default { statisticsChartsData ,data_MDB };

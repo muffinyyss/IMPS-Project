@@ -19,6 +19,8 @@ import MDBInfo from "./components/mdb-info";
 import { floated } from "@material-tailwind/react/types/components/card";
 import { it } from "node:test";
 import { on } from "events";
+import {statisticsChartsData} from "@/data/statistics-charts-data";
+import { data_MDB } from "@/data/statistics-charts-data";
 
 // map
 const WorldMap = dynamic(() => import("./components/world-map"), { ssr: false });
@@ -103,52 +105,50 @@ export default function MDBPage() {
         return () => window.removeEventListener("storage", load);
     }, []);
 
-    if (loading) return <p>Loading...</p>;
+    // if (loading) return <p>Loading...</p>;
 
     const station = userLogin ? mdb.find(it => it.station_id === userLogin.station_id) : null;
-    console.log(userLogin);
-    console.log(mdb);
-    // const MDB = {
-    //     tempC: station?.frequency ?? 0,
-    //     humidity: station?.VL1N ?? 0,
-    //     fanOn: on,
-    //     rssiDb:  station?.VL2N ?? 0,
-    //     signalLevel: 4
-    // };
 
     const MDB = {
-        tempC: station?.temp ?? 0,
-        humidity: station?.humi ?? 0,
+        tempc: Math.trunc(Number(station?.tempc)) ?? 0,
+        humidity: Math.trunc(Number(station?.humidity)) ?? 0,
         fanOn: true,
         rssiDb: 0,
         // signalLevel: 4 ,
-        totalCurrentA: station?.I_toal ?? 0,
-        powerKW: 0,
-        totalEnergyKWh: 0,
-        frequencyHz: station?.frequency ?? 0,
-        pfL1: station?.pfL1 ?? 0,
-        pfL2: station?.pfL2 ?? 0,
-        pfL3: station?.pfL3 ?? 0,
-        PL1N: station?.PL1N ?? 0,
-        PL2N: station?.PL2N ?? 0,
-        PL3N: station?.PL3N ?? 0,
-        PL123N: station?.PL123N ?? 0,
-        EL1: station?.EL1 ?? 0,
-        EL2: station?.EL2 ?? 0,
-        EL3: station?.EL3 ?? 0,
-        EL123: station?.EL123 ?? 0,
-        VL1L2: station?.VL1L2 ?? 0,
-        VL2L3: station?.VL2L3 ?? 0,
-        VL1L3: station?.VL1L3 ?? 0,
-        thdvL1: station?.THDU_L1N ?? 0,
-        thdvL2: station?.THDU_L2N ?? 0,
-        thdvL3: station?.THDU_L3N ?? 0,
-        thdiL1: station?.THDI_L1 ?? 0,
-        thdiL2: station?.THDI_L2 ?? 0,
-        thdiL3: station?.THDI_L3 ?? 0,
+        I1: Math.trunc(Number(station?.I1)) ?? 0,
+        I2: Math.trunc(Number(station?.I2)) ?? 0,
+        I3: Math.trunc(Number(station?.I3)) ?? 0,
+        totalCurrentA: Math.trunc(Number(station?.I_toal)) ?? 0,
+        powerKW: Math.trunc(Number(station?.PL123N)/1000) ?? 0,
+        totalEnergyKWh: Math.trunc(Number(station?.EL123)/1000) ?? 0,
+        frequencyHz: Math.trunc(Number(station?.frequency)) ?? 0,
+        pfL1: Math.trunc(Number(station?.pfL1)) ?? 0,
+        pfL2: Math.trunc(Number(station?.pfL2)) ?? 0,
+        pfL3: Math.trunc(Number(station?.pfL3)) ?? 0,
+        PL1N: Math.trunc(Number(station?.PL1N)) ?? 0,
+        PL2N: Math.trunc(Number(station?.PL2N)) ?? 0,
+        PL3N: Math.trunc(Number(station?.PL3N)) ?? 0,
+        PL123N: Math.trunc(Number(station?.PL123N)) ?? 0,
+        EL1: Math.trunc(Number(station?.EL1)/1000) ?? 0,
+        EL2: Math.trunc(Number(station?.EL2)/1000) ?? 0,
+        EL3: Math.trunc(Number(station?.EL3)/1000) ?? 0,
+        EL123: Math.trunc(Number(station?.EL123)/1000) ?? 0,
+        VL1L2: Math.trunc(Number(station?.VL1L2)) ?? 0,
+        VL2L3: Math.trunc(Number(station?.VL2L3)) ?? 0,
+        VL1L3: Math.trunc(Number(station?.VL1L3)) ?? 0,
+        thdvL1: Math.trunc(Number(station?.THDU_L1N)) ?? 0,
+        thdvL2: Math.trunc(Number(station?.THDU_L2N)) ?? 0,
+        thdvL3: Math.trunc(Number(station?.THDU_L3N)) ?? 0,
+        thdiL1: Math.trunc(Number(station?.THDI_L1)) ?? 0,
+        thdiL2: Math.trunc(Number(station?.THDI_L2)) ?? 0,
+        thdiL3: Math.trunc(Number(station?.THDI_L3)) ?? 0,
         mainBreakerStatus: station?.mainBreakerStatus ?? false,  // Add main breaker status
         breakChargerStatus: station?.breakChargerStatus ?? false,  // Add break charger status
     };
+    
+    const MDB_type = statisticsChartsData(MDB)
+
+    const charts = data_MDB(MDB)
     return (
 
         <div className="tw-mt-8 tw-mb-4">
@@ -209,7 +209,7 @@ export default function MDBPage() {
 
             {/* ===== Statistics Charts (รับช่วงวันที่ไปใช้ได้) ===== */}
             {/* ถ้าคอมโพเนนต์กราฟของคุณรองรับ ให้ส่ง props ไปเลย */}
-            <StatisticChart startDate={startDate} endDate={endDate} />
+            <StatisticChart startDate={startDate} endDate={endDate} charts={charts} />
 
             {/* Booking Cards */}
             {/* <BookingCards /> */}

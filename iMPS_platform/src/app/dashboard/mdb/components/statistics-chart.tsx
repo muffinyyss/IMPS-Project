@@ -148,18 +148,29 @@
 
 import dynamic from "next/dynamic";
 import React, { useState } from "react";
-import { data_MDB } from "@/data";
 import { Maximize2, X } from "lucide-react";
+import { statisticsChartsData, data_MDB } from "@/data";
+import type {MDBType} from "@/app/dashboard/mdb/components/mdb-info";
+import Charts from "@/app/pages/charts/page";
 
 
 const StatisticsChartCard = dynamic(
   () => import("../../../../widgets/charts/statistics-chart"),
   { ssr: false }
 );
+type Metric = { label: string; value: string | number };
+type ChartCard = {
+  color: string;
+  title: string;
+  description?: string;
+  chart: any; // ถ้ามี type ของ ApexCharts ใส่แทน any ได้
+  metrics: Metric[];
+};
 
 type Props = {
   startDate?: string;
   endDate?: string;
+  charts: ChartCard[];
 };
 
 // ---------- helpers ----------
@@ -224,7 +235,7 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
   };
 }
 
-export default function StatisticChart({ startDate, endDate }: Props) {
+export default function StatisticChart({ startDate, endDate, charts }: Props) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedChart, setSelectedChart] = useState<any>(null);
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -241,9 +252,10 @@ export default function StatisticChart({ startDate, endDate }: Props) {
     setSelectedItem(null);
   };
 
+
   return (
     <div className="tw-grid tw-grid-cols-1 tw-gap-6 md:tw-grid-cols-1 xl:tw-grid-cols-1">
-      {data_MDB.map((item) => {
+      {charts.map((item) => {
         const filteredChart = filterApexChartByDate(
           item.chart,
           startDate,
