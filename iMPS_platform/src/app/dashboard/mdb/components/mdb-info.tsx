@@ -12,12 +12,15 @@ import {
 import { CpuChipIcon } from "@heroicons/react/24/outline";
 
 /** ===== Props ===== */
-type Props = {
-    tempC: number | string;
+export type MDBType = {
+    tempc: number | string;
     humidity: number | string;
     fanOn: boolean;
-    rssiDb?: number | string;
+    rssiDb: number | string;
     // signalLevel?: 0 | 1 | 2 | 3 | 4;
+    I1:number | string;
+    I2:number | string;
+    I3:number | string;
     totalCurrentA: number | string;
     powerKW: number | string;
     totalEnergyKWh: number | string;
@@ -49,11 +52,14 @@ type Props = {
 
 /** ===== Component ===== */
 export default function MDBInfo({
-    tempC,
+    tempc,
     humidity,
     fanOn,
     rssiDb = "-",
     // signalLevel = 3,
+    I1,
+    I2,
+    I3,
     totalCurrentA,
     powerKW,
     totalEnergyKWh,
@@ -81,7 +87,7 @@ export default function MDBInfo({
     className = "",
     mainBreakerStatus,
     breakChargerStatus
-}: Props) {
+}: MDBType) {
     return (
         <div className={`tw-w-full tw-space-y-6 ${className}`}>
             {/* ===== Top quick stats ===== */}
@@ -189,9 +195,9 @@ export default function MDBInfo({
                         Power Factor
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="pf–L1" value={pfL1} />
-                        <Row label="pf–L2" value={pfL2} />
-                        <Row label="pf–L3" value={pfL3} />
+                        <Row label="pf–L1" value={Number(pfL1)} />
+                        <Row label="pf–L2" value={Number(pfL2)} />
+                        <Row label="pf–L3" value={Number(pfL3)} />
                     </div>
                 </div>
 

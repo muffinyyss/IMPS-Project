@@ -30,7 +30,10 @@ client = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
 db = client["iMPS"]
 users_collection = db["users"]
 station_collection = db["stations"]
-MDB_collection = db["MDB"]
+
+
+MDB_DB = client["MDB"]
+MDB_collection = MDB_DB["nongKhae"]
 # @app.get("/")
 # async def homepage():
 #     return {"message": "Helloo World"}
@@ -182,8 +185,8 @@ async def create_users(users: users):
 async def get_stations(q:str = ""):
     """ค้นหาสถานนี"""
     query = {"name":{"$regex":  q, "$options": "i"}} if q else {}
-    stations = station_collection.find(query,{"_id":0,"name":1})
-    return [station["name"] for station in stations]
+    stations = station_collection.find(query,{"_id":0,"station_name":1})
+    return [station["station_name"] for station in stations]
 
 @app.get("/MDB/")
 def list_mdb(limit: int = 1000000):
