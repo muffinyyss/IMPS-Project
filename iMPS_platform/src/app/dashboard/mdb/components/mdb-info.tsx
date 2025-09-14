@@ -36,6 +36,9 @@ export type MDBType = {
     EL2: number | string;
     EL3: number | string;
     EL123: number | string;
+    VL1N:number | string;
+    VL2N:number | string;
+    VL3N:number | string;
     VL1L2: number | string;
     VL2L3: number | string;
     VL1L3: number | string;
@@ -75,6 +78,9 @@ export default function MDBInfo({
     EL2,
     EL3,
     EL123,
+    VL1N,
+    VL2N,
+    VL3N,
     VL1L2,
     VL2L3,
     VL1L3,

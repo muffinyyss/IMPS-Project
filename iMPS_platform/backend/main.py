@@ -1,18 +1,18 @@
-from fastapi import FastAPI,HTTPException,Depends, status
+from fastapi import FastAPI,HTTPException,Depends, status,Request
 from fastapi.encoders import jsonable_encoder 
 from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
 from jose import JWTError,jwt
 from datetime import datetime,timedelta, UTC
 from passlib.hash import bcrypt
-
-from pymongo import MongoClient
+from pymongo.errors import OperationFailure, PyMongoError
+# from pymongo import MongoClient
 from pydantic import BaseModel
 from bson.objectid import ObjectId
 from fastapi.middleware.cors import CORSMiddleware
-
-
+from motor.motor_asyncio import AsyncIOMotorClient
+import json, os, asyncio
 from pdf.pdf_routes import router as pdf_router
-
+from fastapi.responses import StreamingResponse
 
 import bcrypt
 
@@ -26,14 +26,18 @@ from pdf.pdf_routes import router as pdf_router
 
 app = FastAPI()
 
-client = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
+# client = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
+client = AsyncIOMotorClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
+
 db = client["iMPS"]
 users_collection = db["users"]
 station_collection = db["stations"]
 
 
 MDB_DB = client["MDB"]
-MDB_collection = MDB_DB["nongKhae"]
+# MDB_collection = MDB_DB["nongKhae"]
+MDB_collection = MDB_DB.get_collection("nongKhae")
+
 # @app.get("/")
 # async def homepage():
 #     return {"message": "Helloo World"}
@@ -55,6 +59,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 @app.post("/login/")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = users_collection.find_one({"username": form_data.username})
@@ -188,12 +194,73 @@ async def get_stations(q:str = ""):
     stations = station_collection.find(query,{"_id":0,"station_name":1})
     return [station["station_name"] for station in stations]
 
-@app.get("/MDB/")
-def list_mdb(limit: int = 1000000):
-    cursor = MDB_collection.find({}, {"password": 0}).limit(limit)  # ซ่อน password ถ้ามี
-    docs = list(cursor)  # ดึงทั้งก้อน
-    if not docs:
-        raise HTTPException(status_code=404, detail="MDB not found")
+def to_json(doc: dict | None) -> str:
+    if not doc:
+        return "{}"
+    d = dict(doc)
+    d.pop("password", None)
+    if isinstance(d.get("_id"), ObjectId):
+        d["_id"] = str(d["_id"])
+    return json.dumps(d, ensure_ascii=False, default=str)
+
+@app.get("/MDB")
+async def mdb(request: Request, station_id: str | None = None):
+    """
+    SSE แบบไม่ใช้ Change Streams:
+    - ส่ง snapshot ล่าสุดทันที
+    - จากนั้นเช็กของใหม่ทุก ๆ 3 วินาที ถ้ามีจึงส่งต่อ
+    """
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",  # กัน proxy บัฟเฟอร์
+    }
+
+    async def event_generator():
+        # ----- เตรียม query (รองรับ station_id เป็น str/number) -----
+        q = {}
+        if station_id is not None:
+            in_list = [str(station_id)]
+            try:
+                in_list.append(int(str(station_id)))
+            except ValueError:
+                pass
+            q["station_id"] = {"$in": in_list}
+
+        # ----- ส่ง snapshot ล่าสุดทันที -----
+        last_id = None
+        latest = await MDB_collection.find_one(q, sort=[("_id", -1)])
+        if latest:
+            last_id = latest.get("_id")
+            yield f"event: init\ndata: {to_json(latest)}\n\n"
+        else:
+            # ไม่มีข้อมูลก็ยังส่ง keep-alive ค้างต่อไปได้
+            yield ": keep-alive\n\n"
+
+        # ----- วนเช็กของใหม่ทุก 3 วิ (ปรับได้) -----
+        while True:
+            if await request.is_disconnected():
+                break
+
+            doc = await MDB_collection.find_one(q, sort=[("_id", -1)])
+            if doc and doc.get("_id") != last_id:
+                last_id = doc.get("_id")
+                yield f"data: {to_json(doc)}\n\n"
+            else:
+                # กัน proxy/timeouts
+                yield ": keep-alive\n\n"
+
+            await asyncio.sleep(60)  # ปรับเป็น 1–5 วิ ตามที่ต้องการ
+
+    return StreamingResponse(event_generator(), headers=headers)
+
+# @app.get("/MDB/")
+# def list_mdb():
+#     docs = MDB_collection.find_one({}, {"password": 0},sort=[("Datetime",-1)])  # ซ่อน password ถ้ามี
+   
+#     if not docs:
+#         raise HTTPException(status_code=404, detail="MDB not found")
     
-    return {"MDB": jsonable_encoder(docs, custom_encoder={ObjectId: str})}
+#     return {"MDB": jsonable_encoder(docs, custom_encoder={ObjectId: str})}
     
