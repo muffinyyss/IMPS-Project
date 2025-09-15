@@ -284,6 +284,82 @@ export default function MDBPage() {
         };
     }, [userLogin?.station_id, startDate, endDate]);
 
+//     useEffect(() => {
+//     setLoading(true);
+//     setErr(null);
+
+//     const sid = userLogin?.station_id != null ? String(userLogin.station_id) : "";
+//     const url = `${API_BASE}/MDB/history/last24${sid ? `?station_id=${encodeURIComponent(sid)}` : ""}`;
+//     const es = new EventSource(url);
+
+//     const withinRange = (iso: string) => {
+//         const d = new Date(iso);
+//         const from = new Date(`${startDate}T00:00:00`);
+//         const to = new Date(`${endDate}T23:59:59`);
+//         return d >= from && d <= to;
+//     };
+
+//     const pushRealtimeToHistory = (doc: any) => {
+//         const ts = typeof doc.t === "string" ? doc.t : new Date().toISOString();
+//         if (!withinRange(ts)) return; // เก็บเฉพาะที่อยู่ในช่วงที่เลือก เพื่อลดภาระ
+
+//         setHistory(prev => {
+//             const next: HistoryRow = {
+//                 ts,
+//                 VL1N: Number(doc.L1 ?? 0),
+//                 VL2N: Number(doc.L2 ?? 0),
+//                 VL3N: Number(doc.L3 ?? 0),
+//                 I1: Number(doc.I1 ?? 0),
+//                 I2: Number(doc.I2 ?? 0),
+//                 I3: Number(doc.I3 ?? 0),
+//                 PL1N: Number(doc.W1 ?? 0),
+//                 PL2N: Number(doc.W2 ?? 0),
+//                 PL3N: Number(doc.W3 ?? 0),
+//             };
+
+//             const merged = [...prev, next];
+//             const from = new Date(`${startDate}T00:00:00`).getTime();
+//             const to = new Date(`${endDate}T23:59:59`).getTime();
+//             const pruned = merged
+//                 .filter(r => {
+//                     const t = new Date(r.ts).getTime();
+//                     return t >= from && t <= to;
+//                 })
+//                 .slice(-5000); // เก็บล่าสุด 5k จุดพอ
+
+//             pruned.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+//             return pruned;
+//         });
+//     };
+
+//     const onInit = (e: MessageEvent) => {
+//         const doc = JSON.parse(e.data);
+//         setMdb(doc);
+//         setLoading(false);
+//         pushRealtimeToHistory(doc);
+//     };
+
+//     const onMsg = (e: MessageEvent) => {
+//         const doc = JSON.parse(e.data);
+//         setMdb(doc);
+//         pushRealtimeToHistory(doc);
+//     };
+
+//     const onErr = () => {
+//         setErr("SSE disconnected (auto-retry)");
+//         setLoading(false);
+//     };
+
+//     es.addEventListener("init", onInit);
+//     es.onmessage = onMsg;
+//     es.onerror = onErr;
+
+//     return () => {
+//         es.removeEventListener("init", onInit);
+//         es.close();
+//     };
+// }, [userLogin?.station_id, startDate, endDate]);
+
     // if (loading) return <p>Loading...</p>;
 
     // const station = userLogin ? mdb.find(it => it.station_id === userLogin.station_id) : null;
@@ -347,7 +423,7 @@ export default function MDBPage() {
         I1: num0(station?.I1),
         I2: num0(station?.I2),
         I3: num0(station?.I3),
-        totalCurrentA: num0((station?.I1)+(station?.I2)+(station?.I3)) ,
+        totalCurrentA: num0(station?.I1+station?.I2+station?.I3) ,
 
         powerKW: intDiv(station?.PL123N, 1000),
         totalEnergyKWh: intDiv(station?.EL123, 1000),
