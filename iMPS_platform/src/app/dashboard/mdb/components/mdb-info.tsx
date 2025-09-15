@@ -161,7 +161,7 @@ export default function MDBInfo({
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-red-500" : "tw-text-green-400"}`}
+                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-green-400" : "tw-text-red-500"}`}
                                 >
                                     Status: {mainBreakerStatus ? "ON" : "OFF"}
                                 </Typography>
@@ -182,7 +182,7 @@ export default function MDBInfo({
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                    className={`tw-font-semibold ${breakChargerStatus ? "tw-text-red-500" : "tw-text-green-400"}`}
+                                    className={`tw-font-semibold ${breakChargerStatus ? "tw-text-green-400" : "tw-text-red-500"}`}
                                 >
                                     Status: {breakChargerStatus ? "ON" : "OFF"}
                                 </Typography>
