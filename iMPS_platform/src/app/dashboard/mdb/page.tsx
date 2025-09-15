@@ -11,8 +11,6 @@ import {
 // components
 import DateRangePicker from "./components/date-range";
 import StatisticChart from "./components/statistics-chart";
-import BookingCards from "./components/booking-cards";
-// import Table from "./components/table";
 import StatisticsCards from "./components/statistics-cards";
 // import VoltageChart from "./components/area-chart";
 import MDBInfo from "./components/mdb-info";
@@ -32,9 +30,6 @@ type HistoryRow = {
     EL1?: number; EL2?: number; EL3?: number;
     [k: string]: any;
 };
-
-// map
-const WorldMap = dynamic(() => import("./components/world-map"), { ssr: false });
 
 // helper: format YYYY-MM-DD
 function fmt(d: Date) {
@@ -444,9 +439,6 @@ export default function MDBPage() {
             {/* ===== Statistics Charts (รับช่วงวันที่ไปใช้ได้) ===== */}
             {/* ถ้าคอมโพเนนต์กราฟของคุณรองรับ ให้ส่ง props ไปเลย */}
             <StatisticChart startDate={startDate} endDate={endDate} charts={charts} />
-
-            {/* Booking Cards */}
-            {/* <BookingCards /> */}
         </div>
     );
 }
