@@ -152,17 +152,21 @@ export default function MDBInfo({
                         {/* Mainbreaker */}
                         <div className="tw-flex tw-items-center tw-gap-3 tw-mt-3">
                             <div className="tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
-                                <BoltIcon className="tw-h-6 tw-w-6 tw-text-gray-700" />
+                                {/* <BoltIcon className="tw-h-6 tw-w-6 tw-text-gray-700" /> */}
+                                <PowerIcon className="tw-h-6 tw-w-6 tw-text-gray-700" />
                             </div>
                             <div className="tw-flex tw-flex-col">
                                 <Typography variant="small" color="blue-gray" className="tw-font-medium">
-                                    Mainbreaker
+                                    Main Breaker
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-green-600" : "tw-text-red-500"}`}
+                                //     className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-green-600" : "tw-text-red-500"}`}
+                                // >
+                                //     Status: {mainBreakerStatus ? "ON" : "OFF"}
+                                className={`tw-font-semibold  "tw-text-green-600" `}
                                 >
-                                    Status: {mainBreakerStatus ? "ON" : "OFF"}
+                                    Status: {"ON"}
                                 </Typography>
                             </div>
                         </div>
@@ -181,9 +185,9 @@ export default function MDBInfo({
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-green-600" : "tw-text-red-500"}`}
+                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-red-500": "tw-text-green-600" }`}
                                 >
-                                    Status: {mainBreakerStatus ? "ON" : "OFF"}
+                                    Status: { "ON" }
                                 </Typography>
                             </div>
                         </div>

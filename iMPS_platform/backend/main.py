@@ -1,8 +1,8 @@
-from fastapi import FastAPI,HTTPException,Depends, status,Request,Query
+from fastapi import FastAPI,HTTPException,Depends, status,Request,Query,APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder 
 from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
 from jose import JWTError,jwt
-from datetime import datetime,timedelta, UTC
+from datetime import datetime,timedelta, UTC, timezone, timedelta
 from passlib.hash import bcrypt
 from pymongo.errors import OperationFailure, PyMongoError
 from pymongo import MongoClient
@@ -15,6 +15,8 @@ from pdf.pdf_routes import router as pdf_router
 from fastapi.responses import StreamingResponse
 from typing import List, Any,Dict
 import bcrypt
+from dateutil import parser as dtparser
+from bson.decimal128 import Decimal128
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
@@ -255,6 +257,7 @@ async def mdb(request: Request, station_id: str | None = None):
 
     return StreamingResponse(event_generator(), headers=headers)
 
+
 # @app.get("/MDB/")
 # def list_mdb():
 #     docs = MDB_collection.find_one({}, {"password": 0},sort=[("Datetime",-1)])  # ซ่อน password ถ้ามี
@@ -363,7 +366,6 @@ async def mdb(request: Request, station_id: str | None = None):
 #     return StreamingResponse(event_generator(), headers=headers)
 
 def parse_iso_dt(s: str) -> datetime:
-    # รับ ISO string แล้วแปลงเป็น UTC datetime
     try:
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except Exception:
@@ -372,25 +374,371 @@ def parse_iso_dt(s: str) -> datetime:
 @app.get("/MDB/history")
 async def get_history(
     station_id: int = Query(...),
-    start: str = Query(...),  # ISO เช่น "2025-09-01T00:00:00Z"
-    end: str = Query(...),    # ISO เช่น "2025-09-15T23:59:59Z"
+    start: str = Query(...),  # เช่น "2025-09-01T00:00:00Z"
+    end: str = Query(...),    # เช่น "2025-09-15T23:59:59Z"
     limit: int = Query(50000, ge=1, le=200000),
 ) -> List[Any]:
     start_dt = parse_iso_dt(start)
     end_dt = parse_iso_dt(end)
 
-    # ถ้าใน DB field เวลาเก็บเป็น ISO string (เช่น "2025-09-15T12:34:56Z")
-    # ก็ยังเทียบได้เพราะ ISO เปรียบตาม lexicographical order ได้
-    # แต่ถ้าเก็บเป็น Date object (BSON datetime) ก็เทียบแบบ datetime ได้เลย
-    q = {
-        "station_id": station_id,
-        "Datetime": {"$gte": start_dt, "$lte": end_dt},  # ถ้า Datetime เป็น Date object
-        # ถ้า Datetime เป็น string ISO: ใช้ {"$gte": start, "$lte": end}
-    }
+    count = await MDB_collection.count_documents({
+        "station_id": 7,
+        "Datetime": {"$gte": "2025-09-14T00:00:00Z", "$lte": "2025-09-15T23:59:59Z"}
+    })
+    print(count)
+
+    # ทดลองดู sample document
+    sample = await MDB_collection.find_one({"station_id": station_id}, {"Datetime": 1})
+    if not sample:
+        return []
+
+    dt_val = sample.get("Datetime")
+
+    if isinstance(dt_val, str):
+        # ถ้าใน DB เก็บเป็น string → ใช้ string ช่วงเวลา
+        q = {
+            "station_id": station_id,
+            "Datetime": {"$gte": start, "$lte": end}
+        }
+    else:
+        # ถ้าใน DB เก็บเป็น datetime object → ใช้ datetime object
+        q = {
+            "station_id": station_id,
+            "Datetime": {"$gte": start_dt, "$lte": end_dt}
+        }
 
     cursor = MDB_collection.find(q).sort("Datetime", 1).limit(limit)
     docs = []
     async for d in cursor:
-        d["_id"] = str(d["_id"])  # แปลงเป็น string เพื่อส่งออก
+        d["_id"] = str(d["_id"])
         docs.append(d)
     return docs
+
+# @app.get("/MDB/history/last24")
+# async def get_last_24h(
+#     station_id: int = Query(...),
+#     step_sec: int = Query(60, ge=5, le=3600),
+#     limit: int = Query(20000, ge=1, le=200000),
+# ) -> List[Any]:
+#     end_dt = datetime.now(timezone.utc)
+#     start_dt = end_dt - timedelta(hours=24)
+
+#     # DB ของคุณเก็บ Datetime เป็น "string" ISO → ใช้ string ช่วงเวลา
+#     start_iso = start_dt.isoformat().replace("+00:00", "Z")
+#     end_iso   = end_dt.isoformat().replace("+00:00", "Z")
+
+#     pipeline = [
+#         {"$match": {
+#             "station_id": station_id,
+#             "Datetime": {"$gte": start_iso, "$lte": end_iso}
+#         }},
+#         # แปลง string → date เพื่อทำ bin เป็น step_sec
+#         {"$addFields": {
+#             "_dt": {"$dateFromString": {"dateString": "$Datetime"}}
+#         }},
+#         # ดึงฟิลด์ตาม schema จริงของคุณ
+#         {"$project": {
+#             "_id": 0,
+#             "_dt": 1,
+#             "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1, "PL1N": 1, "PL2N": 1, "PL3N": 1
+#         }},
+#         # ทำ bin ตาม step_sec
+#         {"$addFields": {
+#             "bin": {
+#                 "$toDate": {
+#                     "$subtract": [
+#                         {"$toLong": "$_dt"},
+#                         {"$mod": [{"$toLong": "$_dt"}, step_sec * 1000]}
+#                     ]
+#                 }
+#             }
+#         }},
+#         # คำนวณค่าเฉลี่ยราย bin
+#         {"$group": {
+#             "_id": "$bin",
+#             "VL1N": {"$avg": "$VL1N"},
+#             "VL2N": {"$avg": "$VL2N"},
+#             "VL3N": {"$avg": "$VL3N"},
+#             "I1": {"$avg": "$I1"},
+#             "I2": {"$avg": "$I2"},
+#             "I3": {"$avg": "$I3"},
+#             "PL1N": {"$avg": "$PL1N"},
+#             "PL2N": {"$avg": "$PL2N"},
+#             "PL3N": {"$avg": "$PL3N"},
+#         }},
+#         {"$sort": {"_id": 1}},
+#         {"$limit": limit},
+#         # คืนค่า timestamp เป็น ISO และ (ถ้าจำเป็น) map ชื่อกลับเป็น L1/L2/L3 ให้ frontend เดิมใช้ต่อได้
+#         {"$project": {
+#             "t": {"$dateToString": {"format": "%Y-%m-%dT%H:%M:%SZ", "date": "$_id"}},
+#             "L1": "$VL1N",
+#             "L2": "$VL2N",
+#             "L3": "$VL3N",
+#             "I1": "$I1",
+#             "I2": "$I2",
+#             "I3": "$I3",
+#             "W1": "$PL1N",
+#             "W2": "$PL2N",
+#             "W3": "$PL3N",
+#             "_id": 0
+#         }},
+#     ]
+
+#     cursor = MDB_collection.aggregate(pipeline, allowDiskUse=True, maxTimeMS=10000)
+#     out = []
+#     async for d in cursor:
+#         out.append(d)
+#     return out
+
+def to_float(x, default=0.0):
+    try:
+        if x is None:
+            return default
+        if isinstance(x, (int, float)):
+            return float(x)
+        if isinstance(x, Decimal128):
+            return float(x.to_decimal())
+        s = str(x).strip().replace(",", ".")
+        return float(s)
+    except Exception:
+        return default
+
+async def change_stream_generator():
+    # MongoDB Change Stream
+    change_stream = MDB_collection.watch()
+
+    async for change in change_stream:
+        # ดึงข้อมูลใหม่จาก change stream
+        if "fullDocument" in change:
+            doc = change["fullDocument"]
+            # สร้าง payload ที่จะส่งไปยัง client
+            payload = {
+                "t": doc["Datetime"],
+                "L1": doc["VL1N"],
+                "L2": doc["VL2N"],
+                "L3": doc["VL3N"],
+                "I1": doc["I1"],
+                "I2": doc["I2"],
+                "I3": doc["I3"],
+                "W1": doc["PL1N"],
+                "W2": doc["PL2N"],
+                "W3": doc["PL3N"]
+            }
+            # ส่งข้อมูลไปยัง client
+            yield f"data: {json.dumps(payload)}\n\n"
+
+@app.get("/MDB/history/last24")
+async def get_last_24h(request: Request) -> StreamingResponse:
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",  # กัน proxy buffering
+    }
+
+    return StreamingResponse(change_stream_generator(), headers=headers)
+# @app.get("/MDB/history/last24")
+# async def get_last_24h(
+#     request: Request,
+#     station_id: int = Query(...),
+#     step_sec: int = Query(60, ge=5, le=3600),
+#     limit: int = Query(20000, ge=1, le=200000),
+# ) -> StreamingResponse:
+#     """
+#     ส่งข้อมูลย้อนหลัง 24 ชม. และอัปเดตข้อมูลทุก 1-3 วินาที
+#     """
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",  # กัน proxy บัฟเฟอร์
+#     }
+
+#     async def event_generator():
+#         # ---- ดึงข้อมูลย้อนหลัง 24 ชม. ----
+#         end_dt = datetime.now(timezone.utc)
+#         start_dt = end_dt - timedelta(hours=24)
+
+#         start_iso = start_dt.isoformat().replace("+00:00", "Z")
+#         end_iso = end_dt.isoformat().replace("+00:00", "Z")
+
+#         pipeline = [
+#             {"$match": {
+#                 "station_id": station_id,
+#                 "Datetime": {"$gte": start_iso, "$lte": end_iso}
+#             }},
+#             {"$addFields": {
+#                 "_dt": {"$dateFromString": {"dateString": "$Datetime"}}
+#             }},
+#             {"$project": {
+#                 "_id": 0,
+#                 "_dt": 1,
+#                 "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1,
+#                 "PL1N": 1, "PL2N": 1, "PL3N": 1
+#             }},
+#             {"$addFields": {
+#                 "bin": {
+#                     "$toDate": {
+#                         "$subtract": [
+#                             {"$toLong": "$_dt"},
+#                             {"$mod": [{"$toLong": "$_dt"}, step_sec * 1000]}
+#                         ]
+#                     }
+#                 }
+#             }},
+#             {"$group": {
+#                 "_id": "$bin",
+#                 "VL1N": {"$avg": "$VL1N"},
+#                 "VL2N": {"$avg": "$VL2N"},
+#                 "VL3N": {"$avg": "$VL3N"},
+#                 "I1": {"$avg": "$I1"},
+#                 "I2": {"$avg": "$I2"},
+#                 "I3": {"$avg": "$I3"},
+#                 "PL1N": {"$avg": "$PL1N"},
+#                 "PL2N": {"$avg": "$PL2N"},
+#                 "PL3N": {"$avg": "$PL3N"}
+#             }},
+#             {"$sort": {"_id": 1}},
+#             {"$limit": limit},
+#             {"$project": {
+#                 "t": {"$dateToString": {"format": "%Y-%m-%dT%H:%M:%SZ", "date": "$_id"}},
+#                 "L1": "$VL1N",
+#                 "L2": "$VL2N",
+#                 "L3": "$VL3N",
+#                 "I1": "$I1",
+#                 "I2": "$I2",
+#                 "I3": "$I3",
+#                 "W1": "$PL1N",
+#                 "W2": "$PL2N",
+#                 "W3": "$PL3N",
+#                 "_id": 0
+#             }}
+#         ]
+
+#         # ส่งข้อมูลย้อนหลัง 24 ชม. (snapshot)
+#         cursor = MDB_collection.aggregate(pipeline, allowDiskUse=True, maxTimeMS=10000)
+#         sent_any = False
+#         async for d in cursor:
+#             sent_any = True
+#             yield f"data: {json.dumps(d)}\n\n"
+
+#         # เช็กข้อมูลใหม่ทุก 1–3 วินาที
+#         last_time = end_dt
+#         while True:
+#             if await request.is_disconnected():
+#                 break
+
+#             # ดึงข้อมูลที่มี timestamp ล่าสุดกว่าที่เราเคยส่งไป
+#             q = {
+#                 "station_id": station_id,
+#                 "Datetime": {"$gt": last_time.isoformat().replace("+00:00", "Z")}
+#             }
+
+#             cursor = MDB_collection.find(
+#                 q,
+#                 sort=[("Datetime", 1)],
+#                 limit=500,
+#                 projection={"_id": 1, "Datetime": 1, "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1, "PL1N": 1, "PL2N": 1, "PL3N": 1}
+#             )
+
+#             sent_any = False
+#             async for doc in cursor:
+#                 last_time = doc["Datetime"]
+#                 payload = {
+#                     "t": last_time,
+#                     "L1": to_float(doc.get("VL1N")),
+#                     "L2": to_float(doc.get("VL2N")),
+#                     "L3": to_float(doc.get("VL3N")),
+#                     "I1": to_float(doc.get("I1")),
+#                     "I2": to_float(doc.get("I2")),
+#                     "I3": to_float(doc.get("I3")),
+#                     "W1": to_float(doc.get("PL1N")),
+#                     "W2": to_float(doc.get("PL2N")),
+#                     "W3": to_float(doc.get("PL3N"))
+#                 }
+#                 yield f"data: {json.dumps(payload)}\n\n"
+#                 sent_any = True
+
+#             # ถ้าไม่มีข้อมูลใหม่ก็ส่ง keep-alive
+#             if not sent_any:
+#                 yield ": keep-alive\n\n"
+
+#             await asyncio.sleep(3)  # เช็กข้อมูลใหม่ทุก 3 วินาที
+
+#     return StreamingResponse(event_generator(), headers=headers)
+
+def floor_bin(dt: datetime, step_sec: int) -> datetime:
+    epoch_ms = int(dt.timestamp() * 1000)
+    bin_ms = epoch_ms - (epoch_ms % (step_sec * 1000))
+    return datetime.fromtimestamp(bin_ms / 1000, tz=timezone.utc)
+
+
+
+def to_json(doc):
+    doc = dict(doc)
+    doc["_id"] = str(doc["_id"])
+    return json.dumps(doc, default=str)
+
+@app.get("/MDB/stream")
+async def mdb_stream(
+    request: Request,
+    station_id: int = Query(...),
+    step_sec: int = Query(60, ge=5, le=3600),
+):
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    async def event_generator():
+        # ส่งค่าให้ client รู้ว่าจะ reconnect ในกี่ ms ถ้าหลุด
+        yield "retry: 3000\n\n"
+
+        q = {"station_id": station_id}
+        last_iso = None  # Datetime ล่าสุดที่ได้ส่งไปแล้ว
+
+        # ส่ง snapshot ล่าสุดทันที
+        latest = await MDB_collection.find_one(q, sort=[("Datetime", -1)])
+        if latest:
+            last_iso = latest.get("Datetime")
+            yield f"event: init\ndata: {to_json(latest)}\n\n"
+        else:
+            yield ": keep-alive\n\n"
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            # ดึงเฉพาะเอกสารที่ Datetime > last_iso
+            mq = {"station_id": station_id}
+            if last_iso:
+                mq["Datetime"] = {"$gt": last_iso}
+
+            cursor = MDB_collection.find(mq).sort("Datetime", 1).limit(500)
+            sent_any = False
+            async for d in cursor:
+                last_iso = d["Datetime"]
+                # map เป็น payloadที่กราฟคุณรอ (เช่น L1/L2/L3)
+                payload = {
+                    "t": last_iso,                # ISO จาก DB (UTC)
+                    "L1": float(d.get("VL1N", 0)),
+                    "L2": float(d.get("VL2N", 0)),
+                    "L3": float(d.get("VL3N", 0)),
+                    "I1": float(d.get("I1", 0)),
+                    "I2": float(d.get("I2", 0)),
+                    "I3": float(d.get("I3", 0)),
+                    "W1": float(d.get("PL1N", 0)),
+                    "W2": float(d.get("PL2N", 0)),
+                    "W3": float(d.get("PL3N", 0)),
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
+                sent_any = True
+
+            if not sent_any:
+                yield ": keep-alive\n\n"
+
+            await asyncio.sleep(2)  # ← ปรับเป็น 1–3 วิ ตามความถี่ที่ต้องการ
+
+    return StreamingResponse(event_generator(), headers=headers)
