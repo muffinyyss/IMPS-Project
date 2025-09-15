@@ -759,7 +759,15 @@ async def get_last_24h(
             if await request.is_disconnected():
                 break
 
+                
             # ดึงข้อมูลที่มี timestamp ล่าสุดกว่าที่เราเคยส่งไป
+            # q = {
+            #     "station_id": station_id,
+            #     "Datetime": {"$gt": last_time.isoformat().replace("+00:00", "Z")}
+            # }
+            if isinstance(last_time, str):
+                last_time = datetime.fromisoformat(last_time)
+
             q = {
                 "station_id": station_id,
                 "Datetime": {"$gt": last_time.isoformat().replace("+00:00", "Z")}
@@ -794,7 +802,7 @@ async def get_last_24h(
             if not sent_any:
                 yield ": keep-alive\n\n"
 
-            await asyncio.sleep(3)  # เช็กข้อมูลใหม่ทุก 3 วินาที
+            await asyncio.sleep(300)  # เช็กข้อมูลใหม่ทุก 3 วินาที
 
     return StreamingResponse(event_generator(), headers=headers)
 
