@@ -93,9 +93,25 @@ export default function MDBPage() {
         if (endDate && v && new Date(v) > new Date(endDate)) setEndDate(v);
     };
     const handleEndChange = (v: string) => {
-        if (startDate && v && new Date(v) < new Date(startDate)) setStartDate(v);
-        setEndDate(v);
+        const chosen = new Date(v);
+        const cap = new Date(MAX_END);
+
+        let next = v;
+        if (v && chosen > cap) next = MAX_END; // clamp ไปที่พรุ่งนี้
+
+        if (startDate && next && new Date(next) < new Date(startDate)) {
+            setStartDate(next);
+        }
+        setEndDate(next);
     };
+
+
+    const end_date = useMemo(() => {
+        const d = new Date();
+        d.setDate(d.getDate());
+        return d;
+    }, []);
+    const MAX_END = fmt(end_date);
 
     // useEffect(() => {
     //     const fetchUsers = async () => {
@@ -434,6 +450,7 @@ export default function MDBPage() {
                 endDate={endDate}
                 onStartChange={handleStartChange}
                 onEndChange={handleEndChange}
+                maxEndDate={MAX_END}
             />
 
             {/* ===== Statistics Charts (รับช่วงวันที่ไปใช้ได้) ===== */}
