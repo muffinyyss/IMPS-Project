@@ -5,7 +5,7 @@ from jose import JWTError,jwt
 from datetime import datetime,timedelta, UTC
 from passlib.hash import bcrypt
 from pymongo.errors import OperationFailure, PyMongoError
-# from pymongo import MongoClient
+from pymongo import MongoClient
 from pydantic import BaseModel
 from bson.objectid import ObjectId
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,10 +26,10 @@ from pdf.pdf_routes import router as pdf_router
 
 app = FastAPI()
 
-# client = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
+client1 = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
 client = AsyncIOMotorClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
 
-db = client["iMPS"]
+db = client1["iMPS"]
 users_collection = db["users"]
 station_collection = db["stations"]
 
