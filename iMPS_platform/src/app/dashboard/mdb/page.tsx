@@ -12,7 +12,6 @@ import {
 import DateRangePicker from "./components/date-range";
 import StatisticChart from "./components/statistics-chart";
 import StatisticsCards from "./components/statistics-cards";
-// import VoltageChart from "./components/area-chart";
 import MDBInfo from "./components/mdb-info";
 // import { floated } from "@material-tailwind/react/types/components/card";
 // import { it } from "node:test";
@@ -37,6 +36,12 @@ function fmt(d: Date) {
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
+}
+// helper: คืน Date ของ "เมื่อวาน"
+function getYesterdayDate() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d;
 }
 type Me = {
     username: string;
@@ -78,11 +83,14 @@ export default function MDBPage() {
 
     // default: ล่าสุด 30 วัน
     const today = useMemo(() => new Date(), []);
+    const yesterday = useMemo(() => getYesterdayDate(), []);
     const thirtyDaysAgo = useMemo(() => {
         const d = new Date();
         d.setDate(d.getDate() - 1);
         return d;
     }, []);
+
+
 
     const [startDate, setStartDate] = useState<string>(fmt(thirtyDaysAgo));
     const [endDate, setEndDate] = useState<string>(fmt(today));
@@ -116,6 +124,34 @@ export default function MDBPage() {
         return d;
     }, []);
     const MAX_END = fmt(end_date);
+
+    // ให้ DateRangePicker แก้ 'draft' เท่านั้น (ยังไม่กระทบค่าจริงจนกด Apply)
+    const handleDraftStartChange = (v: string) => {
+        // ถ้าผู้ใช้เคลียร์เป็นค่าว่าง -> ให้ fallback เป็น "เมื่อวาน"
+        const next = v?.trim() ? v : fmt(getYesterdayDate());
+
+        setDraftStart(next);
+
+        // guard: ถ้า start > end ให้ขยับ end ตาม
+        if (draftEnd && new Date(next) > new Date(draftEnd)) {
+            setDraftEnd(next);
+        }
+    };
+
+    const handleDraftEndChange = (v: string) => {
+        // clamp ไม่ให้ end เกิน MAX_END (วันนี้)
+        let next = v;
+        if (v && new Date(v) > new Date(MAX_END)) next = MAX_END;
+
+        // guard: ถ้า end < start ให้ขยับ start ลง
+        if (draftStart && next && new Date(next) < new Date(draftStart)) {
+            setDraftStart(next);
+        }
+        setDraftEnd(next);
+    };
+
+
+
 
     // useEffect(() => {
     //     const fetchUsers = async () => {
@@ -389,9 +425,26 @@ export default function MDBPage() {
     };
 
     const applyRange = () => {
-        setStartDate(draftStart);
-        setEndDate(draftEnd);
+        const fallbackYesterday = fmt(getYesterdayDate());
+
+        // ถ้าไม่เลือก start -> ใช้เมื่อวาน
+        const safeStart = draftStart?.trim() ? draftStart : fallbackYesterday;
+
+        // end ถ้าไม่เลือกให้คงค่าปัจจุบันไว้ หรือคุณจะเปลี่ยนเป็นวันนี้ก็ได้
+        let safeEnd = draftEnd?.trim() ? draftEnd : endDate;
+
+        // ไม่ให้เกิน MAX_END (เช่น วันนี้)
+        if (new Date(safeEnd) > new Date(MAX_END)) {
+            safeEnd = MAX_END;
+        }
+
+        // บังคับ start <= end
+        const finalStart = new Date(safeStart) > new Date(safeEnd) ? safeEnd : safeStart;
+
+        setStartDate(finalStart);
+        setEndDate(safeEnd);
     };
+
     const MDB_type = statisticsChartsData(MDB)
 
     // const charts = data_MDB(MDB)
@@ -453,13 +506,14 @@ export default function MDBPage() {
 
             {/* ===== Date range ก่อนกราฟทั้งสาม ===== */}
             <DateRangePicker
-                startDate={startDate}
-                endDate={endDate}
-                onStartChange={handleStartChange}
-                onEndChange={handleEndChange}
+                startDate={draftStart}
+                endDate={draftEnd}
+                onStartChange={handleDraftStartChange}
+                onEndChange={handleDraftEndChange}
                 onApply={applyRange}
                 maxEndDate={MAX_END}
             />
+
 
             {/* ===== Statistics Charts (รับช่วงวันที่ไปใช้ได้) ===== */}
             {/* ถ้าคอมโพเนนต์กราฟของคุณรองรับ ให้ส่ง props ไปเลย */}
