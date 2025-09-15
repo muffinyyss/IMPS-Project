@@ -9,6 +9,7 @@ type Props = {
   onEndChange: (v: string) => void;
   title?: string;
   subtitle?: string;
+  maxEndDate?: string; // รูปแบบ YYYY-MM-DD
 };
 
 export default function DateRangePicker({
@@ -18,6 +19,7 @@ export default function DateRangePicker({
   onEndChange,
   title = "เลือกช่วงวันที่สำหรับกราฟ",
   subtitle = "ใช้กับกราฟด้านล่างทั้งสาม",
+  maxEndDate,
 }: Props) {
   return (
     <Card className="tw-mb-4 tw-border tw-border-blue-gray-100 tw-shadow-sm">
@@ -51,6 +53,7 @@ export default function DateRangePicker({
               value={endDate}
               min={startDate || undefined}
               onChange={(e) => onEndChange(e.target.value)}
+              max={maxEndDate}
             />
           </label>
         </div>
