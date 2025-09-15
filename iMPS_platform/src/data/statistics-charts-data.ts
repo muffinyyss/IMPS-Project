@@ -6,24 +6,44 @@ export type HistoryRow = {
   VL1N?: number; VL2N?: number; VL3N?: number;
   I1?: number; I2?: number; I3?: number;
   PL1N?: number; PL2N?: number; PL3N?: number;
-  EL1?: number; EL2?: number; EL3?: number;
   [k: string]: any;
 };
-const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-const toXY = (rows: HistoryRow[], key: keyof HistoryRow) =>
-  rows.filter(r => r.ts).map(r => ({ x: r.ts, y: num(r[key]) }));
+type Point = { x: string; y: number | null };
+const toNumOrNull = (v: any) =>
+  (typeof v === "number" && Number.isFinite(v)) ? v : null;
+// const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0); 
+// const toXY = (rows: HistoryRow[], key: keyof HistoryRow) =>
+//   rows.filter(r => r.ts).map(r => ({ x: r.ts, y: num(r[key]) }));
+// เรียงเวลา + map เป็นจุด
+const toXY = (rows: HistoryRow[], key: keyof HistoryRow): Point[] =>
+  [...rows]
+    .filter(r => r.ts)
+    .sort((a, b) => a.ts.localeCompare(b.ts))
+    .map(r => ({ x: r.ts, y: toNumOrNull(r[key]) }));
 
+// const ensureMinPoints = (series: any[], padSec = 60) =>
+//   series.map((s) => {
+//     const arr = Array.isArray(s.data) ? [...s.data] : [];
+//     if (arr.length >= 2) return { ...s, data: arr };
+//     if (arr.length === 1) {
+//       const p0 = arr[0];
+//       const t0 = new Date(p0.x).getTime();
+//       const pPrev = { x: new Date(t0 - padSec * 1000).toISOString(), y: p0.y };
+//       return { ...s, data: [pPrev, p0] };
+//     }
+//     return { ...s, data: arr }; // ว่างก็ปล่อยว่าง
+//   });
 const ensureMinPoints = (series: any[], padSec = 60) =>
   series.map((s) => {
-    const arr = Array.isArray(s.data) ? [...s.data] : [];
+    const arr: Point[] = Array.isArray(s.data) ? [...s.data] : [];
     if (arr.length >= 2) return { ...s, data: arr };
     if (arr.length === 1) {
       const p0 = arr[0];
       const t0 = new Date(p0.x).getTime();
-      const pPrev = { x: new Date(t0 - padSec * 1000).toISOString(), y: p0.y };
+      const pPrev: Point = { x: new Date(t0 - padSec * 1000).toISOString(), y: p0.y };
       return { ...s, data: [pPrev, p0] };
     }
-    return { ...s, data: arr }; // ว่างก็ปล่อยว่าง
+    return { ...s, data: arr };
   });
 
 // const baseOptions = {
@@ -35,32 +55,127 @@ const ensureMinPoints = (series: any[], padSec = 60) =>
 //   legend: { show: true, position: "top" as const, horizontalAlign: "left" as const },
 // };
 
+// const baseOptions = {
+//   ...chartsConfig,
+//   chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
+//   xaxis: {
+//     type: "datetime",
+//     labels: {
+//       datetimeUTC: false,          // ✅ สำคัญ: ให้ใช้เวลาท้องถิ่น
+//       format: "HH:mm",
+//     },
+//   },
+//   tooltip: {
+//     x: {
+//       // ✅ บังคับแสดงแบบเวลาท้องถิ่น (ไทย)
+//       formatter: (val: number) =>
+//         new Date(val).toLocaleString("th-TH", {
+//           timeZone: "Asia/Bangkok",
+//           hour12: false,
+//           year: "numeric", month: "2-digit", day: "2-digit",
+//           hour: "2-digit", minute: "2-digit"
+//         }),
+//     },
+//   },
+//   stroke: { lineCap: "round", width: 3, curve: "smooth" },
+//   markers: { size: 3 },
+//   legend: { show: true, position: "top", horizontalAlign: "left" },
+// };
+
 const baseOptions = {
   ...chartsConfig,
   chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
   xaxis: {
     type: "datetime",
     labels: {
-      datetimeUTC: false,          // ✅ สำคัญ: ให้ใช้เวลาท้องถิ่น
+      datetimeUTC: false,            // ใช้เวลาเครื่อง (Asia/Bangkok)
       format: "HH:mm",
     },
   },
   tooltip: {
     x: {
-      // ✅ บังคับแสดงแบบเวลาท้องถิ่น (ไทย)
+      // ให้แสดงเป็นเวลาไทยเสมอ
       formatter: (val: number) =>
         new Date(val).toLocaleString("th-TH", {
           timeZone: "Asia/Bangkok",
           hour12: false,
           year: "numeric", month: "2-digit", day: "2-digit",
-          hour: "2-digit", minute: "2-digit"
+          hour: "2-digit", minute: "2-digit",
         }),
     },
   },
   stroke: { lineCap: "round", width: 3, curve: "smooth" },
   markers: { size: 3 },
   legend: { show: true, position: "top", horizontalAlign: "left" },
+  noData: { text: "No history data" }, // ✅ เพิ่ม
 };
+
+// export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
+//   const voltageSeries = ensureMinPoints([
+//     { name: "L1", data: toXY(history, "VL1N") },
+//     { name: "L2", data: toXY(history, "VL2N") },
+//     { name: "L3", data: toXY(history, "VL3N") },
+//   ]);
+//   const currentSeries = ensureMinPoints([
+//     { name: "I1", data: toXY(history, "I1") },
+//     { name: "I2", data: toXY(history, "I2") },
+//     { name: "I3", data: toXY(history, "I3") },
+//   ]);
+//   const powerSeries = ensureMinPoints([
+//     { name: "W1", data: toXY(history, "PL1N") },
+//     { name: "W2", data: toXY(history, "PL2N") },
+//     { name: "W3", data: toXY(history, "PL3N") },
+//   ]);
+
+//   const voltageChart = {
+//     type: "line",
+//     height: 220,
+//     series: voltageSeries,
+//     options: {
+//       ...baseOptions,
+//       yaxis: { labels: { formatter: (v: number) => `${v} V` } },
+//       tooltip: { x: { format: "yyyy-MM-dd HH:mm" }, y: { formatter: (v: number) => `${v} V` } },
+//     },
+//   };
+
+//   const currentChart = {
+//     type: "line",
+//     height: 220,
+//     series: currentSeries,
+//     options: {
+//       ...baseOptions,
+//       yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} A` } },
+//       tooltip: { shared: true, intersect: false, x: { format: "yyyy-MM-dd HH:mm" }, y: { formatter: (v: number) => `${v} A` } },
+//     },
+//   };
+
+//   const powerChart = {
+//     type: "line",
+//     height: 220,
+//     series: powerSeries,
+//     options: {
+//       ...baseOptions,
+//       yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} W` } },
+//       tooltip: { shared: true, intersect: false, x: { format: "yyyy-MM-dd HH:mm" }, y: { formatter: (v: number) => `${v} W` } },
+//     },
+//   };
+
+//   return [
+//     { color: "white", title: "Voltage Line to Neutral (V)", description: "Real-time from SSE", chart: voltageChart,
+//       metrics: [{ label: "L1", value: `${MDB.VL1N} V` }, { label: "L2", value: `${MDB.VL2N} V` }, { label: "L3", value: `${MDB.VL3N} V` }] },
+//     { color: "white", title: "Current (A)", description: "Real-time from SSE", chart: currentChart,
+//       metrics: [{ label: "I1", value: `${MDB.I1} A` }, { label: "I2", value: `${MDB.I2} A` }, { label: "I3", value: `${MDB.I3} A` }] },
+//     { color: "white", title: "Power (W)", description: "Real-time from SSE", chart: powerChart,
+//       metrics: [{ label: "W1", value: `${MDB.PL1N} W` }, { label: "W2", value: `${MDB.PL2N} W` }, { label: "W3", value: `${MDB.PL3N} W` }] },
+//   ];
+// }
+
+// export const statisticsChartsData = (MDB: MDBType, history: HistoryRow[] = []) =>
+//   buildChartsFromHistory(MDB, history);
+// export const data_MDB = (MDB: MDBType, history: HistoryRow[] = []) =>
+//   statisticsChartsData(MDB, history);
+// export default { statisticsChartsData, data_MDB, buildChartsFromHistory };
+
 
 export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
   const voltageSeries = ensureMinPoints([
@@ -86,7 +201,8 @@ export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
     options: {
       ...baseOptions,
       yaxis: { labels: { formatter: (v: number) => `${v} V` } },
-      tooltip: { x: { format: "yyyy-MM-dd HH:mm" }, y: { formatter: (v: number) => `${v} V` } },
+      // ❗ ไม่ใส่ tooltip.x.format ที่นี่ เพื่อไม่ทับ formatter ใน baseOptions
+      tooltip: { y: { formatter: (v: number) => `${v} V` } },
     },
   };
 
@@ -97,7 +213,7 @@ export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
     options: {
       ...baseOptions,
       yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} A` } },
-      tooltip: { shared: true, intersect: false, x: { format: "yyyy-MM-dd HH:mm" }, y: { formatter: (v: number) => `${v} A` } },
+      tooltip: { shared: true, intersect: false, y: { formatter: (v: number) => `${v} A` } },
     },
   };
 
@@ -108,16 +224,19 @@ export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
     options: {
       ...baseOptions,
       yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} W` } },
-      tooltip: { shared: true, intersect: false, x: { format: "yyyy-MM-dd HH:mm" }, y: { formatter: (v: number) => `${v} W` } },
+      tooltip: { shared: true, intersect: false, y: { formatter: (v: number) => `${v} W` } },
     },
   };
 
   return [
-    { color: "white", title: "Voltage Line to Neutral (V)", description: "Real-time from SSE", chart: voltageChart,
+    { color: "white", title: "Voltage Line to Neutral (V)", description: "History/SSE",
+      chart: voltageChart,
       metrics: [{ label: "L1", value: `${MDB.VL1N} V` }, { label: "L2", value: `${MDB.VL2N} V` }, { label: "L3", value: `${MDB.VL3N} V` }] },
-    { color: "white", title: "Current (A)", description: "Real-time from SSE", chart: currentChart,
+    { color: "white", title: "Current (A)", description: "History/SSE",
+      chart: currentChart,
       metrics: [{ label: "I1", value: `${MDB.I1} A` }, { label: "I2", value: `${MDB.I2} A` }, { label: "I3", value: `${MDB.I3} A` }] },
-    { color: "white", title: "Power (W)", description: "Real-time from SSE", chart: powerChart,
+    { color: "white", title: "Power (W)", description: "History/SSE",
+      chart: powerChart,
       metrics: [{ label: "W1", value: `${MDB.PL1N} W` }, { label: "W2", value: `${MDB.PL2N} W` }, { label: "W3", value: `${MDB.PL3N} W` }] },
   ];
 }
@@ -127,6 +246,7 @@ export const statisticsChartsData = (MDB: MDBType, history: HistoryRow[] = []) =
 export const data_MDB = (MDB: MDBType, history: HistoryRow[] = []) =>
   statisticsChartsData(MDB, history);
 export default { statisticsChartsData, data_MDB, buildChartsFromHistory };
+
 /* ============ 1) Voltage (V) ============ */
 
 // const websiteViewsChart = {

@@ -87,6 +87,10 @@ export default function MDBPage() {
     const [startDate, setStartDate] = useState<string>(fmt(thirtyDaysAgo));
     const [endDate, setEndDate] = useState<string>(fmt(today));
 
+    // draft (ไว้แก้ใน UI ยังไม่ยิงโหลดจนกด Apply)
+    const [draftStart, setDraftStart] = useState<string>(fmt(thirtyDaysAgo));
+    const [draftEnd, setDraftEnd] = useState<string>(fmt(today));
+
     // guard: รักษาลอจิก start <= end
     const handleStartChange = (v: string) => {
         setStartDate(v);
@@ -384,7 +388,10 @@ export default function MDBPage() {
         breakChargerStatus: Boolean(station?.breakChargerStatus),
     };
 
-
+    const applyRange = () => {
+        setStartDate(draftStart);
+        setEndDate(draftEnd);
+    };
     const MDB_type = statisticsChartsData(MDB)
 
     // const charts = data_MDB(MDB)
@@ -450,6 +457,7 @@ export default function MDBPage() {
                 endDate={endDate}
                 onStartChange={handleStartChange}
                 onEndChange={handleEndChange}
+                onApply={applyRange}
                 maxEndDate={MAX_END}
             />
 
