@@ -80,7 +80,7 @@ export default function MDBPage() {
     const today = useMemo(() => new Date(), []);
     const thirtyDaysAgo = useMemo(() => {
         const d = new Date();
-        d.setDate(d.getDate() - 30);
+        d.setDate(d.getDate() - 1);
         return d;
     }, []);
 
