@@ -12,6 +12,7 @@ import {
 import DateRangePicker from "./components/date-range";
 import StatisticChart from "./components/statistics-chart";
 import StatisticsCards from "./components/statistics-cards";
+// import VoltageChart from "./components/area-chart";
 import MDBInfo from "./components/mdb-info";
 // import { floated } from "@material-tailwind/react/types/components/card";
 // import { it } from "node:test";
@@ -37,12 +38,6 @@ function fmt(d: Date) {
     const dd = String(d.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
 }
-// helper: คืน Date ของ "เมื่อวาน"
-function getYesterdayDate() {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d;
-}
 type Me = {
     username: string;
     role?: string;
@@ -64,13 +59,13 @@ const int0 = (v: any) => {
     const n = Number(v);
     return Number.isFinite(n) ? Math.trunc(n) : 0;
 };
-// const num0 = (v: any) => {
-//     const n = Number(v);
-//     return Number.isFinite(n) ? n : 0;
-// };
+const num0 = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+};
 const intDiv = (v: any, d: number) => {
     const n = Number(v);
-    return Number.isFinite(n) && d ? Math.trunc(n / d) : 0;
+    return Number.isFinite(n) && d ? (n / d).toFixed(2) : "0.00"; 
 };
 
 export default function MDBPage() {
@@ -83,14 +78,11 @@ export default function MDBPage() {
 
     // default: ล่าสุด 30 วัน
     const today = useMemo(() => new Date(), []);
-    const yesterday = useMemo(() => getYesterdayDate(), []);
     const thirtyDaysAgo = useMemo(() => {
         const d = new Date();
         d.setDate(d.getDate() - 1);
         return d;
     }, []);
-
-
 
     const [startDate, setStartDate] = useState<string>(fmt(thirtyDaysAgo));
     const [endDate, setEndDate] = useState<string>(fmt(today));
@@ -124,34 +116,6 @@ export default function MDBPage() {
         return d;
     }, []);
     const MAX_END = fmt(end_date);
-
-    // ให้ DateRangePicker แก้ 'draft' เท่านั้น (ยังไม่กระทบค่าจริงจนกด Apply)
-    const handleDraftStartChange = (v: string) => {
-        // ถ้าผู้ใช้เคลียร์เป็นค่าว่าง -> ให้ fallback เป็น "เมื่อวาน"
-        const next = v?.trim() ? v : fmt(getYesterdayDate());
-
-        setDraftStart(next);
-
-        // guard: ถ้า start > end ให้ขยับ end ตาม
-        if (draftEnd && new Date(next) > new Date(draftEnd)) {
-            setDraftEnd(next);
-        }
-    };
-
-    const handleDraftEndChange = (v: string) => {
-        // clamp ไม่ให้ end เกิน MAX_END (วันนี้)
-        let next = v;
-        if (v && new Date(v) > new Date(MAX_END)) next = MAX_END;
-
-        // guard: ถ้า end < start ให้ขยับ start ลง
-        if (draftStart && next && new Date(next) < new Date(draftStart)) {
-            setDraftStart(next);
-        }
-        setDraftEnd(next);
-    };
-
-
-
 
     // useEffect(() => {
     //     const fetchUsers = async () => {
@@ -380,23 +344,23 @@ export default function MDBPage() {
         fanOn: true,
         rssiDb: 0,
 
-        I1: int0(station?.I1),
-        I2: int0(station?.I2),
-        I3: int0(station?.I3),
-        totalCurrentA: int0(station?.I_toal),
+        I1: num0(station?.I1),
+        I2: num0(station?.I2),
+        I3: num0(station?.I3),
+        totalCurrentA: num0((station?.I1)+(station?.I2)+(station?.I3)) ,
 
         powerKW: intDiv(station?.PL123N, 1000),
         totalEnergyKWh: intDiv(station?.EL123, 1000),
 
-        frequencyHz: int0(station?.frequency),
-        pfL1: int0(station?.pfL1),
-        pfL2: int0(station?.pfL2),
-        pfL3: int0(station?.pfL3),
+        frequencyHz: num0(station?.frequency),
+        pfL1: num0(station?.pfL1),
+        pfL2: num0(station?.pfL2),
+        pfL3: num0(station?.pfL3),
 
-        PL1N: int0(station?.PL1N),
-        PL2N: int0(station?.PL2N),
-        PL3N: int0(station?.PL3N),
-        PL123N: int0(station?.PL123N),
+        PL1N: num0(station?.PL1N),
+        PL2N: num0(station?.PL2N),
+        PL3N: num0(station?.PL3N),
+        PL123N: num0(station?.PL123N),
 
         EL1: intDiv(station?.EL1, 1000),
         EL2: intDiv(station?.EL2, 1000),
@@ -412,39 +376,22 @@ export default function MDBPage() {
         VL2L3: int0(station?.VL2L3),
         VL1L3: int0(station?.VL1L3),
 
-        thdvL1: int0(station?.THDU_L1N),
-        thdvL2: int0(station?.THDU_L2N),
-        thdvL3: int0(station?.THDU_L3N),
+        thdvL1: num0(station?.THDU_L1N),
+        thdvL2: num0(station?.THDU_L2N),
+        thdvL3: num0(station?.THDU_L3N),
 
-        thdiL1: int0(station?.THDI_L1),
-        thdiL2: int0(station?.THDI_L2),
-        thdiL3: int0(station?.THDI_L3),
+        thdiL1: num0(station?.THDI_L1),
+        thdiL2: num0(station?.THDI_L2),
+        thdiL3: num0(station?.THDI_L3),
 
         mainBreakerStatus: Boolean(station?.mainBreakerStatus),
         breakChargerStatus: Boolean(station?.breakChargerStatus),
     };
 
     const applyRange = () => {
-        const fallbackYesterday = fmt(getYesterdayDate());
-
-        // ถ้าไม่เลือก start -> ใช้เมื่อวาน
-        const safeStart = draftStart?.trim() ? draftStart : fallbackYesterday;
-
-        // end ถ้าไม่เลือกให้คงค่าปัจจุบันไว้ หรือคุณจะเปลี่ยนเป็นวันนี้ก็ได้
-        let safeEnd = draftEnd?.trim() ? draftEnd : endDate;
-
-        // ไม่ให้เกิน MAX_END (เช่น วันนี้)
-        if (new Date(safeEnd) > new Date(MAX_END)) {
-            safeEnd = MAX_END;
-        }
-
-        // บังคับ start <= end
-        const finalStart = new Date(safeStart) > new Date(safeEnd) ? safeEnd : safeStart;
-
-        setStartDate(finalStart);
-        setEndDate(safeEnd);
+        setStartDate(draftStart);
+        setEndDate(draftEnd);
     };
-
     const MDB_type = statisticsChartsData(MDB)
 
     // const charts = data_MDB(MDB)
@@ -506,14 +453,13 @@ export default function MDBPage() {
 
             {/* ===== Date range ก่อนกราฟทั้งสาม ===== */}
             <DateRangePicker
-                startDate={draftStart}
-                endDate={draftEnd}
-                onStartChange={handleDraftStartChange}
-                onEndChange={handleDraftEndChange}
+                startDate={startDate}
+                endDate={endDate}
+                onStartChange={handleStartChange}
+                onEndChange={handleEndChange}
                 onApply={applyRange}
                 maxEndDate={MAX_END}
             />
-
 
             {/* ===== Statistics Charts (รับช่วงวันที่ไปใช้ได้) ===== */}
             {/* ถ้าคอมโพเนนต์กราฟของคุณรองรับ ให้ส่ง props ไปเลย */}
