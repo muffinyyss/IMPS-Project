@@ -18,9 +18,9 @@ export type MDBType = {
     fanOn: boolean;
     rssiDb: number | string;
     // signalLevel?: 0 | 1 | 2 | 3 | 4;
-    I1: number | string;
-    I2: number | string;
-    I3: number | string;
+    I1:number | string;
+    I2:number | string;
+    I3:number | string;
     totalCurrentA: number | string;
     powerKW: number | string;
     totalEnergyKWh: number | string;
@@ -36,9 +36,9 @@ export type MDBType = {
     EL2: number | string;
     EL3: number | string;
     EL123: number | string;
-    VL1N: number | string;
-    VL2N: number | string;
-    VL3N: number | string;
+    VL1N:number | string;
+    VL2N:number | string;
+    VL3N:number | string;
     VL1L2: number | string;
     VL2L3: number | string;
     VL1L3: number | string;
@@ -161,11 +161,13 @@ export default function MDBInfo({
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-red-500" : "tw-text-green-400"}`}
+                                //     className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-green-600" : "tw-text-red-500"}`}
+                                // >
+                                //     Status: {mainBreakerStatus ? "ON" : "OFF"}
+                                className={`tw-font-semibold  "tw-text-green-600" `}
                                 >
-                                    Status: {mainBreakerStatus ? "ON" : "OFF"}
+                                    Status: {"ON"}
                                 </Typography>
-
                             </div>
                         </div>
 
@@ -183,9 +185,9 @@ export default function MDBInfo({
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                    className={`tw-font-semibold ${breakChargerStatus ? "tw-text-red-500" : "tw-text-green-400"}`}
+                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-red-500": "tw-text-green-600" }`}
                                 >
-                                    Status: {breakChargerStatus ? "ON" : "OFF"}
+                                    Status: { "ON" }
                                 </Typography>
                             </div>
                         </div>
