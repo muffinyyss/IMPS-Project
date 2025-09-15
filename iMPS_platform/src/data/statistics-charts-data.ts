@@ -111,9 +111,37 @@ const ensureMinPoints = (series: any[], padSec = 60) =>
 //   noData: { text: "No history data" }, // ✅ เพิ่ม
 // };
 
-const baseOptions = {
+// const baseOptions = {
+//   ...chartsConfig,
+//   chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
+//   xaxis: {
+//     type: "datetime",
+//     labels: {
+//       datetimeUTC: false, // ใช้เวลาเครื่อง (Asia/Bangkok)
+//       format: "HH:mm",    // รูปแบบแสดงเวลาเป็น "ชั่วโมง:นาที"
+//     },
+//     tickAmount: 6, // ตั้งค่าให้มี 6 ticks ในช่วง 24 ชั่วโมง (4 ชั่วโมงระหว่าง ticks)
+//     min: new Date().setHours(0, 0, 0, 0),  // กำหนดให้เริ่มจากเที่ยงคืน
+//     max: new Date().setHours(23, 59, 59, 999), // กำหนดให้สิ้นสุดที่เวลา 23:59
+//   },
+//   tooltip: {
+//     x: {
+//       formatter: (val: number) =>
+//         new Date(val).toLocaleString("th-TH", {
+//           timeZone: "Asia/Bangkok",
+//           hour12: false,
+//           year: "numeric", month: "2-digit", day: "2-digit",
+//           hour: "2-digit", minute: "2-digit",
+//         }),
+//     },
+//   },
+//   stroke: { lineCap: "round", width: 3, curve: "smooth" },
+//   markers: { size: 0 },
+//   legend: { show: true, position: "top", horizontalAlign: "left" },
+//   noData: { text: "No history data" },
+// };
+const baseOptions = { 
   ...chartsConfig,
-  
   chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
   xaxis: {
     type: "datetime",
@@ -125,16 +153,23 @@ const baseOptions = {
     min: new Date().setHours(0, 0, 0, 0),  // กำหนดให้เริ่มจากเที่ยงคืน
     max: new Date().setHours(23, 59, 59, 999), // กำหนดให้สิ้นสุดที่เวลา 23:59
   },
- 
   tooltip: {
     x: {
-      formatter: (val: number) =>
-        new Date(val).toLocaleString("th-TH", {
-          timeZone: "Asia/Bangkok",
-          hour12: false,
-          year: "numeric", month: "2-digit", day: "2-digit",
-          hour: "2-digit", minute: "2-digit",
-        }),
+      formatter: (val: number) => {
+        // ตรวจสอบว่า val เป็น number หรือไม่ และทำการแปลงเป็น Date หากจำเป็น
+        if (typeof val === "number") {
+          // ทำการลบเวลา 7 ชั่วโมงจาก val เพื่อย้อนกลับเวลา
+          const date = new Date(val - 7 * 60 * 60 * 1000); // ลบ 7 ชั่วโมง (7 * 60 * 60 * 1000 ms)
+
+          return date.toLocaleString("th-TH", {
+            timeZone: "Asia/Bangkok", // แสดงเวลาในประเทศไทย
+            hour12: false,
+            year: "numeric", month: "2-digit", day: "2-digit",
+            hour: "2-digit", minute: "2-digit",
+          });
+        }
+        return ""; // ถ้า val ไม่ใช่ number ก็จะคืนค่าเป็นสตริงว่าง
+      },
     },
   },
   stroke: { lineCap: "round", width: 3, curve: "smooth" },
@@ -142,6 +177,7 @@ const baseOptions = {
   legend: { show: true, position: "top", horizontalAlign: "left" },
   noData: { text: "No history data" },
 };
+
 
 // export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
 //   const voltageSeries = ensureMinPoints([
