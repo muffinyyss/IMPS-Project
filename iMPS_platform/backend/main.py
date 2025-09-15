@@ -527,145 +527,146 @@ async def change_stream_generator():
             # ส่งข้อมูลไปยัง client
             yield f"data: {json.dumps(payload)}\n\n"
 
-@app.get("/MDB/history/last24")
-async def get_last_24h(request: Request) -> StreamingResponse:
-    headers = {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",  # กัน proxy buffering
-    }
-
-    return StreamingResponse(change_stream_generator(), headers=headers)
 # @app.get("/MDB/history/last24")
-# async def get_last_24h(
-#     request: Request,
-#     station_id: int = Query(...),
-#     step_sec: int = Query(60, ge=5, le=3600),
-#     limit: int = Query(20000, ge=1, le=200000),
-# ) -> StreamingResponse:
-#     """
-#     ส่งข้อมูลย้อนหลัง 24 ชม. และอัปเดตข้อมูลทุก 1-3 วินาที
-#     """
+# async def get_last_24h(request: Request) -> StreamingResponse:
 #     headers = {
 #         "Content-Type": "text/event-stream",
 #         "Cache-Control": "no-cache",
 #         "Connection": "keep-alive",
-#         "X-Accel-Buffering": "no",  # กัน proxy บัฟเฟอร์
+#         "X-Accel-Buffering": "no",  # กัน proxy buffering
 #     }
 
-#     async def event_generator():
-#         # ---- ดึงข้อมูลย้อนหลัง 24 ชม. ----
-#         end_dt = datetime.now(timezone.utc)
-#         start_dt = end_dt - timedelta(hours=24)
+#     return StreamingResponse(change_stream_generator(), headers=headers)
 
-#         start_iso = start_dt.isoformat().replace("+00:00", "Z")
-#         end_iso = end_dt.isoformat().replace("+00:00", "Z")
+@app.get("/MDB/history/last24")
+async def get_last_24h(
+    request: Request,
+    station_id: int = Query(...),
+    step_sec: int = Query(300, ge=5, le=3600),
+    limit: int = Query(20000, ge=1, le=200000),
+) -> StreamingResponse:
+    """
+    ส่งข้อมูลย้อนหลัง 24 ชม. และอัปเดตข้อมูลทุก 1-3 วินาที
+    """
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",  # กัน proxy บัฟเฟอร์
+    }
 
-#         pipeline = [
-#             {"$match": {
-#                 "station_id": station_id,
-#                 "Datetime": {"$gte": start_iso, "$lte": end_iso}
-#             }},
-#             {"$addFields": {
-#                 "_dt": {"$dateFromString": {"dateString": "$Datetime"}}
-#             }},
-#             {"$project": {
-#                 "_id": 0,
-#                 "_dt": 1,
-#                 "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1,
-#                 "PL1N": 1, "PL2N": 1, "PL3N": 1
-#             }},
-#             {"$addFields": {
-#                 "bin": {
-#                     "$toDate": {
-#                         "$subtract": [
-#                             {"$toLong": "$_dt"},
-#                             {"$mod": [{"$toLong": "$_dt"}, step_sec * 1000]}
-#                         ]
-#                     }
-#                 }
-#             }},
-#             {"$group": {
-#                 "_id": "$bin",
-#                 "VL1N": {"$avg": "$VL1N"},
-#                 "VL2N": {"$avg": "$VL2N"},
-#                 "VL3N": {"$avg": "$VL3N"},
-#                 "I1": {"$avg": "$I1"},
-#                 "I2": {"$avg": "$I2"},
-#                 "I3": {"$avg": "$I3"},
-#                 "PL1N": {"$avg": "$PL1N"},
-#                 "PL2N": {"$avg": "$PL2N"},
-#                 "PL3N": {"$avg": "$PL3N"}
-#             }},
-#             {"$sort": {"_id": 1}},
-#             {"$limit": limit},
-#             {"$project": {
-#                 "t": {"$dateToString": {"format": "%Y-%m-%dT%H:%M:%SZ", "date": "$_id"}},
-#                 "L1": "$VL1N",
-#                 "L2": "$VL2N",
-#                 "L3": "$VL3N",
-#                 "I1": "$I1",
-#                 "I2": "$I2",
-#                 "I3": "$I3",
-#                 "W1": "$PL1N",
-#                 "W2": "$PL2N",
-#                 "W3": "$PL3N",
-#                 "_id": 0
-#             }}
-#         ]
+    async def event_generator():
+        # ---- ดึงข้อมูลย้อนหลัง 24 ชม. ----
+        end_dt = datetime.now(timezone.utc)
+        start_dt = end_dt - timedelta(hours=24)
 
-#         # ส่งข้อมูลย้อนหลัง 24 ชม. (snapshot)
-#         cursor = MDB_collection.aggregate(pipeline, allowDiskUse=True, maxTimeMS=10000)
-#         sent_any = False
-#         async for d in cursor:
-#             sent_any = True
-#             yield f"data: {json.dumps(d)}\n\n"
+        start_iso = start_dt.isoformat().replace("+00:00", "Z")
+        end_iso = end_dt.isoformat().replace("+00:00", "Z")
 
-#         # เช็กข้อมูลใหม่ทุก 1–3 วินาที
-#         last_time = end_dt
-#         while True:
-#             if await request.is_disconnected():
-#                 break
+        pipeline = [
+            {"$match": {
+                "station_id": station_id,
+                "Datetime": {"$gte": start_iso, "$lte": end_iso}
+            }},
+            {"$addFields": {
+                "_dt": {"$dateFromString": {"dateString": "$Datetime"}}
+            }},
+            {"$project": {
+                "_id": 0,
+                "_dt": 1,
+                "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1,
+                "PL1N": 1, "PL2N": 1, "PL3N": 1
+            }},
+            {"$addFields": {
+                "bin": {
+                    "$toDate": {
+                        "$subtract": [
+                            {"$toLong": "$_dt"},
+                            {"$mod": [{"$toLong": "$_dt"}, step_sec * 1000]}
+                        ]
+                    }
+                }
+            }},
+            {"$group": {
+                "_id": "$bin",
+                "VL1N": {"$avg": "$VL1N"},
+                "VL2N": {"$avg": "$VL2N"},
+                "VL3N": {"$avg": "$VL3N"},
+                "I1": {"$avg": "$I1"},
+                "I2": {"$avg": "$I2"},
+                "I3": {"$avg": "$I3"},
+                "PL1N": {"$avg": "$PL1N"},
+                "PL2N": {"$avg": "$PL2N"},
+                "PL3N": {"$avg": "$PL3N"}
+            }},
+            {"$sort": {"_id": 1}},
+            {"$limit": limit},
+            {"$project": {
+                "t": {"$dateToString": {"format": "%Y-%m-%dT%H:%M:%SZ", "date": "$_id"}},
+                "L1": "$VL1N",
+                "L2": "$VL2N",
+                "L3": "$VL3N",
+                "I1": "$I1",
+                "I2": "$I2",
+                "I3": "$I3",
+                "W1": "$PL1N",
+                "W2": "$PL2N",
+                "W3": "$PL3N",
+                "_id": 0
+            }}
+        ]
 
-#             # ดึงข้อมูลที่มี timestamp ล่าสุดกว่าที่เราเคยส่งไป
-#             q = {
-#                 "station_id": station_id,
-#                 "Datetime": {"$gt": last_time.isoformat().replace("+00:00", "Z")}
-#             }
+        # ส่งข้อมูลย้อนหลัง 24 ชม. (snapshot)
+        cursor = MDB_collection.aggregate(pipeline, allowDiskUse=True, maxTimeMS=10000)
+        sent_any = False
+        async for d in cursor:
+            sent_any = True
+            yield f"data: {json.dumps(d)}\n\n"
 
-#             cursor = MDB_collection.find(
-#                 q,
-#                 sort=[("Datetime", 1)],
-#                 limit=500,
-#                 projection={"_id": 1, "Datetime": 1, "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1, "PL1N": 1, "PL2N": 1, "PL3N": 1}
-#             )
+        # เช็กข้อมูลใหม่ทุก 1–3 วินาที
+        last_time = end_dt
+        while True:
+            if await request.is_disconnected():
+                break
 
-#             sent_any = False
-#             async for doc in cursor:
-#                 last_time = doc["Datetime"]
-#                 payload = {
-#                     "t": last_time,
-#                     "L1": to_float(doc.get("VL1N")),
-#                     "L2": to_float(doc.get("VL2N")),
-#                     "L3": to_float(doc.get("VL3N")),
-#                     "I1": to_float(doc.get("I1")),
-#                     "I2": to_float(doc.get("I2")),
-#                     "I3": to_float(doc.get("I3")),
-#                     "W1": to_float(doc.get("PL1N")),
-#                     "W2": to_float(doc.get("PL2N")),
-#                     "W3": to_float(doc.get("PL3N"))
-#                 }
-#                 yield f"data: {json.dumps(payload)}\n\n"
-#                 sent_any = True
+            # ดึงข้อมูลที่มี timestamp ล่าสุดกว่าที่เราเคยส่งไป
+            q = {
+                "station_id": station_id,
+                "Datetime": {"$gt": last_time.isoformat().replace("+00:00", "Z")}
+            }
 
-#             # ถ้าไม่มีข้อมูลใหม่ก็ส่ง keep-alive
-#             if not sent_any:
-#                 yield ": keep-alive\n\n"
+            cursor = MDB_collection.find(
+                q,
+                sort=[("Datetime", 1)],
+                limit=500,
+                projection={"_id": 1, "Datetime": 1, "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1, "PL1N": 1, "PL2N": 1, "PL3N": 1}
+            )
 
-#             await asyncio.sleep(3)  # เช็กข้อมูลใหม่ทุก 3 วินาที
+            sent_any = False
+            async for doc in cursor:
+                last_time = doc["Datetime"]
+                payload = {
+                    "t": last_time,
+                    "L1": to_float(doc.get("VL1N")),
+                    "L2": to_float(doc.get("VL2N")),
+                    "L3": to_float(doc.get("VL3N")),
+                    "I1": to_float(doc.get("I1")),
+                    "I2": to_float(doc.get("I2")),
+                    "I3": to_float(doc.get("I3")),
+                    "W1": to_float(doc.get("PL1N")),
+                    "W2": to_float(doc.get("PL2N")),
+                    "W3": to_float(doc.get("PL3N"))
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
+                sent_any = True
 
-#     return StreamingResponse(event_generator(), headers=headers)
+            # ถ้าไม่มีข้อมูลใหม่ก็ส่ง keep-alive
+            if not sent_any:
+                yield ": keep-alive\n\n"
+
+            await asyncio.sleep(3)  # เช็กข้อมูลใหม่ทุก 3 วินาที
+
+    return StreamingResponse(event_generator(), headers=headers)
 
 def floor_bin(dt: datetime, step_sec: int) -> datetime:
     epoch_ms = int(dt.timestamp() * 1000)

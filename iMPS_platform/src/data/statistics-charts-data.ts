@@ -6,6 +6,7 @@ export type HistoryRow = {
   VL1N?: number; VL2N?: number; VL3N?: number;
   I1?: number; I2?: number; I3?: number;
   PL1N?: number; PL2N?: number; PL3N?: number;
+  EL1?: number; EL2?: number; EL3?: number;
   [k: string]: any;
 };
 type Point = { x: string; y: number | null };
@@ -82,19 +83,51 @@ const ensureMinPoints = (series: any[], padSec = 60) =>
 //   legend: { show: true, position: "top", horizontalAlign: "left" },
 // };
 
+// const baseOptions = {
+//   ...chartsConfig,
+//   chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
+//   xaxis: {
+//     type: "datetime",
+//     labels: {
+//       datetimeUTC: false,            // ใช้เวลาเครื่อง (Asia/Bangkok)
+//       format: "HH:mm",
+//     },
+//   },
+//   tooltip: {
+//     x: {
+//       // ให้แสดงเป็นเวลาไทยเสมอ
+//       formatter: (val: number) =>
+//         new Date(val).toLocaleString("th-TH", {
+//           timeZone: "Asia/Bangkok",
+//           hour12: false,
+//           year: "numeric", month: "2-digit", day: "2-digit",
+//           hour: "2-digit", minute: "2-digit",
+//         }),
+//     },
+//   },
+//   stroke: { lineCap: "round", width: 3, curve: "smooth" },
+//   markers: { size: 0 },
+//   legend: { show: true, position: "top", horizontalAlign: "left" },
+//   noData: { text: "No history data" }, // ✅ เพิ่ม
+// };
+
 const baseOptions = {
   ...chartsConfig,
+  
   chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
   xaxis: {
     type: "datetime",
     labels: {
-      datetimeUTC: false,            // ใช้เวลาเครื่อง (Asia/Bangkok)
-      format: "HH:mm",
+      datetimeUTC: false, // ใช้เวลาเครื่อง (Asia/Bangkok)
+      format: "HH:mm",    // รูปแบบแสดงเวลาเป็น "ชั่วโมง:นาที"
     },
+    tickAmount: 6, // ตั้งค่าให้มี 6 ticks ในช่วง 24 ชั่วโมง (4 ชั่วโมงระหว่าง ticks)
+    min: new Date().setHours(0, 0, 0, 0),  // กำหนดให้เริ่มจากเที่ยงคืน
+    max: new Date().setHours(23, 59, 59, 999), // กำหนดให้สิ้นสุดที่เวลา 23:59
   },
+ 
   tooltip: {
     x: {
-      // ให้แสดงเป็นเวลาไทยเสมอ
       formatter: (val: number) =>
         new Date(val).toLocaleString("th-TH", {
           timeZone: "Asia/Bangkok",
@@ -105,9 +138,9 @@ const baseOptions = {
     },
   },
   stroke: { lineCap: "round", width: 3, curve: "smooth" },
-  markers: { size: 3 },
+  markers: { size: 0 },
   legend: { show: true, position: "top", horizontalAlign: "left" },
-  noData: { text: "No history data" }, // ✅ เพิ่ม
+  noData: { text: "No history data" },
 };
 
 // export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
