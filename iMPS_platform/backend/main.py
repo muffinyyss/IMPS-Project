@@ -1,4 +1,4 @@
-from fastapi import FastAPI,HTTPException,Depends, status,Request
+from fastapi import FastAPI,HTTPException,Depends, status,Request,Query
 from fastapi.encoders import jsonable_encoder 
 from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
 from jose import JWTError,jwt
@@ -13,7 +13,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import json, os, asyncio
 from pdf.pdf_routes import router as pdf_router
 from fastapi.responses import StreamingResponse
-
+from typing import List, Any,Dict
 import bcrypt
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
@@ -264,3 +264,133 @@ async def mdb(request: Request, station_id: str | None = None):
     
 #     return {"MDB": jsonable_encoder(docs, custom_encoder={ObjectId: str})}
     
+# DT_FIELD = "Datetime"  # <-- ใช้ชื่อตามสคีมาที่ให้มา
+
+# def parse_iso(s: str) -> datetime:
+#     # s ตัวอย่าง: "2025-09-15T12:55:21.559518"
+#     # จากที่ให้มาเป็น naive (ไม่มี timezone) — ใช้ fromisoformat ได้ตรง ๆ
+#     return datetime.fromisoformat(s)
+
+# def isoformat(dt: datetime) -> str:
+#     # ให้รูปแบบเหมือนใน DB (มี microseconds, ไม่มี timezone)
+#     return dt.isoformat(timespec="microseconds")
+
+# def to_json(doc) -> str:
+#     # ใส่ตัวแปลงที่คุณใช้อยู่ (เช่น orjson.dumps(doc).decode() หรือ custom)
+#     import json
+#     from bson import ObjectId
+#     def default(o):
+#         if isinstance(o, ObjectId):
+#             return str(o)
+#         return o
+#     return json.dumps(doc, default=default, ensure_ascii=False)
+
+# @app.get("/MDB/history")
+# async def mdb(request: Request, station_id: str | None = None, hours: int = 24):
+#     """
+#     SSE: ส่ง snapshot ย้อนหลัง `hours` ชั่วโมงจาก Datetime ล่าสุด แล้วสตรีมของใหม่ต่อ
+#     ไม่พลาดเอกสารที่แทรกระหว่างรอบ (sort ตาม (Datetime, _id))
+#     """
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",
+#     }
+
+#     async def event_generator():
+#         # ----- base query (รองรับ station_id เป็น str/number) -----
+#         q = {}
+#         if station_id is not None:
+#             in_list = [str(station_id)]
+#             try:
+#                 in_list.append(int(str(station_id)))
+#             except ValueError:
+#                 pass
+#             q["station_id"] = {"$in": in_list}
+
+#         # ----- หาเอกสารล่าสุดตามฟิลด์เวลา -----
+#         latest = await MDB_collection.find_one(q, sort=[(DT_FIELD, -1), ("_id", -1)])
+#         if not latest:
+#             # ไม่มีข้อมูล -> ส่ง keep-alive ต่อ
+#             yield ": keep-alive\n\n"
+#             while True:
+#                 if await request.is_disconnected():
+#                     break
+#                 yield ": keep-alive\n\n"
+#                 await asyncio.sleep(60)
+#             return
+
+#         latest_str = latest[DT_FIELD]                # string ISO จาก DB
+#         latest_dt  = parse_iso(latest_str)
+#         start_dt   = latest_dt - timedelta(hours=hours)
+#         start_str  = isoformat(start_dt)
+
+#         # ----- snapshot: เอกสารในช่วง [start_str, latest_str] เรียงเก่า -> ใหม่ -----
+#         last_dt_str = None
+#         last_id = None
+#         window_q = {**q, DT_FIELD: {"$gte": start_str, "$lte": latest_str}}
+#         async for doc in MDB_collection.find(window_q, sort=[(DT_FIELD, 1), ("_id", 1)]):
+#             last_dt_str = doc[DT_FIELD]
+#             last_id     = doc["_id"]
+#             yield f"event: init\ndata: {to_json(doc)}\n\n"
+
+#         # ----- วนเช็กของใหม่แบบไม่ตกหล่น -----
+#         while True:
+#             if await request.is_disconnected():
+#                 break
+
+#             cond = q.copy()
+#             if last_dt_str is not None and last_id is not None:
+#                 # ดึงเอกสารที่ Datetime มากกว่า หรือ Datetime เท่ากันแต่ _id ใหม่กว่า
+#                 cond["$or"] = [
+#                     {DT_FIELD: {"$gt": last_dt_str}},
+#                     {DT_FIELD: last_dt_str, "_id": {"$gt": last_id}},
+#                 ]
+
+#             sent_any = False
+#             async for doc in MDB_collection.find(cond, sort=[(DT_FIELD, 1), ("_id", 1)]):
+#                 sent_any   = True
+#                 last_dt_str = doc[DT_FIELD]
+#                 last_id     = doc["_id"]
+#                 yield f"data: {to_json(doc)}\n\n"
+
+#             if not sent_any:
+#                 yield ": keep-alive\n\n"
+
+#             await asyncio.sleep(3)  # ปรับได้ (1–5 วิ ถ้าอยากไวขึ้น)
+
+#     return StreamingResponse(event_generator(), headers=headers)
+
+def parse_iso_dt(s: str) -> datetime:
+    # รับ ISO string แล้วแปลงเป็น UTC datetime
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"Bad datetime: {s}")
+
+@app.get("/MDB/history")
+async def get_history(
+    station_id: int = Query(...),
+    start: str = Query(...),  # ISO เช่น "2025-09-01T00:00:00Z"
+    end: str = Query(...),    # ISO เช่น "2025-09-15T23:59:59Z"
+    limit: int = Query(50000, ge=1, le=200000),
+) -> List[Any]:
+    start_dt = parse_iso_dt(start)
+    end_dt = parse_iso_dt(end)
+
+    # ถ้าใน DB field เวลาเก็บเป็น ISO string (เช่น "2025-09-15T12:34:56Z")
+    # ก็ยังเทียบได้เพราะ ISO เปรียบตาม lexicographical order ได้
+    # แต่ถ้าเก็บเป็น Date object (BSON datetime) ก็เทียบแบบ datetime ได้เลย
+    q = {
+        "station_id": station_id,
+        "Datetime": {"$gte": start_dt, "$lte": end_dt},  # ถ้า Datetime เป็น Date object
+        # ถ้า Datetime เป็น string ISO: ใช้ {"$gte": start, "$lte": end}
+    }
+
+    cursor = MDB_collection.find(q).sort("Datetime", 1).limit(limit)
+    docs = []
+    async for d in cursor:
+        d["_id"] = str(d["_id"])  # แปลงเป็น string เพื่อส่งออก
+        docs.append(d)
+    return docs
