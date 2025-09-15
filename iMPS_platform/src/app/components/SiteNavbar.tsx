@@ -13,7 +13,7 @@ const navItems: NavItem[] = [
   { label: "Home", href: "/pages/mainpages/home", requireAuth: false },
   { label: "About", href: "/pages/mainpages/about", requireAuth: true },
   { label: "Contact", href: "/pages/mainpages/contact", requireAuth: true },
-  { label: "Dashboard", href: "/dashboard/analytics", requireAuth: true },
+  { label: "Dashboard", href: "/dashboard/chargers", requireAuth: true },
 ];
 
 export default function SiteNavbar() {
