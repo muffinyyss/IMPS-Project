@@ -60,11 +60,6 @@ export const routes = [
     ],
   },
   {
-    name: "Dashboard",
-    icon: <RectangleGroupIcon {...icon} />,
-    path: "/dashboard/analytics",
-  },
-  {
     name: "Charger",
     icon: <RectangleGroupIcon {...icon} />,
     path: "/dashboard/chargers",
