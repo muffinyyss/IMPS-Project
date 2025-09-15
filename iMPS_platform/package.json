@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -21,6 +21,7 @@
     "@react-jvectormap/world": "1.1.2",
     "@tanstack/react-table": "8.11.7",
     "apexcharts": "3.45.2",
+    "cors": "^2.8.5",
     "creditcardutils": "1.0.0",
     "date-fns": "3.3.1",
     "deepmerge": "4.3.1",

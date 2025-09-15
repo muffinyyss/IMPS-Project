@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { StatisticsCard } from "@/widgets/cards";
 
 type Props = {
@@ -18,6 +18,22 @@ export default function StatisticsCards({
   rssiDb,
   signalLevel = 3,
 }: Props) {
+  const [randomRssi, setRandomRssi] = useState<number>(Number(rssiDb));
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // สุ่มการเพิ่มหรือลดค่า rssiDb อย่างค่อยเป็นค่อยไป
+      const change = Math.floor(Math.random() * 3) - 1; // -1, 0, หรือ 1 (สุ่มเปลี่ยนแค่เล็กน้อย)
+      
+      // คำนวณค่าใหม่ที่ไม่เกินช่วง -30 ถึง -70
+      const newRssiDb = Math.max(-70, Math.min(-30, randomRssi + change));
+      
+      setRandomRssi(newRssiDb);
+    }, 2000); // ทุก 2 วินาทีจะมีการสุ่มใหม่
+
+    return () => clearInterval(interval); // เมื่อคอมโพเนนต์ถูก unmount จะหยุดการสุ่ม
+  }, [randomRssi]);
+
   const cards = [
     {
       icon: <i className="fas fa-temperature-low tw-w-6 tw-h-6 tw-text-white tw-text-center tw-mt-2" />,
@@ -45,10 +61,7 @@ export default function StatisticsCards({
       icon: <i className="fas fa-fan tw-w-6 tw-h-6 tw-text-white tw-text-center tw-mt-2" />,
       title: "FAN",
       value: (
-        <span
-          className={`tw-font-semibold ${fanOn ? "tw-text-green-600" : "tw-text-blue-gray-400"
-            }`}
-        >
+        <span className={`tw-font-semibold ${fanOn ? "tw-text-green-600" : "tw-text-blue-gray-400"}`}>
           {fanOn ? "ON" : "OFF"}
         </span>
       ),
@@ -59,11 +72,10 @@ export default function StatisticsCards({
       title: "Data",
       value: (
         <span className="tw-flex tw-items-baseline tw-gap-1">
-          <span className="tw-text-xl tw-font-semibold">{rssiDb}</span>
+          <span className="tw-text-xl tw-font-semibold">{randomRssi}</span>
           <span className="tw-text-sm tw-text-blue-gray-500">db</span>
         </span>
       ),
-      // footerJSX: <SignalBars level={signalLevel} />,
     },
   ];
 
@@ -90,8 +102,7 @@ function SignalBars({ level = 0 }: { level?: 0 | 1 | 2 | 3 | 4 }) {
       {[1, 2, 3, 4].map((b, i) => (
         <div
           key={b}
-          className={`tw-w-1 tw-rounded-sm ${i < level ? "tw-bg-green-500" : "tw-bg-blue-gray-100"
-            }`}
+          className={`tw-w-1 tw-rounded-sm ${i < level ? "tw-bg-green-500" : "tw-bg-blue-gray-100"}`}
           style={{ height: (i + 1) * 6 }}
         />
       ))}
