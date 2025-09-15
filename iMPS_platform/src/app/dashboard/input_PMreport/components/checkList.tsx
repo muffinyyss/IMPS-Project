@@ -307,6 +307,21 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
             alert(`กรุณาตอบ PASS/FAIL ให้ครบทุกข้อ (เหลืออีก ${remaining} ข้อ)`);
             return;
         }
+
+        const requiredFields = [
+            ...Object.values(voltage).map((v) => v.value),       // ข้อ 5
+            ...Object.values(insulIn).map((v) => v.value),       // ข้อ 6
+            ...Object.values(insulCharge).map((v) => v.value),   // ข้อ 7
+            ...Object.values(insulInPost).map((v) => v.value),   // ข้อ 11
+            ...Object.values(voltagePost).map((v) => v.value),   // ข้อ 12
+        ];
+
+        const missingInputs = requiredFields.filter((val) => !val.trim()).length;
+
+        if (missingInputs > 0) {
+            alert(`กรุณากรอกให้ครบในข้อ 5, 6, 7, 11 และ 12 (ขาด ${missingInputs} ช่อง)`);
+            return;
+        }
         onNext(); // ให้ parent สลับหน้า
     };
 

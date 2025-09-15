@@ -463,8 +463,8 @@ export default function MDBPage() {
         // mainBreakerStatus: Boolean(station?.mainBreakerStatus),
         // breakChargerStatus: Boolean(station?.breakChargerStatus),
 
-        mainBreakerStatus: false,
-        breakChargerStatus: false,
+        mainBreakerStatus: true,
+        breakChargerStatus: true,
     };
 
     const applyRange = () => {

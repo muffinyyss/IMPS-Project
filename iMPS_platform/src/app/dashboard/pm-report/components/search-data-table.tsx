@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import Link from "next/link";
+import { AppDataTable } from "@/data";
+import { ArrowUpTrayIcon } from "@heroicons/react/24/outline";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
-
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -15,9 +17,6 @@ import {
   type Row,
   type SortingState,
 } from "@tanstack/react-table";
-
-import { AppDataTable } from "@/data";
-
 import {
   Button,
   Card,
@@ -27,16 +26,11 @@ import {
   CardFooter,
   Input,
 } from "@material-tailwind/react";
-
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpDownIcon,
 } from "@heroicons/react/24/solid";
-import Link from "next/link";
-
-import { ArrowUpTrayIcon } from "@heroicons/react/24/outline";
-
 
 // ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
 type TData = (typeof AppDataTable)[number];
@@ -45,6 +39,25 @@ export function SearchDataTables() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
+  // const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  // // ✅ ใส่ฟังก์ชันไว้ในนี้
+  // const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const files = Array.from(e.target.files ?? []);
+  //   if (!files.length) return;
+
+  //   const pdfs = files.filter(
+  //     (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
+  //   );
+  //   if (pdfs.length !== files.length) {
+  //     alert("รองรับเฉพาะไฟล์ PDF เท่านั้น (ไฟล์อื่นจะถูกข้าม)");
+  //   }
+
+  //   console.log("เลือกไฟล์ PDF:", pdfs.map(f => ({ name: f.name, size: f.size })));
+
+  //   // reset ให้เลือกไฟล์ซ้ำได้
+  //   e.currentTarget.value = "";
+  // };
 
   // เพิ่ม: ดึงข้อมูลจาก FastAPI แล้ว map → ฟิลด์ที่ตารางใช้อยู่ (name/position/office)
   useEffect(() => {
@@ -136,7 +149,7 @@ export function SearchDataTables() {
               if (!hasUrl) e.preventDefault();
             }}
             className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-          ${hasUrl
+            ${hasUrl
                 ? "tw-text-red-600 hover:tw-text-red-800"
                 : "tw-text-blue-gray-300 tw-cursor-not-allowed"
               }`}
@@ -196,36 +209,6 @@ export function SearchDataTables() {
   return (
     <>
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
-        {/* <CardHeader
-          floated={false}
-          shadow={false}
-          className="tw-p-2 tw-flex tw-items-center tw-justify-between"
-        >
-          <div>
-            <Typography color="blue-gray" variant="h5">
-              PM Report Documents
-            </Typography>
-            <Typography
-              variant="small"
-              className="!tw-text-blue-gray-500 !tw-font-normal tw-mb-4 tw-mt-1"
-            >
-              ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM Report)
-            </Typography>
-          </div>
-
-          <Link href="#">
-            <Button className="tw-flex tw-gap-2" variant="gradient" size="lg">
-              upload
-            </Button>
-          </Link>
-
-          <Link href="input_PMreport">
-            <Button className="tw-flex tw-gap-2" variant="gradient" size="lg">
-              +add
-            </Button>
-          </Link>
-        </CardHeader> */}
-
         <CardHeader
           floated={false}
           shadow={false}
@@ -245,50 +228,81 @@ export function SearchDataTables() {
 
           {/* กลุ่มปุ่มด้านขวา */}
           <div className="tw-flex tw-items-center tw-gap-3">
-            <Link href="#">
-              {/* input เลือกไฟล์ PDF แบบซ่อน */}
-              <input
-                ref={pdfInputRef}
-                type="file"
-                accept="application/pdf,.pdf"
-                multiple          // 👉 เอาออกถ้าอยากให้เลือกได้ทีละไฟล์
-                className="tw-hidden"
-                onChange={handlePdfChange}
-              />
+            {/* <Link href="#"> */}
+            {/* input เลือกไฟล์ PDF แบบซ่อน */}
+            {/* <input
+                  ref={pdfInputRef}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  multiple          // 👉 เอาออกถ้าอยากให้เลือกได้ทีละไฟล์
+                  className="tw-hidden"
+                  onChange={handlePdfChange}
+                /> */}
 
-              {/* ปุ่ม Upload (พื้นขาว + เส้นขอบ, hover เป็นดำ) */}
-              <Button
-                variant="text"
-                size="lg"
-                onClick={() => pdfInputRef.current?.click()}
-                className="
-                  group
-                  tw-h-11 tw-rounded-xl tw-px-4 tw-flex tw-items-center tw-gap-2
-                  tw-bg-white tw-text-blue-gray-900
-                  tw-border tw-border-blue-gray-200
-                  tw-shadow-[0_1px_0_rgba(0,0,0,0.04)]
-                  hover:tw-bg-black hover:tw-text-black hover:tw-border-black
-                  hover:tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                  tw-transition-colors tw-duration-200
-                  focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                "
-              >
-                <ArrowUpTrayIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-200 group-hover:-tw-translate-y-0.5" />
-                <span>Upload</span>
-              </Button>
-            </Link>
+            {/* ปุ่ม Upload (พื้นขาว + เส้นขอบ, hover เป็นดำ) */}
+            {/* <Button
+                  variant="text"
+                  size="lg"
+                  onClick={() => pdfInputRef.current?.click()}
+                  className="
+                    group
+                    tw-h-11 tw-rounded-xl tw-px-4 tw-flex tw-items-center tw-gap-2
+                    tw-bg-white tw-text-blue-gray-900
+                    tw-border tw-border-blue-gray-200
+                    tw-shadow-[0_1px_0_rgba(0,0,0,0.04)]
+                    hover:tw-bg-black hover:tw-text-black hover:tw-border-black
+                    hover:tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                    tw-transition-colors tw-duration-200
+                    focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
+                  "
+                >
+                  <ArrowUpTrayIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-200 group-hover:-tw-translate-y-0.5" />
+                  <span>Upload</span>
+                </Button> */}
+
+            {/* input เลือกไฟล์ PDF แบบซ่อน */}
+            <input
+              ref={pdfInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              multiple          // 👉 ลบออกถ้าอยากให้เลือกได้ทีละไฟล์
+              className="tw-hidden"
+              onChange={handlePdfChange}
+            />
+
+            {/* ปุ่ม Upload */}
+            <Button
+              variant="text"
+              size="lg"
+              onClick={() => pdfInputRef.current?.click()}
+              className="
+                group
+                tw-h-11 tw-rounded-xl tw-px-4 tw-flex tw-items-center tw-gap-2
+                tw-bg-white tw-text-blue-gray-900
+                tw-border tw-border-blue-gray-100
+                tw-shadow-[0_1px_0_rgba(0,0,0,0.04)]
+                hover:tw-bg-black hover:tw-text-black hover:tw-border-black
+                hover:tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                tw-transition-colors tw-duration-200
+                focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
+              "
+            >
+              <ArrowUpTrayIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-200 group-hover:-tw-translate-y-0.5" />
+              <span>Upload</span>
+            </Button>
+            {/* </Link> */}
 
             <Link href="input_PMreport">
               <Button
                 size="lg"
                 className="
-                  tw-h-11 tw-rounded-xl tw-px-4
-                  tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
-                  hover:tw-from-black hover:tw-to-black
-                  tw-text-white
-                  tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                  focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                "
+                    tw-h-11 tw-rounded-xl tw-px-4
+                    tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
+                    hover:tw-from-black hover:tw-to-black
+                    tw-text-white
+                    tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                    focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
+                  "
               >
                 +ADD
               </Button>
@@ -364,7 +378,7 @@ export function SearchDataTables() {
                           <Typography
                             color="blue-gray"
                             className={`tw-flex tw-items-center tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                              ${align === "center"
+                                ${align === "center"
                                 ? "tw-justify-center"
                                 : align === "right"
                                   ? "tw-justify-end"
