@@ -150,8 +150,10 @@ const baseOptions = {
       format: "HH:mm",    // รูปแบบแสดงเวลาเป็น "ชั่วโมง:นาที"
     },
     tickAmount: 6, // ตั้งค่าให้มี 6 ticks ในช่วง 24 ชั่วโมง (4 ชั่วโมงระหว่าง ticks)
-    min: new Date().setHours(0, 0, 0, 0),  // กำหนดให้เริ่มจากเที่ยงคืน
-    max: new Date().setHours(23, 59, 59, 999), // กำหนดให้สิ้นสุดที่เวลา 23:59
+    // min: new Date().setHours(0, 0, 0, 0),  // กำหนดให้เริ่มจากเที่ยงคืน
+    // max: new Date().setHours(23, 59, 59, 999), // กำหนดให้สิ้นสุดที่เวลา 23:59
+    min: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), 0, 0, 0, 0)),  // ใช้เวลา UTC เที่ยงคืน
+    max: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), 23, 59, 59, 999)), // ใช้เวลา UTC 23:59
   },
   tooltip: {
     x: {
