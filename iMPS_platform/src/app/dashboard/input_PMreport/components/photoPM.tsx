@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-
 import {
     Button,
     Card,
     CardBody,
     CardHeader,
+    CardFooter,
     Typography,
     Input,
 } from "@material-tailwind/react";
@@ -24,6 +23,9 @@ type PhotoItem = {
 
 // รองรับ g1..g10 (หรือมากกว่านั้นในอนาคต)
 type GroupKey = `g${number}`;
+type PMReportPhotosProps = {
+    onBack?: () => void;
+};
 
 type PhotoGroup = {
     key: GroupKey;
@@ -41,10 +43,7 @@ const TITLES_BY_SECTION: Record<number, { title: string; subtitle?: string }> = 
     3: { title: "3) Internal Cleaning / ทำความสะอาดภายใน" },
     4: { title: "4) Check torque and tightness / ตรวจสอบค่าแรงบิดและการขันแน่น" },
     5: { title: "5) Check the strength between each wire connection / ทดสอบความแข็งแรงของจุดต่อไฟฟ้า" },
-    6: {
-        title: "6) Charging cable insulation Test / ทดสอบความเป็นฉนวนของสายชาร์จ",
-        // subtitle: "แรงดัน 500V (ต้อง ≥ 100 MΩ)",
-    },
+    6: { title: "6) Charging cable insulation Test / ทดสอบความเป็นฉนวนของสายชาร์จ" },
     7: { title: "7) Incoming cable Insulation Test / ทดสอบความเป็นฉนวนของสาย Incoming" },
     8: { title: "8) Incoming voltage check / ตรวจสอบแรงดันขาเข้า" },
     9: { title: "9) Test trip / ทดสอบการทำงานของอุปกรณ์ป้องกันระบบไฟฟ้า" },
@@ -106,12 +105,14 @@ function PhotoSlot({
     item,
     onPickReplace,
     onRemove,
+    onRemarkChange,
     indexLabel,
 }: {
     item: PhotoItem;
     indexLabel: string;
     onPickReplace: (file: File) => void; // เปลี่ยนภาพในช่องนี้
     onRemove: () => void;
+    onRemarkChange: (remark: string) => void; // อัปเดตหมายเหตุของรูปนี้
 }) {
     const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -120,8 +121,8 @@ function PhotoSlot({
             {/* Drop zone (รองรับลากวางรูปเดี่ยวเพื่อแทนที่) */}
             <label
                 className="
-                    tw-flex-1 tw-min-h-[200px] sm:tw-min-h-[180px] md:tw-min-h-[144px] tw-flex tw-items-center tw-justify-center tw-text-center
-                    tw-p-3 hover:tw-bg-blue-gray-50 cursor-pointer"
+          tw-flex-1 tw-min-h-[200px] sm:tw-min-h-[180px] md:tw-min-h-[144px] tw-flex tw-items-center tw-justify-center tw-text-center
+          tw-p-3 hover:tw-bg-blue-gray-50 cursor-pointer"
                 onDragOver={(e) => {
                     e.preventDefault();
                 }}
@@ -173,7 +174,7 @@ function PhotoSlot({
                     label="หมายเหตุ"
                     value={item.remark || ""}
                     crossOrigin=""
-                    onChange={(e) => (item.remark = e.target.value)}
+                    onChange={(e) => onRemarkChange(e.target.value)}
                     containerProps={{
                         className: "tw-w-full sm:tw-flex-1 tw-min-w-0",
                     }}
@@ -184,7 +185,8 @@ function PhotoSlot({
                         variant="text"
                         color="red"
                         onClick={onRemove}
-                        className="tw-w-full sm:tw-w-auto sm:tw-shrink-0">
+                        className="tw-w-full sm:tw-w-auto sm:tw-shrink-0"
+                    >
                         ลบ
                     </Button>
                 )}
@@ -206,11 +208,13 @@ function AddPhotoTile({
     const inputRef = useRef<HTMLInputElement | null>(null);
 
     return (
-        <div className={`tw-relative tw-rounded-xl tw-border tw-border-dashed tw-border-blue-gray-300 tw-bg-white tw-overflow-hidden tw-flex tw-flex-col ${className}`}>
+        <div
+            className={`tw-relative tw-rounded-xl tw-border tw-border-dashed tw-border-blue-gray-300 tw-bg-white tw-overflow-hidden tw-flex tw-flex-col ${className}`}
+        >
             <label
                 className="
-                    tw-flex-1 tw-min-h-[200px] sm:tw-min-h-[180px] md:tw-min-h-[144px] tw-flex tw-flex-col tw-items-center tw-justify-center tw-text-center
-                    tw-p-3 hover:tw-bg-blue-gray-50 cursor-pointer"
+          tw-flex-1 tw-min-h-[200px] sm:tw-min-h-[180px] md:tw-min-h-[144px] tw-flex tw-flex-col tw-items-center tw-justify-center tw-text-center
+          tw-p-3 hover:tw-bg-blue-gray-50 cursor-pointer"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                     e.preventDefault();
@@ -244,7 +248,7 @@ function AddPhotoTile({
 }
 
 /** ---------- Main Page 2: Photos (ไม่จำกัดจำนวนรูปต่อข้อ) ---------- */
-export default function PMReportPhotos() {
+export default function PMReportPhotos({ onBack }: PMReportPhotosProps) {
     // groups: key -> รายการรูป (ไม่จำกัดจำนวน)
     const [groups, setGroups] = useState<Record<GroupKey, PhotoItem[]>>(() => {
         const initial: Record<GroupKey, PhotoItem[]> = {} as any;
@@ -301,6 +305,17 @@ export default function PMReportPhotos() {
         [fileToItem]
     );
 
+    /** อัปเดตหมายเหตุของรูป */
+    const updateRemarkInGroup = useCallback((gk: GroupKey, idx: number, remark: string) => {
+        setGroups((prev) => {
+            const next = { ...prev };
+            const list = [...next[gk]];
+            list[idx] = { ...list[idx], remark };
+            next[gk] = list;
+            return next;
+        });
+    }, []);
+
     /** ลบรูปออกจากกลุ่ม */
     const removeFromGroup = (gk: GroupKey, idx: number) => {
         setGroups((prev) => {
@@ -314,7 +329,10 @@ export default function PMReportPhotos() {
 
     /** คำนวณขนาดรวมทั้งหมด */
     const totalBytes = useMemo(() => {
-        const files = Object.values(groups).flat().map((x) => x.file).filter(Boolean) as File[];
+        const files = Object.values(groups)
+            .flat()
+            .map((x) => x.file)
+            .filter(Boolean) as File[];
         return files.reduce((sum, f) => sum + f.size, 0);
     }, [groups]);
 
@@ -337,6 +355,18 @@ export default function PMReportPhotos() {
         console.log("PHOTO PAYLOAD:", payload);
         alert("ข้อมูลรูปถ่ายถูกรวบรวมแล้ว (เดโม่) – ดูใน console");
     };
+
+    /** ---------- Footer demo states/handlers (เพื่อกัน error) ---------- */
+    const page = 1; // หน้านี้คือหน้าอัปโหลดรูปภาพ
+    const remaining = useMemo(
+        () => GROUPS.filter((g) => groups[g.key].length === 0).length,
+        [groups]
+    );
+    const allAnswered = remaining === 0;
+
+    const onSave = () => collectPayload();
+    const handleNext = () => alert("ไปหน้าถัดไป (เดโม่)");
+    const handlePrev = () => alert("กลับไปแก้ Checklist (เดโม่)");
 
     return (
         <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
@@ -377,13 +407,15 @@ export default function PMReportPhotos() {
                                     indexLabel={`ภาพที่ ${idx + 1}`}
                                     onPickReplace={(f) => replaceFileInGroup(g.key, idx, f)}
                                     onRemove={() => removeFromGroup(g.key, idx)}
+                                    onRemarkChange={(val) => updateRemarkInGroup(g.key, idx, val)}
                                 />
                             ))}
 
                             {/* ช่อง “เพิ่มรูป” — เหลืออันเดียวตรงนี้ */}
                             <AddPhotoTile
                                 className="tw-col-span-full sm:tw-col-span-1"
-                                onAddFiles={(files) => addFilesToGroup(g.key, files)} />
+                                onAddFiles={(files) => addFilesToGroup(g.key, files)}
+                            />
                         </div>
 
                         {/* หมายเหตุรวมของกลุ่ม */}
@@ -401,30 +433,30 @@ export default function PMReportPhotos() {
                 </Card>
             ))}
 
-            {/* ปุ่มบันทึก/ส่งต่อ */}
-            {/* <div className="tw-justify-end tw-bottom-0 tw-left-0 tw-right-0 tw-z-30 tw-bg-white tw-border-t tw-border-blue-gray-100 tw-p-3 tw-mt-6">
-                <Button color="green" onClick={collectPayload}>
-                    บันทึก
-                </Button>
-                <Link href="/dashboard/pm-report">
-                    <Button variant="outlined">ยกเลิก</Button>
-                </Link>
-                <Button color="green" className="tw-gap-2 tw-ml-2" >
-                    บันทึก
-                </Button>
-            </div> */}
+            {/* ปุ่มควบคุมท้ายหน้า */}
+            <CardFooter className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-between tw-gap-3 tw-mt-8">
+                <div className="tw-text-sm tw-text-blue-gray-600">หน้าอัปโหลดรูปภาพ</div>
 
-            {/* ปุ่มบันทึก/ส่งต่อ */}
-            <div className="tw-bottom-0 tw-left-0 tw-right-0 tw-z-30 tw-bg-white tw-border-t tw-border-blue-gray-100 tw-p-3 tw-mt-6">
-                <div className="tw-flex tw-justify-end tw-items-center tw-gap-2 tw-mt-2">
-                    <Link href="/dashboard/pm-report" className="tw-inline-block">
-                        <Button variant="outlined">ยกเลิก</Button>
-                    </Link>
-                    <Button color="green" className="tw-gap-2" onClick={collectPayload}>
-                        บันทึก
+                <div className="tw-flex tw-gap-2">
+                    <Button
+                        variant="outlined"
+                        color="blue-gray"
+                        type="button"
+                        onClick={collectPayload}
+                    >
+                        บันทึกชั่วคราว
+                    </Button>
+
+                    <Button
+                        variant="filled"
+                        color="blue-gray"
+                        type="button"
+                        onClick={() => onBack?.()}
+                    >
+                        กลับไป Checklist
                     </Button>
                 </div>
-            </div>
+            </CardFooter>
 
         </section>
     );

@@ -1,6 +1,7 @@
 "use client";
+
 import React from "react";
-import { Card, CardBody, Typography } from "@/components/MaterialTailwind";
+import { Card, CardBody, Typography, Button } from "@/components/MaterialTailwind";
 
 type Props = {
   startDate: string;         // YYYY-MM-DD
@@ -9,6 +10,8 @@ type Props = {
   onEndChange: (v: string) => void;
   title?: string;
   subtitle?: string;
+  maxEndDate?: string; // YYYY-MM-DD
+  onApply: () => void;
 };
 
 export default function DateRangePicker({
@@ -18,7 +21,14 @@ export default function DateRangePicker({
   onEndChange,
   title = "เลือกช่วงวันที่สำหรับกราฟ",
   subtitle = "ใช้กับกราฟด้านล่างทั้งสาม",
+  maxEndDate,
+  onApply,
 }: Props) {
+  const invalid = !!(startDate && endDate && new Date(startDate) > new Date(endDate));
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !invalid) onApply();
+  };
+
   return (
     <Card className="tw-mb-4 tw-border tw-border-blue-gray-100 tw-shadow-sm">
       <CardBody className="tw-flex tw-flex-col md:tw-flex-row md:tw-items-end md:tw-justify-between tw-gap-3">
@@ -31,7 +41,8 @@ export default function DateRangePicker({
           </Typography>
         </div>
 
-        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-3">
+        {/* กล่องคอนโทรลด้านขวา */}
+        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-3 sm:tw-items-end">
           <label className="tw-flex tw-flex-col tw-text-sm">
             <span className="tw-mb-1 tw-text-blue-gray-700">Start date</span>
             <input
@@ -40,6 +51,7 @@ export default function DateRangePicker({
               value={startDate}
               max={endDate || undefined}
               onChange={(e) => onStartChange(e.target.value)}
+              onKeyDown={onKeyDown}
             />
           </label>
 
@@ -51,8 +63,33 @@ export default function DateRangePicker({
               value={endDate}
               min={startDate || undefined}
               onChange={(e) => onEndChange(e.target.value)}
+              max={maxEndDate}
+              onKeyDown={onKeyDown}
             />
           </label>
+
+          {/* ปุ่ม Apply */}
+          <Button
+            type="button"
+            onClick={onApply}
+            disabled={invalid}
+            title={invalid ? "Start date ต้องไม่มากกว่า End date" : "นำช่วงวันที่ไปใช้"}
+            variant="filled"
+            color="blue-gray"
+            className="
+              !tw-h-10 !tw-px-4 !tw-rounded-md
+              !tw-bg-black !tw-text-white
+              hover:!tw-bg-neutral-900
+              tw-shadow-sm hover:tw-shadow
+              tw-transition-colors tw-duration-200
+              focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-black/40
+              disabled:tw-opacity-50 disabled:tw-cursor-not-allowed
+              sm:tw-self-end
+            "
+          >
+            Apply
+          </Button>
+
         </div>
       </CardBody>
     </Card>

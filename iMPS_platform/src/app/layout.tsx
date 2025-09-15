@@ -9,9 +9,14 @@ import theme from "@/theme";
 import { MaterialTailwindControllerProvider } from "@/context";
 import InnerContent from "./content";
 import { Prompt } from "next/font/google";
-
+import "@fortawesome/fontawesome-free/css/all.min.css";
 import "react-calendar/dist/Calendar.css";
 import "./globals.css";
+
+<link
+  rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+/>
 
 const roboto = Roboto({
   subsets: ["latin"],
