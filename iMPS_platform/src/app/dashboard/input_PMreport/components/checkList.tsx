@@ -224,16 +224,6 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
         initMeasureState(VOLTAGE_FIELDS, "V")
     );
 
-    // ✅ เช็คตอบครบ
-    const allAnswered = useMemo(
-        () => Object.values(rows).every((r) => r.pf === "PASS" || r.pf === "FAIL"),
-        [rows]
-    );
-    const remaining = useMemo(
-        () => Object.values(rows).filter((r) => !r.pf).length,
-        [rows]
-    );
-
     // utils
     const patchMeasure =
         <U extends string>(
@@ -274,13 +264,35 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
     if (!inputs.answer11) missingFields.push("ข้อ 11");
     if (!inputs.answer12) missingFields.push("ข้อ 12");
 
+    const missingFieldsText = missingFields.length > 0
+        ? `กรุณากรอกข้อมูลใน ${missingFields.join(', ')}`
+        : '';
+
 
     // ฟังก์ชันในการจัดการเมื่อกดปุ่ม "ถัดไป"
     const handleNext = () => {
         if (allAnswered && allInputsFilled) {
-            // ทำสิ่งที่ต้องการเมื่อกดปุ่ม "ถัดไป"
         }
     };
+
+    // เช็คตอบครบ
+    const allAnswered = useMemo(
+        () => Object.values(rows).every((r) => r.pf === "PASS" || r.pf === "FAIL"),
+        [rows]
+    );
+    const remaining = useMemo(
+        () => Object.values(rows).filter((r) => !r.pf).length,
+        [rows]
+    );
+    const allFieldsCompleted = useMemo(() => {
+        // ตรวจสอบว่า input ทั้งหมด (ข้อ 5, 6, 7, 11, 12) และ Pass/Fail ครบถ้วน
+        const requiredInputsFilled = inputs.answer5 && inputs.answer6 && inputs.answer7 && inputs.answer11 && inputs.answer12;
+        const allAnswered = Object.values(rows).every((r) => r.pf === "PASS" || r.pf === "FAIL");
+
+        return requiredInputsFilled && allAnswered;
+    }, [inputs, rows]);
+
+
 
     function syncAllUnits<U extends string>(
         setter: React.Dispatch<React.SetStateAction<MeasureState<U>>>,
@@ -335,45 +347,10 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
         alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
     };
 
-    // const handleNext = () => {
-    //     // 🔹 เช็ค PASS/FAIL ครบทุกข้อ
-    //     if (!allAnswered) {
-    //         alert(`กรุณาตอบ PASS/FAIL ให้ครบทุกข้อ (เหลืออีก ${remaining} ข้อ)`);
-    //         return;
-    //     }
-
-    //     // 🔹 รวมเฉพาะ input ที่ต้องกรอก (ข้อ 5, 6, 7, 11, 12)
-    //     const requiredInputs = [
-    //         ...Object.values(voltage).map((v) => v.value),       // ข้อ 5
-    //         ...Object.values(insulIn).map((v) => v.value),       // ข้อ 6
-    //         ...Object.values(insulCharge).map((v) => v.value),   // ข้อ 7
-    //         ...Object.values(insulInPost).map((v) => v.value),   // ข้อ 11
-    //         ...Object.values(voltagePost).map((v) => v.value),   // ข้อ 12
-    //     ];
-
-    //     const allInputsFilled = requiredInputs.every((val) => val && val.trim() !== "");
-
-    //     // 🔹 หาช่องที่ยังว่างอยู่
-    //     const missingInputs = requiredInputs.filter((val) => !val || val.trim() === "").length;
-
-    //     if (missingInputs > 0) {
-    //         alert(`กรุณากรอกค่าตัวเลขให้ครบในข้อ 5, 6, 7, 11 และ 12 (ขาด ${missingInputs} ช่อง)`);
-    //         return;
-    //     }
-
-    //     // ✅ ทุกอย่างผ่าน → ไปหน้าถัดไปได้
-    //     onNext();
-    // };
-
-
     // แจ้ง parent เมื่อสถานะครบ/ไม่ครบเปลี่ยน
     React.useEffect(() => {
         onComplete(allAnswered);
     }, [allAnswered, onComplete]);
-
-    const missingFieldsText = missingFields.length > 0
-        ? `กรุณากรอกข้อมูลใน ${missingFields.join(', ')}`
-        : '';
 
     return (
         <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
@@ -682,44 +659,46 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                 </CardBody>
             </Card>
 
-            {/* ปุ่มควบคุมท้ายหน้า */}
-            {/* <CardFooter className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-between tw-gap-3 tw-mt-8">
+            <CardFooter className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-between tw-gap-3 tw-mt-8">
                 <div className="tw-text-sm tw-text-blue-gray-600">
-                    {allAnswered ? "ตอบครบแล้ว ✔️" : `ยังไม่ได้ตอบอีก ${remaining} ข้อ`}
+                    {/* แสดงข้อความเกี่ยวกับการกรอกข้อมูล */}
+                    {missingFieldsText}
                 </div>
 
                 <div className="tw-flex tw-gap-2">
                     <Button variant="outlined" color="blue-gray" type="button" onClick={onSave}>
                         บันทึกชั่วคราว
-                    </Button> */}
+                    </Button>
 
-            {/* <Button
+                    {/* <Button
                         color="blue"
                         type="button"
                         onClick={handleNext}
-                        disabled={!allAnswered}
-                        aria-disabled={!allAnswered}
-                        title={!allAnswered ? `ต้องตอบให้ครบก่อน (เหลือ ${remaining})` : "ไปหน้า PMReportPhotos"}
-                        className={!allAnswered ? "tw-opacity-60 tw-cursor-not-allowed" : ""}
+                        disabled={!allInputsFilled}  // ปิดปุ่มหากยังไม่กรอกครบ
+                        aria-disabled={!allInputsFilled}
+                        title={
+                            !allInputsFilled
+                                ? missingFieldsText // แสดงข้อความที่บอกว่าไม่ได้กรอกข้อไหน
+                                : "ไปหน้า PMReportPhotos"
+                        }
+                        className={
+                            !allInputsFilled
+                                ? "tw-opacity-60 tw-cursor-not-allowed"
+                                : ""
+                        }
                     >
                         ถัดไป
                     </Button> */}
 
-            {/* <Button
+                    <Button
                         color="blue"
                         type="button"
                         onClick={handleNext}
-                        disabled={!allAnswered || !allInputsFilled}   // 🔹 เช็คเพิ่ม
-                        aria-disabled={!allAnswered || !allInputsFilled}
-                        title={
-                            !allAnswered
-                                ? `ต้องตอบให้ครบก่อน (เหลือ ${remaining})`
-                                : !allInputsFilled
-                                    ? "กรอกค่าตัวเลขให้ครบในข้อ 5, 6, 7, 11 และ 12 ก่อน"
-                                    : "ไปหน้า PMReportPhotos"
-                        }
+                        disabled={!allFieldsCompleted}  // ปิดปุ่มหากยังไม่กรอกข้อมูลครบ
+                        aria-disabled={!allFieldsCompleted}
+                        title={allFieldsCompleted ? "ไปหน้า PMReportPhotos" : missingFieldsText}  // แสดงข้อความตามสถานะการกรอก
                         className={
-                            !allAnswered || !allInputsFilled
+                            !allFieldsCompleted
                                 ? "tw-opacity-60 tw-cursor-not-allowed"
                                 : ""
                         }
@@ -727,42 +706,10 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                         ถัดไป
                     </Button>
 
+
+
                 </div>
-            </CardFooter> */}
-
-            <CardFooter className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-between tw-gap-3 tw-mt-8">
-            <div className="tw-text-sm tw-text-blue-gray-600">
-                {/* แสดงข้อความเกี่ยวกับการกรอกข้อมูล */}
-                {missingFieldsText}
-            </div>
-
-            <div className="tw-flex tw-gap-2">
-                <Button variant="outlined" color="blue-gray" type="button" onClick={onSave}>
-                    บันทึกชั่วคราว
-                </Button>
-
-                <Button
-                    color="blue"
-                    type="button"
-                    onClick={handleNext}
-                    disabled={!allInputsFilled}  // ปิดปุ่มหากยังไม่กรอกครบ
-                    aria-disabled={!allInputsFilled}
-                    title={
-                        !allInputsFilled
-                            ? missingFieldsText // แสดงข้อความที่บอกว่าไม่ได้กรอกข้อไหน
-                            : "ไปหน้า PMReportPhotos"
-                    }
-                    className={
-                        !allInputsFilled
-                            ? "tw-opacity-60 tw-cursor-not-allowed"
-                            : ""
-                    }
-                >
-                    ถัดไป
-                </Button>
-
-            </div>
-        </CardFooter>
+            </CardFooter>
         </section>
     );
 }
