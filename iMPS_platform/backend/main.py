@@ -371,6 +371,48 @@ def parse_iso_dt(s: str) -> datetime:
     except Exception:
         raise HTTPException(status_code=400, detail=f"Bad datetime: {s}")
 
+# @app.get("/MDB/history")
+# async def get_history(
+#     station_id: int = Query(...),
+#     start: str = Query(...),  # เช่น "2025-09-01T00:00:00Z"
+#     end: str = Query(...),    # เช่น "2025-09-15T23:59:59Z"
+#     limit: int = Query(50000, ge=1, le=200000),
+# ) -> List[Any]:
+#     start_dt = parse_iso_dt(start)
+#     end_dt = parse_iso_dt(end)
+
+#     count = await MDB_collection.count_documents({
+#         "station_id": 7,
+#         "Datetime": {"$gte": "2025-09-1400:00:00Z", "$lte": "2025-09-163:59:59Z"}
+#     })
+#     print(count)
+
+#     # ทดลองดู sample document
+#     sample = await MDB_collection.find_one({"station_id": station_id}, {"Datetime": 1})
+#     if not sample:
+#         return []
+
+#     dt_val = sample.get("Datetime")
+
+#     if isinstance(dt_val, str):
+#         # ถ้าใน DB เก็บเป็น string → ใช้ string ช่วงเวลา
+#         q = {
+#             "station_id": station_id,
+#             "Datetime": {"$gte": start, "$lte": end}
+#         }
+#     else:
+#         # ถ้าใน DB เก็บเป็น datetime object → ใช้ datetime object
+#         q = {
+#             "station_id": station_id,
+#             "Datetime": {"$gte": start_dt, "$lte": end_dt}
+#         }
+
+#     cursor = MDB_collection.find(q).sort("Datetime", 1).limit(limit)
+#     docs = []
+#     async for d in cursor:
+#         d["_id"] = str(d["_id"])
+#         docs.append(d)
+#     return docs
 @app.get("/MDB/history")
 async def get_history(
     station_id: int = Query(...),
@@ -381,18 +423,14 @@ async def get_history(
     start_dt = parse_iso_dt(start)
     end_dt = parse_iso_dt(end)
 
-    count = await MDB_collection.count_documents({
-        "station_id": 7,
-        "Datetime": {"$gte": "2025-09-14T00:00:00Z", "$lte": "2025-09-15T23:59:59Z"}
-    })
-    print(count)
-
-    # ทดลองดู sample document
+    # ทดสอบดู sample document
     sample = await MDB_collection.find_one({"station_id": station_id}, {"Datetime": 1})
     if not sample:
         return []
 
+    # ดูตัวอย่างของ `Datetime`
     dt_val = sample.get("Datetime")
+    print(f"Sample Datetime: {dt_val}")  # ตรวจสอบค่าของ `Datetime`
 
     if isinstance(dt_val, str):
         # ถ้าใน DB เก็บเป็น string → ใช้ string ช่วงเวลา
@@ -410,10 +448,14 @@ async def get_history(
     cursor = MDB_collection.find(q).sort("Datetime", 1).limit(limit)
     docs = []
     async for d in cursor:
-        d["_id"] = str(d["_id"])
         docs.append(d)
-    return docs
+    
+    # เพิ่มการ print ดูข้อมูลที่ดึงมา
+    print(f"Fetched {len(docs)} documents from the database.")
+    if len(docs) > 0:
+        print("Sample data:", docs[0])  # แสดงข้อมูลตัวอย่างเพื่อดูรูปแบบข้อมูล
 
+    return docs
 # @app.get("/MDB/history/last24")
 # async def get_last_24h(
 #     station_id: int = Query(...),

@@ -1,5 +1,5 @@
 import { chartsConfig } from "@/configs";
-import type {MDBType} from "@/app/dashboard/mdb/components/mdb-info";
+import type { MDBType } from "@/app/dashboard/mdb/components/mdb-info";
 
 export type HistoryRow = {
   ts: string; // ISO timestamp (มาจาก Datetime ของ SSE)
@@ -140,7 +140,7 @@ const ensureMinPoints = (series: any[], padSec = 60) =>
 //   legend: { show: true, position: "top", horizontalAlign: "left" },
 //   noData: { text: "No history data" },
 // };
-const baseOptions = { 
+const baseOptions = {
   ...chartsConfig,
   chart: { type: "line", group: "power", zoom: { enabled: true }, toolbar: { show: true } },
   xaxis: {
@@ -247,24 +247,33 @@ const baseOptions = {
 //   statisticsChartsData(MDB, history);
 // export default { statisticsChartsData, data_MDB, buildChartsFromHistory };
 
+export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[], startDate: string, endDate: string) {
+  // กรองข้อมูลจาก history ตามช่วงวันที่ที่เลือก
+  const filteredHistory = history.filter((item) => {
+    const itemDate = new Date(item.ts); // ts คือวันที่ในข้อมูล
+    const fromDate = new Date(startDate);
+    const toDate = new Date(endDate);
+    return itemDate >= fromDate && itemDate <= toDate; // กรองข้อมูลระหว่าง startDate และ endDate
+  });
 
-export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
+  // สร้าง series สำหรับกราฟ
   const voltageSeries = ensureMinPoints([
-    { name: "L1", data: toXY(history, "VL1N") },
-    { name: "L2", data: toXY(history, "VL2N") },
-    { name: "L3", data: toXY(history, "VL3N") },
+    { name: "L1", data: toXY(filteredHistory, "VL1N") },
+    { name: "L2", data: toXY(filteredHistory, "VL2N") },
+    { name: "L3", data: toXY(filteredHistory, "VL3N") },
   ]);
   const currentSeries = ensureMinPoints([
-    { name: "I1", data: toXY(history, "I1") },
-    { name: "I2", data: toXY(history, "I2") },
-    { name: "I3", data: toXY(history, "I3") },
+    { name: "I1", data: toXY(filteredHistory, "I1") },
+    { name: "I2", data: toXY(filteredHistory, "I2") },
+    { name: "I3", data: toXY(filteredHistory, "I3") },
   ]);
   const powerSeries = ensureMinPoints([
-    { name: "W1", data: toXY(history, "PL1N") },
-    { name: "W2", data: toXY(history, "PL2N") },
-    { name: "W3", data: toXY(history, "PL3N") },
+    { name: "W1", data: toXY(filteredHistory, "PL1N") },
+    { name: "W2", data: toXY(filteredHistory, "PL2N") },
+    { name: "W3", data: toXY(filteredHistory, "PL3N") },
   ]);
 
+  // สร้างกราฟ
   const voltageChart = {
     type: "line",
     height: 220,
@@ -272,7 +281,6 @@ export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
     options: {
       ...baseOptions,
       yaxis: { labels: { formatter: (v: number) => `${v} V` } },
-      // ❗ ไม่ใส่ tooltip.x.format ที่นี่ เพื่อไม่ทับ formatter ใน baseOptions
       tooltip: { y: { formatter: (v: number) => `${v} V` } },
     },
   };
@@ -300,22 +308,129 @@ export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[]) {
   };
 
   return [
-    { color: "white", title: "Voltage Line to Neutral (V)", description: "History/SSE",
+    {
+      color: "white", title: "Voltage Line to Neutral (V)", description: "History/SSE",
       chart: voltageChart,
-      metrics: [{ label: "L1", value: `${MDB.VL1N} V` }, { label: "L2", value: `${MDB.VL2N} V` }, { label: "L3", value: `${MDB.VL3N} V` }] },
-    { color: "white", title: "Current (A)", description: "History/SSE",
+      metrics: [{ label: "L1", value: `${MDB.VL1N} V` }, { label: "L2", value: `${MDB.VL2N} V` }, { label: "L3", value: `${MDB.VL3N} V` }]
+    },
+    {
+      color: "white", title: "Current (A)", description: "History/SSE",
       chart: currentChart,
-      metrics: [{ label: "I1", value: `${MDB.I1} A` }, { label: "I2", value: `${MDB.I2} A` }, { label: "I3", value: `${MDB.I3} A` }] },
-    { color: "white", title: "Power (W)", description: "History/SSE",
+      metrics: [{ label: "I1", value: `${MDB.I1} A` }, { label: "I2", value: `${MDB.I2} A` }, { label: "I3", value: `${MDB.I3} A` }]
+    },
+    {
+      color: "white", title: "Power (W)", description: "History/SSE",
       chart: powerChart,
-      metrics: [{ label: "W1", value: `${MDB.PL1N} W` }, { label: "W2", value: `${MDB.PL2N} W` }, { label: "W3", value: `${MDB.PL3N} W` }] },
+      metrics: [{ label: "W1", value: `${MDB.PL1N} W` }, { label: "W2", value: `${MDB.PL2N} W` }, { label: "W3", value: `${MDB.PL3N} W` }]
+    },
   ];
 }
+// export function buildChartsFromHistory(MDB: MDBType, history: HistoryRow[], startDate: string, endDate: string) {
+//   // กรองข้อมูลจาก history ตามช่วงวันที่ที่เลือก
+//   const filteredHistory = history.filter((item) => {
+//     const itemDate = new Date(item.Datetime); // ดึงค่า Datetime จาก item และแปลงเป็น Date object
+//     const fromDate = new Date(startDate);
+//     const toDate = new Date(endDate);
 
-export const statisticsChartsData = (MDB: MDBType, history: HistoryRow[] = []) =>
-  buildChartsFromHistory(MDB, history);
-export const data_MDB = (MDB: MDBType, history: HistoryRow[] = []) =>
-  statisticsChartsData(MDB, history);
+//     // เพิ่มการตรวจสอบ
+//     console.log(`Item Date: ${item.Datetime}, From: ${fromDate}, To: ${toDate}`);
+//     return itemDate >= fromDate && itemDate <= toDate; // กรองข้อมูลระหว่าง startDate และ endDate
+//   });
+
+//   // ตรวจสอบว่า filteredHistory มีข้อมูลหรือไม่
+//   console.log('Filtered History:', filteredHistory);
+
+//   if (filteredHistory.length === 0) {
+//     console.log('No data found for the selected date range.');
+//   }
+
+//   // ถ้าไม่มีข้อมูลให้ return empty chart
+//   if (filteredHistory.length === 0) {
+//     return []; // หรือ return chart ที่ไม่มีข้อมูล
+//   }
+
+//   // สร้าง series สำหรับกราฟ
+//   const voltageSeries = ensureMinPoints([
+//     { name: "L1", data: toXY(filteredHistory, "VL1N") },
+//     { name: "L2", data: toXY(filteredHistory, "VL2N") },
+//     { name: "L3", data: toXY(filteredHistory, "VL3N") },
+//   ]);
+//   const currentSeries = ensureMinPoints([
+//     { name: "I1", data: toXY(filteredHistory, "I1") },
+//     { name: "I2", data: toXY(filteredHistory, "I2") },
+//     { name: "I3", data: toXY(filteredHistory, "I3") },
+//   ]);
+//   const powerSeries = ensureMinPoints([
+//     { name: "W1", data: toXY(filteredHistory, "PL1N") },
+//     { name: "W2", data: toXY(filteredHistory, "PL2N") },
+//     { name: "W3", data: toXY(filteredHistory, "PL3N") },
+//   ]);
+
+//   // สร้างกราฟ
+//   const voltageChart = {
+//     type: "line",
+//     height: 220,
+//     series: voltageSeries,
+//     options: {
+//       ...baseOptions,
+//       yaxis: { labels: { formatter: (v: number) => `${v} V` } },
+//       tooltip: { y: { formatter: (v: number) => `${v} V` } },
+//     },
+//   };
+
+//   const currentChart = {
+//     type: "line",
+//     height: 220,
+//     series: currentSeries,
+//     options: {
+//       ...baseOptions,
+//       yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} A` } },
+//       tooltip: { shared: true, intersect: false, y: { formatter: (v: number) => `${v} A` } },
+//     },
+//   };
+
+//   const powerChart = {
+//     type: "line",
+//     height: 220,
+//     series: powerSeries,
+//     options: {
+//       ...baseOptions,
+//       yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} W` } },
+//       tooltip: { shared: true, intersect: false, y: { formatter: (v: number) => `${v} W` } },
+//     },
+//   };
+
+//   return [
+//     { color: "white", title: "Voltage Line to Neutral (V)", description: "History/SSE",
+//       chart: voltageChart,
+//       metrics: [{ label: "L1", value: `${MDB.VL1N} V` }, { label: "L2", value: `${MDB.VL2N} V` }, { label: "L3", value: `${MDB.VL3N} V` }] },
+//     { color: "white", title: "Current (A)", description: "History/SSE",
+//       chart: currentChart,
+//       metrics: [{ label: "I1", value: `${MDB.I1} A` }, { label: "I2", value: `${MDB.I2} A` }, { label: "I3", value: `${MDB.I3} A` }] },
+//     { color: "white", title: "Power (W)", description: "History/SSE",
+//       chart: powerChart,
+//       metrics: [{ label: "W1", value: `${MDB.PL1N} W` }, { label: "W2", value: `${MDB.PL2N} W` }, { label: "W3", value: `${MDB.PL3N} W` }] },
+//   ];
+// }
+
+export const statisticsChartsData = (
+  MDB: MDBType,
+  history: HistoryRow[] = [],
+  startDate: string,
+  endDate: string
+) => {
+  return buildChartsFromHistory(MDB, history, startDate, endDate);
+};
+
+// แก้ไขฟังก์ชัน data_MDB เพื่อส่ง startDate และ endDate
+export const data_MDB = (
+  MDB: MDBType,
+  history: HistoryRow[] = [],
+  startDate: string,
+  endDate: string
+) => {
+  return statisticsChartsData(MDB, history, startDate, endDate);
+};
 export default { statisticsChartsData, data_MDB, buildChartsFromHistory };
 
 /* ============ 1) Voltage (V) ============ */
