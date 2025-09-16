@@ -356,8 +356,11 @@ const MDB = {
     thdiL2: num0(station?.THDI_L2),
     thdiL3: num0(station?.THDI_L3),
 
-    mainBreakerStatus: Boolean(station?.mainBreakerStatus),
-    breakChargerStatus: Boolean(station?.breakChargerStatus),
+    // mainBreakerStatus: Boolean(station?.mainBreakerStatus),
+    // breakChargerStatus: Boolean(station?.breakChargerStatus),
+
+    mainBreakerStatus: true,
+    breakChargerStatus: true,
 };
 
 const applyRange = () => {
