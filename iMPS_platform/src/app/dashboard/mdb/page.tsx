@@ -437,10 +437,10 @@ return (
         /> */}
 
         <DateRangePicker
-            startDate={draftStart}   // ❌ เดิมเป็น startDate
-            endDate={draftEnd}       // ❌ เดิมเป็น endDate
-            onStartChange={setDraftStart}  // ❌ เดิมเป็น handleStartChange
-            onEndChange={setDraftEnd}      // ❌ เดิมเป็น handleEndChange
+            startDate={draftStart}  
+            endDate={draftEnd}      
+            onStartChange={setDraftStart} 
+            onEndChange={setDraftEnd}      
             onApply={applyRange}
             maxEndDate={MAX_END}
         />
