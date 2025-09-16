@@ -249,6 +249,39 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
     const patchInsulInPost = patchMeasure(setInsulInPost);
     const patchInsulCharge = patchMeasure(setInsulCharge);
 
+    const [inputs, setInputs] = useState({
+        answer5: '',
+        answer6: '',
+        answer7: '',
+        answer11: '',
+        answer12: ''
+    });
+
+    const allInputsFilled = inputs.answer5 && inputs.answer6 && inputs.answer7 && inputs.answer11 && inputs.answer12;
+
+    // const handleInputChange = (e) => {
+    //     const { name, value } = e.target;
+    //     setInputs(prevState => ({
+    //         ...prevState,
+    //         [name]: value
+    //     }));
+    // };
+
+    const missingFields = [];
+    if (!inputs.answer5) missingFields.push("ข้อ 5");
+    if (!inputs.answer6) missingFields.push("ข้อ 6");
+    if (!inputs.answer7) missingFields.push("ข้อ 7");
+    if (!inputs.answer11) missingFields.push("ข้อ 11");
+    if (!inputs.answer12) missingFields.push("ข้อ 12");
+
+
+    // ฟังก์ชันในการจัดการเมื่อกดปุ่ม "ถัดไป"
+    const handleNext = () => {
+        if (allAnswered && allInputsFilled) {
+            // ทำสิ่งที่ต้องการเมื่อกดปุ่ม "ถัดไป"
+        }
+    };
+
     function syncAllUnits<U extends string>(
         setter: React.Dispatch<React.SetStateAction<MeasureState<U>>>,
         keys: string[],
@@ -302,33 +335,45 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
         alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
     };
 
-    const handleNext = () => {
-        if (!allAnswered) {
-            alert(`กรุณาตอบ PASS/FAIL ให้ครบทุกข้อ (เหลืออีก ${remaining} ข้อ)`);
-            return;
-        }
+    // const handleNext = () => {
+    //     // 🔹 เช็ค PASS/FAIL ครบทุกข้อ
+    //     if (!allAnswered) {
+    //         alert(`กรุณาตอบ PASS/FAIL ให้ครบทุกข้อ (เหลืออีก ${remaining} ข้อ)`);
+    //         return;
+    //     }
 
-        const requiredFields = [
-            ...Object.values(voltage).map((v) => v.value),       // ข้อ 5
-            ...Object.values(insulIn).map((v) => v.value),       // ข้อ 6
-            ...Object.values(insulCharge).map((v) => v.value),   // ข้อ 7
-            ...Object.values(insulInPost).map((v) => v.value),   // ข้อ 11
-            ...Object.values(voltagePost).map((v) => v.value),   // ข้อ 12
-        ];
+    //     // 🔹 รวมเฉพาะ input ที่ต้องกรอก (ข้อ 5, 6, 7, 11, 12)
+    //     const requiredInputs = [
+    //         ...Object.values(voltage).map((v) => v.value),       // ข้อ 5
+    //         ...Object.values(insulIn).map((v) => v.value),       // ข้อ 6
+    //         ...Object.values(insulCharge).map((v) => v.value),   // ข้อ 7
+    //         ...Object.values(insulInPost).map((v) => v.value),   // ข้อ 11
+    //         ...Object.values(voltagePost).map((v) => v.value),   // ข้อ 12
+    //     ];
 
-        const missingInputs = requiredFields.filter((val) => !val.trim()).length;
+    //     const allInputsFilled = requiredInputs.every((val) => val && val.trim() !== "");
 
-        if (missingInputs > 0) {
-            alert(`กรุณากรอกให้ครบในข้อ 5, 6, 7, 11 และ 12 (ขาด ${missingInputs} ช่อง)`);
-            return;
-        }
-        onNext(); // ให้ parent สลับหน้า
-    };
+    //     // 🔹 หาช่องที่ยังว่างอยู่
+    //     const missingInputs = requiredInputs.filter((val) => !val || val.trim() === "").length;
+
+    //     if (missingInputs > 0) {
+    //         alert(`กรุณากรอกค่าตัวเลขให้ครบในข้อ 5, 6, 7, 11 และ 12 (ขาด ${missingInputs} ช่อง)`);
+    //         return;
+    //     }
+
+    //     // ✅ ทุกอย่างผ่าน → ไปหน้าถัดไปได้
+    //     onNext();
+    // };
+
 
     // แจ้ง parent เมื่อสถานะครบ/ไม่ครบเปลี่ยน
     React.useEffect(() => {
         onComplete(allAnswered);
     }, [allAnswered, onComplete]);
+
+    const missingFieldsText = missingFields.length > 0
+        ? `กรุณากรอกข้อมูลใน ${missingFields.join(', ')}`
+        : '';
 
     return (
         <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
@@ -638,7 +683,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
             </Card>
 
             {/* ปุ่มควบคุมท้ายหน้า */}
-            <CardFooter className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-between tw-gap-3 tw-mt-8">
+            {/* <CardFooter className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-between tw-gap-3 tw-mt-8">
                 <div className="tw-text-sm tw-text-blue-gray-600">
                     {allAnswered ? "ตอบครบแล้ว ✔️" : `ยังไม่ได้ตอบอีก ${remaining} ข้อ`}
                 </div>
@@ -646,9 +691,9 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                 <div className="tw-flex tw-gap-2">
                     <Button variant="outlined" color="blue-gray" type="button" onClick={onSave}>
                         บันทึกชั่วคราว
-                    </Button>
+                    </Button> */}
 
-                    <Button
+            {/* <Button
                         color="blue"
                         type="button"
                         onClick={handleNext}
@@ -658,9 +703,66 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                         className={!allAnswered ? "tw-opacity-60 tw-cursor-not-allowed" : ""}
                     >
                         ถัดไป
+                    </Button> */}
+
+            {/* <Button
+                        color="blue"
+                        type="button"
+                        onClick={handleNext}
+                        disabled={!allAnswered || !allInputsFilled}   // 🔹 เช็คเพิ่ม
+                        aria-disabled={!allAnswered || !allInputsFilled}
+                        title={
+                            !allAnswered
+                                ? `ต้องตอบให้ครบก่อน (เหลือ ${remaining})`
+                                : !allInputsFilled
+                                    ? "กรอกค่าตัวเลขให้ครบในข้อ 5, 6, 7, 11 และ 12 ก่อน"
+                                    : "ไปหน้า PMReportPhotos"
+                        }
+                        className={
+                            !allAnswered || !allInputsFilled
+                                ? "tw-opacity-60 tw-cursor-not-allowed"
+                                : ""
+                        }
+                    >
+                        ถัดไป
                     </Button>
+
                 </div>
-            </CardFooter>
+            </CardFooter> */}
+
+            <CardFooter className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-between tw-gap-3 tw-mt-8">
+            <div className="tw-text-sm tw-text-blue-gray-600">
+                {/* แสดงข้อความเกี่ยวกับการกรอกข้อมูล */}
+                {missingFieldsText}
+            </div>
+
+            <div className="tw-flex tw-gap-2">
+                <Button variant="outlined" color="blue-gray" type="button" onClick={onSave}>
+                    บันทึกชั่วคราว
+                </Button>
+
+                <Button
+                    color="blue"
+                    type="button"
+                    onClick={handleNext}
+                    disabled={!allInputsFilled}  // ปิดปุ่มหากยังไม่กรอกครบ
+                    aria-disabled={!allInputsFilled}
+                    title={
+                        !allInputsFilled
+                            ? missingFieldsText // แสดงข้อความที่บอกว่าไม่ได้กรอกข้อไหน
+                            : "ไปหน้า PMReportPhotos"
+                    }
+                    className={
+                        !allInputsFilled
+                            ? "tw-opacity-60 tw-cursor-not-allowed"
+                            : ""
+                    }
+                >
+                    ถัดไป
+                </Button>
+
+            </div>
+        </CardFooter>
         </section>
     );
 }
