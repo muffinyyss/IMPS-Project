@@ -427,11 +427,20 @@ return (
         </Card>
 
         {/* ===== Date range ก่อนกราฟทั้งสาม ===== */}
-        <DateRangePicker
+        {/* <DateRangePicker
             startDate={startDate}
             endDate={endDate}
             onStartChange={handleStartChange}
             onEndChange={handleEndChange}
+            onApply={applyRange}
+            maxEndDate={MAX_END}
+        /> */}
+
+        <DateRangePicker
+            startDate={draftStart}   // ❌ เดิมเป็น startDate
+            endDate={draftEnd}       // ❌ เดิมเป็น endDate
+            onStartChange={setDraftStart}  // ❌ เดิมเป็น handleStartChange
+            onEndChange={setDraftEnd}      // ❌ เดิมเป็น handleEndChange
             onApply={applyRange}
             maxEndDate={MAX_END}
         />
