@@ -61,7 +61,7 @@ export default function StatisticsCards({
       icon: <i className="fas fa-fan tw-w-6 tw-h-6 tw-text-white tw-text-center tw-mt-2" />,
       title: "FAN",
       value: (
-        <span className={`tw-font-semibold ${fanOn ? "tw-text-green-600" : "tw-text-blue-gray-400"}`}>
+        <span className={`tw-font-semibold ${fanOn ? "tw-text-green-400" : "tw-text-blue-gray-400"}`}>
           {fanOn ? "ON" : "OFF"}
         </span>
       ),
