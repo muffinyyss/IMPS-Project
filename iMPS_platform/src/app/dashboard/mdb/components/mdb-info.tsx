@@ -161,12 +161,12 @@ export default function MDBInfo({
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                //     className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-green-400" : "tw-text-red-500"}`}
+                                    className={`tw-font-semibold ${mainBreakerStatus ? "tw-text-green-300" : "tw-text-red-500"}`}
                                 // >
-                                    className={`tw-font-semibold tw-text-green-600`}
+                                    // className={`tw-font-semibold tw-text-green-400`}
                                 >
-                                    {/* Status: {mainBreakerStatus ? "ON" : "OFF"} */}
-                                    Status: {"ON"}
+                                    Status: {mainBreakerStatus ? "ON" : "OFF"}
+                                    {/* Status: {"ON"} */}
                                 </Typography>
                             </div>
                         </div>
@@ -185,12 +185,12 @@ export default function MDBInfo({
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                //     className={`tw-font-semibold ${breakChargerStatus ? "tw-text-green-400" : "tw-text-red-500"}`}
+                                    className={`tw-font-semibold ${breakChargerStatus ? "tw-text-green-300" : "tw-text-red-500"}`}
                                 // >
-                                className={`tw-font-semibold tw-text-green-600`}
+                                // className={`tw-font-semibold tw-text-green-400`}
                                 >
-                                    {/* Status: {breakChargerStatus ? "ON" : "OFF"} */}
-                                    Status: {"ON" }
+                                    Status: {breakChargerStatus ? "ON" : "OFF"}
+                                    {/* Status: {"ON" } */}
                                 </Typography>
                             </div>
                         </div>
