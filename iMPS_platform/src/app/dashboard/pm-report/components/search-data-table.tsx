@@ -41,23 +41,6 @@ export function SearchDataTables() {
   const [filtering, setFiltering] = useState("");
   // const pdfInputRef = useRef<HTMLInputElement>(null);
 
-  // // ✅ ใส่ฟังก์ชันไว้ในนี้
-  // const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  //   const files = Array.from(e.target.files ?? []);
-  //   if (!files.length) return;
-
-  //   const pdfs = files.filter(
-  //     (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
-  //   );
-  //   if (pdfs.length !== files.length) {
-  //     alert("รองรับเฉพาะไฟล์ PDF เท่านั้น (ไฟล์อื่นจะถูกข้าม)");
-  //   }
-
-  //   console.log("เลือกไฟล์ PDF:", pdfs.map(f => ({ name: f.name, size: f.size })));
-
-  //   // reset ให้เลือกไฟล์ซ้ำได้
-  //   e.currentTarget.value = "";
-  // };
 
   // เพิ่ม: ดึงข้อมูลจาก FastAPI แล้ว map → ฟิลด์ที่ตารางใช้อยู่ (name/position/office)
   useEffect(() => {
