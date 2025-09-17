@@ -292,8 +292,6 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
         return requiredInputsFilled && allAnswered;
     }, [inputs, rows]);
 
-
-
     function syncAllUnits<U extends string>(
         setter: React.Dispatch<React.SetStateAction<MeasureState<U>>>,
         keys: string[],
