@@ -228,38 +228,6 @@ export function SearchDataTables() {
 
           {/* กลุ่มปุ่มด้านขวา */}
           <div className="tw-flex tw-items-center tw-gap-3">
-            {/* <Link href="#"> */}
-            {/* input เลือกไฟล์ PDF แบบซ่อน */}
-            {/* <input
-                  ref={pdfInputRef}
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  multiple          // 👉 เอาออกถ้าอยากให้เลือกได้ทีละไฟล์
-                  className="tw-hidden"
-                  onChange={handlePdfChange}
-                /> */}
-
-            {/* ปุ่ม Upload (พื้นขาว + เส้นขอบ, hover เป็นดำ) */}
-            {/* <Button
-                  variant="text"
-                  size="lg"
-                  onClick={() => pdfInputRef.current?.click()}
-                  className="
-                    group
-                    tw-h-11 tw-rounded-xl tw-px-4 tw-flex tw-items-center tw-gap-2
-                    tw-bg-white tw-text-blue-gray-900
-                    tw-border tw-border-blue-gray-200
-                    tw-shadow-[0_1px_0_rgba(0,0,0,0.04)]
-                    hover:tw-bg-black hover:tw-text-black hover:tw-border-black
-                    hover:tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                    tw-transition-colors tw-duration-200
-                    focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                  "
-                >
-                  <ArrowUpTrayIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-200 group-hover:-tw-translate-y-0.5" />
-                  <span>Upload</span>
-                </Button> */}
-
             {/* input เลือกไฟล์ PDF แบบซ่อน */}
             <input
               ref={pdfInputRef}
