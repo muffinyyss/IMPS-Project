@@ -22,12 +22,12 @@ import { data_MDB } from "@/data/statistics-charts-data";
 
 import { buildChartsFromHistory } from "@/data/statistics-charts-data";
 
+
 type HistoryRow = {
-    ts: string; // ISO time
+    Datetime: string; // ISO time
     VL1N?: number; VL2N?: number; VL3N?: number;
     I1?: number; I2?: number; I3?: number;
     PL1N?: number; PL2N?: number; PL3N?: number;
-    EL1?: number; EL2?: number; EL3?: number;
     [k: string]: any;
 };
 
@@ -48,7 +48,7 @@ type Me = {
 type MdbDoc = {
     _id: string;
     // ฟิลด์อื่น ๆ ตามที่ backend ส่งมา:
-    station_id?: number;
+    station_id?: string;
     [key: string]: any;
 };
 
@@ -126,23 +126,7 @@ export default function MDBPage() {
         return `${yyyy}-${mm}-${dd}`;
     };
 
-    // useEffect(() => {
-    //     const fetchUsers = async () => {
-    //        2 try {
-    //             const res = await fetch("http://localhost:8000/MDB/");
-    //             const data = await res.json();
-    //             // data = { MDB: [...] }
-    //             setMdb(data.MDB); // ✅ เก็บ array ของ users ลง state
-    //         } catch (err) {
-    //             console.error("Fetch error:", err);
-    //         } finally {
-    //             setLoading(false);
-    //         }
-    //     };
-
-    //     fetchUsers();
-    // }, []);
-
+   
     // ✅ CHANGED: โหลด user จาก localStorage
     useEffect(() => {
         const load = () => {
@@ -160,22 +144,7 @@ export default function MDBPage() {
     }, []);
 
 
-    // // โหลดสถานะจาก localStorage + sync เมื่อมีการเปลี่ยนแปลงจากแท็บอื่น
-    // useEffect(() => {
-    //     const load = () => {
-    //         try {
-    //             const token = localStorage.getItem("accessToken");
-    //             const rawUser = localStorage.getItem("user");
-    //             setUserLogin(token && rawUser ? JSON.parse(rawUser) : null);
-    //         } catch {
-    //             setUserLogin(null);
-    //         }
-    //     };
-    //     load();
-    //     window.addEventListener("storage", load);
-    //     return () => window.removeEventListener("storage", load);
-    // }, []);
-
+   
     // ✅ CHANGED: ใช้ SSE (EventSource) แทน fetch (เรียลไทม์)
     useEffect(() => {
         setLoading(true);
@@ -218,56 +187,60 @@ export default function MDBPage() {
         setErr2(null);
 
         const sid = userLogin?.station_id != null ? String(userLogin.station_id) : "";
-        const url = `${API_BASE}/MDB/history/last24${sid ? `?station_id=${encodeURIComponent(sid)}` : ""}`;
+        const startISO = new Date(`${startDate}T00:00:00Z`).toISOString();
+        const endISO = new Date(`${endDate}T23:59:59.999Z`).toISOString();
+        // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+        const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`;
+
         const es = new EventSource(url);
+        es.onmessage = (e) => {
+            const doc = JSON.parse(e.data); 
+        };
+       
+        const parseDatetime = (iso: string) => {
+            // ตัด microseconds เหลือ 3 หลัก
+            const fixed = iso.replace(/\.(\d{3})\d*/, ".$1");
+            // เพิ่ม Z ถ้าไม่มี
+            return new Date(fixed.endsWith("Z") ? fixed : fixed + "Z");
+        };
 
         const withinRange = (iso: string) => {
-            const d = new Date(iso);
-            const from = new Date(`${startDate}T00:00:00Z`);  // ใช้ Z เพื่อระบุเวลาเป็น UTC
-            const to = new Date(`${endDate}T23:59:59Z`);      // ใช้ Z เพื่อระบุเวลาเป็น UTC
+            const d = parseDatetime(iso).getTime();
+            const from = new Date(startISO).getTime();
+            const to = new Date(endISO).getTime();
             return d >= from && d <= to;
         };
+
         const pushRealtimeToHistory = (doc: any) => {
-            const ts = typeof doc.t === "string" ? doc.t : new Date().toISOString();
-            // แปลงเป็น Date object จาก timestamp ที่ได้รับมา
-            const date = new Date(ts);
-            // ลบเวลา 7 ชั่วโมง (เพื่อแก้ไขปัญหาจากการแสดงเวลาผิด)
-            date.setHours(date.getHours() - 7);
-            // ลบ 7 ชั่วโมง
 
-            // ทำการตั้งเวลาให้เป็นเวลาในประเทศไทย (หรือแค่ลบ 7 ชั่วโมงจาก UTC)
-            const isoTs = date.toISOString();
-            // แปลงกลับเป็น ISO string (เวลาหลังจากลบ 7 ชั่วโมงแล้ว)
+            let ts = typeof doc.Datetime === "string" ? doc.Datetime : new Date().toISOString();
 
-            if (!withinRange(isoTs)) return;
+            if (!ts.endsWith("Z")) ts += "Z";
+
+            if (!withinRange(ts)) return;
 
             setHistory(prev => {
                 const next: HistoryRow = {
-                    ts: isoTs,
-                    // ใช้ timestamp ที่ลบเวลา 7 ชั่วโมงแล้ว
-                    VL1N: Number(doc.L1 ?? 0),
-                    VL2N: Number(doc.L2 ?? 0),
-                    VL3N: Number(doc.L3 ?? 0),
+                    Datetime: ts,
+                    VL1N: Number(doc.VL1N ?? 0),
+                    VL2N: Number(doc.VL2N ?? 0),
+                    VL3N: Number(doc.VL3N ?? 0),
                     I1: Number(doc.I1 ?? 0),
                     I2: Number(doc.I2 ?? 0),
                     I3: Number(doc.I3 ?? 0),
-                    PL1N: Number(doc.W1 ?? 0),
-                    PL2N: Number(doc.W2 ?? 0),
-                    PL3N: Number(doc.W3 ?? 0),
+                    PL1N: Number(doc.PL1N ?? 0),
+                    PL2N: Number(doc.PL2N ?? 0),
+                    PL3N: Number(doc.PL3N ?? 0),
                 };
 
                 const merged = [...prev, next];
-                const from = new Date(`${startDate}T00:00:00Z`).getTime();
-                const to = new Date(`${endDate}T23:59:59Z`).getTime();
 
-                const pruned = merged
-                    .filter(r => {
-                        const t = new Date(r.ts).getTime();
-                        return t >= from && t <= to;
-                    })
-                    .slice(-5000); // เก็บข้อมูลล่าสุดแค่ 5000 จุด
+                const pruned = merged.filter(r => {
+                    const t = new Date(r.Datetime).getTime();
+                    return t >= new Date(startISO).getTime() && t <= new Date(endISO).getTime();
+                }).slice(-5000);
 
-                pruned.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+                pruned.sort((a, b) => new Date(a.Datetime).getTime() - new Date(b.Datetime).getTime());
 
                 return pruned;
             });
@@ -300,6 +273,8 @@ export default function MDBPage() {
             es.close();
         };
     }, [userLogin?.station_id, startDate, endDate]);
+    // console.log(startDate)
+    // console.log(history)
     // if (loading) return <p>Loading...</p>;
     // ✅ CHANGED: เทียบ station_id แบบ object เดี่ยว (mdb เป็นก้อนเดียว)
     const station =
@@ -313,7 +288,7 @@ export default function MDBPage() {
         tempc: int0(station?.tempc),
         humidity: int0(station?.humidity),
         fanOn: true,
-        rssiDb: 0,
+        rssiDb: int0(station?.RSSI),
 
         I1: num0(station?.I1),
         I2: num0(station?.I2),
@@ -375,41 +350,7 @@ export default function MDBPage() {
                 <p className="tw-text-gray-500 tw-mb-2">กำลังเชื่อมต่อข้อมูลเรียลไทม์…</p>
             )}
             {err && <p className="tw-text-red-600 tw-mb-2">{err}</p>}
-            {/* {userLogin ? userLogin.station_id : 0}
-
-
-            <ul>
-                {(mdb ?? []).map((doc) => (
-                    <li key={doc._id}>mdb station_id {doc.station_id ?? "-"}</li>
-
-                ))}
-            </ul> */}
-            {/* {mdb.length === 0 ? (<p>ไม่มีข้อมูล</p>) : (<p>mdb มีข้อมูล</p>)}
-            {userLogin ?  (userLogin.station_id) : (null)}
-            {userLogin
-                ? (
-                    mdb.find(it => it.station_id === userLogin.station_id)
-                        ?.station_id ?? <p>ไม่มี</p>
-                )
-                : <p>ไม่มี--</p>
-            } */}
-            {/* Statistics Cards */}
-            {/* <StatisticsCards
-                tempC={55}
-                humidity={87}
-                fanOn={true}
-                rssiDb={-54}
-                signalLevel={3}
-            /> */}
-            {/* {station ? (
-            <StatisticsCards
-                tempC={station.frequency}
-                humidity={87}
-                fanOn={true}
-                rssiDb={-54}
-                signalLevel={3}
-            />
-            ) : ( <p>--</p> )} */}
+            
 
             <StatisticsCards {...MDB} />
 
@@ -421,26 +362,6 @@ export default function MDBPage() {
                     />
                 </CardBody>
             </Card>
-
-            {/* ===== Date range ก่อนกราฟทั้งสาม ===== */}
-            {/* <DateRangePicker
-            startDate={startDate}
-            endDate={endDate}
-            onStartChange={handleStartChange}
-            onEndChange={handleEndChange}
-            onApply={applyRange}
-            maxEndDate={MAX_END}
-        /> */}
-
-            {/* <DateRangePicker
-                startDate={draftStart}
-                endDate={draftEnd}
-                onStartChange={setDraftStart}
-                onEndChange={setDraftEnd}
-                onApply={applyRange}
-                maxEndDate={MAX_END}
-            />
-            <StatisticChart startDate={startDate} endDate={endDate} charts={charts} /> */}
 
             <DateRangePicker
                 startDate={draftStart}  // ใช้ draftStart แทน startDate

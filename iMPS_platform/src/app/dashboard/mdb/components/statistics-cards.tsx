@@ -18,21 +18,7 @@ export default function StatisticsCards({
   rssiDb,
   signalLevel = 3,
 }: Props) {
-  const [randomRssi, setRandomRssi] = useState<number>(Number(rssiDb));
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // สุ่มการเพิ่มหรือลดค่า rssiDb อย่างค่อยเป็นค่อยไป
-      const change = Math.floor(Math.random() * 3) - 1; // -1, 0, หรือ 1 (สุ่มเปลี่ยนแค่เล็กน้อย)
-      
-      // คำนวณค่าใหม่ที่ไม่เกินช่วง -30 ถึง -70
-      const newRssiDb = Math.max(-70, Math.min(-30, randomRssi + change));
-      
-      setRandomRssi(newRssiDb);
-    }, 2000); // ทุก 2 วินาทีจะมีการสุ่มใหม่
-
-    return () => clearInterval(interval); // เมื่อคอมโพเนนต์ถูก unmount จะหยุดการสุ่ม
-  }, [randomRssi]);
+ 
 
   const cards = [
     {
@@ -72,7 +58,7 @@ export default function StatisticsCards({
       title: "Data",
       value: (
         <span className="tw-flex tw-items-baseline tw-gap-1">
-          <span className="tw-text-xl tw-font-semibold">{randomRssi}</span>
+          <span className="tw-text-xl tw-font-semibold">{rssiDb}</span>
           <span className="tw-text-sm tw-text-blue-gray-500">db</span>
         </span>
       ),

@@ -1,0 +1,9 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+IMPS_platform/backend/venv/
