@@ -34,11 +34,11 @@ function Icon({ id, open }: { id: number; open: number }) {
 export default function Landing() {
   const [users,setUsers] = useState<string[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null); // null = ยังไม่เช็ค
-  useEffect(() => {
-    fetch("http://localhost:8000")
-    .then((res) => res.json())
-    .then((data) => setUsers(data.username));
-  },[]);
+  // useEffect(() => {
+  //   fetch("http://localhost:8000")
+  //   .then((res) => res.json())
+  //   .then((data) => setUsers(data.username));
+  // },[]);
 
   // 1) เช็คสถานะล็อกอินจาก localStorage
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function Landing() {
     (async () => {
       try {
         // เปลี่ยน URL ให้ตรงกับ API จริงของคุณ เช่น /users หรือ /users/list
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/users`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"}/`, {
           headers: {
             "Accept": "application/json",
             "Authorization": `Bearer ${token}`, // ถ้า BE ใช้ JWT Bearer
@@ -156,19 +156,7 @@ export default function Landing() {
             where nature’s most dazzling light show awaits to captivate your
             senses and ignite&nbsp; your imagination.
           </Typography>
-          {/* <ul>
-          {users.map((u, i) => (
-            <li key={i}>{u}</li>
-          ))}
-          </ul> */}
-          {/* 3) แสดง <ul> เฉพาะเมื่อ login แล้ว */}
-          {isLoggedIn && users.length > 0 && (
-            <ul className="tw-mt-4">
-              {users.map((name, i) => (
-                <li key={name || i}>{name}</li>
-              ))}
-            </ul>
-          )}
+          
         </div>
 
         {/* Right image */}

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -23,7 +23,14 @@ import {
   setOpenSidenav,
 } from "@/context";
 
+import { useRouter } from "next/navigation";
+
+type Station = {
+  station_id: string;
+  station_name: string;
+}
 export function DashboardNavbar() {
+
   const [controller, dispatch] = useMaterialTailwindController();
   const { fixedNavbar, openSidenav } = controller;
   const pathname = usePathname();
@@ -47,6 +54,132 @@ export function DashboardNavbar() {
     title = "Add PM Report"
   }
 
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [stations, setStations] = useState<Station[]>([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);        // ไอเท็มที่กำลังโฟกัส (คีย์บอร์ด)
+  const [selectedDropdown, setSelectedDropdown] = useState(false);
+  const [selectedStation, setSelectedStation] = useState<Station | null>(null);
+
+  useEffect(() => {
+    const fetchStations = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) throw new Error("No access token found");
+
+        const res = await fetch(`http://localhost:8000/owner/stations/?q=${query}`, {
+          headers: {
+            "Accept": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+        });
+
+        if (res.status === 401) {
+          // 🔁 Token หมดอายุ → เด้งกลับไปหน้า login
+          localStorage.removeItem("accessToken");
+          window.location.href = "/auth/signin/basic";  // ← ใส่ path ที่หน้า login ของคุณ
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch stations");
+        }
+
+        const data = await res.json();
+        // ✅ Sort ตาม station_name ก่อน set
+        data.sort((a: Station, b: Station) =>
+          a.station_name.localeCompare(b.station_name, undefined, { numeric: true, sensitivity: 'base' })
+        );
+        setStations(data);
+        // ✅ เลือกสถานีแรก
+        if (!selectedDropdown && data.length > 0) {
+          selectItem(data[0]);
+          setSelectedDropdown(true);  // ตั้งค่าว่าเลือกแล้ว
+        }
+      } catch (err) {
+        console.error(err);
+        setStations([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+
+    fetchStations();
+  }, [query]);
+
+  // console.log("Access Token:", localStorage.getItem("accessToken"));
+
+  useEffect(() => {
+    if (!selectedStation) return;
+
+    const fetchStationDetails = async () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) throw new Error("No access token");
+
+        const res = await fetch(`http://localhost:8000/selected/station/${selectedStation.station_id}`, {
+          headers: {
+            "Accept": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+        });
+
+        if (res.status === 401) {
+          localStorage.removeItem("accessToken");
+          window.location.href = "/auth/signin/basic";
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch station details");
+        }
+
+        const data = await res.json();
+        console.log("Station Detail:", data);
+
+        // setStationDetails(data); // ถ้าจะเก็บไว้ใช้
+
+      } catch (err) {
+        console.error("Error fetching station details:", err);
+      }
+    };
+
+    fetchStationDetails();
+  }, [selectedStation]);  // ✅ ทำงานทุกครั้งที่สถานีเปลี่ยน
+
+
+  const selectItem = (item: Station) => {
+    setQuery(item.station_name);
+    setOpen(false);
+    // // ✅ เรียก API ไปหลังบ้านเพื่อดึงข้อมูลเฉพาะของสถานีนี้
+    // fetchStationDetails(item.station_id);
+    setSelectedStation(item);
+    router.push(`/dashboard/chargers?station_id=${item.station_id}`);
+  };
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      setOpen(true);
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((prev) => Math.min(prev + 1, stations.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === "Enter") {
+      if (open && active >= 0 && stations[active]) {
+        e.preventDefault();
+        selectItem(stations[active]);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
 
   return (
     <Navbar
@@ -97,36 +230,65 @@ export function DashboardNavbar() {
           </Typography> */}
         </div>
 
-        <div className="!tw-flex tw-items-center">
-          <div className="tw-mr-auto md:tw-mr-4 md:tw-w-56">
-            <Input label="Search" />
-          </div>
-          {/* <Link href="/auth/signin/basic">
-            <IconButton variant="text">
-              <UserCircleIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-900" />
-            </IconButton>
-          </Link> */}
-          {/* <IconButton
-            variant="text"
+        <div className="tw-mb-3 tw-flex tw-flex-row tw-gap-2 tw-relative">
+          <Typography
+            variant="small"
             color="blue-gray"
-            className="tw-grid xl:tw-hidden"
-            onClick={() => setOpenSidenav(dispatch, !openSidenav)}
+            className="-tw-mb-1 !tw-font-medium"
           >
-            {openSidenav ? (
-              <Bars3Icon className="tw-h-6 tw-w-6 tw-text-gray-900" />
-            ) : (
-              <Bars3CenterLeftIcon className="tw-h-6 tw-w-6 tw-text-gray-900" />
-            )}
-          </IconButton> */}
+            เลือกสถานี
+          </Typography>
 
-          {/* <IconButton
-            variant="text"
-            color="gray"
-            onClick={() => setOpenConfigurator(dispatch, true)}
-          >
-            <Cog6ToothIcon className="tw-h-5 tw-w-5 tw-text-gray-900" />
-          </IconButton> */}
+          <Input
+            size="lg"
+            label="พิมพ์เพื่อค้นหา / เลือกสถานี"
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+              setActive(-1);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={onKeyDown}
+            onBlur={() => setTimeout(() => setOpen(false), 120)}
+            placeholder="พิมพ์เพื่อค้นหา / เลือกสถานี"
+            className="border p-2 rounded w-full"
+            crossOrigin=""
+          />
+
+          {open && (
+            // <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border rounded shadow max-h-64 overflow-auto">
+            <div
+              className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-2 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto"
+              role="listbox"
+            >
+              {stations.length > 0 ? (
+                stations.map((item, idx) => (
+                  <button
+                    type="button"
+                    key={item.station_id}
+                    role="option"
+
+                    // className="w-full text-left px-3 py-2 hover:bg-blue-100"
+                    className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 ${idx === active ? "tw-bg-blue-gray-50" : ""
+                      }`}
+                    onMouseEnter={() => setActive(idx)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => selectItem(item)}
+                  >
+                    {item.station_name}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-2 text-gray-500">
+                  ไม่พบสถานีที่ค้นหา
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
 
 
       </div>

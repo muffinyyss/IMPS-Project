@@ -1,14 +1,22 @@
+"use client";
+
+import { propTypesPlacement } from "@material-tailwind/react/types/components/menu";
+
 type Props = {
-  stationName?: string;
+  station_name?: string;
   model?: string;
   status?: string;
 };
 
+export type Station = {
+  station_name:string;
+  model:string;
+};
+
 export default function StationInfo({
-  stationName = "Station",
-  model = "Charger Model",
-  status = "Charger Status",
-}: Props) {
+  station_name ,
+  model 
+}: Station) {
   const statusColor =
     status.toLowerCase() === "online"
       ? "tw-bg-green-100 tw-text-green-700"
@@ -25,7 +33,7 @@ export default function StationInfo({
               Station Name
             </dt>
             <dd className="tw-col-span-2 tw-text-blue-gray-900 tw-font-medium">
-              {stationName}
+              {station_name}
             </dd>
           </div>
 
@@ -38,7 +46,7 @@ export default function StationInfo({
             </dd>
           </div>
 
-          <div className="tw-grid tw-grid-cols-3 tw-gap-4">
+          {/* <div className="tw-grid tw-grid-cols-3 tw-gap-4">
             <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500">
               Status
             </dt>
@@ -49,7 +57,7 @@ export default function StationInfo({
                 {status}
               </span>
             </dd>
-          </div>
+          </div> */}
         </dl>
       </div>
     </div>

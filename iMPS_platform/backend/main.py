@@ -39,18 +39,17 @@ MDB_DB = client["MDB"]
 # MDB_collection = MDB_DB["nongKhae"]
 MDB_collection = MDB_DB.get_collection("NongKhae")
 
-# @app.get("/")
-# async def homepage():
-#     return {"message": "Helloo World"}
 
-
-def create_access_token(data: dict, expires_delta: int = 15):
-    expire = datetime.utcnow() + timedelta(minutes=expires_delta)
+def create_access_token(data: dict, expires_delta: int | timedelta = 15):
+    if isinstance(expires_delta, int):
+        expire = datetime.utcnow() + timedelta(minutes=expires_delta)
+    else:
+        expire = datetime.utcnow() + expires_delta
     data.update({"exp": expire})
     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
 
 class LoginRequest(BaseModel):
-    username: str
+    email: str
     password: str
 
 app.add_middleware(
@@ -64,16 +63,16 @@ app.add_middleware(
 
 @app.post("/login/")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = users_collection.find_one({"username": form_data.username})
+    user = users_collection.find_one({"email": form_data.username})
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not bcrypt.checkpw(form_data.password.encode("utf-8"), user["password"].encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     # generate tokens
-    access_token = create_access_token({"sub": user["username"]})
-    refresh_token = create_access_token({"sub": user["username"]}, expires_delta=60*24)
+    access_token = create_access_token({"sub": user["email"]})
+    refresh_token = create_access_token({"sub": user["email"]}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
 
     # update refresh token in DB
     users_collection.update_one(
@@ -87,6 +86,9 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         }]
     }}
     )
+    station_ids = user.get("station_id", [])
+    if not isinstance(station_ids, list):
+        station_ids = [station_ids]
 
     return {
         "message": "Login success ✅",
@@ -94,20 +96,22 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         "refresh_token": refresh_token, 
         "user":{
             "username": user["username"],
+            "email":user["email"],
             "role":user["role"],
             "company": user["company"],
-            "station_id": user["station_id"],
-            "role": user["role"]
+            "station_id": station_ids,
         }
     }
+
+
 
 @app.post("/refresh")
 async def refresh(refresh_token: str):
     try:
         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
+        email = payload.get("sub")
 
-        user = users_collection.find_one({"username": username})
+        user = users_collection.find_one({"email": email})
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
 
@@ -120,7 +124,7 @@ async def refresh(refresh_token: str):
 
         # ออก access token ใหม่
         new_access_token = create_access_token(
-            {"sub": username}, timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+            {"sub": email}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         )
         return {"access_token": new_access_token}
 
@@ -128,29 +132,18 @@ async def refresh(refresh_token: str):
         raise HTTPException(status_code=401, detail="Invalid token")
     
 @app.post("/logout")
-async def logout(username: str, refresh_token: str):
-    users_collection.update_one(
-        {"username": username},
+async def logout(email: str, refresh_token: str):
+    result = users_collection.update_one(
+        {"email": email, "refreshTokens.token": refresh_token},
         {"$pull": {"refreshTokens": {"token": refresh_token}}}
     )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="Token not found or already logged out")
     return {"msg": "Logged out successfully"}
-
-# def create_access_token(data: dict, expires_delta: int = 15):
-#     expire = datetime.utcnow() + timedelta(minutes=expires_delta)
-#     data.update({"exp": expire})
-#     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
 
 
 app.include_router(pdf_router)
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
 
 @app.get("/")
 async def users():
@@ -203,6 +196,59 @@ def to_json(doc: dict | None) -> str:
     if isinstance(d.get("_id"), ObjectId):
         d["_id"] = str(d["_id"])
     return json.dumps(d, ensure_ascii=False, default=str)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")  # ชี้ไป endpoint login
+# decode JWT 
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    print("Incoming token:", token)
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        print("Decoded email:", email)  # << เพิ่ม log ตรงนี้
+
+        if not email:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        user = users_collection.find_one({"email": email})
+        print("User found:", user)  # << เพิ่ม log ตรงนี้
+
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return str(user["_id"])
+    except JWTError as e:
+        print("JWTError:", str(e))
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+@app.get("/owner/stations/")
+async def get_stations(q: str = "", current_user: str = Depends(get_current_user)):
+    # current_user คือ str(_id)
+    user_obj_id = ObjectId(current_user)
+
+    # ดึง station_id ของ user
+    user = users_collection.find_one({"_id": user_obj_id}, {"station_id": 1})
+    if not user or "station_id" not in user:
+        return []
+
+    station_ids = user["station_id"]
+
+    # filter stations ตาม station_id ของ user + query
+    query_filter = {"station_id": {"$in": station_ids}}
+    if q:
+        query_filter["station_name"] = {"$regex": q, "$options": "i"}
+
+    stations = station_collection.find(query_filter, {"_id": 0, "station_name": 1, "station_id": 1})
+    return [{"station_name": s["station_name"], "station_id": s["station_id"]} for s in stations]
+
+@app.get("/selected/station/{station_id}")
+async def get_station_detail(station_id: str, current_user: str = Depends(get_current_user)):
+    station = station_collection.find_one({"station_id": station_id})
+    if not station:
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    # ✅ แปลง _id เป็น string
+    station["_id"] = str(station["_id"])
+
+    return station
 
 @app.get("/MDB")
 async def mdb(request: Request, station_id: str | None = None):
@@ -347,144 +393,144 @@ async def change_stream_generator():
             yield f"data: {json.dumps(payload)}\n\n"
 
 
-@app.get("/MDB/history/last24")
-async def get_last_24h(
-    request: Request,
-    station_id: int = Query(...),
-    step_sec: int = Query(300, ge=5, le=3600),
-    limit: int = Query(20000, ge=1, le=200000),
-) -> StreamingResponse:
-    """
-    ส่งข้อมูลตั้งแต่เที่ยงคืนของวันนี้ และอัปเดตข้อมูลทุก 1-3 วินาที
-    """
-    headers = {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",  # กัน proxy บัฟเฟอร์
-    }
+# @app.get("/MDB/history/last24")
+# async def get_last_24h(
+#     request: Request,
+#     station_id: int = Query(...),
+#     step_sec: int = Query(300, ge=5, le=3600),
+#     limit: int = Query(20000, ge=1, le=200000),
+# ) -> StreamingResponse:
+#     """
+#     ส่งข้อมูลตั้งแต่เที่ยงคืนของวันนี้ และอัปเดตข้อมูลทุก 1-3 วินาที
+#     """
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",  # กัน proxy บัฟเฟอร์
+#     }
 
-    async def event_generator():
-        # ---- ดึงข้อมูลตั้งแต่เที่ยงคืนของวันนี้ ----
-        end_dt = datetime.now(timezone.utc)
-        # กำหนดเวลาเริ่มต้นเป็นเที่ยงคืนของวันนี้
-        start_dt = datetime.combine(end_dt.date(), time.min, tzinfo=timezone.utc)
+#     async def event_generator():
+#         # ---- ดึงข้อมูลตั้งแต่เที่ยงคืนของวันนี้ ----
+#         end_dt = datetime.now(timezone.utc)
+#         # กำหนดเวลาเริ่มต้นเป็นเที่ยงคืนของวันนี้
+#         start_dt = datetime.combine(end_dt.date(), time.min, tzinfo=timezone.utc)
 
-        start_iso = start_dt.isoformat().replace("+00:00", "Z")
-        end_iso = end_dt.isoformat().replace("+00:00", "Z")
+#         start_iso = start_dt.isoformat().replace("+00:00", "Z")
+#         end_iso = end_dt.isoformat().replace("+00:00", "Z")
 
-        pipeline = [
-            {"$match": {
-                "station_id": station_id,
-                "Datetime": {"$gte": start_iso, "$lte": end_iso}
-            }},
-            {"$addFields": {
-                "_dt": {"$dateFromString": {"dateString": "$Datetime"}}
-            }},
-            {"$project": {
-                "_id": 0,
-                "_dt": 1,
-                "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1,
-                "PL1N": 1, "PL2N": 1, "PL3N": 1
-            }},
-            {"$addFields": {
-                "bin": {
-                    "$toDate": {
-                        "$subtract": [
-                            {"$toLong": "$_dt"},
-                            {"$mod": [{"$toLong": "$_dt"}, step_sec * 1000]}
-                        ]
-                    }
-                }
-            }},
-            {"$group": {
-                "_id": "$bin",
-                "VL1N": {"$avg": "$VL1N"},
-                "VL2N": {"$avg": "$VL2N"},
-                "VL3N": {"$avg": "$VL3N"},
-                "I1": {"$avg": "$I1"},
-                "I2": {"$avg": "$I2"},
-                "I3": {"$avg": "$I3"},
-                "PL1N": {"$avg": "$PL1N"},
-                "PL2N": {"$avg": "$PL2N"},
-                "PL3N": {"$avg": "$PL3N"}
-            }},
-            {"$sort": {"_id": 1}},
-            {"$limit": limit},
-            {"$project": {
-                "t": {"$dateToString": {"format": "%Y-%m-%dT%H:%M:%SZ", "date": "$_id"}},
-                "L1": "$VL1N",
-                "L2": "$VL2N",
-                "L3": "$VL3N",
-                "I1": "$I1",
-                "I2": "$I2",
-                "I3": "$I3",
-                "W1": "$PL1N",
-                "W2": "$PL2N",
-                "W3": "$PL3N",
-                "_id": 0
-            }}
-        ]
+#         pipeline = [
+#             {"$match": {
+#                 "station_id": station_id,
+#                 "Datetime": {"$gte": start_iso, "$lte": end_iso}
+#             }},
+#             {"$addFields": {
+#                 "_dt": {"$dateFromString": {"dateString": "$Datetime"}}
+#             }},
+#             {"$project": {
+#                 "_id": 0,
+#                 "_dt": 1,
+#                 "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1,
+#                 "PL1N": 1, "PL2N": 1, "PL3N": 1
+#             }},
+#             {"$addFields": {
+#                 "bin": {
+#                     "$toDate": {
+#                         "$subtract": [
+#                             {"$toLong": "$_dt"},
+#                             {"$mod": [{"$toLong": "$_dt"}, step_sec * 1000]}
+#                         ]
+#                     }
+#                 }
+#             }},
+#             {"$group": {
+#                 "_id": "$bin",
+#                 "VL1N": {"$avg": "$VL1N"},
+#                 "VL2N": {"$avg": "$VL2N"},
+#                 "VL3N": {"$avg": "$VL3N"},
+#                 "I1": {"$avg": "$I1"},
+#                 "I2": {"$avg": "$I2"},
+#                 "I3": {"$avg": "$I3"},
+#                 "PL1N": {"$avg": "$PL1N"},
+#                 "PL2N": {"$avg": "$PL2N"},
+#                 "PL3N": {"$avg": "$PL3N"}
+#             }},
+#             {"$sort": {"_id": 1}},
+#             {"$limit": limit},
+#             {"$project": {
+#                 "t": {"$dateToString": {"format": "%Y-%m-%dT%H:%M:%SZ", "date": "$_id"}},
+#                 "L1": "$VL1N",
+#                 "L2": "$VL2N",
+#                 "L3": "$VL3N",
+#                 "I1": "$I1",
+#                 "I2": "$I2",
+#                 "I3": "$I3",
+#                 "W1": "$PL1N",
+#                 "W2": "$PL2N",
+#                 "W3": "$PL3N",
+#                 "_id": 0
+#             }}
+#         ]
 
-        # ส่งข้อมูลตั้งแต่เที่ยงคืนของวันนี้ (snapshot)
-        cursor = MDB_collection.aggregate(pipeline, allowDiskUse=True, maxTimeMS=10000)
-        sent_any = False
-        async for d in cursor:
-            sent_any = True
-            yield f"data: {json.dumps(d)}\n\n"
+#         # ส่งข้อมูลตั้งแต่เที่ยงคืนของวันนี้ (snapshot)
+#         cursor = MDB_collection.aggregate(pipeline, allowDiskUse=True, maxTimeMS=10000)
+#         sent_any = False
+#         async for d in cursor:
+#             sent_any = True
+#             yield f"data: {json.dumps(d)}\n\n"
 
-        # เช็กข้อมูลใหม่ทุก 1–3 วินาที
-        last_time = end_dt
-        while True:
-            if await request.is_disconnected():
-                break
+#         # เช็กข้อมูลใหม่ทุก 1–3 วินาที
+#         last_time = end_dt
+#         while True:
+#             if await request.is_disconnected():
+#                 break
 
                 
-            # ดึงข้อมูลที่มี timestamp ล่าสุดกว่าที่เราเคยส่งไป
-            # q = {
-            #     "station_id": station_id,
-            #     "Datetime": {"$gt": last_time.isoformat().replace("+00:00", "Z")}
-            # }
-            if isinstance(last_time, str):
-                last_time = datetime.fromisoformat(last_time)
+#             # ดึงข้อมูลที่มี timestamp ล่าสุดกว่าที่เราเคยส่งไป
+#             # q = {
+#             #     "station_id": station_id,
+#             #     "Datetime": {"$gt": last_time.isoformat().replace("+00:00", "Z")}
+#             # }
+#             if isinstance(last_time, str):
+#                 last_time = datetime.fromisoformat(last_time)
 
-            q = {
-                "station_id": station_id,
-                "Datetime": {"$gt": last_time.isoformat().replace("+00:00", "Z")}
-            }
+#             q = {
+#                 "station_id": station_id,
+#                 "Datetime": {"$gt": last_time.isoformat().replace("+00:00", "Z")}
+#             }
 
-            cursor = MDB_collection.find(
-                q,
-                sort=[("Datetime", 1)],
-                limit=500,
-                projection={"_id": 1, "Datetime": 1, "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1, "PL1N": 1, "PL2N": 1, "PL3N": 1}
-            )
+#             cursor = MDB_collection.find(
+#                 q,
+#                 sort=[("Datetime", 1)],
+#                 limit=500,
+#                 projection={"_id": 1, "Datetime": 1, "VL1N": 1, "VL2N": 1, "VL3N": 1, "I1": 1, "I2": 1, "I3": 1, "PL1N": 1, "PL2N": 1, "PL3N": 1}
+#             )
 
-            sent_any = False
-            async for doc in cursor:
-                last_time = doc["Datetime"]
-                payload = {
-                    "t": last_time,
-                    "L1": to_float(doc.get("VL1N")),
-                    "L2": to_float(doc.get("VL2N")),
-                    "L3": to_float(doc.get("VL3N")),
-                    "I1": to_float(doc.get("I1")),
-                    "I2": to_float(doc.get("I2")),
-                    "I3": to_float(doc.get("I3")),
-                    "W1": to_float(doc.get("PL1N")),
-                    "W2": to_float(doc.get("PL2N")),
-                    "W3": to_float(doc.get("PL3N"))
-                }
-                yield f"data: {json.dumps(payload)}\n\n"
-                sent_any = True
+#             sent_any = False
+#             async for doc in cursor:
+#                 last_time = doc["Datetime"]
+#                 payload = {
+#                     "t": last_time,
+#                     "L1": to_float(doc.get("VL1N")),
+#                     "L2": to_float(doc.get("VL2N")),
+#                     "L3": to_float(doc.get("VL3N")),
+#                     "I1": to_float(doc.get("I1")),
+#                     "I2": to_float(doc.get("I2")),
+#                     "I3": to_float(doc.get("I3")),
+#                     "W1": to_float(doc.get("PL1N")),
+#                     "W2": to_float(doc.get("PL2N")),
+#                     "W3": to_float(doc.get("PL3N"))
+#                 }
+#                 yield f"data: {json.dumps(payload)}\n\n"
+#                 sent_any = True
 
-            # ถ้าไม่มีข้อมูลใหม่ก็ส่ง keep-alive
-            if not sent_any:
-                yield ": keep-alive\n\n"
+#             # ถ้าไม่มีข้อมูลใหม่ก็ส่ง keep-alive
+#             if not sent_any:
+#                 yield ": keep-alive\n\n"
 
-            await asyncio.sleep(300)  # เช็กข้อมูลใหม่ทุก 3 วินาที
+#             await asyncio.sleep(300)  # เช็กข้อมูลใหม่ทุก 3 วินาที
 
-    return StreamingResponse(event_generator(), headers=headers)
+#     return StreamingResponse(event_generator(), headers=headers)
 
 def floor_bin(dt: datetime, step_sec: int) -> datetime:
     epoch_ms = int(dt.timestamp() * 1000)
@@ -498,66 +544,66 @@ def to_json(doc):
     doc["_id"] = str(doc["_id"])
     return json.dumps(doc, default=str)
 
-@app.get("/MDB/stream")
-async def mdb_stream(
-    request: Request,
-    station_id: int = Query(...),
-    step_sec: int = Query(60, ge=5, le=3600),
-):
-    headers = {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",
-    }
+# @app.get("/MDB/stream")
+# async def mdb_stream(
+#     request: Request,
+#     station_id: int = Query(...),
+#     step_sec: int = Query(60, ge=5, le=3600),
+# ):
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",
+#     }
 
-    async def event_generator():
-        # ส่งค่าให้ client รู้ว่าจะ reconnect ในกี่ ms ถ้าหลุด
-        yield "retry: 3000\n\n"
+#     async def event_generator():
+#         # ส่งค่าให้ client รู้ว่าจะ reconnect ในกี่ ms ถ้าหลุด
+#         yield "retry: 3000\n\n"
 
-        q = {"station_id": station_id}
-        last_iso = None  # Datetime ล่าสุดที่ได้ส่งไปแล้ว
+#         q = {"station_id": station_id}
+#         last_iso = None  # Datetime ล่าสุดที่ได้ส่งไปแล้ว
 
-        # ส่ง snapshot ล่าสุดทันที
-        latest = await MDB_collection.find_one(q, sort=[("Datetime", -1)])
-        if latest:
-            last_iso = latest.get("Datetime")
-            yield f"event: init\ndata: {to_json(latest)}\n\n"
-        else:
-            yield ": keep-alive\n\n"
+#         # ส่ง snapshot ล่าสุดทันที
+#         latest = await MDB_collection.find_one(q, sort=[("Datetime", -1)])
+#         if latest:
+#             last_iso = latest.get("Datetime")
+#             yield f"event: init\ndata: {to_json(latest)}\n\n"
+#         else:
+#             yield ": keep-alive\n\n"
 
-        while True:
-            if await request.is_disconnected():
-                break
+#         while True:
+#             if await request.is_disconnected():
+#                 break
 
-            # ดึงเฉพาะเอกสารที่ Datetime > last_iso
-            mq = {"station_id": station_id}
-            if last_iso:
-                mq["Datetime"] = {"$gt": last_iso}
+#             # ดึงเฉพาะเอกสารที่ Datetime > last_iso
+#             mq = {"station_id": station_id}
+#             if last_iso:
+#                 mq["Datetime"] = {"$gt": last_iso}
 
-            cursor = MDB_collection.find(mq).sort("Datetime", 1).limit(500)
-            sent_any = False
-            async for d in cursor:
-                last_iso = d["Datetime"]
-                # map เป็น payloadที่กราฟคุณรอ (เช่น L1/L2/L3)
-                payload = {
-                    "t": last_iso,                # ISO จาก DB (UTC)
-                    "L1": float(d.get("VL1N", 0)),
-                    "L2": float(d.get("VL2N", 0)),
-                    "L3": float(d.get("VL3N", 0)),
-                    "I1": float(d.get("I1", 0)),
-                    "I2": float(d.get("I2", 0)),
-                    "I3": float(d.get("I3", 0)),
-                    "W1": float(d.get("PL1N", 0)),
-                    "W2": float(d.get("PL2N", 0)),
-                    "W3": float(d.get("PL3N", 0)),
-                }
-                yield f"data: {json.dumps(payload)}\n\n"
-                sent_any = True
+#             cursor = MDB_collection.find(mq).sort("Datetime", 1).limit(500)
+#             sent_any = False
+#             async for d in cursor:
+#                 last_iso = d["Datetime"]
+#                 # map เป็น payloadที่กราฟคุณรอ (เช่น L1/L2/L3)
+#                 payload = {
+#                     "t": last_iso,                # ISO จาก DB (UTC)
+#                     "L1": float(d.get("VL1N", 0)),
+#                     "L2": float(d.get("VL2N", 0)),
+#                     "L3": float(d.get("VL3N", 0)),
+#                     "I1": float(d.get("I1", 0)),
+#                     "I2": float(d.get("I2", 0)),
+#                     "I3": float(d.get("I3", 0)),
+#                     "W1": float(d.get("PL1N", 0)),
+#                     "W2": float(d.get("PL2N", 0)),
+#                     "W3": float(d.get("PL3N", 0)),
+#                 }
+#                 yield f"data: {json.dumps(payload)}\n\n"
+#                 sent_any = True
 
-            if not sent_any:
-                yield ": keep-alive\n\n"
+#             if not sent_any:
+#                 yield ": keep-alive\n\n"
 
-            await asyncio.sleep(2)  # ← ปรับเป็น 1–3 วิ ตามความถี่ที่ต้องการ
+#             await asyncio.sleep(2)  # ← ปรับเป็น 1–3 วิ ตามความถี่ที่ต้องการ
 
-    return StreamingResponse(event_generator(), headers=headers)
+#     return StreamingResponse(event_generator(), headers=headers)

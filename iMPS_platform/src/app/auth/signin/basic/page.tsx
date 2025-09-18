@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import React,{useState} from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { useRouter } from "next/navigation";
@@ -15,9 +15,9 @@ import {
 // import { headers } from "next/headers";
 
 export default function BasicPage() {
-  const [username,setUsername] = useState("");
-  const [password,setPassword] = useState("");
-  const [message,setMessage] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -26,12 +26,12 @@ export default function BasicPage() {
     setMessage("");
     setLoading(true);
 
-    try{
+    try {
       const formData = new URLSearchParams();
-      formData.append("username", username);
+      formData.append("username", email);
       formData.append("password", password);
 
-      const res = await fetch("http://localhost:8000/login/",{
+      const res = await fetch("http://localhost:8000/login/", {
         method: "POST",
         // headers: {"Content-Type": "application/json"},
         // body: JSON.stringify({username,password}),
@@ -41,7 +41,13 @@ export default function BasicPage() {
 
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        setMessage(data?.detail || "Login failed ❌");
+        // setMessage(data?.detail || "Login failed ❌");
+        if (Array.isArray(data?.detail)) {
+          const msgs = data.detail.map((err: any) => `${err.loc.join(".")}: ${err.msg}`);
+          setMessage(msgs.join(", "));
+        } else {
+          setMessage(data?.detail || "Login failed ❌");
+        }
         setLoading(false);
         return;
       }
@@ -54,7 +60,7 @@ export default function BasicPage() {
       setMessage(data?.message || "Login success ✅");
 
       router.push("/pages/mainpages/home");
-    }catch (err) {
+    } catch (err) {
       console.error(err);
       setMessage("Server error");
     } finally {
@@ -86,7 +92,7 @@ export default function BasicPage() {
               Sign In
             </Typography>
             <Typography className="tw-text-lg !tw-font-normal !tw-text-blue-gray-500">
-              Enter your username and password to Sign In.
+              Enter your email and password to Sign In.
             </Typography>
           </div>
           <form className="tw-mt-8 tw-mb-2 tw-mx-auto tw-w-80 tw-max-w-screen-lg lg:tw-w-1/2" onSubmit={handleSubmit}>
@@ -96,12 +102,12 @@ export default function BasicPage() {
                 color="blue-gray"
                 className="-tw-mb-3 !tw-font-medium"
               >
-                Your username
+                Your email
               </Typography>
-              <Input size="lg" label="Your username" 
-              type="text" 
-              value={username} 
-              onChange={(e) => setUsername(e.target.value)}
+              <Input size="lg" label="Your email"
+                type="text"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
               <Typography
                 variant="small"
@@ -111,8 +117,8 @@ export default function BasicPage() {
                 Password
               </Typography>
               <Input type="password" size="lg" label="Password"
-              value={password}
-              onChange={(e) => setPassword((e.target.value))} />
+                value={password}
+                onChange={(e) => setPassword((e.target.value))} />
             </div>
 
             {/* <Button className="tw-mt-6" fullWidth type="submit">
