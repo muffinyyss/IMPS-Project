@@ -23,7 +23,6 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
-
 from pdf.pdf_routes import router as pdf_router
 
 app = FastAPI()
@@ -413,49 +412,128 @@ def parse_iso_dt(s: str) -> datetime:
 #         d["_id"] = str(d["_id"])
 #         docs.append(d)
 #     return docs
+
+
+# @app.get("/MDB/history")
+# async def get_history(
+#     station_id: int = Query(..., description="ID ของ turbine/station"),
+#     start: str = Query(..., description="วันที่เริ่มต้นในรูปแบบ ISO string"),
+#     end: str = Query(..., description="วันที่สิ้นสุดในรูปแบบ ISO string"),
+#     limit: int = Query(None, description="จำนวน record สูงสุดที่จะดึง")
+# ):
+#     """
+#     ดึงข้อมูล history ของ station_id ตามช่วง start-end
+#     """
+#     # แปลง string เป็น datetime
+#     start_dt = datetime.fromisoformat(start)
+#     end_dt = datetime.fromisoformat(end)
+
+#     # query MongoDB
+#     query = {
+#         "station_id": station_id,
+#         "ts": { "$gte": start_dt, "$lte": end_dt }  # สมมติว่า field ใน DB คือ ts
+#     }
+
+#     cursor = MDB_collection.find(query).sort("ts", 1)  # เรียงตามเวลา ascending
+#     if limit:
+#         cursor = cursor.limit(limit)
+
+#     # แปลงผลเป็น list ของ dict พร้อม serialize datetime เป็น string
+#     result = []
+#     for doc in cursor:
+#         doc["_id"] = str(doc["_id"])  # แปลง ObjectId เป็น string
+#         doc["ts"] = doc["ts"].isoformat()  # แปลง datetime เป็น ISO string
+#         result.append(doc)
+
+#     return result
+
+
+# @app.get("/MDB/history")
+# async def get_history(
+#     station_id: int = Query(..., description="ID ของ turbine/station"),
+#     start: str = Query(..., description="วันที่เริ่มต้นในรูปแบบ ISO string"),
+#     end: str = Query(..., description="วันที่สิ้นสุดในรูปแบบ ISO string")
+#     # ,limit: int = Query(None, description="จำนวน record สูงสุดที่จะดึง")
+# ):
+#     try:
+#         # แปลง string เป็น datetime
+#         start_dt = datetime.fromisoformat(start)
+#         end_dt = datetime.fromisoformat(end)
+
+#         print(f"Querying station_id={station_id} from {start_dt} to {end_dt}")
+
+#         # query MongoDB
+#         query = {
+#             "station_id": station_id,
+#             "Datetime": {
+#                 "$gte": start_dt.isoformat(),  # แปลงเป็น ISO string
+#                 "$lte": end_dt.isoformat()
+#             }
+#         }
+
+#         cursor = MDB_collection.find(query).sort("Datetime", 1)
+#         # if limit:
+#         #     cursor = cursor.limit(limit)
+
+#         # ใช้ async for หรือ to_list()
+#         result = await cursor.to_list(length=None)  # limit แนะนำเพื่อป้องกันดึงข้อมูลเยอะเกินไป
+
+#         # แปลง ObjectId และ datetime
+#         for doc in result:
+#             doc["_id"] = str(doc["_id"])
+#             # doc["Datetime"] = doc["Datetime"].isoformat()
+
+#         print(f"Found {len(result)} records")
+#         return result
+
+#     except Exception as e:
+#         print("Error in get_history:", e)
+#         raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/MDB/history")
-async def get_history(
-    station_id: int = Query(...),
-    start: str = Query(...),  # เช่น "2025-09-01T00:00:00Z"
-    end: str = Query(...),    # เช่น "2025-09-15T23:59:59Z"
-    limit: int = Query(50000, ge=1, le=200000),
-) -> List[Any]:
-    start_dt = parse_iso_dt(start)
-    end_dt = parse_iso_dt(end)
+async def stream_history(
+    station_id: int = Query(..., description="ID ของ turbine/station"),
+    start: str = Query(..., description="วันที่เริ่มต้นในรูปแบบ ISO string"),
+    end: str = Query(..., description="วันที่สิ้นสุดในรูปแบบ ISO string")
+):
+    print(f"Querying station_id={station_id} from {start} to {end}")
 
-    # ทดสอบดู sample document
-    sample = await MDB_collection.find_one({"station_id": station_id}, {"Datetime": 1})
-    if not sample:
-        return []
+    query = {
+        "station_id": station_id,
+        "Datetime": {"$gte": start, "$lte": end}
+    }
 
-    # ดูตัวอย่างของ `Datetime`
-    dt_val = sample.get("Datetime")
-    print(f"Sample Datetime: {dt_val}")  # ตรวจสอบค่าของ `Datetime`
+    projection = {
+        "_id": 1,
+        "station_id": 1,
+        "VL1N": 1,
+        "VL2N": 1,
+        "VL3N": 1,
+        "I1": 1,
+        "I2": 1,
+        "I3": 1,
+        "PL1N": 1,
+        "PL2N": 1,
+        "PL3N": 1,
+        "Datetime": 1
+    }
 
-    if isinstance(dt_val, str):
-        # ถ้าใน DB เก็บเป็น string → ใช้ string ช่วงเวลา
-        q = {
-            "station_id": station_id,
-            "Datetime": {"$gte": start, "$lte": end}
-        }
-    else:
-        # ถ้าใน DB เก็บเป็น datetime object → ใช้ datetime object
-        q = {
-            "station_id": station_id,
-            "Datetime": {"$gte": start_dt, "$lte": end_dt}
-        }
+    cursor = MDB_collection.find(query, projection).sort("Datetime", 1)
 
-    cursor = MDB_collection.find(q).sort("Datetime", 1).limit(limit)
-    docs = []
-    async for d in cursor:
-        docs.append(d)
-    
-    # เพิ่มการ print ดูข้อมูลที่ดึงมา
-    print(f"Fetched {len(docs)} documents from the database.")
-    if len(docs) > 0:
-        print("Sample data:", docs[0])  # แสดงข้อมูลตัวอย่างเพื่อดูรูปแบบข้อมูล
+    async def event_generator():
+        try:
+            async for doc in cursor:   # iterate ทีละ record จาก Mongo
+                doc["_id"] = str(doc["_id"])
+                # ส่งเป็น SSE format → ต้องขึ้นต้นด้วย "data:" และจบด้วย \n\n
+                yield f"data: {json.dumps(doc)}\n\n"
+                await asyncio.sleep(0.01)  # กัน browser ค้าง (ปรับตามจริง)
+        except Exception as e:
+            print("Error in SSE generator:", e)
+            yield f"event: error\ndata: {str(e)}\n\n"
 
-    return docs
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 # @app.get("/MDB/history/last24")
 # async def get_last_24h(
 #     station_id: int = Query(...),

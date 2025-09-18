@@ -22,12 +22,12 @@ import { data_MDB } from "@/data/statistics-charts-data";
 
 import { buildChartsFromHistory } from "@/data/statistics-charts-data";
 
+
 type HistoryRow = {
-    ts: string; // ISO time
+    Datetime: string; // ISO time
     VL1N?: number; VL2N?: number; VL3N?: number;
     I1?: number; I2?: number; I3?: number;
     PL1N?: number; PL2N?: number; PL3N?: number;
-    EL1?: number; EL2?: number; EL3?: number;
     [k: string]: any;
 };
 
@@ -218,56 +218,68 @@ export default function MDBPage() {
         setErr2(null);
 
         const sid = userLogin?.station_id != null ? String(userLogin.station_id) : "";
-        const url = `${API_BASE}/MDB/history/last24${sid ? `?station_id=${encodeURIComponent(sid)}` : ""}`;
+        const startISO = new Date(`${startDate}T00:00:00Z`).toISOString();
+        const endISO = new Date(`${endDate}T23:59:59.999Z`).toISOString();
+        // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+        const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`;
+
         const es = new EventSource(url);
+        es.onmessage = (e) => {
+            const doc = JSON.parse(e.data);
+            
+        };
+        console.log(es)
+        // console.log("EventSource created:", es);
+        // const withinRange = (iso: string) => {
+        //     const d = new Date(iso);
+        //     const from = new Date(`${startDate}T00:00:00Z`);  // ใช้ Z เพื่อระบุเวลาเป็น UTC
+        //     const to = new Date(`${endDate}T23:59:59Z`);      // ใช้ Z เพื่อระบุเวลาเป็น UTC
+        //     return d >= from && d <= to;
+        // };
+        const parseDatetime = (iso: string) => {
+            // ตัด microseconds เหลือ 3 หลัก
+            const fixed = iso.replace(/\.(\d{3})\d*/, ".$1");
+            // เพิ่ม Z ถ้าไม่มี
+            return new Date(fixed.endsWith("Z") ? fixed : fixed + "Z");
+        };
 
         const withinRange = (iso: string) => {
-            const d = new Date(iso);
-            const from = new Date(`${startDate}T00:00:00Z`);  // ใช้ Z เพื่อระบุเวลาเป็น UTC
-            const to = new Date(`${endDate}T23:59:59Z`);      // ใช้ Z เพื่อระบุเวลาเป็น UTC
+            const d = parseDatetime(iso).getTime();
+            const from = new Date(startISO).getTime();
+            const to = new Date(endISO).getTime();
             return d >= from && d <= to;
         };
+
         const pushRealtimeToHistory = (doc: any) => {
-            const ts = typeof doc.t === "string" ? doc.t : new Date().toISOString();
-            // แปลงเป็น Date object จาก timestamp ที่ได้รับมา
-            const date = new Date(ts);
-            // ลบเวลา 7 ชั่วโมง (เพื่อแก้ไขปัญหาจากการแสดงเวลาผิด)
-            date.setHours(date.getHours() - 7);
-            // ลบ 7 ชั่วโมง
 
-            // ทำการตั้งเวลาให้เป็นเวลาในประเทศไทย (หรือแค่ลบ 7 ชั่วโมงจาก UTC)
-            const isoTs = date.toISOString();
-            // แปลงกลับเป็น ISO string (เวลาหลังจากลบ 7 ชั่วโมงแล้ว)
+            let ts = typeof doc.Datetime === "string" ? doc.Datetime : new Date().toISOString();
 
-            if (!withinRange(isoTs)) return;
+            if (!ts.endsWith("Z")) ts += "Z";
+
+            if (!withinRange(ts)) return;
 
             setHistory(prev => {
                 const next: HistoryRow = {
-                    ts: isoTs,
-                    // ใช้ timestamp ที่ลบเวลา 7 ชั่วโมงแล้ว
-                    VL1N: Number(doc.L1 ?? 0),
-                    VL2N: Number(doc.L2 ?? 0),
-                    VL3N: Number(doc.L3 ?? 0),
+                    Datetime: ts,
+                    VL1N: Number(doc.VL1N ?? 0),
+                    VL2N: Number(doc.VL2N ?? 0),
+                    VL3N: Number(doc.VL3N ?? 0),
                     I1: Number(doc.I1 ?? 0),
                     I2: Number(doc.I2 ?? 0),
                     I3: Number(doc.I3 ?? 0),
-                    PL1N: Number(doc.W1 ?? 0),
-                    PL2N: Number(doc.W2 ?? 0),
-                    PL3N: Number(doc.W3 ?? 0),
+                    PL1N: Number(doc.PL1N ?? 0),
+                    PL2N: Number(doc.PL2N ?? 0),
+                    PL3N: Number(doc.PL3N ?? 0),
                 };
 
                 const merged = [...prev, next];
-                const from = new Date(`${startDate}T00:00:00Z`).getTime();
-                const to = new Date(`${endDate}T23:59:59Z`).getTime();
 
-                const pruned = merged
-                    .filter(r => {
-                        const t = new Date(r.ts).getTime();
-                        return t >= from && t <= to;
-                    })
-                    .slice(-5000); // เก็บข้อมูลล่าสุดแค่ 5000 จุด
+                const pruned = merged.filter(r => {
+                    const t = new Date(r.Datetime).getTime();
+                    return t >= new Date(startISO).getTime() && t <= new Date(endISO).getTime();
+                }).slice(-5000);
 
-                pruned.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+                pruned.sort((a, b) => new Date(a.Datetime).getTime() - new Date(b.Datetime).getTime());
 
                 return pruned;
             });
@@ -300,6 +312,8 @@ export default function MDBPage() {
             es.close();
         };
     }, [userLogin?.station_id, startDate, endDate]);
+    // console.log(startDate)
+    // console.log(history)
     // if (loading) return <p>Loading...</p>;
     // ✅ CHANGED: เทียบ station_id แบบ object เดี่ยว (mdb เป็นก้อนเดียว)
     const station =
