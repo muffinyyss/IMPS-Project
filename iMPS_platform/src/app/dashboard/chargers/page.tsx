@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 
 // @material-tailwind/react
@@ -16,11 +18,44 @@ import AICard from "./components/AICard";
 import PMCard from "./components/PMCard";
 import CBMCard from "./components/condition-Based";
 
+import { useSearchParams } from "next/navigation";
 const StationImage = dynamic(() => import("./components/station-image"), {
   ssr: false,
 });
 
 export default function ChargersPage() {
+  const searchParams = useSearchParams();
+  const stationId = searchParams.get("station_id");
+  const [stationDetail, setStationDetail] = useState({
+    station_name: "",
+    model: "",
+    status: ""
+  });
+  useEffect(() => {
+    if (stationId) {
+      // ดึง API เพื่อโหลดข้อมูลสถานีนั้น
+      const token = localStorage.getItem("accessToken");
+        if (!token) throw new Error("No access token found");
+      fetch(`http://localhost:8000/selected/station/${stationId}`, {
+        headers: {
+          "Accept": "application/json",
+          "Authorization": `Bearer ${token}`,  // ✅ ส่ง token ไป
+        }
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          console.log("Station details in ChargersPage:", data);
+          // เซ็ต state ถ้าจะเอามาแสดง
+          setStationDetail({
+            station_name: data.station_name,
+            model: data.model,
+            status: data.status
+          });
+        });
+    }
+  }, [stationId]);
+
+
   return (
     <div className="tw-mt-8 tw-mb-4">
       {/* Sale by Country */}
@@ -38,9 +73,11 @@ export default function ChargersPage() {
               </CardHeader>
               <CardBody className="tw-flex tw-flex-col tw-flex-1 !tw-p-0">
                 <StationInfo
-                  stationName="GIGA EV – LatPhraoWangHin"
-                  model="DC Fast 180 kW"
-                  status="Online"
+                  // stationName="GIGA EV – LatPhraoWangHin"
+                  // model="DC Fast 180 kW"
+                  // status="Online"
+                  station_name={stationDetail?.station_name ?? "-"}
+                  model={stationDetail?.model}
                 />
               </CardBody>
             </Card>
