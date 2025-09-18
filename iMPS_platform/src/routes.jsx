@@ -99,6 +99,11 @@ export const routes = [
     icon: <RectangleGroupIcon {...icon} />,
     path: "#",
   },
+  {
+    name: "Users",
+    icon: <RectangleGroupIcon {...icon} />,
+    path: "/dashboard/users",
+  },
 ];
 
 export default routes;
