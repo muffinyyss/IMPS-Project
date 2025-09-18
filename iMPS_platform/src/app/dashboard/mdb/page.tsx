@@ -48,7 +48,7 @@ type Me = {
 type MdbDoc = {
     _id: string;
     // ฟิลด์อื่น ๆ ตามที่ backend ส่งมา:
-    station_id?: number;
+    station_id?: string;
     [key: string]: any;
 };
 
@@ -126,23 +126,7 @@ export default function MDBPage() {
         return `${yyyy}-${mm}-${dd}`;
     };
 
-    // useEffect(() => {
-    //     const fetchUsers = async () => {
-    //        2 try {
-    //             const res = await fetch("http://localhost:8000/MDB/");
-    //             const data = await res.json();
-    //             // data = { MDB: [...] }
-    //             setMdb(data.MDB); // ✅ เก็บ array ของ users ลง state
-    //         } catch (err) {
-    //             console.error("Fetch error:", err);
-    //         } finally {
-    //             setLoading(false);
-    //         }
-    //     };
-
-    //     fetchUsers();
-    // }, []);
-
+   
     // ✅ CHANGED: โหลด user จาก localStorage
     useEffect(() => {
         const load = () => {
@@ -160,22 +144,7 @@ export default function MDBPage() {
     }, []);
 
 
-    // // โหลดสถานะจาก localStorage + sync เมื่อมีการเปลี่ยนแปลงจากแท็บอื่น
-    // useEffect(() => {
-    //     const load = () => {
-    //         try {
-    //             const token = localStorage.getItem("accessToken");
-    //             const rawUser = localStorage.getItem("user");
-    //             setUserLogin(token && rawUser ? JSON.parse(rawUser) : null);
-    //         } catch {
-    //             setUserLogin(null);
-    //         }
-    //     };
-    //     load();
-    //     window.addEventListener("storage", load);
-    //     return () => window.removeEventListener("storage", load);
-    // }, []);
-
+   
     // ✅ CHANGED: ใช้ SSE (EventSource) แทน fetch (เรียลไทม์)
     useEffect(() => {
         setLoading(true);
@@ -225,17 +194,9 @@ export default function MDBPage() {
 
         const es = new EventSource(url);
         es.onmessage = (e) => {
-            const doc = JSON.parse(e.data);
-            
+            const doc = JSON.parse(e.data); 
         };
-        console.log(es)
-        // console.log("EventSource created:", es);
-        // const withinRange = (iso: string) => {
-        //     const d = new Date(iso);
-        //     const from = new Date(`${startDate}T00:00:00Z`);  // ใช้ Z เพื่อระบุเวลาเป็น UTC
-        //     const to = new Date(`${endDate}T23:59:59Z`);      // ใช้ Z เพื่อระบุเวลาเป็น UTC
-        //     return d >= from && d <= to;
-        // };
+       
         const parseDatetime = (iso: string) => {
             // ตัด microseconds เหลือ 3 หลัก
             const fixed = iso.replace(/\.(\d{3})\d*/, ".$1");
@@ -327,7 +288,7 @@ export default function MDBPage() {
         tempc: int0(station?.tempc),
         humidity: int0(station?.humidity),
         fanOn: true,
-        rssiDb: 0,
+        rssiDb: int0(station?.RSSI),
 
         I1: num0(station?.I1),
         I2: num0(station?.I2),
@@ -389,41 +350,7 @@ export default function MDBPage() {
                 <p className="tw-text-gray-500 tw-mb-2">กำลังเชื่อมต่อข้อมูลเรียลไทม์…</p>
             )}
             {err && <p className="tw-text-red-600 tw-mb-2">{err}</p>}
-            {/* {userLogin ? userLogin.station_id : 0}
-
-
-            <ul>
-                {(mdb ?? []).map((doc) => (
-                    <li key={doc._id}>mdb station_id {doc.station_id ?? "-"}</li>
-
-                ))}
-            </ul> */}
-            {/* {mdb.length === 0 ? (<p>ไม่มีข้อมูล</p>) : (<p>mdb มีข้อมูล</p>)}
-            {userLogin ?  (userLogin.station_id) : (null)}
-            {userLogin
-                ? (
-                    mdb.find(it => it.station_id === userLogin.station_id)
-                        ?.station_id ?? <p>ไม่มี</p>
-                )
-                : <p>ไม่มี--</p>
-            } */}
-            {/* Statistics Cards */}
-            {/* <StatisticsCards
-                tempC={55}
-                humidity={87}
-                fanOn={true}
-                rssiDb={-54}
-                signalLevel={3}
-            /> */}
-            {/* {station ? (
-            <StatisticsCards
-                tempC={station.frequency}
-                humidity={87}
-                fanOn={true}
-                rssiDb={-54}
-                signalLevel={3}
-            />
-            ) : ( <p>--</p> )} */}
+            
 
             <StatisticsCards {...MDB} />
 
@@ -435,26 +362,6 @@ export default function MDBPage() {
                     />
                 </CardBody>
             </Card>
-
-            {/* ===== Date range ก่อนกราฟทั้งสาม ===== */}
-            {/* <DateRangePicker
-            startDate={startDate}
-            endDate={endDate}
-            onStartChange={handleStartChange}
-            onEndChange={handleEndChange}
-            onApply={applyRange}
-            maxEndDate={MAX_END}
-        /> */}
-
-            {/* <DateRangePicker
-                startDate={draftStart}
-                endDate={draftEnd}
-                onStartChange={setDraftStart}
-                onEndChange={setDraftEnd}
-                onApply={applyRange}
-                maxEndDate={MAX_END}
-            />
-            <StatisticChart startDate={startDate} endDate={endDate} charts={charts} /> */}
 
             <DateRangePicker
                 startDate={draftStart}  // ใช้ draftStart แทน startDate
