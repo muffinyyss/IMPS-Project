@@ -49,8 +49,8 @@ type PropTypes = {
 };
 
 export default function Sidenav({
-  brandImg = "/img/logo-ct.png",
-  brandName = "iMPS",
+  // brandImg = "/img/logo-ct.png",
+  // brandName = "iMPS",
 }: PropTypes) {
   const pathname = usePathname();
   const [controller, dispatch] = useMaterialTailwindController();
@@ -91,25 +91,28 @@ export default function Sidenav({
         sidenavType === "dark"
           ? "gray"
           : sidenavType === "transparent"
-          ? "transparent"
-          : "white"
+            ? "transparent"
+            : "white"
       }
       shadow={sidenavType !== "transparent"}
       variant="gradient"
-      className={`!tw-fixed tw-top-4 !tw-z-50 tw-h-[calc(100vh-2rem)] tw-w-full tw-max-w-[18rem] tw-p-4 tw-shadow-blue-gray-900/5 ${
-        openSidenav ? "tw-left-4" : "-tw-left-72"
-      } ${sidenavType === "transparent" ? "shadow-none" : "shadow-xl"} ${
-        sidenavType === "dark" ? "!tw-text-white" : "tw-text-gray-900"
-      }} tw-transition-all tw-duration-300 tw-ease-in-out xl:tw-left-4 tw-overflow-y-scroll`}
+      className={`!tw-fixed tw-top-4 !tw-z-50 tw-h-[calc(100vh-2rem)] tw-w-full tw-max-w-[18rem] tw-p-4 tw-shadow-blue-gray-900/5 ${openSidenav ? "tw-left-4" : "-tw-left-72"
+        } ${sidenavType === "transparent" ? "shadow-none" : "shadow-xl"} ${sidenavType === "dark" ? "!tw-text-white" : "tw-text-gray-900"
+        }} tw-transition-all tw-duration-300 tw-ease-in-out xl:tw-left-4 tw-overflow-y-scroll`}
     >
       <Link
         href="/"
         className="tw-mb-2 tw-flex tw-items-center tw-gap-1 !tw-p-4"
       >
         {/* <img src={brandImg} className="tw-h-7 tw-w-7" alt="logo" /> */}
-        <Typography variant="h2" color="blue-gray" className="tw-w-full tw-text-center">
+        {/* <Typography variant="h2" color="blue-gray" className="tw-w-full tw-text-center">
           {brandName}
+        </Typography> */}
+        <Typography variant="h2" className="tw-w-full tw-text-center tw-font-bold">
+          <span className="tw-text-yellow-500">i</span>
+          <span className="tw-text-black">MPS</span>
         </Typography>
+
       </Link>
       <IconButton
         ripple={false}
@@ -139,20 +142,18 @@ export default function Sidenav({
                   icon={
                     <ChevronDownIcon
                       strokeWidth={2.5}
-                      className={`tw-mx-auto tw-h-3 tw-w-3 tw-text-inherit tw-transition-transform ${
-                        openCollapse === name ? "tw-rotate-180" : ""
-                      }`}
+                      className={`tw-mx-auto tw-h-3 tw-w-3 tw-text-inherit tw-transition-transform ${openCollapse === name ? "tw-rotate-180" : ""
+                        }`}
                     />
                   }
                 >
                   <ListItem
-                    className={`!tw-overflow-hidden !tw-p-0 ${
-                      openCollapse === name
+                    className={`!tw-overflow-hidden !tw-p-0 ${openCollapse === name
                         ? sidenavType === "dark"
                           ? "tw-bg-white/10"
                           : "tw-bg-gray-200"
                         : ""
-                    } ${collapseItemClasses}`}
+                      } ${collapseItemClasses}`}
                     selected={openCollapse === name}
                   >
                     <AccordionHeader
@@ -178,22 +179,20 @@ export default function Sidenav({
                             icon={
                               <ChevronDownIcon
                                 strokeWidth={2.5}
-                                className={`tw-mx-auto tw-h-3 tw-w-3 tw-text-inherit tw-transition-transform ${
-                                  openSubCollapse === page.name
+                                className={`tw-mx-auto tw-h-3 tw-w-3 tw-text-inherit tw-transition-transform ${openSubCollapse === page.name
                                     ? "tw-rotate-180"
                                     : ""
-                                }`}
+                                  }`}
                               />
                             }
                           >
                             <ListItem
-                              className={`!tw-p-0 ${
-                                openSubCollapse === page.name
+                              className={`!tw-p-0 ${openSubCollapse === page.name
                                   ? sidenavType === "dark"
                                     ? "tw-bg-white/10"
                                     : "tw-bg-gray-200"
                                   : ""
-                              } ${collapseItemClasses}`}
+                                } ${collapseItemClasses}`}
                               selected={openSubCollapse === page.name}
                             >
                               <AccordionHeader
@@ -231,11 +230,10 @@ export default function Sidenav({
                                   ) : (
                                     <Link href={`${subPage.path}`} key={key}>
                                       <ListItem
-                                        className={`tw-capitalize ${
-                                          pathname === `${subPage.path}`
+                                        className={`tw-capitalize ${pathname === `${subPage.path}`
                                             ? activeRouteClasses
                                             : collapseItemClasses
-                                        }`}
+                                          }`}
                                       >
                                         <ListItemPrefix>
                                           {subPage.icon}
@@ -258,11 +256,10 @@ export default function Sidenav({
                         ) : (
                           <Link href={page.path} key={key}>
                             <ListItem
-                              className={`tw-capitalize ${
-                                pathname === `${page.path}`
+                              className={`tw-capitalize ${pathname === `${page.path}`
                                   ? activeRouteClasses
                                   : collapseItemClasses
-                              }`}
+                                }`}
                             >
                               <ListItemPrefix>{page.icon}</ListItemPrefix>
                               {page.name}
@@ -287,11 +284,10 @@ export default function Sidenav({
                 ) : (
                   <Link href={`${path}`} key={key}>
                     <ListItem
-                      className={`tw-capitalize ${
-                        pathname === `${path}`
+                      className={`tw-capitalize ${pathname === `${path}`
                           ? activeRouteClasses
                           : collapseItemClasses
-                      }`}
+                        }`}
                     >
                       <ListItemPrefix>{icon}</ListItemPrefix>
                       {name}
