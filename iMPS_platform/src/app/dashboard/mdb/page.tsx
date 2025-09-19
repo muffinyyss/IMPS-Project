@@ -189,8 +189,8 @@ export default function MDBPage() {
         const sid = userLogin?.station_id != null ? String(userLogin.station_id) : "";
         const startISO = new Date(`${startDate}T00:00:00Z`).toISOString();
         const endISO = new Date(`${endDate}T23:59:59.999Z`).toISOString();
-        // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
-        const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`;
+        const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+        // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`;
 
         const es = new EventSource(url);
         es.onmessage = (e) => {
