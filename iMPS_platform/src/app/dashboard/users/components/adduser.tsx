@@ -17,7 +17,7 @@ export type NewUserPayload = {
     username: string;
     password: string;
     email: string;
-    role: "admin" | "user";
+    role: "owner" | "admin" | "technician";
     station_id?: number | null;
     company_name?: string | null;
     payment: "y" | "n";
@@ -36,7 +36,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         username: "",
         password: "",
         email: "",
-        role: "user",
+        role: "owner",
         station_id: null,
         company_name: "",
         payment: "y",
@@ -65,7 +65,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             username: "",
             password: "",
             email: "",
-            role: "user",
+            role: "owner",
             tel: "",
             company_name: "",
             payment: "y",

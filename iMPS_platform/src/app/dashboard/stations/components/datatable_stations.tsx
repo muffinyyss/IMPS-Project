@@ -35,7 +35,7 @@ import {
 } from "@heroicons/react/24/solid";
 
 //components
-import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
+import AddUser, { NewUserPayload } from "@/app/dashboard/stations/components/addstations";
 
 // ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
 type TData = (typeof AppDataTable)[number];
@@ -99,27 +99,28 @@ export function SearchDataTables() {
     },
     {
       accessorFn: (row: any) => row.name,
-      id: "username",
+      id: "station_name",
       cell: (info: any) => info.getValue(),
-      header: () => "username",
+      header: () => "station name",
+    },
+    {
+      accessorFn: (row: any) => row.name,
+      id: "brand",
+      cell: (info: any) => info.getValue(),
+      header: () => "brand",
     },
     {
       accessorFn: (row: any) => row.position,
-      id: "email",
+      id: "model",
       cell: (info: any) => info.getValue(),
-      header: () => "email",
-    },
-    {
-      accessorFn: (row: any) => row.office,
-      id: "tel",
-      cell: (info: any) => info.getValue(),
-      header: () => "tel",
+      header: () => "model",
     },
     {
       accessorFn: (row: any) => row.age,
-      id: "role",
+      id: "status",
+      header: () => "status",
       cell: (info: any) => info.getValue(),
-      header: () => "role",
+      meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
       id: "actions",
@@ -135,13 +136,13 @@ export function SearchDataTables() {
           >
             <PencilSquareIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-700" />
           </button>
-          <button
+          {/* <button
             title="Delete user"
             onClick={() => handleDelete(row.original)}
             className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-red-50 tw-transition"
           >
             <TrashIcon className="tw-h-5 tw-w-5 tw-text-red-600" />
-          </button>
+          </button> */}
         </span>
       ),
     }
@@ -171,15 +172,16 @@ export function SearchDataTables() {
         <CardHeader floated={false} shadow={false} className="tw-p-2 tw-flex tw-items-center tw-justify-between tw-gap-3">
           <div>
             <Typography color="blue-gray" variant="h5">
-              Users & Roles Management
+              Station Management
             </Typography>
             <Typography
               variant="small"
               className="!tw-text-blue-gray-500 !tw-font-normal tw-mb-4 tw-mt-1"
             >
-              Manage Users: Add, Edit, or Remove users from the system.
+              Manage Stations: Add or Edit stations from the system.
             </Typography>
           </div>
+
 
           <Button
             onClick={() => setOpenAdd(true)}
@@ -317,11 +319,11 @@ export function SearchDataTables() {
       </Card>
 
       <AddUser
-      open={openAdd}
-      onClose={() => setOpenAdd(false)}
-      onSubmit={handleCreateUser}
-      loading={saving}
-    />
+        open={openAdd}
+        onClose={() => setOpenAdd(false)}
+        onSubmit={handleCreateUser}
+        loading={saving}
+      />
     </>
   );
 }
