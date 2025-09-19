@@ -9,21 +9,24 @@ type Props = {
 };
 
 export type Station = {
-  station_name:string;
-  model:string;
+  station_name: string;
+  model: string;
+  status: boolean | null;
 };
 
 export default function StationInfo({
-  station_name ,
-  model 
+  station_name,
+  model,
+  status
 }: Station) {
   const statusColor =
-    status.toLowerCase() === "online"
+    status === true
       ? "tw-bg-green-100 tw-text-green-700"
-      : status.toLowerCase() === "offline"
-      ? "tw-bg-red-100 tw-text-red-700"
-      : "tw-bg-amber-100 tw-text-amber-700";
+      : status === false
+        ? "tw-bg-red-100 tw-text-red-700"
+        : "tw-bg-amber-100 tw-text-amber-700";
 
+  const statusText = status === true ? "Online" : status === false ? "Offline" : "Unknown";
   return (
     <div className="tw-h-full tw-flex tw-flex-col">
       <div className="tw-flex-1 tw-overflow-auto tw-p-6">
@@ -46,7 +49,7 @@ export default function StationInfo({
             </dd>
           </div>
 
-          {/* <div className="tw-grid tw-grid-cols-3 tw-gap-4">
+          <div className="tw-grid tw-grid-cols-3 tw-gap-4">
             <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500">
               Status
             </dt>
@@ -54,10 +57,10 @@ export default function StationInfo({
               <span
                 className={`tw-inline-flex tw-items-center tw-rounded-full tw-px-2.5 tw-py-1 tw-text-xs tw-font-semibold ${statusColor}`}
               >
-                {status}
+                {statusText}
               </span>
             </dd>
-          </div> */}
+          </div>
         </dl>
       </div>
     </div>
