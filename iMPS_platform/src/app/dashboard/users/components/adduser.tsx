@@ -41,7 +41,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         company_name: "",
         payment: "y",
         tel: "",
-
     });
 
     const onChange = (k: keyof NewUserPayload, v: any) =>
@@ -54,7 +53,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             username: form.username.trim(),
             email: form.email.trim(),
             station_id:
-                form.station_id === null || form.station_id === undefined || form.station_id === ("" as any)
+                form.station_id === null || form.station_id === undefined || (form.station_id as any) === ""
                     ? null
                     : Number(form.station_id),
             company_name: form.company_name?.trim() || null,
@@ -70,20 +69,22 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             tel: "",
             company_name: "",
             payment: "y",
+            station_id: null,
         });
         onClose();
     };
 
     return (
-        <Dialog open={open} handler={resetAndClose} size="lg">
+        <Dialog open={open} handler={resetAndClose} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
             <DialogHeader className="tw-flex tw-items-center tw-justify-between">
                 <Typography variant="h5" color="blue-gray">Add New User</Typography>
                 <Button variant="text" onClick={resetAndClose}>✕</Button>
             </DialogHeader>
 
             <form onSubmit={handleSubmit}>
-                <DialogBody className="tw-space-y-6">
-                    <div className="tw-grid md:tw-grid-cols-2 tw-gap-4">
+                <DialogBody className="tw-space-y-6 tw-px-6 tw-py-4">
+
+                    <div className="tw-flex tw-flex-col tw-gap-4">
                         <Input
                             label="Username"
                             required
@@ -106,43 +107,20 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             onChange={(e) => onChange("tel", e.target.value)}
                             crossOrigin={undefined}
                         />
-                        {/* <Input
-                            label="Password"
-                            type="password"
-                            required
-                            value={form.password}
-                            onChange={(e) => onChange("password", e.target.value)}
-                            crossOrigin={undefined}
-                        /> */}
+
                         <div>
-                            {/* <Typography variant="small" className="tw-mb-1 !tw-font-medium !tw-text-blue-gray-600">
-                                Role
-                            </Typography> */}
-                            <Select value={form.role} onChange={(v) => onChange("role", String(v) as "admin" | "user")} label="Role">
-                                <Option value="admin">admin</Option>
-                                <Option value="user">user</Option>
+                            <Select
+                                value={form.role}
+                                onChange={(v) => onChange("role", String(v) as "owner" | "technician" | "admin")}
+                                label="Role"
+                            >
+                                <Option value="owner">Owner</Option>
+                                <Option value="admin">Admin</Option>
+                                <Option value="technician">Technician</Option>
                             </Select>
                         </div>
-                        {/* <Input
-                            label="Company Name"
-                            value={form.company_name ?? ""}
-                            onChange={(e) => onChange("company_name", e.target.value)}
-                            crossOrigin={undefined}
-                        /> */}
-                        {/* <div>
-                            <Typography variant="small" className="tw-mb-1 !tw-font-medium !tw-text-blue-gray-600">
-                                Payment
-                            </Typography>
-                            <Select value={form.payment} onChange={(v) => onChange("payment", String(v) as "y" | "n")} label="Payment">
-                                <Option value="y">y</Option>
-                                <Option value="n">n</Option>
-                            </Select>
-                        </div> */}
-                    </div>
 
-                    {/* <Typography variant="small" className="!tw-text-blue-gray-500">
-                        * ฟิลด์ที่จำเป็น | ระบบจะจัดการ `_id`, `user_id`, `token`, `refreshTokens` เอง
-                    </Typography> */}
+                    </div>
                 </DialogBody>
 
                 <DialogFooter className="tw-gap-2">

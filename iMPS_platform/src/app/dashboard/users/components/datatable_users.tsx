@@ -189,12 +189,10 @@ export function SearchDataTables() {
             className="
               tw-h-11 tw-rounded-xl tw-px-4 
               tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
-              hover:tw-from-black hover:tw-to-black
+              hover:tw-to-black
               tw-text-white
               tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-              focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-            "
-          >
+              focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none">
             +add
           </Button>
         </CardHeader>
