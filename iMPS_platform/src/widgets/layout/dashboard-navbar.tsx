@@ -345,7 +345,7 @@ export function DashboardNavbar() {
           {open && (
             // <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border rounded shadow max-h-64 overflow-auto">
             <div
-              className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-2 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto"
+              className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-2 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
               role="listbox"
             >
               {stations.length > 0 ? (
