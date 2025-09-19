@@ -53,6 +53,10 @@ export function DashboardNavbar() {
     title = "PM Report"
   } else if (segs[1] === "input_PMreport") {
     title = "Add PM Report"
+  } else if (segs[1] === "chargers") {
+    title = "My Charging Station"
+  } else if (segs[1] === "setting") {
+    title = "Charger Setting"
   }
 
   const router = useRouter();
