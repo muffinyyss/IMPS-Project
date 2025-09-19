@@ -29,7 +29,7 @@ export default function ChargersPage() {
   const [stationDetail, setStationDetail] = useState({
     station_name: "",
     model: "",
-    status: ""
+    status: null
   });
   useEffect(() => {
     if (stationId) {
@@ -78,6 +78,7 @@ export default function ChargersPage() {
                   // status="Online"
                   station_name={stationDetail?.station_name ?? "-"}
                   model={stationDetail?.model}
+                  status={stationDetail?.status}
                 />
               </CardBody>
             </Card>

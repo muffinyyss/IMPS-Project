@@ -302,6 +302,53 @@ async def mdb(request: Request, station_id: str | None = None):
 
     return StreamingResponse(event_generator(), headers=headers)
 
+@app.get("/MDB/{station_id}")
+async def mdb(request: Request, station_id: str, current_user: str = Depends(get_current_user)):
+    """
+    SSE แบบไม่ใช้ Change Streams:
+    - ส่ง snapshot ล่าสุดทันที
+    - จากนั้นเช็กของใหม่ทุก ๆ 60 วินาที ถ้ามีจึงส่งต่อ
+    """
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",  # กัน proxy บัฟเฟอร์
+    }
+
+    async def event_generator():
+        # ----- เตรียม query (รองรับ station_id เป็น str/number) -----
+        in_list = [str(station_id)]
+        try:
+            in_list.append(int(str(station_id)))
+        except ValueError:
+            pass
+        q = {"station_id": {"$in": in_list}}
+
+        # ----- ส่ง snapshot ล่าสุดทันที -----
+        last_id = None
+        latest = await MDB_collection.find_one(q, sort=[("_id", -1)])
+        if latest:
+            last_id = latest.get("_id")
+            yield f"event: init\ndata: {to_json(latest)}\n\n"
+        else:
+            yield ": keep-alive\n\n"
+
+        # ----- วนเช็กของใหม่ทุก 60 วิ -----
+        while True:
+            if await request.is_disconnected():
+                break
+
+            doc = await MDB_collection.find_one(q, sort=[("_id", -1)])
+            if doc and doc.get("_id") != last_id:
+                last_id = doc.get("_id")
+                yield f"data: {to_json(doc)}\n\n"
+            else:
+                yield ": keep-alive\n\n"
+
+            await asyncio.sleep(60)  # ปรับช่วงเวลา polling ได้
+
+    return StreamingResponse(event_generator(), headers=headers)
 
 def parse_iso_dt(s: str) -> datetime:
     try:
