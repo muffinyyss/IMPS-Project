@@ -17,10 +17,11 @@ from typing import List, Any,Dict
 import bcrypt
 from dateutil import parser as dtparser
 from bson.decimal128 import Decimal128
+from fastapi import Path
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 from pdf.pdf_routes import router as pdf_router
@@ -399,6 +400,65 @@ async def stream_history(
             yield f"event: error\ndata: {str(e)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+# @app.get("/MDB/history/{station_id}")
+# async def stream_history_sse(
+#     request: Request,
+#     station_id: str = Path(..., description="ID ของ turbine/station"),
+#     start: str = Query(..., description="วันที่เริ่มต้นในรูปแบบ ISO string"),
+#     end: str = Query(..., description="วันที่สิ้นสุดในรูปแบบ ISO string")
+# ):
+#     print("✅ เข้า route /MDB/history แล้วจ้า")
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",
+#     }
+
+#     # แปลงวันเวลาเป็น datetime object (ถ้าต้องการใช้ใน Mongo)
+#     def parse_iso(s: str) -> datetime:
+#         try:
+#             return datetime.fromisoformat(s.replace("Z", "+00:00"))
+#         except Exception:
+#             raise HTTPException(status_code=400, detail=f"Bad datetime: {s}")
+
+#     query = {
+#         "station_id": station_id,
+#         "Datetime": {
+#             "$gte": parse_iso(start),
+#             "$lte": parse_iso(end)
+#         }
+#     }
+
+#     projection = {
+#         "_id": 1,
+#         "station_id": 1,
+#         "VL1N": 1,
+#         "VL2N": 1,
+#         "VL3N": 1,
+#         "I1": 1,
+#         "I2": 1,
+#         "I3": 1,
+#         "PL1N": 1,
+#         "PL2N": 1,
+#         "PL3N": 1,
+#         "Datetime": 1
+#     }
+
+#     cursor = MDB_collection.find(query, projection).sort("Datetime", 1)
+
+#     async def event_generator():
+#         try:
+#             async for doc in cursor:
+#                 print("ส่ง doc:", doc)
+#                 doc["_id"] = str(doc["_id"])
+#                 yield f"data: {json.dumps(doc)}\n\n"
+#                 await asyncio.sleep(0.01)  # กัน browser ค้าง
+#         except Exception as e:
+#             yield f"event: error\ndata: {str(e)}\n\n"
+
+#     return StreamingResponse(event_generator(), headers=headers)
 
 
 
