@@ -231,7 +231,7 @@ export function DashboardNavbar() {
           </Typography> */}
         </div>
 
-        <div className="tw-mb-3 tw-flex tw-flex-row tw-items-center tw-gap-2 tw-relative">
+        <div className="tw-mb-3 tw-flex tw-flex-row tw-items-center tw-gap-2">
           <Typography
             variant="small"
             color="blue-gray"
@@ -254,25 +254,21 @@ export function DashboardNavbar() {
             onKeyDown={onKeyDown}
             onBlur={() => setTimeout(() => setOpen(false), 120)}
             placeholder="พิมพ์เพื่อค้นหา / เลือกสถานี"
-            className="border p-2 rounded w-full"
+            className="border p-2 rounded w-full tw-text-black"
             crossOrigin=""
           />
 
           <Button
-            size="sm"
             className="
-              tw-h-11 tw-rounded-xl tw-px-4 
+              tw-h-11 tw-min-w-[90px] tw-rounded-xl tw-px-4
               tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
-              hover:tw-from-black hover:tw-to-black
+              hover:tw-to-black
               tw-text-white
               tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-              focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-            ">
+              focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50"
+          >
             search
           </Button>
-
-
-
 
           {open && (
             // <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border rounded shadow max-h-64 overflow-auto">
