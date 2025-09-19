@@ -68,121 +68,121 @@ export function DashboardNavbar() {
     return (localStorage.getItem("userRole") || "").toLowerCase();
   }
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const fetchStations = async () => {
-      setLoading(true);
-      try {
-        const token = localStorage.getItem("accessToken");
-        if (!token) {
-          window.location.href = "/auth/signin/basic";
-          return;
-        }
-
-        const role = (localStorage.getItem("userRole") || "").toLowerCase();
-        if (!role) {
-          window.location.href = "/auth/signin/basic";
-          return;
-        }
-
-        // 🧭 เลือก endpoint ตาม role
-        const endpoint = role.includes("admin")
-          ? `http://localhost:8000/station/`
-          : `http://localhost:8000/owner/stations/?q=${encodeURIComponent(query)}`;
-
-        const res = await fetch(endpoint, {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          signal: controller.signal,
-        });
-
-        if (res.status === 401) {
-          localStorage.removeItem("accessToken");
-          window.location.href = "/auth/signin/basic";
-          return;
-        }
-        if (!res.ok) throw new Error("Failed to fetch stations");
-
-        const data: Station[] = await res.json();
-        data.sort((a, b) =>
-          a.station_name.localeCompare(b.station_name, undefined, {
-            numeric: true,
-            sensitivity: "base",
-          })
-        );
-        setStations(data);
-
-        if (!selectedDropdown && data.length > 0) {
-          selectItem(data[0]);
-          setSelectedDropdown(true);
-        }
-      } catch (err: any) {
-        if (err?.name !== "AbortError") {
-          console.error(err);
-          setStations([]);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStations();
-    return () => controller.abort();
-  }, [query]);
   // useEffect(() => {
+  //   const controller = new AbortController();
+
   //   const fetchStations = async () => {
   //     setLoading(true);
   //     try {
   //       const token = localStorage.getItem("accessToken");
-  //       if (!token) throw new Error("No access token found");
-
-  //       // ✅ decode JWT เพื่อดู role
-  //       const decoded: any = jwtDecode(token);
-  //       const userRole = decoded?.role;
-  //       console.log("role", userRole)
-  //       const res = await fetch(`http://localhost:8000/owner/stations/?q=${query}`, {
-  //         headers: {
-  //           "Accept": "application/json",
-  //           "Authorization": `Bearer ${token}`,
-  //         },
-  //       });
-
-  //       if (res.status === 401) {
-  //         // 🔁 Token หมดอายุ → เด้งกลับไปหน้า login
-  //         localStorage.removeItem("accessToken");
-  //         window.location.href = "/auth/signin/basic";  // ← ใส่ path ที่หน้า login ของคุณ
+  //       if (!token) {
+  //         window.location.href = "/auth/signin/basic";
   //         return;
   //       }
 
-  //       if (!res.ok) {
-  //         throw new Error("Failed to fetch stations");
+  //       const role = (localStorage.getItem("userRole") || "").toLowerCase();
+  //       if (!role) {
+  //         window.location.href = "/auth/signin/basic";
+  //         return;
   //       }
 
-  //       const data = await res.json();
-  //       // ✅ Sort ตาม station_name ก่อน set
-  //       data.sort((a: Station, b: Station) =>
-  //         a.station_name.localeCompare(b.station_name, undefined, { numeric: true, sensitivity: 'base' })
+  //       // 🧭 เลือก endpoint ตาม role
+  //       const endpoint = role.includes("admin")
+  //         ? `http://localhost:8000/station/`
+  //         : `http://localhost:8000/owner/stations/?q=${encodeURIComponent(query)}`;
+
+  //       const res = await fetch(endpoint, {
+  //         headers: {
+  //           Accept: "application/json",
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //         signal: controller.signal,
+  //       });
+
+  //       if (res.status === 401) {
+  //         localStorage.removeItem("accessToken");
+  //         window.location.href = "/auth/signin/basic";
+  //         return;
+  //       }
+  //       if (!res.ok) throw new Error("Failed to fetch stations");
+
+  //       const data: Station[] = await res.json();
+  //       data.sort((a, b) =>
+  //         a.station_name.localeCompare(b.station_name, undefined, {
+  //           numeric: true,
+  //           sensitivity: "base",
+  //         })
   //       );
   //       setStations(data);
-  //       // ✅ เลือกสถานีแรก
+
   //       if (!selectedDropdown && data.length > 0) {
   //         selectItem(data[0]);
-  //         setSelectedDropdown(true);  // ตั้งค่าว่าเลือกแล้ว
+  //         setSelectedDropdown(true);
   //       }
-  //     } catch (err) {
-  //       console.error(err);
-  //       setStations([]);
+  //     } catch (err: any) {
+  //       if (err?.name !== "AbortError") {
+  //         console.error(err);
+  //         setStations([]);
+  //       }
   //     } finally {
   //       setLoading(false);
   //     }
   //   };
 
-
   //   fetchStations();
+  //   return () => controller.abort();
   // }, [query]);
+  useEffect(() => {
+    const fetchStations = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) throw new Error("No access token found");
+
+        // ✅ decode JWT เพื่อดู role
+        const decoded: any = jwtDecode(token);
+        const userRole = decoded?.role;
+        console.log("role", userRole)
+        const res = await fetch(`http://localhost:8000/owner/stations/?q=${query}`, {
+          headers: {
+            "Accept": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+        });
+
+        if (res.status === 401) {
+          // 🔁 Token หมดอายุ → เด้งกลับไปหน้า login
+          localStorage.removeItem("accessToken");
+          window.location.href = "/auth/signin/basic";  // ← ใส่ path ที่หน้า login ของคุณ
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error("Failed to fetch stations");
+        }
+
+        const data = await res.json();
+        // ✅ Sort ตาม station_name ก่อน set
+        data.sort((a: Station, b: Station) =>
+          a.station_name.localeCompare(b.station_name, undefined, { numeric: true, sensitivity: 'base' })
+        );
+        setStations(data);
+        // ✅ เลือกสถานีแรก
+        if (!selectedDropdown && data.length > 0) {
+          selectItem(data[0]);
+          setSelectedDropdown(true);  // ตั้งค่าว่าเลือกแล้ว
+        }
+      } catch (err) {
+        console.error(err);
+        setStations([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+
+    fetchStations();
+  }, [query]);
 
   // console.log("Access Token:", localStorage.getItem("accessToken"));
 
