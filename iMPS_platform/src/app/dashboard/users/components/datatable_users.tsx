@@ -100,7 +100,7 @@ export function SearchDataTables() {
           role: u.role ?? "-",
           company: u.company ?? "-",
           station_id: u.station_id ?? [],
-          tel: u.tel ?? undefined, // ถ้าไม่มีใน DB จะแสดง "-"
+          tel: u.tel ?? "-", // ถ้าไม่มีใน DB จะแสดง "-"
         }));
         setData(rows);
       } catch (e) {
@@ -112,6 +112,70 @@ export function SearchDataTables() {
       }
     })();
   }, []);
+
+  const handleCreateUser = async (payload: NewUserPayload) => {
+    try {
+      setSaving(true);
+
+      const token =
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("accessToken") ||
+        "";
+
+      const res = await fetch(`${API_BASE}/users/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.status === 409) throw new Error("อีเมลนี้ถูกใช้แล้ว");
+      if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
+      if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Create user failed:", res.status, text);
+        alert(text || `Create failed: ${res.status}`);
+        return;
+      }
+
+      const created = await res.json(); // { id, username, email, role, company, station_id, ... }
+
+      // ✅ อัปเดตตารางทันที
+      setData((prev) => [
+        {
+          id: created.id,
+          username: created.username,
+          email: created.email,
+          role: created.role,
+          company: created.company ?? "-",
+          station_id: created.station_id ?? [],
+          tel: created.tel ?? "-",
+        },
+        ...prev,
+      ]);
+
+      setOpenAdd(false);
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || "สร้างผู้ใช้ไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const handleEdit = (row: UserRow) => {
+    console.log("Edit user:", row);
+    // TODO: เปิด modal แก้ไข / นำทางไปหน้าแก้ไข
+  };
+
+  const handleDelete = (row: UserRow) => {
+    if (confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) {
+      console.log("Delete user:", row);
+      // TODO: เรียก API ลบ แล้วค่อย refetch
+    }
+  };
 
   // ------------ columns: ปรับ accessor ให้ตรงกับฟิลด์จริง ------------
   const columns: any[] = [
@@ -145,6 +209,12 @@ export function SearchDataTables() {
       accessorFn: (row: UserRow) => row.tel ?? "-",
       id: "tel",
       header: () => "tel",
+      cell: (info: any) => info.getValue(),
+    },
+    {
+      accessorFn: (row: UserRow) => row.company ?? "-",
+      id: "company",
+      header: () => "company",
       cell: (info: any) => info.getValue(),
     },
     {
@@ -188,49 +258,9 @@ export function SearchDataTables() {
     },
   ];
 
-  const handleEdit = (row: UserRow) => {
-    console.log("Edit user:", row);
-    // TODO: เปิด modal แก้ไข / นำทางไปหน้าแก้ไข
-  };
 
-  const handleDelete = (row: UserRow) => {
-    if (confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) {
-      console.log("Delete user:", row);
-      // TODO: เรียก API ลบ แล้วค่อย refetch
-    }
-  };
 
-  const handleCreateUser = async (payload: NewUserPayload) => {
-    try {
-      setSaving(true);
-      const token =
-        localStorage.getItem("access_token") ||
-        localStorage.getItem("accessToken") ||
-        "";
-      // TODO: เปลี่ยน endpoint ให้ตรงกับของจริง เช่น `${API_BASE}/users`
-      const res = await fetch(`${API_BASE}/users`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`Create failed: ${res.status}`);
-      setOpenAdd(false);
-      // refetch หลังสร้างสำเร็จ
-      // วิธีเร็ว:
-      // const created = await res.json();
-      // setData((prev) => [created.user, ...prev]);
-      // หรือ reload:
-      // window.location.reload();
-    } catch (e) {
-      console.error(e);
-      alert("สร้างผู้ใช้ไม่สำเร็จ");
-    } finally {
-      setSaving(false);
-    }
-  };
+  // 
 
   const table = useReactTable({
     data,
@@ -337,16 +367,16 @@ export function SearchDataTables() {
               <tbody>
                 {table.getRowModel().rows.length
                   ? table.getRowModel().rows.map((row) => (
-                      <tr key={row.id}>
-                        {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className="!tw-border-y !tw-border-x-0">
-                            <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4">
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </Typography>
-                          </td>
-                        ))}
-                      </tr>
-                    ))
+                    <tr key={row.id}>
+                      {row.getVisibleCells().map((cell) => (
+                        <td key={cell.id} className="!tw-border-y !tw-border-x-0">
+                          <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </Typography>
+                        </td>
+                      ))}
+                    </tr>
+                  ))
                   : (
                     <tr>
                       <td className="tw-px-4 tw-py-6 tw-text-center" colSpan={columns.length}>

@@ -18,11 +18,16 @@ export type NewUserPayload = {
     password: string;
     email: string;
     role: "owner" | "admin" | "technician";
-    station_id?: number | null;
-    company_name?: string | null;
+    station_id?: string ;
+    company_name?: string;
     payment: "y" | "n";
     tel: string;
 };
+
+type FormState = Omit<NewUserPayload, "station_id"> & {
+    station_id: string; // เก็บเป็น string เพื่อผูกกับ <Input />
+};
+
 
 type Props = {
     open: boolean;
@@ -37,7 +42,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         password: "",
         email: "",
         role: "owner",
-        station_id: null,
+        station_id: "",
         company_name: "",
         payment: "y",
         tel: "",
@@ -48,15 +53,13 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
         await onSubmit({
             ...form,
             username: form.username.trim(),
             email: form.email.trim(),
-            station_id:
-                form.station_id === null || form.station_id === undefined || (form.station_id as any) === ""
-                    ? null
-                    : Number(form.station_id),
-            company_name: form.company_name?.trim() || null,
+            company_name: form.company_name?.trim(),
+            station_id: form.station_id?.trim() || undefined, // ← ส่งตามรูปแบบที่ backend รับ
         });
     };
 
@@ -69,7 +72,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             tel: "",
             company_name: "",
             payment: "y",
-            station_id: null,
+            station_id: "",
         });
         onClose();
     };
@@ -101,17 +104,38 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             crossOrigin={undefined}
                         />
                         <Input
+                            label="Password"
+                            type="password"
+                            required
+                            value={form.password}
+                            onChange={(e) => onChange("password", e.target.value)}
+                            crossOrigin={undefined}
+                        />
+                        <Input
                             label="Tel"
                             required
                             value={form.tel}
                             onChange={(e) => onChange("tel", e.target.value)}
                             crossOrigin={undefined}
                         />
+                        <Input
+                            label="Company"
+                            required
+                            value={form.company_name}
+                            onChange={(e) => onChange("company_name", e.target.value)}
+                            crossOrigin={undefined}
+                        />
+                        <Input
+                            label="Station_id"
+                            value={form.station_id}
+                            onChange={(e) => onChange("station_id", e.target.value)}
+                            crossOrigin={undefined}
+                        />
 
                         <div>
                             <Select
                                 value={form.role}
-                                onChange={(v) => onChange("role", String(v) as "owner" | "technician" | "admin")}
+                                onChange={(v) => onChange("role", String(v ?? form.role) as "owner" | "technician" | "admin")}
                                 label="Role"
                             >
                                 <Option value="owner">Owner</Option>

@@ -4,16 +4,16 @@ from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
 from jose import JWTError,jwt
 from datetime import datetime,timedelta, UTC, timezone, timedelta, time
 from passlib.hash import bcrypt
-from pymongo.errors import OperationFailure, PyMongoError
+from pymongo.errors import OperationFailure, PyMongoError,DuplicateKeyError
 from pymongo import MongoClient
-from pydantic import BaseModel
+from pydantic import BaseModel,EmailStr,constr
 from bson.objectid import ObjectId
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import json, os, asyncio
 from pdf.pdf_routes import router as pdf_router
 from fastapi.responses import StreamingResponse
-from typing import List, Any,Dict, Optional
+from typing import List, Any,Dict, Optional, Union, Literal
 import bcrypt
 from dateutil import parser as dtparser
 from bson.decimal128 import Decimal128
@@ -790,7 +790,7 @@ def to_json(doc):
 
 #     return StreamingResponse(event_generator(), headers=headers)
 
-################Users
+################ Users
 @app.get("/all-users/")
 def all_users():
     # เอาทุกฟิลด์ ยกเว้น password และ refreshTokens
@@ -803,6 +803,82 @@ def all_users():
             d["_id"] = str(d["_id"])
 
     return {"users": docs}
+
+router = APIRouter(prefix="", tags=["users"])
+
+# สร้าง unique index ไว้ครั้งเดียว (เช่นตอน start แอป)
+try:
+    users_collection.create_index("email", unique=True)
+except Exception:
+    pass
+
+
+class UserCreate(BaseModel):
+    username: constr(strip_whitespace=True, min_length=1)
+    password: constr(min_length=4)            # แนะนำ >=6
+    email: EmailStr
+    role: Literal["owner", "admin", "technician"]
+    station_id: Optional[Union[str, int, List[Union[str, int]]]] = None
+    company_name: Optional[str] = None
+    payment: Literal["y", "n"] = "y"
+    tel: Optional[str] = None
+
+class UserOut(BaseModel):
+    id: str
+    username: str
+    email: EmailStr
+    role: str
+    company: Optional[str] = None
+    station_id: List[str] = []
+    tel: Optional[str] = None
+    payment: Optional[bool] = None
+    createdAt: datetime
+
+@router.post("/users/", response_model=UserOut, status_code=201)
+def create_user(body: UserCreate):
+    email = body.email.lower()
+
+    # แฮชรหัสผ่าน
+    hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    # station_id -> list[str]
+    station_ids: List[str] = []
+    if body.station_id is not None:
+        if isinstance(body.station_id, list):
+            station_ids = [str(x) for x in body.station_id]
+        else:
+            station_ids = [str(body.station_id)]
+
+    payment_bool = (body.payment.lower() == "y")
+
+    doc = {
+        "username": body.username.strip(),
+        "email": email,
+        "password": hashed,
+        "role": body.role,
+        "company": (body.company_name or "").strip() or None,
+        "tel": (body.tel or "").strip() or None,
+        "payment": payment_bool,
+        "station_id": station_ids,
+        "createdAt": datetime.now(timezone.utc),
+    }
+
+    try:
+        res = users_collection.insert_one(doc)
+    except DuplicateKeyError: # type: ignore
+        raise HTTPException(status_code=409, detail="Email already exists")
+
+    return {
+        "id": str(res.inserted_id),
+        "username": doc["username"],
+        "email": doc["email"],
+        "role": doc["role"],
+        "company": doc.get("company"),
+        "station_id": doc["station_id"],
+        "tel": doc.get("tel"),
+        "payment": doc.get("payment"),
+        "createdAt": doc["createdAt"],
+    }
 
 @app.get("/all-stations/")
 def all_stations():
