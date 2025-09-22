@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment, useState ,useEffect} from "react";
+import React, { Fragment, useState, useEffect } from "react";
 
 // @material-tailwind/react
 import {
@@ -32,7 +32,7 @@ function Icon({ id, open }: { id: number; open: number }) {
 }
 
 export default function Landing() {
-  const [users,setUsers] = useState<string[]>([]);
+  const [users, setUsers] = useState<string[]>([]);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null); // null = ยังไม่เช็ค
   // useEffect(() => {
   //   fetch("http://localhost:8000")
@@ -156,7 +156,7 @@ export default function Landing() {
             where nature’s most dazzling light show awaits to captivate your
             senses and ignite&nbsp; your imagination.
           </Typography>
-          
+
         </div>
 
         {/* Right image */}
