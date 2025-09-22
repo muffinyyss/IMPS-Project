@@ -2,260 +2,238 @@
 import { jwtDecode } from "jwt-decode";
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
-  Navbar,
-  Typography,
-  IconButton,
-  Breadcrumbs,
-  Input,
-  Button,
+  Navbar, Typography, IconButton, Breadcrumbs, Input, Button,
 } from "@material-tailwind/react";
-import {
-  UserCircleIcon,
-  Cog6ToothIcon,
-  Bars3Icon,
-  Bars3CenterLeftIcon,
-  HomeIcon,
-} from "@heroicons/react/24/solid";
-import {
-  useMaterialTailwindController,
-  setOpenConfigurator,
-  setOpenSidenav,
-} from "@/context";
+import { HomeIcon } from "@heroicons/react/24/solid";
+import { useMaterialTailwindController } from "@/context";
 
-import { useRouter } from "next/navigation";
-
-type Station = {
+type Station = { station_id: string; station_name: string };
+type StationInfo = {
   station_id: string;
   station_name: string;
-}
+  SN?: string;
+  WO?: string;
+  model?: string;
+  status?: boolean;
+};
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"; // e.g. "http://localhost:8000"
+
 export function DashboardNavbar() {
-
-  const [controller, dispatch] = useMaterialTailwindController();
-  const { fixedNavbar, openSidenav } = controller;
+  const [controller] = useMaterialTailwindController();
+  const { fixedNavbar } = controller;
   const pathname = usePathname();
+  const router = useRouter();
 
-  // ---------- NEW: กำหนดหน้าที่ "ไม่แสดง" Breadcrumbs/Title ----------
-  const HIDE_TOPBAR = ["/pages", "/mainpages"]; // ใส่ path prefix เพิ่มได้
-  const hideTopbar = HIDE_TOPBAR.some(
-    (p) => pathname === p || pathname.startsWith(p + "/")
-  );
-  // ---------------------------------------------------------------
+  // ซ่อน topbar บางหน้า
+  const HIDE_TOPBAR = ["/pages", "/mainpages"];
+  const hideTopbar = HIDE_TOPBAR.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const isAuthPage = pathname.startsWith("/auth"); // กัน redirect loop บนหน้า auth
 
-  // ทำ title จาก segment สุดท้าย (อ่านง่ายกว่าเดิม)
+  // Title
   const segs = pathname.split("/").filter(Boolean);
   let title = segs[segs.length - 1]?.replace(/-/g, " ");
+  if (segs[1] === "mdb") title = "Main Distribution Board (MDB)";
+  else if (segs[1] === "pm-report") title = "PM Report";
+  else if (segs[1] === "input_PMreport") title = "Add PM Report";
+  else if (segs[1] === "chargers") title = "My Charging Station";
+  else if (segs[1] === "setting") title = "Charger Setting";
 
-  if (segs[1] === "mdb") {
-    title = "Main Distribution Board (MDB)"
-  } else if (segs[1] === "pm-report") {
-    title = "PM Report"
-  } else if (segs[1] === "input_PMreport") {
-    title = "Add PM Report"
-  } else if (segs[1] === "chargers") {
-    title = "My Charging Station"
-  } else if (segs[1] === "setting") {
-    title = "Charger Setting"
-  }
-
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  // Dropdown state
   const [query, setQuery] = useState("");
   const [stations, setStations] = useState<Station[]>([]);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(-1);        // ไอเท็มที่กำลังโฟกัส (คีย์บอร์ด)
-  const [selectedDropdown, setSelectedDropdown] = useState(false);
+  const [active, setActive] = useState(-1);
   const [selectedStation, setSelectedStation] = useState<Station | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [searching, setSearching] = useState(false);
+  const [stationInfo, setStationInfo] = useState<StationInfo | null>(null);
 
-  function getUserRole(): string {
-    return (localStorage.getItem("userRole") || "").toLowerCase();
-  }
-
-  // useEffect(() => {
-  //   const controller = new AbortController();
-
-  //   const fetchStations = async () => {
-  //     setLoading(true);
-  //     try {
-  //       const token = localStorage.getItem("accessToken");
-  //       if (!token) {
-  //         window.location.href = "/auth/signin/basic";
-  //         return;
-  //       }
-
-  //       const role = (localStorage.getItem("userRole") || "").toLowerCase();
-  //       if (!role) {
-  //         window.location.href = "/auth/signin/basic";
-  //         return;
-  //       }
-
-  //       // 🧭 เลือก endpoint ตาม role
-  //       const endpoint = role.includes("admin")
-  //         ? `http://localhost:8000/station/`
-  //         : `http://localhost:8000/owner/stations/?q=${encodeURIComponent(query)}`;
-
-  //       const res = await fetch(endpoint, {
-  //         headers: {
-  //           Accept: "application/json",
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //         signal: controller.signal,
-  //       });
-
-  //       if (res.status === 401) {
-  //         localStorage.removeItem("accessToken");
-  //         window.location.href = "/auth/signin/basic";
-  //         return;
-  //       }
-  //       if (!res.ok) throw new Error("Failed to fetch stations");
-
-  //       const data: Station[] = await res.json();
-  //       data.sort((a, b) =>
-  //         a.station_name.localeCompare(b.station_name, undefined, {
-  //           numeric: true,
-  //           sensitivity: "base",
-  //         })
-  //       );
-  //       setStations(data);
-
-  //       if (!selectedDropdown && data.length > 0) {
-  //         selectItem(data[0]);
-  //         setSelectedDropdown(true);
-  //       }
-  //     } catch (err: any) {
-  //       if (err?.name !== "AbortError") {
-  //         console.error(err);
-  //         setStations([]);
-  //       }
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   };
-
-  //   fetchStations();
-  //   return () => controller.abort();
-  // }, [query]);
+  // โหลดสถานีของผู้ใช้ที่ล็อกอิน (JWT only)
   useEffect(() => {
-    const fetchStations = async () => {
-      setLoading(true);
+    if (isAuthPage) return; // กัน loop บนหน้า /auth
+
+    (async () => {
       try {
-        const token = localStorage.getItem("accessToken");
-        if (!token) throw new Error("No access token found");
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") ?? "" : "";
+        console.log("[Stations] API_BASE =", API_BASE);
+        console.log("[Stations] has token? =", !!token);
 
-        // ✅ decode JWT เพื่อดู role
-        const decoded: any = jwtDecode(token);
-        const userRole = decoded?.role;
-        console.log("role", userRole)
-        const res = await fetch(`http://localhost:8000/owner/stations/?q=${query}`, {
-          headers: {
-            "Accept": "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
-        });
-
-        if (res.status === 401) {
-          // 🔁 Token หมดอายุ → เด้งกลับไปหน้า login
-          localStorage.removeItem("accessToken");
-          window.location.href = "/auth/signin/basic";  // ← ใส่ path ที่หน้า login ของคุณ
+        if (!token) {
+          // ยังไม่มี token -> ให้ page guard ตัดสินใจ redirect เอง
           return;
         }
 
+        // เช็คหมดอายุแบบเร็ว ๆ
+        try {
+          const decoded: any = jwtDecode(token);
+          const nowSec = Math.floor(Date.now() / 1000);
+          if (decoded?.exp && decoded.exp <= nowSec) {
+            console.warn("[Stations] token expired");
+            localStorage.removeItem("accessToken");
+            return;
+          }
+        } catch (e) {
+          console.warn("[Stations] token decode failed", e);
+          localStorage.removeItem("accessToken");
+          return;
+        }
+
+        // 1) ลอง /my-stations/detail (id+name)
+        let res = await fetch(`${API_BASE}/my-stations/detail`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log("[Stations] /detail status =", res.status);
+
+        if (res.status === 401) {
+          localStorage.removeItem("accessToken");
+          return;
+        }
+
+        // ถ้าไม่มี endpoint นี้ (404) ลอง fallback ไป /my-stations (เฉพาะ id)
+        if (res.status === 404) {
+          console.warn("[Stations] /detail 404 -> fallback /my-stations");
+          res = await fetch(`${API_BASE}/my-stations`, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+
         if (!res.ok) {
-          throw new Error("Failed to fetch stations");
+          const txt = await res.text();
+          console.error("[Stations] fetch failed:", res.status, txt);
+          setStations([]);
+          return;
         }
 
         const data = await res.json();
-        // ✅ Sort ตาม station_name ก่อน set
-        data.sort((a: Station, b: Station) =>
-          a.station_name.localeCompare(b.station_name, undefined, { numeric: true, sensitivity: 'base' })
-        );
-        setStations(data);
-        // ✅ เลือกสถานีแรก
-        if (!selectedDropdown && data.length > 0) {
-          selectItem(data[0]);
-          setSelectedDropdown(true);  // ตั้งค่าว่าเลือกแล้ว
+        console.log("[Stations] response =", data);
+
+        // รองรับทั้งแบบ detail และแบบ id ล้วน
+        let list: Station[] = [];
+        if (Array.isArray(data?.stations) && data.stations.length && typeof data.stations[0] === "object") {
+          list = data.stations as Station[]; // มี station_id + station_name
+        } else if (Array.isArray(data?.stations)) {
+          list = data.stations.map((id: string) => ({ station_id: id, station_name: id }));
+        }
+
+        setStations(list);
+
+        // auto-select ถ้ามีสถานีเดียว หรือ restore ค่าเดิม
+        if (list.length === 1) {
+          setSelectedStation(list[0]);
+          setQuery(list[0].station_name);
+          localStorage.setItem("selected_station_id", list[0].station_id);
+          localStorage.setItem("selected_station_name", list[0].station_name);
+        } else {
+          const sid = localStorage.getItem("selected_station_id");
+          if (sid) {
+            const found = list.find((s) => s.station_id === sid);
+            if (found) {
+              setSelectedStation(found);
+              setQuery(found.station_name);
+            }
+          }
         }
       } catch (err) {
-        console.error(err);
+        console.error("[Stations] exception:", err);
         setStations([]);
-      } finally {
-        setLoading(false);
       }
-    };
+    })();
+  }, [isAuthPage]);
 
+  // filter
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return stations;
+    return stations.filter(
+      (s) => s.station_name.toLowerCase().includes(q) || s.station_id.toLowerCase().includes(q)
+    );
+  }, [stations, query]);
 
-    fetchStations();
-  }, [query]);
-
-  // console.log("Access Token:", localStorage.getItem("accessToken"));
-
+  // click outside -> close
   useEffect(() => {
-    if (!selectedStation) return;
-
-    const fetchStationDetails = async () => {
-      try {
-        const token = localStorage.getItem("accessToken");
-        if (!token) throw new Error("No access token");
-
-        const res = await fetch(`http://localhost:8000/selected/station/${selectedStation.station_id}`, {
-          headers: {
-            "Accept": "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
-        });
-
-        if (res.status === 401) {
-          localStorage.removeItem("accessToken");
-          window.location.href = "/auth/signin/basic";
-          return;
-        }
-
-        if (!res.ok) {
-          throw new Error("Failed to fetch station details");
-        }
-
-        const data = await res.json();
-        console.log("Station Detail:", data);
-
-        // setStationDetails(data); // ถ้าจะเก็บไว้ใช้
-
-      } catch (err) {
-        console.error("Error fetching station details:", err);
+    const onClickOutside = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setActive(-1);
       }
     };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
 
-    fetchStationDetails();
-  }, [selectedStation]);  // ✅ ทำงานทุกครั้งที่สถานีเปลี่ยน
-
-
-  const selectItem = (item: Station) => {
-    setQuery(item.station_name);
+  // choose
+  const choose = (s: Station) => {
+    setSelectedStation(s);
+    setQuery(s.station_name);
     setOpen(false);
-    // // ✅ เรียก API ไปหลังบ้านเพื่อดึงข้อมูลเฉพาะของสถานีนี้
-    // fetchStationDetails(item.station_id);
-    setSelectedStation(item);
-    router.push(`/dashboard/chargers?station_id=${item.station_id}`);
+    localStorage.setItem("selected_station_id", s.station_id);
+    localStorage.setItem("selected_station_name", s.station_name);
+    // ที่นี่ค่อย trigger refetch อื่น ๆ ถ้าต้องการ
   };
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+  // ✅ ดึง "ข้อมูลสถานี" เท่านั้น
+  const handleSearchClick = async () => {
+    if (!selectedStation) { setOpen(true); return; }
+    setSearching(true);
+    try {
+      const token =
+        localStorage.getItem("access_token");
+      if (!token) return;
+
+      const url = `${API_BASE}/station/info?station_id=${encodeURIComponent(selectedStation.station_id)}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+
+      if (res.status === 401) { localStorage.removeItem("access_token"); return; }
+      if (res.status === 403) { console.warn("Forbidden station_id"); return; }
+      if (!res.ok) { console.error("Fetch station info failed:", res.status, await res.text()); return; }
+
+      const data = await res.json();
+      setStationInfo(data.station ?? data); // รองรับทั้ง {station:{...}} หรือ {...}
+
+      // broadcast ให้คอมโพเนนต์อื่นใช้ต่อได้ (ถ้าต้องการ)
+      window.dispatchEvent(new CustomEvent("station:info", {
+        detail: { station: selectedStation, info: data.station ?? data },
+      }));
+    } finally {
+      setSearching(false);
+    }
+  };
+  // keyboard nav
+  const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "Enter")) {
       setOpen(true);
       return;
     }
+    if (!open) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActive((prev) => Math.min(prev + 1, stations.length - 1));
+      setActive((p) => Math.min(p + 1, filtered.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActive((prev) => Math.max(prev - 1, 0));
+      setActive((p) => Math.max(p - 1, 0));
     } else if (e.key === "Enter") {
-      if (open && active >= 0 && stations[active]) {
-        e.preventDefault();
-        selectItem(stations[active]);
-      }
+      e.preventDefault();
+      if (active >= 0 && active < filtered.length) choose(filtered[active]);
     } else if (e.key === "Escape") {
       setOpen(false);
+      setActive(-1);
     }
+  };
+
+  const goToCurrentPage = () => {
+    if (!selectedStation) {          // ยังไม่ได้เลือกจาก dropdown
+      setOpen(true);
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    params.set("station_id", selectedStation.station_id);  // อัปเดต/เพิ่มพารามิเตอร์
+
+    // push ไป path ปัจจุบัน พร้อมพารามิเตอร์ใหม่
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   return (
@@ -270,7 +248,6 @@ export function DashboardNavbar() {
     >
       <div className="!tw-flex tw-flex-col !tw-justify-between tw-gap-2 md:!tw-flex-row md:tw-items-center">
         <div className="tw-capitalize">
-          {/* ---------- NEW: ซ่อน Breadcrumbs ตามเงื่อนไข ---------- */}
           {!hideTopbar && (
             <Breadcrumbs
               className={`tw-bg-transparent !tw-p-0 tw-transition-all ${fixedNavbar ? "tw-mt-1" : ""
@@ -296,18 +273,15 @@ export function DashboardNavbar() {
               </Typography>
             </Breadcrumbs>
           )}
-          {/* ---------- NEW: ซ่อน Title ด้วย ---------- */}
           {!hideTopbar && (
             <Typography variant="h6" color="blue-gray">
               {title}
             </Typography>
           )}
-          {/* <Typography variant="small" color="red">
-            Debug segs: {JSON.stringify(segs)}
-          </Typography> */}
         </div>
 
-        <div className="tw-mb-3 tw-flex tw-flex-row tw-items-center tw-gap-2">
+        {/* Dropdown เลือกสถานี */}
+        <div ref={containerRef} className="tw-mb-3 tw-flex tw-flex-row tw-items-center tw-gap-2 tw-relative">
           <Typography
             variant="small"
             color="blue-gray"
@@ -320,17 +294,15 @@ export function DashboardNavbar() {
             size="lg"
             label="พิมพ์เพื่อค้นหา / เลือกสถานี"
             type="text"
+            placeholder="พิมพ์เพื่อค้นหา / เลือกสถานี"
+            className="border p-2 rounded w-full tw-text-black"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setOpen(true);
-              setActive(-1);
             }}
             onFocus={() => setOpen(true)}
             onKeyDown={onKeyDown}
-            onBlur={() => setTimeout(() => setOpen(false), 120)}
-            placeholder="พิมพ์เพื่อค้นหา / เลือกสถานี"
-            className="border p-2 rounded w-full tw-text-black"
             crossOrigin=""
           />
 
@@ -342,46 +314,41 @@ export function DashboardNavbar() {
               tw-text-white
               tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
               focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50"
+            // onClick={() => setOpen((v) => !v)}
+            onClick={goToCurrentPage}
           >
             search
           </Button>
 
           {open && (
-            // <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border rounded shadow max-h-64 overflow-auto">
             <div
               className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-2 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
               role="listbox"
+              onMouseLeave={() => setActive(-1)}
             >
-              {stations.length > 0 ? (
-                stations.map((item, idx) => (
+              {filtered.length > 0 ? (
+                filtered.map((item, idx) => (
                   <button
                     type="button"
                     key={item.station_id}
                     role="option"
-
-                    // className="w-full text-left px-3 py-2 hover:bg-blue-100"
                     className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 ${idx === active ? "tw-bg-blue-gray-50" : ""
                       }`}
                     onMouseEnter={() => setActive(idx)}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => selectItem(item)}
+                    onClick={() => choose(item)}
                   >
                     {item.station_name}
                   </button>
                 ))
               ) : (
-                <div className="px-3 py-2 text-gray-500">
-                  ไม่พบสถานีที่ค้นหา
-                </div>
+                <div className="px-3 py-2 text-gray-500">ไม่พบสถานีที่ค้นหา</div>
               )}
             </div>
           )}
         </div>
-
-
-
       </div>
-    </Navbar >
+    </Navbar>
   );
 }
 

@@ -54,11 +54,19 @@ export default function BasicPage() {
 
       if (data?.access_token) localStorage.setItem("accessToken", data.access_token);
       if (data?.refresh_token) localStorage.setItem("refreshToken", data.refresh_token);
+      // if (data?.access_token) localStorage.setItem("access_token", data.access_token);
+      // if (data?.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
 
-      if (data?.user) localStorage.setItem("user", JSON.stringify(data.user));
+      // if (data?.user) localStorage.setItem("user", JSON.stringify(data.user));
+      if (data?.user) {
+        localStorage.setItem("user", JSON.stringify(data.user));
+        localStorage.setItem("userRole", data.user.role ?? "");
+      }
 
       setMessage(data?.message || "Login success ✅");
 
+      // localStorage.removeItem("accessToken");
+      // localStorage.removeItem("refreshToken");
       router.push("/pages/mainpages/home");
     } catch (err) {
       console.error(err);
