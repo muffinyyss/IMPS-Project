@@ -1,38 +1,33 @@
 "use client";
-
 import React from "react";
+import Card from "./chargerSetting-card";
 
-type Row = { label: string; value?: string | number };
-
-const rows: Row[] = [
-    { label: "Measured Voltage (V)", value: "0.00" },
-    { label: "Measured Voltage (V)", value: "0.00" },
-    { label: "Max Voltage (V)", value: "0.00" },
-    { label: "Max Voltage (V)", value: "0.00" },
-    { label: "Measured Current (A)", value: "0.00" },
-    { label: "Measured Current (A)", value: "0.00" },
-    { label: "Max Current (A)", value: "0.00" },
-    { label: "Max Current (A)", value: "0.00" },
-    { label: "Power (W)", value: "0.00" },
-    { label: "Power (W)", value: "0.00" },
-    { label: "Max Power (W)", value: "0.00" },
-    { label: "Max Power (W)", value: "0.00" },
+const items = [
+    "Measured Voltage (V)",
+    "Measured Voltage (V)",
+    "Max Voltage (V)",
+    "Max Voltage (V)",
+    "Measured Current (A)",
+    "Measured Current (A)",
+    "Max Current (A)",
+    "Max Current (A)",
+    "Power (W)",
+    "Power (W)",
+    "Max Power (W)",
+    "Max Power (W)",
 ];
 
 export default function PowerModule() {
     return (
-        <div className="rounded-2xl bg-neutral-900 text-white shadow-inner h-full">
-            <div className="border-b border-neutral-800 px-5 py-3 text-center font-semibold">
-                Power Module
-            </div>
-            <div className="p-5 space-y-3">
-                {rows.map((r, i) => (
-                    <div key={i} className="flex items-center justify-between">
-                        <span className="text-sm text-neutral-300">{r.label}</span>
-                        <span className="font-semibold">{r.value ?? "-"}</span>
+        <Card title="Power Module" className="tw-h-full">
+            <div className="tw-divide-y tw-divide-blue-gray-50">
+                {items.map((label, i) => (
+                    <div key={`${label}-${i}`} className="tw-grid tw-grid-cols-2 tw-gap-2 tw-py-2">
+                        <span className="tw-text-sm tw-text-blue-gray-700">{label}</span>
+                        <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-900 tw-text-right">0.00</span>
                     </div>
                 ))}
             </div>
-        </div>
+        </Card>
     );
 }
