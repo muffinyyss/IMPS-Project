@@ -37,49 +37,77 @@ import {
 //components
 import AddUser, { NewUserPayload } from "@/app/dashboard/stations/components/addstations";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 // ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
 type TData = (typeof AppDataTable)[number];
 
+type stationRow = {
+  id?: string;
+  _id?: string;
+  station_name?: string;
+  SN?: string;
+  WO?: string;
+  model?: string;
+  status?: boolean;
+  brand?: string;
+};
 export function SearchDataTables() {
-  const [sorting, setSorting] = useState([]);
-  const [data] = useState(() => [...AppDataTable]);
+  const [data, setData] = useState<stationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  const [sorting, setSorting] = useState<any>([]);
   const [filtering, setFiltering] = useState("");
   const [openAdd, setOpenAdd] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // --- handlers สำหรับปุ่ม action ---
-  const handleEdit = (row: TData) => {
-    // TODO: เปิด modal แก้ไข / นำทางไปหน้าแก้ไข
-    console.log("Edit user:", row);
-  };
-  const handleDelete = (row: TData) => {
-    // TODO: เรียก API ลบ / แสดงกล่องยืนยัน
-    if (confirm(`ต้องการลบผู้ใช้ "${row.name}" ใช่หรือไม่?`)) {
-      console.log("Delete user:", row);
-    }
-  };
+  useEffect(() => {
+    (async () => {
+      try {
+        const token =
+          localStorage.getItem("access_token") ||
+          localStorage.getItem("accessToken") ||
+          "";
 
-  const handleCreateUser = async (payload: NewUserPayload) => {
-    try {
-      setSaving(true);
-      // TODO: เปลี่ยน endpoint ให้ตรง API จริงของคุณ
-      await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      // ปิด modal แล้ว refetch/refresh ตารางตามที่คุณใช้ data source จริง
-      setOpenAdd(false);
-      // ตัวอย่าง: window.location.reload(); หรือ setData([...data, newUser])
-    } catch (e) {
-      console.error(e);
-      alert("สร้างผู้ใช้ไม่สำเร็จ");
-    } finally {
-      setSaving(false);
-    }
-  };
+        const res = await fetch(`${API_BASE}/all-stations/`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-  const columns = [
+        if (res.status === 401) {
+          setErr("Unauthorized (401) – กรุณาเข้าสู่ระบบอีกครั้ง");
+          setData([]);
+          return;
+        }
+        if (!res.ok) {
+          setErr(`Fetch failed: ${res.status}`);
+          setData([]);
+          return;
+        }
+
+        const json = await res.json();
+        const list = Array.isArray(json?.stations) ? (json.stations as any[]) : [];
+        // แปลง _id -> id (ถ้ามี), กัน type แปลก ๆ
+        const rows: stationRow[] = list.map((s) => ({
+          id: s.id || s._id || undefined,
+          _id: undefined, // ไม่ใช้ _id ต่อจากนี้แล้ว
+          station_name: s.station_name ?? "-",
+          SN: s.SN ?? "-",
+          WO: s.WO ?? "-",
+          status: s.status ?? "-",
+          model: s.model ?? "-"
+        }));
+        setData(rows);
+      } catch (e) {
+        console.error(e);
+        setErr("Network/Server error");
+        setData([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const columns: any[] = [
     {
       id: "no",
       header: () => "No.",
@@ -87,36 +115,48 @@ export function SearchDataTables() {
       size: 25,
       minSize: 10,
       maxSize: 25,
-      cell: (info: CellContext<TData, unknown>) => {
-        const pageRows = info.table.getRowModel().rows as Row<TData>[];
+      cell: (info: any) => {
+        const pageRows = info.table.getRowModel().rows as Row<stationRow>[];
         const indexInPage = pageRows.findIndex(
-          (r: (typeof pageRows)[number]) => r.id === info.row.id
+          (r) => r.id === info.row.id
         );
         const { pageIndex, pageSize } = info.table.getState().pagination;
         return pageIndex * pageSize + indexInPage + 1;
       },
-      meta: { headerAlign: "center", cellAlign: "center" },
+      // meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row: any) => row.name,
+      accessorFn: (row: stationRow) => row.station_name ?? "-",
       id: "station_name",
       cell: (info: any) => info.getValue(),
       header: () => "station name",
     },
     {
-      accessorFn: (row: any) => row.name,
+      accessorFn: (row: any) => row.brand ?? "-",
       id: "brand",
       cell: (info: any) => info.getValue(),
       header: () => "brand",
     },
     {
-      accessorFn: (row: any) => row.position,
+      accessorFn: (row: any) => row.model ?? "-",
       id: "model",
       cell: (info: any) => info.getValue(),
       header: () => "model",
     },
     {
-      accessorFn: (row: any) => row.age,
+      accessorFn: (row: any) => row.SN ?? "-",
+      id: "SN",
+      cell: (info: any) => info.getValue(),
+      header: () => "serial number",
+    },
+    {
+      accessorFn: (row: any) => row.WO ?? "-",
+      id: "WO",
+      cell: (info: any) => info.getValue(),
+      header: () => "work order",
+    },
+    {
+      accessorFn: (row: any) => row.status ?? "-",
       id: "status",
       header: () => "status",
       cell: (info: any) => info.getValue(),
@@ -127,7 +167,7 @@ export function SearchDataTables() {
       header: () => "actions",
       enableSorting: false,
       size: 80,
-      cell: ({ row }: { row: Row<TData> }) => (
+      cell: ({ row }: { row: Row<stationRow> }) => (
         <span className="tw-inline-flex tw-items-center tw-gap-2 tw-pr-2">
           <button
             title="Edit user"
@@ -136,18 +176,52 @@ export function SearchDataTables() {
           >
             <PencilSquareIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-700" />
           </button>
-          {/* <button
+          <button
             title="Delete user"
             onClick={() => handleDelete(row.original)}
             className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-red-50 tw-transition"
           >
             <TrashIcon className="tw-h-5 tw-w-5 tw-text-red-600" />
-          </button> */}
+          </button>
         </span>
       ),
     }
 
   ];
+
+  // --- handlers สำหรับปุ่ม action ---
+  const handleEdit = (row: stationRow) => {
+    // TODO: เปิด modal แก้ไข / นำทางไปหน้าแก้ไข
+    console.log("Edit user:", row);
+  };
+  const handleDelete = (row: stationRow) => {
+    // TODO: เรียก API ลบ / แสดงกล่องยืนยัน
+    if (confirm(`ต้องการลบสถานี "${row.station_name}" ใช่หรือไม่?`)) {
+      console.log("Delete user:", row);
+    }
+  };
+
+  const handleCreateUser = async (payload: NewUserPayload) => {
+    try {
+      setSaving(true);
+      const token = localStorage.getItem("access_token") || "";
+      const res = await fetch(`${API_BASE}/all-stations/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`Create failed: ${res.status}`);
+      setOpenAdd(false);
+    } catch (e) {
+      console.error(e);
+      alert("สร้างสถานีไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const table = useReactTable({
     data,
@@ -157,7 +231,7 @@ export function SearchDataTables() {
       sorting: sorting,
     },
     // @ts-ignore
-    onSortingChange: setSorting,
+    onSortingChange: setSorting as any,
     onGlobalFilterChange: setFiltering,
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -229,59 +303,71 @@ export function SearchDataTables() {
           </div>
         </CardBody>
         <CardFooter className="tw-p-0 tw-overflow-scroll">
-          <table className="tw-table-auto tw-text-left tw-w-full tw-min-w-max">
-            <thead>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      onClick={header.column.getToggleSortingHandler()}
-                      className="tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium"
-                    >
-                      <Typography
-                        color="blue-gray"
-                        className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40"
-                      >
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                        <ChevronUpDownIcon
-                          strokeWidth={2}
-                          className="tw-h-4 tw-w-4"
-                        />
-                      </Typography>
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.length
-                ? table.getRowModel().rows.map((row, index) => (
-                  <tr key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <td
-                        key={cell.id}
-                        className="!tw-border-y !tw-border-x-0"
+          {loading ? (
+            <div className="tw-p-4">Loading...</div>
+          ) : err ? (
+            <div className="tw-p-4 tw-text-red-600">{err}</div>
+          ) : (
+            <table className="tw-table-auto tw-text-left tw-w-full tw-min-w-max">
+              <thead>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        onClick={header.column.getToggleSortingHandler()}
+                        className="tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium"
                       >
                         <Typography
-                          variant="small"
-                          className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4"
+                          color="blue-gray"
+                          className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40"
                         >
                           {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
+                            header.column.columnDef.header,
+                            header.getContext()
                           )}
+                          <ChevronUpDownIcon
+                            strokeWidth={2}
+                            className="tw-h-4 tw-w-4"
+                          />
                         </Typography>
-                      </td>
+                      </th>
                     ))}
                   </tr>
-                ))
-                : null}
-            </tbody>
-          </table>
+                ))}
+              </thead>
+              <tbody>
+                {table.getRowModel().rows.length
+                  ? table.getRowModel().rows.map((row, index) => (
+                    <tr key={row.id}>
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className="!tw-border-y !tw-border-x-0"
+                        >
+                          <Typography
+                            variant="small"
+                            className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4"
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </Typography>
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                  : (
+                    <tr>
+                      <td className="tw-px-4 tw-py-6 tw-text-center" colSpan={columns.length}>
+                        ไม่พบผู้ใช้
+                      </td>
+                    </tr>
+                  )}
+              </tbody>
+            </table>
+          )}
         </CardFooter>
         <div className="tw-flex tw-items-center tw-justify-end tw-gap-6 tw-px-10 tw-py-6">
           <span className="tw-flex tw-items-center tw-gap-1">

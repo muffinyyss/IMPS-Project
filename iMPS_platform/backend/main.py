@@ -91,6 +91,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> UserClaims:
     except JWTError:
         raise cred_exc
 
+#####################login
 @app.post("/login/")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = users_collection.find_one(
@@ -788,3 +789,30 @@ def to_json(doc):
 #             await asyncio.sleep(2)  # ← ปรับเป็น 1–3 วิ ตามความถี่ที่ต้องการ
 
 #     return StreamingResponse(event_generator(), headers=headers)
+
+################Users
+@app.get("/all-users/")
+def all_users():
+    # เอาทุกฟิลด์ ยกเว้น password และ refreshTokens
+    cursor = users_collection.find({}, {"password": 0, "refreshTokens": 0})
+    docs = list(cursor)
+
+    # ถ้าจะส่ง _id ไปด้วย ต้องแปลง ObjectId -> str
+    for d in docs:
+        if "_id" in d:
+            d["_id"] = str(d["_id"])
+
+    return {"users": docs}
+
+@app.get("/all-stations/")
+def all_stations():
+    # เอาทุกฟิลด์ ยกเว้น password และ refreshTokens
+    cursor = station_collection.find({})
+    docs = list(cursor)
+
+    # ถ้าจะส่ง _id ไปด้วย ต้องแปลง ObjectId -> str
+    for d in docs:
+        if "_id" in d:
+            d["_id"] = str(d["_id"])
+
+    return {"stations": docs}
