@@ -1,58 +1,51 @@
 "use client";
-
 import React from "react";
+import Card from "./chargerSetting-card";
+import CircleProgress from "./CircleProgress";
 
-type Row = { label: string; value?: string | number };
 
-const rows: Row[] = [
-    { label: "CP State1", value: "A" },
-    { label: "CP State2", value: "A" },
-    { label: "Target Voltage (V)", value: "0.00" },
-    { label: "Target Voltage (V)", value: "0.00" },
-    { label: "Target Current (A)", value: "0.00" },
-    { label: "Target Current (A)", value: "0.00" },
-];
-
-function Circle({ percent = 0 }: { percent?: number }) {
+function Row({ label, value }: { label: string; value: string }) {
     return (
-        <div className="flex flex-col items-center">
-            <div className="relative h-28 w-28 rounded-full border-8 border-neutral-600">
-                <div className="absolute inset-0 grid place-items-center text-white font-semibold">
-                    {percent}%
-                </div>
-            </div>
+        <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-py-2">
+            <span className="tw-text-sm tw-text-blue-gray-700">{label}</span>
+            <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-900 tw-text-right">
+                {value}
+            </span>
         </div>
     );
 }
 
+// function SoCCircle({ label }: { label: string }) {
+//     return (
+//         <div className="tw-flex tw-flex-col tw-items-center tw-gap-2">
+//             <div className="tw-text-sm tw-text-blue-gray-600">{label}</div>
+//             <div className="tw-relative tw-w-24 tw-h-24">
+//                 <div className="tw-absolute tw-inset-0 tw-rounded-full tw-bg-gradient-to-b tw-from-blue-gray-50 tw-to-white tw-shadow-inner" />
+//                 <div className="tw-absolute tw-inset-0 tw-rounded-full tw-ring-4 tw-ring-blue-gray-100" />
+//                 <div className="tw-absolute tw-inset-2 tw-rounded-full tw-grid tw-place-items-center tw-ring-4 tw-ring-blue-gray-200">
+//                     <span className="tw-text-base tw-font-semibold tw-text-blue-gray-900">0%</span>
+//                 </div>
+//             </div>
+//         </div>
+//     );
+// }
+
 export default function EvPanel() {
     return (
-        <div className="rounded-2xl bg-neutral-900 text-white shadow-inner h-full">
-            <div className="border-b border-neutral-800 px-5 py-3 text-center font-semibold">
-                EV
+        <Card title="EV" className="tw-h-full">
+            <div className="tw-divide-y tw-divide-blue-gray-50">
+                <Row label="CP State1" value="A" />
+                <Row label="CP State2" value="A" />
+                <Row label="Target Voltage (V)" value="0.00" />
+                <Row label="Target Voltage (V)" value="0.00" />
+                <Row label="Target Current (A)" value="0.00" />
+                <Row label="Target Current (A)" value="0.00" />
             </div>
 
-            <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                    {rows.map((r) => (
-                        <div key={r.label} className="flex items-center justify-between">
-                            <span className="text-sm text-neutral-300">{r.label}</span>
-                            <span className="font-semibold">{r.value ?? "-"}</span>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="grid grid-cols-2 gap-6 items-center">
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="text-sm text-neutral-300">SoC1 :</div>
-                        <Circle percent={0} />
-                    </div>
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="text-sm text-neutral-300">SoC2 :</div>
-                        <Circle percent={0} />
-                    </div>
-                </div>
+            <div className="tw-flex tw-flex-col tw-items-center tw-gap-6 tw-pt-6">
+                <CircleProgress label="SoC1 :" value={43} />
+                <CircleProgress label="SoC2 :" value={78} />
             </div>
-        </div>
+        </Card>
     );
 }
