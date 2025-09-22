@@ -25,6 +25,7 @@ import {
   Typography,
   CardFooter,
   Input,
+  Switch,
 } from "@material-tailwind/react";
 import {
   ChevronLeftIcon,
@@ -51,6 +52,33 @@ type stationRow = {
   status?: boolean;
   brand?: string;
 };
+
+function ToggleSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`tw-inline-flex tw-h-6 tw-w-11 tw-items-center tw-rounded-full tw-transition-colors
+        focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500
+        ${checked ? "tw-bg-blue-gray-900" : "tw-bg-blue-gray-300"}`}
+    >
+      <span
+        className={`tw-inline-block tw-h-5 tw-w-5 tw-transform tw-rounded-full tw-bg-white tw-shadow
+          tw-ring-1 tw-ring-black/10 tw-transition-transform
+          ${checked ? "tw-translate-x-5" : "tw-translate-x-1"}`}
+      />
+    </button>
+  );
+}
+
 export function SearchDataTables() {
   const [data, setData] = useState<stationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +121,7 @@ export function SearchDataTables() {
           station_name: s.station_name ?? "-",
           SN: s.SN ?? "-",
           WO: s.WO ?? "-",
-          status: s.status ?? "-",
+          status: !!s.status,  // แปลงเป็น boolean
           model: s.model ?? "-"
         }));
         setData(rows);
@@ -123,7 +151,7 @@ export function SearchDataTables() {
         const { pageIndex, pageSize } = info.table.getState().pagination;
         return pageIndex * pageSize + indexInPage + 1;
       },
-      // meta: { headerAlign: "center", cellAlign: "center" },
+      meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
       accessorFn: (row: stationRow) => row.station_name ?? "-",
@@ -156,11 +184,35 @@ export function SearchDataTables() {
       header: () => "work order",
     },
     {
-      accessorFn: (row: any) => row.status ?? "-",
       id: "status",
       header: () => "status",
-      cell: (info: any) => info.getValue(),
+      enableSorting: false,
       meta: { headerAlign: "center", cellAlign: "center" },
+      cell: ({ row }: { row: Row<stationRow> }) => {
+        const id = row.original.id;
+        const checked = !!row.original.status;
+
+        return (
+          <div className="tw-flex tw-justify-center">
+            <ToggleSwitch
+              checked={checked}
+              onChange={(val) => {
+                // อัปเดตในตารางทันที
+                setData((prev) =>
+                  prev.map((r) => (r.id === id ? { ...r, status: val } : r))
+                );
+
+                // TODO: ถ้าต้องบันทึกไป API ให้เติมโค้ดเรียก PATCH/PUT ที่นี่
+                // fetch(`${API_BASE}/stations/${id}`, {
+                //   method: "PATCH",
+                //   headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                //   body: JSON.stringify({ status: val }),
+                // });
+              }}
+            />
+          </div>
+        );
+      },
     },
     {
       id: "actions",
