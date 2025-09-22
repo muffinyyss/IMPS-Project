@@ -18,42 +18,58 @@ import AICard from "./components/AICard";
 import PMCard from "./components/PMCard";
 import CBMCard from "./components/condition-Based";
 
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter  } from "next/navigation";
 const StationImage = dynamic(() => import("./components/station-image"), {
   ssr: false,
 });
 
+type StationDetail = {
+  station_name: string;
+  model: string;
+  status: boolean | null;
+};
+
 export default function ChargersPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const stationId = searchParams.get("station_id");
   const [stationDetail, setStationDetail] = useState({
-    station_name: "",
-    model: "",
-    status: null
+    station_name: "-",
+    model: "-",
+    status: null as boolean | null,
   });
+  
+
   useEffect(() => {
-    if (stationId) {
-      // ดึง API เพื่อโหลดข้อมูลสถานีนั้น
-      const token = localStorage.getItem("accessToken");
-        if (!token) throw new Error("No access token found");
-      fetch(`http://localhost:8000/selected/station/${stationId}`, {
-        headers: {
-          "Accept": "application/json",
-          "Authorization": `Bearer ${token}`,  // ✅ ส่ง token ไป
-        }
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          console.log("Station details in ChargersPage:", data);
-          // เซ็ต state ถ้าจะเอามาแสดง
-          setStationDetail({
-            station_name: data.station_name,
-            model: data.model,
-            status: data.status
-          });
-        });
-    }
-  }, [stationId]);
+    if (!stationId) return;
+
+    // รองรับทั้ง access_token และ accessToken
+    const token =
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("accessToken") ||
+      "";
+    if (!token) return;
+
+    const ctrl = new AbortController();
+
+    (async () => {
+      const res = await fetch(
+        `http://localhost:8000/station/info?station_id=${encodeURIComponent(stationId)}`,
+        { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const info = data.station ?? data;
+
+      setStationDetail({
+        station_name: info?.station_name ?? "-",
+        model: info?.model ?? "-",
+        status: typeof info?.status === "boolean" ? info.status : null,
+      });
+    })().catch(() => { /* noop (เช่น abort) */ });
+
+    return () => ctrl.abort();
+  }, [stationId]); // ← ทุกครั้งที่ station_id ใน URL เปลี่ยน จะดึงข้อมูลใหม่
 
 
   return (

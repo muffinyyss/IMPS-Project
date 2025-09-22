@@ -13,11 +13,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import json, os, asyncio
 from pdf.pdf_routes import router as pdf_router
 from fastapi.responses import StreamingResponse
-from typing import List, Any,Dict
+from typing import List, Any,Dict, Optional
 import bcrypt
 from dateutil import parser as dtparser
 from bson.decimal128 import Decimal128
 from fastapi import Path
+import uuid
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
@@ -62,49 +63,121 @@ app.add_middleware(
 )
 
 
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
+
+class UserClaims(BaseModel):
+    sub: str
+    role: str = "user"
+    company: Optional[str] = None
+    station_ids: List[str] = []
+
+def get_current_user(token: str = Depends(oauth2_scheme)) -> UserClaims:
+    cred_exc = HTTPException(status_code=401, detail="Could not validate credentials")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get("sub")
+        if not sub:
+            raise cred_exc
+        station_ids = payload.get("station_ids") or []
+        if not isinstance(station_ids, list):
+            station_ids = [station_ids]
+        return UserClaims(
+            sub=sub,
+            role=payload.get("role", "user"),
+            company=payload.get("company"),
+            station_ids=station_ids,
+        )
+    except JWTError:
+        raise cred_exc
+
 @app.post("/login/")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = users_collection.find_one({"email": form_data.username})
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    if not bcrypt.checkpw(form_data.password.encode("utf-8"), user["password"].encode("utf-8")):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-
-    # generate tokens
-    access_token = create_access_token({"sub": user["email"]})
-    refresh_token = create_access_token({"sub": user["email"]}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
-
-    # update refresh token in DB
-    users_collection.update_one(
-        {"_id": user["_id"]},
-        # {"$push": {"refreshTokens": {"token": refresh_token, "expiresAt": datetime.utcnow() + timedelta(days=1)}}}
-        {"$set": {
-        "refreshTokens": [{
-            "token": refresh_token,  # แนะนำให้เก็บแบบ hash ดูหัวข้อ Security ด้านล่าง
-            "createdAt": datetime.utcnow(),
-            "expiresAt": datetime.utcnow() + timedelta(days=7),
-        }]
-    }}
+    user = users_collection.find_one(
+        {"email": form_data.username},
+        {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1},
     )
+    invalid_cred = HTTPException(status_code=401, detail="Invalid email or password")
+    if not user or not bcrypt.checkpw(form_data.password.encode("utf-8"), user["password"].encode("utf-8")):
+        raise invalid_cred
+
+    # ทำให้ station_ids เป็น list เสมอ
     station_ids = user.get("station_id", [])
     if not isinstance(station_ids, list):
         station_ids = [station_ids]
 
+    # ▶ Access Token ใส่สิทธิ์ไว้เลย
+    access_token = create_access_token({
+        "sub": user["email"],
+        "role": user.get("role", "user"),
+        "company": user.get("company"),
+        "station_ids": station_ids,
+    })
+
+    # ▶ Refresh Token (มีหรือไม่มีก็ได้ตามที่คุณใช้อยู่)
+    refresh_token = create_access_token({"sub": user["email"]}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
+
+    # อัปเดต refresh token ใน DB (จะเก็บ hash ก็ได้ ตามแนวทางที่คุยกันก่อนหน้า)
+    users_collection.update_one({"_id": user["_id"]}, {"$set": {
+        "refreshTokens": [{
+            "token": refresh_token,
+            "createdAt": datetime.utcnow(),
+            "expiresAt": datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        }]
+    }})
+
     return {
         "message": "Login success ✅",
         "access_token": access_token,
-        "refresh_token": refresh_token, 
-        "user":{
-            "username": user["username"],
-            "email":user["email"],
-            "role":user["role"],
-            "company": user["company"],
+        "refresh_token": refresh_token,
+        "user": {
+            "username": user.get("username"),
+            "email": user["email"],
+            "role": user.get("role", "user"),
+            "company": user.get("company"),
             "station_id": station_ids,
         }
     }
 
+@app.get("/my-stations/detail")
+def my_stations_detail(current: UserClaims = Depends(get_current_user)):
+    # ดึงรายละเอียดเฉพาะสถานีที่ user มีสิทธิ์
+    docs = list(station_collection.find(
+        {"station_id": {"$in": current.station_ids}},
+        {"_id": 0, "station_id": 1, "station_name": 1}
+    ))
+    return {"stations": docs}
 
+@app.get("/station/info")
+def station_info(
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),   # ดึง claims จาก JWT
+):
+    # เช็คสิทธิ์ก่อน (ข้อ 5)
+    if station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    # ดึงข้อมูลจากคอลเลกชัน stations
+    doc = station_collection.find_one(
+        {"station_id": station_id},
+        # เลือก field ที่อยากคืน (ตัด _id ออกเพื่อลด serialize ปัญหา ObjectId)
+        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1, "model": 1, "status": 1}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    return {"station": doc}
+
+@app.get("/get_history")
+def get_history(
+    station_id: str = Query(...),
+    start: str = Query(...),
+    end: str = Query(...),
+    current: UserClaims = Depends(get_current_user),  # ← อ่านสิทธิ์จาก JWT
+):
+    # ✅ เช็คสิทธิ์ก่อนคิวรีทุกครั้ง
+    if station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
 
 @app.post("/refresh")
 async def refresh(refresh_token: str):
@@ -239,6 +312,7 @@ async def get_stations(q: str = "", current_user: str = Depends(get_current_user
 
     stations = station_collection.find(query_filter, {"_id": 0, "station_name": 1, "station_id": 1})
     return [{"station_name": s["station_name"], "station_id": s["station_id"]} for s in stations]
+
 
 @app.get("/selected/station/{station_id}")
 async def get_station_detail(station_id: str, current_user: str = Depends(get_current_user)):

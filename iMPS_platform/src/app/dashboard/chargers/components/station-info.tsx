@@ -8,17 +8,17 @@ type Props = {
   status?: string;
 };
 
-export type Station = {
-  station_name: string;
-  model: string;
-  status: boolean | null;
+export type StationInfoProps = {
+  station_name?: string;
+  model?: string;
+  status?: boolean | null; // ✅ ตรงกับข้อมูลจริง
 };
 
 export default function StationInfo({
   station_name,
   model,
   status
-}: Station) {
+}: StationInfoProps) {
   const statusColor =
     status === true
       ? "tw-bg-green-100 tw-text-green-700"
