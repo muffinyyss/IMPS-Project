@@ -6,11 +6,10 @@ import ControlPanel from "./components/ControlPanel";
 import InfoPanel from "./components/InfoPanel";
 import EvPanel from "./components/EvPanel";
 import PowerModule from "./components/PowerModule";
-import CircleProgress from "./components/CircleProgress";
 
 export default function SettingPage() {
   return (
-    <div className="tw-space-y-6">
+    <div className="tw-space-y-6 tw-mt-8">
       <div className="tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 tw-gap-6">
         <div className="tw-space-y-6">
           <ChargeBoxId />
