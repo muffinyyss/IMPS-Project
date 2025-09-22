@@ -1,12 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
 type NavItem = { label: string; href: string; requireAuth?: boolean };
-
 type User = { username: string; role?: string; company?: string };
 
 const navItems: NavItem[] = [
@@ -20,6 +18,8 @@ export default function SiteNavbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   // โหลดสถานะจาก localStorage + sync เมื่อมีการเปลี่ยนแปลงจากแท็บอื่น
   useEffect(() => {
     const load = () => {
@@ -36,6 +36,14 @@ export default function SiteNavbar() {
     return () => window.removeEventListener("storage", load);
   }, []);
 
+  // ปิดเมนูเมื่อเปลี่ยนหน้า หรือกด ESC
+  useEffect(() => setMobileOpen(false), [pathname]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMobileOpen(false);
+    if (mobileOpen) window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
+
   const isActive = (href: string) => {
     if (!pathname) return false;
     if (href === "/pages/mainpages/home") return pathname === "/pages/mainpages/home";
@@ -47,9 +55,6 @@ export default function SiteNavbar() {
     }`;
 
   const handleLogout = async () => {
-    // ถ้ามี endpoint revoke token ค่อยเรียกที่นี่
-    // await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/logout`, { method: "POST", credentials: "include" })
-
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("user");
@@ -59,28 +64,26 @@ export default function SiteNavbar() {
 
   return (
     <nav className="tw-sticky tw-top-0 tw-z-40 tw-bg-white">
-      <div className="tw-mx-auto tw-max-w-7xl tw-h-20 tw-grid tw-grid-cols-[1fr_auto_1fr] tw-items-center tw-px-4">
+      {/* ====== Header container ====== */}
+      {/* จอเล็ก: ใช้ flex; จอใหญ่ (md+): ใช้ layout แบบเดิม grid 3 คอลัมน์ */}
+      <div className="
+        tw-mx-auto tw-max-w-7xl tw-h-16 md:tw-h-20 tw-px-4
+        tw-flex tw-items-center tw-justify-between
+        md:tw-grid md:tw-grid-cols-[1fr_auto_1fr] md:tw-items-center
+      ">
         {/* Brand */}
         <Link href="/" className="tw-flex tw-items-center tw-space-x-2" aria-label="IMPS Home">
-          <span className="tw-text-4xl tw-font-extrabold">
+          <span className="tw-text-3xl md:tw-text-4xl tw-font-extrabold">
             <span className="tw-text-yellow-500">i</span>
             <span className="tw-text-gray-900">MPS</span>
           </span>
         </Link>
 
-        {/* Center nav */}
-        <ul className="tw-flex tw-items-center tw-space-x-10">
-          {/* {navItems.map((item) => (
-            <li key={item.href}>
-              <Link href={item.href} className={linkClass(item.href)} prefetch={false}>
-                {item.label}
-              </Link>
-            </li>
-          ))} */}
-
+        {/* Center nav — แสดงเฉพาะจอใหญ่ */}
+        <ul className="tw-hidden md:tw-flex tw-items-center tw-space-x-10">
           {navItems.map((item) => (
             <li key={item.href}>
-              {(!item.requireAuth || user) ? (
+              {!item.requireAuth || user ? (
                 <Link href={item.href} className={linkClass(item.href)} prefetch={false}>
                   {item.label}
                 </Link>
@@ -98,18 +101,8 @@ export default function SiteNavbar() {
           ))}
         </ul>
 
-        {/* Right actions (แสดงปุ่ม Login เฉย ๆ ไม่ผูกกับสถานะผู้ใช้) */}
-        {/* <div className="tw-flex tw-justify-end">
-          <Link
-            href="/auth/signin/basic"
-            className="tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-5 tw-h-10 
-                       tw-shadow-sm tw-inline-flex tw-items-center tw-justify-center tw-text-sm
-                       hover:tw-bg-black hover:tw-text-white hover:tw-border-black"
-          >
-            Login
-          </Link>
-        </div> */}
-        <div className="tw-flex tw-justify-end tw-items-center tw-space-x-3">
+        {/* Right actions — แสดงเฉพาะจอใหญ่ */}
+        <div className="tw-hidden md:tw-flex tw-justify-end tw-items-center tw-space-x-3">
           {user ? (
             <>
               <span className="tw-text-sm tw-text-gray-700">
@@ -135,230 +128,101 @@ export default function SiteNavbar() {
             </Link>
           )}
         </div>
+
+        {/* Hamburger — แสดงเฉพาะจอเล็ก */}
+        <div className="md:tw-hidden tw-flex tw-items-center">
+          <button
+            type="button"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-controls="mobile-menu"
+            aria-expanded={mobileOpen}
+            className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-2 tw-border tw-border-gray-200 hover:tw-bg-gray-50"
+          >
+            <span className="tw-sr-only">Open main menu</span>
+            {!mobileOpen ? (
+              <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-6 tw-w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-6 tw-w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* ====== Mobile menu ====== */}
+      {/* Overlay */}
+      <div
+        className={`md:tw-hidden tw-fixed tw-inset-0 tw-bg-black/30 tw-transition-opacity ${mobileOpen ? "tw-opacity-100 tw-pointer-events-auto" : "tw-opacity-0 tw-pointer-events-none"
+          }`}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden="true"
+      />
+      {/* Slide-down panel */}
+      <div
+        id="mobile-menu"
+        className={`md:tw-hidden tw-absolute tw-left-0 tw-right-0 tw-top-16 tw-bg-white tw-shadow-lg tw-border-t tw-border-gray-100
+                    tw-origin-top tw-transition-transform tw-duration-200 ${mobileOpen ? "tw-translate-y-0" : "-tw-translate-y-2 tw-pointer-events-none tw-opacity-0"
+          }`}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="tw-px-4 tw-pt-3 tw-pb-4">
+          <ul className="tw-space-y-2">
+            {navItems.map((item) => (
+              <li key={item.href}>
+                {!item.requireAuth || user ? (
+                  <Link
+                    href={item.href}
+                    className={`tw-block tw-py-2 ${linkClass(item.href)}`}
+                    prefetch={false}
+                  >
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span
+                    role="link"
+                    aria-disabled="true"
+                    className="tw-block tw-py-2 tw-text-gray-400 tw-cursor-not-allowed tw-select-none tw-pointer-events-none"
+                    title="Please login first"
+                  >
+                    {item.label}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <div className="tw-mt-3 tw-border-t tw-border-gray-100 tw-pt-3 tw-flex tw-items-center tw-justify-between">
+            {user ? (
+              <>
+                <span className="tw-text-sm tw-text-gray-700">
+                  Hi, <span className="tw-font-semibold">{user.username}</span>
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-4 tw-h-9 
+                             tw-shadow-sm tw-inline-flex tw-items-center tw-justify-center tw-text-sm
+                             hover:tw-bg-black hover:tw-text-white hover:tw-border-black"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/auth/signin/basic"
+                className="tw-w-full tw-text-center tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-4 tw-h-10 
+                           tw-shadow-sm tw-inline-flex tw-items-center tw-justify-center tw-text-sm
+                           hover:tw-bg-black hover:tw-text-white hover:tw-border-black"
+              >
+                Login
+              </Link>
+            )}
+          </div>
+        </div>
       </div>
     </nav>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// "use client";
-
-// import Link from "next/link";
-// import { usePathname, useRouter } from "next/navigation";
-// import React, { useEffect, useRef, useState } from "react";
-
-// type StoredUser = {
-//   username?: string;
-// };
-
-// const navItems = [
-//   { label: "Home", href: "/pages/mainpages/home" },
-//   { label: "About", href: "/pages/mainpages/about" },
-//   { label: "Contact", href: "/pages/mainpages/contact" },
-//   { label: "Dashboard", href: "/dashboard/analytics" },
-// ];
-
-// export default function SiteNavbar() {
-//   const pathname = usePathname();
-//   const router = useRouter();
-
-//   const [user, setUser] = useState<StoredUser | null>(null);
-//   const [mounted, setMounted] = useState(false);
-//   const [openMenu, setOpenMenu] = useState(false);
-
-//   const menuRef = useRef<HTMLDivElement | null>(null);
-//   const btnRef = useRef<HTMLButtonElement | null>(null);
-
-//   useEffect(() => {
-//     try {
-//       const raw = localStorage.getItem("user");
-//       // console.log("DEBUG raw localStorage[user]:", raw);
-//       if (raw) setUser(JSON.parse(raw));
-//     } catch { }
-//     setMounted(true);
-
-//     const onStorage = (e: StorageEvent) => {
-//       if (e.key === "user") {
-//         try {
-//           setUser(e.newValue ? JSON.parse(e.newValue) : null);
-//         } catch {
-//           setUser(null);
-//         }
-//       }
-//     };
-//     window.addEventListener("storage", onStorage);
-//     return () => window.removeEventListener("storage", onStorage);
-//   }, []);
-
-//   useEffect(() => {
-//     const onClickOutside = (e: MouseEvent) => {
-//       if (
-//         openMenu &&
-//         menuRef.current &&
-//         !menuRef.current.contains(e.target as Node) &&
-//         btnRef.current &&
-//         !btnRef.current.contains(e.target as Node)
-//       ) {
-//         setOpenMenu(false);
-//       }
-//     };
-//     window.addEventListener("mousedown", onClickOutside);
-//     return () => window.removeEventListener("mousedown", onClickOutside);
-//   }, [openMenu]);
-
-//   const handleLogout = () => {
-//     localStorage.removeItem("user");
-//     // console.log("After removeItem, localStorage[user]:", localStorage.getItem("user")); // ควรเป็น null
-//     setUser(null);
-//     setOpenMenu(false);
-//     router.push("/auth/signin/basic");
-//   };
-
-
-//   const isActive = (href: string) => {
-//     if (!pathname) return false;
-//     if (href === "/pages/mainpages/home") return pathname === "/pages/mainpages/home";
-//     return pathname.startsWith(href);
-//   };
-
-//   const linkClass = (href: string) =>
-//     `tw-font-medium hover:tw-text-black ${isActive(href) ? "tw-text-black tw-font-semibold" : "tw-text-gray-700"
-//     }`;
-
-//   // จัดการคลิกเมนู Dashboard: ถ้ายังไม่ login ให้ไปหน้า signin
-//   const handleNavClick = (
-//     e: React.MouseEvent<HTMLAnchorElement, MouseEvent>,
-//     label: string
-//   ) => {
-//     if (label === "Dashboard" && !user?.username) {
-//       e.preventDefault();
-//       // router.push("/auth/signin/basic");
-//       router.push("/dashboard/analytics");
-
-//     }
-//   };
-
-//   return (
-//     <nav className="tw-sticky tw-top-0 tw-z-40 tw-bg-white">
-//       <div className="tw-mx-auto tw-max-w-7xl tw-h-20 tw-grid tw-grid-cols-[1fr_auto_1fr] tw-items-center tw-px-4">
-//         {/* Brand */}
-//         <Link href="/" className="tw-flex tw-items-center tw-space-x-2" aria-label="IMPS Home">
-//           <span className="tw-text-4xl tw-font-extrabold">
-//             <span className="tw-text-yellow-500">i</span>
-//             <span className="tw-text-gray-900">MPS</span>
-//           </span>
-//         </Link>
-
-//         {/* Center nav */}
-//         <ul className="tw-flex tw-items-center tw-space-x-10">
-//           {navItems.map((item) => {
-//             // ถ้าเป็น Dashboard ให้กำหนด href ตามสถานะ เพื่อให้ hover/preview ถูกต้องด้วย
-//             const targetHref =
-//               item.label === "Dashboard" && !user?.username
-//                 ? "/auth/signin/basic"
-//                 : item.href;
-
-//             return (
-//               <li key={item.href}>
-//                 <Link
-//                   href={targetHref}
-//                   className={linkClass(item.href)}
-//                   onClick={(e) => handleNavClick(e, item.label)}
-//                   prefetch={false}
-//                 >
-//                   {item.label}
-//                 </Link>
-//               </li>
-//             );
-//           })}
-//         </ul>
-
-//         {/* Right actions */}
-//         <div className="tw-flex tw-justify-end tw-relative">
-//           {!mounted ? null : user?.username ? (
-//             <>
-//               <button
-//                 ref={btnRef}
-//                 onClick={() => setOpenMenu((v) => !v)}
-//                 className="tw-rounded-full tw-px-4 tw-h-10
-//                            tw-inline-flex tw-items-center tw-justify-center tw-text-sm tw-text-gray-900
-//                            hover:tw-bg-gray-200"
-//                 aria-haspopup="menu"
-//                 aria-expanded={openMenu}
-//               >
-//                 <span className="tw-mr-2 tw-line-clamp-1">{user.username}</span>
-//                 <svg
-//                   xmlns="http://www.w3.org/2000/svg"
-//                   className={`tw-h-4 tw-w-4 tw-transition-transform ${openMenu ? "tw-rotate-180" : ""}`}
-//                   fill="none"
-//                   viewBox="0 0 24 24"
-//                   stroke="currentColor"
-//                 >
-//                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-//                 </svg>
-//               </button>
-
-//               {/* Dropdown */}
-//               {openMenu && (
-//                 <div
-//                   ref={menuRef}
-//                   role="menu"
-//                   className="tw-absolute tw-right-0 tw-top-12 tw-w-56 tw-bg-white tw-border tw-border-gray-200
-//                              tw-rounded-lg tw-shadow-lg tw-py-2"
-//                 >
-//                   <div className="tw-px-4 tw-py-2 tw-text-xs tw-text-gray-500">Signed in as</div>
-//                   <div className="tw-px-4 tw-pb-2 tw-text-sm tw-font-medium tw-text-gray-900">
-//                     {user.username}
-//                   </div>
-//                   <hr className="tw-my-2" />
-//                   <Link
-//                     href="/dashboard/analytics"
-//                     className="tw-block tw-w-full tw-text-left tw-px-4 tw-py-2 tw-text-sm hover:tw-bg-gray-100"
-//                     role="menuitem"
-//                     onClick={() => setOpenMenu(false)}
-//                   >
-//                     Dashboard
-//                   </Link>
-//                   <button
-//                     onClick={handleLogout}
-//                     className="tw-block tw-w-full tw-text-left tw-px-4 tw-py-2 tw-text-sm tw-text-red-600 hover:tw-bg-gray-100"
-//                     role="menuitem"
-//                   >
-//                     Logout
-//                   </button>
-//                 </div>
-//               )}
-//             </>
-//           ) : (
-//             <Link
-//               href="/auth/signin/basic"
-//               className="tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-5 tw-h-10
-//                          tw-shadow-sm tw-inline-flex tw-items-center tw-justify-center tw-text-sm
-//                          hover:tw-bg-black hover:tw-text-white hover:tw-border-black"
-//             >
-//               Login
-//             </Link>
-//           )}
-//         </div>
-//       </div>
-//     </nav>
-//   );
-// }
-
-
