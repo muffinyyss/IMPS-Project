@@ -2,7 +2,7 @@
 
 import React from "react";
 
-export const routes = [
+export const allRoutes = [
   {
     name: "John Doe",
     divider: true,
@@ -79,4 +79,4 @@ export const routes = [
   },
 ];
 
-export default routes;
+export default allRoutes;
