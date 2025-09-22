@@ -26,7 +26,7 @@ function StatCardClassic({ item }: { item: CardItem }) {
     <div className="tw-rounded-2xl tw-bg-white tw-border tw-border-blue-gray-100 tw-shadow-sm tw-overflow-hidden tw-h-full">
       {/* ส่วนหัว */}
       <div className="tw-flex tw-items-start tw-gap-4 tw-p-5">
-        <div className="tw-flex tw-items-center tw-justify-center tw-w-12 tw-h-12 tw-rounded-xl tw-bg-blue-gray-900/90">
+        <div className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11 tw-rounded-xl tw-bg-blue-gray-900/90">
           <Icon className="tw-w-6 tw-h-6 tw-text-white" />
         </div>
 
@@ -36,7 +36,7 @@ function StatCardClassic({ item }: { item: CardItem }) {
               {item.title}
             </p>
             <p
-              className="tw-text-xl tw-font-extrabold tw-text-blue-gray-900 tw-mt-2 tw-truncate"
+              className="md:tw-text-base sm:tw-text-lg tw-font-extrabold tw-text-blue-gray-900 tw-mt-2 tw-truncate"
               title={item.value}
             >
               {item.value}
