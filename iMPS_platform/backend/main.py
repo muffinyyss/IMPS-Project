@@ -897,3 +897,67 @@ def all_stations():
             d["_id"] = str(d["_id"])
 
     return {"stations": docs}
+
+class addStations(BaseModel):
+    station_id:str
+    station_name:str
+    brand:str
+    model:str
+    SN:str
+    WO:str 
+
+class StationOut(BaseModel):
+    id: str
+    station_id:str
+    station_name:str
+    brand:str
+    model:str
+    SN:str
+    WO:str 
+    # payment: Optional[bool] = None
+
+@app.post("/add_stations/", response_model=StationOut, status_code=201)
+def insert_stations(body: addStations):
+    doc = {
+        "station_id": body.station_id.strip(),
+        "station_name": body.station_name.strip(),
+        "brand": body.brand.strip(),
+        "model": body.model.strip(),
+        "SN": body.SN.strip(),
+        "WO": body.WO.strip(),
+        "createdAt": datetime.now(timezone.utc),
+    }
+
+    try:
+        res = station_collection.insert_one(doc)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="station_id already exists")
+
+    return {
+        "id": str(res.inserted_id),
+        "station_id": doc["station_id"],
+        "station_name": doc["station_name"],
+        "brand": doc["brand"],
+        "model": doc["model"],
+        "SN": doc["SN"],
+        "WO": doc["WO"],
+        # "createdAt": doc["createdAt"],
+    }
+
+@app.delete("/delete_stations/{station_id}", status_code=204)
+def delete_user(station_id: str, current: UserClaims = Depends(get_current_user)):
+    # (ทางเลือก) บังคับสิทธิ์เฉพาะ admin/owner
+    if current.role not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    try:
+        oid = ObjectId(station_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+
+    res = station_collection.delete_one({"_id": oid})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 204 No Content
+    return Response(status_code=204)
