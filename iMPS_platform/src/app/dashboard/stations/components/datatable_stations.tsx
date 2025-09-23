@@ -19,6 +19,7 @@ import {
   CardFooter,
   Input,
   Switch,
+  Alert
 } from "@material-tailwind/react";
 import {
   ChevronLeftIcon,
@@ -29,10 +30,10 @@ import {
 } from "@heroicons/react/24/solid";
 
 import AddStation, {
-  NewUserPayload as NewStationPayload,
+  NewStationPayload,
 } from "@/app/dashboard/stations/components/addstations";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const API_BASE = "http://localhost:8000";
 
 type stationRow = {
   id?: string;
@@ -53,6 +54,7 @@ export function SearchDataTables() {
   const [filtering, setFiltering] = useState("");
   const [openAdd, setOpenAdd] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -98,6 +100,133 @@ export function SearchDataTables() {
       }
     })();
   }, []);
+
+  const handleCreateStation = async (payload: NewStationPayload) => {
+    try {
+      setSaving(true);
+
+      const token =
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("accessToken") ||
+        "";
+
+      const res = await fetch(`${API_BASE}/add_stations/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.status === 409) throw new Error("staion_idนี้ถูกใช้แล้ว");
+      if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
+      if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Create user failed:", res.status, text);
+        alert(text || `Create failed: ${res.status}`);
+        return;
+      }
+
+      const created = await res.json(); // { id, username, email, role, company, station_id, ... }
+
+      // ✅ อัปเดตตารางทันที
+      setData((prev) => [
+        {
+          id: created.id,
+          station_id: created.station_id,
+          station_name: created.station_name,
+          brand: created.brand,
+          model: created.model,
+          SN: created.SN,
+          WO: created.WO,
+        },
+        ...prev,
+      ]);
+
+      setOpenAdd(false);
+      setNotice({ type: "success", msg: "Create success" });
+      setTimeout(() => setNotice(null), 3000);
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || "สร้างสถานีไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // --- handlers ---
+  const handleEdit = (row: stationRow) => console.log("Edit station:", row);
+
+  const handleDelete = async (row: stationRow) => {
+    if (!row.id) return alert("ไม่พบ id ของสถานี");
+
+    if (!confirm(`ต้องการลบผู้ใช้ "${row.station_name}" ใช่หรือไม่?`)) {
+      return;
+    }
+
+    try {
+    const token =
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("accessToken") ||
+      "";
+
+    // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
+    const res = await fetch(`${API_BASE}/delete_stations/${row.id}`, {
+      method: "DELETE",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
+    if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
+    if (res.status === 404) throw new Error("ไม่พบสถานีนี้");
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Delete failed: ${res.status}`);
+    }
+
+    // ลบออกจากตาราง
+    setData((prev) => prev.filter((u) => u.id !== row.id));
+
+    // แจ้งสำเร็จ
+    setNotice({ type: "success", msg: "Delete success" });
+    setTimeout(() => setNotice(null), 2500);
+  } catch (e: any) {
+    console.error(e);
+    setNotice({ type: "error", msg: e.message || "ลบสานีไม่สำเร็จ" });
+    setTimeout(() => setNotice(null), 3500);
+  }
+    
+  };
+
+  // const handleCreateStation = async (payload: NewStationPayload) => {
+  //   try {
+  //     setSaving(true);
+  //     const token =
+  //       localStorage.getItem("access_token") ||
+  //       localStorage.getItem("accessToken") ||
+  //       "";
+  //     const res = await fetch(`${API_BASE}/all-stations/`, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         Authorization: `Bearer ${token}`,
+  //       },
+  //       body: JSON.stringify(payload),
+  //     });
+  //     if (!res.ok) throw new Error(`Create failed: ${res.status}`);
+  //     setOpenAdd(false);
+  //   } catch (e) {
+  //     console.error(e);
+  //     alert("สร้างสถานีไม่สำเร็จ");
+  //   } finally {
+  //     setSaving(false);
+  //   }
+  // };
+
 
   const columns: any[] = [
     {
@@ -189,38 +318,7 @@ export function SearchDataTables() {
     },
   ];
 
-  // --- handlers ---
-  const handleEdit = (row: stationRow) => console.log("Edit station:", row);
-  const handleDelete = (row: stationRow) => {
-    if (confirm(`ต้องการลบสถานี "${row.station_name}" ใช่หรือไม่?`)) {
-      console.log("Delete station:", row);
-    }
-  };
 
-  const handleCreateStation = async (payload: NewStationPayload) => {
-    try {
-      setSaving(true);
-      const token =
-        localStorage.getItem("access_token") ||
-        localStorage.getItem("accessToken") ||
-        "";
-      const res = await fetch(`${API_BASE}/all-stations/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`Create failed: ${res.status}`);
-      setOpenAdd(false);
-    } catch (e) {
-      console.error(e);
-      alert("สร้างสถานีไม่สำเร็จ");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const table = useReactTable({
     data,
@@ -238,6 +336,16 @@ export function SearchDataTables() {
   return (
     <>
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
+        {notice && (
+                  <div className="tw-px-4 tw-pt-4">
+                    <Alert
+                      color={notice.type === "success" ? "green" : "red"}
+                      onClose={() => setNotice(null)}
+                    >
+                      {notice.msg}
+                    </Alert>
+                  </div>
+                )}
         <CardHeader
           floated={false}
           shadow={false}
