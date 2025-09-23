@@ -172,9 +172,8 @@ export function SearchDataTables() {
             tw-!px-3 md:tw-!px-4      /* padding เหมือนเดิม */
             tw-!py-3 md:tw-!py-4
             tw-mb-6
-          "
-        >
-          <div>
+        ">
+          <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
               PM Report Documents
             </Typography>

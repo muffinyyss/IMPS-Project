@@ -1,10 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
-import Link from "next/link";
-import { AppDataTable } from "@/data";
-import { ArrowUpTrayIcon } from "@heroicons/react/24/outline";
-import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import React, { useEffect, useState } from "react";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -12,10 +8,7 @@ import {
   getSortedRowModel,
   useReactTable,
   flexRender,
-  type ColumnDef,
-  type CellContext,
   type Row,
-  type SortingState,
 } from "@tanstack/react-table";
 import {
   Button,
@@ -35,16 +28,14 @@ import {
   TrashIcon,
 } from "@heroicons/react/24/solid";
 
-//components
-import AddUser, { NewUserPayload } from "@/app/dashboard/stations/components/addstations";
+import AddStation, {
+  NewUserPayload as NewStationPayload,
+} from "@/app/dashboard/stations/components/addstations";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-// ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
-type TData = (typeof AppDataTable)[number];
 
 type stationRow = {
   id?: string;
-  _id?: string;
   station_name?: string;
   SN?: string;
   WO?: string;
@@ -52,32 +43,6 @@ type stationRow = {
   status?: boolean;
   brand?: string;
 };
-
-function ToggleSwitch({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`tw-inline-flex tw-h-6 tw-w-11 tw-items-center tw-rounded-full tw-transition-colors
-        focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500
-        ${checked ? "tw-bg-blue-gray-900" : "tw-bg-blue-gray-300"}`}
-    >
-      <span
-        className={`tw-inline-block tw-h-5 tw-w-5 tw-transform tw-rounded-full tw-bg-white tw-shadow
-          tw-ring-1 tw-ring-black/10 tw-transition-transform
-          ${checked ? "tw-translate-x-5" : "tw-translate-x-1"}`}
-      />
-    </button>
-  );
-}
 
 export function SearchDataTables() {
   const [data, setData] = useState<stationRow[]>([]);
@@ -114,15 +79,14 @@ export function SearchDataTables() {
 
         const json = await res.json();
         const list = Array.isArray(json?.stations) ? (json.stations as any[]) : [];
-        // แปลง _id -> id (ถ้ามี), กัน type แปลก ๆ
         const rows: stationRow[] = list.map((s) => ({
           id: s.id || s._id || undefined,
-          _id: undefined, // ไม่ใช้ _id ต่อจากนี้แล้ว
           station_name: s.station_name ?? "-",
           SN: s.SN ?? "-",
           WO: s.WO ?? "-",
-          status: !!s.status,  // แปลงเป็น boolean
-          model: s.model ?? "-"
+          status: !!s.status,
+          model: s.model ?? "-",
+          brand: s.brand ?? "-",
         }));
         setData(rows);
       } catch (e) {
@@ -140,14 +104,9 @@ export function SearchDataTables() {
       id: "no",
       header: () => "No.",
       enableSorting: false,
-      size: 25,
-      minSize: 10,
-      maxSize: 25,
       cell: (info: any) => {
         const pageRows = info.table.getRowModel().rows as Row<stationRow>[];
-        const indexInPage = pageRows.findIndex(
-          (r) => r.id === info.row.id
-        );
+        const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
         const { pageIndex, pageSize } = info.table.getState().pagination;
         return pageIndex * pageSize + indexInPage + 1;
       },
@@ -160,25 +119,25 @@ export function SearchDataTables() {
       header: () => "station name",
     },
     {
-      accessorFn: (row: any) => row.brand ?? "-",
+      accessorFn: (row: stationRow) => row.brand ?? "-",
       id: "brand",
       cell: (info: any) => info.getValue(),
       header: () => "brand",
     },
     {
-      accessorFn: (row: any) => row.model ?? "-",
+      accessorFn: (row: stationRow) => row.model ?? "-",
       id: "model",
       cell: (info: any) => info.getValue(),
       header: () => "model",
     },
     {
-      accessorFn: (row: any) => row.SN ?? "-",
+      accessorFn: (row: stationRow) => row.SN ?? "-",
       id: "SN",
       cell: (info: any) => info.getValue(),
       header: () => "serial number",
     },
     {
-      accessorFn: (row: any) => row.WO ?? "-",
+      accessorFn: (row: stationRow) => row.WO ?? "-",
       id: "WO",
       cell: (info: any) => info.getValue(),
       header: () => "work order",
@@ -192,24 +151,14 @@ export function SearchDataTables() {
         const id = row.original.id;
         const checked = !!row.original.status;
 
+        const toggle = async () => {
+          const newVal = !checked;
+          setData((prev) => prev.map((r) => (r.id === id ? { ...r, status: newVal } : r)));
+        };
+
         return (
           <div className="tw-flex tw-justify-center">
-            <ToggleSwitch
-              checked={checked}
-              onChange={(val) => {
-                // อัปเดตในตารางทันที
-                setData((prev) =>
-                  prev.map((r) => (r.id === id ? { ...r, status: val } : r))
-                );
-
-                // TODO: ถ้าต้องบันทึกไป API ให้เติมโค้ดเรียก PATCH/PUT ที่นี่
-                // fetch(`${API_BASE}/stations/${id}`, {
-                //   method: "PATCH",
-                //   headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                //   body: JSON.stringify({ status: val }),
-                // });
-              }}
-            />
+            <Switch checked={checked} onChange={toggle} />
           </div>
         );
       },
@@ -222,14 +171,14 @@ export function SearchDataTables() {
       cell: ({ row }: { row: Row<stationRow> }) => (
         <span className="tw-inline-flex tw-items-center tw-gap-2 tw-pr-2">
           <button
-            title="Edit user"
+            title="Edit station"
             onClick={() => handleEdit(row.original)}
             className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-blue-50 tw-transition"
           >
             <PencilSquareIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-700" />
           </button>
           <button
-            title="Delete user"
+            title="Delete station"
             onClick={() => handleDelete(row.original)}
             className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-red-50 tw-transition"
           >
@@ -237,26 +186,24 @@ export function SearchDataTables() {
           </button>
         </span>
       ),
-    }
-
+    },
   ];
 
-  // --- handlers สำหรับปุ่ม action ---
-  const handleEdit = (row: stationRow) => {
-    // TODO: เปิด modal แก้ไข / นำทางไปหน้าแก้ไข
-    console.log("Edit user:", row);
-  };
+  // --- handlers ---
+  const handleEdit = (row: stationRow) => console.log("Edit station:", row);
   const handleDelete = (row: stationRow) => {
-    // TODO: เรียก API ลบ / แสดงกล่องยืนยัน
     if (confirm(`ต้องการลบสถานี "${row.station_name}" ใช่หรือไม่?`)) {
-      console.log("Delete user:", row);
+      console.log("Delete station:", row);
     }
   };
 
-  const handleCreateUser = async (payload: NewUserPayload) => {
+  const handleCreateStation = async (payload: NewStationPayload) => {
     try {
       setSaving(true);
-      const token = localStorage.getItem("access_token") || "";
+      const token =
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("accessToken") ||
+        "";
       const res = await fetch(`${API_BASE}/all-stations/`, {
         method: "POST",
         headers: {
@@ -278,10 +225,7 @@ export function SearchDataTables() {
   const table = useReactTable({
     data,
     columns,
-    state: {
-      globalFilter: filtering,
-      sorting: sorting,
-    },
+    state: { globalFilter: filtering, sorting },
     // @ts-ignore
     onSortingChange: setSorting as any,
     onGlobalFilterChange: setFiltering,
@@ -293,43 +237,52 @@ export function SearchDataTables() {
 
   return (
     <>
-      {/** Search DataTable */}
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
-        <CardHeader floated={false} shadow={false} className="tw-p-2 tw-flex tw-items-center tw-justify-between tw-gap-3">
-          <div>
-            <Typography color="blue-gray" variant="h5">
+        <CardHeader
+          floated={false}
+          shadow={false}
+          className="tw-flex tw-flex-col md:tw-flex-row
+            tw-items-start md:tw-items-center tw-gap-3
+            tw-!px-3 md:tw-!px-4      /* padding เหมือนเดิม */
+            tw-!py-3 md:tw-!py-4
+            tw-mb-6">
+          <div className="tw-ml-3">
+            <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
               Station Management
             </Typography>
             <Typography
               variant="small"
-              className="!tw-text-blue-gray-500 !tw-font-normal tw-mb-4 tw-mt-1"
+              className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm"
             >
               Manage Stations: Add or Edit stations from the system.
             </Typography>
           </div>
 
-
-          <Button
-            onClick={() => setOpenAdd(true)}
-            size="lg"
-            className="
+          <div className="tw-w-full md:tw-w-auto md:tw-ml-auto md:tw-flex md:tw-justify-end">
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 sm:tw-gap-3 tw-justify-end tw-w-full md:tw-w-auto md:tw-mt-6">
+              <Button
+                onClick={() => setOpenAdd(true)}
+                size="lg"
+                className="
               tw-h-11 tw-rounded-xl tw-px-4 
               tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
-              hover:tw-to-black
-              tw-text-white
+              hover:tw-to-black tw-text-white
               tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
               focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none">
-            +add
-          </Button>
+                +add
+              </Button>
+            </div>
+          </div>
         </CardHeader>
-        <CardBody className="tw-flex tw-items-center tw-px-4 tw-justify-between">
-          <div className="tw-flex tw-gap-4 tw-w-full tw-items-center">
+
+        <CardBody
+          className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4">
+          {/* ซ้าย: dropdown + label (ขนาดคงที่) */}
+          <div className="tw-flex tw-items-center tw-gap-3 tw-flex-none">
             <select
               value={table.getState().pagination.pageSize}
-              onChange={(e) => {
-                table.setPageSize(Number(e.target.value));
-              }}
-              className="tw-border tw-p-2 tw-border-blue-gray-100 tw-rounded-lg tw-max-w-[70px] tw-w-full"
+              onChange={(e) => table.setPageSize(Number(e.target.value))}
+              className="tw-border tw-p-2 tw-border-blue-gray-100 tw-rounded-lg tw-w-[72px]"
             >
               {[5, 10, 15, 20, 25].map((pageSize) => (
                 <option key={pageSize} value={pageSize}>
@@ -339,103 +292,99 @@ export function SearchDataTables() {
             </select>
             <Typography
               variant="small"
-              className="!tw-text-blue-gray-500 !tw-font-normal"
+              className="!tw-text-blue-gray-500 !tw-font-normal tw-hidden sm:tw-inline"
             >
               entries per page
             </Typography>
           </div>
-          <div className="tw-w-52">
+
+          {/* ขวา: Search (ยืด/หดได้ และชิดขวา) */}
+          <div className="tw-ml-auto tw-min-w-0 tw-flex-1 md:tw-flex-none md:tw-w-64">
             <Input
               variant="outlined"
               value={filtering}
               onChange={(e) => setFiltering(e.target.value)}
               label="Search"
               crossOrigin={undefined}
+              containerProps={{ className: "tw-min-w-0" }} // ให้หดได้ใน flex
+              className="tw-w-full"
             />
           </div>
         </CardBody>
-        <CardFooter className="tw-p-0 tw-overflow-scroll">
+
+        {/* ==== ตาราง: responsive + zebra ==== */}
+        <CardFooter className="tw-p-0">
           {loading ? (
             <div className="tw-p-4">Loading...</div>
           ) : err ? (
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
-            <table className="tw-table-auto tw-text-left tw-w-full tw-min-w-max">
-              <thead>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <th
-                        key={header.id}
-                        onClick={header.column.getToggleSortingHandler()}
-                        className="tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium"
-                      >
-                        <Typography
-                          color="blue-gray"
-                          className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40"
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                          <ChevronUpDownIcon
-                            strokeWidth={2}
-                            className="tw-h-4 tw-w-4"
-                          />
-                        </Typography>
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody>
-                {table.getRowModel().rows.length
-                  ? table.getRowModel().rows.map((row, index) => (
-                    <tr key={row.id}>
-                      {row.getVisibleCells().map((cell) => (
-                        <td
-                          key={cell.id}
-                          className="!tw-border-y !tw-border-x-0"
+            // ทำให้ responsive: ครอบด้วย overflow-x-auto และกำหนด min-width ที่ table
+            <div className="tw-overflow-x-auto">
+              <table className="tw-table-auto tw-text-left tw-w-full tw-min-w-[800px]">
+                <thead>
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <tr key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <th
+                          key={header.id}
+                          onClick={header.column.getToggleSortingHandler()}
+                          className="tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium"
                         >
                           <Typography
-                            variant="small"
-                            className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4"
+                            color="blue-gray"
+                            className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40"
                           >
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext()
-                            )}
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
                           </Typography>
-                        </td>
+                        </th>
                       ))}
                     </tr>
-                  ))
-                  : (
+                  ))}
+                </thead>
+                <tbody>
+                  {table.getRowModel().rows.length ? (
+                    table.getRowModel().rows.map((row) => (
+                      // สลับสีแถว (zebra)
+                      <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50">
+                        {row.getVisibleCells().map((cell) => (
+                          <td key={cell.id} className="!tw-border-y !tw-border-x-0">
+                            <Typography
+                              variant="small"
+                              className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4"
+                            >
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </Typography>
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : (
                     <tr>
                       <td className="tw-px-4 tw-py-6 tw-text-center" colSpan={columns.length}>
-                        ไม่พบผู้ใช้
+                        ไม่พบสถานี
                       </td>
                     </tr>
                   )}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           )}
         </CardFooter>
+
         <div className="tw-flex tw-items-center tw-justify-end tw-gap-6 tw-px-10 tw-py-6">
           <span className="tw-flex tw-items-center tw-gap-1">
             <Typography className="!tw-font-bold">Page</Typography>
             <strong>
-              {table.getState().pagination.pageIndex + 1} of{" "}
-              {table.getPageCount()}
+              {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
             </strong>
           </span>
           <div className="tw-flex tw-items-center tw-gap-2">
             <Button
               variant="outlined"
               size="sm"
-              onClick={() => {
-                table.previousPage();
-              }}
+              onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
               className="disabled:tw-opacity-30 tw-py-2 tw-px-2"
             >
@@ -444,9 +393,7 @@ export function SearchDataTables() {
             <Button
               variant="outlined"
               size="sm"
-              onClick={() => {
-                table.nextPage();
-              }}
+              onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
               className="disabled:tw-opacity-30 tw-py-2 tw-px-2"
             >
@@ -456,10 +403,10 @@ export function SearchDataTables() {
         </div>
       </Card>
 
-      <AddUser
+      <AddStation
         open={openAdd}
         onClose={() => setOpenAdd(false)}
-        onSubmit={handleCreateUser}
+        onSubmit={handleCreateStation}
         loading={saving}
       />
     </>
