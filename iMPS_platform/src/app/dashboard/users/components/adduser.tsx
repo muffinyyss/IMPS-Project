@@ -18,7 +18,7 @@ export type NewUserPayload = {
     password: string;
     email: string;
     role: "owner" | "admin" | "technician";
-    station_id?: string ;
+    station_id?: string;
     company_name?: string;
     payment: "y" | "n";
     tel: string;
@@ -54,13 +54,22 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        await onSubmit({
+        const payload: NewUserPayload = {
             ...form,
             username: form.username.trim(),
             email: form.email.trim(),
-            company_name: form.company_name?.trim(),
-            station_id: form.station_id?.trim() || undefined, // ← ส่งตามรูปแบบที่ backend รับ
-        });
+            company_name: form.company_name?.trim() || undefined,
+            // station_id: form.station_id?.trim() || undefined,
+            
+        };
+
+        try {
+            await onSubmit(payload); // ✅ ให้ parent ยิง API + โชว์ success
+            resetAndClose();         // ปิดโมดัล
+        } catch (error) {
+            // ถ้า parent โยน error มาก็จัดการเพิ่มได้ตามต้องการ
+            console.error(error);
+        }
     };
 
     const resetAndClose = () => {

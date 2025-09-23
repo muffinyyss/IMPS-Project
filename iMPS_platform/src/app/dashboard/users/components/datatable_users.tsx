@@ -25,6 +25,7 @@ import {
   Typography,
   CardFooter,
   Input,
+  Alert
 } from "@material-tailwind/react";
 import {
   ChevronLeftIcon,
@@ -37,7 +38,7 @@ import {
 //components
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const API_BASE = "http://localhost:8000";
 
 // ------------ NEW: โครงสร้างข้อมูลผู้ใช้ (แถวในตาราง) ------------
 type UserRow = {
@@ -64,7 +65,7 @@ export function SearchDataTables() {
   const [filtering, setFiltering] = useState("");
   const [openAdd, setOpenAdd] = useState(false);
   const [saving, setSaving] = useState(false);
-
+  const [notice, setNotice] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   // ------------ NEW: ดึงข้อมูลผู้ใช้จาก FastAPI ------------
   useEffect(() => {
     (async () => {
@@ -113,6 +114,8 @@ export function SearchDataTables() {
     })();
   }, []);
 
+
+
   const handleCreateUser = async (payload: NewUserPayload) => {
     try {
       setSaving(true);
@@ -122,7 +125,7 @@ export function SearchDataTables() {
         localStorage.getItem("accessToken") ||
         "";
 
-      const res = await fetch(`${API_BASE}/users/`, {
+      const res = await fetch(`${API_BASE}/add_users/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -158,6 +161,8 @@ export function SearchDataTables() {
       ]);
 
       setOpenAdd(false);
+      setNotice({ type: "success", msg: "Create success" });
+      setTimeout(() => setNotice(null), 3000);
     } catch (e: any) {
       console.error(e);
       alert(e.message || "สร้างผู้ใช้ไม่สำเร็จ");
@@ -170,12 +175,47 @@ export function SearchDataTables() {
     // TODO: เปิด modal แก้ไข / นำทางไปหน้าแก้ไข
   };
 
-  const handleDelete = (row: UserRow) => {
-    if (confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) {
-      console.log("Delete user:", row);
-      // TODO: เรียก API ลบ แล้วค่อย refetch
+  const handleDelete = async (row: UserRow) => {
+  if (!row.id) return alert("ไม่พบ id ของผู้ใช้");
+
+  if (!confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) {
+    return;
+  }
+
+  try {
+    const token =
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("accessToken") ||
+      "";
+
+    // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
+    const res = await fetch(`${API_BASE}/delete_users/${row.id}`, {
+      method: "DELETE",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
+    if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
+    if (res.status === 404) throw new Error("ไม่พบผู้ใช้นี้");
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Delete failed: ${res.status}`);
     }
-  };
+
+    // ลบออกจากตาราง
+    setData((prev) => prev.filter((u) => u.id !== row.id));
+
+    // แจ้งสำเร็จ
+    setNotice({ type: "success", msg: "Delete success" });
+    setTimeout(() => setNotice(null), 2500);
+  } catch (e: any) {
+    console.error(e);
+    setNotice({ type: "error", msg: e.message || "ลบผู้ใช้ไม่สำเร็จ" });
+    setTimeout(() => setNotice(null), 3500);
+  }
+};
 
   // ------------ columns: ปรับ accessor ให้ตรงกับฟิลด์จริง ------------
   const columns: any[] = [
@@ -280,6 +320,16 @@ export function SearchDataTables() {
   return (
     <>
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
+        {notice && (
+          <div className="tw-px-4 tw-pt-4">
+            <Alert
+              color={notice.type === "success" ? "green" : "red"}
+              onClose={() => setNotice(null)}
+            >
+              {notice.msg}
+            </Alert>
+          </div>
+        )}
         <CardHeader floated={false} shadow={false} className="tw-p-2 tw-flex tw-items-center tw-justify-between tw-gap-3">
           <div>
             <Typography color="blue-gray" variant="h5">
