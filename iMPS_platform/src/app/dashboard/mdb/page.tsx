@@ -329,10 +329,10 @@ export default function MDBPage() {
         thdiL2: num0(station?.THDI_L2),
         thdiL3: num0(station?.THDI_L3),
 
-        // mainBreakerStatus: Boolean(station?.mainBreakerStatus),
-        // breakChargerStatus: Boolean(station?.breakChargerStatus),
-        mainBreakerStatus: true,
-        breakChargerStatus: true,
+        mainBreakerStatus: Boolean(station?.mainBreakerStatus),
+        breakChargerStatus: Boolean(station?.breakChargerStatus),
+        // mainBreakerStatus: false,
+        // breakChargerStatus: true,
     };
     const applyRange = () => {
         setStartDate(draftStart);
