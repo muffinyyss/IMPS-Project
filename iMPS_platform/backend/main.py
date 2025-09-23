@@ -6,19 +6,20 @@ from datetime import datetime,timedelta, UTC, timezone, timedelta, time
 from passlib.hash import bcrypt
 from pymongo.errors import OperationFailure, PyMongoError,DuplicateKeyError
 from pymongo import MongoClient
-from pydantic import BaseModel,EmailStr,constr
+from pydantic import BaseModel,EmailStr,constr, Field
 from bson.objectid import ObjectId
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import json, os, asyncio
 from pdf.pdf_routes import router as pdf_router
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse,Response
 from typing import List, Any,Dict, Optional, Union, Literal
 import bcrypt
 from dateutil import parser as dtparser
 from bson.decimal128 import Decimal128
 from fastapi import Path
 import uuid
+from zoneinfo import ZoneInfo
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
@@ -229,18 +230,17 @@ async def users():
     else:
         raise HTTPException(status_code=404,detail="users not found")
     
-class users(BaseModel):
+class register(BaseModel):
     username: str
     email: str
     password: str
     phone: str
     company: str
-    password: str
     phone: str
     company: str
 #create
 @app.post("/insert_users/")
-async def create_users(users: users):
+async def create_users(users: register):
     # hash password
     hashed_pw = bcrypt.hashpw(users.password.encode("utf-8"), bcrypt.gensalt())
     hashed_pw_str = hashed_pw.decode("utf-8")
@@ -274,7 +274,7 @@ def to_json(doc: dict | None) -> str:
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")  # ชี้ไป endpoint login
 # decode JWT 
-def get_current_user(token: str = Depends(oauth2_scheme)):
+def get_current_user2(token: str = Depends(oauth2_scheme)):
     print("Incoming token:", token)
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -295,7 +295,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="Invalid token")
     
 @app.get("/owner/stations/")
-async def get_stations(q: str = "", current_user: str = Depends(get_current_user)):
+async def get_stations(q: str = "", current_user: str = Depends(get_current_user2)):
     # current_user คือ str(_id)
     user_obj_id = ObjectId(current_user)
 
@@ -316,7 +316,7 @@ async def get_stations(q: str = "", current_user: str = Depends(get_current_user
 
 
 @app.get("/selected/station/{station_id}")
-async def get_station_detail(station_id: str, current_user: str = Depends(get_current_user)):
+async def get_station_detail(station_id: str, current_user: str = Depends(get_current_user2)):
     station = station_collection.find_one({"station_id": station_id})
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
@@ -379,7 +379,7 @@ async def mdb(request: Request, station_id: str | None = None):
     return StreamingResponse(event_generator(), headers=headers)
 
 @app.get("/MDB/{station_id}")
-async def mdb(request: Request, station_id: str, current_user: str = Depends(get_current_user)):
+async def mdb(request: Request, station_id: str, current_user: str = Depends(get_current_user2)):
     """
     SSE แบบไม่ใช้ Change Streams:
     - ส่ง snapshot ล่าสุดทันที
@@ -804,68 +804,55 @@ def all_users():
 
     return {"users": docs}
 
-router = APIRouter(prefix="", tags=["users"])
-
-# สร้าง unique index ไว้ครั้งเดียว (เช่นตอน start แอป)
-try:
-    users_collection.create_index("email", unique=True)
-except Exception:
-    pass
-
-
-class UserCreate(BaseModel):
-    username: constr(strip_whitespace=True, min_length=1)
-    password: constr(min_length=4)            # แนะนำ >=6
-    email: EmailStr
-    role: Literal["owner", "admin", "technician"]
-    station_id: Optional[Union[str, int, List[Union[str, int]]]] = None
-    company_name: Optional[str] = None
-    payment: Literal["y", "n"] = "y"
-    tel: Optional[str] = None
+class addUsers(BaseModel):
+    username:str
+    email:str
+    password:str
+    tel:str
+    company_name:str
+    station_id:Optional[Union[str, int, List[Union[str, int]]]] = None
+    role:str 
 
 class UserOut(BaseModel):
     id: str
     username: str
     email: EmailStr
     role: str
-    company: Optional[str] = None
-    station_id: List[str] = []
-    tel: Optional[str] = None
-    payment: Optional[bool] = None
-    createdAt: datetime
+    company: str
+    station_id: List[str] = Field(default_factory=list)
+    tel: str
+    # payment: Optional[bool] = None
 
-@router.post("/users/", response_model=UserOut, status_code=201)
-def create_user(body: UserCreate):
+@app.post("/add_users/", response_model=UserOut, status_code=201)
+def insert_users(body: addUsers):
     email = body.email.lower()
-
-    # แฮชรหัสผ่าน
     hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
     # station_id -> list[str]
     station_ids: List[str] = []
-    if body.station_id is not None:
+    if body.station_id is not None and body.station_id != "":
         if isinstance(body.station_id, list):
-            station_ids = [str(x) for x in body.station_id]
+            station_ids = [str(x) for x in body.station_id if str(x).strip() != ""]
         else:
             station_ids = [str(body.station_id)]
-
-    payment_bool = (body.payment.lower() == "y")
 
     doc = {
         "username": body.username.strip(),
         "email": email,
         "password": hashed,
         "role": body.role,
-        "company": (body.company_name or "").strip() or None,
+        "company": (body.company_name or body.company or "").strip() or None,
         "tel": (body.tel or "").strip() or None,
-        "payment": payment_bool,
+        # "payment": (body.payment.lower() == "y"),
         "station_id": station_ids,
+        "refreshTokens": [],
         "createdAt": datetime.now(timezone.utc),
+        
     }
 
     try:
         res = users_collection.insert_one(doc)
-    except DuplicateKeyError: # type: ignore
+    except DuplicateKeyError:
         raise HTTPException(status_code=409, detail="Email already exists")
 
     return {
@@ -876,9 +863,27 @@ def create_user(body: UserCreate):
         "company": doc.get("company"),
         "station_id": doc["station_id"],
         "tel": doc.get("tel"),
-        "payment": doc.get("payment"),
+        # "payment": doc.get("payment"),
         "createdAt": doc["createdAt"],
     }
+
+@app.delete("/delete_users/{user_id}", status_code=204)
+def delete_user(user_id: str, current: UserClaims = Depends(get_current_user)):
+    # (ทางเลือก) บังคับสิทธิ์เฉพาะ admin/owner
+    if current.role not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    try:
+        oid = ObjectId(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+
+    res = users_collection.delete_one({"_id": oid})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 204 No Content
+    return Response(status_code=204)
 
 @app.get("/all-stations/")
 def all_stations():
