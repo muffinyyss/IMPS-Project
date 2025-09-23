@@ -48,6 +48,7 @@ type stationRow = {
   model?: string;
   status?: boolean;
   brand?: string;
+  user_id?: string;
 };
 
 export type StationUpdatePayload = {
@@ -108,6 +109,7 @@ export function SearchDataTables() {
           // status: typeof s.status === "boolean" ? s.status : true,
           model: s.model ?? "-",
           brand: s.brand ?? "-",
+          user_id: s.user_id ?? ""
         }));
         setData(rows);
       } catch (e) {
