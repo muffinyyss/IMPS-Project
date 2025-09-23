@@ -125,14 +125,14 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             crossOrigin={undefined}
                         />
                         <Input
-                            label="S/N"
+                            label="Serial Number (S/N)"
                             required
                             value={form.SN}
                             onChange={(e) => onChange("SN", e.target.value)}
                             crossOrigin={undefined}
                         />
                         <Input
-                            label="WO"
+                            label="Work Order (WO)"
                             required
                             value={form.WO}
                             onChange={(e) => onChange("WO", e.target.value)}
@@ -140,16 +140,16 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                         />
 
                         {/* ใช้ Select สำหรับสถานะ แล้วแปลงเป็น boolean */}
-                        {/* <div>
+                        <div>
                             <Select
-                                label="Status"
+                                label="Username"
                                 value={String(form.status)} // "true" | "false"
                                 onChange={(v) => onChange("status", v === "true")}
                             >
                                 <Option value="true">On</Option>
                                 <Option value="false">Off</Option>
                             </Select>
-                        </div> */}
+                        </div>
                     </div>
                 </DialogBody>
 
