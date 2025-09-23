@@ -49,11 +49,13 @@ type stationRow = {
   status?: boolean;
   brand?: string;
   user_id?: string;
+  username?: string;
 };
 
 export type StationUpdatePayload = {
   station_id?: string;
   station_name?: string;
+  username?: string;
   brand?: string;
   model?: string;
   SN?: string; // API ใช้ตัวเล็ก
@@ -185,35 +187,35 @@ export function SearchDataTables() {
   };
 
   const handleUpdateStation = async (id: string, payload: StationUpdatePayload) => {
-  try {
-    setSaving(true);
+    try {
+      setSaving(true);
 
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") || "";
+      const token =
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("accessToken") || "";
 
-    const res = await fetch(`${API_BASE}/update_stations/${id}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(payload),
-    });
+      const res = await fetch(`${API_BASE}/update_stations/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
 
-    const raw = await res.text();            // 👈 อ่านเป็น text ก่อน
-    if (!res.ok) {
-      throw new Error(raw || `Update failed: ${res.status}`);
-    }
+      const raw = await res.text();            // 👈 อ่านเป็น text ก่อน
+      if (!res.ok) {
+        throw new Error(raw || `Update failed: ${res.status}`);
+      }
 
-    let updated: any = {};
-    try { updated = raw ? JSON.parse(raw) : {}; } catch { /* ไม่เป็น JSON ก็ข้าม */ }
+      let updated: any = {};
+      try { updated = raw ? JSON.parse(raw) : {}; } catch { /* ไม่เป็น JSON ก็ข้าม */ }
 
-    // อัปเดตตารางแบบยืดหยุ่นคีย์ SN/WO
-    setData(prev =>
-      prev.map(r =>
-        r.id === id
-          ? {
+      // อัปเดตตารางแบบยืดหยุ่นคีย์ SN/WO
+      setData(prev =>
+        prev.map(r =>
+          r.id === id
+            ? {
               ...r,
               station_id: updated.station_id ?? r.station_id,
               station_name: updated.station_name ?? r.station_name,
@@ -223,21 +225,21 @@ export function SearchDataTables() {
               WO: updated.WO ?? r.WO,
               // status: typeof updated.status === "boolean" ? updated.status : r.status,
             }
-          : r
-      )
-    );
+            : r
+        )
+      );
 
-    setOpenEdit(false);
-    setNotice({ type: "success", msg: "Update success" });
-    setTimeout(() => setNotice(null), 2500);
-  } catch (e: any) {
-    console.error("PATCH /update_stations error:", e);
-    setNotice({ type: "error", msg: e?.message || "อัปเดตไม่สำเร็จ" });
-    setTimeout(() => setNotice(null), 3500);
-  } finally {
-    setSaving(false);
-  }
-};
+      setOpenEdit(false);
+      setNotice({ type: "success", msg: "Update success" });
+      setTimeout(() => setNotice(null), 2500);
+    } catch (e: any) {
+      console.error("PATCH /update_stations error:", e);
+      setNotice({ type: "error", msg: e?.message || "อัปเดตไม่สำเร็จ" });
+      setTimeout(() => setNotice(null), 3500);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleDelete = async (row: stationRow) => {
     if (!row.id) return alert("ไม่พบ id ของสถานี");
@@ -310,22 +312,40 @@ export function SearchDataTables() {
 
   const columns: any[] = [
     {
+      accessorFn: (_row: stationRow, index: number) => index + 1,
       id: "no",
       header: () => "No.",
-      enableSorting: false,
+      enableSorting: true,
+      sortingFn: "basic",
+      sortDescFirst: true,
       cell: (info: any) => {
-        const pageRows = info.table.getRowModel().rows as Row<stationRow>[];
-        const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
-        const { pageIndex, pageSize } = info.table.getState().pagination;
-        return pageIndex * pageSize + indexInPage + 1;
+        const isSortingByNo = info.table.getState().sorting?.[0]?.id === "no";
+
+        let num: number;
+        if (isSortingByNo) {
+          num = Number(info.getValue());
+        } else {
+          const pageRows = info.table.getRowModel().rows as Row<stationRow>[];
+          const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
+          const { pageIndex, pageSize } = info.table.getState().pagination;
+          num = pageIndex * pageSize + indexInPage + 1;
+        }
+
+        // ทำให้ข้อความใน cell อยู่กึ่งกลาง
+        return <span className="tw-block tw-w-full">{num}</span>;
       },
-      meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
       accessorFn: (row: stationRow) => row.station_id ?? "-",
       id: "station_id",
       cell: (info: any) => info.getValue(),
       header: () => "station id",
+    },
+    {
+      accessorFn: (row: stationRow) => row.username ?? "-",
+      id: "username",
+      cell: (info: any) => info.getValue(),
+      header: () => "Username",
     },
     {
       accessorFn: (row: stationRow) => row.station_name ?? "-",
@@ -384,7 +404,7 @@ export function SearchDataTables() {
       enableSorting: false,
       size: 80,
       cell: ({ row }: { row: Row<stationRow> }) => (
-        <span className="tw-inline-flex tw-items-center tw-gap-2 tw-pr-2">
+        <span className="tw-inline-flex tw-items-center tw-justify-center tw-gap-2 tw-w-full">
           <button
             title="Edit station"
             onClick={() => handleEdit(row.original)}
@@ -403,6 +423,34 @@ export function SearchDataTables() {
       ),
     },
   ];
+
+  // กำหนดความกว้างพื้นฐานของแต่ละคอลัมน์ (ปรับเลขได้ตามใจ)
+  const COL_W: Record<string, string> = {
+    no: "tw-w-[56px]",            // เลขลำดับ
+    station_id: "tw-w-[140px]",
+    username: "tw-w-[120px]",
+    station_name: "tw-w-[260px]", // ชื่อสถานีมักยาว => ให้กว้างหน่อย
+    brand: "tw-w-[120px]",
+    model: "tw-w-[100px]",
+    SN: "tw-w-[140px]",
+    WO: "tw-w-[140px]",
+    status: "tw-w-[96px]",
+    actions: "tw-w-[96px]",
+  };
+
+  // ⬇️ วางไว้เหนือ const columns
+  const COL_W_MD: Record<string, string> = {
+    no: "md:tw-w-[56px]",
+    station_id: "md:tw-w-[140px]",
+    username: "md:tw-w-[120px]",
+    station_name: "md:tw-w-[260px]",
+    brand: "md:tw-w-[120px]",
+    model: "md:tw-w-[100px]",
+    SN: "md:tw-w-[140px]",
+    WO: "md:tw-w-[140px]",
+    status: "md:tw-w-[96px]",
+    actions: "md:tw-w-[96px]",
+  };
 
 
 
@@ -458,11 +506,11 @@ export function SearchDataTables() {
                 onClick={() => setOpenAdd(true)}
                 size="lg"
                 className="
-              tw-h-11 tw-rounded-xl tw-px-4 
-              tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
-              hover:tw-to-black tw-text-white
-              tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-              focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none">
+                  tw-h-11 tw-rounded-xl tw-px-4 
+                  tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
+                  hover:tw-to-black tw-text-white
+                  tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                  focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none">
                 +add
               </Button>
             </div>
@@ -514,20 +562,22 @@ export function SearchDataTables() {
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
             // ทำให้ responsive: ครอบด้วย overflow-x-auto และกำหนด min-width ที่ table
-            <div className="tw-overflow-x-auto">
-              <table className="tw-table-auto tw-text-left tw-w-full tw-min-w-[800px]">
-                <thead>
+            <div className="tw-overflow-x-auto md:tw-overflow-x-hidden">
+              <table className="tw-w-full tw-table-auto md:tw-table-fixed tw-min-w-[1000px] md:tw-min-w-0">
+                <thead className="tw-bg-gray-50">
                   {table.getHeaderGroups().map((headerGroup) => (
                     <tr key={headerGroup.id}>
                       {headerGroup.headers.map((header) => (
                         <th
                           key={header.id}
                           onClick={header.column.getToggleSortingHandler()}
-                          className="tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium"
+                          className={`tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-center tw-whitespace-nowrap
+                          ${COL_W_MD[header.column.id] ?? ""}`}
                         >
                           <Typography
                             color="blue-gray"
-                            className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40"
+                            className={`tw-flex tw-items-center tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
+                              ${header.column.getCanSort() ? "tw-justify-between" : "tw-justify-center"}`}
                           >
                             {flexRender(header.column.columnDef.header, header.getContext())}
                             <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
@@ -543,10 +593,10 @@ export function SearchDataTables() {
                       // สลับสีแถว (zebra)
                       <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50">
                         {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className="!tw-border-y !tw-border-x-0">
+                          <td key={cell.id} className={`!tw-border-y !tw-border-x-0 ${COL_W_MD[cell.column.id] ?? ""} tw-align-top`}>
                             <Typography
                               variant="small"
-                              className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4"
+                              className="!tw-font-normal !tw-text-blue-gray-500 tw-py-3 tw-px-3 tw-block tw-whitespace-nowrap md:tw-whitespace-normal md:tw-break-words"
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>

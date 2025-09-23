@@ -181,7 +181,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     className="tw-bg-blue-600"
                                     onClick={addStationId}
                                 >
-                                    + Add
+                                    + add
                                 </Button>
                             </div>
 
@@ -196,7 +196,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                             {id}
                                             <button
                                                 type="button"
-                                                className="tw-font-bold tw-leading-none hover:tw-text-blue-900"
+                                                className=" tw-leading-none tw-text-2xl hover:tw-text-blue-900"
                                                 onClick={() => removeStationId(id)}
                                                 aria-label={`Remove ${id}`}
                                                 title="Remove"

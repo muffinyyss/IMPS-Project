@@ -174,61 +174,71 @@ export function SearchDataTables() {
   };
 
   const handleDelete = async (row: UserRow) => {
-  if (!row.id) return alert("ไม่พบ id ของผู้ใช้");
+    if (!row.id) return alert("ไม่พบ id ของผู้ใช้");
 
-  if (!confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) {
-    return;
-  }
-
-  try {
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") ||
-      "";
-
-    // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
-    const res = await fetch(`${API_BASE}/delete_users/${row.id}`, {
-      method: "DELETE",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    });
-
-    if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
-    if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
-    if (res.status === 404) throw new Error("ไม่พบผู้ใช้นี้");
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || `Delete failed: ${res.status}`);
+    if (!confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) {
+      return;
     }
 
-    // ลบออกจากตาราง
-    setData((prev) => prev.filter((u) => u.id !== row.id));
+    try {
+      const token =
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("accessToken") ||
+        "";
 
-    // แจ้งสำเร็จ
-    setNotice({ type: "success", msg: "Delete success" });
-    setTimeout(() => setNotice(null), 2500);
-  } catch (e: any) {
-    console.error(e);
-    setNotice({ type: "error", msg: e.message || "ลบผู้ใช้ไม่สำเร็จ" });
-    setTimeout(() => setNotice(null), 3500);
-  }
-};
+      // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
+      const res = await fetch(`${API_BASE}/delete_users/${row.id}`, {
+        method: "DELETE",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
+      if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
+      if (res.status === 404) throw new Error("ไม่พบผู้ใช้นี้");
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Delete failed: ${res.status}`);
+      }
+
+      // ลบออกจากตาราง
+      setData((prev) => prev.filter((u) => u.id !== row.id));
+
+      // แจ้งสำเร็จ
+      setNotice({ type: "success", msg: "Delete success" });
+      setTimeout(() => setNotice(null), 2500);
+    } catch (e: any) {
+      console.error(e);
+      setNotice({ type: "error", msg: e.message || "ลบผู้ใช้ไม่สำเร็จ" });
+      setTimeout(() => setNotice(null), 3500);
+    }
+  };
 
   // ------------ columns: ปรับ accessor ให้ตรงกับฟิลด์จริง ------------
   const columns: any[] = [
     {
+      accessorFn: (_row: UserRow, index: number) => index + 1,
       id: "no",
       header: () => "No.",
-      enableSorting: false,
-      size: 25,
-      minSize: 10,
-      maxSize: 25,
+      enableSorting: true,
+      sortingFn: "basic",
+      sortDescFirst: true,
       cell: (info: any) => {
-        const pageRows = info.table.getRowModel().rows as Row<UserRow>[];
-        const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
-        const { pageIndex, pageSize } = info.table.getState().pagination;
-        return pageIndex * pageSize + indexInPage + 1;
+        const isSortingByNo = info.table.getState().sorting?.[0]?.id === "no";
+
+        let num: number;
+        if (isSortingByNo) {
+          num = Number(info.getValue());
+        } else {
+          const pageRows = info.table.getRowModel().rows as Row<UserRow>[];
+          const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
+          const { pageIndex, pageSize } = info.table.getState().pagination;
+          num = pageIndex * pageSize + indexInPage + 1;
+        }
+
+        // ทำให้ข้อความใน cell อยู่กึ่งกลาง
+        return <span className="tw-block tw-w-full">{num}</span>;
       },
     },
     {
@@ -328,39 +338,53 @@ export function SearchDataTables() {
             </Alert>
           </div>
         )}
-        <CardHeader floated={false} shadow={false} className="tw-p-2 tw-flex tw-items-center tw-justify-between tw-gap-3">
-          <div>
-            <Typography color="blue-gray" variant="h5">
+        <CardHeader
+          floated={false}
+          shadow={false}
+          className="tw-flex tw-flex-col md:tw-flex-row
+            tw-items-start md:tw-items-center tw-gap-3
+            tw-!px-3 md:tw-!px-4      /* padding เหมือนเดิม */
+            tw-!py-3 md:tw-!py-4
+            tw-mb-6">
+          <div className="tw-ml-3">
+            <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
               Users & Roles Management
             </Typography>
             <Typography
               variant="small"
-              className="!tw-text-blue-gray-500 !tw-font-normal tw-mb-4 tw-mt-1"
+              className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm"
             >
               Manage Users: Add, Edit, or Remove users from the system.
             </Typography>
           </div>
 
-          <Button
-            onClick={() => setOpenAdd(true)}
-            size="lg"
-            className="
+          <div className="tw-w-full md:tw-w-auto md:tw-ml-auto md:tw-flex md:tw-justify-end">
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 sm:tw-gap-3 tw-justify-end tw-w-full md:tw-w-auto md:tw-mt-6">
+              <Button
+                onClick={() => setOpenAdd(true)}
+                size="lg"
+                className="
               tw-h-11 tw-rounded-xl tw-px-4 
               tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
               hover:tw-to-black
               tw-text-white
               tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
               focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none">
-            +add
-          </Button>
+                +add
+              </Button>
+            </div>
+          </div>
+
         </CardHeader>
 
-        <CardBody className="tw-flex tw-items-center tw-px-4 tw-justify-between">
-          <div className="tw-flex tw-gap-4 tw-w-full tw-items-center">
+        <CardBody
+          className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4">
+          {/* ซ้าย: dropdown + label (ขนาดคงที่) */}
+          <div className="tw-flex tw-items-center tw-gap-3 tw-flex-none">
             <select
               value={table.getState().pagination.pageSize}
               onChange={(e) => table.setPageSize(Number(e.target.value))}
-              className="tw-border tw-p-2 tw-border-blue-gray-100 tw-rounded-lg tw-max-w-[70px] tw-w-full"
+              className="tw-border tw-p-2 tw-border-blue-gray-100 tw-rounded-lg tw-w-[72px]"
             >
               {[5, 10, 15, 20, 25].map((pageSize) => (
                 <option key={pageSize} value={pageSize}>
@@ -368,22 +392,27 @@ export function SearchDataTables() {
                 </option>
               ))}
             </select>
-            <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal">
+            <Typography
+              variant="small"
+              className="!tw-text-blue-gray-500 !tw-font-normal tw-hidden sm:tw-inline"
+            >
               entries per page
             </Typography>
           </div>
 
-          <div className="tw-w-52">
+          {/* ขวา: Search (ยืด/หดได้ และชิดขวา) */}
+          <div className="tw-ml-auto tw-min-w-0 tw-flex-1 md:tw-flex-none md:tw-w-64">
             <Input
               variant="outlined"
               value={filtering}
               onChange={(e) => setFiltering(e.target.value)}
               label="Search"
               crossOrigin={undefined}
+              containerProps={{ className: "tw-min-w-0" }} // ให้หดได้ใน flex
+              className="tw-w-full"
             />
           </div>
         </CardBody>
-
         <CardFooter className="tw-p-0 tw-overflow-scroll">
           {loading ? (
             <div className="tw-p-4">Loading...</div>
@@ -391,7 +420,7 @@ export function SearchDataTables() {
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
             <table className="tw-table-auto tw-text-left tw-w-full tw-min-w-max">
-              <thead>
+              <thead className="tw-bg-gray-50">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
@@ -415,7 +444,7 @@ export function SearchDataTables() {
               <tbody>
                 {table.getRowModel().rows.length
                   ? table.getRowModel().rows.map((row) => (
-                    <tr key={row.id}>
+                    <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50">
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} className="!tw-border-y !tw-border-x-0">
                           <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4">
