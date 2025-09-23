@@ -887,9 +887,12 @@ def delete_user(user_id: str, current: UserClaims = Depends(get_current_user)):
 
 @app.get("/all-stations/")
 def all_stations():
+    docs = list(station_collection.find({}))
+    # แปลง ObjectId ทุกฟิลด์ในเอกสารให้เป็น str
+    docs = jsonable_encoder(docs, custom_encoder={ObjectId: str})
     # เอาทุกฟิลด์ ยกเว้น password และ refreshTokens
-    cursor = station_collection.find({})
-    docs = list(cursor)
+    # cursor = station_collection.find({})
+    # docs = list(cursor)
 
     # ถ้าจะส่ง _id ไปด้วย ต้องแปลง ObjectId -> str
     for d in docs:
@@ -897,3 +900,104 @@ def all_stations():
             d["_id"] = str(d["_id"])
 
     return {"stations": docs}
+
+class addStations(BaseModel):
+    station_id:str
+    station_name:str
+    brand:str
+    model:str
+    SN:str
+    WO:str 
+
+class StationOut(BaseModel):
+    id: str
+    station_id:str
+    station_name:str
+    brand:str
+    model:str
+    SN:str
+    WO:str 
+    # payment: Optional[bool] = None
+
+@app.post("/add_stations/", response_model=StationOut, status_code=201)
+def insert_stations(body: addStations):
+    doc = {
+        "station_id": body.station_id.strip(),
+        "station_name": body.station_name.strip(),
+        "brand": body.brand.strip(),
+        "model": body.model.strip(),
+        "SN": body.SN.strip(),
+        "WO": body.WO.strip(),
+        "createdAt": datetime.now(timezone.utc),
+    }
+
+    try:
+        res = station_collection.insert_one(doc)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="station_id already exists")
+
+    return {
+        "id": str(res.inserted_id),
+        "station_id": doc["station_id"],
+        "station_name": doc["station_name"],
+        "brand": doc["brand"],
+        "model": doc["model"],
+        "SN": doc["SN"],
+        "WO": doc["WO"],
+        # "createdAt": doc["createdAt"],
+    }
+
+@app.delete("/delete_stations/{station_id}", status_code=204)
+def delete_user(station_id: str, current: UserClaims = Depends(get_current_user)):
+    # (ทางเลือก) บังคับสิทธิ์เฉพาะ admin/owner
+    if current.role not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    try:
+        oid = ObjectId(station_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user id")
+
+    res = station_collection.delete_one({"_id": oid})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 204 No Content
+    return Response(status_code=204)
+
+class StationUpdate(BaseModel):
+    station_name: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    SN: Optional[str] = None
+    WO: Optional[str] = None
+    # ถ้าจะรองรับ status ค่อยเพิ่ม: Optional[bool] = None
+
+@app.patch("/update_stations/{id}", response_model=StationOut)
+def update_station(id: str, body: StationUpdate):
+    try:
+        oid = ObjectId(id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid id")
+
+    payload = {k: (v.strip() if isinstance(v, str) else v)
+               for k, v in body.model_dump(exclude_none=True).items()}
+    if not payload:
+        raise HTTPException(status_code=400, detail="no fields to update")
+
+    res = station_collection.update_one({"_id": oid}, {"$set": payload})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="station not found")
+
+    doc = station_collection.find_one({"_id": oid})
+    return {
+        "id": str(doc["_id"]),
+        "station_id": doc.get("station_id",""),
+        "station_name": doc.get("station_name",""),
+        "brand": doc.get("brand",""),
+        "model": doc.get("model",""),
+        "SN": doc.get("SN") or doc.get("SN") or "",
+        "WO": doc.get("WO") or doc.get("WO") or "",
+        # "status": bool(doc.get("status", True)),
+        "createdAt": doc.get("createdAt"),
+    }

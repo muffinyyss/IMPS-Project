@@ -114,8 +114,6 @@ export function SearchDataTables() {
     })();
   }, []);
 
-
-
   const handleCreateUser = async (payload: NewUserPayload) => {
     try {
       setSaving(true);

@@ -13,45 +13,64 @@ import {
     Option,
 } from "@material-tailwind/react";
 
-export type NewUserPayload = {
+export type NewStationPayload = {
     station_id: string;
     station_name: string;
     brand: string;
     model: string;
-    sn: string;
+    SN: string;
+    WO: string;
     status: boolean;
 };
 
 type Props = {
     open: boolean;
     onClose: () => void;
-    onSubmit: (payload: NewUserPayload) => Promise<void> | void;
+    onSubmit: (payload: NewStationPayload) => Promise<void> | void;
     loading?: boolean;
 };
 
 export default function AddUserModal({ open, onClose, onSubmit, loading }: Props) {
-    const [form, setForm] = useState<NewUserPayload>({
+    const [form, setForm] = useState<NewStationPayload>({
         station_id: "",
         station_name: "",
         brand: "",
         model: "",
-        sn: "",
-        status: false,
+        SN: "",
+        WO: "",
+        status: true,
     });
 
-    const onChange = (k: keyof NewUserPayload, v: any) =>
+    const onChange = (k: keyof NewStationPayload, v: any) =>
         setForm((s) => ({ ...s, [k]: v }));
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        await onSubmit({
+        // await onSubmit({
+        //     ...form,
+        //     station_id: form.station_id.trim(),
+        //     station_name: form.station_name.trim(),
+        //     brand: form.brand.trim(),
+        //     model: form.model.trim(),
+        //     // status เป็น boolean อยู่แล้ว ไม่ต้องแปลง
+        // });
+
+        const payload: NewStationPayload = {
             ...form,
-            station_id: form.station_id.trim(),
+            station_id:  form.station_id.trim(),
             station_name: form.station_name.trim(),
             brand: form.brand.trim(),
             model: form.model.trim(),
-            // status เป็น boolean อยู่แล้ว ไม่ต้องแปลง
-        });
+            SN: form.SN.trim(),
+            WO: form.WO.trim()
+        };
+
+        try{
+            await onSubmit(payload);
+            resetAndClose();
+        }catch(error){
+            console.error(error);
+        }
     };
 
     const resetAndClose = () => {
@@ -60,7 +79,8 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             station_name: "",
             brand: "",
             model: "",
-            sn: "",
+            SN: "",
+            WO: "",
             status: false,
         });
         onClose();
@@ -107,8 +127,15 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                         <Input
                             label="S/N"
                             required
-                            value={form.model}
-                            onChange={(e) => onChange("sn", e.target.value)}
+                            value={form.SN}
+                            onChange={(e) => onChange("SN", e.target.value)}
+                            crossOrigin={undefined}
+                        />
+                        <Input
+                            label="WO"
+                            required
+                            value={form.WO}
+                            onChange={(e) => onChange("WO", e.target.value)}
                             crossOrigin={undefined}
                         />
 
