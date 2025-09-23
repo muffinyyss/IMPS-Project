@@ -961,3 +961,40 @@ def delete_user(station_id: str, current: UserClaims = Depends(get_current_user)
 
     # 204 No Content
     return Response(status_code=204)
+
+class StationUpdate(BaseModel):
+    station_name: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    SN: Optional[str] = None
+    WO: Optional[str] = None
+    # ถ้าจะรองรับ status ค่อยเพิ่ม: Optional[bool] = None
+
+@app.patch("/update_stations/{id}", response_model=StationOut)
+def update_station(id: str, body: StationUpdate):
+    try:
+        oid = ObjectId(id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid id")
+
+    payload = {k: (v.strip() if isinstance(v, str) else v)
+               for k, v in body.model_dump(exclude_none=True).items()}
+    if not payload:
+        raise HTTPException(status_code=400, detail="no fields to update")
+
+    res = station_collection.update_one({"_id": oid}, {"$set": payload})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="station not found")
+
+    doc = station_collection.find_one({"_id": oid})
+    return {
+        "id": str(doc["_id"]),
+        "station_id": doc.get("station_id",""),
+        "station_name": doc.get("station_name",""),
+        "brand": doc.get("brand",""),
+        "model": doc.get("model",""),
+        "SN": doc.get("SN") or doc.get("SN") or "",
+        "WO": doc.get("WO") or doc.get("WO") or "",
+        # "status": bool(doc.get("status", True)),
+        "createdAt": doc.get("createdAt"),
+    }

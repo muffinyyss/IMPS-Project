@@ -19,7 +19,11 @@ import {
   CardFooter,
   Input,
   Switch,
-  Alert
+  Alert,
+  Dialog,
+  DialogHeader,
+  DialogBody,
+  DialogFooter
 } from "@material-tailwind/react";
 import {
   ChevronLeftIcon,
@@ -37,12 +41,22 @@ const API_BASE = "http://localhost:8000";
 
 type stationRow = {
   id?: string;
+  station_id?: string;
   station_name?: string;
   SN?: string;
   WO?: string;
   model?: string;
   status?: boolean;
   brand?: string;
+};
+
+export type StationUpdatePayload = {
+  station_id?: string;
+  station_name?: string;
+  brand?: string;
+  model?: string;
+  SN?: string; // API ใช้ตัวเล็ก
+  WO?: string; // API ใช้ตัวเล็ก
 };
 
 export function SearchDataTables() {
@@ -55,6 +69,9 @@ export function SearchDataTables() {
   const [openAdd, setOpenAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+
+  const [openEdit, setOpenEdit] = useState(false);
+  const [editingRow, setEditingRow] = useState<stationRow | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -83,10 +100,12 @@ export function SearchDataTables() {
         const list = Array.isArray(json?.stations) ? (json.stations as any[]) : [];
         const rows: stationRow[] = list.map((s) => ({
           id: s.id || s._id || undefined,
+          station_id: s.station_id ?? "-",
           station_name: s.station_name ?? "-",
           SN: s.SN ?? "-",
           WO: s.WO ?? "-",
           status: !!s.status,
+          // status: typeof s.status === "boolean" ? s.status : true,
           model: s.model ?? "-",
           brand: s.brand ?? "-",
         }));
@@ -157,7 +176,66 @@ export function SearchDataTables() {
   };
 
   // --- handlers ---
-  const handleEdit = (row: stationRow) => console.log("Edit station:", row);
+  // const handleEdit = (row: stationRow) => console.log("Edit station:", row);
+  const handleEdit = (row: stationRow) => {
+    setEditingRow(row);
+    setOpenEdit(true);
+  };
+
+  const handleUpdateStation = async (id: string, payload: StationUpdatePayload) => {
+  try {
+    setSaving(true);
+
+    const token =
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("accessToken") || "";
+
+    const res = await fetch(`${API_BASE}/update_stations/${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const raw = await res.text();            // 👈 อ่านเป็น text ก่อน
+    if (!res.ok) {
+      throw new Error(raw || `Update failed: ${res.status}`);
+    }
+
+    let updated: any = {};
+    try { updated = raw ? JSON.parse(raw) : {}; } catch { /* ไม่เป็น JSON ก็ข้าม */ }
+
+    // อัปเดตตารางแบบยืดหยุ่นคีย์ SN/WO
+    setData(prev =>
+      prev.map(r =>
+        r.id === id
+          ? {
+              ...r,
+              station_id: updated.station_id ?? r.station_id,
+              station_name: updated.station_name ?? r.station_name,
+              brand: updated.brand ?? r.brand,
+              model: updated.model ?? r.model,
+              SN: updated.SN ?? r.SN,
+              WO: updated.WO ?? r.WO,
+              // status: typeof updated.status === "boolean" ? updated.status : r.status,
+            }
+          : r
+      )
+    );
+
+    setOpenEdit(false);
+    setNotice({ type: "success", msg: "Update success" });
+    setTimeout(() => setNotice(null), 2500);
+  } catch (e: any) {
+    console.error("PATCH /update_stations error:", e);
+    setNotice({ type: "error", msg: e?.message || "อัปเดตไม่สำเร็จ" });
+    setTimeout(() => setNotice(null), 3500);
+  } finally {
+    setSaving(false);
+  }
+};
 
   const handleDelete = async (row: stationRow) => {
     if (!row.id) return alert("ไม่พบ id ของสถานี");
@@ -167,39 +245,39 @@ export function SearchDataTables() {
     }
 
     try {
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") ||
-      "";
+      const token =
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("accessToken") ||
+        "";
 
-    // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
-    const res = await fetch(`${API_BASE}/delete_stations/${row.id}`, {
-      method: "DELETE",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    });
+      // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
+      const res = await fetch(`${API_BASE}/delete_stations/${row.id}`, {
+        method: "DELETE",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
 
-    if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
-    if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
-    if (res.status === 404) throw new Error("ไม่พบสถานีนี้");
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || `Delete failed: ${res.status}`);
+      if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
+      if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
+      if (res.status === 404) throw new Error("ไม่พบสถานีนี้");
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Delete failed: ${res.status}`);
+      }
+
+      // ลบออกจากตาราง
+      setData((prev) => prev.filter((u) => u.id !== row.id));
+
+      // แจ้งสำเร็จ
+      setNotice({ type: "success", msg: "Delete success" });
+      setTimeout(() => setNotice(null), 2500);
+    } catch (e: any) {
+      console.error(e);
+      setNotice({ type: "error", msg: e.message || "ลบสานีไม่สำเร็จ" });
+      setTimeout(() => setNotice(null), 3500);
     }
 
-    // ลบออกจากตาราง
-    setData((prev) => prev.filter((u) => u.id !== row.id));
-
-    // แจ้งสำเร็จ
-    setNotice({ type: "success", msg: "Delete success" });
-    setTimeout(() => setNotice(null), 2500);
-  } catch (e: any) {
-    console.error(e);
-    setNotice({ type: "error", msg: e.message || "ลบสานีไม่สำเร็จ" });
-    setTimeout(() => setNotice(null), 3500);
-  }
-    
   };
 
   // const handleCreateStation = async (payload: NewStationPayload) => {
@@ -240,6 +318,12 @@ export function SearchDataTables() {
         return pageIndex * pageSize + indexInPage + 1;
       },
       meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row: stationRow) => row.station_id ?? "-",
+      id: "station_id",
+      cell: (info: any) => info.getValue(),
+      header: () => "station id",
     },
     {
       accessorFn: (row: stationRow) => row.station_name ?? "-",
@@ -337,15 +421,15 @@ export function SearchDataTables() {
     <>
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
         {notice && (
-                  <div className="tw-px-4 tw-pt-4">
-                    <Alert
-                      color={notice.type === "success" ? "green" : "red"}
-                      onClose={() => setNotice(null)}
-                    >
-                      {notice.msg}
-                    </Alert>
-                  </div>
-                )}
+          <div className="tw-px-4 tw-pt-4">
+            <Alert
+              color={notice.type === "success" ? "green" : "red"}
+              onClose={() => setNotice(null)}
+            >
+              {notice.msg}
+            </Alert>
+          </div>
+        )}
         <CardHeader
           floated={false}
           shadow={false}
@@ -517,6 +601,89 @@ export function SearchDataTables() {
         onSubmit={handleCreateStation}
         loading={saving}
       />
+
+      <Dialog open={openEdit} handler={() => setOpenEdit(false)} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
+        <DialogHeader className="tw-flex tw-items-center tw-justify-between">
+          <Typography variant="h5" color="blue-gray">Edit Station</Typography>
+          <Button variant="text" onClick={() => setOpenEdit(false)}>✕</Button>
+        </DialogHeader>
+
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!editingRow?.id) return;
+
+            // map ชื่อฟิลด์ UI → API (SN/WO → sn/wo)
+            const formEl = e.currentTarget as HTMLFormElement;
+            const formData = new FormData(formEl);
+
+            const payload: StationUpdatePayload = {
+              station_name: String(formData.get("station_name") || "").trim(),
+              brand: String(formData.get("brand") || "").trim(),
+              model: String(formData.get("model") || "").trim(),
+              SN: String(formData.get("SN") || "").trim(),
+              WO: String(formData.get("WO") || "").trim(),
+              // ถ้าจะให้แก้ station_id ด้วย ให้ใส่: station_id: String(formData.get("station_id")||"").trim(),
+            };
+
+            await handleUpdateStation(editingRow.id, payload);
+          }}
+        >
+          <DialogBody className="tw-space-y-6 tw-px-6 tw-py-4">
+            <div className="tw-flex tw-flex-col tw-gap-4">
+              <Input
+                name="station_id"
+                label="Station ID (read-only)"
+                value={editingRow?.station_id ?? ""}
+                crossOrigin={undefined}
+                disabled
+              />
+              <Input
+                name="station_name"
+                label="Station Name"
+                required
+                defaultValue={editingRow?.station_name ?? ""}
+                crossOrigin={undefined}
+              />
+              <Input
+                name="brand"
+                label="Brand"
+                required
+                defaultValue={editingRow?.brand ?? ""}
+                crossOrigin={undefined}
+              />
+              <Input
+                name="model"
+                label="Model"
+                required
+                defaultValue={editingRow?.model ?? ""}
+                crossOrigin={undefined}
+              />
+              <Input
+                name="SN"
+                label="S/N"
+                required
+                defaultValue={editingRow?.SN ?? ""}
+                crossOrigin={undefined}
+              />
+              <Input
+                name="WO"
+                label="WO"
+                required
+                defaultValue={editingRow?.WO ?? ""}
+                crossOrigin={undefined}
+              />
+            </div>
+          </DialogBody>
+
+          <DialogFooter className="tw-gap-2">
+            <Button variant="outlined" type="button" onClick={() => setOpenEdit(false)}>Cancel</Button>
+            <Button type="submit" className="tw-bg-blue-600" disabled={saving}>
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
     </>
   );
 }
