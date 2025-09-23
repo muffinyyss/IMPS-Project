@@ -887,9 +887,12 @@ def delete_user(user_id: str, current: UserClaims = Depends(get_current_user)):
 
 @app.get("/all-stations/")
 def all_stations():
+    docs = list(station_collection.find({}))
+    # แปลง ObjectId ทุกฟิลด์ในเอกสารให้เป็น str
+    docs = jsonable_encoder(docs, custom_encoder={ObjectId: str})
     # เอาทุกฟิลด์ ยกเว้น password และ refreshTokens
-    cursor = station_collection.find({})
-    docs = list(cursor)
+    # cursor = station_collection.find({})
+    # docs = list(cursor)
 
     # ถ้าจะส่ง _id ไปด้วย ต้องแปลง ObjectId -> str
     for d in docs:
