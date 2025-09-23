@@ -47,9 +47,38 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         payment: "y",
         tel: "",
     });
+    const [stationInput, setStationInput] = useState("");
+    const [stationIds, setStationIds] = useState<string[]>([]);
 
     const onChange = (k: keyof NewUserPayload, v: any) =>
         setForm((s) => ({ ...s, [k]: v }));
+    // เพิ่ม station ลงลิสต์ (กันค่าว่าง/ซ้ำ)
+    const addStationId = () => {
+        const parts = stationInput
+            .split(",")                  // อนุญาตใส่หลายค่าแล้วคั่นด้วย comma ได้ทันที
+            .map((s) => s.trim())
+            .filter(Boolean);
+
+        if (parts.length === 0) return;
+
+        setStationIds((prev) => {
+            const set = new Set(prev);
+            parts.forEach((p) => set.add(p));
+            return Array.from(set);
+        });
+        setStationInput("");
+    };
+
+    const removeStationId = (target: string) => {
+        setStationIds((prev) => prev.filter((s) => s !== target));
+    };
+
+    const handleStationKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            addStationId();
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -60,9 +89,8 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             email: form.email.trim(),
             company_name: form.company_name?.trim() || undefined,
             // station_id: form.station_id?.trim() || undefined,
-            
-        };
 
+        };
         try {
             await onSubmit(payload); // ✅ ให้ parent ยิง API + โชว์ success
             resetAndClose();         // ปิดโมดัล
@@ -134,12 +162,62 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             onChange={(e) => onChange("company_name", e.target.value)}
                             crossOrigin={undefined}
                         />
-                        <Input
+
+                        {/* Station IDs (หลายค่า) */}
+                        <div className="tw-space-y-2">
+                            <div className="tw-flex tw-items-end tw-gap-2">
+                                <div className="tw-flex-1">
+                                    <Input
+                                        label="Station ID"
+                                        value={stationInput}
+                                        onChange={(e) => setStationInput(e.target.value)}
+                                        onKeyDown={handleStationKeyDown}
+                                        crossOrigin={undefined}
+                                        required
+                                    />
+                                </div>
+                                <Button
+                                    type="button"
+                                    className="tw-bg-blue-600"
+                                    onClick={addStationId}
+                                >
+                                    + Add
+                                </Button>
+                            </div>
+
+                            {/* แสดงรายการที่เพิ่มแล้ว */}
+                            {stationIds.length > 0 && (
+                                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                    {stationIds.map((id) => (
+                                        <span
+                                            key={id}
+                                            className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-bg-blue-50 tw-text-blue-700 tw-px-3 tw-py-1 tw-text-sm"
+                                        >
+                                            {id}
+                                            <button
+                                                type="button"
+                                                className="tw-font-bold tw-leading-none hover:tw-text-blue-900"
+                                                onClick={() => removeStationId(id)}
+                                                aria-label={`Remove ${id}`}
+                                                title="Remove"
+                                            >
+                                                ×
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            <p className="tw-text-xs tw-text-gray-500 tw-ml-1">
+                                ใส่ทีละค่าแล้วกด Enter หรือปุ่ม Add • หรือวางหลายค่าคั่นด้วยเครื่องหมาย , แล้วกด Add ก็ได้
+                            </p>
+                        </div>
+
+                        {/* <Input
                             label="Station_id"
                             value={form.station_id}
                             onChange={(e) => onChange("station_id", e.target.value)}
                             crossOrigin={undefined}
-                        />
+                        /> */}
 
                         <div>
                             <Select
