@@ -6,8 +6,25 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Navbar, Typography, IconButton, Breadcrumbs, Input, Button,
 } from "@material-tailwind/react";
-import { HomeIcon } from "@heroicons/react/24/solid";
-import { useMaterialTailwindController } from "@/context";
+
+import {
+  UserCircleIcon,
+  Cog6ToothIcon,
+  BellIcon,
+  Bars3Icon,
+  HomeIcon,
+  Bars3CenterLeftIcon,
+  EnvelopeIcon,
+  MicrophoneIcon,
+  ShoppingCartIcon,
+} from "@heroicons/react/24/solid";
+
+// @context
+import {
+  useMaterialTailwindController,
+  setOpenConfigurator,
+  setOpenSidenav,
+} from "@/context";
 
 type Station = { station_id: string; station_name: string };
 type StationInfo = {
@@ -21,8 +38,9 @@ type StationInfo = {
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"; // e.g. "http://localhost:8000"
 
 export function DashboardNavbar() {
-  const [controller] = useMaterialTailwindController();
-  const { fixedNavbar } = controller;
+  const [controller, dispatch] = useMaterialTailwindController();
+  const { fixedNavbar, openSidenav } = controller;
+
   const pathname = usePathname();
   const router = useRouter();
 
@@ -37,7 +55,7 @@ export function DashboardNavbar() {
   if (segs[1] === "mdb") title = "Main Distribution Board (MDB)";
   else if (segs[1] === "pm-report") title = "PM Report";
   else if (segs[1] === "input_PMreport") title = "Add PM Report";
-  else if (segs[1] === "chargers") title = "My Charging Station";
+  else if (segs[1] === "chargers") title = "My Charger Station";
   else if (segs[1] === "setting") title = "Charger Setting";
 
   // Dropdown state
@@ -49,6 +67,7 @@ export function DashboardNavbar() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [searching, setSearching] = useState(false);
   const [stationInfo, setStationInfo] = useState<StationInfo | null>(null);
+  
 
   // โหลดสถานีของผู้ใช้ที่ล็อกอิน (JWT only)
   useEffect(() => {
@@ -281,44 +300,66 @@ export function DashboardNavbar() {
         </div>
 
         {/* Dropdown เลือกสถานี */}
-        <div ref={containerRef} className="tw-mb-3 tw-flex tw-flex-row tw-items-center tw-gap-2 tw-relative">
+        <div ref={containerRef} className="tw-mb-3 tw-relative tw-flex tw-flex-col md:tw-flex-row md:tw-items-center tw-gap-2">
           <Typography
             variant="small"
             color="blue-gray"
-            className="-tw-mb-1 !tw-font-medium tw-whitespace-nowrap tw-mr-2"
+            className="-tw-mb-1 !tw-font-medium tw-whitespace-nowrap md:tw-mr-2 tw-shrink-0"
           >
             เลือกสถานี
           </Typography>
 
-          <Input
-            size="lg"
-            label="พิมพ์เพื่อค้นหา / เลือกสถานี"
-            type="text"
-            placeholder="พิมพ์เพื่อค้นหา / เลือกสถานี"
-            className="border p-2 rounded w-full tw-text-black"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setOpen(true);
-            }}
-            onFocus={() => setOpen(true)}
-            onKeyDown={onKeyDown}
-            crossOrigin=""
-          />
+          {/* กลุ่ม input + button (ให้อยู่บรรทัดเดียวกันเสมอ) */}
+          <div className="tw-flex tw-w-full tw-items-center tw-gap-2 tw-flex-nowrap tw-mt-3">
+            <Input
+              size="lg"
+              label="พิมพ์เพื่อค้นหา / เลือกสถานี"
+              type="text"
+              placeholder="พิมพ์เพื่อค้นหา / เลือกสถานี"
+              className="tw-w-full tw-min-w-0 tw-flex-1 tw-border tw-p-2 tw-rounded tw-text-black"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setOpen(true);
+              }}
+              onFocus={() => setOpen(true)}
+              onKeyDown={onKeyDown}
+              crossOrigin=""
+            />
 
-          <Button
-            className="
-              tw-h-11 tw-min-w-[90px] tw-rounded-xl tw-px-4
-              tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
-              hover:tw-to-black
-              tw-text-white
-              tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-              focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50"
-            // onClick={() => setOpen((v) => !v)}
-            onClick={goToCurrentPage}
-          >
-            search
-          </Button>
+            <Button
+              className="
+                tw-h-11 tw-min-w-[90px] tw-rounded-xl tw-px-4
+                tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
+                hover:tw-to-black
+                tw-text-white
+                tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50
+                tw-shrink-0 tw-whitespace-nowrap
+              "
+              onClick={goToCurrentPage}
+            >
+              search
+            </Button>
+            <IconButton
+              variant="text"
+              color="blue-gray"
+              className="tw-grid xl:tw-hidden"
+              onClick={() => setOpenSidenav(dispatch, !openSidenav)}
+            >
+              {openSidenav ? (
+                <Bars3Icon
+                  strokeWidth={3}
+                  className="tw-h-6 tw-w-6 tw-text-gray-900"
+                />
+              ) : (
+                <Bars3CenterLeftIcon
+                  strokeWidth={3}
+                  className="tw-h-6 tw-w-6 tw-text-gray-900"
+                />
+              )}
+            </IconButton>
+          </div>
 
           {open && (
             <div
@@ -342,7 +383,7 @@ export function DashboardNavbar() {
                   </button>
                 ))
               ) : (
-                <div className="px-3 py-2 text-gray-500">ไม่พบสถานีที่ค้นหา</div>
+                <div className="tw-px-3 tw-py-2 tw-text-gray-500">ไม่พบสถานีที่ค้นหา</div>
               )}
             </div>
           )}
