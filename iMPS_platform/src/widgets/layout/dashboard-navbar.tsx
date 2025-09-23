@@ -304,7 +304,7 @@ export function DashboardNavbar() {
           <Typography
             variant="small"
             color="blue-gray"
-            className="-tw-mb-1 !tw-font-medium tw-whitespace-nowrap md:tw-mr-2 tw-shrink-0"
+            className="-tw-mb-3 !tw-font-medium tw-whitespace-nowrap md:tw-mr-2 tw-shrink-0"
           >
             เลือกสถานี
           </Typography>
