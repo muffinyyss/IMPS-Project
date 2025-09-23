@@ -11,25 +11,46 @@ const rows = [
     ["Isolation Status2", "fault"],
 ] as const;
 
+/* แถวข้อมูลแบบสลับสี */
+function Row({
+    label,
+    value,
+    zebra = false,
+}: {
+    label: string;
+    value: string;
+    zebra?: boolean;
+}) {
+    return (
+        <div
+            className={`tw-grid tw-grid-cols-2 tw-gap-2 tw-py-2 tw-px-3
+        ${zebra ? "tw-bg-blue-gray-50/60" : "tw-bg-white"}
+      `}
+        >
+            <span className="tw-text-sm tw-text-blue-gray-700">{label}</span>
+            <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-900 tw-text-right tw-tabular-nums">
+                {value}
+            </span>
+        </div>
+    );
+}
+
 export default function InfoPanel() {
+    const rows = [
+        { label: "IMD Status1", value: "Operative" },
+        { label: "IMD Status2", value: "Operative" },
+        { label: "PM Status1", value: "Operative" },
+        { label: "PM Status2", value: "Operative" },
+        { label: "Isolation Status1", value: "fault" },
+        { label: "Isolation Status2", value: "fault" },
+    ];
+
     return (
         <Card title="Info">
-            <div className="tw-divide-y tw-divide-blue-gray-50">
-                {rows.map(([label, value]) => {
-                    const ok = value.toLowerCase() === "operative";
-                    return (
-                        <div key={label} className="tw-flex tw-items-center tw-justify-between tw-py-3">
-                            <span className="tw-text-sm tw-text-blue-gray-700">{label}</span>
-                            <span
-                                className={`tw-text-xs tw-font-medium tw-rounded-full tw-px-2.5 tw-py-1
-                ${ok ? "tw-bg-emerald-50 tw-text-emerald-700 tw-border tw-border-emerald-100" :
-                                        "tw-bg-red-50 tw-text-red-700 tw-border tw-border-red-100"}`}
-                            >
-                                {value}
-                            </span>
-                        </div>
-                    );
-                })}
+            <div className="tw-rounded-lg tw-overflow-hidden">
+                {rows.map((r, i) => (
+                    <Row key={i} label={r.label} value={r.value} zebra={i % 2 === 1} />
+                ))}
             </div>
         </Card>
     );

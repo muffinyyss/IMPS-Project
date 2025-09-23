@@ -19,8 +19,8 @@ function pickColor(v: number) {
 export default function CircleProgress({
     value,
     label,
-    size = 160,
-    stroke = 14,
+    size = 190,
+    stroke = 16,
     colorClass,
 }: Props) {
     const v = Math.max(0, Math.min(100, value));
@@ -61,7 +61,7 @@ export default function CircleProgress({
 
                 {/* ค่า % ตรงกลาง */}
                 <div className="tw-absolute tw-inset-0 tw-grid tw-place-items-center">
-                    <span className="tw-text-base tw-font-semibold tw-text-blue-gray-900">{v}%</span>
+                    <span className="tw-text-xl tw-font-semibold tw-text-blue-gray-900">{v}%</span>
                 </div>
             </div>
         </div>
