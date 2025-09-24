@@ -7,6 +7,7 @@ import {
   Navbar, Typography, IconButton, Breadcrumbs, Input, Button,
 } from "@material-tailwind/react";
 
+
 import {
   UserCircleIcon,
   Cog6ToothIcon,
@@ -41,6 +42,8 @@ export function DashboardNavbar() {
   const [controller, dispatch] = useMaterialTailwindController();
   const { fixedNavbar, openSidenav } = controller;
 
+  const toggleSidenav = () => setOpenSidenav(dispatch, !openSidenav);
+
   const pathname = usePathname();
   const router = useRouter();
 
@@ -67,7 +70,7 @@ export function DashboardNavbar() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [searching, setSearching] = useState(false);
   const [stationInfo, setStationInfo] = useState<StationInfo | null>(null);
-  
+
 
   // โหลดสถานีของผู้ใช้ที่ล็อกอิน (JWT only)
   useEffect(() => {

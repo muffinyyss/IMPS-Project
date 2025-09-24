@@ -9,16 +9,16 @@ export const allRoutes = [
     pages: [
       {
         layout: "dashboard",
-        icon: <i className="fa fa-user" />, 
+        icon: <i className="fa fa-user" />,
         name: "My profile",
         path: "/pages/profile/profile-overview",
       },
-      {
-        layout: "dashboard",
-        icon: <i className="fa fa-cog" />,
-        name: "settings",
-        path: "/pages/account/settings",
-      },
+      // {
+      //   layout: "dashboard",
+      //   icon: <i className="fa fa-cog" />,
+      //   name: "settings",
+      //   path: "/pages/account/settings",
+      // },
       {
         layout: "auth",
         icon: <i className="fa fa-sign-out" />,
@@ -28,7 +28,7 @@ export const allRoutes = [
     ],
   },
   {
-    name: "Charger",
+    name: "My Charger",
     icon: <i className="fa fa-bolt" />,
     path: "/dashboard/chargers",
   },
@@ -74,7 +74,7 @@ export const allRoutes = [
   },
   {
     name: "Stations",
-    icon: <i className="fa fa-charging-station" />, 
+    icon: <i className="fa fa-charging-station" />,
     path: "/dashboard/stations",
   },
 ];
