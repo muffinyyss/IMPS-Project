@@ -438,7 +438,6 @@ export function SearchDataTables() {
     actions: "tw-w-[96px]",
   };
 
-  // ⬇️ วางไว้เหนือ const columns
   const COL_W_MD: Record<string, string> = {
     no: "md:tw-w-[56px]",
     station_id: "md:tw-w-[140px]",
@@ -450,6 +449,19 @@ export function SearchDataTables() {
     WO: "md:tw-w-[140px]",
     status: "md:tw-w-[96px]",
     actions: "md:tw-w-[96px]",
+  };
+
+  const COL_W_LG: Record<string, string> = {
+    no: "lg:tw-w-[56px]",
+    station_id: "lg:tw-w-[140px]",
+    username: "lg:tw-w-[120px]",
+    station_name: "lg:tw-w-[260px]",
+    brand: "lg:tw-w-[120px]",
+    model: "lg:tw-w-[100px]",
+    SN: "lg:tw-w-[140px]",
+    WO: "lg:tw-w-[140px]",
+    status: "lg:tw-w-[96px]",
+    actions: "lg:tw-w-[96px]",
   };
 
 
@@ -561,9 +573,10 @@ export function SearchDataTables() {
           ) : err ? (
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
-            // ทำให้ responsive: ครอบด้วย overflow-x-auto และกำหนด min-width ที่ table
-            <div className="tw-overflow-x-auto md:tw-overflow-x-hidden">
-              <table className="tw-w-full tw-table-auto md:tw-table-fixed tw-min-w-[1000px] md:tw-min-w-0">
+            // ⬇️ จอเล็กเลื่อนซ้าย-ขวาได้, จอใหญ่ไม่ซ่อน overflow
+            <div className="tw-overflow-x-auto lg:tw-overflow-x-visible">
+              {/* ⬇️ จอเล็กบังคับ min-width เพื่อให้เกิด scroll, จอใหญ่เอา min-width ออก */}
+              <table className="tw-w-full tw-table-auto tw-min-w-[1100px] lg:tw-min-w-0">
                 <thead className="tw-bg-gray-50">
                   {table.getHeaderGroups().map((headerGroup) => (
                     <tr key={headerGroup.id}>
@@ -571,13 +584,13 @@ export function SearchDataTables() {
                         <th
                           key={header.id}
                           onClick={header.column.getToggleSortingHandler()}
-                          className={`tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-center tw-whitespace-nowrap
-                          ${COL_W_MD[header.column.id] ?? ""}`}
+                          className={`tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-center
+                              tw-whitespace-nowrap ${COL_W_LG[header.column.id] ?? ""}`}
                         >
                           <Typography
                             color="blue-gray"
                             className={`tw-flex tw-items-center tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                              ${header.column.getCanSort() ? "tw-justify-between" : "tw-justify-center"}`}
+                                ${header.column.getCanSort() ? "tw-justify-between" : "tw-justify-center"}`}
                           >
                             {flexRender(header.column.columnDef.header, header.getContext())}
                             <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
@@ -587,16 +600,21 @@ export function SearchDataTables() {
                     </tr>
                   ))}
                 </thead>
+
                 <tbody>
                   {table.getRowModel().rows.length ? (
                     table.getRowModel().rows.map((row) => (
-                      // สลับสีแถว (zebra)
                       <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50">
                         {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} className={`!tw-border-y !tw-border-x-0 ${COL_W_MD[cell.column.id] ?? ""} tw-align-top`}>
+                          <td
+                            key={cell.id}
+                            className={`!tw-border-y !tw-border-x-0 ${COL_W_LG[cell.column.id] ?? ""} tw-align-top`}
+                          >
                             <Typography
                               variant="small"
-                              className="!tw-font-normal !tw-text-blue-gray-500 tw-py-3 tw-px-3 tw-block tw-whitespace-nowrap md:tw-whitespace-normal md:tw-break-words"
+                              className="
+                                !tw-font-normal !tw-text-blue-gray-500 tw-py-3 tw-px-3 tw-block
+                                tw-whitespace-nowrap lg:tw-whitespace-normal lg:tw-break-words"
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>
@@ -616,6 +634,7 @@ export function SearchDataTables() {
             </div>
           )}
         </CardFooter>
+
 
         <div className="tw-flex tw-items-center tw-justify-end tw-gap-6 tw-px-10 tw-py-6">
           <span className="tw-flex tw-items-center tw-gap-1">
