@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     Dialog,
     DialogHeader,
@@ -20,6 +20,7 @@ export type NewStationPayload = {
     model: string;
     SN: string;
     WO: string;
+    owner: string;
     status: boolean;
 };
 
@@ -28,9 +29,22 @@ type Props = {
     onClose: () => void;
     onSubmit: (payload: NewStationPayload) => Promise<void> | void;
     loading?: boolean;
+
+    // ใหม่
+    currentUser: string;       // ชื่อ username ของคนที่ล็อกอิน
+    isAdmin: boolean;          // true = admin
+    allOwners?: string[];      // รายชื่อ owner ทั้งหมด (ใช้เมื่อ isAdmin = true)
 };
 
-export default function AddUserModal({ open, onClose, onSubmit, loading }: Props) {
+export default function AddUserModal({
+    open,
+    onClose,
+    onSubmit,
+    loading,
+    currentUser,
+    isAdmin,
+    allOwners = [],
+}: Props) {
     const [form, setForm] = useState<NewStationPayload>({
         station_id: "",
         station_name: "",
@@ -38,37 +52,39 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         model: "",
         SN: "",
         WO: "",
+        owner: "",
         status: true,
     });
+
+    // ตั้ง owner อัตโนมัติเป็น currentUser เมื่อ modal เปิด หรือเมื่อ currentUser เปลี่ยน
+    useEffect(() => {
+        if (open) {
+            setForm((s) => ({ ...s, owner: currentUser || s.owner }));
+        }
+    }, [open, currentUser]);
 
     const onChange = (k: keyof NewStationPayload, v: any) =>
         setForm((s) => ({ ...s, [k]: v }));
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // await onSubmit({
-        //     ...form,
-        //     station_id: form.station_id.trim(),
-        //     station_name: form.station_name.trim(),
-        //     brand: form.brand.trim(),
-        //     model: form.model.trim(),
-        //     // status เป็น boolean อยู่แล้ว ไม่ต้องแปลง
-        // });
 
         const payload: NewStationPayload = {
             ...form,
-            station_id:  form.station_id.trim(),
+            station_id: form.station_id.trim(),
             station_name: form.station_name.trim(),
             brand: form.brand.trim(),
             model: form.model.trim(),
             SN: form.SN.trim(),
-            WO: form.WO.trim()
+            WO: form.WO.trim(),
+            owner: form.owner.trim(),
+            // status เป็น boolean อยู่แล้ว
         };
 
-        try{
+        try {
             await onSubmit(payload);
             resetAndClose();
-        }catch(error){
+        } catch (error) {
             console.error(error);
         }
     };
@@ -81,16 +97,26 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             model: "",
             SN: "",
             WO: "",
+            owner: "",
             status: false,
         });
         onClose();
     };
 
     return (
-        <Dialog open={open} handler={resetAndClose} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
+        <Dialog
+            open={open}
+            handler={resetAndClose}
+            size="md"
+            className="tw-space-y-5 tw-px-8 tw-py-4"
+        >
             <DialogHeader className="tw-flex tw-items-center tw-justify-between">
-                <Typography variant="h5" color="blue-gray">Add New Station</Typography>
-                <Button variant="text" onClick={resetAndClose}>✕</Button>
+                <Typography variant="h5" color="blue-gray">
+                    Add New Station
+                </Typography>
+                <Button variant="text" onClick={resetAndClose}>
+                    ✕
+                </Button>
             </DialogHeader>
 
             <form onSubmit={handleSubmit}>
@@ -139,10 +165,36 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             crossOrigin={undefined}
                         />
 
-                        {/* ใช้ Select สำหรับสถานะ แล้วแปลงเป็น boolean */}
+                        {/* OWNER */}
+                        {isAdmin ? (
+                            <div>
+                                <Select
+                                    label="Owner"
+                                    value={form.owner || ""}
+                                    onChange={(v) => onChange("owner", v || "")}
+                                >
+                                    {(allOwners.length ? allOwners : [currentUser]).map((name) => (
+                                        <Option key={name} value={name}>
+                                            {name}
+                                        </Option>
+                                    ))}
+                                </Select>
+                            </div>
+                        ) : (
+                            // ผู้ใช้ทั่วไป: แสดงเป็น input readonly/disabled
+                            <Input
+                                label="Owner"
+                                value={form.owner || currentUser || ""}
+                                crossOrigin={undefined}
+                                readOnly
+                                disabled
+                            />
+                        )}
+
+                        {/* STATUS */}
                         <div>
                             <Select
-                                label="Username"
+                                label="Status"
                                 value={String(form.status)} // "true" | "false"
                                 onChange={(v) => onChange("status", v === "true")}
                             >
@@ -154,7 +206,9 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                 </DialogBody>
 
                 <DialogFooter className="tw-gap-2">
-                    <Button variant="outlined" onClick={resetAndClose} type="button">Cancel</Button>
+                    <Button variant="outlined" onClick={resetAndClose} type="button">
+                        Cancel
+                    </Button>
                     <Button type="submit" className="tw-bg-blue-600" disabled={loading}>
                         {loading ? "Saving..." : "Create Station"}
                     </Button>

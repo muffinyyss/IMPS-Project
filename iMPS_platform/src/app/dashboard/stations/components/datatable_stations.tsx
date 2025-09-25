@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -23,7 +23,9 @@ import {
   Dialog,
   DialogHeader,
   DialogBody,
-  DialogFooter
+  DialogFooter,
+  Select,
+  Option,
 } from "@material-tailwind/react";
 import {
   ChevronLeftIcon,
@@ -60,9 +62,43 @@ export type StationUpdatePayload = {
   model?: string;
   SN?: string; // API ใช้ตัวเล็ก
   WO?: string; // API ใช้ตัวเล็ก
+  status?: boolean;
+  user_id?: string;
 };
 
+type JwtClaims = {
+  sub: string;
+  user_id?: string;
+  username?: string;
+  role?: string;
+  company?: string | null;
+  station_ids?: string[];
+  exp?: number;
+};
+
+function decodeJwt(token: string | null): JwtClaims | null {
+  try {
+    if (!token) return null;
+    const payload = token.split(".")[1];
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+//owner
+type UsernamesResp = { username: string[] };
+
+type Owner = { user_id: string; username: string };
+type OwnersResp = { owners: Owner[] };
+
 export function SearchDataTables() {
+  const [me, setMe] = useState<{ user_id: string; username: string; role: string; } | null>(null);
+  const [usernames, setUsernames] = useState<string[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string>("");
+
   const [data, setData] = useState<stationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -75,6 +111,36 @@ export function SearchDataTables() {
 
   const [openEdit, setOpenEdit] = useState(false);
   const [editingRow, setEditingRow] = useState<stationRow | null>(null);
+  const [owner, setOwner] = useState(editingRow?.username ?? "");
+  const [statusStr, setStatusStr] = useState("false");
+
+  useEffect(() => {
+    (async () => {
+      if (me?.role !== "admin") return;
+      const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
+      const res = await fetch(`${API_BASE}/owners`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const json: OwnersResp = await res.json();
+      setOwners(Array.isArray(json.owners) ? json.owners : []);
+    })();
+  }, [me?.role]);
+
+  useEffect(() => {
+    (async () => {
+      if (me?.role !== "admin") return;
+      const token =
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("accessToken") || "";
+      const res = await fetch(`${API_BASE}/username`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const json: UsernamesResp = await res.json();
+      setUsernames(Array.isArray(json.username) ? json.username : []);
+    })();
+  }, [me?.role]);
 
   useEffect(() => {
     (async () => {
@@ -83,6 +149,12 @@ export function SearchDataTables() {
           localStorage.getItem("access_token") ||
           localStorage.getItem("accessToken") ||
           "";
+
+        // ⬇️ ถอด JWT เอา role/บริษัท ฯลฯ
+        const claims = decodeJwt(token);
+        if (claims) {
+          setMe({ user_id: claims.user_id ?? "-", username: claims.username ?? "-", role: claims.role ?? "user" });
+        }
 
         const res = await fetch(`${API_BASE}/all-stations/`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -111,7 +183,8 @@ export function SearchDataTables() {
           // status: typeof s.status === "boolean" ? s.status : true,
           model: s.model ?? "-",
           brand: s.brand ?? "-",
-          user_id: s.user_id ?? ""
+          user_id: s.user_id ?? "",
+          username: s.username ?? ""
         }));
         setData(rows);
       } catch (e) {
@@ -164,6 +237,7 @@ export function SearchDataTables() {
           model: created.model,
           SN: created.SN,
           WO: created.WO,
+
         },
         ...prev,
       ]);
@@ -181,8 +255,20 @@ export function SearchDataTables() {
 
   // --- handlers ---
   // const handleEdit = (row: stationRow) => console.log("Edit station:", row);
+  // const handleEdit = (row: stationRow) => {
+  //   setEditingRow(row);
+  //   setStatusStr((row.status ?? false) ? "true" : "false");
+  //   setOpenEdit(true);
+  // };
+
   const handleEdit = (row: stationRow) => {
+    if (!isAdmin && row.user_id !== me?.user_id) {
+      alert("ไม่มีสิทธิ์แก้ไขสถานีนี้");
+      return;
+    }
     setEditingRow(row);
+    setStatusStr((row.status ?? false) ? "true" : "false");
+    setSelectedOwnerId(row.user_id ?? "");
     setOpenEdit(true);
   };
 
@@ -208,10 +294,47 @@ export function SearchDataTables() {
         throw new Error(raw || `Update failed: ${res.status}`);
       }
 
-      let updated: any = {};
-      try { updated = raw ? JSON.parse(raw) : {}; } catch { /* ไม่เป็น JSON ก็ข้าม */ }
+      // let updated: any = {};
+      // try { updated = raw ? JSON.parse(raw) : {}; } catch { /* ไม่เป็น JSON ก็ข้าม */ }
 
-      // อัปเดตตารางแบบยืดหยุ่นคีย์ SN/WO
+      // // อัปเดตตารางแบบยืดหยุ่นคีย์ SN/WO
+      // setData(prev =>
+      //   prev.map(r =>
+      //     r.id === id
+      //       ? {
+      //         ...r,
+      //         station_id: updated.station_id ?? r.station_id,
+      //         station_name: updated.station_name ?? r.station_name,
+      //         brand: updated.brand ?? r.brand,
+      //         model: updated.model ?? r.model,
+      //         SN: updated.SN ?? r.SN,
+      //         WO: updated.WO ?? r.WO,
+      //         username: updated.username ?? r.username,
+      //         user_id: updated.user_id ?? r.user_id,
+      //         status:
+      //           typeof updated.status === "boolean" ? updated.status :
+      //             typeof payload.status === "boolean" ? payload.status :
+      //               r.status,
+      //       }
+      //       : r
+      //   )
+      // );
+
+      let updated: any = {};
+      try { updated = raw ? JSON.parse(raw) : {}; } catch { }
+
+      const fallbackUserId = isAdmin ? payload.user_id : undefined;
+      const newUserId =
+        updated.user_id ?? fallbackUserId ?? editingRow?.user_id ?? "";
+
+      const newUsername =
+        // ถ้า backend ส่งมาก็ใช้เลย
+        (typeof updated.username === "string" ? updated.username : undefined) ??
+        // ถ้าไม่ส่งมา ให้ map จาก owners ตาม user_id ที่เลือก
+        owners.find(o => o.user_id === newUserId)?.username ??
+        // ไม่งั้นคงค่าเดิม
+        editingRow?.username ?? "";
+
       setData(prev =>
         prev.map(r =>
           r.id === id
@@ -223,11 +346,21 @@ export function SearchDataTables() {
               model: updated.model ?? r.model,
               SN: updated.SN ?? r.SN,
               WO: updated.WO ?? r.WO,
-              // status: typeof updated.status === "boolean" ? updated.status : r.status,
+              status:
+                typeof updated.status === "boolean"
+                  ? updated.status
+                  : typeof payload.status === "boolean"
+                    ? payload.status
+                    : r.status,
+              // ✅ อัปเดต owner ให้ตรงทั้งคู่
+              user_id: newUserId,
+              username: newUsername,
             }
             : r
         )
       );
+      setEditingRow(prev => prev ? { ...prev, user_id: newUserId, username: newUsername } : prev);
+      setSelectedOwnerId(newUserId || "");
 
       setOpenEdit(false);
       setNotice({ type: "success", msg: "Update success" });
@@ -240,7 +373,7 @@ export function SearchDataTables() {
       setSaving(false);
     }
   };
-
+  console.log("ME", me)
   const handleDelete = async (row: stationRow) => {
     if (!row.id) return alert("ไม่พบ id ของสถานี");
 
@@ -284,33 +417,16 @@ export function SearchDataTables() {
 
   };
 
-  // const handleCreateStation = async (payload: NewStationPayload) => {
-  //   try {
-  //     setSaving(true);
-  //     const token =
-  //       localStorage.getItem("access_token") ||
-  //       localStorage.getItem("accessToken") ||
-  //       "";
-  //     const res = await fetch(`${API_BASE}/all-stations/`, {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //         Authorization: `Bearer ${token}`,
-  //       },
-  //       body: JSON.stringify(payload),
-  //     });
-  //     if (!res.ok) throw new Error(`Create failed: ${res.status}`);
-  //     setOpenAdd(false);
-  //   } catch (e) {
-  //     console.error(e);
-  //     alert("สร้างสถานีไม่สำเร็จ");
-  //   } finally {
-  //     setSaving(false);
-  //   }
-  // };
+  const isAdmin = me?.role === "admin";
+
+  const roClass = !isAdmin
+    ? "!tw-bg-gray-100 !tw-text-blue-gray-500 tw-cursor-not-allowed focus:tw-ring-0 focus:tw-border-blue-gray-200"
+    : "";
+
+  const roLabel = !isAdmin ? { className: "!tw-text-blue-gray-400" } : {};
 
 
-  const columns: any[] = [
+  const columns: any[] = useMemo(() => [
     {
       accessorFn: (_row: stationRow, index: number) => index + 1,
       id: "no",
@@ -320,7 +436,6 @@ export function SearchDataTables() {
       sortDescFirst: true,
       cell: (info: any) => {
         const isSortingByNo = info.table.getState().sorting?.[0]?.id === "no";
-
         let num: number;
         if (isSortingByNo) {
           num = Number(info.getValue());
@@ -330,8 +445,6 @@ export function SearchDataTables() {
           const { pageIndex, pageSize } = info.table.getState().pagination;
           num = pageIndex * pageSize + indexInPage + 1;
         }
-
-        // ทำให้ข้อความใน cell อยู่กึ่งกลาง
         return <span className="tw-block tw-w-full">{num}</span>;
       },
     },
@@ -340,12 +453,6 @@ export function SearchDataTables() {
       id: "station_id",
       cell: (info: any) => info.getValue(),
       header: () => "station id",
-    },
-    {
-      accessorFn: (row: stationRow) => row.username ?? "-",
-      id: "username",
-      cell: (info: any) => info.getValue(),
-      header: () => "Username",
     },
     {
       accessorFn: (row: stationRow) => row.station_name ?? "-",
@@ -378,51 +485,65 @@ export function SearchDataTables() {
       header: () => "work order",
     },
     {
+      accessorFn: (row: stationRow) => row.username ?? "-",
+      id: "username",
+      cell: (info: any) => info.getValue(),
+      header: () => "owner",
+    },
+    {
       id: "status",
       header: () => "status",
-      enableSorting: false,
-      meta: { headerAlign: "center", cellAlign: "center" },
+      accessorFn: (row: stationRow) => !!row.status,
       cell: ({ row }: { row: Row<stationRow> }) => {
-        const id = row.original.id;
-        const checked = !!row.original.status;
-
-        const toggle = async () => {
-          const newVal = !checked;
-          setData((prev) => prev.map((r) => (r.id === id ? { ...r, status: newVal } : r)));
-        };
-
+        const on = !!row.original.status;
         return (
-          <div className="tw-flex tw-justify-center">
-            <Switch checked={checked} onChange={toggle} />
-          </div>
+          <span className={`
+        tw-inline-flex tw-items-center tw-gap-1 tw-rounded-full tw-px-2.5 tw-py-0.5
+        tw-text-xs tw-font-semibold
+        ${on ? "tw-bg-green-100 tw-text-green-700" : "tw-bg-red-100 tw-text-red-700"}
+      `}>
+            <span className={`tw-inline-block tw-h-1.5 tw-w-1.5 tw-rounded-full
+          ${on ? "tw-bg-green-600" : "tw-bg-red-600"}`} />
+            {on ? "online" : "offline"}
+          </span>
         );
       },
     },
+
     {
       id: "actions",
       header: () => "actions",
       enableSorting: false,
       size: 80,
-      cell: ({ row }: { row: Row<stationRow> }) => (
-        <span className="tw-inline-flex tw-items-center tw-justify-center tw-gap-2 tw-w-full">
-          <button
-            title="Edit station"
-            onClick={() => handleEdit(row.original)}
-            className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-blue-50 tw-transition"
-          >
-            <PencilSquareIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-700" />
-          </button>
-          <button
-            title="Delete station"
-            onClick={() => handleDelete(row.original)}
-            className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-red-50 tw-transition"
-          >
-            <TrashIcon className="tw-h-5 tw-w-5 tw-text-red-600" />
-          </button>
-        </span>
-      ),
+      cell: ({ row }: { row: Row<stationRow> }) => {
+        const canEdit = isAdmin || row.original.user_id === me?.user_id;
+        return (
+          <span className="tw-inline-flex tw-items-center tw-justify-center tw-gap-2 tw-w-full">
+            {canEdit && (
+              <button
+                title="Edit station"
+                onClick={() => handleEdit(row.original)}
+                className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-blue-50 tw-transition"
+              >
+                <PencilSquareIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-700" />
+              </button>
+            )}
+
+            {/* ปุ่มลบเฉพาะ admin */}
+            {isAdmin && (
+              <button
+                title="Delete station"
+                onClick={() => handleDelete(row.original)}
+                className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-red-50 tw-transition"
+              >
+                <TrashIcon className="tw-h-5 tw-w-5 tw-text-red-600" />
+              </button>
+            )}
+          </span>
+        );
+      },
     },
-  ];
+  ], [me]);
 
   // กำหนดความกว้างพื้นฐานของแต่ละคอลัมน์ (ปรับเลขได้ตามใจ)
   const COL_W: Record<string, string> = {
@@ -479,8 +600,11 @@ export function SearchDataTables() {
     getPaginationRowModel: getPaginationRowModel(),
   });
 
+
   return (
     <>
+      {/* {me?.role == "admin" && ()} */}
+
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
         {notice && (
           <div className="tw-px-4 tw-pt-4">
@@ -666,11 +790,15 @@ export function SearchDataTables() {
         </div>
       </Card>
 
+
       <AddStation
         open={openAdd}
         onClose={() => setOpenAdd(false)}
         onSubmit={handleCreateStation}
         loading={saving}
+        currentUser={me?.username ?? ""}
+        isAdmin={isAdmin}   
+        allOwners={usernames} 
       />
 
       <Dialog open={openEdit} handler={() => setOpenEdit(false)} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
@@ -679,7 +807,7 @@ export function SearchDataTables() {
           <Button variant="text" onClick={() => setOpenEdit(false)}>✕</Button>
         </DialogHeader>
 
-        <form
+        {/* <form
           onSubmit={async (e) => {
             e.preventDefault();
             if (!editingRow?.id) return;
@@ -694,56 +822,133 @@ export function SearchDataTables() {
               model: String(formData.get("model") || "").trim(),
               SN: String(formData.get("SN") || "").trim(),
               WO: String(formData.get("WO") || "").trim(),
+              status: statusStr === "true",
               // ถ้าจะให้แก้ station_id ด้วย ให้ใส่: station_id: String(formData.get("station_id")||"").trim(),
             };
 
             await handleUpdateStation(editingRow.id, payload);
           }}
+        > */}
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!editingRow?.id) return;
+
+            const basePayload: StationUpdatePayload = {
+              status: statusStr === "true",
+            };
+
+            const adminFields: StationUpdatePayload = {
+              station_name: (e.currentTarget as HTMLFormElement).station_name?.value?.trim(),
+              brand: (e.currentTarget as HTMLFormElement).brand?.value?.trim(),
+              model: (e.currentTarget as HTMLFormElement).model?.value?.trim(),
+              SN: (e.currentTarget as HTMLFormElement).SN?.value?.trim(),
+              WO: (e.currentTarget as HTMLFormElement).WO?.value?.trim(),
+            };
+
+            // ✅ ส่ง user_id ถ้าเป็น admin และเลือกไว้
+            const payload = isAdmin
+              ? { ...adminFields, ...basePayload, user_id: selectedOwnerId || undefined }
+              : basePayload;
+
+            await handleUpdateStation(editingRow.id!, payload);
+          }}
         >
           <DialogBody className="tw-space-y-6 tw-px-6 tw-py-4">
             <div className="tw-flex tw-flex-col tw-gap-4">
+
               <Input
                 name="station_id"
-                label="Station ID (read-only)"
+                label="Station ID"
                 value={editingRow?.station_id ?? ""}
-                crossOrigin={undefined}
-                disabled
+                readOnly
+                className="!tw-bg-gray-100 !tw-text-blue-gray-500 tw-cursor-not-allowed focus:tw-ring-0 focus:tw-border-blue-gray-200"
+                labelProps={{ className: "!tw-text-blue-gray-400" }}
               />
+
               <Input
                 name="station_name"
                 label="Station Name"
-                required
+                required={isAdmin}
                 defaultValue={editingRow?.station_name ?? ""}
-                crossOrigin={undefined}
+                readOnly={!isAdmin}
+                className={roClass}
+                labelProps={roLabel}
               />
+
               <Input
                 name="brand"
                 label="Brand"
-                required
+                required={isAdmin}
                 defaultValue={editingRow?.brand ?? ""}
-                crossOrigin={undefined}
+                readOnly={!isAdmin}
+                className={roClass}
+                labelProps={roLabel}
               />
               <Input
                 name="model"
                 label="Model"
-                required
+                required={isAdmin}
                 defaultValue={editingRow?.model ?? ""}
-                crossOrigin={undefined}
+                readOnly={!isAdmin}
+                className={roClass}
+                labelProps={roLabel}
               />
               <Input
                 name="SN"
                 label="S/N"
-                required
+                required={isAdmin}
                 defaultValue={editingRow?.SN ?? ""}
-                crossOrigin={undefined}
+                readOnly={!isAdmin}
+                className={roClass}
+                labelProps={roLabel}
               />
               <Input
                 name="WO"
                 label="WO"
-                required
+                required={isAdmin}
                 defaultValue={editingRow?.WO ?? ""}
-                crossOrigin={undefined}
+                readOnly={!isAdmin}
+                className={roClass}
+                labelProps={roLabel}
               />
+              {isAdmin ? (
+                <Select
+                  name="ownerSelect"
+                  label="Owner (username)"
+                  value={selectedOwnerId}                               // ✅ เก็บเป็น user_id
+                  onChange={(v) => {
+                    const uid = v ?? "";
+                    setSelectedOwnerId(uid);
+                    const u = owners.find(o => o.user_id === uid);
+                    setEditingRow(prev => prev ? { ...prev, username: u?.username ?? "" } : prev); // เพื่อให้แสดงชื่อในฟอร์มได้
+                  }}
+                  labelProps={{
+                    className: "after:content-['*'] after:tw-ml-0.5 after:tw-text-red-500"
+                  }}
+                >
+                  {owners.map(o => (
+                    <Option key={o.user_id} value={o.user_id}>
+                      {o.username}
+                    </Option>
+                  ))}
+                </Select>
+              ) : (
+                <Input
+                  name="username"
+                  label="Owner (username)"
+                  value={editingRow?.username ?? "-"}
+                  readOnly
+                  className="!tw-bg-gray-100 !tw-text-blue-gray-500 tw-cursor-not-allowed focus:tw-ring-0 focus:tw-border-blue-gray-200"
+                  labelProps={{ className: "!tw-text-blue-gray-400" }}
+                />
+              )}
+
+              {/* status: ทุก role แก้ได้ */}
+              <Select label="status" value={statusStr} onChange={(v) => setStatusStr(v ?? "true")}>
+                <Option value="true">On</Option>
+                <Option value="false">Off</Option>
+              </Select>
             </div>
           </DialogBody>
 
