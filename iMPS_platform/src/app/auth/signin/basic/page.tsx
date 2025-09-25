@@ -120,7 +120,7 @@ export default function BasicPage() {
               <Typography
                 variant="small"
                 color="blue-gray"
-                className="-mb!-3 font-medium"
+                className="-tw-mb-3 !tw-font-medium"
               >
                 Password
               </Typography>
