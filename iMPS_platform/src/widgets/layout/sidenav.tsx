@@ -47,27 +47,6 @@ type PropTypes = {
   routes?: {}[];
 };
 
-// ไอคอนสองขีด (ปุ่ม "ย่อเล็ก")
-function MinimizeLinesIcon({ className = "tw-h-6 tw-w-6" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      className={className}
-      aria-hidden="true"
-    >
-      {/* ขีดบน */}
-      <line x1="6" y1="8" x2="18" y2="8" />
-      {/* ขีดล่าง (สั้นกว่าเล็กน้อย) */}
-      <line x1="6" y1="14" x2="16" y2="14" />
-    </svg>
-  );
-}
-
-
 export default function Sidenav({ }: PropTypes) {
   const pathname = usePathname();
   const [controller, dispatch] = useMaterialTailwindController();
@@ -116,7 +95,7 @@ export default function Sidenav({ }: PropTypes) {
         ${openSidenav ? "tw-left-4" : "-tw-left-72"}
         ${sidenavType === "transparent" ? "shadow-none" : "shadow-xl"}
         ${sidenavType === "dark" ? "!tw-text-white" : "tw-text-gray-900"}
-        ${collapsed ? "tw-max-w-[4.5rem]" : "tw-max-w-[18rem]"}
+        ${collapsed ? "tw-max-w-[18rem]" : "tw-max-w-[18rem]"}
         ${collapsed ? "tw-px-2 tw-py-4" : "tw-p-4"}
         tw-transition-all tw-duration-300 tw-ease-in-out xl:tw-left-4
         tw-overflow-y-auto tw-overflow-x-hidden`}
@@ -177,7 +156,6 @@ export default function Sidenav({ }: PropTypes) {
 
       </div>
 
-
       {/* ====== MENU ====== */}
       <List className="tw-text-inherit">
         {routes.map(({ name, icon, pages, title, divider, external, path }: any, key: number) =>
@@ -213,19 +191,19 @@ export default function Sidenav({ }: PropTypes) {
                     ? (sidenavType === "dark" ? "tw-bg-white/10" : "tw-bg-gray-200")
                     : ""
                     } ${collapseItemClasses} ${collapsed
-                      ? "!tw-w-[3rem] !tw-h-11 tw-mx-auto !tw-p-0 tw-rounded-lg tw-flex tw-items-center tw-justify-center"
+                      ? "!tw-w-[3.5rem] !tw-h-11 tw-mx-auto !tw-p-0 tw-rounded-lg tw-flex tw-items-center tw-justify-center"
                       : "!tw-w-full !tw-p-0"
                     }`}
                   selected={!collapsed && openCollapse === name}
                 >
                   <AccordionHeader
                     onClick={() => handleOpenCollapse(name)}
-                    className={`${collapseHeaderClasses} ${collapsed ? "!tw-w-[3rem] !tw-h-11 !tw-p-0 tw-flex tw-items-center tw-justify-center" : ""} 
-        max-xl:[&>svg]:tw-hidden max-xl:[&>i]:tw-hidden`}
+                    className={`${collapseHeaderClasses} ${collapsed ? "!tw-w-[3.5rem] !tw-h-11 !tw-p-0 tw-flex tw-items-center tw-justify-center" : ""} 
+  max-xl:[&>svg]:tw-hidden max-xl:[&>i]:tw-hidden`}
                   >
                     <ListItemPrefix
                       className={`${collapsed
-                        ? "!tw-m-0 !tw-w-[3rem] tw-grid tw-place-items-center"
+                        ? "!tw-m-0 !tw-w-[3.5rem] tw-grid tw-place-items-center"
                         : ""
                         }`}
                     >
@@ -353,11 +331,11 @@ export default function Sidenav({ }: PropTypes) {
               ) : (
                 <Link href={`${path}`} key={key}>
                   <ListItem
-                    className={`tw-capitalize ${pathname === `${path}` ? activeRouteClasses : collapseItemClasses
-                      } ${collapsed ? "!tw-justify-center" : ""}`}
+                    className={`tw-capitalize ${pathname === `${path}` ? activeRouteClasses : collapseItemClasses}
+    ${collapsed ? "!tw-justify-center !tw-w-[3.5rem] !tw-h-11 !tw-p-0 tw-mx-auto tw-rounded-lg" : ""}`}
                   >
                     <ListItemPrefix
-                      className={`${collapsed ? "tw-w-full tw-flex tw-justify-center" : ""}`}
+                      className={`${collapsed ? "tw-w-full tw-flex tw-justify-center !tw-w-[3.5rem]" : ""}`}
                     >
                       {icon}
                     </ListItemPrefix>
