@@ -118,7 +118,7 @@ export default function Sidenav({ }: PropTypes) {
     // เปิดเต็ม = 20rem (tw-ml-80), ย่อ = 15rem (tw-ml-60)
     document.documentElement.style.setProperty(
       "--content-ml",
-      miniMode ? "15rem" : "20rem"
+      miniMode ? "7rem" : "20rem"
     );
   }, [miniMode]);
 
