@@ -83,22 +83,45 @@ export default function Sidenav({ }: PropTypes) {
   const sidenavRef = React.useRef<HTMLDivElement | null>(null);
   useOnClickOutside(sidenavRef, () => setOpenSidenav(dispatch, false));
 
-  React.useEffect(() => {
-    document.documentElement.style.setProperty("--sidenav-w", miniMode ? "4.5rem" : "18rem");
-  }, [miniMode]);
+  // React.useEffect(() => {
+  //   document.documentElement.style.setProperty("--sidenav-w", miniMode ? "4.5rem" : "18rem");
+  // }, [miniMode]);
 
-  // ใน Sidenav (ตรง useEffect ที่ตั้ง --sidenav-w)
+  // // ใน Sidenav (ตรง useEffect ที่ตั้ง --sidenav-w)
+  // React.useEffect(() => {
+  //   document.documentElement.style.setProperty(
+  //     "--sidenav-w",
+  //     miniMode ? "4.5rem" : "20rem"   // 20rem = ml-80 เดิม
+  //   );
+  //   // ช่องไฟระหว่าง sidenav กับ content
+  //   document.documentElement.style.setProperty(
+  //     "--sidenav-gap",
+  //     miniMode ? "0.75rem" : "1rem"   // ย่อ = 12px, ขยาย = 16px
+  //   );
+  // }, [miniMode]);
+
+  // เดิมคุณมี useEffect ตั้ง --sidenav-w กับ --sidenav-gap อยู่แล้ว
   React.useEffect(() => {
+    // ความกว้างจริงของ sidenav (แล้วแต่คุณจะใช้)
     document.documentElement.style.setProperty(
       "--sidenav-w",
-      miniMode ? "4.5rem" : "20rem"   // 20rem = ml-80 เดิม
+      miniMode ? "4.5rem" : "20rem"
     );
+
     // ช่องไฟระหว่าง sidenav กับ content
     document.documentElement.style.setProperty(
       "--sidenav-gap",
-      miniMode ? "0.75rem" : "1rem"   // ย่อ = 12px, ขยาย = 16px
+      miniMode ? "0.75rem" : "1rem"
+    );
+
+    // >>> ค่า margin-left ของ content ที่ต้องการ
+    // เปิดเต็ม = 20rem (tw-ml-80), ย่อ = 15rem (tw-ml-60)
+    document.documentElement.style.setProperty(
+      "--content-ml",
+      miniMode ? "15rem" : "20rem"
     );
   }, [miniMode]);
+
 
 
   const collapseItemClasses =

@@ -12,6 +12,7 @@ import { Prompt } from "next/font/google";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import "react-calendar/dist/Calendar.css";
 import "./globals.css";
+import { useMaterialTailwindController } from "@/context";
 
 <link
   rel="stylesheet"
@@ -30,6 +31,9 @@ const prompt = Prompt({
   weight: ["300", "400", "500", "600", "700"], // เลือกน้ำหนักตามต้องการ
   variable: "--font-prompt", // ตั้งชื่อเป็นตัวแปร CSS
 });
+
+// const [{ sidenavType, openSidenav }] = useMaterialTailwindController();
+// const isSidenavMini = sidenavType === "mini"; // <- ใช้ค่านี้สลับ ml 80/60
 
 export default function RootLayout({
   children,
