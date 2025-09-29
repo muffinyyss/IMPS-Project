@@ -6,6 +6,9 @@
 @tailwind components;
 @tailwind utilities;
 
+:root { --sidenav-w: 18rem; }
+html, body { overflow-x: hidden; }
+
 @layer utilities {
   
   .text-white {

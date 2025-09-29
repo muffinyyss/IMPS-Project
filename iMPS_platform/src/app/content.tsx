@@ -62,3 +62,4 @@ export default function InnerContent({ children }: { children: React.ReactNode }
     </div>
   );
 }
+
