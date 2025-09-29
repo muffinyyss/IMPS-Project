@@ -366,10 +366,10 @@ export default function Sidenav({ }: PropTypes) {
                           >
                             <ListItem
                               className={`!tw-p-0 ${openSubCollapse === page.name
-                                  ? sidenavType === "dark"
-                                    ? "tw-bg-white/10"
-                                    : "tw-bg-gray-200"
-                                  : ""
+                                ? sidenavType === "dark"
+                                  ? "tw-bg-white/10"
+                                  : "tw-bg-gray-200"
+                                : ""
                                 } ${collapseItemClasses}`}
                               selected={openSubCollapse === page.name}
                             >
