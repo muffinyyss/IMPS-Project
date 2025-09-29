@@ -54,6 +54,18 @@ export default function RootLayout({
           <MaterialTailwindControllerProvider>
             <InnerContent>{children}</InnerContent>
           </MaterialTailwindControllerProvider>
+          {/* <MaterialTailwindControllerProvider>
+            <div
+              className="
+              tw-min-h-screen
+              tw-transition-[padding] tw-duration-300
+              xl:tw-pl-[var(--sidenav-w,18rem)]
+            "
+            >
+              <InnerContent>{children}</InnerContent>
+            </div>
+          </MaterialTailwindControllerProvider> */}
+
         </ThemeProvider>
       </body>
     </html>
