@@ -1,7 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
+
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Card,
   Typography,
@@ -13,7 +14,6 @@ import {
   AccordionBody,
   IconButton,
 } from "@material-tailwind/react";
-
 import routes from "@/routes";
 import {
   ChevronDownIcon,
@@ -22,11 +22,12 @@ import {
   Bars3CenterLeftIcon,
   UserCircleIcon,
 } from "@heroicons/react/24/outline";
-
 import { useOnClickOutside, useMediaQuery } from "usehooks-ts";
 import { useMaterialTailwindController, setOpenSidenav } from "@/context";
+import { createPortal } from "react-dom";
 
-const COLORS: any = {
+/* ---------- Styles / Const ---------- */
+const COLORS: Record<string, string> = {
   dark: "tw-bg-gray-900 hover:tw-bg-gray-700 focus:tw-bg-gray-900 active:tw-bg-gray-700 hover:tw-bg-opacity-100 focus:tw-bg-opacity-100 active:tw-bg-opacity-100",
   blue: "tw-bg-blue-500 hover:tw-bg-blue-700 focus:tw-bg-blue-700 active:tw-bg-blue-700 hover:tw-bg-opacity-100 focus:tw-bg-opacity-100 active:tw-bg-opacity-100",
   "blue-gray":
@@ -39,54 +40,87 @@ const COLORS: any = {
   pink: "tw-bg-pink-500 hover:tw-bg-pink-700 focus:tw-bg-pink-700 active:tw-bg-pink-700 hover:tw-bg-opacity-100 focus:tw-bg-opacity-100 active:tw-bg-opacity-100",
 };
 
+type RouteItem = {
+  name?: string;
+  path?: string;
+  icon?: React.ReactNode;
+  external?: boolean;
+  pages?: RouteItem[];
+  title?: string;
+  divider?: boolean;
+};
+
 type PropTypes = {
   brandImg?: string;
   brandName?: string;
-  routes?: {}[];
+  routes?: RouteItem[];
 };
 
+/* ---------- Helpers ---------- */
+const toKey = (v: string) => String(v || "").toLowerCase();
+const safeHref = (v?: string) => (v && v.length > 0 ? v : "#");
+const SKIP_MINI = new Set(["my profile", "logout"]); // ชื่อที่ไม่ต้องแสดงในคอลัมน์ไอคอนตอนย่อ
+
 export default function Sidenav({ }: PropTypes) {
+  const router = useRouter();
   const pathname = usePathname();
   const [controller, dispatch] = useMaterialTailwindController();
-  const { sidenavType, sidenavColor, openSidenav }: any = controller;
+  const { sidenavType, sidenavColor, openSidenav } = controller as any;
 
   const [collapsed, setCollapsed] = React.useState(false);
   const isDesktop = useMediaQuery("(min-width: 1280px)");
   const miniMode = collapsed && isDesktop;
 
+  // flyout ของไอคอนผู้ใช้ (แสดงนอก Card)
+  const [flyoutOpen, setFlyoutOpen] = React.useState(false);
+  const [flyoutHold, setFlyoutHold] = React.useState(false);
+  const [flyoutPos, setFlyoutPos] = React.useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const userBtnRef = React.useRef<HTMLButtonElement | null>(null);
+
   const [openCollapse, setOpenCollapse] = React.useState<string | null>(null);
   const [openSubCollapse, setOpenSubCollapse] = React.useState<string | null>(null);
 
-  const handleOpenCollapse = (value: string) => {
-    if (collapsed) return;
-    setOpenCollapse((cur) => (cur === value ? null : value));
-  };
-  const handleOpenSubCollapse = (value: string) => {
-    if (collapsed) return;
-    setOpenSubCollapse((cur) => (cur === value ? null : value));
-  };
-
   const sidenavRef = React.useRef<HTMLDivElement | null>(null);
   useOnClickOutside(sidenavRef, () => setOpenSidenav(dispatch, false));
-
-  const collapseItemClasses =
-    sidenavType === "dark"
-      ? "tw-text-white hover:tw-bg-opacity-25 focus:tw-bg-opacity-100 active:tw-bg-opacity-10 hover:tw-text-white focus:tw-text-white active:tw-text-white"
-      : "";
-  const collapseHeaderClasses =
-    "tw-border-b-0 !tw-p-3 tw-text-inherit hover:tw-text-inherit focus:tw-text-inherit active:tw-text-inherit";
-  const activeRouteClasses = `${collapseItemClasses} ${COLORS[sidenavColor]} tw-text-white active:tw-text-white hover:tw-text-white focus:tw-text-white`;
 
   React.useEffect(() => {
     document.documentElement.style.setProperty("--sidenav-w", miniMode ? "4.5rem" : "18rem");
   }, [miniMode]);
 
-  // ===== helper: แสดงปุ่มไอคอนสี่เหลี่ยมแบบ mini =====
+  const collapseItemClasses =
+    sidenavType === "dark"
+      ? "tw-text-white hover:tw-bg-opacity-25 focus:tw-bg-opacity-100 active:tw-bg-opacity-10 hover:tw-text-white focus:tw-text-white active:tw-text-white"
+      : "";
+  const activeRouteClasses = `${collapseItemClasses} ${COLORS[sidenavColor]} tw-text-white active:tw-text-white hover:tw-text-white focus:tw-text-white`;
+  const collapseHeaderClasses =
+    "tw-border-b-0 !tw-p-3 tw-text-inherit hover:tw-text-inherit focus:tw-text-inherit active:tw-text-inherit";
+
+  const handleOpenCollapse = (value: string) => !collapsed && setOpenCollapse((cur) => (cur === value ? null : value));
+  const handleOpenSubCollapse = (value: string) =>
+    !collapsed && setOpenSubCollapse((cur) => (cur === value ? null : value));
+
+  /* ---------- หา My profile / logout จาก routes (case-insensitive) ---------- */
+  const findByName = React.useCallback((list: RouteItem[] = [], name: string): RouteItem | undefined => {
+    const target = toKey(name);
+    for (const it of list) {
+      if (toKey(it.name || "") === target) return it;
+      if (Array.isArray(it.pages)) {
+        const f = findByName(it.pages, name);
+        if (f) return f;
+      }
+    }
+    return undefined;
+  }, []);
+
+  const profileRoute = React.useMemo(() => findByName(routes as any, "My profile"), [findByName]);
+  const logoutRoute = React.useMemo(() => findByName(routes as any, "logout"), [findByName]);
+
+  /* ---------- Mini icon item ---------- */
   const MiniItem = ({
     href,
     icon,
-    active = false,
-    external = false,
+    active,
+    external,
     title,
   }: {
     href: string;
@@ -101,59 +135,56 @@ export default function Sidenav({ }: PropTypes) {
         href={href}
         target={external ? "_blank" : undefined}
         title={title}
-        className={`
-          tw-block tw-w-[3.5rem] tw-h-11 tw-mx-auto tw-rounded-lg
-          tw-flex tw-items-center tw-justify-center
-          ${active ? COLORS[sidenavColor] + " tw-text-white" : "hover:tw-bg-gray-200"}
-        `}
+        className={`tw-block tw-w-[3.5rem] tw-h-11 tw-mx-auto tw-rounded-lg tw-flex tw-items-center tw-justify-center ${active ? `${COLORS[sidenavColor]} tw-text-white` : "hover:tw-bg-gray-200"
+          }`}
       >
-        {/* ขนาดไอคอนให้เห็นชัด */}
         <span className="tw-h-6 tw-w-6 tw-grid tw-place-items-center">{icon}</span>
       </Wrapper>
     );
   };
 
-  // ป้องกัน href ว่างเวลาใช้ <Link>
-  const safeHref = (v?: string) => (typeof v === "string" && v.length > 0 ? v : "#");
-
-  // ใช้สร้าง MiniItem จาก node ใด ๆ ที่มี path
-  const buildMiniItem = (item: any, key: string) => (
+  /* ---------- render mini icons (ข้าม profile/logout) ---------- */
+  const buildMiniItem = (item: RouteItem, key: string) => (
     <MiniItem
       key={key}
       href={safeHref(item.path)}
-      icon={item.icon}
+      icon={item.icon as React.ReactNode}
       title={item.name}
       active={pathname === item.path}
       external={item.external}
     />
   );
 
-  // ไล่ tree ของ routes เพื่อดึงทุกระดับออกมาเป็นไอคอน (parent/child/grandchild)
-  const renderMiniTree = (node: any, keyPrefix = ""): React.ReactNode[] => {
+  const renderMiniTree = (node?: RouteItem, keyPrefix = ""): React.ReactNode[] => {
     const out: React.ReactNode[] = [];
+    if (!node) return out;
+    if (SKIP_MINI.has(toKey(node.name || ""))) return out;
 
-    // 1) ถ้า node เองมี path แสดงปุ่มให้ node นั้น (เช่น group ที่คลิกได้)
-    if (node?.path) out.push(buildMiniItem(node, `${keyPrefix}-self`));
+    if (node.path) out.push(buildMiniItem(node, `${keyPrefix}-self`));
 
-    // 2) ถ้ามี children ไล่ต่อ
-    if (Array.isArray(node?.pages)) {
-      node.pages.forEach((child: any, idx: number) => {
-        const k = `${keyPrefix}-c${idx}`;
-
-        // leaf
-        if (!Array.isArray(child?.pages) || child.pages.length === 0) {
-          if (child?.path) out.push(buildMiniItem(child, k));
-          return;
+    if (Array.isArray(node.pages)) {
+      node.pages.forEach((child, idx) => {
+        if (SKIP_MINI.has(toKey(child.name || ""))) return;
+        if (Array.isArray(child.pages) && child.pages.length > 0) {
+          out.push(...renderMiniTree(child, `${keyPrefix}-c${idx}`));
+        } else if (child.path) {
+          out.push(buildMiniItem(child, `${keyPrefix}-c${idx}`));
         }
-
-        // group ซ้อน: แสดงของตัวเอง (ถ้ามี path) และลูกทั้งหมด
-        out.push(...renderMiniTree(child, k));
       });
     }
-
     return out;
   };
 
+  /* ---------- flyout handlers ---------- */
+  const openUserFlyout = () => {
+    const el = userBtnRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setFlyoutPos({ top: r.top, left: r.right + 8 });
+    }
+    setFlyoutOpen(true);
+  };
+  const closeUserFlyoutSoon = () => setTimeout(() => !flyoutHold && setFlyoutOpen(false), 120);
 
   return (
     <Card
@@ -161,23 +192,14 @@ export default function Sidenav({ }: PropTypes) {
       color={sidenavType === "dark" ? "gray" : sidenavType === "transparent" ? "transparent" : "white"}
       shadow={sidenavType !== "transparent"}
       variant="gradient"
-      className={`
-        !tw-fixed tw-top-4 !tw-z-50 tw-h-[calc(100vh-2rem)] tw-shadow-blue-gray-900/5 tw-relative
-        ${openSidenav ? "tw-left-4" : "-tw-left-72"} xl:tw-left-4
-        ${sidenavType === "transparent" ? "shadow-none" : "shadow-xl"}
-        ${sidenavType === "dark" ? "!tw-text-white" : "tw-text-gray-900"}
-        ${miniMode ? "tw-w-[4.5rem]" : "tw-w-[18rem]"}
-        ${miniMode ? "tw-px-0 tw-py-4" : "tw-p-4"}
-        tw-transition-all tw-duration-300 tw-ease-in-out
-        tw-overflow-y-auto
-      `}
+      className={`!tw-fixed tw-top-4 !tw-z-50 tw-h-[calc(100vh-2rem)] tw-shadow-blue-gray-900/5 tw-relative ${openSidenav ? "tw-left-4" : "-tw-left-72"
+        } xl:tw-left-4 ${sidenavType === "transparent" ? "shadow-none" : "shadow-xl"} ${sidenavType === "dark" ? "!tw-text-white" : "tw-text-gray-900"
+        } ${miniMode ? "tw-w-[4.5rem] tw-px-0 tw-py-4" : "tw-w-[18rem] tw-p-4"} tw-transition-all tw-duration-300 tw-ease-in-out tw-overflow-y-auto`}
     >
-      {/* ===== HEADER (logo + toggle) ===== */}
+      {/* Header */}
       <div
-        className={`
-          tw-sticky tw-top-0 tw-z-30 tw-mb-3 tw-flex tw-items-center
-          ${collapsed ? "tw-justify-center" : "tw-justify-between"}
-        `}
+        className={`tw-sticky tw-top-0 tw-z-30 tw-mb-3 tw-flex tw-items-center ${collapsed ? "tw-justify-center" : "tw-justify-between"
+          }`}
       >
         {!collapsed && (
           <Link href="/" className="tw-flex tw-items-center tw-gap-1">
@@ -213,45 +235,79 @@ export default function Sidenav({ }: PropTypes) {
         </IconButton>
       </div>
 
-      {/* ===== MENU ===== */}
-      {/** ===================== MINI MODE (icons only) ===================== */}
+      {/* Body */}
       {collapsed ? (
         <div className="tw-space-y-2">
-          {/* {routes.map((r: any, i: number) => {
-            // ถ้าเป็น group (มี pages) ให้แสดงไอคอนของ group นั้นเป็นปุ่ม
-            if (r.pages) {
-              return (
-                <MiniItem
-                  key={`g-${i}`}
-                  href={r.path || "#"}
-                  icon={r.icon}
-                  title={r.name}
-                  active={pathname === r.path}
-                  external={r.external}
-                />
-              );
-            }
-            // รายการเดี่ยว
-            return (
-              <MiniItem
-                key={`s-${i}`}
-                href={r.path}
-                icon={r.icon}
-                title={r.name}
-                active={pathname === r.path}
-                external={r.external}
-              />
-            );
-          })} */}
-          {routes.flatMap((r: any, i: number) => renderMiniTree(r, `r${i}`))}
+          {/* user icon (hover -> flyout นอก card) */}
+          <div className="tw-flex tw-justify-center">
+            <button
+              ref={userBtnRef}
+              type="button"
+              title="Account"
+              className="tw-w-[3.5rem] tw-h-11 tw-rounded-lg tw-flex tw-items-center tw-justify-center hover:tw-bg-gray-200"
+              onMouseEnter={openUserFlyout}
+              onMouseLeave={closeUserFlyoutSoon}
+            >
+              <UserCircleIcon className="tw-h-6 tw-w-6" />
+            </button>
+          </div>
+
+          {/* mini menu icons */}
+          {(routes as RouteItem[]).flatMap((r, i) => renderMiniTree(r, `r${i}`))}
+
+          {/* flyout (render to body) */}
+          {flyoutOpen &&
+            createPortal(
+              <div
+                style={{ position: "fixed", top: flyoutPos.top, left: flyoutPos.left }}
+                className="tw-z-[9999] tw-pointer-events-auto"
+                onMouseEnter={() => setFlyoutHold(true)}
+                onMouseLeave={() => {
+                  setFlyoutHold(false);
+                  setFlyoutOpen(false);
+                }}
+              >
+                <div className="tw-bg-white tw-border tw-rounded-xl tw-shadow-lg tw-w-44 tw-overflow-hidden">
+                  <button
+                    type="button"
+                    className="tw-w-full tw-text-left tw-flex tw-items-center tw-gap-3 tw-px-3 tw-py-2 hover:tw-bg-gray-100"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      router.push(safeHref(profileRoute?.path) || "/");
+                      setFlyoutOpen(false);
+                    }}
+                  >
+                    <span className="tw-inline-flex tw-items-center tw-justify-center tw-w-5">
+                      {profileRoute?.icon ?? <i className="fa fa-user" />}
+                    </span>
+                    <span>{profileRoute?.name ?? "My profile"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="tw-w-full tw-text-left tw-flex tw-items-center tw-gap-3 tw-px-3 tw-py-2 hover:tw-bg-gray-100"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      router.push(safeHref(logoutRoute?.path) || "/auth/signin/basic");
+                      setFlyoutOpen(false);
+                    }}
+                  >
+                    <span className="tw-inline-flex tw-items-center tw-justify-center tw-w-5">
+                      {logoutRoute?.icon ?? <i className="fa fa-sign-out" />}
+                    </span>
+                    <span>{logoutRoute?.name ?? "logout"}</span>
+                  </button>
+                </div>
+              </div>,
+              document.body
+            )}
         </div>
       ) : (
-        /** ===================== FULL MODE (ของเดิม) ===================== */
         <List className="tw-text-inherit">
-          {routes.map(({ name, icon, pages, title, divider, external, path }: any, key: number) =>
+          {(routes as RouteItem[]).map(({ name, icon, pages, title, divider, external, path }, key) =>
             pages ? (
               <React.Fragment key={key}>
-                {!collapsed && title && (
+                {title && (
                   <Typography
                     variant="small"
                     color="inherit"
@@ -262,7 +318,7 @@ export default function Sidenav({ }: PropTypes) {
                 )}
 
                 <Accordion
-                  open={!collapsed && openCollapse === name}
+                  open={openCollapse === name}
                   icon={
                     <span className="tw-hidden xl:tw-inline">
                       <ChevronDownIcon
@@ -279,7 +335,7 @@ export default function Sidenav({ }: PropTypes) {
                     selected={openCollapse === name}
                   >
                     <AccordionHeader
-                      onClick={() => handleOpenCollapse(name)}
+                      onClick={() => handleOpenCollapse(name || "")}
                       className={`${collapseHeaderClasses} tw-min-w-0 max-xl:[&>svg]:tw-hidden max-xl:[&>i]:tw-hidden`}
                     >
                       <ListItemPrefix>
@@ -293,7 +349,7 @@ export default function Sidenav({ }: PropTypes) {
 
                   <AccordionBody className="!tw-py-1 tw-text-inherit">
                     <List className="!tw-p-0 tw-text-inherit">
-                      {pages.map((page: any, idx: number) =>
+                      {pages.map((page, idx) =>
                         page.pages ? (
                           <Accordion
                             key={idx}
@@ -310,15 +366,15 @@ export default function Sidenav({ }: PropTypes) {
                           >
                             <ListItem
                               className={`!tw-p-0 ${openSubCollapse === page.name
-                                ? sidenavType === "dark"
-                                  ? "tw-bg-white/10"
-                                  : "tw-bg-gray-200"
-                                : ""
+                                  ? sidenavType === "dark"
+                                    ? "tw-bg-white/10"
+                                    : "tw-bg-gray-200"
+                                  : ""
                                 } ${collapseItemClasses}`}
                               selected={openSubCollapse === page.name}
                             >
                               <AccordionHeader
-                                onClick={() => handleOpenSubCollapse(page.name)}
+                                onClick={() => handleOpenSubCollapse(page.name || "")}
                                 className={`${collapseHeaderClasses} max-xl:[&>svg]:tw-hidden max-xl:[&>i]:tw-hidden`}
                               >
                                 <ListItemPrefix>{page.icon}</ListItemPrefix>
@@ -329,19 +385,19 @@ export default function Sidenav({ }: PropTypes) {
                             </ListItem>
 
                             <AccordionBody className="!tw-py-1 tw-text-inherit">
-                              <List className="!tw-p-0 tw-ext-inherit">
-                                {page.pages.map((subPage: any, k: number) =>
+                              <List className="!tw-p-0 tw-text-inherit">
+                                {page.pages.map((subPage, k) =>
                                   subPage.external ? (
-                                    <a href={subPage.path} target="_blank" key={k}>
+                                    <a key={k} href={safeHref(subPage.path)} target="_blank" rel="noreferrer">
                                       <ListItem className="tw-capitalize">
                                         <ListItemPrefix>{subPage.icon}</ListItemPrefix>
                                         {subPage.name}
                                       </ListItem>
                                     </a>
                                   ) : (
-                                    <Link href={`${subPage.path}`} key={k}>
+                                    <Link key={k} href={safeHref(subPage.path)}>
                                       <ListItem
-                                        className={`tw-capitalize ${pathname === `${subPage.path}` ? activeRouteClasses : collapseItemClasses
+                                        className={`tw-capitalize ${pathname === subPage.path ? activeRouteClasses : collapseItemClasses
                                           }`}
                                       >
                                         <ListItemPrefix>{subPage.icon}</ListItemPrefix>
@@ -354,16 +410,16 @@ export default function Sidenav({ }: PropTypes) {
                             </AccordionBody>
                           </Accordion>
                         ) : page.external ? (
-                          <a key={idx} href={page.path} target="_blank">
+                          <a key={idx} href={safeHref(page.path)} target="_blank" rel="noreferrer">
                             <ListItem className="tw-capitalize">
                               <ListItemPrefix>{page.icon}</ListItemPrefix>
                               {page.name}
                             </ListItem>
                           </a>
                         ) : (
-                          <Link href={page.path} key={idx}>
+                          <Link key={idx} href={safeHref(page.path)}>
                             <ListItem
-                              className={`tw-capitalize ${pathname === `${page.path}` ? activeRouteClasses : collapseItemClasses
+                              className={`tw-capitalize ${pathname === page.path ? activeRouteClasses : collapseItemClasses
                                 }`}
                             >
                               <ListItemPrefix>{page.icon}</ListItemPrefix>
@@ -381,16 +437,16 @@ export default function Sidenav({ }: PropTypes) {
             ) : (
               <List className="!tw-p-0 tw-text-inherit" key={key}>
                 {external ? (
-                  <a key={key} href={path} target="_blank">
-                    <ListItem className={`tw-capitalize`}>
+                  <a href={safeHref(path)} target="_blank" rel="noreferrer">
+                    <ListItem className="tw-capitalize">
                       <ListItemPrefix>{icon}</ListItemPrefix>
                       {name}
                     </ListItem>
                   </a>
                 ) : (
-                  <Link href={`${path}`} key={key}>
+                  <Link href={safeHref(path)}>
                     <ListItem
-                      className={`tw-capitalize ${pathname === `${path}` ? activeRouteClasses : collapseItemClasses
+                      className={`tw-capitalize ${pathname === path ? activeRouteClasses : collapseItemClasses
                         }`}
                     >
                       <ListItemPrefix>{icon}</ListItemPrefix>
