@@ -87,6 +87,20 @@ export default function Sidenav({ }: PropTypes) {
     document.documentElement.style.setProperty("--sidenav-w", miniMode ? "4.5rem" : "18rem");
   }, [miniMode]);
 
+  // ใน Sidenav (ตรง useEffect ที่ตั้ง --sidenav-w)
+  React.useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--sidenav-w",
+      miniMode ? "4.5rem" : "20rem"   // 20rem = ml-80 เดิม
+    );
+    // ช่องไฟระหว่าง sidenav กับ content
+    document.documentElement.style.setProperty(
+      "--sidenav-gap",
+      miniMode ? "0.75rem" : "1rem"   // ย่อ = 12px, ขยาย = 16px
+    );
+  }, [miniMode]);
+
+
   const collapseItemClasses =
     sidenavType === "dark"
       ? "tw-text-white hover:tw-bg-opacity-25 focus:tw-bg-opacity-100 active:tw-bg-opacity-10 hover:tw-text-white focus:tw-text-white active:tw-text-white"
