@@ -38,6 +38,9 @@ users_collection = db["users"]
 station_collection = db["stations"]
 
 
+
+
+
 MDB_DB = client["MDB"]
 # MDB_collection = MDB_DB["nongKhae"]
 MDB_collection = MDB_DB.get_collection("NongKhae")
@@ -934,6 +937,43 @@ def delete_user(user_id: str, current: UserClaims = Depends(get_current_user)):
 #         if "_id" in d:
 #             d["_id"] = str(d["_id"])
 #     return {"stations": docs}
+
+def parse_iso_utc(s: str) -> Optional[datetime]:
+    try:
+        # "2025-09-29T16:19:54.659Z"
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+def latest_onoff(station_id: str) -> Dict[str, Any]:
+    """
+    อ่านเอกสารล่าสุดจาก stationsOnOff/<station_id>
+    โครงสร้าง doc:
+      { payload: { value: 0/1, timestamp: "ISO-UTC" }, ... }
+    """
+    coll = stationOnOff.get_collection(station_id)
+    doc = coll.find_one(
+        sort=[("payload.timestamp", -1), ("_id", -1)]
+    )
+    if not doc:
+        return {"status": None, "statusAt": None}
+
+    payload = doc.get("payload", {})
+    val = payload.get("value", None)
+    ts = payload.get("timestamp", None)
+
+    # แปลงเป็น bool ชัดเจน: 1/true => True, 0/false => False, อื่นๆ -> None
+    if isinstance(val, (int, bool)):
+        status = bool(val)
+    else:
+        try:
+            status = bool(int(val))
+        except Exception:
+            status = None
+
+    status_at = parse_iso_utc(ts) if isinstance(ts, str) else None
+    return {"status": status, "statusAt": status_at}
+
 @app.get("/all-stations/")
 def all_stations(current: UserClaims = Depends(get_current_user)):
     # 1) สร้างเงื่อนไข match ตาม role
@@ -982,6 +1022,17 @@ def all_stations(current: UserClaims = Depends(get_current_user)):
     ]
 
     docs = list(station_collection.aggregate(pipeline))
+
+    # ★ เติมสถานะล่าสุดแบบเรียลไทม์ต่อสถานี
+    for d in docs:
+        sid = d.get("station_id")
+        try:
+            last = latest_onoff(str(sid))
+        except Exception:
+            last = {"status": None, "statusAt": None}
+        d["status"] = last["status"]          # true/false/None
+        d["statusAt"] = last["statusAt"]      # datetime | None
+
     docs = jsonable_encoder(docs, custom_encoder={ObjectId: str})
     for d in docs:
         if "_id" in d:
@@ -995,6 +1046,9 @@ class addStations(BaseModel):
     model:str
     SN:str
     WO:str 
+    user_id: Optional[str] = None  
+    owner: Optional[str] = None
+    is_active:Optional[bool] = None
 
 class StationOut(BaseModel):
     id: str
@@ -1004,25 +1058,83 @@ class StationOut(BaseModel):
     model:str
     SN:str
     WO:str 
-    # payment: Optional[bool] = None
+    user_id: str 
+    username: Optional[str] = None
+    is_active:  Optional[bool] = None
+    createdAt: Optional[datetime] = None
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
+        }
+
 
 @app.post("/add_stations/", response_model=StationOut, status_code=201)
-def insert_stations(body: addStations):
-    doc = {
-        "station_id": body.station_id.strip(),
-        "station_name": body.station_name.strip(),
-        "brand": body.brand.strip(),
-        "model": body.model.strip(),
-        "SN": body.SN.strip(),
-        "WO": body.WO.strip(),
+def insert_stations(
+    body: addStations,
+    current: UserClaims = Depends(get_current_user)
+):
+    # 1) ตัด/ทำความสะอาด string fields
+    station_id   = body.station_id.strip()
+    station_name = body.station_name.strip()
+    brand        = body.brand.strip()
+    model        = body.model.strip()
+    SN           = body.SN.strip()
+    WO           = body.WO.strip()
+
+    # (ถ้าต้องการบังคับรูปแบบ station_id)
+    # if not re.fullmatch(r"[A-Za-z0-9_]+", station_id):
+    #     raise HTTPException(status_code=422, detail="station_id must be [A-Za-z0-9_]")
+
+    # 2) ตัดสินใจ owner เหมือนแนวคิดของ update:
+    #    - admin: อนุญาตส่ง user_id (24hex) หรือ owner(username) มากำหนดเจ้าของ
+    #             ถ้าไม่ส่งเลย จะ fallback เป็น current.user_id
+    #    - non-admin: บังคับเป็น current.user_id (ห้ามสวมสิทธิ์)
+    if current.role == "admin":
+        owner_oid = None
+        if body.user_id:
+            owner_oid = to_object_id_or_400(body.user_id)
+        elif body.owner:
+            u = users_collection.find_one({"username": body.owner.strip()}, {"_id": 1})
+            if not u:
+                raise HTTPException(status_code=400, detail="invalid owner username")
+            owner_oid = u["_id"]
+        else:
+            if not current.user_id:
+                raise HTTPException(status_code=401, detail="Missing uid in token")
+            owner_oid = to_object_id_or_400(current.user_id)
+    else:
+        if not current.user_id:
+            raise HTTPException(status_code=401, detail="Missing uid in token")
+        owner_oid = to_object_id_or_400(current.user_id)
+
+    # 3) is_active เป็น boolean ชัดเจน
+    is_active = True if body.is_active is None else bool(body.is_active)
+
+    # 4) สร้างเอกสาร (เก็บเป็น UTC และเก็บ user_id เป็น ObjectId เหมือนใน PATCH)
+    doc: Dict[str, Any] = {
+        "station_id": station_id,
+        "station_name": station_name,
+        "brand": brand,
+        "model": model,
+        "SN": SN,
+        "WO": WO,
+        "user_id": owner_oid,                 # ObjectId ใน DB
+        "is_active": is_active,
         "createdAt": datetime.now(timezone.utc),
     }
 
+    # 5) insert + จัดการ duplicate key ของ station_id
     try:
         res = station_collection.insert_one(doc)
     except DuplicateKeyError:
         raise HTTPException(status_code=409, detail="station_id already exists")
 
+    # 6) หา username เพื่อส่งกลับ (เหมือนสิ่งที่คุณอยากได้ใน table)
+    owner_doc = users_collection.find_one({"_id": owner_oid}, {"username": 1})
+    owner_username = owner_doc.get("username") if owner_doc else None
+
+    # 7) ส่งกลับรูปแบบเดียวกับ PATCH: user_id เป็น string, แถม username
     return {
         "id": str(res.inserted_id),
         "station_id": doc["station_id"],
@@ -1031,8 +1143,13 @@ def insert_stations(body: addStations):
         "model": doc["model"],
         "SN": doc["SN"],
         "WO": doc["WO"],
-        # "createdAt": doc["createdAt"],
+        "user_id": str(doc["user_id"]),       # string สำหรับ client
+        "username": owner_username,           # ส่งกลับให้ table โชว์ได้เลย
+        "is_active": doc["is_active"],
+        "createdAt": doc["createdAt"],
+        # "updatedAt": None,  # จะใส่ก็ได้ถ้าอยากให้ schemaเหมือน PATCH เป๊ะ
     }
+
 
 @app.delete("/delete_stations/{station_id}", status_code=204)
 def delete_user(station_id: str, current: UserClaims = Depends(get_current_user)):
@@ -1058,122 +1175,13 @@ class StationUpdate(BaseModel):
     model: Optional[str] = None
     SN: Optional[str] = None
     WO: Optional[str] = None
-    status: Optional[bool] = None
+    # status: Optional[bool] = None
+    is_active: Optional[bool] = None
     user_id: str | None = None 
 
-# @app.patch("/update_stations/{id}", response_model=StationOut)
-# def update_station(id: str, body: StationUpdate):
-#     try:
-#         oid = ObjectId(id)
-#     except Exception:
-#         raise HTTPException(status_code=400, detail="invalid id")
 
-#     payload = {k: (v.strip() if isinstance(v, str) else v)
-#                for k, v in body.model_dump(exclude_none=True).items()}
-#     if not payload:
-#         raise HTTPException(status_code=400, detail="no fields to update")
-
-#     res = station_collection.update_one({"_id": oid}, {"$set": payload})
-#     if res.matched_count == 0:
-#         raise HTTPException(status_code=404, detail="station not found")
-
-#     doc = station_collection.find_one({"_id": oid})
-#     return {
-#         "id": str(doc["_id"]),
-#         "station_id": doc.get("station_id",""),
-#         "station_name": doc.get("station_name",""),
-#         "brand": doc.get("brand",""),
-#         "model": doc.get("model",""),
-#         "SN": doc.get("SN") or doc.get("SN") or "",
-#         "WO": doc.get("WO") or doc.get("WO") or "",
-#         "status": bool(doc.get("status", True)),
-#         "createdAt": doc.get("createdAt"),
-#     }
-
-
-
-
-# @app.patch("/update_stations/{id}", response_model=StationOut)
-# def update_station(
-#     id: str,
-#     body: StationUpdate,
-#     current: UserClaims = Depends(get_current_user)  # ⬅️ เอา user จาก token
-# ):
-#     # ตรวจ id
-#     try:
-#         oid = ObjectId(id)
-#     except Exception:
-#         raise HTTPException(status_code=400, detail="invalid id")
-
-#     # หา station ก่อน เพื่อเช็ค owner/สิทธิ์
-#     st = station_collection.find_one({"_id": oid})
-#     if not st:
-#         raise HTTPException(status_code=404, detail="station not found")
-
-#     # เช็คสิทธิ์ถ้าไม่ใช่ admin -> ต้องเป็นเจ้าของเท่านั้น
-#     if current.role != "admin":
-#         # user_id ใน DB อาจเป็น str หรือ ObjectId => normalize เป็น str เทียบกัน
-#         st_owner = st.get("user_id")
-#         st_owner_str = str(st_owner) if st_owner is not None else None
-#         if not current.user_id or current.user_id != st_owner_str:
-#             raise HTTPException(status_code=403, detail="forbidden")
-
-#     # เตรียม payload จาก body (ตัด None ทิ้ง + strip string)
-#     incoming: Dict[str, Any] = {
-#         k: (v.strip() if isinstance(v, str) else v)
-#         for k, v in body.model_dump(exclude_none=True).items()
-#     }
-
-#     if not incoming:
-#         raise HTTPException(status_code=400, detail="no fields to update")
-
-#     # บังคับ whitelist ตาม role
-#     # if current.role == "admin":
-#     #     payload = {k: v for k, v in incoming.items() if k in ALLOW_FIELDS_ADMIN}
-#     if current.role == "admin" and "user_id" in payload:
-#         user_id = payload["user_id"]
-#         try:
-#             # หา username จาก users collection
-#             udoc = users_collection.find_one({"_id": ObjectId(user_id)})
-#         except Exception:
-#             udoc = users_collection.find_one({"user_id": user_id})  # เผื่อเก็บเป็น string
-
-#         if not udoc:
-#             raise HTTPException(status_code=400, detail="invalid user_id")
-
-#         payload["user_id"] = str(udoc.get("_id") or user_id)
-#         payload["username"] = udoc.get("username", "")  # ✅ เซฟชื่อไปด้วย
-#     else:
-#         payload = {k: v for k, v in incoming.items() if k in ALLOW_FIELDS_NONADMIN}
-#         # กันกรณีส่งมาแต่ฟิลด์ที่ไม่ได้รับอนุญาต
-#         if not payload:
-#             raise HTTPException(status_code=400, detail="only status can be updated")
-
-#     # ถ้าจะให้ non-admin อัปเดตได้เฉพาะ status จริงๆ ให้กันไม่ให้แก้เป็นค่าอื่นนอกจาก bool
-#     if "status" in payload and not isinstance(payload["status"], bool):
-#         raise HTTPException(status_code=400, detail="status must be boolean")
-
-#     # อัปเดต
-#     res = station_collection.update_one({"_id": oid}, {"$set": payload})
-#     if res.matched_count == 0:
-#         raise HTTPException(status_code=404, detail="station not found")
-
-#     # อ่านคืนและ map ออกตาม StationOut
-#     doc = station_collection.find_one({"_id": oid})
-#     return {
-#         "id": str(doc["_id"]),
-#         "station_id": doc.get("station_id", ""),
-#         "station_name": doc.get("station_name", ""),
-#         "brand": doc.get("brand", ""),
-#         "model": doc.get("model", ""),
-#         "SN": doc.get("SN", ""),
-#         "WO": doc.get("WO", ""),
-#         "status": bool(doc.get("status", True)),
-#         "createdAt": doc.get("createdAt"),
-#     }
-
-ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "status", "user_id"}
-ALLOW_FIELDS_NONADMIN = {"status"}
+ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "status","is_active", "user_id"}
+# ALLOW_FIELDS_NONADMIN = {"status"}
 
 def to_object_id_or_400(s: str) -> ObjectId:
     try:
@@ -1184,13 +1192,6 @@ def to_object_id_or_400(s: str) -> ObjectId:
 from bson import ObjectId
 from typing import Any, Dict
 from fastapi import HTTPException, Depends
-
-# สมมติว่ามี allowlist แบบนี้
-ALLOW_FIELDS_ADMIN = {
-    "station_id", "station_name", "brand", "model", "SN", "WO", "status",
-    "user_id"  # ต้องแน่ใจว่า allow
-}
-ALLOW_FIELDS_NONADMIN = {"status"}
 
 def to_object_id_or_400(s: str) -> ObjectId:
     try:
@@ -1255,14 +1256,17 @@ def update_station(
 
             # ถ้าไม่อยากเก็บ username คู่กัน ให้แน่ใจว่าเราไม่เซ็ต/ไม่เก็บฟิลด์นี้
             # ถ้าเคยมี username อยู่แล้วและต้องการลบทิ้ง สามารถเพิ่ม $unset ตอน update ได้ (ดูข้างล่าง)
-    else:
-        payload = {k: v for k, v in incoming.items() if k in ALLOW_FIELDS_NONADMIN}
-        if not payload:
-            raise HTTPException(status_code=400, detail="only status can be updated")
+    # else:
+    #     payload = {k: v for k, v in incoming.items() if k in ALLOW_FIELDS_NONADMIN}
+    #     if not payload:
+    #         raise HTTPException(status_code=400, detail="only status can be updated")
 
     # ตรวจชนิด status ให้เป็น bool
-    if "status" in payload and not isinstance(payload["status"], bool):
-        raise HTTPException(status_code=400, detail="status must be boolean")
+    # if "status" in payload and not isinstance(payload["status"], bool):
+    #     raise HTTPException(status_code=400, detail="status must be boolean")
+    
+    if "is_active" in payload and not isinstance(payload["is_active"], bool):
+        raise HTTPException(status_code=400, detail="is_active must be boolean")
 
     # สร้างคำสั่ง update
     update_doc: Dict[str, Any] = {"$set": payload}
@@ -1278,6 +1282,9 @@ def update_station(
 
     # อ่านคืน
     doc = station_collection.find_one({"_id": oid})
+    created_at = doc.get("createdAt")
+    if created_at is None:
+        created_at = datetime.now(timezone.utc)   # 👈 กันค่า None
     return {
         "id": str(doc["_id"]),
         "station_id": doc.get("station_id", ""),
@@ -1286,11 +1293,12 @@ def update_station(
         "model": doc.get("model", ""),
         "SN": doc.get("SN", ""),
         "WO": doc.get("WO", ""),
-        "status": bool(doc.get("status", True)),
-        "createdAt": doc.get("createdAt"),
+        "createdAt": created_at,  
         # ส่งกลับเป็น string เพื่อให้ฝั่ง client ใช้ง่าย
         "user_id": str(doc["user_id"]) if doc.get("user_id") else "",
-        "username": doc.get("username")
+        "username": doc.get("username"),
+        "is_active": bool(doc.get("is_active", False)),
+        "updatedAt": datetime.now(timezone.utc)
     }
 
 @app.get("/owners")
@@ -1302,3 +1310,32 @@ async def get_owners():
         raise HTTPException(status_code=404, detail="owners not found")
 
     return {"owners": owners}
+
+stationOnOff = client1["stationsOnOff"]
+class StationIdsIn(BaseModel):
+    station_ids: List[str]
+
+def _latest_onoff_bool(sid: str) -> bool:
+    coll = stationOnOff.get_collection(str(sid))
+    doc = coll.find_one(sort=[("payload.timestamp", -1), ("_id", -1)])  # ← เอาเอกสารล่าสุดจริง ๆ
+    if not doc:
+        return False
+    payload = doc.get("payload", {})
+    val = payload.get("value", 0)
+    # map เป็น bool ให้ชัด
+    if isinstance(val, bool):
+        return val
+    try:
+        return bool(int(val))
+    except Exception:
+        return False
+
+@app.post("/station-onoff/bulk")
+def get_station_onoff_bulk(body: StationIdsIn):
+    out: Dict[str, bool] = {}
+    for sid in body.station_ids:
+        try:
+            out[sid] = _latest_onoff_bool(sid)
+        except Exception:
+            out[sid] = False
+    return {"status": out}

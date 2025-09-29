@@ -36,8 +36,10 @@ import {
 } from "@heroicons/react/24/solid";
 
 import AddStation, {
-  NewStationPayload,
+  NewStationForm,
 } from "@/app/dashboard/stations/components/addstations";
+
+import { apiFetch } from "@/utils/api";
 
 const API_BASE = "http://localhost:8000";
 
@@ -49,6 +51,8 @@ type stationRow = {
   WO?: string;
   model?: string;
   status?: boolean;
+  // status?: string;
+  is_active?: boolean;
   brand?: string;
   user_id?: string;
   username?: string;
@@ -63,6 +67,8 @@ export type StationUpdatePayload = {
   SN?: string; // API ใช้ตัวเล็ก
   WO?: string; // API ใช้ตัวเล็ก
   status?: boolean;
+  is_active?: boolean;
+  // status?: string;
   user_id?: string;
 };
 
@@ -113,16 +119,19 @@ export function SearchDataTables() {
   const [editingRow, setEditingRow] = useState<stationRow | null>(null);
   const [owner, setOwner] = useState(editingRow?.username ?? "");
   const [statusStr, setStatusStr] = useState("false");
+  const [activeStr, setActiveStr] = useState("false");
 
   useEffect(() => {
     (async () => {
       if (me?.role !== "admin") return;
       const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
-      const res = await fetch(`${API_BASE}/owners`, {
+      const res = await apiFetch(`${API_BASE}/owners`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return;
-      const json: OwnersResp = await res.json();
+      // if (!res.ok) return;
+      // const json: OwnersResp = await res.json();
+      // setOwners(Array.isArray(json.owners) ? json.owners : []);
+      const json = await res.json();
       setOwners(Array.isArray(json.owners) ? json.owners : []);
     })();
   }, [me?.role]);
@@ -142,6 +151,24 @@ export function SearchDataTables() {
     })();
   }, [me?.role]);
 
+  async function fetchStatuses(ids: string[], token: string): Promise<Record<string, boolean>> {
+    if (!ids.length) return {};
+    const res = await apiFetch(`${API_BASE}/station-onoff/bulk`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ station_ids: ids }),
+    });
+    if (!res.ok) {
+      console.warn("fetchStatuses failed:", res.status);
+      return {};
+    }
+    const json = await res.json(); // { status: { [station_id]: boolean } }
+    return json?.status ?? {};
+  }
+
   useEffect(() => {
     (async () => {
       try {
@@ -156,15 +183,15 @@ export function SearchDataTables() {
           setMe({ user_id: claims.user_id ?? "-", username: claims.username ?? "-", role: claims.role ?? "user" });
         }
 
-        const res = await fetch(`${API_BASE}/all-stations/`, {
+        const res = await apiFetch(`${API_BASE}/all-stations/`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (res.status === 401) {
-          setErr("Unauthorized (401) – กรุณาเข้าสู่ระบบอีกครั้ง");
-          setData([]);
-          return;
-        }
+        // if (res.status === 401) {
+        //   setErr("Unauthorized (401) – กรุณาเข้าสู่ระบบอีกครั้ง");
+        //   setData([]);
+        //   return;
+        // }
         if (!res.ok) {
           setErr(`Fetch failed: ${res.status}`);
           setData([]);
@@ -173,19 +200,31 @@ export function SearchDataTables() {
 
         const json = await res.json();
         const list = Array.isArray(json?.stations) ? (json.stations as any[]) : [];
-        const rows: stationRow[] = list.map((s) => ({
+        const baseRows: stationRow[] = list.map((s) => ({
           id: s.id || s._id || undefined,
           station_id: s.station_id ?? "-",
           station_name: s.station_name ?? "-",
           SN: s.SN ?? "-",
           WO: s.WO ?? "-",
-          status: !!s.status,
+          // status: s.status ?? "-",
+          // status: !!s.status,
+          is_active: !!s.is_active,
           // status: typeof s.status === "boolean" ? s.status : true,
+          status: typeof s.status === "boolean" ? s.status : undefined,
           model: s.model ?? "-",
           brand: s.brand ?? "-",
           user_id: s.user_id ?? "",
           username: s.username ?? ""
         }));
+        const ids = baseRows.map(r => r.station_id!).filter(Boolean);
+        const statusMap = await fetchStatuses(ids, token);
+
+        // merge
+        const rows: stationRow[] = baseRows.map(r => ({
+          ...r,
+          status: !!statusMap[r.station_id ?? ""],   // ใช้ status จาก DB stationOnOff
+        }));
+
         setData(rows);
       } catch (e) {
         console.error(e);
@@ -197,37 +236,97 @@ export function SearchDataTables() {
     })();
   }, []);
 
-  const handleCreateStation = async (payload: NewStationPayload) => {
+
+  type NewStationPayload = {
+    station_id: string;
+    station_name: string;
+    brand: string;
+    model: string;
+    SN: string;
+    WO: string;
+    user_id: string;
+    is_active: boolean;
+  };
+
+  // ทำให้ชื่อคอลเลกชันปลอดภัย: แทนที่ช่องว่างเป็น "_", ตัดอักขระแปลก ๆ
+  const sanitizeStationId = (s: string) =>
+    s.trim().replace(/\s+/g, "_").replace(/[^A-Za-z0-9_]/g, "_");
+
+  const isValidStationId = (s: string) => /^[A-Za-z0-9_]+$/.test(s);
+
+  const ownerMap = useMemo(
+    () => new Map(owners.map(o => [String(o.user_id), o.username])),
+    [owners]
+  );
+  const handleCreateStation = async (payload: NewStationForm) => {
     try {
       setSaving(true);
+
+      // sanitize ฝั่ง client ให้ตรงกับกติกา backend
+      const sanitizedId = sanitizeStationId(payload.station_id);
+      if (!sanitizedId || !isValidStationId(sanitizedId)) {
+        throw new Error("station_id ต้องเป็นตัวอักษร/ตัวเลข/ขีดล่างเท่านั้น");
+      }
+      const user_id = owners.find(o => o.username === payload.owner)?.user_id
+        ?? me?.user_id
+        ?? "";
+
+      const body: NewStationPayload = {
+        ...payload,
+        station_id: sanitizedId,
+        station_name: payload.station_name.trim(),
+        brand: payload.brand.trim(),
+        model: payload.model.trim(),
+        SN: payload.SN.trim(),
+        WO: payload.WO.trim(),
+        user_id: user_id,
+        is_active: !!payload.is_active,
+      };
 
       const token =
         localStorage.getItem("access_token") ||
         localStorage.getItem("accessToken") ||
         "";
 
-      const res = await fetch(`${API_BASE}/add_stations/`, {
+      const res = await apiFetch(`${API_BASE}/add_stations/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
 
-      if (res.status === 409) throw new Error("staion_idนี้ถูกใช้แล้ว");
+      // จัดการสถานะยอดฮิตก่อน
+      if (res.status === 409) throw new Error("station_id นี้ถูกใช้แล้ว");
       if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
       if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
+
+      // รองรับ 422 (Pydantic validation error) และเคสอื่น ๆ
       if (!res.ok) {
-        const text = await res.text();
-        console.error("Create user failed:", res.status, text);
-        alert(text || `Create failed: ${res.status}`);
-        return;
+        let detail = "";
+        try {
+          const err = await res.json();
+          // FastAPI อาจส่ง {detail: "..."} หรือ {detail: [{loc:..., msg:...}, ...]}
+          if (typeof err?.detail === "string") detail = err.detail;
+          else if (Array.isArray(err?.detail))
+            detail = err.detail.map((d: any) => d?.msg || "").join("\n");
+        } catch {
+          // ถ้า parse json ไม่ได้ ให้ fallback เป็น text
+          detail = await res.text();
+        }
+        throw new Error(detail || `Create failed: ${res.status}`);
       }
 
-      const created = await res.json(); // { id, username, email, role, company, station_id, ... }
-
-      // ✅ อัปเดตตารางทันที
+      const created = await res.json(); // { id, station_id, station_name, brand, model, SN, WO }
+      const createdUserId = String(created.user_id ?? user_id);
+      const createdUsername =
+        created.username                                 // ถ้า backend คืนมาก็ใช้เลย
+        ?? ownerMap.get(createdUserId)                   // map จาก owners ที่โหลดไว้
+        ?? payload.owner                                 // ชื่อที่ผู้ใช้เลือกในฟอร์ม (กรณี admin)
+        ?? me?.username                                  // กรณีผู้ใช้ทั่วไป สถานีเป็นของตัวเอง
+        ?? "-";
+      // ✅ อัปเดตตารางทันที (prepend)
       setData((prev) => [
         {
           id: created.id,
@@ -237,7 +336,9 @@ export function SearchDataTables() {
           model: created.model,
           SN: created.SN,
           WO: created.WO,
-
+          user_id: created.user_id,
+          username: createdUsername,
+          is_active: created.is_active
         },
         ...prev,
       ]);
@@ -247,19 +348,13 @@ export function SearchDataTables() {
       setTimeout(() => setNotice(null), 3000);
     } catch (e: any) {
       console.error(e);
-      alert(e.message || "สร้างสถานีไม่สำเร็จ");
+      alert(e?.message || "สร้างสถานีไม่สำเร็จ");
     } finally {
       setSaving(false);
     }
   };
 
-  // --- handlers ---
-  // const handleEdit = (row: stationRow) => console.log("Edit station:", row);
-  // const handleEdit = (row: stationRow) => {
-  //   setEditingRow(row);
-  //   setStatusStr((row.status ?? false) ? "true" : "false");
-  //   setOpenEdit(true);
-  // };
+
 
   const handleEdit = (row: stationRow) => {
     if (!isAdmin && row.user_id !== me?.user_id) {
@@ -268,6 +363,7 @@ export function SearchDataTables() {
     }
     setEditingRow(row);
     setStatusStr((row.status ?? false) ? "true" : "false");
+    setActiveStr((row.is_active ?? false) ? "true" : "false");
     setSelectedOwnerId(row.user_id ?? "");
     setOpenEdit(true);
   };
@@ -280,7 +376,7 @@ export function SearchDataTables() {
         localStorage.getItem("access_token") ||
         localStorage.getItem("accessToken") || "";
 
-      const res = await fetch(`${API_BASE}/update_stations/${id}`, {
+      const res = await apiFetch(`${API_BASE}/update_stations/${id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -294,31 +390,6 @@ export function SearchDataTables() {
         throw new Error(raw || `Update failed: ${res.status}`);
       }
 
-      // let updated: any = {};
-      // try { updated = raw ? JSON.parse(raw) : {}; } catch { /* ไม่เป็น JSON ก็ข้าม */ }
-
-      // // อัปเดตตารางแบบยืดหยุ่นคีย์ SN/WO
-      // setData(prev =>
-      //   prev.map(r =>
-      //     r.id === id
-      //       ? {
-      //         ...r,
-      //         station_id: updated.station_id ?? r.station_id,
-      //         station_name: updated.station_name ?? r.station_name,
-      //         brand: updated.brand ?? r.brand,
-      //         model: updated.model ?? r.model,
-      //         SN: updated.SN ?? r.SN,
-      //         WO: updated.WO ?? r.WO,
-      //         username: updated.username ?? r.username,
-      //         user_id: updated.user_id ?? r.user_id,
-      //         status:
-      //           typeof updated.status === "boolean" ? updated.status :
-      //             typeof payload.status === "boolean" ? payload.status :
-      //               r.status,
-      //       }
-      //       : r
-      //   )
-      // );
 
       let updated: any = {};
       try { updated = raw ? JSON.parse(raw) : {}; } catch { }
@@ -346,12 +417,18 @@ export function SearchDataTables() {
               model: updated.model ?? r.model,
               SN: updated.SN ?? r.SN,
               WO: updated.WO ?? r.WO,
-              status:
-                typeof updated.status === "boolean"
-                  ? updated.status
-                  : typeof payload.status === "boolean"
-                    ? payload.status
-                    : r.status,
+              // status:
+              //   typeof updated.status === "boolean"
+              //     ? updated.status
+              //     : typeof payload.status === "boolean"
+              //       ? payload.status
+              //       : r.status,
+              is_active:
+                typeof updated.is_active === "boolean"
+                  ? updated.is_active
+                  : typeof payload.is_active === "boolean"
+                    ? payload.is_active
+                    : r.is_active,
               // ✅ อัปเดต owner ให้ตรงทั้งคู่
               user_id: newUserId,
               username: newUsername,
@@ -388,7 +465,7 @@ export function SearchDataTables() {
         "";
 
       // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
-      const res = await fetch(`${API_BASE}/delete_stations/${row.id}`, {
+      const res = await apiFetch(`${API_BASE}/delete_stations/${row.id}`, {
         method: "DELETE",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -428,26 +505,23 @@ export function SearchDataTables() {
 
   const columns: any[] = useMemo(() => [
     {
-      accessorFn: (_row: stationRow, index: number) => index + 1,
-      id: "no",
-      header: () => "No.",
-      enableSorting: true,
-      sortingFn: "basic",
-      sortDescFirst: true,
-      cell: (info: any) => {
-        const isSortingByNo = info.table.getState().sorting?.[0]?.id === "no";
-        let num: number;
-        if (isSortingByNo) {
-          num = Number(info.getValue());
-        } else {
-          const pageRows = info.table.getRowModel().rows as Row<stationRow>[];
-          const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
-          const { pageIndex, pageSize } = info.table.getState().pagination;
-          num = pageIndex * pageSize + indexInPage + 1;
-        }
-        return <span className="tw-block tw-w-full">{num}</span>;
+      id: "status",
+      header: () => "status",
+      accessorFn: (row: stationRow) => !!row.status,
+      cell: ({ row }: { row: Row<stationRow> }) => {
+        const on = !!row.original.status;
+        return (
+          <span className={`
+        tw-inline-flex tw-items-center tw-gap-1 tw-rounded-full tw-px-2.5 tw-py-0.5
+        tw-text-xs tw-font-semibold
+      `}>
+            <span className={`tw-inline-block tw-h-3 tw-w-3 tw-rounded-full
+          ${on ? "tw-bg-green-600" : "tw-bg-red-600"}`} />
+          </span>
+        );
       },
     },
+
     {
       accessorFn: (row: stationRow) => row.station_id ?? "-",
       id: "station_id",
@@ -490,12 +564,13 @@ export function SearchDataTables() {
       cell: (info: any) => info.getValue(),
       header: () => "owner",
     },
+
     {
-      id: "status",
-      header: () => "status",
-      accessorFn: (row: stationRow) => !!row.status,
+      id: "is_active",
+      header: () => "is_active",
+      accessorFn: (row: stationRow) => !!row.is_active,
       cell: ({ row }: { row: Row<stationRow> }) => {
-        const on = !!row.original.status;
+        const on = !!row.original.is_active;
         return (
           <span className={`
         tw-inline-flex tw-items-center tw-gap-1 tw-rounded-full tw-px-2.5 tw-py-0.5
@@ -504,7 +579,7 @@ export function SearchDataTables() {
       `}>
             <span className={`tw-inline-block tw-h-1.5 tw-w-1.5 tw-rounded-full
           ${on ? "tw-bg-green-600" : "tw-bg-red-600"}`} />
-            {on ? "online" : "offline"}
+            {on ? "active" : "inactive"}
           </span>
         );
       },
@@ -555,7 +630,7 @@ export function SearchDataTables() {
     model: "tw-w-[100px]",
     SN: "tw-w-[140px]",
     WO: "tw-w-[140px]",
-    status: "tw-w-[96px]",
+    // status: "tw-w-[96px]",
     actions: "tw-w-[96px]",
   };
 
@@ -568,7 +643,7 @@ export function SearchDataTables() {
     model: "md:tw-w-[100px]",
     SN: "md:tw-w-[140px]",
     WO: "md:tw-w-[140px]",
-    status: "md:tw-w-[96px]",
+    // status: "md:tw-w-[96px]",
     actions: "md:tw-w-[96px]",
   };
 
@@ -581,7 +656,7 @@ export function SearchDataTables() {
     model: "lg:tw-w-[100px]",
     SN: "lg:tw-w-[140px]",
     WO: "lg:tw-w-[140px]",
-    status: "lg:tw-w-[96px]",
+    // status: "lg:tw-w-[96px]",
     actions: "lg:tw-w-[96px]",
   };
 
@@ -600,7 +675,12 @@ export function SearchDataTables() {
     getPaginationRowModel: getPaginationRowModel(),
   });
 
-
+  // const statusText =
+  // editingRow?.status === true
+  //   ? "online"
+  //   : editingRow?.status === false
+  //     ? "offline"
+  //     : "-";
   return (
     <>
       {/* {me?.role == "admin" && ()} */}
@@ -797,8 +877,8 @@ export function SearchDataTables() {
         onSubmit={handleCreateStation}
         loading={saving}
         currentUser={me?.username ?? ""}
-        isAdmin={isAdmin}   
-        allOwners={usernames} 
+        isAdmin={isAdmin}
+        allOwners={usernames}
       />
 
       <Dialog open={openEdit} handler={() => setOpenEdit(false)} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
@@ -834,8 +914,12 @@ export function SearchDataTables() {
             e.preventDefault();
             if (!editingRow?.id) return;
 
+            // const basePayload: StationUpdatePayload = {
+            //   status: statusStr === "true",
+            // };
+
             const basePayload: StationUpdatePayload = {
-              status: statusStr === "true",
+              is_active: activeStr === "true",
             };
 
             const adminFields: StationUpdatePayload = {
@@ -845,6 +929,13 @@ export function SearchDataTables() {
               SN: (e.currentTarget as HTMLFormElement).SN?.value?.trim(),
               WO: (e.currentTarget as HTMLFormElement).WO?.value?.trim(),
             };
+
+            // ✅ ส่ง user_id ถ้าเป็น admin และเลือกไว้
+            // const payload = isAdmin
+            //   ? { ...adminFields, ...basePayload, user_id: selectedOwnerId || undefined }
+            //   : basePayload;
+
+            // await handleUpdateStation(editingRow.id!, payload);
 
             // ✅ ส่ง user_id ถ้าเป็น admin และเลือกไว้
             const payload = isAdmin
@@ -945,9 +1036,30 @@ export function SearchDataTables() {
               )}
 
               {/* status: ทุก role แก้ได้ */}
-              <Select label="status" value={statusStr} onChange={(v) => setStatusStr(v ?? "true")}>
+
+              {/* <Select label="status" value={statusStr} onChange={(v) => setStatusStr(v ?? "true")}>
                 <Option value="true">On</Option>
                 <Option value="false">Off</Option>
+              </Select> */}
+
+              {/* <Input
+                name="status"
+                label="Status"
+                value={
+                  editingRow?.status === true
+                    ? "online"
+                    : editingRow?.status === false
+                      ? "offline"
+                      : "-"
+                }
+                readOnly
+                className="!tw-bg-gray-100 !tw-text-blue-gray-500 tw-cursor-not-allowed focus:tw-ring-0 focus:tw-border-blue-gray-200"
+                labelProps={{ className: "!tw-text-blue-gray-400" }}
+              /> */}
+
+              <Select label="Is_active" value={activeStr} onChange={(v) => setActiveStr(v ?? "true")}>
+                <Option value="true">active</Option>
+                <Option value="false">inactive</Option>
               </Select>
             </div>
           </DialogBody>
