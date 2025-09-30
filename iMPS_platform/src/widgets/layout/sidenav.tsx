@@ -235,8 +235,7 @@ export default function Sidenav({ }: PropTypes) {
     >
       {/* Header */}
       <div
-        className={`tw-sticky tw-top-0 tw-z-30 tw-mb-3 tw-flex tw-items-center ${collapsed ? "tw-justify-center" : "tw-justify-between"
-          }`}
+        className={`tw-sticky tw-top-0 tw-z-30 tw-mb-3 tw-flex tw-items-center ${miniMode ? "tw-justify-center" : "tw-justify-between"}`}
       >
         {!collapsed && (
           <Link href="/" className="tw-flex tw-items-center tw-gap-1">
@@ -273,7 +272,7 @@ export default function Sidenav({ }: PropTypes) {
       </div>
 
       {/* Body */}
-      {collapsed ? (
+      {miniMode ? (
         <div className="tw-space-y-2">
           {/* user icon (hover -> flyout นอก card) */}
           <div className="tw-flex tw-justify-center">
