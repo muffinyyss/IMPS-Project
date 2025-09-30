@@ -132,9 +132,9 @@ export default function Sidenav({ }: PropTypes) {
   const collapseHeaderClasses =
     "tw-border-b-0 !tw-p-3 tw-text-inherit hover:tw-text-inherit focus:tw-text-inherit active:tw-text-inherit";
 
-  const handleOpenCollapse = (value: string) => !collapsed && setOpenCollapse((cur) => (cur === value ? null : value));
+  const handleOpenCollapse = (value: string) => !miniMode && setOpenCollapse((cur) => (cur === value ? null : value));
   const handleOpenSubCollapse = (value: string) =>
-    !collapsed && setOpenSubCollapse((cur) => (cur === value ? null : value));
+    !miniMode && setOpenSubCollapse((cur) => (cur === value ? null : value));
 
   /* ---------- หา My profile / logout จาก routes (case-insensitive) ---------- */
   const findByName = React.useCallback((list: RouteItem[] = [], name: string): RouteItem | undefined => {
@@ -237,7 +237,7 @@ export default function Sidenav({ }: PropTypes) {
       <div
         className={`tw-sticky tw-top-0 tw-z-30 tw-mb-3 tw-flex tw-items-center ${miniMode ? "tw-justify-center" : "tw-justify-between"}`}
       >
-        {!collapsed && (
+        {!miniMode && (
           <Link href="/" className="tw-flex tw-items-center tw-gap-1">
             <Typography variant="h2" className="tw-font-bold tw-ml-3 tw-mt-2">
               <span className="tw-text-yellow-500">i</span>

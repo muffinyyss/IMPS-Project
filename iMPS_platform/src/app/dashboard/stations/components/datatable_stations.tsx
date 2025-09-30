@@ -582,7 +582,7 @@ export function SearchDataTables() {
     SN: "lg:tw-w-[140px]",
     WO: "lg:tw-w-[140px]",
     status: "lg:tw-w-[96px]",
-    actions: "lg:tw-w-[96px]",
+    actions: "lg:tw-w-[96px] tw-whitespace-nowrap",
   };
 
 
@@ -697,10 +697,10 @@ export function SearchDataTables() {
           ) : err ? (
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
-            // ⬇️ จอเล็กเลื่อนซ้าย-ขวาได้, จอใหญ่ไม่ซ่อน overflow
-            <div className="tw-overflow-x-auto lg:tw-overflow-x-visible">
-              {/* ⬇️ จอเล็กบังคับ min-width เพื่อให้เกิด scroll, จอใหญ่เอา min-width ออก */}
-              <table className="tw-w-full tw-table-auto tw-min-w-[1100px] lg:tw-min-w-0">
+            //  ให้เลื่อนแนวนอนเสมอเมื่อพื้นที่ไม่พอ
+            <div className="tw-overflow-x-auto">
+              {/* จอเล็กบังคับ min-width เพื่อให้เกิด scroll, จอใหญ่เอา min-width ออก */}
+              <table className="tw-w-full tw-table-fixed tw-border-separate tw-border-spacing-0">
                 <thead className="tw-bg-gray-50">
                   {table.getHeaderGroups().map((headerGroup) => (
                     <tr key={headerGroup.id}>
@@ -708,7 +708,7 @@ export function SearchDataTables() {
                         <th
                           key={header.id}
                           onClick={header.column.getToggleSortingHandler()}
-                          className={`tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-center
+                          className={`tw-px-3 tw-py-3 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-center
                               tw-whitespace-nowrap ${COL_W_LG[header.column.id] ?? ""}`}
                         >
                           <Typography
@@ -732,13 +732,13 @@ export function SearchDataTables() {
                         {row.getVisibleCells().map((cell) => (
                           <td
                             key={cell.id}
-                            className={`!tw-border-y !tw-border-x-0 ${COL_W_LG[cell.column.id] ?? ""} tw-align-top`}
+                            className={`!tw-border-y !tw-border-x-0 ${COL_W_LG[cell.column.id] ?? ""} tw-align-top tw-px-3 tw-py-3`}
                           >
                             <Typography
                               variant="small"
                               className="
-                                !tw-font-normal !tw-text-blue-gray-500 tw-py-3 tw-px-3 tw-block
-                                tw-whitespace-nowrap lg:tw-whitespace-normal lg:tw-break-words"
+                                !tw-font-normal !tw-text-blue-gray-500 tw-block
+                                tw-whitespace-normal tw-break-words"
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>
