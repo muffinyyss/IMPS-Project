@@ -79,6 +79,7 @@ export function DashboardNavbar() {
     (async () => {
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") ?? "" : "";
+        // const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
         console.log("[Stations] API_BASE =", API_BASE);
         console.log("[Stations] has token? =", !!token);
 
@@ -94,11 +95,13 @@ export function DashboardNavbar() {
           if (decoded?.exp && decoded.exp <= nowSec) {
             console.warn("[Stations] token expired");
             localStorage.removeItem("accessToken");
+            // localStorage.removeItem("access_token");
             return;
           }
         } catch (e) {
           console.warn("[Stations] token decode failed", e);
           localStorage.removeItem("accessToken");
+          // localStorage.removeItem("access_token");
           return;
         }
 
@@ -111,6 +114,7 @@ export function DashboardNavbar() {
 
         if (res.status === 401) {
           localStorage.removeItem("accessToken");
+          // localStorage.removeItem("access_token");
           return;
         }
 
@@ -196,6 +200,17 @@ export function DashboardNavbar() {
     localStorage.setItem("selected_station_name", s.station_name);
     // ที่นี่ค่อย trigger refetch อื่น ๆ ถ้าต้องการ
   };
+  const onSearch = async () => {
+  if (!selectedStation) { setOpen(true); return; }
+
+  // 1) อัปเดต URL ปัจจุบันด้วย station_id
+  const params = new URLSearchParams(window.location.search);
+  params.set("station_id", selectedStation.station_id);
+  router.push(`${pathname}?${params.toString()}`, { scroll: false });
+
+  // 2) ยิง API ดึงข้อมูลสถานี (ของคุณมีอยู่แล้ว)
+  await handleSearchClick();
+};
   // ✅ ดึง "ข้อมูลสถานี" เท่านั้น
   const handleSearchClick = async () => {
     if (!selectedStation) { setOpen(true); return; }
@@ -223,6 +238,22 @@ export function DashboardNavbar() {
       setSearching(false);
     }
   };
+
+  useEffect(() => {
+  const sid = new URLSearchParams(window.location.search).get("station_id");
+  if (!sid) return;
+  // sync dropdown
+  const found = stations.find(s => s.station_id === sid);
+  if (found) {
+    setSelectedStation(found);
+    setQuery(found.station_name);
+  }
+  // ยิง API
+  handleSearchClick();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [pathname, typeof window !== "undefined" ? window.location.search : "", stations]);
+
+
   // keyboard nav
   const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
     if (!open && (e.key === "ArrowDown" || e.key === "Enter")) {
@@ -340,7 +371,8 @@ export function DashboardNavbar() {
                 focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50
                 tw-shrink-0 tw-whitespace-nowrap
               "
-              onClick={goToCurrentPage}
+              // onClick={goToCurrentPage}
+              onClick={onSearch} 
             >
               search
             </Button>

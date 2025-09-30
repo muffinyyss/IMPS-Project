@@ -152,13 +152,52 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         }
     }
 
+# @app.get("/my-stations/detail")
+# def my_stations_detail(current: UserClaims = Depends(get_current_user)):
+#     # ดึงรายละเอียดเฉพาะสถานีที่ user มีสิทธิ์
+#     docs = list(station_collection.find(
+#         {"station_id": {"$in": current.station_ids}},
+#         {"_id": 0, "station_id": 1, "station_name": 1}
+#     ))
+#     return {"stations": docs}
+
+# @app.get("/my-stations/detail")
+# def my_stations_detail(current: UserClaims = Depends(get_current_user)):
+#     # ถ้าเป็น admin → เห็นทุกสถานี
+#     if current.role == "admin":
+#         docs = list(
+#             station_collection.find(
+#                 {},
+#                 {"_id": 0, "station_id": 1, "station_name": 1}
+#             )
+#         )
+#         return {"stations": docs}
+
+#     # ถ้าไม่ใช่ admin → เห็นเฉพาะ station_ids ใน token
+#     docs = list(
+#         station_collection.find(
+#             {"station_id": {"$in": current.station_ids}},
+#             {"_id": 0, "station_id": 1, "station_name": 1}
+#         )
+#     )
+#     return {"stations": docs}
+
 @app.get("/my-stations/detail")
 def my_stations_detail(current: UserClaims = Depends(get_current_user)):
-    # ดึงรายละเอียดเฉพาะสถานีที่ user มีสิทธิ์
-    docs = list(station_collection.find(
-        {"station_id": {"$in": current.station_ids}},
-        {"_id": 0, "station_id": 1, "station_name": 1}
-    ))
+    proj = {"_id": 0, "station_id": 1, "station_name": 1}
+
+    if current.role == "admin":
+        docs = list(station_collection.find({}, proj))
+        return {"stations": docs}
+
+    # non-admin → หา station ที่เป็นของ user นี้ (รองรับทั้ง str และ ObjectId)
+    conds = [{"user_id": current.user_id}]
+    try:
+        conds.append({"user_id": ObjectId(current.user_id)})
+    except Exception:
+        pass
+
+    docs = list(station_collection.find({"$or": conds}, proj))
     return {"stations": docs}
 
 @app.get("/station/info")
@@ -167,7 +206,8 @@ def station_info(
     current: UserClaims = Depends(get_current_user),   # ดึง claims จาก JWT
 ):
     # เช็คสิทธิ์ก่อน (ข้อ 5)
-    if station_id not in set(current.station_ids):
+    # if station_id not in set(current.station_ids):
+    if current.role != "admin" and station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
     # ดึงข้อมูลจากคอลเลกชัน stations
