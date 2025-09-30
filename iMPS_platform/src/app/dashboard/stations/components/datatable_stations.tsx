@@ -630,8 +630,9 @@ export function SearchDataTables() {
     model: "tw-w-[100px]",
     SN: "tw-w-[140px]",
     WO: "tw-w-[140px]",
-    // status: "tw-w-[96px]",
-    actions: "tw-w-[96px]",
+    status: "tw-w-[60px] tw-whitespace-nowrap",       // จุดสีเล็กพอ
+    is_active: "tw-w-[120px] tw-whitespace-nowrap",   // ป้าย active/inactive
+    actions: "tw-w-[96px] tw-whitespace-nowrap",
   };
 
   const COL_W_MD: Record<string, string> = {
@@ -643,8 +644,9 @@ export function SearchDataTables() {
     model: "md:tw-w-[100px]",
     SN: "md:tw-w-[140px]",
     WO: "md:tw-w-[140px]",
-    // status: "md:tw-w-[96px]",
-    actions: "md:tw-w-[96px]",
+    status: "md:tw-w-[60px] md:tw-whitespace-nowrap",
+    is_active: "md:tw-w-[120px] md:tw-whitespace-nowrap",
+    actions: "md:tw-w-[96px] md:tw-whitespace-nowrap",
   };
 
   const COL_W_LG: Record<string, string> = {
@@ -656,7 +658,8 @@ export function SearchDataTables() {
     model: "lg:tw-w-[100px]",
     SN: "lg:tw-w-[140px]",
     WO: "lg:tw-w-[140px]",
-    status: "lg:tw-w-[96px]",
+    status: "lg:tw-w-[60px] lg:tw-whitespace-nowrap",
+    is_active: "lg:tw-w-[120px] lg:tw-whitespace-nowrap",
     actions: "lg:tw-w-[96px] tw-whitespace-nowrap",
   };
 
@@ -812,7 +815,7 @@ export function SearchDataTables() {
                         {row.getVisibleCells().map((cell) => (
                           <td
                             key={cell.id}
-                            className={`!tw-border-y !tw-border-x-0 ${COL_W_LG[cell.column.id] ?? ""} tw-align-top tw-px-3 tw-py-3`}
+                            className={`!tw-border-y !tw-border-x-0 ${COL_W_LG[cell.column.id] ?? ""} tw-align-top tw-px-3 tw-py-3 tw-overflow-hidden`}
                           >
                             <Typography
                               variant="small"
