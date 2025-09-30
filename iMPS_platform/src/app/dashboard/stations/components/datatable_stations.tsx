@@ -780,26 +780,25 @@ export function SearchDataTables() {
           ) : err ? (
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
-            //  ให้เลื่อนแนวนอนเสมอเมื่อพื้นที่ไม่พอ
-            <div className="tw-overflow-x-auto">
-              {/* จอเล็กบังคับ min-width เพื่อให้เกิด scroll, จอใหญ่เอา min-width ออก */}
-              <table className="tw-w-full tw-table-fixed tw-border-separate tw-border-spacing-0">
+            <div className="tw-overflow-x-auto tw-w-full">
+              {/* มือถือ: บังคับ min-w เพื่อให้ลากได้ | md+: เอา min-w ออก */}
+              <table className="tw-w-full tw-table-fixed tw-border-separate tw-border-spacing-0 tw-min-w-[980px] md:tw-min-w-0">
                 <thead className="tw-bg-gray-50">
-                  {table.getHeaderGroups().map((headerGroup) => (
-                    <tr key={headerGroup.id}>
-                      {headerGroup.headers.map((header) => (
+                  {table.getHeaderGroups().map((hg) => (
+                    <tr key={hg.id}>
+                      {hg.headers.map((h) => (
                         <th
-                          key={header.id}
-                          onClick={header.column.getToggleSortingHandler()}
+                          key={h.id}
+                          onClick={h.column.getToggleSortingHandler()}
                           className={`tw-px-3 tw-py-3 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-center
-                              tw-whitespace-nowrap ${COL_W_LG[header.column.id] ?? ""}`}
+                              tw-whitespace-nowrap ${COL_W_LG[h.column.id] ?? ""}`}
                         >
                           <Typography
                             color="blue-gray"
                             className={`tw-flex tw-items-center tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                                ${header.column.getCanSort() ? "tw-justify-between" : "tw-justify-center"}`}
+                                ${h.column.getCanSort() ? "tw-justify-between" : "tw-justify-center"}`}
                           >
-                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {flexRender(h.column.columnDef.header, h.getContext())}
                             <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
                           </Typography>
                         </th>
@@ -820,8 +819,8 @@ export function SearchDataTables() {
                             <Typography
                               variant="small"
                               className="
-                                !tw-font-normal !tw-text-blue-gray-500 tw-block
-                                tw-whitespace-normal tw-break-words"
+                        !tw-font-normal !tw-text-blue-gray-500 tw-block
+                        tw-whitespace-nowrap md:tw-whitespace-normal md:tw-break-words"
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>
@@ -841,6 +840,7 @@ export function SearchDataTables() {
             </div>
           )}
         </CardFooter>
+
 
 
         <div className="tw-flex tw-items-center tw-justify-end tw-gap-6 tw-px-10 tw-py-6">
