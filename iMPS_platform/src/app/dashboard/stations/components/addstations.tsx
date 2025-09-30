@@ -13,7 +13,7 @@ import {
     Option,
 } from "@material-tailwind/react";
 
-export type NewStationPayload = {
+export type NewStationForm = {
     station_id: string;
     station_name: string;
     brand: string;
@@ -21,13 +21,14 @@ export type NewStationPayload = {
     SN: string;
     WO: string;
     owner: string;
-    status: boolean;
+    is_active: boolean;
+    // is_active: boolean;
 };
 
 type Props = {
     open: boolean;
     onClose: () => void;
-    onSubmit: (payload: NewStationPayload) => Promise<void> | void;
+    onSubmit: (payload: NewStationForm) => Promise<void> | void;
     loading?: boolean;
 
     // ใหม่
@@ -45,7 +46,7 @@ export default function AddUserModal({
     isAdmin,
     allOwners = [],
 }: Props) {
-    const [form, setForm] = useState<NewStationPayload>({
+    const [form, setForm] = useState<NewStationForm>({
         station_id: "",
         station_name: "",
         brand: "",
@@ -53,7 +54,7 @@ export default function AddUserModal({
         SN: "",
         WO: "",
         owner: "",
-        status: true,
+        is_active: true,
     });
 
     // ตั้ง owner อัตโนมัติเป็น currentUser เมื่อ modal เปิด หรือเมื่อ currentUser เปลี่ยน
@@ -63,13 +64,14 @@ export default function AddUserModal({
         }
     }, [open, currentUser]);
 
-    const onChange = (k: keyof NewStationPayload, v: any) =>
+    const onChange = (k: keyof NewStationForm, v: any) =>
         setForm((s) => ({ ...s, [k]: v }));
-
+    const [submitting, setSubmitting] = useState(false);
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-
-        const payload: NewStationPayload = {
+        if (submitting) return;
+        setSubmitting(true);
+        const payload: NewStationForm = {
             ...form,
             station_id: form.station_id.trim(),
             station_name: form.station_name.trim(),
@@ -77,15 +79,18 @@ export default function AddUserModal({
             model: form.model.trim(),
             SN: form.SN.trim(),
             WO: form.WO.trim(),
-            owner: form.owner.trim(),
+            owner: (form.owner || currentUser).trim(),
+            is_active: form.is_active
             // status เป็น boolean อยู่แล้ว
         };
 
         try {
             await onSubmit(payload);
             resetAndClose();
-        } catch (error) {
-            console.error(error);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -98,7 +103,7 @@ export default function AddUserModal({
             SN: "",
             WO: "",
             owner: "",
-            status: false,
+            is_active: false,
         });
         onClose();
     };
@@ -108,6 +113,7 @@ export default function AddUserModal({
             open={open}
             handler={resetAndClose}
             size="md"
+            dismiss={{ outsidePress: !loading, escapeKey: !loading }}
             className="tw-space-y-5 tw-px-8 tw-py-4"
         >
             <DialogHeader className="tw-flex tw-items-center tw-justify-between">
@@ -191,15 +197,15 @@ export default function AddUserModal({
                             />
                         )}
 
-                        {/* STATUS */}
+                        {/* Is_active */}
                         <div>
                             <Select
-                                label="Status"
-                                value={String(form.status)} // "true" | "false"
-                                onChange={(v) => onChange("status", v === "true")}
+                                label="Is_active"
+                                value={String(form.is_active)} // "true" | "false"
+                                onChange={(v) => onChange("is_active", v === "true")}
                             >
-                                <Option value="true">On</Option>
-                                <Option value="false">Off</Option>
+                                <Option value="true">Active</Option>
+                                <Option value="false">Inactive</Option>
                             </Select>
                         </div>
                     </div>
@@ -209,8 +215,8 @@ export default function AddUserModal({
                     <Button variant="outlined" onClick={resetAndClose} type="button">
                         Cancel
                     </Button>
-                    <Button type="submit" className="tw-bg-blue-600" disabled={loading}>
-                        {loading ? "Saving..." : "Create Station"}
+                    <Button type="submit" className="tw-bg-blue-600" disabled={loading || submitting}>
+                        {loading || submitting ? "Saving..." : "Create Station"}
                     </Button>
                 </DialogFooter>
             </form>
