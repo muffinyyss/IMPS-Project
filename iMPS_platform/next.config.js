@@ -1,15 +1,27 @@
+// C:\Users\Asus\Documents\GitHub\IMPS-Project\iMPS_platform\next.config.js
 const path = require("path");
 const loaderUtils = require("loader-utils");
 const MangleCssClassPlugin = require("mangle-css-class-webpack-plugin");
 
-module.exports = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // ✅ เพิ่ม rewrites สำหรับ proxy ไป FastAPI
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        // ถ้า Next และ FastAPI รันบน "เครื่องเดียวกัน" ให้ชี้ 127.0.0.1
+        destination: "http://127.0.0.1:8000/:path*",
+        
+      },
+    ];
+  },
+
   typescript: {
     ignoreBuildErrors: true,
   },
-  webpack: (
-    config,
-    { buildId, dev, isServer, defaultLoaders, nextRuntime, webpack }
-  ) => {
+
+  webpack: (config, { dev }) => {
     const rules = config.module.rules
       .find((rule) => typeof rule.oneOf === "object")
       .oneOf.filter((rule) => Array.isArray(rule.use));
@@ -82,3 +94,5 @@ module.exports = {
     return config;
   },
 };
+
+module.exports = nextConfig;
