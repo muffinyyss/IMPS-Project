@@ -48,6 +48,8 @@ export default function BasicPage() {
         body: formData.toString(),
       });
 
+      const text = await res.text();
+      console.log("Login response:", res.status, text);
 
       const data = await res.json().catch(() => null);
       if (!res.ok) {
