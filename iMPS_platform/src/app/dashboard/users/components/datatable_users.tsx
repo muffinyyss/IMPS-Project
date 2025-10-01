@@ -74,10 +74,11 @@ export function SearchDataTables() {
           localStorage.getItem("access_token") ||
           localStorage.getItem("accessToken") ||
           "";
+        const res = await fetch('/api/all-users/', { cache: 'no-store' });
 
-        const res = await fetch(`${API_BASE}/all-users/`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // const res = await fetch(`${API_BASE}/all-users/`, {
+        //   headers: { Authorization: `Bearer ${token}` },
+        // });
 
         if (res.status === 401) {
           setErr("Unauthorized (401) – กรุณาเข้าสู่ระบบอีกครั้ง");
