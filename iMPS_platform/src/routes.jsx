@@ -65,7 +65,7 @@ export const allRoutes = [
   {
     name: "Ai Module",
     icon: <i className="fa fa-robot" />,
-    path: "#",
+    path: "/dashboard/ai",
   },
   {
     name: "Users",

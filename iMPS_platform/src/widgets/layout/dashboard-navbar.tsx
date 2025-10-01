@@ -60,6 +60,7 @@ export function DashboardNavbar() {
   else if (segs[1] === "input_PMreport") title = "Add PM Report";
   else if (segs[1] === "chargers") title = "My Charger Station";
   else if (segs[1] === "setting") title = "Charger Setting";
+  else if (segs[1] === "ai") title = "Ai Module";
 
   // Dropdown state
   const [query, setQuery] = useState("");
