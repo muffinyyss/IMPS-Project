@@ -11,7 +11,7 @@ export const allRoutes = [
         layout: "dashboard",
         icon: <i className="fa fa-user" />,
         name: "My profile",
-        path: "/pages/profile/profile-overview",
+        path: "/dashboard/profile/settings",
       },
       // {
       //   layout: "dashboard",
