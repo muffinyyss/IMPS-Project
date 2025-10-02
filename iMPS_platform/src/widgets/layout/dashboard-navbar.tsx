@@ -62,6 +62,7 @@ export function DashboardNavbar() {
   else if (segs[1] === "setting") title = "Charger Setting";
   else if (segs[1] === "ai") title = "Ai Module";
   else if (segs[2] === "settings") title = "My Profile";
+  else if (segs[1] === "device") title = "DC Charger";
 
   // Dropdown state
   const [query, setQuery] = useState("");
