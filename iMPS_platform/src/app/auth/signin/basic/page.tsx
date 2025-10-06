@@ -31,12 +31,19 @@ export default function BasicPage() {
       formData.append("username", email);
       formData.append("password", password);
 
+      // const res = await fetch("http://localhost:8000/login/", {
+      //   method: "POST",
+      //   // headers: {"Content-Type": "application/json"},
+      //   // body: JSON.stringify({username,password}),
+      //   headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      //   body: formData.toString(),
+      // });
+
       const res = await fetch("http://localhost:8000/login/", {
         method: "POST",
-        // headers: {"Content-Type": "application/json"},
-        // body: JSON.stringify({username,password}),
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: formData.toString(),
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",                // ★ ให ้cookie ที่ backend set กลับมาเก็บใน browser
+        body: JSON.stringify({ email, password }) // ★ ตรงกับ LoginRequest(email,password)
       });
 
       const data = await res.json();

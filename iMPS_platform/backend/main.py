@@ -51,6 +51,15 @@ def get_mdb_collection_for(station_id: str):
     return MDB_DB.get_collection(str(station_id))
 MDB_collection = MDB_DB.get_collection("NongKhae")
 
+def _ensure_utc_iso(v):
+    """
+    รับ string เวลาแบบ 'YYYY-MM-DDTHH:MM:SS(.ffffff)' ที่ 'ไม่มีโซนเวลา'
+    → เติม 'Z' ให้เป็น UTC ISO เสมอ
+    """
+    if isinstance(v, str) and re.match(r'^\d{4}-\d{2}-\d{2}T', v) and not re.search(r'(Z|[+\-]\d{2}:\d{2})$', v):
+        return v + 'Z'
+    return v
+
 
 # def create_access_token(data: dict, expires_delta: int | timedelta = 15):
 #     if isinstance(expires_delta, int):
@@ -91,9 +100,21 @@ class UserClaims(BaseModel):
     station_ids: List[str] = []
     
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> UserClaims:
+def get_current_user(request: Request) -> UserClaims:
+    # 1) ลองอ่านจากคุกกี้ (ใช้กับ SSE)
+    token = request.cookies.get(ACCESS_COOKIE_NAME)
+
+    # 2) สำรอง: Authorization: Bearer ...
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth.removeprefix("Bearer ").strip()
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])  # ตรวจ exp อัตโนมัติ
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         sub = payload.get("sub")
         if not sub:
             raise HTTPException(status_code=401, detail="invalid_token")
@@ -115,47 +136,110 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> UserClaims:
     except JWTError:
         raise HTTPException(status_code=401, detail="invalid_token")
 
+ACCESS_COOKIE_NAME = "access_token"
+
 #####################loginnn
+# @app.post("/login/")
+# def login(form_data: OAuth2PasswordRequestForm = Depends()):
+#     user = users_collection.find_one(
+#         {"email": form_data.username},
+#         {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1},
+#     )
+#     invalid_cred = HTTPException(status_code=401, detail="Invalid email or password")
+#     if not user or not bcrypt.checkpw(form_data.password.encode("utf-8"), user["password"].encode("utf-8")):
+#         raise invalid_cred
+
+#     # ทำให้ station_ids เป็น list เสมอ
+#     station_ids = user.get("station_id", [])
+#     if not isinstance(station_ids, list):
+#         station_ids = [station_ids]
+
+#     # ▶ Access Token ใส่สิทธิ์ไว้เลย
+#     access_token = create_access_token({
+#         "sub": user["email"],
+#         "user_id": str(user["_id"]),
+#         "username": user.get("username"),
+#         "role": user.get("role", "user"),
+#         "company": user.get("company"),
+#         "station_ids": station_ids,
+#     })
+
+#     # ▶ Refresh Token (มีหรือไม่มีก็ได้ตามที่คุณใช้อยู่)
+#     refresh_token = create_access_token({"sub": user["email"]}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
+
+#     # อัปเดต refresh token ใน DB (จะเก็บ hash ก็ได้ ตามแนวทางที่คุยกันก่อนหน้า)
+#     users_collection.update_one({"_id": user["_id"]}, {"$set": {
+#         "refreshTokens": [{
+#             "token": refresh_token,
+#             "createdAt": datetime.utcnow(),
+#             "expiresAt": datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+#         }]
+#     }})
+
+#     return {
+#         "message": "Login success ✅",
+#         "access_token": access_token,
+#         "refresh_token": refresh_token,
+#         "user": {
+#             "user_id": str(user["_id"]),
+#             "username": user.get("username"),
+#             "email": user["email"],
+#             "role": user.get("role", "user"),
+#             "company": user.get("company"),
+#             "station_id": station_ids,
+#         }
+#     }
+
 @app.post("/login/")
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
+def login(body: LoginRequest, response: Response):
+    # หา user
     user = users_collection.find_one(
-        {"email": form_data.username},
+        {"email": body.email},
         {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1},
     )
-    invalid_cred = HTTPException(status_code=401, detail="Invalid email or password")
-    if not user or not bcrypt.checkpw(form_data.password.encode("utf-8"), user["password"].encode("utf-8")):
-        raise invalid_cred
+    if not user or not bcrypt.checkpw(body.password.encode("utf-8"), user["password"].encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # ทำให้ station_ids เป็น list เสมอ
+    # ให้ station_id เป็น list เสมอ
     station_ids = user.get("station_id", [])
     if not isinstance(station_ids, list):
         station_ids = [station_ids]
 
-    # ▶ Access Token ใส่สิทธิ์ไว้เลย
-    access_token = create_access_token({
+    # ออก access token
+    jwt_token = create_access_token({
         "sub": user["email"],
         "user_id": str(user["_id"]),
         "username": user.get("username"),
         "role": user.get("role", "user"),
         "company": user.get("company"),
         "station_ids": station_ids,
-    })
+    }, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
 
-    # ▶ Refresh Token (มีหรือไม่มีก็ได้ตามที่คุณใช้อยู่)
+    # ออก refresh token (ถ้าใช้)
     refresh_token = create_access_token({"sub": user["email"]}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
-
-    # อัปเดต refresh token ใน DB (จะเก็บ hash ก็ได้ ตามแนวทางที่คุยกันก่อนหน้า)
     users_collection.update_one({"_id": user["_id"]}, {"$set": {
         "refreshTokens": [{
             "token": refresh_token,
-            "createdAt": datetime.utcnow(),
-            "expiresAt": datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+            "createdAt": datetime.now(timezone.utc),
+            "expiresAt": datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
         }]
     }})
 
+    # คุกกี้สำหรับ SSE (สำคัญ)
+    response.set_cookie(
+        key=ACCESS_COOKIE_NAME,
+        value=jwt_token,
+        httponly=True,
+        secure=False,          # 👈 dev บน http://localhost ให้ False
+        samesite="lax",        # 👈 dev ข้ามพอร์ตบ่อย ใช้ "lax" (ถ้า cross-domain จริงค่อยใช้ "none"+secure=True)
+        max_age=int(timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES).total_seconds()),
+        path="/",
+    )
+
+    # คืนให้ frontend เก็บด้วย (ใช้กับ fetch อื่นๆ)
     return {
-        "message": "Login success ✅",
-        "access_token": access_token,
+        "message": "ok",
+        "access_token": jwt_token,
         "refresh_token": refresh_token,
         "user": {
             "user_id": str(user["_id"]),
@@ -428,6 +512,7 @@ async def mdb_query(request: Request, station_id: str = Query(...), current: Use
         last_id = None
         latest = await coll.find_one({}, sort=[("_id", -1)])  # ⬅️ ไม่ต้อง filter station_id ภายในแล้ว
         if latest:
+            latest["Datetime"] = _ensure_utc_iso(latest.get("Datetime"))
             last_id = latest.get("_id")
             yield "retry: 3000\n"
             yield "event: init\n"
@@ -441,6 +526,7 @@ async def mdb_query(request: Request, station_id: str = Query(...), current: Use
 
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id:
+                doc["Datetime"] = _ensure_utc_iso(doc.get("Datetime"))
                 last_id = doc.get("_id")
                 yield f"data: {to_json(doc)}\n\n"
             else:
@@ -466,6 +552,7 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
 
         latest = await coll.find_one({}, sort=[("_id", -1)])
         if latest:
+            latest["Datetime"] = _ensure_utc_iso(latest.get("Datetime"))
             last_id = latest.get("_id")
             yield f"event: init\ndata: {to_json(latest)}\n\n"
         else:
@@ -477,6 +564,7 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
 
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id:
+                doc["Datetime"] = _ensure_utc_iso(doc.get("Datetime"))
                 last_id = doc.get("_id")
                 yield f"data: {to_json(doc)}\n\n"
             else:
@@ -585,8 +673,15 @@ async def stream_history(
         try:
             yield "retry: 3000\n\n"
             sent_any = False
+            # async for doc in cursor:
+            #     doc["_id"] = str(doc["_id"])
+            #     yield f"data: {json.dumps(doc)}\n\n"
+            #     sent_any = True
+            #     await asyncio.sleep(0.001)
             async for doc in cursor:
                 doc["_id"] = str(doc["_id"])
+                if "Datetime" in doc:
+                    doc["Datetime"] = _ensure_utc_iso(doc["Datetime"])
                 yield f"data: {json.dumps(doc)}\n\n"
                 sent_any = True
                 await asyncio.sleep(0.001)
@@ -618,7 +713,7 @@ async def change_stream_generator(station_id: str):
             if not doc:
                 continue
             payload = {
-                "t": doc.get("Datetime"),
+                "t": _ensure_utc_iso(doc.get("Datetime")),
                 "L1": doc.get("VL1N"),
                 "L2": doc.get("VL2N"),
                 "L3": doc.get("VL3N"),
