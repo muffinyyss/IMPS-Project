@@ -28,7 +28,7 @@ import { ArrowRightIcon } from "@heroicons/react/24/outline";
 // components
 // import Sidebar from "./components/sidebar";
 import ProfileHeader from "./components/profile-header";
-import BasicInfo from "./components/basic-info";
+import Profile from "./components/profile";
 
 // export default function Settings() {
 //   return (
@@ -681,7 +681,7 @@ export default function Settings() {
         <div className="tw-grid tw-grid-cols-1 lg:tw-grid-cols-2 tw-gap-6">
           {/* Profile / Basic Info (ซ้าย) */}
           <div className="tw-h-full">
-            <BasicInfo />
+            <Profile />
           </div>
 
           {/* Change Password (ขวา) */}

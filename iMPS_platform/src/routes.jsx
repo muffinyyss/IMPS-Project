@@ -35,7 +35,7 @@ export const allRoutes = [
   {
     name: "Device",
     icon: <i className="fa fa-microchip" />,
-    path: "#",
+    path: "/dashboard/device",
   },
   {
     name: "Setting",
