@@ -2,7 +2,7 @@
 import { jwtDecode } from "jwt-decode";
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Navbar, Typography, IconButton, Breadcrumbs, Input, Button,
 } from "@material-tailwind/react";
@@ -46,6 +46,7 @@ export function DashboardNavbar() {
 
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // ซ่อน topbar บางหน้า
   const HIDE_TOPBAR = ["/pages", "/mainpages"];
@@ -204,16 +205,23 @@ export function DashboardNavbar() {
     // ที่นี่ค่อย trigger refetch อื่น ๆ ถ้าต้องการ
   };
   const onSearch = async () => {
-  if (!selectedStation) { setOpen(true); return; }
+    if (!selectedStation) { setOpen(true); return; }
 
-  // 1) อัปเดต URL ปัจจุบันด้วย station_id
-  const params = new URLSearchParams(window.location.search);
-  params.set("station_id", selectedStation.station_id);
-  router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    // 1) อัปเดต URL ปัจจุบันด้วย station_id
+    // const params = new URLSearchParams(window.location.search);
+    // params.set("station_id", selectedStation.station_id);
+    // router.push(`${pathname}?${params.toString()}`, { scroll: false });
 
-  // 2) ยิง API ดึงข้อมูลสถานี (ของคุณมีอยู่แล้ว)
-  await handleSearchClick();
-};
+    // อัปเดต query เดิม + set station_id ใหม่
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("station_id", selectedStation.station_id);
+
+    // ✅ อยู่หน้าเดิม แต่เปลี่ยน query (ไม่เด้งไปหน้าอื่น)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+
+    // 2) ยิง API ดึงข้อมูลสถานี (ของคุณมีอยู่แล้ว)
+    await handleSearchClick();
+  };
   // ✅ ดึง "ข้อมูลสถานี" เท่านั้น
   const handleSearchClick = async () => {
     if (!selectedStation) { setOpen(true); return; }
@@ -242,19 +250,32 @@ export function DashboardNavbar() {
     }
   };
 
+  // useEffect(() => {
+  //   const sid = new URLSearchParams(window.location.search).get("station_id");
+  //   if (!sid) return;
+  //   // sync dropdown
+  //   const found = stations.find(s => s.station_id === sid);
+  //   if (found) {
+  //     setSelectedStation(found);
+  //     setQuery(found.station_name);
+  //   }
+  //   // ยิง API
+  //   handleSearchClick();
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [pathname, typeof window !== "undefined" ? window.location.search : "", stations]);
+
   useEffect(() => {
-  const sid = new URLSearchParams(window.location.search).get("station_id");
-  if (!sid) return;
-  // sync dropdown
-  const found = stations.find(s => s.station_id === sid);
-  if (found) {
-    setSelectedStation(found);
-    setQuery(found.station_name);
-  }
-  // ยิง API
-  handleSearchClick();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [pathname, typeof window !== "undefined" ? window.location.search : "", stations]);
+    const sid = searchParams.get("station_id");
+    if (!sid) return;
+
+    const found = stations.find(s => s.station_id === sid);
+    if (found) {
+      setSelectedStation(found);
+      setQuery(found.station_name);
+    }
+    handleSearchClick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stations, searchParams]); // ✅ ไม่ต้องอิง window.location อีก
 
 
   // keyboard nav
@@ -375,7 +396,7 @@ export function DashboardNavbar() {
                 tw-shrink-0 tw-whitespace-nowrap
               "
               // onClick={goToCurrentPage}
-              onClick={onSearch} 
+              onClick={onSearch}
             >
               search
             </Button>
