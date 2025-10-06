@@ -81,7 +81,7 @@ export function DashboardNavbar() {
 
     (async () => {
       try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") ?? "" : "";
+        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
         // const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
         console.log("[Stations] API_BASE =", API_BASE);
         console.log("[Stations] has token? =", !!token);
@@ -97,13 +97,13 @@ export function DashboardNavbar() {
           const nowSec = Math.floor(Date.now() / 1000);
           if (decoded?.exp && decoded.exp <= nowSec) {
             console.warn("[Stations] token expired");
-            localStorage.removeItem("accessToken");
+            localStorage.removeItem("access_token");
             // localStorage.removeItem("access_token");
             return;
           }
         } catch (e) {
           console.warn("[Stations] token decode failed", e);
-          localStorage.removeItem("accessToken");
+          localStorage.removeItem("access_token");
           // localStorage.removeItem("access_token");
           return;
         }
@@ -116,7 +116,7 @@ export function DashboardNavbar() {
         console.log("[Stations] /detail status =", res.status);
 
         if (res.status === 401) {
-          localStorage.removeItem("accessToken");
+          localStorage.removeItem("access_token");
           // localStorage.removeItem("access_token");
           return;
         }
