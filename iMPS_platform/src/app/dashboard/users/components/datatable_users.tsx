@@ -74,6 +74,7 @@ export function SearchDataTables() {
           localStorage.getItem("access_token") ||
           localStorage.getItem("accessToken") ||
           "";
+        // const res = await fetch('/api/all-users/', { cache: 'no-store' });
 
         const res = await fetch(`${API_BASE}/all-users/`, {
           headers: { Authorization: `Bearer ${token}` },

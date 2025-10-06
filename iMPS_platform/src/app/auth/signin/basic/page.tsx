@@ -39,6 +39,18 @@ export default function BasicPage() {
         body: formData.toString(),
       });
 
+
+      // const res = await fetch("/api/login/", {
+      //   method: "POST",
+      //   // headers: {"Content-Type": "application/json"},
+      //   // body: JSON.stringify({username,password}),
+      //   headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      //   body: formData.toString(),
+      // });
+
+      const text = await res.text();
+      console.log("Login response:", res.status, text);
+
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         // setMessage(data?.detail || "Login failed ❌");
