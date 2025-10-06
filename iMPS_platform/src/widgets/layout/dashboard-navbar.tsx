@@ -250,20 +250,6 @@ export function DashboardNavbar() {
     }
   };
 
-  // useEffect(() => {
-  //   const sid = new URLSearchParams(window.location.search).get("station_id");
-  //   if (!sid) return;
-  //   // sync dropdown
-  //   const found = stations.find(s => s.station_id === sid);
-  //   if (found) {
-  //     setSelectedStation(found);
-  //     setQuery(found.station_name);
-  //   }
-  //   // ยิง API
-  //   handleSearchClick();
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [pathname, typeof window !== "undefined" ? window.location.search : "", stations]);
-
   useEffect(() => {
     const sid = searchParams.get("station_id");
     if (!sid) return;
