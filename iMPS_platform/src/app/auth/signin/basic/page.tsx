@@ -39,50 +39,31 @@ export default function BasicPage() {
         body: formData.toString(),
       });
 
+      const data = await res.json();
 
-      // const res = await fetch("/api/login/", {
-      //   method: "POST",
-      //   // headers: {"Content-Type": "application/json"},
-      //   // body: JSON.stringify({username,password}),
-      //   headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      //   body: formData.toString(),
-      // });
-
-      const text = await res.text();
-      console.log("Login response:", res.status, text);
-
-      const data = await res.json().catch(() => null);
       if (!res.ok) {
-        // setMessage(data?.detail || "Login failed ❌");
-        if (Array.isArray(data?.detail)) {
-          const msgs = data.detail.map((err: any) => `${err.loc.join(".")}: ${err.msg}`);
-          setMessage(msgs.join(", "));
-        } else {
-          setMessage(data?.detail || "Login failed ❌");
+        // รองรับ both cases: detail เป็น string หรือเป็น list of errors
+        if (Array.isArray((data as any)?.detail)) {
+          const msgs = (data as any).detail.map((err: any) => `${err.loc?.join(".")}: ${err.msg}`);
+          throw new Error(msgs.join(", "));
         }
-        setLoading(false);
-        return;
+        throw new Error((data as any)?.detail || "Login failed ❌");
       }
 
-      if (data?.access_token) localStorage.setItem("accessToken", data.access_token);
-      if (data?.refresh_token) localStorage.setItem("refreshToken", data.refresh_token);
-      // if (data?.access_token) localStorage.setItem("access_token", data.access_token);
-      // if (data?.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
+      // ✅ เก็บคีย์ให้ “ตรงกับ Navbar”
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("refresh_token", data.refresh_token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("userRole", data.user?.role ?? "");
 
-      // if (data?.user) localStorage.setItem("user", JSON.stringify(data.user));
-      if (data?.user) {
-        localStorage.setItem("user", JSON.stringify(data.user));
-        localStorage.setItem("userRole", data.user.role ?? "");
-      }
+      // ✅ แจ้ง Navbar ให้รีโหลดสถานะทันที (แท็บเดียวกัน storage ไม่ยิง)
+      window.dispatchEvent(new Event("auth"));
 
       setMessage(data?.message || "Login success ✅");
-
-      // localStorage.removeItem("accessToken");
-      // localStorage.removeItem("refreshToken");
       router.push("/pages/mainpages/home");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setMessage("Server error");
+      setMessage(err?.message || "Server error");
     } finally {
       setLoading(false);
     }

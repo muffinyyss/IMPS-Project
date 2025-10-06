@@ -46,13 +46,19 @@ MDB_DB = client["MDB"]
 MDB_collection = MDB_DB.get_collection("NongKhae")
 
 
+# def create_access_token(data: dict, expires_delta: int | timedelta = 15):
+#     if isinstance(expires_delta, int):
+#         expire = datetime.utcnow() + timedelta(minutes=expires_delta)
+#     else:
+#         expire = datetime.utcnow() + expires_delta
+#     data.update({"exp": expire})
+#     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+
 def create_access_token(data: dict, expires_delta: int | timedelta = 15):
-    if isinstance(expires_delta, int):
-        expire = datetime.utcnow() + timedelta(minutes=expires_delta)
-    else:
-        expire = datetime.utcnow() + expires_delta
-    data.update({"exp": expire})
-    return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+    to_encode = dict(data)
+    expire = (datetime.now(timezone.utc) + (timedelta(minutes=expires_delta) if isinstance(expires_delta, int) else expires_delta))
+    to_encode["exp"] = int(expire.timestamp())
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 class LoginRequest(BaseModel):
     email: str

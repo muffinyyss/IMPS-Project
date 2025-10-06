@@ -20,24 +20,91 @@ export default function SiteNavbar() {
   const [user, setUser] = useState<User | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const loadUserFromStorage = () => {
+    try {
+      const token = localStorage.getItem("access_token");
+      const rawUser = localStorage.getItem("user");
+      const parsed =
+        rawUser && rawUser !== "undefined" ? JSON.parse(rawUser) : null;
+      setUser(token && parsed ? parsed as User : null);
+    } catch {
+      setUser(null);
+    }
+  };
+
+  // useEffect(() => {
+  //   loadUserFromStorage();
+  //   const onStorage = () => loadUserFromStorage();
+  //   const onAuth = () => loadUserFromStorage();
+  //   const onFocus = () => loadUserFromStorage();
+
+  //   window.addEventListener("storage", onStorage); // ข้ามแท็บ
+  //   window.addEventListener("auth", onAuth);       // แท็บเดียวกัน
+  //   window.addEventListener("focus", onFocus);     // กลับมาโฟกัส
+
+  //   return () => {
+  //     window.removeEventListener("storage", onStorage);
+  //     window.removeEventListener("auth", onAuth);
+  //     window.removeEventListener("focus", onFocus);
+  //   };
+  // }, []);
+
+  //  useEffect(() => {
+  //   setMobileOpen(false);
+  //   loadUserFromStorage();
+  // }, [pathname]);
+
+
   // โหลดสถานะจาก localStorage + sync เมื่อมีการเปลี่ยนแปลงจากแท็บอื่น
+  // useEffect(() => {
+  //   const load = () => {
+  //     try {
+  //       const token = localStorage.getItem("access_token");
+  //       const rawUser = localStorage.getItem("user");
+  //       console.log("rawUser",rawUser)
+  //       setUser(token && rawUser ? JSON.parse(rawUser) : null);
+  //     } catch {
+  //       setUser(null);
+  //     }
+  //   };
+  //   load();
+  //   window.addEventListener("storage", load);
+  //   return () => window.removeEventListener("storage", load);
+  // }, []);
   useEffect(() => {
     const load = () => {
       try {
-        const token = localStorage.getItem("accessToken");
+        const token = localStorage.getItem("access_token");
         const rawUser = localStorage.getItem("user");
+        console.log("[Navbar] token=", token, "rawUser=", rawUser);
         setUser(token && rawUser ? JSON.parse(rawUser) : null);
       } catch {
         setUser(null);
       }
     };
+
     load();
-    window.addEventListener("storage", load);
-    return () => window.removeEventListener("storage", load);
+
+    const onStorage = () => load();                     // ข้ามแท็บ
+    const onAuth = () => load();                        // แท็บเดียวกัน
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") load(); // กลับมาเห็นแท็บ
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("auth", onAuth);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("auth", onAuth);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   // ปิดเมนูเมื่อเปลี่ยนหน้า หรือกด ESC
   useEffect(() => setMobileOpen(false), [pathname]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMobileOpen(false);
     if (mobileOpen) window.addEventListener("keydown", onKey);
@@ -55,10 +122,11 @@ export default function SiteNavbar() {
     }`;
 
   const handleLogout = async () => {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
     localStorage.removeItem("user");
     setUser(null);
+    window.dispatchEvent(new Event("auth"));
     router.push("/auth/signin/basic");
   };
 
