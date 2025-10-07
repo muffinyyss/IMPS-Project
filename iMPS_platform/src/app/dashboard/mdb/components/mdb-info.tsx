@@ -13,41 +13,41 @@ import { CpuChipIcon } from "@heroicons/react/24/outline";
 
 /** ===== Props ===== */
 export type MDBType = {
-    tempc: number | string;
-    humidity: number | string;
+    tempc: number ;
+    humidity: number ;
     fanOn: boolean;
-    rssiDb: number | string;
+    rssiDb: number ;
     // signalLevel?: 0 | 1 | 2 | 3 | 4;
-    I1: number | string;
-    I2: number | string;
-    I3: number | string;
-    totalCurrentA: number | string;
-    powerKW: number | string;
-    totalEnergyKWh: number | string;
-    frequencyHz: number | string;
-    pfL1: number | string;
-    pfL2: number | string;
-    pfL3: number | string;
-    PL1N: number | string;
-    PL2N: number | string;
-    PL3N: number | string;
-    PL123N: number | string;
-    EL1: number | string;
-    EL2: number | string;
-    EL3: number | string;
-    EL123: number | string;
-    VL1N: number | string;
-    VL2N: number | string;
-    VL3N: number | string;
-    VL1L2: number | string;
-    VL2L3: number | string;
-    VL1L3: number | string;
-    thdvL1: number | string;
-    thdvL2: number | string;
-    thdvL3: number | string;
-    thdiL1: number | string;
-    thdiL2: number | string;
-    thdiL3: number | string;
+    I1: number ;
+    I2: number ;
+    I3: number ;
+    totalCurrentA: number ;
+    powerKW: number | string ;
+    totalEnergyKWh: number | string ;
+    frequencyHz: number;
+    pfL1: number ;
+    pfL2: number ;
+    pfL3: number ;
+    PL1N: number ;
+    PL2N: number ;
+    PL3N: number ;
+    PL123N: number ;
+    EL1: number | string ;
+    EL2: number | string ;
+    EL3: number | string ;
+    EL123: number | string ;
+    VL1N: number;
+    VL2N: number ;
+    VL3N: number ;
+    VL1L2: number;
+    VL2L3: number ;
+    VL1L3: number ;
+    thdvL1: number ;
+    thdvL2: number;
+    thdvL3: number ;
+    thdiL1: number ;
+    thdiL2: number ;
+    thdiL3: number ;
     className?: string;
     main_breaker: boolean;
     breaker_charger: boolean;
@@ -58,7 +58,7 @@ export default function MDBInfo({
     tempc,
     humidity,
     fanOn,
-    rssiDb = "-",
+    rssiDb ,
     // signalLevel = 3,
     I1,
     I2,

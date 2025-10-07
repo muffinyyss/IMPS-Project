@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { AppDataTable } from "@/data";
 import { ArrowUpTrayIcon } from "@heroicons/react/24/outline";
@@ -12,10 +12,7 @@ import {
   getSortedRowModel,
   useReactTable,
   flexRender,
-  type ColumnDef,
-  type CellContext,
   type Row,
-  type SortingState,
 } from "@tanstack/react-table";
 import {
   Button,
@@ -25,7 +22,14 @@ import {
   Typography,
   CardFooter,
   Input,
-  Alert
+  Switch,
+  Alert,
+  Dialog,
+  DialogHeader,
+  DialogBody,
+  DialogFooter,
+  Select,
+  Option,
 } from "@material-tailwind/react";
 import {
   ChevronLeftIcon,
@@ -48,9 +52,38 @@ type UserRow = {
   email?: string;
   role?: string;
   company?: string;
-  station_id?: string[] | string;
-  tel?: string;                  // ถ้ายังไม่มีใน DB จะโชว์ "-"
+  phone?: string;                  // ถ้ายังไม่มีใน DB จะโชว์ "-"
 };
+
+export type UserUpdatePayload = {
+  username?: string;
+  email?: string;
+  role?: string;
+  company?: string;
+  phone?: string;
+
+}
+
+type JwtClaims = {
+  sub: string;
+  user_id?: string;
+  username?: string;
+  role?: string;
+  company?: string | null;
+  station_ids?: string[];
+  exp?: number;
+};
+function decodeJwt(token: string | null): JwtClaims | null {
+  try {
+    if (!token) return null;
+    const payload = token.split(".")[1];
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
 
 // ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
 type TData = (typeof AppDataTable)[number];
@@ -66,6 +99,18 @@ export function SearchDataTables() {
   const [openAdd, setOpenAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+
+  const [openEdit, setOpenEdit] = useState(false);
+  const [editingRow, setEditingRow] = useState<UserRow | null>(null);
+  const [roleValue, setRoleValue] = useState<string>("user");
+
+  const [meRole, setMeRole] = useState<string>("user");
+  useEffect(() => {
+    const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
+    const claims = decodeJwt(token);
+    if (claims?.role) setMeRole(claims.role);
+  }, []);
+  const isAdmin = meRole === "admin";
   // ------------ NEW: ดึงข้อมูลผู้ใช้จาก FastAPI ------------
   useEffect(() => {
     (async () => {
@@ -102,7 +147,7 @@ export function SearchDataTables() {
           role: u.role ?? "-",
           company: u.company ?? "-",
           station_id: u.station_id ?? [],
-          tel: u.tel ?? "-", // ถ้าไม่มีใน DB จะแสดง "-"
+          phone: u.phone ?? "-", // ถ้าไม่มีใน DB จะแสดง "-"
         }));
         setData(rows);
       } catch (e) {
@@ -114,6 +159,13 @@ export function SearchDataTables() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (openEdit && editingRow) {
+      setRoleValue(editingRow.role ?? "user");
+      // setActiveValue(editingRow.is_active ? "true" : "false");
+    }
+  }, [openEdit, editingRow]);
 
   const handleCreateUser = async (payload: NewUserPayload) => {
     try {
@@ -154,7 +206,7 @@ export function SearchDataTables() {
           role: created.role,
           company: created.company ?? "-",
           station_id: created.station_id ?? [],
-          tel: created.tel ?? "-",
+          phone: created.phone ?? "-",
         },
         ...prev,
       ]);
@@ -169,10 +221,65 @@ export function SearchDataTables() {
       setSaving(false);
     }
   };
+
   const handleEdit = (row: UserRow) => {
-    console.log("Edit user:", row);
-    // TODO: เปิด modal แก้ไข / นำทางไปหน้าแก้ไข
+    setEditingRow(row);
+    setOpenEdit(true);
   };
+
+  async function handleUpdateUser(id: string, payload: Partial<UserRow> & { password?: string }) {
+    const token =
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("accessToken") ||
+      "";
+
+    // map phone -> tel
+    const body: any = {};
+    if (payload.username !== undefined) body.username = payload.username?.trim();
+    if (payload.email !== undefined) body.email = payload.email?.trim();
+    if (payload.company !== undefined) body.company = (payload.company || "").trim();
+    if (payload.role !== undefined) body.role = payload.role;
+    if (payload.phone !== undefined) body.tel = payload.phone?.trim();
+    // if (payload.is_active !== undefined) body.is_active = !!payload.is_active;
+    if ((payload as any).password) body.password = String((payload as any).password);
+
+    const res = await fetch(`${API_BASE}/user_update/${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+
+    const raw = await res.text();
+    if (!res.ok) throw new Error(raw || `Update failed: ${res.status}`);
+
+    let updated: any = {};
+    try { updated = raw ? JSON.parse(raw) : {}; } catch { }
+
+    // อัปเดตแถวในตาราง
+    setData(prev =>
+      prev.map(u =>
+        u.id === id
+          ? {
+            ...u,
+            username: updated.username ?? u.username,
+            email: updated.email ?? u.email,
+            company: updated.company ?? u.company,
+            role: updated.role ?? u.role,
+            phone: updated.tel ?? u.phone,          // backend ส่งกลับเป็น tel
+            // is_active: typeof updated.is_active === "boolean" ? updated.is_active : u.is_active,
+          }
+          : u
+      )
+    );
+
+    setOpenEdit(false);
+    setNotice({ type: "success", msg: "Update success" });
+    setTimeout(() => setNotice(null), 2500);
+  }
+
 
   const handleDelete = async (row: UserRow) => {
     if (!row.id) return alert("ไม่พบ id ของผู้ใช้");
@@ -255,9 +362,9 @@ export function SearchDataTables() {
       cell: (info: any) => info.getValue(),
     },
     {
-      accessorFn: (row: UserRow) => row.tel ?? "-",
-      id: "tel",
-      header: () => "tel",
+      accessorFn: (row: UserRow) => row.phone ?? "-",
+      id: "phone",
+      header: () => "phone",
       cell: (info: any) => info.getValue(),
     },
     {
@@ -272,15 +379,15 @@ export function SearchDataTables() {
       header: () => "role",
       cell: (info: any) => info.getValue(),
     },
-    {
-      accessorFn: (row: UserRow) =>
-        Array.isArray(row.station_id)
-          ? row.station_id.join(", ")
-          : (row.station_id ?? "-"),
-      id: "stations",
-      header: () => "stations",
-      cell: (info: any) => info.getValue(),
-    },
+    // {
+    //   accessorFn: (row: UserRow) =>
+    //     Array.isArray(row.station_id)
+    //       ? row.station_id.join(", ")
+    //       : (row.station_id ?? "-"),
+    //   id: "stations",
+    //   header: () => "stations",
+    //   cell: (info: any) => info.getValue(),
+    // },
     {
       id: "actions",
       header: () => "actions",
@@ -503,6 +610,91 @@ export function SearchDataTables() {
         onSubmit={handleCreateUser}
         loading={saving}
       />
+
+      <Dialog open={openEdit} handler={() => setOpenEdit(false)} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
+        <DialogHeader className="tw-flex tw-items-center tw-justify-between">
+          <Typography variant="h5" color="blue-gray">Edit User</Typography>
+          <Button variant="text" onClick={() => setOpenEdit(false)}>✕</Button>
+        </DialogHeader>
+
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!editingRow?.id) return;
+
+            const form = e.currentTarget as HTMLFormElement;
+            const payload: any = {
+              username: (form.username as any)?.value?.trim(),
+              email: (form.email as any)?.value?.trim(),
+              company: (form.company as any)?.value?.trim(),
+              phone: (form.phone as any)?.value?.trim(),     // จะถูก map เป็น tel ตอนส่ง
+            };
+
+            // role / is_active เฉพาะ admin
+            if (isAdmin) {
+              payload.role = roleValue; 
+            }
+
+            // password: ใส่เมื่ออยากเปลี่ยน (ปล่อยว่าง = ไม่เปลี่ยน)
+            const newPw = (form.password as any)?.value?.trim();
+            if (newPw) payload.password = newPw;
+
+            try {
+              await handleUpdateUser(editingRow.id!, payload);
+            } catch (err: any) {
+              setNotice({ type: "error", msg: err?.message || "อัปเดตไม่สำเร็จ" });
+              setTimeout(() => setNotice(null), 3500);
+            }
+          }}
+        >
+          <DialogBody className="tw-space-y-6 tw-px-6 tw-py-4">
+            <div className="tw-flex tw-flex-col tw-gap-4">
+              <Input name="username" label="Username" defaultValue={editingRow?.username ?? ""} required />
+              <Input name="email" label="Email" type="email" defaultValue={editingRow?.email ?? ""} required />
+              <Input name="company" label="Company" defaultValue={editingRow?.company ?? ""} />
+              <Input name="phone" label="Phone" defaultValue={editingRow?.phone ?? ""} />
+
+              {/* เปลี่ยนรหัสผ่าน (ไม่บังคับ) */}
+              {/* <Input name="password" label="New Password (optional)" type="password" /> */}
+
+              {/* เฉพาะ admin: role + is_active */}
+              {isAdmin && (
+                <>
+                  <Select
+                    label="Role"
+                    value={roleValue}
+                    onChange={(v) => setRoleValue(v ?? "user")}
+                  >
+                    <Option value="admin">admin</Option>
+                    <Option value="owner">owner</Option>
+                    <Option value="Technician">Technician</Option>
+                    <Option value="user">user</Option>
+                  </Select>
+
+                  {/* ถ้าจะใช้ is_active แบบ select ด้วย
+    <Select
+      label="Is Active"
+      value={activeValue}
+      onChange={(v) => setActiveValue((v as "true" | "false") ?? "false")}
+    >
+      <Option value="true">active</Option>
+      <Option value="false">inactive</Option>
+    </Select>
+    */}
+                </>
+              )}
+            </div>
+          </DialogBody>
+
+          <DialogFooter className="tw-gap-2">
+            <Button variant="outlined" type="button" onClick={() => setOpenEdit(false)}>Cancel</Button>
+            <Button type="submit" className="tw-bg-blue-600" disabled={saving}>
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
     </>
   );
 }
