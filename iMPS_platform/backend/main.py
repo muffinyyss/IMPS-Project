@@ -1324,3 +1324,30 @@ def get_station_onoff_bulk(body: StationIdsIn):
         except Exception:
             out[sid] = False
     return {"status": out}
+
+@app.get("/station-onoff/{station_id}")
+def station_onoff_latest(station_id: str, current: UserClaims = Depends(get_current_user)):
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    data = latest_onoff(str(station_id))
+    status_at_iso = (
+        data["statusAt"].astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
+        if data["statusAt"] else None
+    )
+    return {"station_id": station_id, "status": data["status"], "statusAt": status_at_iso}
+
+# @app.get("/station-onoff")
+# def station_onoff_latest_qparam(
+#     station_id: str = Query(...),
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     data = latest_onoff(str(station_id))
+#     status_at_iso = (
+#         data["statusAt"].astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
+#         if data["statusAt"] else None
+#     )
+#     return {"station_id": station_id, "status": data["status"], "statusAt": status_at_iso}
