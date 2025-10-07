@@ -4,7 +4,7 @@ import React from "react";
 
 export const allRoutes = [
   {
-    name: "John Doe",
+    name: "admin",
     divider: true,
     pages: [
       {

@@ -59,7 +59,7 @@ export default function PM_Report() {
 
       {/* ===== Pagination Section ===== */}
       <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-        <CardHeader floated={false} shadow={false} className="tw-px-6 tw-pt-6 tw-pb-2">
+        {/* <CardHeader floated={false} shadow={false} className="tw-px-6 tw-pt-6 tw-pb-2">
           <div className="tw-flex tw-items-center tw-gap-2">
             <Button
               variant={page === 0 ? "filled" : "outlined"}
@@ -81,7 +81,7 @@ export default function PM_Report() {
               {`Page ${page + 1} / 2`}
             </Typography>
           </div>
-        </CardHeader>
+        </CardHeader> */}
 
         <CardBody className="tw-px-6 tw-pb-0">
           {/* Page 1 */}
