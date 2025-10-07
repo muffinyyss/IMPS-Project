@@ -6,21 +6,24 @@ import ControlPanel from "./components/ControlPanel";
 import InfoPanel from "./components/InfoPanel";
 import EvPanel from "./components/EvPanel";
 import PowerModule from "./components/PowerModule";
+import Head1 from "./components/Head1";
+import Head2 from "./components/Head2";
+
 
 export default function SettingPage() {
   return (
     <div className="tw-space-y-6 tw-mt-8">
-      <div className="tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 tw-gap-6">
+      <div className="tw-grid tw-grid-cols-1 lg:tw-grid-cols-2 tw-gap-6">
         <div className="tw-space-y-6">
           <ChargeBoxId />
-          <ControlPanel />
-          <InfoPanel />
-        </div>
-        <div className="tw-space-y-6">
           <EvPanel />
+          <PowerModule />
+          <InfoPanel />
+          {/* <ControlPanel /> */}
         </div>
         <div className="tw-space-y-6">
-          <PowerModule />
+          <Head1 />
+          <Head2 />
         </div>
       </div>
     </div>

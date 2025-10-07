@@ -39,7 +39,7 @@ export default function EvPanel() {
     ];
 
     return (
-        <Card title="EV" className="tw-h-full">
+        <Card title="EV">
             <div className="tw-rounded-lg tw-overflow-hidden">
                 {rows.map((r, i) => (
                     <Row key={i} label={r.label} value={r.value} zebra={i % 2 === 1} />
@@ -47,10 +47,10 @@ export default function EvPanel() {
             </div>
 
             {/* SoC */}
-            <div className="tw-flex tw-flex-col tw-items-center tw-gap-6 tw-pt-6">
+            {/* <div className="tw-flex tw-flex-col tw-items-center tw-gap-6 tw-pt-6">
                 <CircleProgress label="SoC1 :" value={43} />
                 <CircleProgress label="SoC2 :" value={78} />
-            </div>
+            </div> */}
         </Card>
     );
 }
