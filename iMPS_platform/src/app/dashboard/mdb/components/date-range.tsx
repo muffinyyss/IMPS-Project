@@ -30,20 +30,32 @@ export default function DateRangePicker({
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
 
-  const toDateStr = (d: Date) => d.toISOString().split("T")[0];
-  const todayStr = toDateStr(today);
-  const yesterdayStr = toDateStr(yesterday);
+  // const toDateStr = (d: Date) => d.toISOString().split("T")[0];
+  const toLocalDateStr = (d: Date) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  const todayStr = toLocalDateStr(today);
+  const yesterdayStr = toLocalDateStr(yesterday);
 
   // เซ็ตค่า default แค่ตอน mount
+  // useEffect(() => {
+  //   if (!startDate) {
+  //     onStartChange(yesterdayStr);
+  //   }
+  //   if (!endDate) {
+  //     onEndChange(todayStr);
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, []); // ❗ ทำงานครั้งเดียวตอน mount
+
   useEffect(() => {
-    if (!startDate) {
-      onStartChange(yesterdayStr);
-    }
-    if (!endDate) {
-      onEndChange(todayStr);
-    }
+    if (!startDate) onStartChange(yesterdayStr);
+    if (!endDate) onEndChange(todayStr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // ❗ ทำงานครั้งเดียวตอน mount
+  }, []);
 
   const invalid = !!(startDate && endDate && new Date(startDate) > new Date(endDate));
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

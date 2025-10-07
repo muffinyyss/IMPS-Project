@@ -49,8 +49,8 @@ export type MDBType = {
     thdiL2: number | string;
     thdiL3: number | string;
     className?: string;
-    mainBreakerStatus: boolean;
-    breakChargerStatus: boolean;
+    main_breaker: boolean;
+    breaker_charger: boolean;
 };
 
 /** ===== Component ===== */
@@ -91,8 +91,8 @@ export default function MDBInfo({
     thdiL2,
     thdiL3,
     className = "",
-    mainBreakerStatus,
-    breakChargerStatus
+    main_breaker,
+    breaker_charger
 }: MDBType) {
     return (
         <div className={`tw-w-full tw-space-y-6 ${className}`}>
@@ -161,8 +161,8 @@ export default function MDBInfo({
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                    className={`tw-font-semibold ${mainBreakerStatus ? "!tw-text-green-500" : "!tw-text-red-500"}`}>
-                                    Status: {mainBreakerStatus ? "ON" : "OFF"}
+                                    className={`tw-font-semibold ${main_breaker ? "!tw-text-green-500" : "!tw-text-red-500"}`}>
+                                    Status: {main_breaker ? "ON" : "OFF"}
                                 </Typography>
                             </div>
                         </div>
@@ -181,8 +181,8 @@ export default function MDBInfo({
                                 </Typography>
                                 <Typography
                                     variant="small"
-                                    className={`tw-font-semibold ${breakChargerStatus ? "!tw-text-green-500" : "!tw-text-red-500"}`}>
-                                    Status: {breakChargerStatus ? "ON" : "OFF"}
+                                    className={`tw-font-semibold ${breaker_charger ? "!tw-text-green-500" : "!tw-text-red-500"}`}>
+                                    Status: {breaker_charger ? "ON" : "OFF"}
                                 </Typography>
                             </div>
                         </div>

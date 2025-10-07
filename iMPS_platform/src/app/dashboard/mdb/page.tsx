@@ -22,6 +22,7 @@ import { data_MDB } from "@/data/statistics-charts-data";
 
 import { buildChartsFromHistory } from "@/data/statistics-charts-data";
 
+import { useSearchParams } from "next/navigation";
 
 type HistoryRow = {
     Datetime: string; // ISO time
@@ -68,7 +69,24 @@ const intDiv = (v: any, d: number) => {
     return Number.isFinite(n) && d ? (n / d).toFixed(2) : "0.00";
 };
 
+async function login(email: string, password: string) {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE}/login/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",        // ★ สำคัญ: เอาคุกกี้เข้า/ออก
+        body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) throw new Error("Login failed");
+    const data = await res.json();
+
+    // เก็บ token ไว้ใช้กับ fetch อื่น (non-SSE) ได้ตามต้องการ
+    localStorage.setItem("accessToken", data.access_token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+}
+
 export default function MDBPage() {
+    const searchParams = useSearchParams();
+    const [stationId, setStationId] = useState<string | null>(null);
     const [history, setHistory] = useState<HistoryRow[]>([]); // ✅ เก็บข้อมูลลำดับเวลาเพื่อกราฟ
     const [userLogin, setUserLogin] = useState<Me | null>(null);
     const [mdb, setMdb] = useState<MdbDoc | null>(null);
@@ -82,14 +100,19 @@ export default function MDBPage() {
     const today = useMemo(() => new Date(), []);
     const thirtyDaysAgo = useMemo(() => {
         const d = new Date();
-        d.setDate(d.getDate());
+        d.setDate(d.getDate() - 30);   // ✅ ย้อน 30 วันจริงๆ
         return d;
     }, []);
 
+    // const [startDate, setStartDate] = useState<string>(fmt(thirtyDaysAgo));
+    // const [endDate, setEndDate] = useState<string>(fmt(today));
+
+    // // draft (ไว้แก้ใน UI ยังไม่ยิงโหลดจนกด Apply)
+    // const [draftStart, setDraftStart] = useState<string>(fmt(thirtyDaysAgo));
+    // const [draftEnd, setDraftEnd] = useState<string>(fmt(today));
+
     const [startDate, setStartDate] = useState<string>(fmt(thirtyDaysAgo));
     const [endDate, setEndDate] = useState<string>(fmt(today));
-
-    // draft (ไว้แก้ใน UI ยังไม่ยิงโหลดจนกด Apply)
     const [draftStart, setDraftStart] = useState<string>(fmt(thirtyDaysAgo));
     const [draftEnd, setDraftEnd] = useState<string>(fmt(today));
 
@@ -126,12 +149,25 @@ export default function MDBPage() {
         return `${yyyy}-${mm}-${dd}`;
     };
 
-   
+    useEffect(() => {
+        // 1) จาก URL
+        const sidFromUrl = searchParams.get("station_id");
+        if (sidFromUrl) {
+            setStationId(sidFromUrl);
+            localStorage.setItem("selected_station_id", sidFromUrl);
+            return;
+        }
+        // 2) fallback localStorage (ตอนรีเฟรชหน้า)
+        const sidLocal = localStorage.getItem("selected_station_id");
+        setStationId(sidLocal);
+    }, [searchParams]);
+
+
     // ✅ CHANGED: โหลด user จาก localStorage
     useEffect(() => {
         const load = () => {
             try {
-                const token = localStorage.getItem("accessToken");
+                const token = localStorage.getItem("access_token");
                 const rawUser = localStorage.getItem("user");
                 setUserLogin(token && rawUser ? JSON.parse(rawUser) : null);
             } catch {
@@ -144,80 +180,148 @@ export default function MDBPage() {
     }, []);
 
 
-   
+
     // ✅ CHANGED: ใช้ SSE (EventSource) แทน fetch (เรียลไทม์)
-    useEffect(() => {
-        setLoading(true);
-        setErr(null);
+    // useEffect(() => {
+    //     setLoading(true);
+    //     setErr(null);
 
-        const sid =
-            userLogin?.station_id != null ? String(userLogin.station_id) : "";
-        // ถ้า backend คุณใช้ /MDB/stream ให้เปลี่ยนเป็น `${API_BASE}/MDB/stream...`
-        const url = `${API_BASE}/MDB${sid ? `?station_id=${encodeURIComponent(sid)}` : ""}`;
+    //     const sid =
+    //         userLogin?.station_id != null ? String(userLogin.station_id) : "";
+    //     // ถ้า backend คุณใช้ /MDB/stream ให้เปลี่ยนเป็น `${API_BASE}/MDB/stream...`
+    //     const url = `${API_BASE}/MDB${sid ? `?station_id=${encodeURIComponent(sid)}` : ""}`;
 
-        const es = new EventSource(url);
+    //     const es = new EventSource(url);
 
-        const onInit = (e: MessageEvent) => {
-            const doc: MdbDoc = JSON.parse(e.data);
-            setMdb(doc);
-            setLoading(false);
-        };
-        const onMsg = (e: MessageEvent) => {
-            const doc: MdbDoc = JSON.parse(e.data);
-            setMdb(doc);
-        };
-        const onErr = (_e: Event) => {
-            // EventSource จะรีคอนเนกต์เองอัตโนมัติ
-            setErr("SSE disconnected (auto-retry)");
-            setLoading(false);
-        };
+    //     const onInit = (e: MessageEvent) => {
+    //         const doc: MdbDoc = JSON.parse(e.data);
+    //         setMdb(doc);
+    //         setLoading(false);
+    //     };
+    //     const onMsg = (e: MessageEvent) => {
+    //         const doc: MdbDoc = JSON.parse(e.data);
+    //         setMdb(doc);
+    //     };
+    //     const onErr = (_e: Event) => {
+    //         // EventSource จะรีคอนเนกต์เองอัตโนมัติ
+    //         setErr("SSE disconnected (auto-retry)");
+    //         setLoading(false);
+    //     };
 
-        es.addEventListener("init", onInit);
-        es.onmessage = onMsg;
-        es.onerror = onErr;
+    //     es.addEventListener("init", onInit);
+    //     es.onmessage = onMsg;
+    //     es.onerror = onErr;
 
-        return () => {
-            es.removeEventListener("init", onInit);
-            es.close();
-        };
-    }, [userLogin?.station_id]);
+    //     return () => {
+    //         es.removeEventListener("init", onInit);
+    //         es.close();
+    //     };
+    // }, [userLogin?.station_id]);
 
-    useEffect(() => {
-        setLoading2(true);
-        setErr2(null);
+    // useEffect(() => {
+    //     setLoading2(true);
+    //     setErr2(null);
 
-        const sid = userLogin?.station_id != null ? String(userLogin.station_id) : "";
-        const startISO = new Date(`${startDate}T00:00:00Z`).toISOString();
-        const endISO = new Date(`${endDate}T23:59:59.999Z`).toISOString();
-        const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
-        // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`;
+    //     const sid = userLogin?.station_id != null ? String(userLogin.station_id) : "";
+    //     const startISO = new Date(`${startDate}T00:00:00Z`).toISOString();
+    //     const endISO = new Date(`${endDate}T23:59:59.999Z`).toISOString();
+    //     const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+    //     // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(sid)}&start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`;
 
-        const es = new EventSource(url);
-        es.onmessage = (e) => {
-            const doc = JSON.parse(e.data); 
-        };
-       
-        const parseDatetime = (iso: string) => {
-            // ตัด microseconds เหลือ 3 หลัก
-            const fixed = iso.replace(/\.(\d{3})\d*/, ".$1");
-            // เพิ่ม Z ถ้าไม่มี
-            return new Date(fixed.endsWith("Z") ? fixed : fixed + "Z");
-        };
+    //     const es = new EventSource(url);
+    //     es.onmessage = (e) => {
+    //         const doc = JSON.parse(e.data);
+    //     };
 
-        const withinRange = (iso: string) => {
-            const d = parseDatetime(iso).getTime();
-            const from = new Date(startISO).getTime();
-            const to = new Date(endISO).getTime();
-            return d >= from && d <= to;
-        };
+    //     const parseDatetime = (iso: string) => {
+    //         // ตัด microseconds เหลือ 3 หลัก
+    //         const fixed = iso.replace(/\.(\d{3})\d*/, ".$1");
+    //         // เพิ่ม Z ถ้าไม่มี
+    //         return new Date(fixed.endsWith("Z") ? fixed : fixed + "Z");
+    //     };
 
-        const pushRealtimeToHistory = (doc: any) => {
+    //     const withinRange = (iso: string) => {
+    //         const d = parseDatetime(iso).getTime();
+    //         const from = new Date(startISO).getTime();
+    //         const to = new Date(endISO).getTime();
+    //         return d >= from && d <= to;
+    //     };
 
+    //     const pushRealtimeToHistory = (doc: any) => {
+
+    //         let ts = typeof doc.Datetime === "string" ? doc.Datetime : new Date().toISOString();
+
+    //         if (!ts.endsWith("Z")) ts += "Z";
+
+    //         if (!withinRange(ts)) return;
+
+    //         setHistory(prev => {
+    //             const next: HistoryRow = {
+    //                 Datetime: ts,
+    //                 VL1N: Number(doc.VL1N ?? 0),
+    //                 VL2N: Number(doc.VL2N ?? 0),
+    //                 VL3N: Number(doc.VL3N ?? 0),
+    //                 I1: Number(doc.I1 ?? 0),
+    //                 I2: Number(doc.I2 ?? 0),
+    //                 I3: Number(doc.I3 ?? 0),
+    //                 PL1N: Number(doc.PL1N ?? 0),
+    //                 PL2N: Number(doc.PL2N ?? 0),
+    //                 PL3N: Number(doc.PL3N ?? 0),
+    //             };
+
+    //             const merged = [...prev, next];
+
+    //             const pruned = merged.filter(r => {
+    //                 const t = new Date(r.Datetime).getTime();
+    //                 return t >= new Date(startISO).getTime() && t <= new Date(endISO).getTime();
+    //             }).slice(-5000);
+
+    //             pruned.sort((a, b) => new Date(a.Datetime).getTime() - new Date(b.Datetime).getTime());
+
+    //             return pruned;
+    //         });
+    //     };
+
+    //     const onInit = (e: MessageEvent) => {
+    //         const doc = JSON.parse(e.data);
+    //         setMdb2(doc);
+    //         setLoading2(false);
+    //         pushRealtimeToHistory(doc);
+    //     };
+
+    //     const onMsg = (e: MessageEvent) => {
+    //         const doc = JSON.parse(e.data);
+    //         setMdb2(doc);
+    //         pushRealtimeToHistory(doc);
+    //     };
+
+    //     const onErr = () => {
+    //         setErr2("SSE disconnected (auto-retry)");
+    //         setLoading2(false);
+    //     };
+
+    //     es.addEventListener("init", onInit);
+    //     es.onmessage = onMsg;
+    //     es.onerror = onErr;
+
+    //     return () => {
+    //         es.removeEventListener("init", onInit);
+    //         es.close();
+    //     };
+    // }, [userLogin?.station_id, startDate, endDate]);
+    const parseDatetime = (iso: string) => {
+        const fixed = iso.replace(/\.(\d{3})\d*/, ".$1");
+        return new Date(fixed.endsWith("Z") ? fixed : fixed + "Z");
+    };
+
+    function makePusher(startISO: string, endISO: string) {
+        const from = new Date(startISO).getTime();
+        const to = new Date(endISO).getTime();
+        return (doc: any) => {
             let ts = typeof doc.Datetime === "string" ? doc.Datetime : new Date().toISOString();
-
             if (!ts.endsWith("Z")) ts += "Z";
-
-            if (!withinRange(ts)) return;
+            const t = parseDatetime(ts).getTime();
+            if (t < from || t > to) return;
 
             setHistory(prev => {
                 const next: HistoryRow = {
@@ -234,29 +338,81 @@ export default function MDBPage() {
                 };
 
                 const merged = [...prev, next];
-
-                const pruned = merged.filter(r => {
-                    const t = new Date(r.Datetime).getTime();
-                    return t >= new Date(startISO).getTime() && t <= new Date(endISO).getTime();
-                }).slice(-5000);
-
-                pruned.sort((a, b) => new Date(a.Datetime).getTime() - new Date(b.Datetime).getTime());
+                const pruned = merged
+                    .filter(r => {
+                        const tt = new Date(r.Datetime).getTime();
+                        return tt >= from && tt <= to;
+                    })
+                    .slice(-5000)
+                    .sort((a, b) => new Date(a.Datetime).getTime() - new Date(b.Datetime).getTime());
 
                 return pruned;
             });
         };
+    }
+
+    // SSE ปัจจุบัน (ล่าสุด)
+    useEffect(() => {
+        if (!stationId) return;  
+        setHistory([]);         // ยังไม่ได้เลือก ไม่ต้องยิง
+        setLoading(true);
+        setErr(null);
+
+        // const url = `${API_BASE}/MDB?station_id=${encodeURIComponent(stationId)}`;
+        // const es = new EventSource(url) ;
+        const es = new EventSource(
+            `${API_BASE}/MDB?station_id=${encodeURIComponent(stationId)}`,
+            { withCredentials: true }                  // ★ สำคัญ
+        );
+        es.onopen = () => setErr(null);
+        const onInit = (e: MessageEvent) => { setMdb(JSON.parse(e.data)); setLoading(false); setErr(null); };
+        // const onMsg = (e: MessageEvent) => setMdb(JSON.parse(e.data));
+        // const onErr = () => { setErr("SSE disconnected (auto-retry)"); setLoading(false); };
+
+        es.addEventListener("init", onInit);
+        es.onmessage = (e) => { setMdb(JSON.parse(e.data)); setErr(null); }; // ✅ ล้างทุกครั้งที่มีข้อมูล
+        es.onerror = () => { setErr("SSE disconnected (auto-retry)"); setLoading(false); };
+
+        return () => {
+            es.removeEventListener("init", onInit);
+            es.close();
+        };
+    }, [stationId]);
+    // SSE history (range)
+    useEffect(() => {
+        if (!stationId) return;
+        setLoading2(true);
+        setErr2(null);
+
+        const startISO = new Date(`${startDate}T00:00:00Z`).toISOString();
+        const endISO = new Date(`${endDate}T23:59:59.999Z`).toISOString();
+        const push = makePusher(startISO, endISO);
+
+        // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+        // const es = new EventSource(url);
+        const es = new EventSource(
+            `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`,
+            { withCredentials: true }                  // ★ สำคัญ
+        );
+        es.onopen = () => setErr2(null);
 
         const onInit = (e: MessageEvent) => {
-            const doc = JSON.parse(e.data);
-            setMdb2(doc);
-            setLoading2(false);
-            pushRealtimeToHistory(doc);
+            try {
+                const doc = JSON.parse(e.data);
+                setMdb2(doc);
+                setLoading2(false);
+                push(doc);
+                setErr2(null);
+            } catch { }
         };
 
         const onMsg = (e: MessageEvent) => {
-            const doc = JSON.parse(e.data);
-            setMdb2(doc);
-            pushRealtimeToHistory(doc);
+            try {
+                const doc = JSON.parse(e.data);
+                setMdb2(doc);
+                push(doc);
+                setErr2(null);
+            } catch { }
         };
 
         const onErr = () => {
@@ -272,16 +428,19 @@ export default function MDBPage() {
             es.removeEventListener("init", onInit);
             es.close();
         };
-    }, [userLogin?.station_id, startDate, endDate]);
+    }, [stationId, startDate, endDate]);
+
+
     // console.log(startDate)
     // console.log(history)
     // if (loading) return <p>Loading...</p>;
     // ✅ CHANGED: เทียบ station_id แบบ object เดี่ยว (mdb เป็นก้อนเดียว)
-    const station =
-        userLogin && mdb &&
-            String(mdb.station_id ?? "") === String(userLogin.station_id ?? "")
-            ? mdb
-            : null;
+    // const station =
+    //     userLogin && mdb &&
+    //         String(mdb.station_id ?? "") === String(userLogin.station_id ?? "")
+    //         ? mdb
+    //         : null;
+    const station = mdb;
 
     // ✅ CHANGED: คำนวณค่าด้วย helper กัน NaN และ preserve ค่า pf/frequency เป็นทศนิยม
     const MDB = {
@@ -289,6 +448,9 @@ export default function MDBPage() {
         humidity: int0(station?.humidity),
         fanOn: true,
         rssiDb: int0(station?.RSSI),
+
+        main_breaker: station?.breaker_main,
+        breaker_charger: station?.breaker_charger,
 
         I1: num0(station?.I1),
         I2: num0(station?.I2),
@@ -335,6 +497,7 @@ export default function MDBPage() {
         // breakChargerStatus: true,
     };
     const applyRange = () => {
+        setHistory([]); 
         setStartDate(draftStart);
         setEndDate(draftEnd);
     };
@@ -350,7 +513,7 @@ export default function MDBPage() {
                 <p className="tw-text-gray-500 tw-mb-2">กำลังเชื่อมต่อข้อมูลเรียลไทม์…</p>
             )}
             {err && <p className="tw-text-red-600 tw-mb-2">{err}</p>}
-            
+
 
             <StatisticsCards {...MDB} />
 

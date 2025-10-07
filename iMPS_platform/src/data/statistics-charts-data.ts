@@ -3,25 +3,25 @@ import type { MDBType } from "@/app/dashboard/mdb/components/mdb-info";
 
 
 export type HistoryRow = {
-  Datetime: string; // ISO timestamp (มาจาก Datetime ของ SSE)
+  Datetime: string; // ISO
   VL1N?: number; VL2N?: number; VL3N?: number;
   I1?: number; I2?: number; I3?: number;
   PL1N?: number; PL2N?: number; PL3N?: number;
-  [k: string]: any;
 };
-type Point = { x: string; y: number | null };
-const toNumOrNull = (v: any) =>
-  (typeof v === "number" && Number.isFinite(v)) ? v : null;
+
+type Point = { x: number; y: number | null };
+type NumericKey =
+  | "VL1N" | "VL2N" | "VL3N"
+  | "I1" | "I2" | "I3"
+  | "PL1N" | "PL2N" | "PL3N";
+type RowWithTs = HistoryRow & { ts: string };
+
+const toNumOrNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
 // const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0); 
 // const toXY = (rows: HistoryRow[], key: keyof HistoryRow) =>
 //   rows.filter(r => r.ts).map(r => ({ x: r.ts, y: num(r[key]) }));
 // เรียงเวลา + map เป็นจุด
-
-const toXY = (rows: HistoryRow[], key: keyof HistoryRow): Point[] =>
-  [...rows]
-    .filter(r => r.ts)
-    .sort((a, b) => a.ts.localeCompare(b.ts))
-    .map(r => ({ x: r.ts, y: toNumOrNull(r[key]) }));
 
 
 const ensureMinPoints = (series: any[], padSec = 60) =>
@@ -30,8 +30,7 @@ const ensureMinPoints = (series: any[], padSec = 60) =>
     if (arr.length >= 2) return { ...s, data: arr };
     if (arr.length === 1) {
       const p0 = arr[0];
-      const t0 = new Date(p0.x).getTime();
-      const pPrev: Point = { x: new Date(t0 - padSec * 1000).toISOString(), y: p0.y };
+      const pPrev: Point = { x: p0.x - padSec * 1000, y: p0.y };
       return { ...s, data: [pPrev, p0] };
     }
     return { ...s, data: arr };
@@ -60,12 +59,14 @@ const baseOptions = {
       formatter: (val: number | null) => {
         if (!val) return "";
         const date = new Date(val);
-        return date.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", year: "numeric",  // แสดงปี
-        month: "2-digit",  
-        day: "2-digit",   
-        hour: "2-digit",   
-        minute: "2-digit", 
-        second: "2-digit",  hour12: false });
+        return date.toLocaleString("th-TH", {
+          timeZone: "Asia/Bangkok", year: "numeric",  // แสดงปี
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit", hour12: false
+        });
       },
     },
   },
@@ -81,22 +82,48 @@ export function buildChartsFromHistory(
   startDate: string,
   endDate: string
 ) {
-  
+
   console.log(history)
-  const fromDate = new Date(startDate);
-  fromDate.setHours(0, 0, 0, 0); // 00:00 ไทย = 17:00 UTC ของวันก่อน
-  const toDate = new Date(endDate);
-  toDate.setHours(23 + 7, 59, 59); // 23:59:59.999 ไทย
+  // const fromDate = new Date(startDate);
+  // fromDate.setHours(0, 0, 0, 0); // 00:00 ไทย = 17:00 UTC ของวันก่อน
+  // const toDate = new Date(endDate);
+  // toDate.setHours(23 + 7, 59, 59); // 23:59:59.999 ไทย
+  const fromTs = Date.parse(`${startDate}T00:00:00Z`);
+  const toTs = Date.parse(`${endDate}T23:59:59.999Z`);
 
-  const mappedHistory = history
-    .filter(item => item.Datetime) // filter ที่ไม่มี Datetime
-    .map(item => ({ ...item, ts: item.Datetime }));
+  const normalizeTs = (s: string) => {
+    let x = s.trim();
 
-  const filteredHistory = mappedHistory.filter(item => {
-    if (!item.ts) return false;
-    const itemTime = new Date(item.ts);
-    return !isNaN(itemTime.getTime()) && itemTime >= fromDate && itemTime <= toDate;
+    // รองรับ "YYYY-MM-DD HH:mm:ss(.ffffff)"
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(x)) {
+      x = x.replace(" ", "T");
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(x)) x += "T00:00:00Z";
+    if (!/(Z|[+\-]\d{2}:\d{2})$/.test(x)) x += "Z";
+    x = x.replace(/\.(\d{3})\d+/, ".$1"); // ตัด ms ให้เหลือ 3 หลัก
+    return x;
+  };
+
+  const mappedHistory: RowWithTs[] = history
+    .filter(item => item.Datetime)
+    .map(item => ({ ...item, ts: normalizeTs(item.Datetime) }));
+
+  const filteredHistory: RowWithTs[] = mappedHistory.filter(item => {
+    const t = Date.parse(item.ts);
+    return Number.isFinite(t) && t >= fromTs && t <= toTs;
   });
+
+  const toXY = (rows: RowWithTs[], key: NumericKey): Point[] =>
+    [...rows]
+      .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts))
+      .map(r => {
+        const x = Date.parse(r.ts);
+        const y = toNumOrNull(r[key]); // r[key] เป็น number | undefined
+        return { x, y };
+      });
+
+
 
   // 3️⃣ สร้าง series สำหรับกราฟ
   const voltageSeries = ensureMinPoints([
@@ -122,7 +149,7 @@ export function buildChartsFromHistory(
     series: voltageSeries,
     options: {
       ...baseOptions,
-      xaxis: { ...baseOptions.xaxis, min: fromDate, max: toDate }, // กำหนดช่วงวัน
+      xaxis: { ...baseOptions.xaxis, min: fromTs, max: toTs },  // ⬅ ใช้ตัวเลข
       yaxis: { labels: { formatter: (v: number) => `${v} V` } },
       tooltip: { y: { formatter: (v: number) => `${v} V` } },
     },
@@ -134,7 +161,7 @@ export function buildChartsFromHistory(
     series: currentSeries,
     options: {
       ...baseOptions,
-      xaxis: { ...baseOptions.xaxis, min: fromDate, max: toDate },
+      xaxis: { ...baseOptions.xaxis, min: fromTs, max: toTs }, // ⬅ เปลี่ยน
       yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} A` } },
       tooltip: { shared: true, intersect: false, y: { formatter: (v: number) => `${v} A` } },
     },
@@ -146,11 +173,12 @@ export function buildChartsFromHistory(
     series: powerSeries,
     options: {
       ...baseOptions,
-      xaxis: { ...baseOptions.xaxis, min: fromDate, max: toDate },
+      xaxis: { ...baseOptions.xaxis, min: fromTs, max: toTs }, // ⬅ เปลี่ยน
       yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} W` } },
       tooltip: { shared: true, intersect: false, y: { formatter: (v: number) => `${v} W` } },
     },
   };
+
 
   return [
     {
