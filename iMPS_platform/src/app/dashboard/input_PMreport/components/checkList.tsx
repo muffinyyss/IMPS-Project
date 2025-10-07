@@ -319,15 +319,19 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
         16: photosR16,
     };
 
-    const missingPhotoItems = useMemo(
-        () =>
-            Object.entries(photoGroups)
-                .filter(([, arr]) => arr.length < 1) // ← อย่างน้อยต้องมี 1 รูป
-                .map(([no]) => Number(no))
-                .sort((a, b) => a - b),
+    // รายการข้อที่มี “ช่องแนบรูป”
+    const REQUIRED_PHOTO_ITEMS = useMemo(
+        () => Object.keys(photoGroups).map((n) => Number(n)).sort((a, b) => a - b),
         [photosR1, photosR4, photosR6, photosR7, photosR8, photosR9, photosR10, photosR11, photosR12, photosR14, photosR16]
     );
 
+    // ข้อที่ยังไม่มีรูปอย่างน้อย 1 รูป
+    const missingPhotoItems = useMemo(
+        () => REQUIRED_PHOTO_ITEMS.filter((no) => (photoGroups[no]?.length ?? 0) < 1),
+        [REQUIRED_PHOTO_ITEMS, photoGroups]
+    );
+
+    // ครบทุกรายการที่ต้องแนบรูปหรือยัง
     const allPhotosAttached = missingPhotoItems.length === 0;
 
     const [job, setJob] = useState({
@@ -355,6 +359,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
         r13: { pf: "", remark: "" },
         r14: { pf: "", remark: "" },
         r15: { pf: "", remark: "" },
+        r16: { pf: "", remark: "" },
     });
 
     const [voltage, setVoltage] = useState<MeasureState<UnitVoltage>>(initMeasureState(VOLTAGE_FIELDS, "V"));
@@ -417,17 +422,22 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
     };
 
     // ---------- CHECK LOGIC (ตามที่ขอ 2 ข้อ) ----------
-    /** 1) เช็กว่ากด PASS/FAIL ครบ 15 ข้อหรือยัง + เหลือข้อไหน */
+    // 1) เช็ก PASS/FAIL ครบ 15 ข้อ (ไม่รวม r16)
+    const PF_REQUIRED_KEYS = useMemo(
+        () => Array.from({ length: 15 }, (_, i) => `r${i + 1}` as const), // r1..r15
+        []
+    );
+    /** 1) เช็กว่ากด PASS/FAIL ครบ 15 ข้อหรือยัง + เหลือข้อไหน (ไม่รวม r16) */
     const allPFAnswered = useMemo(
-        () => Object.values(rows).every((r) => r.pf === "PASS" || r.pf === "FAIL"),
-        [rows]
+        () => PF_REQUIRED_KEYS.every((k) => rows[k].pf === "PASS" || rows[k].pf === "FAIL"),
+        [rows, PF_REQUIRED_KEYS]
     );
     const missingPFItems = useMemo(() => {
-        return Object.entries(rows)
-            .filter(([, r]) => !r.pf)
-            .map(([k]) => Number(k.replace("r", "")))
+        return PF_REQUIRED_KEYS
+            .filter((k) => !rows[k].pf)
+            .map((k) => Number(k.replace("r", "")))
             .sort((a, b) => a - b);
-    }, [rows]);
+    }, [rows, PF_REQUIRED_KEYS]);
 
     /** helper: คืนค่า key ที่ value ว่างของชุดฟิลด์ */
     const getEmptyKeys = (state: MeasureState<string>, keys: string[]) =>
@@ -441,18 +451,11 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
         const m11 = getEmptyKeys(insulInPost, INSUL_FIELDS);
         const m12 = getEmptyKeys(voltagePost, VOLTAGE_FIELDS);
 
-        return {
-            5: m5,
-            6: m6,
-            7: m7,
-            11: m11,
-            12: m12,
-        };
+        return { 5: m5, 6: m6, 7: m7, 11: m11, 12: m12 };
     }, [voltage, insulIn, insulCharge, insulInPost, voltagePost]);
 
     const allRequiredInputsFilled = useMemo(
-        () =>
-            Object.values(missingInputs).every((arr) => arr.length === 0),
+        () => Object.values(missingInputs).every((arr) => arr.length === 0),
         [missingInputs]
     );
 
@@ -474,8 +477,17 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
         return lines;
     }, [missingInputs]);
 
+
+    // 3) ต้องมีรูปอย่างน้อย 1 รูป (รวมทุกข้อภาพ)
+    const hasAnyPhoto = useMemo(
+        () => Object.values(photoGroups).some((arr) => arr.length > 0),
+        [photosR1, photosR4, photosR6, photosR7, photosR8, photosR9, photosR10, photosR11, photosR12, photosR14, photosR16]
+    );
+
+
     /** ปุ่มถัดไป: ต้องครบทั้ง PF และ อินพุต */
     const canGoNext = allPFAnswered && allRequiredInputsFilled;
+    const canFinalSave = allPhotosAttached && allPFAnswered && allRequiredInputsFilled;
     const saveDisabled = !allPhotosAttached;
     const saveTitle = saveDisabled
         ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
@@ -490,8 +502,25 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
             insulCharge,
             insulInPost,
             voltagePost,
+            photos: photoGroups, // เผื่ออยากเก็บรวมด้วย
         });
         alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
+    };
+
+    const onFinalSave = () => {
+        console.log({
+            job,
+            rows,
+            voltage,
+            insulIn,
+            insulCharge,
+            insulInPost,
+            voltagePost,
+            photos: photoGroups,
+        });
+        alert("บันทึกเรียบร้อย (เดโม่) – ดูข้อมูลใน console");
+        // ถ้าต้องไปหน้าถัดไปหลังบันทึกจริง ให้เปิดบรรทัดนี้
+        // onNext();
     };
 
     // แจ้ง parent (คงพฤติกรรมเดิม: รายงานเฉพาะสถานะ PASS/FAIL ครบไหม)
@@ -908,10 +937,20 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                             max={20} // ปรับจำนวนสูงสุดได้
                         />
                     </div>
+                    <Input
+                        label="หมายเหตุ (ถ้ามี)"
+                        value={rows.r16.remark}
+                        onChange={(e) =>
+                            setRows({ ...rows, r16: { ...rows.r16, remark: e.target.value } })
+                        }
+                        crossOrigin=""
+                    />
+
                 </CardBody>
             </Card>
 
             {/* สรุปสถานะ & ปุ่ม */}
+            {/* ===== Footer (อัปเดตแล้ว) ===== */}
             <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
                 {/* ข้อ 1: PASS/FAIL ครบไหม */}
                 <div
@@ -938,9 +977,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                         <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
                     ) : (
                         <div className="tw-space-y-1">
-                            <Typography variant="small" className="!tw-text-amber-700">
-                                ยังขาด:
-                            </Typography>
+                            <Typography variant="small" className="!tw-text-amber-700">ยังขาด:</Typography>
                             <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
                                 {missingInputsTextLines.map((line, i) => (
                                     <li key={i}>{line}</li>
@@ -950,12 +987,12 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                     )}
                 </div>
 
-                {/* ข้อ 3: ข้อที่บังคับแนบรูป — ต้องมีอย่างน้อย 1 รูป */}
+                {/* ข้อ 3: แนบรูปครบทุกข้อที่กำหนด */}
                 <div
                     className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
                         }`}
                 >
-                    <Typography className="tw-font-medium">3) แนบรูปสำหรับข้อที่กำหนด</Typography>
+                    <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพตามข้อที่กำหนด</Typography>
                     {allPhotosAttached ? (
                         <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
                     ) : (
@@ -966,42 +1003,42 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                 </div>
 
 
+                {/* ปุ่มแอคชัน */}
                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                    <Button variant="outlined" color="blue-gray" type="button" onClick={onSave}>
-                        บันทึกชั่วคราว
-                    </Button>
-
-                    {/* <Button
-                        variant="outlined"
-                        color="blue-gray"
-                        type="button"
-                        onClick={onSave}
-                        disabled={saveDisabled}
-                        title={saveTitle}
-                        className={saveDisabled ? "tw-opacity-60 tw-cursor-not-allowed" : ""}
-                        {...({ "aria-disabled": saveDisabled } as any)}
-                    /> */}
+                    {!canFinalSave ? (
+                        <Button variant="outlined" color="blue-gray" type="button" onClick={onSave}>
+                            บันทึกชั่วคราว
+                        </Button>
+                    ) : (
+                        <Button color="blue" type="button" onClick={onFinalSave}>
+                            บันทึก
+                        </Button>
+                    )}
 
 
-                    {/* <Button
-                        color="blue"
-                        type="button"
-                        onClick={onNext}
-                        disabled={!canGoNext}
-                        aria-disabled={!canGoNext}
-                        title={
-                            canGoNext
-                                ? "ไปหน้า PMReportPhotos"
-                                : !allPFAnswered
-                                    ? `ยังไม่ได้เลือก PASS/FAIL ข้อ: ${missingPFItems.join(", ")}`
-                                    : `อินพุตยังไม่ครบ → ${missingInputsTextLines.join(" | ")}`
-                        }
-                        className={!canGoNext ? "tw-opacity-60 tw-cursor-not-allowed" : ""}
-                    >
-                        ถัดไป
-                    </Button> */}
+                    {/* ปุ่มถัดไป (คงคอมเมนต์ไว้ตามเดิม) */}
+                    {/*
+    <Button
+      color="blue"
+      type="button"
+      onClick={onNext}
+      disabled={!canGoNext}
+      aria-disabled={!canGoNext}
+      title={
+        canGoNext
+          ? "ไปหน้า PMReportPhotos"
+          : !allPFAnswered
+            ? `ยังไม่ได้เลือก PASS/FAIL ข้อ: ${missingPFItems.join(", ")}`
+            : `อินพุตยังไม่ครบ → ${missingInputsTextLines.join(" | ")}`
+      }
+      className={!canGoNext ? "tw-opacity-60 tw-cursor-not-allowed" : ""}
+    >
+      ถัดไป
+    </Button>
+    */}
                 </div>
             </CardFooter>
+
         </section>
     );
 }
