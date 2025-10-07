@@ -49,7 +49,6 @@ def get_mdb_collection_for(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return MDB_DB.get_collection(str(station_id))
-MDB_collection = MDB_DB.get_collection("NongKhae")
 
 def _ensure_utc_iso(v):
     """
@@ -512,7 +511,7 @@ async def mdb_query(request: Request, station_id: str = Query(...), current: Use
         last_id = None
         latest = await coll.find_one({}, sort=[("_id", -1)])  # ⬅️ ไม่ต้อง filter station_id ภายในแล้ว
         if latest:
-            latest["Datetime"] = _ensure_utc_iso(latest.get("Datetime"))
+            latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
             last_id = latest.get("_id")
             yield "retry: 3000\n"
             yield "event: init\n"
@@ -526,7 +525,7 @@ async def mdb_query(request: Request, station_id: str = Query(...), current: Use
 
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id:
-                doc["Datetime"] = _ensure_utc_iso(doc.get("Datetime"))
+                doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
                 last_id = doc.get("_id")
                 yield f"data: {to_json(doc)}\n\n"
             else:
@@ -552,7 +551,7 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
 
         latest = await coll.find_one({}, sort=[("_id", -1)])
         if latest:
-            latest["Datetime"] = _ensure_utc_iso(latest.get("Datetime"))
+            latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
             last_id = latest.get("_id")
             yield f"event: init\ndata: {to_json(latest)}\n\n"
         else:
@@ -564,7 +563,7 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
 
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id:
-                doc["Datetime"] = _ensure_utc_iso(doc.get("Datetime"))
+                doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
                 last_id = doc.get("_id")
                 yield f"data: {to_json(doc)}\n\n"
             else:
@@ -659,15 +658,15 @@ async def stream_history(
     start_iso, end_iso = _coerce_date_range(start, end)
     coll = get_mdb_collection_for(station_id)   # ⬅️ ใช้ coll ตามสถานี
 
-    query = {"Datetime": {"$gte": start_iso, "$lte": end_iso}}
+    query = {"timestamp": {"$gte": start_iso, "$lte": end_iso}}
     projection = {
-        "_id": 1, "station_id": 1, "Datetime": 1,
+        "_id": 1, "station_id": 1, "timestamp": 1,
         "VL1N": 1, "VL2N": 1, "VL3N": 1,
         "I1": 1, "I2": 1, "I3": 1,
         "PL1N": 1, "PL2N": 1, "PL3N": 1,
     }
 
-    cursor = coll.find(query, projection).sort("Datetime", 1)
+    cursor = coll.find(query, projection).sort("timestamp", 1)
 
     async def event_generator():
         try:
@@ -680,8 +679,8 @@ async def stream_history(
             #     await asyncio.sleep(0.001)
             async for doc in cursor:
                 doc["_id"] = str(doc["_id"])
-                if "Datetime" in doc:
-                    doc["Datetime"] = _ensure_utc_iso(doc["Datetime"])
+                if "timestamp" in doc:
+                    doc["timestamp"] = _ensure_utc_iso(doc["timestamp"])
                 yield f"data: {json.dumps(doc)}\n\n"
                 sent_any = True
                 await asyncio.sleep(0.001)
@@ -713,7 +712,7 @@ async def change_stream_generator(station_id: str):
             if not doc:
                 continue
             payload = {
-                "t": _ensure_utc_iso(doc.get("Datetime")),
+                "t": _ensure_utc_iso(doc.get("timestamp")),
                 "L1": doc.get("VL1N"),
                 "L2": doc.get("VL2N"),
                 "L3": doc.get("VL3N"),
@@ -833,6 +832,80 @@ def delete_user(user_id: str, current: UserClaims = Depends(get_current_user)):
 
     # 204 No Content
     return Response(status_code=204)
+
+class UserUpdate(BaseModel):
+    username: str | None = None
+    email: EmailStr | None = None
+    tel : str | None = None      # ใช้ "phone" ให้สอดคล้องเอกสารที่คุณมี
+    company: str | None = None
+    role: str | None = None       # admin เท่านั้นที่แก้ได้
+    is_active: bool | None = None # admin เท่านั้นที่แก้ได้
+    password: str | None = None   # จะถูกแฮชเสมอถ้ามีค่า
+
+def hash_password(raw: str) -> str:
+    return bcrypt.hashpw(raw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+# ฟิลด์ที่อนุญาต
+ALLOW_FIELDS_ADMIN_USER = {"username", "email", "tel", "company", "role", "is_active", "password"}
+ALLOW_FIELDS_SELF_USER  = {"username", "email", "tel", "company", "password"}
+
+
+# ===== Endpoint =====
+@app.patch("/user_update/{id}", response_model=UserOut)
+def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_current_user)):
+    oid = to_object_id_or_400(id)
+
+    doc = users_collection.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    if current.role != "admin" and current.user_id != str(oid):
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    incoming = {
+        k: (v.strip() if isinstance(v, str) else v)
+        for k, v in body.model_dump(exclude_none=True).items()
+    }
+    if not incoming:
+        raise HTTPException(status_code=400, detail="no fields to update")
+
+    allowed = ALLOW_FIELDS_ADMIN_USER if current.role == "admin" else ALLOW_FIELDS_SELF_USER
+    payload = {k: v for k, v in incoming.items() if k in allowed}
+    if not payload:
+        raise HTTPException(status_code=400, detail="no permitted fields to update")
+
+    if "password" in payload:
+        payload["password"] = hash_password(payload["password"])
+
+    if "is_active" in payload and not isinstance(payload["is_active"], bool):
+        raise HTTPException(status_code=400, detail="is_active must be boolean")
+
+    now = datetime.now(timezone.utc)
+    payload["updatedAt"] = now
+
+    try:
+        users_collection.update_one({"_id": oid}, {"$set": payload})
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail="duplicate email or username")
+
+    newdoc = users_collection.find_one({"_id": oid}) or {}
+    created_at = newdoc.get("createdAt") or now
+    if "createdAt" not in newdoc:
+        users_collection.update_one({"_id": oid}, {"$set": {"createdAt": created_at}})
+
+    # ✅ ใช้ tel ไม่ใช่ phone
+    return {
+        "id": str(newdoc["_id"]),
+        "username": newdoc.get("username", ""),
+        "email": newdoc.get("email", ""),
+        "role": newdoc.get("role", ""),
+        "company": (newdoc.get("company") or ""),
+        "station_id": list(newdoc.get("station_id") or []),
+        "tel": (newdoc.get("tel") or ""),
+        "createdAt": created_at,
+        "updatedAt": newdoc.get("updatedAt", now),
+    }
+
 
 # @app.get("/all-stations/")
 # def all_stations():
@@ -1121,13 +1194,6 @@ def to_object_id_or_400(s: str) -> ObjectId:
         raise HTTPException(status_code=400, detail="invalid user_id")
 
 
-
-def to_object_id_or_400(s: str) -> ObjectId:
-    try:
-        return ObjectId(s)
-    except Exception:
-        raise HTTPException(status_code=400, detail="invalid user_id")
-
 @app.patch("/update_stations/{id}", response_model=StationOut)
 def update_station(
     id: str,
@@ -1182,18 +1248,8 @@ def update_station(
 
             # ✅ เก็บเป็น ObjectId ใน DB
             payload["user_id"] = udoc["_id"]
-
-            # ถ้าไม่อยากเก็บ username คู่กัน ให้แน่ใจว่าเราไม่เซ็ต/ไม่เก็บฟิลด์นี้
-            # ถ้าเคยมี username อยู่แล้วและต้องการลบทิ้ง สามารถเพิ่ม $unset ตอน update ได้ (ดูข้างล่าง)
-    # else:
-    #     payload = {k: v for k, v in incoming.items() if k in ALLOW_FIELDS_NONADMIN}
-    #     if not payload:
-    #         raise HTTPException(status_code=400, detail="only status can be updated")
-
-    # ตรวจชนิด status ให้เป็น bool
-    # if "status" in payload and not isinstance(payload["status"], bool):
-    #     raise HTTPException(status_code=400, detail="status must be boolean")
     
+
     if "is_active" in payload and not isinstance(payload["is_active"], bool):
         raise HTTPException(status_code=400, detail="is_active must be boolean")
 

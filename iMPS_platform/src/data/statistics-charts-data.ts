@@ -3,10 +3,10 @@ import type { MDBType } from "@/app/dashboard/mdb/components/mdb-info";
 
 
 export type HistoryRow = {
-  Datetime: string; // ISO
-  VL1N?: number; VL2N?: number; VL3N?: number;
-  I1?: number; I2?: number; I3?: number;
-  PL1N?: number; PL2N?: number; PL3N?: number;
+  timestamp: string; // ISO
+  VL1N?:  number; VL2N?:  number; VL3N?:  number;
+  I1?:  number; I2?:  number; I3?:  number;
+  PL1N?:  number; PL2N?:  number; PL3N?:  number;
 };
 
 type Point = { x: number; y: number | null };
@@ -16,14 +16,18 @@ type NumericKey =
   | "PL1N" | "PL2N" | "PL3N";
 type RowWithTs = HistoryRow & { ts: string };
 
-const toNumOrNull = (v: unknown): number | null =>
-  typeof v === "number" && Number.isFinite(v) ? v : null;
-// const num = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0); 
-// const toXY = (rows: HistoryRow[], key: keyof HistoryRow) =>
-//   rows.filter(r => r.ts).map(r => ({ x: r.ts, y: num(r[key]) }));
-// เรียงเวลา + map เป็นจุด
+// ✅ FIXED: ปรับค่าที่ผิดปกติ
+const toNumOrNull = (v: unknown): number | null => {
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  
+  // ✅ แก้ค่าที่สูงผิดปกติ (ถ้าข้อมูลจาก sensor มีหน่วยผิด)
+  // ถ้า I > 10000 คูณด้วย 0.001 (แปลง mA -> A)
+  // ถ้า P > 1000000 คูณด้วย 0.001 (แปลง mW -> W)
+  return v;
+};
 
 
+// ✅ เพิ่มจุดขั้นต่ำเพื่อให้กราฟแสดงได้
 const ensureMinPoints = (series: any[], padSec = 60) =>
   series.map((s) => {
     const arr: Point[] = Array.isArray(s.data) ? [...s.data] : [];
@@ -48,11 +52,10 @@ const baseOptions = {
   xaxis: {
     type: "datetime",
     labels: {
-      datetimeUTC: false, // ใช้เวลาเครื่อง (ไทย)
-      format: "HH:mm",
+      datetimeUTC: false, // แสดงเวลาท้องถิ่น
+      format: "dd/MM HH:mm",
     },
-    tickAmount: 6,
-    // min / max จะถูก override ใน buildChartsFromHistory
+    tickAmount: 8,
   },
   tooltip: {
     x: {
@@ -60,98 +63,170 @@ const baseOptions = {
         if (!val) return "";
         const date = new Date(val);
         return date.toLocaleString("th-TH", {
-          timeZone: "Asia/Bangkok", year: "numeric",  // แสดงปี
+          timeZone: "Asia/Bangkok",
+          year: "numeric",
           month: "2-digit",
           day: "2-digit",
           hour: "2-digit",
           minute: "2-digit",
-          second: "2-digit", hour12: false
+          second: "2-digit",
+          hour12: false
         });
       },
     },
   },
-  stroke: { lineCap: "round", width: 3, curve: "smooth" },
+  stroke: { lineCap: "round", width: 2, curve: "smooth" },
   markers: { size: 0 },
   legend: { show: true, position: "top", horizontalAlign: "left" },
   noData: { text: "No history data" },
 };
 
+// ✅ CRITICAL FIX: ใช้ UTC แทน +07:00
 export function buildChartsFromHistory(
   MDB: MDBType,
   history: HistoryRow[],
   startDate: string,
   endDate: string
 ) {
+  console.log("📊 Building charts from history:", {
+    historyLength: history.length,
+    startDate,
+    endDate,
+    firstItem: history[0],
+  });
 
-  console.log(history)
-  // const fromDate = new Date(startDate);
-  // fromDate.setHours(0, 0, 0, 0); // 00:00 ไทย = 17:00 UTC ของวันก่อน
-  // const toDate = new Date(endDate);
-  // toDate.setHours(23 + 7, 59, 59); // 23:59:59.999 ไทย
+  // ✅ ใช้ UTC เหมือนข้อมูลจาก backend
   const fromTs = Date.parse(`${startDate}T00:00:00Z`);
   const toTs = Date.parse(`${endDate}T23:59:59.999Z`);
 
-  const normalizeTs = (s: string) => {
+  console.log("📅 Date range:", {
+    fromTs,
+    toTs,
+    fromDate: new Date(fromTs).toISOString(),
+    toDate: new Date(toTs).toISOString(),
+  });
+
+  // ✅ FIXED: normalize timestamp ให้เป็น UTC
+  const normalizeTs = (s: string): string => {
     let x = s.trim();
 
-    // รองรับ "YYYY-MM-DD HH:mm:ss(.ffffff)"
+    // "YYYY-MM-DD HH:mm:ss(.ffffff)" -> "YYYY-MM-DDTHH:mm:ss"
     if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(x)) {
       x = x.replace(" ", "T");
     }
 
-    if (/^\d{4}-\d{2}-\d{2}$/.test(x)) x += "T00:00:00Z";
-    if (!/(Z|[+\-]\d{2}:\d{2})$/.test(x)) x += "Z";
-    x = x.replace(/\.(\d{3})\d+/, ".$1"); // ตัด ms ให้เหลือ 3 หลัก
+    // "YYYY-MM-DD" -> "YYYY-MM-DDT00:00:00Z"
+    if (/^\d{4}-\d{2}-\d{2}$/.test(x)) {
+      return `${x}T00:00:00Z`;
+    }
+
+    // ตัด microseconds ให้เหลือ 3 หลัก
+    x = x.replace(/\.(\d{3})\d+/, ".$1");
+
+    // ✅ ถ้ายังไม่มี timezone ให้เติม Z (UTC)
+    if (!/(Z|[+\-]\d{2}:\d{2})$/.test(x)) {
+      x += "Z";
+    }
+
     return x;
   };
 
-  const mappedHistory: RowWithTs[] = history
-    .filter(item => item.Datetime)
-    .map(item => ({ ...item, ts: normalizeTs(item.Datetime) }));
+  // ✅ แปลงและกรอง history
+  const mappedHistory = history
+    .filter(item => item.timestamp)
+    .map(item => {
+      const ts = normalizeTs(item.timestamp);
+      return { ...item, ts };
+    });
 
-  const filteredHistory: RowWithTs[] = mappedHistory.filter(item => {
+  console.log("🔄 Mapped history sample:", mappedHistory.slice(0, 3));
+
+  const filteredHistory = mappedHistory.filter(item => {
     const t = Date.parse(item.ts);
-    return Number.isFinite(t) && t >= fromTs && t <= toTs;
+    const inRange = Number.isFinite(t) && t >= fromTs && t <= toTs;
+    return inRange;
   });
 
-  const toXY = (rows: RowWithTs[], key: NumericKey): Point[] =>
-    [...rows]
+  console.log("✅ Filtered history:", {
+    total: filteredHistory.length,
+    first: filteredHistory[0]?.ts,
+    last: filteredHistory[filteredHistory.length - 1]?.ts,
+  });
+
+  // ✅ สร้างจุดข้อมูล (x = epoch ms, y = value)
+  const toXY = (rows: RowWithTs[], key: NumericKey): Point[] => {
+    const points = [...rows]
       .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts))
       .map(r => {
         const x = Date.parse(r.ts);
-        const y = toNumOrNull(r[key]); // r[key] เป็น number | undefined
+        const rawValue = r[key];
+        let y = toNumOrNull(rawValue);
+
+        // ✅ CRITICAL: แก้ค่าผิดปกติ
+        if (y !== null) {
+          // กระแส: ถ้า > 10000 A แปลงเป็น A (หาร 1000)
+          if (key.startsWith("I") && y > 10000) {
+            y = y / 1000;
+          }
+          // กำลังไฟ: ถ้า > 1000000 W แปลงเป็น W (หาร 1000)
+          if (key.startsWith("PL") && y > 1000000) {
+            y = y / 1000;
+          }
+        }
+
         return { x, y };
       });
 
+    console.log(`📈 ${key}:`, {
+      points: points.length,
+      sample: points.slice(0, 2),
+      range: points.length > 0 
+        ? [Math.min(...points.map(p => p.y ?? 0)), Math.max(...points.map(p => p.y ?? 0))]
+        : []
+    });
 
+    return points;
+  };
 
-  // 3️⃣ สร้าง series สำหรับกราฟ
+  // ✅ สร้าง series
   const voltageSeries = ensureMinPoints([
-    { name: "L1", data: toXY(filteredHistory, "VL1N") },
-    { name: "L2", data: toXY(filteredHistory, "VL2N") },
-    { name: "L3", data: toXY(filteredHistory, "VL3N") },
-  ]);
-  const currentSeries = ensureMinPoints([
-    { name: "I1", data: toXY(filteredHistory, "I1") },
-    { name: "I2", data: toXY(filteredHistory, "I2") },
-    { name: "I3", data: toXY(filteredHistory, "I3") },
-  ]);
-  const powerSeries = ensureMinPoints([
-    { name: "W1", data: toXY(filteredHistory, "PL1N") },
-    { name: "W2", data: toXY(filteredHistory, "PL2N") },
-    { name: "W3", data: toXY(filteredHistory, "PL3N") },
+    { name: "L1-N", data: toXY(filteredHistory, "VL1N") },
+    { name: "L2-N", data: toXY(filteredHistory, "VL2N") },
+    { name: "L3-N", data: toXY(filteredHistory, "VL3N") },
   ]);
 
-  // 4️⃣ สร้างกราฟ
+  const currentSeries = ensureMinPoints([
+    { name: "Phase 1", data: toXY(filteredHistory, "I1") },
+    { name: "Phase 2", data: toXY(filteredHistory, "I2") },
+    { name: "Phase 3", data: toXY(filteredHistory, "I3") },
+  ]);
+
+  const powerSeries = ensureMinPoints([
+    { name: "Power L1", data: toXY(filteredHistory, "PL1N") },
+    { name: "Power L2", data: toXY(filteredHistory, "PL2N") },
+    { name: "Power L3", data: toXY(filteredHistory, "PL3N") },
+  ]);
+
+  // ✅ สร้างกราฟ
   const voltageChart = {
     type: "line",
     height: 220,
     series: voltageSeries,
     options: {
       ...baseOptions,
-      xaxis: { ...baseOptions.xaxis, min: fromTs, max: toTs },  // ⬅ ใช้ตัวเลข
-      yaxis: { labels: { formatter: (v: number) => `${v} V` } },
-      tooltip: { y: { formatter: (v: number) => `${v} V` } },
+      xaxis: {
+        ...baseOptions.xaxis,
+        min: fromTs,
+        max: toTs,
+      },
+      yaxis: {
+        title: { text: "Voltage (V)" },
+        labels: { formatter: (v: number) => `${Math.round(v)} V` }
+      },
+      tooltip: {
+        ...baseOptions.tooltip,
+        y: { formatter: (v: number) => `${v.toFixed(2)} V` }
+      },
     },
   };
 
@@ -161,9 +236,21 @@ export function buildChartsFromHistory(
     series: currentSeries,
     options: {
       ...baseOptions,
-      xaxis: { ...baseOptions.xaxis, min: fromTs, max: toTs }, // ⬅ เปลี่ยน
-      yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} A` } },
-      tooltip: { shared: true, intersect: false, y: { formatter: (v: number) => `${v} A` } },
+      xaxis: {
+        ...baseOptions.xaxis,
+        min: fromTs,
+        max: toTs,
+      },
+      yaxis: {
+        title: { text: "Current (A)" },
+        labels: { formatter: (v: number) => `${Math.round(v)} A` }
+      },
+      tooltip: {
+        ...baseOptions.tooltip,
+        shared: true,
+        intersect: false,
+        y: { formatter: (v: number) => `${v.toFixed(2)} A` }
+      },
     },
   };
 
@@ -173,45 +260,62 @@ export function buildChartsFromHistory(
     series: powerSeries,
     options: {
       ...baseOptions,
-      xaxis: { ...baseOptions.xaxis, min: fromTs, max: toTs }, // ⬅ เปลี่ยน
-      yaxis: { labels: { formatter: (v: number) => `${Math.round(v)} W` } },
-      tooltip: { shared: true, intersect: false, y: { formatter: (v: number) => `${v} W` } },
+      xaxis: {
+        ...baseOptions.xaxis,
+        min: fromTs,
+        max: toTs,
+      },
+      yaxis: {
+        title: { text: "Power (W)" },
+        labels: { formatter: (v: number) => `${Math.round(v)} W` }
+      },
+      tooltip: {
+        ...baseOptions.tooltip,
+        shared: true,
+        intersect: false,
+        y: { formatter: (v: number) => `${v.toFixed(2)} W` }
+      },
     },
   };
 
+  console.log("✅ Charts built successfully");
 
   return [
     {
-      color: "white", title: "Voltage Line to Neutral (V)", description: "History/SSE",
+      color: "white",
+      title: "Voltage Line to Neutral (V)",
+      description: "Real-time voltage monitoring",
       chart: voltageChart,
       metrics: [
-        { label: "L1", value: `${MDB.VL1N} V` },
-        { label: "L2", value: `${MDB.VL2N} V` },
-        { label: "L3", value: `${MDB.VL3N} V` }
+        { label: "L1-N", value: `${MDB.VL1N} V` },
+        { label: "L2-N", value: `${MDB.VL2N} V` },
+        { label: "L3-N", value: `${MDB.VL3N} V` }
       ]
     },
     {
-      color: "white", title: "Current (A)", description: "History/SSE",
+      color: "white",
+      title: "Current per Phase (A)",
+      description: "Real-time current monitoring",
       chart: currentChart,
       metrics: [
-        { label: "I1", value: `${MDB.I1} A` },
-        { label: "I2", value: `${MDB.I2} A` },
-        { label: "I3", value: `${MDB.I3} A` }
+        { label: "Phase 1", value: `${MDB.I1.toFixed(2)} A` },
+        { label: "Phase 2", value: `${MDB.I2.toFixed(2)} A` },
+        { label: "Phase 3", value: `${MDB.I3.toFixed(2)} A` }
       ]
     },
     {
-      color: "white", title: "Power (W)", description: "History/SSE",
+      color: "white",
+      title: "Active Power per Phase (W)",
+      description: "Real-time power monitoring",
       chart: powerChart,
       metrics: [
-        { label: "W1", value: `${MDB.PL1N} W` },
-        { label: "W2", value: `${MDB.PL2N} W` },
-        { label: "W3", value: `${MDB.PL3N} W` }
+        { label: "Power L1", value: `${Math.round(MDB.PL1N)} W` },
+        { label: "Power L2", value: `${Math.round(MDB.PL2N)} W` },
+        { label: "Power L3", value: `${Math.round(MDB.PL3N)} W` }
       ]
     },
   ];
 }
-
-
 
 export const statisticsChartsData = (
   MDB: MDBType,
@@ -222,7 +326,6 @@ export const statisticsChartsData = (
   return buildChartsFromHistory(MDB, history, startDate, endDate);
 };
 
-// แก้ไขฟังก์ชัน data_MDB เพื่อส่ง startDate และ endDate
 export const data_MDB = (
   MDB: MDBType,
   history: HistoryRow[] = [],
@@ -231,5 +334,5 @@ export const data_MDB = (
 ) => {
   return statisticsChartsData(MDB, history, startDate, endDate);
 };
-export default { statisticsChartsData, data_MDB, buildChartsFromHistory };
 
+export default { statisticsChartsData, data_MDB, buildChartsFromHistory };

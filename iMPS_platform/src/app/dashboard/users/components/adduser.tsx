@@ -18,7 +18,6 @@ export type NewUserPayload = {
     password: string;
     email: string;
     role: "owner" | "admin" | "technician";
-    station_id?: string;
     company_name?: string;
     payment: "y" | "n";
     tel: string;
@@ -42,7 +41,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         password: "",
         email: "",
         role: "owner",
-        station_id: "",
         company_name: "",
         payment: "y",
         tel: "",
@@ -109,7 +107,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             tel: "",
             company_name: "",
             payment: "y",
-            station_id: "",
         });
         onClose();
     };
@@ -162,63 +159,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             onChange={(e) => onChange("company_name", e.target.value)}
                             crossOrigin={undefined}
                         />
-
-                        {/* Station IDs (หลายค่า) */}
-                        <div className="tw-space-y-2">
-                            <div className="tw-flex tw-items-end tw-gap-2">
-                                <div className="tw-flex-1">
-                                    <Input
-                                        label="Station ID"
-                                        value={stationInput}
-                                        onChange={(e) => setStationInput(e.target.value)}
-                                        onKeyDown={handleStationKeyDown}
-                                        crossOrigin={undefined}
-                                        required
-                                    />
-                                </div>
-                                <Button
-                                    type="button"
-                                    className="tw-bg-blue-600"
-                                    onClick={addStationId}
-                                >
-                                    + add
-                                </Button>
-                            </div>
-
-                            {/* แสดงรายการที่เพิ่มแล้ว */}
-                            {stationIds.length > 0 && (
-                                <div className="tw-flex tw-flex-wrap tw-gap-2">
-                                    {stationIds.map((id) => (
-                                        <span
-                                            key={id}
-                                            className="tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-bg-blue-50 tw-text-blue-700 tw-px-3 tw-py-1 tw-text-sm"
-                                        >
-                                            {id}
-                                            <button
-                                                type="button"
-                                                className=" tw-leading-none tw-text-2xl hover:tw-text-blue-900"
-                                                onClick={() => removeStationId(id)}
-                                                aria-label={`Remove ${id}`}
-                                                title="Remove"
-                                            >
-                                                ×
-                                            </button>
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                            <p className="tw-text-xs tw-text-gray-500 tw-ml-1">
-                                ใส่ทีละค่าแล้วกด Enter หรือปุ่ม Add • หรือวางหลายค่าคั่นด้วยเครื่องหมาย , แล้วกด Add ก็ได้
-                            </p>
-                        </div>
-
-                        {/* <Input
-                            label="Station_id"
-                            value={form.station_id}
-                            onChange={(e) => onChange("station_id", e.target.value)}
-                            crossOrigin={undefined}
-                        /> */}
-
                         <div>
                             <Select
                                 value={form.role}

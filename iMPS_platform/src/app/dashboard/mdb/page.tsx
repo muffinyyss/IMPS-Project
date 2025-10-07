@@ -25,7 +25,7 @@ import { buildChartsFromHistory } from "@/data/statistics-charts-data";
 import { useSearchParams } from "next/navigation";
 
 type HistoryRow = {
-    Datetime: string; // ISO time
+    timestamp: string; // ISO time
     VL1N?: number; VL2N?: number; VL3N?: number;
     I1?: number; I2?: number; I3?: number;
     PL1N?: number; PL2N?: number; PL3N?: number;
@@ -98,12 +98,11 @@ export default function MDBPage() {
 
     // default: ล่าสุด 30 วัน
     const today = useMemo(() => new Date(), []);
-    const thirtyDaysAgo = useMemo(() => {
-        const d = new Date();
-        d.setDate(d.getDate() - 30);   // ✅ ย้อน 30 วันจริงๆ
-        return d;
-    }, []);
-
+    const twentyFourHoursAgo = useMemo(() => {
+    const d = new Date();
+    d.setHours(d.getHours() - 24);
+    return d;  // Date object
+}, []);
     // const [startDate, setStartDate] = useState<string>(fmt(thirtyDaysAgo));
     // const [endDate, setEndDate] = useState<string>(fmt(today));
 
@@ -111,9 +110,9 @@ export default function MDBPage() {
     // const [draftStart, setDraftStart] = useState<string>(fmt(thirtyDaysAgo));
     // const [draftEnd, setDraftEnd] = useState<string>(fmt(today));
 
-    const [startDate, setStartDate] = useState<string>(fmt(thirtyDaysAgo));
+    const [startDate, setStartDate] = useState<string>(() => fmt(twentyFourHoursAgo));
     const [endDate, setEndDate] = useState<string>(fmt(today));
-    const [draftStart, setDraftStart] = useState<string>(fmt(thirtyDaysAgo));
+    const [draftStart, setDraftStart] = useState<string>(fmt(twentyFourHoursAgo));
     const [draftEnd, setDraftEnd] = useState<string>(fmt(today));
 
     // guard: รักษาลอจิก start <= end
@@ -318,14 +317,14 @@ export default function MDBPage() {
         const from = new Date(startISO).getTime();
         const to = new Date(endISO).getTime();
         return (doc: any) => {
-            let ts = typeof doc.Datetime === "string" ? doc.Datetime : new Date().toISOString();
+            let ts = typeof doc.timestamp === "string" ? doc.timestamp : new Date().toISOString();
             if (!ts.endsWith("Z")) ts += "Z";
             const t = parseDatetime(ts).getTime();
             if (t < from || t > to) return;
 
             setHistory(prev => {
                 const next: HistoryRow = {
-                    Datetime: ts,
+                    timestamp: ts,
                     VL1N: Number(doc.VL1N ?? 0),
                     VL2N: Number(doc.VL2N ?? 0),
                     VL3N: Number(doc.VL3N ?? 0),
@@ -340,11 +339,11 @@ export default function MDBPage() {
                 const merged = [...prev, next];
                 const pruned = merged
                     .filter(r => {
-                        const tt = new Date(r.Datetime).getTime();
+                        const tt = new Date(r.timestamp).getTime(); // ✅ แก้จาก r.Datetime
                         return tt >= from && tt <= to;
                     })
                     .slice(-5000)
-                    .sort((a, b) => new Date(a.Datetime).getTime() - new Date(b.Datetime).getTime());
+                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); // ✅ แก้
 
                 return pruned;
             });
@@ -353,7 +352,7 @@ export default function MDBPage() {
 
     // SSE ปัจจุบัน (ล่าสุด)
     useEffect(() => {
-        if (!stationId) return;  
+        if (!stationId) return;
         setHistory([]);         // ยังไม่ได้เลือก ไม่ต้องยิง
         setLoading(true);
         setErr(null);
@@ -497,7 +496,7 @@ export default function MDBPage() {
         // breakChargerStatus: true,
     };
     const applyRange = () => {
-        setHistory([]); 
+        setHistory([]);
         setStartDate(draftStart);
         setEndDate(draftEnd);
     };
