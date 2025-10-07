@@ -17,6 +17,7 @@ import StatisticChart from "./components/statistics-chart";
 import AICard from "./components/AICard";
 import PMCard from "./components/PMCard";
 import CBMCard from "./components/condition-Based";
+import LightCard from "./components/light-card";
 
 import { useSearchParams, useRouter  } from "next/navigation";
 const StationImage = dynamic(() => import("./components/station-image"), {
@@ -65,11 +66,8 @@ export default function ChargersPage() {
           ...prev,
           station_name: info?.station_name ?? "-",
           model: info?.model ?? "-",
-          // ไม่อัปเดต status ตรงนี้
         }));
-      } catch {
-        /* noop */
-      }
+      } catch {}
     })();
 
     return () => ctrl.abort();
@@ -101,7 +99,6 @@ export default function ChargersPage() {
     } catch {}
   };
 
-  // ยิงครั้งแรกทันที แล้วค่อยตั้ง interval
   fetchStatus();
   const id = setInterval(fetchStatus, 5000);
 
@@ -130,9 +127,7 @@ export default function ChargersPage() {
               </CardHeader>
               <CardBody className="tw-flex tw-flex-col tw-flex-1 !tw-p-0">
                 <StationInfo
-                  // stationName="GIGA EV – LatPhraoWangHin"
-                  // model="DC Fast 180 kW"
-                  // status="Online"
+
                   station_name={stationDetail?.station_name ?? "-"}
                   model={stationDetail?.model}
                   status={stationDetail?.status}
@@ -145,31 +140,14 @@ export default function ChargersPage() {
           <StatisticChart />
           <AICard />
           <PMCard />
+          
+          
         </div>
+        
       </div>
+      {/* <LightCard /> */}
       <CBMCard />
 
-      {/* <Card className="tw-mb-6 tw-border tw-border-blue-gray-100 tw-shadow-sm">
-        <div className="tw-flex tw-items-center">
-          <CardHeader
-            floated={false}
-            variant="gradient"
-            color="gray"
-            className="tw-grid tw-h-16 tw-w-16 tw-place-items-center"
-          >
-            <GlobeAltIcon className="tw-h-7 tw-w-7 tw-text-white" />
-          </CardHeader>
-          <Typography variant="h6" color="blue-gray" className="tw-mt-3">
-            Charger pageeeeeeeeeeeeeeeeeeeeeeeeeee
-          </Typography>
-        </div>
-        <CardBody className="tw-grid tw-grid-cols-1 tw-items-center tw-justify-between tw-p-4 lg:tw-grid-cols-2">
-          <div className="tw-col-span-1 tw-overflow-scroll">
-            <Table />
-          </div>
-          <WorldMap />
-        </CardBody>
-      </Card> */}
     </div>
   );
 }

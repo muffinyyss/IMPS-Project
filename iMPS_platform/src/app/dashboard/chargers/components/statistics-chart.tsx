@@ -19,30 +19,39 @@ export default function HealthIndex({
   const v = Math.max(0, Math.min(100, Math.round(initialValue)));
   const segments = 10;
   const filled = Math.floor((v / 100) * segments);
+  const [isActive, setIsActive] = useState(false);
+
+  const handleToggle = () => setIsActive(!isActive);
 
   return (
     <Card className={`tw-border tw-border-blue-gray-100 tw-shadow-sm ${className ?? ""}`}>
-      <CardHeader
-        floated={false}
-        shadow={false}
-        className="tw-px-4 tw-py-3 tw-flex tw-items-center tw-justify-between"
-      >
-        <div className="tw-flex tw-items-center">
-          <img
-            src="/img/heart-rate.png"  
-            alt="Health Icon"
-            className="tw-h-12 tw-w-12 tw-mr-4"
-          />
-          <Typography variant="h6" color="blue-gray">
-            Health Index
-          </Typography>
-        </div>
-
-        <div className="tw-flex tw-items-center tw-gap-2">
-          <Typography className="tw-text-sm tw-text-blue-gray-600">
-            {on ? "Active" : "Inactive"}
-          </Typography>
-          <Switch checked={on} onChange={() => setOn(!on)} />
+      <CardHeader floated={false} shadow={false} color="transparent" className="tw-overflow-visible tw-rounded-none">
+        <div className="tw-flex tw-items-center tw-justify-between">
+          <div className="tw-flex tw-items-center tw-gap-3">
+            {/* ใช้ <i> ของ Font Awesome */}
+            <i
+              className="fa-fw fa-solid fa-person-drowning tw-text-xl tw-text-gray-800"
+              // className="fa-fw fa-solid fa-heart-pulse tw-text-xl tw-text-gray-800"
+              aria-hidden="true"
+            />
+            <div>
+              <Typography
+                variant="h6"
+                className="tw-leading-none tw-transition-colors tw-text-gray-900"
+              >
+                Health Index
+              </Typography>
+              <Typography className="!tw-text-xs !tw-font-normal tw-transition-colors !tw-text-blue-gray-500">
+                Enabled
+              </Typography>
+            </div>
+          </div>
+          <div className="tw-flex tw-items-center tw-gap-2">
+            <Typography className="tw-text-sm tw-text-blue-gray-600">
+              {on ? "Active" : "Inactive"}
+            </Typography>
+            <Switch checked={on} onChange={() => setOn(!on)} />
+          </div>
         </div>
       </CardHeader>
 
@@ -57,12 +66,12 @@ export default function HealthIndex({
                 <div
                   key={i}
                   className={`tw-h-4 tw-flex-1 tw-rounded-[2px] ${i < filled
-                      ? v >= 80
-                        ? "tw-bg-green-500"
-                        : v >= 50
-                          ? "tw-bg-amber-500"
-                          : "tw-bg-red-500"
-                      : "tw-bg-blue-gray-100"
+                    ? v >= 80
+                      ? "tw-bg-green-500"
+                      : v >= 50
+                        ? "tw-bg-amber-500"
+                        : "tw-bg-red-500"
+                    : "tw-bg-blue-gray-100"
                     }`}
                 />
               ))}
