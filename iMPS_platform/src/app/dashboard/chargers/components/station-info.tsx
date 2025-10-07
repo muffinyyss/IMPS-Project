@@ -22,11 +22,9 @@ export default function StationInfo({
   const statusColor =
     status === true
       ? "tw-bg-green-100 tw-text-green-700"
-      : status === false
-        ? "tw-bg-red-100 tw-text-red-700"
-        : "tw-bg-amber-100 tw-text-amber-700";
+      : "tw-bg-red-100 tw-text-red-700" ;
 
-  const statusText = status === true ? "Online" : status === false ? "Offline" : "Unknown";
+  const statusText = status === true ? "Online" : "Offline" ;
   return (
     <div className="tw-h-full tw-flex tw-flex-col">
       <div className="tw-flex-1 tw-overflow-auto tw-p-6">

@@ -40,10 +40,9 @@ export default function ChargersPage() {
   });
   
 
-  useEffect(() => {
+   useEffect(() => {
     if (!stationId) return;
 
-    // รองรับทั้ง access_token และ accessToken
     const token =
       localStorage.getItem("access_token") ||
       localStorage.getItem("accessToken") ||
@@ -53,23 +52,65 @@ export default function ChargersPage() {
     const ctrl = new AbortController();
 
     (async () => {
+      try {
+        const res = await fetch(
+          `http://localhost:8000/station/info?station_id=${encodeURIComponent(stationId)}`,
+          { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const info = data.station ?? data;
+
+        setStationDetail((prev) => ({
+          ...prev,
+          station_name: info?.station_name ?? "-",
+          model: info?.model ?? "-",
+          // ไม่อัปเดต status ตรงนี้
+        }));
+      } catch {
+        /* noop */
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [stationId]);
+
+  useEffect(() => {
+  if (!stationId) return;
+
+  const token =
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("accessToken") ||
+    "";
+  if (!token) return;
+
+  const ctrl = new AbortController();
+
+  const fetchStatus = async () => {
+    try {
       const res = await fetch(
-        `http://localhost:8000/station/info?station_id=${encodeURIComponent(stationId)}`,
+        `http://localhost:8000/station-onoff/${encodeURIComponent(stationId)}`,
         { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal }
       );
       if (!res.ok) return;
       const data = await res.json();
-      const info = data.station ?? data;
+      setStationDetail((prev) => ({
+        ...prev,
+        status: typeof data?.status === "boolean" ? data.status : null,
+      }));
+    } catch {}
+  };
 
-      setStationDetail({
-        station_name: info?.station_name ?? "-",
-        model: info?.model ?? "-",
-        status: typeof info?.status === "boolean" ? info.status : null,
-      });
-    })().catch(() => { /* noop (เช่น abort) */ });
+  // ยิงครั้งแรกทันที แล้วค่อยตั้ง interval
+  fetchStatus();
+  const id = setInterval(fetchStatus, 5000);
 
-    return () => ctrl.abort();
-  }, [stationId]); // ← ทุกครั้งที่ station_id ใน URL เปลี่ยน จะดึงข้อมูลใหม่
+  return () => {
+    clearInterval(id);
+    ctrl.abort();
+  };
+}, [stationId]);
+  
 
 
   return (
