@@ -75,19 +75,64 @@ export type PMReportData = {
 
 export const data_pmReport: PMReportData = {
   firmware: {
-    plc: "PLC120kW_20240418",
-    rpi: "V26012567a1",
-    router: "RUT9R00.07.06.11",
+    plc: "-",
+    rpi: "-",
+    router: "-",
   },
   pm: {
-    latest: "20/12/2567",
-    next: "15/01/2568",
+    latest: "-",
+    next: "-",
   },
   icons: {
     firmware: WrenchScrewdriverIcon,
     date: CalendarDaysIcon,
   },
 };
+
+function thDate(iso?: string) {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  });
+}
+function addDaysISO(iso: string, days: number) {
+  const d = new Date(iso); d.setDate(d.getDate() + days); return d.toISOString();
+}
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+
+// --- ฟังก์ชันเรียก backend แล้ว map ให้เป็น PMReportData ---
+export async function loadPmReport(stationId: string, token?: string): Promise<PMReportData> {
+  const res = await fetch(`${BASE_URL}/pmreport/latest/${encodeURIComponent(stationId)}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}), // ← ถ้าใช้ cookie ให้ลบบรรทัดนี้
+    },
+    // ถ้าใช้ cookie httpOnly แทน header:
+    // credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await res.text());
+
+  const api = (await res.json()) as {
+    pi_firmware?: string; plc_firmware?: string; rt_firmware?: string;
+    timestamp?: string; timestamp_utc?: string; timestamp_th?: string;
+  };
+
+  const latestISO = api.timestamp_th ?? api.timestamp_utc ?? api.timestamp ?? "";
+  const nextISO = latestISO ? addDaysISO(latestISO, 30) : undefined;
+
+  return {
+    firmware: {
+      plc: api.plc_firmware ?? "-",
+      rpi: api.pi_firmware ?? "-",
+      router: api.rt_firmware ?? "-",
+    },
+    pm: { latest: thDate(latestISO), next: thDate(nextISO) },
+    icons: { firmware: WrenchScrewdriverIcon, date: CalendarDaysIcon },
+  };
+}
 
 export const data_testReport = [
   {

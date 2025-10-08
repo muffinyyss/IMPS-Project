@@ -65,6 +65,9 @@ export function DashboardNavbar() {
   else if (segs[2] === "settings") title = "My Profile";
   else if (segs[1] === "device") title = "DC Charger";
 
+  // ล็อก dropdown
+  const lockStationDropdown = pathname.startsWith("/dashboard/input_PMreport");
+
   // Dropdown state
   const [query, setQuery] = useState("");
   const [stations, setStations] = useState<Station[]>([]);
@@ -363,12 +366,20 @@ export function DashboardNavbar() {
               className="tw-w-full tw-min-w-0 tw-flex-1 tw-border tw-p-2 tw-rounded tw-text-black"
               value={query}
               onChange={(e) => {
+                if (lockStationDropdown) return; 
                 setQuery(e.target.value);
                 setOpen(true);
               }}
-              onFocus={() => setOpen(true)}
-              onKeyDown={onKeyDown}
+              onFocus={() => {
+                if (lockStationDropdown) return; 
+                setOpen(true)
+              } }
+              onKeyDown={(e) => {
+                if (lockStationDropdown) return; 
+                onKeyDown(e);
+              }}
               crossOrigin=""
+              disabled={lockStationDropdown} 
             />
 
             <Button
@@ -383,6 +394,8 @@ export function DashboardNavbar() {
               "
               // onClick={goToCurrentPage}
               onClick={onSearch}
+              disabled={lockStationDropdown}  
+              title={lockStationDropdown ? "ล็อกการเลือกสถานีบนหน้านี้" : ""}
             >
               search
             </Button>
@@ -406,7 +419,7 @@ export function DashboardNavbar() {
             </IconButton>
           </div>
 
-          {open && (
+          {open && !lockStationDropdown && (
             <div
               className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-2 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
               role="listbox"

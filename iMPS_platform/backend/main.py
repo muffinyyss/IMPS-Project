@@ -38,11 +38,9 @@ db = client1["iMPS"]
 users_collection = db["users"]
 station_collection = db["stations"]
 
-
-
-
-
 MDB_DB = client["MDB"]
+PMReportDB = client["PMReport"]
+
 # MDB_collection = MDB_DB["nongKhae"]
 def get_mdb_collection_for(station_id: str):
     # กันชื่อคอลเลกชันแปลก ๆ / injection: อนุญาต a-z A-Z 0-9 _ -
@@ -1351,3 +1349,147 @@ def station_onoff_latest(station_id: str, current: UserClaims = Depends(get_curr
 #         if data["statusAt"] else None
 #     )
 #     return {"station_id": station_id, "status": data["status"], "statusAt": status_at_iso}
+
+def parse_iso_any_tz(s: str) -> datetime | None:
+    if not isinstance(s, str):
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        try:
+            return datetime.fromisoformat(s + "+00:00")
+        except Exception:
+            return None
+        
+def get_pmreport_collection_for(station_id: str):
+    # กันชื่อแปลก ๆ
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return PMReportDB.get_collection(str(station_id))
+
+# @app.on_event("startup")
+# async def ensure_pmreport_indexes():
+#     # ถ้าเก็บเป็นหลายคอลเลกชันตามสถานี จะต้องเรียกสร้างเป็นรายคอลเลกชัน
+#     # ข้ามได้ถ้ายังไม่รู้ชื่อคอลเลกชันทั้งหมด
+#     pass
+
+# @app.get("/pmreport/latest/{station_id}")
+# async def pmreport_latest(station_id: str, current: UserClaims = Depends(get_current_user)):
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_pmreport_collection_for(station_id)
+
+#     pipeline = [
+#         {"$addFields": {
+#             "_ts": {
+#                 "$ifNull": [
+#                     {
+#                         "$cond": [
+#                             {"$eq": [{"$type": "$timestamp"}, "string"]},
+#                             {"$dateFromString": {
+#                                 "dateString": "$timestamp",
+#                                 "timezone": "UTC",
+#                                 "onError": None,
+#                                 "onNull": None
+#                             }},
+#                             "$timestamp"
+#                         ]
+#                     },
+#                     {"$toDate": "$_id"}
+#                 ]
+#             }
+#         }},
+#         {"$sort": {"_ts": -1, "_id": -1}},
+#         {"$limit": 1},
+#         {"$project": {"_id": 1, "pi_firmware": 1, "plc_firmware": 1, "rt_firmware": 1 ,"pm_date": 1, "timestamp": 1}}
+#     ]
+
+#     cursor = coll.aggregate(pipeline)
+#     docs = await cursor.to_list(length=1)
+#     if not docs:
+#         raise HTTPException(status_code=404, detail="PMReport not found")
+
+#     doc = docs[0]
+#     ts_raw = doc.get("timestamp")
+#     ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
+#              else (ts_raw if isinstance(ts_raw, datetime) else None))
+#     ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
+#     ts_th  = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
+
+#     return {
+#         "_id": str(doc["_id"]),
+#         "pi_firmware": doc.get("pi_firmware"),
+#         "plc_firmware": doc.get("plc_firmware"),
+#         "rt_firmware": doc.get("rt_firmware"),
+#         "pm_date": doc.get("pm_date"),
+#         "timestamp": ts_raw,      # raw ใน DB (string หรือ datetime)
+#         "timestamp_utc": ts_utc,  # แปลงแล้ว
+#         "timestamp_th": ts_th,    # แปลงแล้ว
+#     }
+
+async def _pmreport_latest_core(station_id: str, current: UserClaims):
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_pmreport_collection_for(station_id)
+    pipeline = [
+        {"$addFields": {
+            "_ts": {
+                "$ifNull": [
+                    {
+                        "$cond": [
+                            {"$eq": [{"$type": "$timestamp"}, "string"]},
+                            {"$dateFromString": {
+                                "dateString": "$timestamp",
+                                "timezone": "UTC",
+                                "onError": None,
+                                "onNull": None
+                            }},
+                            "$timestamp"
+                        ]
+                    },
+                    {"$toDate": "$_id"}
+                ]
+            }
+        }},
+        {"$sort": {"_ts": -1, "_id": -1}},
+        {"$limit": 1},
+        {"$project": {"_id": 1, "pi_firmware": 1, "plc_firmware": 1, "rt_firmware": 1, "pm_date": 1, "timestamp": 1}}
+    ]
+    cursor = coll.aggregate(pipeline)
+    docs = await cursor.to_list(length=1)
+    if not docs:
+        raise HTTPException(status_code=404, detail="PMReport not found")
+
+    doc = docs[0]
+
+    ts_raw = doc.get("timestamp")
+    ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
+             else (ts_raw if isinstance(ts_raw, datetime) else None))
+    ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
+    ts_th  = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
+
+    return {
+        "_id": str(doc["_id"]),
+        "pi_firmware": doc.get("pi_firmware"),
+        "plc_firmware": doc.get("plc_firmware"),
+        "rt_firmware": doc.get("rt_firmware"),
+        "pm_date": doc.get("pm_date"),
+        "timestamp": ts_raw,      # raw ใน DB
+        "timestamp_utc": ts_utc,  # แปลงแล้ว
+        "timestamp_th": ts_th,    # แปลงแล้ว
+    }
+
+# เดิม (path param) → เปลี่ยนให้เรียก helper
+@app.get("/pmreport/latest/{station_id}")
+async def pmreport_latest(station_id: str, current: UserClaims = Depends(get_current_user)):
+    return await _pmreport_latest_core(station_id, current)
+
+# ใหม่ (query param) → ให้รองรับรูปแบบ /pmreport/latest/?station_id=...
+@app.get("/pmreport/latest/")
+async def pmreport_latest_q(
+    station_id: str = Query(..., description="เช่น Klongluang3"),
+    current: UserClaims = Depends(get_current_user),
+):
+    return await _pmreport_latest_core(station_id, current)
