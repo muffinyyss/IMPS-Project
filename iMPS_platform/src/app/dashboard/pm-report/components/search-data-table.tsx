@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import Link from "next/link";
 import { AppDataTable } from "@/data";
 import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
@@ -27,39 +27,218 @@ import {
 } from "@material-tailwind/react";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+
 // ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
 type TData = (typeof AppDataTable)[number];
 
-export function SearchDataTables() {
+type StationOpt = { station_id: string; station_name: string };
+
+type Props = {
+  onSelectStation?: (stationId: string) => void;
+  token?: string;                         // <<— รับ token จากหน้า page
+  apiBase?: string;                       // <<— override base URL ได้
+};
+
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+export function SearchDataTables({ onSelectStation, token, apiBase = BASE }: Props) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const sp = useSearchParams();
+
+  // ==== โหลดรายชื่อ "สถานีของฉัน" เพื่อใช้ใน dropdown ====
+  const [stations, setStations] = useState<StationOpt[]>([]);
+  const [stationId, setStationId] = useState<string>("");
+
+  // useEffect(() => {
+  //   const loadStations = async () => {
+  //     try {
+  //       const res = await fetch(`${apiBase}/my-stations/detail`, {
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  //         },
+  //         // ถ้าใช้ cookie httpOnly แทน header: เปิดบรรทัดนี้ แล้วอย่าส่ง Authorization
+  //         // credentials: "include",
+  //       });
+  //       if (!res.ok) throw new Error(await res.text());
+  //       const json = (await res.json()) as { stations: StationOpt[] };
+  //       setStations(json.stations ?? []);
+  //     } catch (err) {
+  //       console.error("load stations error:", err);
+  //       setStations([]);
+  //     }
+  //   };
+  //   loadStations();
+  // }, [apiBase, token]);
+
+
+
+  // // ==== ตัวอย่างโหลด data table (เดิมคุณยิง /) ====
+  // useEffect(() => {
+  //   const load = async () => {
+  //     try {
+  //       const res = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationId)}`, {  // ใช้ endpoint ที่มีจริง
+  //         headers: { "Content-Type": "application/json" },
+  //       });
+  //       if (!res.ok) {
+  //         setData([...AppDataTable] as TData[]);
+  //         return;
+  //       }
+  //       const json = (await res.json()) as { pm_date?: string[] };
+  //       const rows: TData[] = (json.pm_date ?? []).map((u) => ({
+  //         name: u,
+  //         position: u,
+  //         office: "",   // url ไฟล์ ถ้ามีค่อยเติม
+  //       }) as TData);
+  //       setData(rows);
+  //     } catch (e) {
+  //       console.error(e);
+  //       setData([...AppDataTable] as TData[]);
+  //     }
+  //   };
+  //   load();
+  // }, [apiBase]);
+
+  function thDate(iso?: string) {
+    if (!iso) return "-";
+    return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  }
+
+  const stationIdFromUrl = sp.get("station_id") ?? "";
+
+  const addHref = useMemo(() => {
+  if (!stationIdFromUrl) return "/dashboard/input_PMreport";
+  const p = new URLSearchParams({ station_id: stationIdFromUrl });
+  return `/dashboard/input_PMreport?${p.toString()}`;
+}, [stationIdFromUrl]);
+
+  function makeHeaders(token?: string): Record<string, string> {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) h.Authorization = `Bearer ${token}`;
+    return h;
+  }
 
   useEffect(() => {
-    const load = async () => {
+    let alive = true;
+
+    const fetchRows = async () => {
       try {
-        const res = await fetch("http://localhost:8000/");
-        if (!res.ok) {
-          setData([...AppDataTable] as TData[]);
+        if (!stationIdFromUrl) {
+          setData([]);                              // ยังไม่เลือกสถานี -> เคลียร์ตาราง
           return;
         }
-        const json = (await res.json()) as { username?: string[] };
-        const rows: TData[] = (json.username ?? []).map(
-          (u) =>
-          ({
-            name: u,
-            position: u,
-            office: "",
-          } as TData)
+
+        // ถ้าใช้ Bearer token:
+        const t = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
+        const headers = makeHeaders(t);
+
+        // 1) พยายามเรียก endpoint รายการ pm ก่อน (สมมติชื่อ /pmreport/list/{station_id})
+        // const urlList = `${apiBase}/pmreport/list/${encodeURIComponent(stationIdFromUrl)}`;
+
+
+        // let res = await fetch(
+        //   `${apiBase}/pmreport/list/${encodeURIComponent(stationIdFromUrl)}`,
+        //   {
+        //     headers,             // <= ไม่มี union แล้ว เป็น Record<string,string>
+        //     // ถ้าใช้ cookie httpOnly: เอา headers ออก แล้วใช้ credentials แทน
+        //     // credentials: "include",
+        //   }
+        // );
+
+        // if (res.ok) {
+        //   const json = await res.json();
+
+        //   // case A: { pm_date: string[] }
+        //   if (Array.isArray(json?.pm_date)) {
+        //     const rows: TData[] = json.pm_date.map((d: string) => ({
+        //       name: thDate(d),      // แสดงเป็นพ.ศ.
+        //       position: d,          // raw date เก็บไว้คอลัมน์อื่นหรือซ่อน
+        //       office: "",           // ถ้ามี url ใส่ตรงนี้
+        //     })) as TData[];
+        //     if (alive) setData(rows);
+        //     return;
+        //   }
+
+        //   // case B: { items: [{ pm_date|date|timestamp, file_url? }, ...] }
+        //   if (Array.isArray(json?.items)) {
+        //     const rows: TData[] = json.items.map((it: any) => {
+        //       const iso = it.pm_date ?? it.date ?? it.timestamp ?? "";
+        //       const file = it.file_url ?? it.url ?? "";
+        //       return {
+        //         name: thDate(iso),
+        //         position: iso,
+        //         office: file,
+        //       } as TData;
+        //     });
+        //     if (alive) setData(rows);
+        //     return;
+        //   }
+
+        //   // บางระบบอาจคืน array ตรง ๆ
+        //   if (Array.isArray(json)) {
+        //     const rows: TData[] = json.map((it: any) => {
+        //       const iso = typeof it === "string" ? it : (it?.pm_date ?? it?.date ?? it?.timestamp ?? "");
+        //       const file = it?.file_url ?? it?.url ?? "";
+        //       return {
+        //         name: thDate(iso),
+        //         position: iso,
+        //         office: file,
+        //       } as TData;
+        //     });
+        //     if (alive) setData(rows);
+        //     return;
+        //   }
+
+        //   // ไม่เข้าเคสไหนเลย -> ลอง fallback latest ต่อด้านล่าง
+        // }
+
+        // 2) Fallback: ดึงตัวล่าสุดจาก /pmreport/latest/{station_id} แล้วทำเป็น 1 แถว
+        const urlLatest = `${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`;
+        let res = await fetch(
+          `${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`,
+          {
+            headers,
+            // credentials: "include",
+          }
         );
-        setData(rows);
+
+        if (res.ok) {
+          const j = await res.json();
+          const iso = j?.pm_date ?? "";
+          const rows: TData[] = iso
+            ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[])
+            : [];
+          if (alive) setData(rows);
+          return;
+        }
+
+        // 3) ถ้ายังไม่ ok -> ใช้ mock เดิม
+        setData([...AppDataTable] as TData[]);
       } catch (e) {
-        console.error(e);
+        console.error("load pm_date error:", e);
         setData([...AppDataTable] as TData[]);
       }
     };
-    load();
-  }, []);
+
+    fetchRows();
+    return () => { alive = false; };
+  }, [apiBase, stationIdFromUrl]);
+
+  // ==== เมื่อเลือกสถานีที่ dropdown → ยิง callback =====
+  const handleChangeStation = (sid: string) => {
+    const params = new URLSearchParams(sp.toString());
+    if (sid) params.set("station_id", sid); else params.delete("station_id");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   const columns: ColumnDef<TData, unknown>[] = [
     {
@@ -87,13 +266,13 @@ export function SearchDataTables() {
       maxSize: 65,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-    {
-      accessorFn: (row) => row.position,
-      id: "pm_report",
-      header: () => "pm report",
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      minSize: 160,
-    },
+    // {
+    //   accessorFn: (row) => row.position,
+    //   id: "pm_report",
+    //   header: () => "pm report",
+    //   cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+    //   minSize: 160,
+    // },
     {
       accessorFn: (row) => row.office, // URL ไฟล์
       id: "pdf",
@@ -216,7 +395,7 @@ export function SearchDataTables() {
                 <span className="tw-text-sm">Upload</span>
               </Button>
 
-              <Link href="input_PMreport" className="tw-inline-block">
+              {/* <Link href="input_PMreport" className="tw-inline-block">
                 <Button
                   size="lg"
                   className="
@@ -228,6 +407,30 @@ export function SearchDataTables() {
                     tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
                     focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
                   "
+                >
+                  <span className="tw-w-full tw-text-center">+add</span>
+                </Button>
+              </Link> */}
+
+              <Link
+  href={addHref}
+  className="tw-inline-block"
+  aria-disabled={!stationIdFromUrl}
+  onClick={(e) => { if (!stationIdFromUrl) e.preventDefault(); }}
+>
+                <Button
+                  size="lg"
+                  disabled={!stationIdFromUrl}   // <- ปิดปุ่มถ้ายังไม่มี station_id
+                  className={`
+      !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
+      tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
+      ${!stationIdFromUrl
+                      ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+                      : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
+      tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+      focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
+    `}
+                  title={stationIdFromUrl ? "" : "กรุณาเลือกสถานีก่อน"}
                 >
                   <span className="tw-w-full tw-text-center">+add</span>
                 </Button>
@@ -389,6 +592,7 @@ export function SearchDataTables() {
         </div>
       </Card>
     </>
+
   );
 }
 
