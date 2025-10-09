@@ -20,6 +20,9 @@ export type NewStationForm = {
     model: string;
     SN: string;
     WO: string;
+    PLCFirmware: string;
+    PIFirmware: string;
+    RTFirmware: string;
     owner: string;
     is_active: boolean;
     // is_active: boolean;
@@ -53,6 +56,9 @@ export default function AddUserModal({
         model: "",
         SN: "",
         WO: "",
+        PLCFirmware: "",
+        PIFirmware: "",
+        RTFirmware: "",
         owner: "",
         is_active: true,
     });
@@ -79,6 +85,9 @@ export default function AddUserModal({
             model: form.model.trim(),
             SN: form.SN.trim(),
             WO: form.WO.trim(),
+            PLCFirmware: form.PLCFirmware.trim(),
+            PIFirmware: form.PIFirmware.trim(),
+            RTFirmware: form.RTFirmware.trim(),
             owner: (form.owner || currentUser).trim(),
             is_active: form.is_active
             // status เป็น boolean อยู่แล้ว
@@ -102,6 +111,9 @@ export default function AddUserModal({
             model: "",
             SN: "",
             WO: "",
+            PLCFirmware: "",
+            PIFirmware: "",
+            RTFirmware: "",
             owner: "",
             is_active: false,
         });
@@ -168,6 +180,27 @@ export default function AddUserModal({
                             required
                             value={form.WO}
                             onChange={(e) => onChange("WO", e.target.value)}
+                            crossOrigin={undefined}
+                        />
+                        <Input
+                            label="PLC Firmware"
+                            required
+                            value={form.PLCFirmware}
+                            onChange={(e) => onChange("PLCFirmware", e.target.value)}
+                            crossOrigin={undefined}
+                        />
+                        <Input
+                            label="Raspberry pi Firmware"
+                            required
+                            value={form.PIFirmware}
+                            onChange={(e) => onChange("PIFirmware", e.target.value)}
+                            crossOrigin={undefined}
+                        />
+                        <Input
+                            label="Router Firmware"
+                            required
+                            value={form.RTFirmware}
+                            onChange={(e) => onChange("RTFirmware", e.target.value)}
                             crossOrigin={undefined}
                         />
 
