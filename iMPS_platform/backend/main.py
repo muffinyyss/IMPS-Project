@@ -37,12 +37,17 @@ app = FastAPI()
 client1 = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
 client = AsyncIOMotorClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
 
+deviceDB = client["utilizationFactor"]
+settingDB = client["settingParameter"]
+
 db = client1["iMPS"]
 users_collection = db["users"]
 station_collection = db["stations"]
 
 MDB_DB = client["MDB"]
 PMReportDB = client["PMReport"]
+
+
 
 # MDB_collection = MDB_DB["nongKhae"]
 def get_mdb_collection_for(station_id: str):
@@ -1411,6 +1416,7 @@ async def _pmreport_latest_core(station_id: str, current: UserClaims):
         "timestamp_th": ts_th,    # แปลงแล้ว
     }
 
+
 # เดิม (path param) → เปลี่ยนให้เรียก helper
 @app.get("/pmreport/latest/{station_id}")
 async def pmreport_latest(station_id: str, current: UserClaims = Depends(get_current_user)):
@@ -1423,3 +1429,127 @@ async def pmreport_latest_q(
     current: UserClaims = Depends(get_current_user),
 ):
     return await _pmreport_latest_core(station_id, current)
+
+# device page
+def get_device_collection_for(station_id: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return deviceDB.get_collection(str(station_id))
+
+# (เลือกได้) สร้างดัชนีแบบ lazy ต่อสถานีที่ถูกเรียกใช้
+async def _ensure_util_index(coll):
+    try:
+        await coll.create_index([("timestamp", -1), ("_id", -1)])
+    except Exception:
+        pass
+
+@app.get("/utilization/stream")
+async def utilization_stream(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
+    # if current.role != "admin" and station_id not in set(current.station_ids):
+    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_device_collection_for(station_id)
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    async def event_generator():
+        # ส่ง snapshot ล่าสุดก่อน
+        latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+        if latest:
+            latest["_id"] = str(latest["_id"])
+            latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
+            yield f"event: init\ndata: {json.dumps(latest)}\n\n"
+
+        # ต่อด้วย change stream (ต้องเป็น replica set / Atlas tier ที่รองรับ)
+        try:
+            async with coll.watch(full_document='updateLookup') as stream:
+                async for change in stream:
+                    if await request.is_disconnected():
+                        break
+                    doc = change.get("fullDocument")
+                    if not doc:
+                        continue
+                    doc["_id"] = str(doc["_id"])
+                    doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                    yield f"data: {json.dumps(doc)}\n\n"
+        except Exception:
+            # fallback: ถ้าใช้ไม่ได้ (เช่น standalone) ให้ polling
+            last_id = latest.get("_id") if latest else None
+            while not await request.is_disconnected():
+                doc = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+                if doc and str(doc["_id"]) != str(last_id):
+                    last_id = str(doc["_id"])
+                    doc["_id"] = last_id
+                    doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                    yield f"data: {json.dumps(doc)}\n\n"
+                else:
+                    yield ": keep-alive\n\n"
+                await asyncio.sleep(5)
+
+    return StreamingResponse(event_generator(), headers=headers)
+
+# device page
+def get_setting_collection_for(station_id: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return settingDB.get_collection(str(station_id))
+
+# (เลือกได้) สร้างดัชนีแบบ lazy ต่อสถานีที่ถูกเรียกใช้
+async def _ensure_util_index(coll):
+    try:
+        await coll.create_index([("timestamp", -1), ("_id", -1)])
+    except Exception:
+        pass
+
+@app.get("/setting/stream")
+async def setting_stream(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
+    # if current.role != "admin" and station_id not in set(current.station_ids):
+    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_device_collection_for(station_id)
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    async def event_generator():
+        # ส่ง snapshot ล่าสุดก่อน
+        latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+        if latest:
+            latest["_id"] = str(latest["_id"])
+            latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
+            yield f"event: init\ndata: {json.dumps(latest)}\n\n"
+
+        # ต่อด้วย change stream (ต้องเป็น replica set / Atlas tier ที่รองรับ)
+        try:
+            async with coll.watch(full_document='updateLookup') as stream:
+                async for change in stream:
+                    if await request.is_disconnected():
+                        break
+                    doc = change.get("fullDocument")
+                    if not doc:
+                        continue
+                    doc["_id"] = str(doc["_id"])
+                    doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                    yield f"data: {json.dumps(doc)}\n\n"
+        except Exception:
+            # fallback: ถ้าใช้ไม่ได้ (เช่น standalone) ให้ polling
+            last_id = latest.get("_id") if latest else None
+            while not await request.is_disconnected():
+                doc = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+                if doc and str(doc["_id"]) != str(last_id):
+                    last_id = str(doc["_id"])
+                    doc["_id"] = last_id
+                    doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                    yield f"data: {json.dumps(doc)}\n\n"
+                else:
+                    yield ": keep-alive\n\n"
+                await asyncio.sleep(5)
+
+    return StreamingResponse(event_generator(), headers=headers)
