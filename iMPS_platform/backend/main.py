@@ -1,3 +1,5 @@
+"use client"
+
 from fastapi import FastAPI,HTTPException,Depends, status,Request,Query,APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder 
 from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
@@ -22,6 +24,7 @@ import uuid
 from zoneinfo import ZoneInfo
 import re
 from fastapi import HTTPException, Depends
+from fastapi.responses import JSONResponse
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
@@ -489,6 +492,27 @@ async def get_station_detail(station_id: str, current: UserClaims = Depends(get_
     station["_id"] = str(station["_id"])
 
     return station
+
+# @app.get("/selected/station/{station_id}")
+# async def get_station_detail(station_id: str, current: UserClaims = Depends(get_current_user)):
+#     # (ถ้าจะเช็คสิทธิ์ด้วย เพิ่มเงื่อนไขนี้)
+#     # if current.role != "admin" and station_id not in set(current.station_ids):
+#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     station = station_collection.find_one({"station_id": station_id})
+#     if not station:
+#         raise HTTPException(status_code=404, detail="Station not found")
+
+#     # ✅ แปลงทุกชนิดพิเศษให้ serializable
+#     payload = jsonable_encoder(
+#         station,
+#         custom_encoder={
+#             ObjectId: str,
+#             Decimal128: lambda d: float(d.to_decimal()),
+#             datetime: lambda dt: dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
+#         }
+#     )
+#     return JSONResponse(content=payload)
 
 @app.get("/MDB")
 async def mdb_query(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
