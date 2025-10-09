@@ -136,7 +136,11 @@ export default function Sidenav({ }: PropTypes) {
 
   /* ---------- Mini item ---------- */
   const MiniItem = ({ href, icon, active, external, title }: {
-    href: string; icon: React.ReactNode; active?: boolean; external?: boolean; title?: string;
+    href: string;
+    icon: React.ReactNode;
+    active?: boolean;
+    external?: boolean;
+    title?: string;
   }) => {
     const Wrapper: any = external ? "a" : Link;
     return (
@@ -416,8 +420,7 @@ export default function Sidenav({ }: PropTypes) {
                                     <Link key={k} href={safeHref(subPage.path)}>
                                       <ListItem
                                         className={`tw-capitalize ${pathname === subPage.path ? activeRouteClasses : collapseItemClasses
-                                          }`}
-                                      >
+                                          }`}>
                                         <ListItemPrefix>{subPage.icon}</ListItemPrefix>
                                         {subPage.name}
                                       </ListItem>
@@ -435,13 +438,14 @@ export default function Sidenav({ }: PropTypes) {
                             </ListItem>
                           </a>
                         ) : (
-                          <Link key={idx} href={safeHref(path)}>
+                          // <-- FIXED: use `page` values here (was incorrectly using parent `path`, `icon`, `name`)
+                          <Link key={idx} href={safeHref(page.path)}>
                             <ListItem
-                              className={`tw-capitalize ${pathname === path ? activeRouteClasses : collapseItemClasses
+                              className={`tw-capitalize ${pathname === page.path ? activeRouteClasses : collapseItemClasses
                                 }`}
                             >
-                              <ListItemPrefix>{icon}</ListItemPrefix>
-                              {name}
+                              <ListItemPrefix>{page.icon}</ListItemPrefix>
+                              {page.name}
                             </ListItem>
                           </Link>
                         )
