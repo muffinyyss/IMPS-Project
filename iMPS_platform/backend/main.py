@@ -313,7 +313,7 @@ def station_info(
     doc = station_collection.find_one(
         {"station_id": station_id},
         # เลือก field ที่อยากคืน (ตัด _id ออกเพื่อลด serialize ปัญหา ObjectId)
-        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1, "model": 1, "status": 1}
+        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "model": 1, "status": 1}
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Station not found")
@@ -929,46 +929,6 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     }
 
 
-# @app.get("/all-stations/")
-# def all_stations():
-#     docs = list(station_collection.find({}))
-#     # แปลง ObjectId ทุกฟิลด์ในเอกสารให้เป็น str
-#     docs = jsonable_encoder(docs, custom_encoder={ObjectId: str})
-#     # เอาทุกฟิลด์ ยกเว้น password และ refreshTokens
-#     # cursor = station_collection.find({})
-#     # docs = list(cursor)
-
-#     # ถ้าจะส่ง _id ไปด้วย ต้องแปลง ObjectId -> str
-#     for d in docs:
-#         if "_id" in d:
-#             d["_id"] = str(d["_id"])
-
-#     return {"stations": docs}
-
-# @app.get("/all-stations/")
-# def all_stations(current: UserClaims = Depends(get_current_user)):
-#     # admin เห็นทั้งหมด, owner เห็นเฉพาะของตัวเอง
-#     if current.role == "admin":
-#         query = {}
-#     else:
-#         # owner/role อื่น เห็นเฉพาะที่ user_id ตรง uid
-#         if not current.user_id:
-#             raise HTTPException(status_code=401, detail="Missing uid in token")
-#         # query = {"user_id": current.user_id}
-#         conds = [{"user_id": current.user_id}]
-#         try:
-#             conds.append({"user_id": ObjectId(current.user_id)})
-#         except Exception:
-#             pass
-#         query = {"$or": conds}
-
-#     docs = list(station_collection.find(query))
-#     docs = jsonable_encoder(docs, custom_encoder={ObjectId: str})
-#     for d in docs:
-#         if "_id" in d:
-#             d["_id"] = str(d["_id"])
-#     return {"stations": docs}
-
 def parse_iso_utc(s: str) -> Optional[datetime]:
     try:
         # "2025-09-29T16:19:54.659Z"
@@ -1077,6 +1037,9 @@ class addStations(BaseModel):
     model:str
     SN:str
     WO:str 
+    PLCFirmware:str 
+    PIFirmware:str 
+    RTFirmware:str 
     user_id: Optional[str] = None  
     owner: Optional[str] = None
     is_active:Optional[bool] = None
@@ -1089,6 +1052,9 @@ class StationOut(BaseModel):
     model:str
     SN:str
     WO:str 
+    PLCFirmware:str 
+    PIFirmware:str 
+    RTFirmware:str 
     user_id: str 
     username: Optional[str] = None
     is_active:  Optional[bool] = None
@@ -1112,6 +1078,9 @@ def insert_stations(
     model        = body.model.strip()
     SN           = body.SN.strip()
     WO           = body.WO.strip()
+    PLCFirmware           = body.PLCFirmware.strip()
+    PIFirmware           = body.PIFirmware.strip()
+    RTFirmware           = body.RTFirmware.strip()
 
     # (ถ้าต้องการบังคับรูปแบบ station_id)
     # if not re.fullmatch(r"[A-Za-z0-9_]+", station_id):
@@ -1150,6 +1119,9 @@ def insert_stations(
         "model": model,
         "SN": SN,
         "WO": WO,
+        "PLCFirmware": PLCFirmware,
+        "PIFirmware": PIFirmware,
+        "RTFirmware": RTFirmware,
         "user_id": owner_oid,                 # ObjectId ใน DB
         "is_active": is_active,
         "createdAt": datetime.now(timezone.utc),
@@ -1174,6 +1146,9 @@ def insert_stations(
         "model": doc["model"],
         "SN": doc["SN"],
         "WO": doc["WO"],
+        "PLCFirmware": doc["PLCFirmware"],
+        "PIFirmware": doc["PIFirmware"],
+        "RTFirmware": doc["RTFirmware"],
         "user_id": str(doc["user_id"]),       # string สำหรับ client
         "username": owner_username,           # ส่งกลับให้ table โชว์ได้เลย
         "is_active": doc["is_active"],
@@ -1201,12 +1176,15 @@ class StationUpdate(BaseModel):
     model: Optional[str] = None
     SN: Optional[str] = None
     WO: Optional[str] = None
+    PLCFirmware: Optional[str] = None
+    PIFirmware: Optional[str] = None
+    RTFirmware: Optional[str] = None
     # status: Optional[bool] = None
     is_active: Optional[bool] = None
     user_id: str | None = None 
 
 
-ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "status","is_active", "user_id"}
+ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "PLCFirmware", "PIFirmware", "RTFirmware", "status","is_active", "user_id"}
 # ALLOW_FIELDS_NONADMIN = {"status"}
 
 def to_object_id_or_400(s: str) -> ObjectId:
@@ -1300,6 +1278,9 @@ def update_station(
         "model": doc.get("model", ""),
         "SN": doc.get("SN", ""),
         "WO": doc.get("WO", ""),
+        "PLCFirmware": doc.get("PLCFirmware", ""),
+        "PIFirmware": doc.get("PIFirmware", ""),
+        "RTFirmware": doc.get("RTFirmware", ""),
         "createdAt": created_at,  
         # ส่งกลับเป็น string เพื่อให้ฝั่ง client ใช้ง่าย
         "user_id": str(doc["user_id"]) if doc.get("user_id") else "",
@@ -1359,21 +1340,6 @@ def station_onoff_latest(station_id: str, current: UserClaims = Depends(get_curr
     )
     return {"station_id": station_id, "status": data["status"], "statusAt": status_at_iso}
 
-# @app.get("/station-onoff")
-# def station_onoff_latest_qparam(
-#     station_id: str = Query(...),
-#     current: UserClaims = Depends(get_current_user),
-# ):
-#     if current.role != "admin" and station_id not in set(current.station_ids):
-#         raise HTTPException(status_code=403, detail="Forbidden station_id")
-
-#     data = latest_onoff(str(station_id))
-#     status_at_iso = (
-#         data["statusAt"].astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
-#         if data["statusAt"] else None
-#     )
-#     return {"station_id": station_id, "status": data["status"], "statusAt": status_at_iso}
-
 def parse_iso_any_tz(s: str) -> datetime | None:
     if not isinstance(s, str):
         return None
@@ -1391,66 +1357,6 @@ def get_pmreport_collection_for(station_id: str):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return PMReportDB.get_collection(str(station_id))
 
-# @app.on_event("startup")
-# async def ensure_pmreport_indexes():
-#     # ถ้าเก็บเป็นหลายคอลเลกชันตามสถานี จะต้องเรียกสร้างเป็นรายคอลเลกชัน
-#     # ข้ามได้ถ้ายังไม่รู้ชื่อคอลเลกชันทั้งหมด
-#     pass
-
-# @app.get("/pmreport/latest/{station_id}")
-# async def pmreport_latest(station_id: str, current: UserClaims = Depends(get_current_user)):
-#     if current.role != "admin" and station_id not in set(current.station_ids):
-#         raise HTTPException(status_code=403, detail="Forbidden station_id")
-
-#     coll = get_pmreport_collection_for(station_id)
-
-#     pipeline = [
-#         {"$addFields": {
-#             "_ts": {
-#                 "$ifNull": [
-#                     {
-#                         "$cond": [
-#                             {"$eq": [{"$type": "$timestamp"}, "string"]},
-#                             {"$dateFromString": {
-#                                 "dateString": "$timestamp",
-#                                 "timezone": "UTC",
-#                                 "onError": None,
-#                                 "onNull": None
-#                             }},
-#                             "$timestamp"
-#                         ]
-#                     },
-#                     {"$toDate": "$_id"}
-#                 ]
-#             }
-#         }},
-#         {"$sort": {"_ts": -1, "_id": -1}},
-#         {"$limit": 1},
-#         {"$project": {"_id": 1, "pi_firmware": 1, "plc_firmware": 1, "rt_firmware": 1 ,"pm_date": 1, "timestamp": 1}}
-#     ]
-
-#     cursor = coll.aggregate(pipeline)
-#     docs = await cursor.to_list(length=1)
-#     if not docs:
-#         raise HTTPException(status_code=404, detail="PMReport not found")
-
-#     doc = docs[0]
-#     ts_raw = doc.get("timestamp")
-#     ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
-#              else (ts_raw if isinstance(ts_raw, datetime) else None))
-#     ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
-#     ts_th  = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
-
-#     return {
-#         "_id": str(doc["_id"]),
-#         "pi_firmware": doc.get("pi_firmware"),
-#         "plc_firmware": doc.get("plc_firmware"),
-#         "rt_firmware": doc.get("rt_firmware"),
-#         "pm_date": doc.get("pm_date"),
-#         "timestamp": ts_raw,      # raw ใน DB (string หรือ datetime)
-#         "timestamp_utc": ts_utc,  # แปลงแล้ว
-#         "timestamp_th": ts_th,    # แปลงแล้ว
-#     }
 
 async def _pmreport_latest_core(station_id: str, current: UserClaims):
     if current.role != "admin" and station_id not in set(current.station_ids):
