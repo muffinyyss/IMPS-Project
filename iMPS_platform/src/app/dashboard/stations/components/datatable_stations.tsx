@@ -51,6 +51,9 @@ type stationRow = {
   WO?: string;
   model?: string;
   status?: boolean;
+  PLCFirmware?: string;
+  PIFirmware?: string;
+  RTFirmware?: string;
   // status?: string;
   is_active?: boolean;
   brand?: string;
@@ -66,6 +69,9 @@ export type StationUpdatePayload = {
   model?: string;
   SN?: string; // API ใช้ตัวเล็ก
   WO?: string; // API ใช้ตัวเล็ก
+  PLCFirmware?: string;
+  PIFirmware?: string;
+  RTFirmware?: string;
   status?: boolean;
   is_active?: boolean;
   // status?: string;
@@ -206,6 +212,9 @@ export function SearchDataTables() {
           station_name: s.station_name ?? "-",
           SN: s.SN ?? "-",
           WO: s.WO ?? "-",
+          PLCFirmware: s.PLCFirmware ?? "-",
+          PIFirmware: s.PIFirmware ?? "-",
+          RTFirmware: s.RTFirmware ?? "-",
           // status: s.status ?? "-",
           // status: !!s.status,
           is_active: !!s.is_active,
@@ -244,6 +253,9 @@ export function SearchDataTables() {
     model: string;
     SN: string;
     WO: string;
+    PLCFirmware: string;
+    PIFirmware: string;
+    RTFirmware: string;
     user_id: string;
     is_active: boolean;
   };
@@ -279,6 +291,9 @@ export function SearchDataTables() {
         model: payload.model.trim(),
         SN: payload.SN.trim(),
         WO: payload.WO.trim(),
+        PLCFirmware: payload.PLCFirmware.trim(),
+        PIFirmware: payload.PIFirmware.trim(),
+        RTFirmware: payload.RTFirmware.trim(),
         user_id: user_id,
         is_active: !!payload.is_active,
       };
@@ -336,6 +351,9 @@ export function SearchDataTables() {
           model: created.model,
           SN: created.SN,
           WO: created.WO,
+          PLCFirmware: created.PLCFirmware,
+          PIFirmware: created.PIFirmware,
+          RTFirmware: created.RTFirmware,
           user_id: created.user_id,
           username: createdUsername,
           is_active: created.is_active
@@ -417,12 +435,9 @@ export function SearchDataTables() {
               model: updated.model ?? r.model,
               SN: updated.SN ?? r.SN,
               WO: updated.WO ?? r.WO,
-              // status:
-              //   typeof updated.status === "boolean"
-              //     ? updated.status
-              //     : typeof payload.status === "boolean"
-              //       ? payload.status
-              //       : r.status,
+              PLCFirmware: updated.PLCFirmware ?? r.PLCFirmware,
+              PIFirmware: updated.PIFirmware ?? r.PIFirmware,
+              RTFirmware: updated.RTFirmware ?? r.RTFirmware,
               is_active:
                 typeof updated.is_active === "boolean"
                   ? updated.is_active
@@ -559,6 +574,12 @@ export function SearchDataTables() {
       header: () => "work order",
     },
     {
+      accessorFn: (row: stationRow) => row.PLCFirmware ?? "-",
+      id: "PLCFirmware",
+      cell: (info: any) => info.getValue(),
+      header: () => "PLC Firmware",
+    },
+    {
       accessorFn: (row: stationRow) => row.username ?? "-",
       id: "username",
       cell: (info: any) => info.getValue(),
@@ -630,6 +651,7 @@ export function SearchDataTables() {
     model: "tw-w-[100px]",
     SN: "tw-w-[140px]",
     WO: "tw-w-[140px]",
+    PLCFirmware: "tw-w-[140px]",
     status: "tw-w-[60px] tw-whitespace-nowrap",       // จุดสีเล็กพอ
     is_active: "tw-w-[120px] tw-whitespace-nowrap",   // ป้าย active/inactive
     actions: "tw-w-[96px] tw-whitespace-nowrap",
@@ -644,6 +666,7 @@ export function SearchDataTables() {
     model: "md:tw-w-[100px]",
     SN: "md:tw-w-[140px]",
     WO: "md:tw-w-[140px]",
+    PLCFirmware: "md:tw-w-[140px]",
     status: "md:tw-w-[60px] md:tw-whitespace-nowrap",
     is_active: "md:tw-w-[120px] md:tw-whitespace-nowrap",
     actions: "md:tw-w-[96px] md:tw-whitespace-nowrap",
@@ -658,6 +681,7 @@ export function SearchDataTables() {
     model: "lg:tw-w-[100px]",
     SN: "lg:tw-w-[140px]",
     WO: "lg:tw-w-[140px]",
+    PLCFirmware: "lg:tw-w-[140px]",
     status: "lg:tw-w-[60px] lg:tw-whitespace-nowrap",
     is_active: "lg:tw-w-[120px] lg:tw-whitespace-nowrap",
     actions: "lg:tw-w-[96px] tw-whitespace-nowrap",
@@ -931,6 +955,9 @@ export function SearchDataTables() {
               model: (e.currentTarget as HTMLFormElement).model?.value?.trim(),
               SN: (e.currentTarget as HTMLFormElement).SN?.value?.trim(),
               WO: (e.currentTarget as HTMLFormElement).WO?.value?.trim(),
+              PLCFirmware: (e.currentTarget as HTMLFormElement).PLCFirmware?.value?.trim(),
+              PIFirmware: (e.currentTarget as HTMLFormElement).PIFirmware?.value?.trim(),
+              RTFirmware: (e.currentTarget as HTMLFormElement).RTFirmware?.value?.trim(),
             };
 
             // ✅ ส่ง user_id ถ้าเป็น admin และเลือกไว้
@@ -1002,6 +1029,33 @@ export function SearchDataTables() {
                 label="WO"
                 required={isAdmin}
                 defaultValue={editingRow?.WO ?? ""}
+                readOnly={!isAdmin}
+                className={roClass}
+                labelProps={roLabel}
+              />
+              <Input
+                name="PLCFirmware"
+                label="PLC Firmware"
+                required={isAdmin}
+                defaultValue={editingRow?.PLCFirmware ?? ""}
+                readOnly={!isAdmin}
+                className={roClass}
+                labelProps={roLabel}
+              />
+              <Input
+                name="PIFirmware"
+                label="Raspberry pi Firmware"
+                required={isAdmin}
+                defaultValue={editingRow?.PIFirmware ?? ""}
+                readOnly={!isAdmin}
+                className={roClass}
+                labelProps={roLabel}
+              />
+              <Input
+                name="RTFirmware"
+                label="Router Firmware"
+                required={isAdmin}
+                defaultValue={editingRow?.RTFirmware ?? ""}
                 readOnly={!isAdmin}
                 className={roClass}
                 labelProps={roLabel}
