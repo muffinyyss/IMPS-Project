@@ -29,10 +29,14 @@ function Row({
 
 export default function PowerModule() {
     const rows = [
+        { label: "Measured Voltage Head 1 (V)", value: "0.00" },
+        { label: "Measured Voltage Head 2 (V)", value: "0.00" },
         { label: "Max Voltage Head 1 (V)", value: "0.00" },
         { label: "Max Voltage Head 2 (V)", value: "0.00" },
         { label: "Max Current Head 1 (A)", value: "0.00" },
         { label: "Max Current Head 2 (A)", value: "0.00" },
+        { label: "Measured Current Head 1 (A)", value: "0.00" },
+        { label: "Measured Current Head 2 (A)", value: "0.00" },
         { label: "Power Head 1 (W)", value: "0.00" },
         { label: "Power Head 2 (W)", value: "0.00" },
         { label: "Max Power Head 1 (W)", value: "0.00" },

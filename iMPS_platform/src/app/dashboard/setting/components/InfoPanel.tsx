@@ -37,12 +37,12 @@ function Row({
 
 export default function InfoPanel() {
     const rows = [
-        { label: "IMD Status1", value: "Operative" },
-        { label: "IMD Status2", value: "Operative" },
-        { label: "PM Status1", value: "Operative" },
-        { label: "PM Status2", value: "Operative" },
-        { label: "Isolation Status1", value: "fault" },
-        { label: "Isolation Status2", value: "fault" },
+        { label: "IMD Status Head 1", value: "Operative" },
+        { label: "IMD Status Head 2", value: "Operative" },
+        { label: "PM Status Head 1", value: "Operative" },
+        { label: "PM Status Head 2", value: "Operative" },
+        { label: "Isolation Status Head 1", value: "fault" },
+        { label: "Isolation Status Head 2", value: "fault" },
     ];
 
     return (
