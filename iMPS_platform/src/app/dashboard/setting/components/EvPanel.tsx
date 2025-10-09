@@ -30,12 +30,12 @@ function Row({
 
 export default function EvPanel() {
     const rows = [
-        { label: "CP State1", value: "A" },
-        { label: "CP State2", value: "A" },
-        { label: "Target Voltage (V)", value: "0.00" },
-        { label: "Target Voltage (V)", value: "0.00" },
-        { label: "Target Current (A)", value: "0.00" },
-        { label: "Target Current (A)", value: "0.00" },
+        { label: "CP State Head 1", value: "A" },
+        { label: "CP State Head 2", value: "A" },
+        { label: "Target Voltage Head 1 (V)", value: "0.00" },
+        { label: "Target Voltage Head 2 (V)", value: "0.00" },
+        { label: "Target Current Head 1 (A)", value: "0.00" },
+        { label: "Target Current Head 2 (A)", value: "0.00" },
     ];
 
     return (
