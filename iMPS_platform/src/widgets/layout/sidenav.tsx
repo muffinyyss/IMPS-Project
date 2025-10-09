@@ -70,7 +70,12 @@ export default function Sidenav({ }: PropTypes) {
   const [collapsed, setCollapsed] = React.useState(false);
 
   // จอใหญ่ = แนวนอนตั้งแต่ 1024px ขึ้นไป (iPad แนวตั้งยังนับเป็นมือถือ)
-  const desktopLike = useMediaQuery("(min-width: 1024px) and (orientation: landscape)");
+  // const desktopLike = useMediaQuery("(min-width: 1024px) and (orientation: landscape)");
+
+  const isIPadMini = typeof navigator !== "undefined" &&
+    /iPad|Macintosh/.test(navigator.userAgent) &&
+    window.innerWidth <= 1024;
+  const desktopLike = useMediaQuery("(min-width: 1024px) and (orientation: landscape)") && !isIPadMini;
   const desktopWide = useMediaQuery("(min-width: 1280px)"); // เพิ่ม gap ให้กว้างขึ้นอีกนิดบนจอใหญ่จริง
   const miniMode = collapsed && desktopLike;
 
@@ -87,25 +92,46 @@ export default function Sidenav({ }: PropTypes) {
   useOnClickOutside(sidenavRef, () => setOpenSidenav(dispatch, false));
 
   // อัปเดตตัวแปร CSS: เว้นระยะ content ให้มากขึ้นบนจอใหญ่
-  React.useEffect(() => {
-    const W_FULL = "18rem";     // ความกว้าง Sidenav ตอนขยาย
-    const W_MINI = "4.5rem";    // ความกว้าง Sidenav ตอนย่อ
+  // React.useEffect(() => {
+  //   const W_FULL = "18rem";     // ความกว้าง Sidenav ตอนขยาย
+  //   const W_MINI = "4.5rem";    // ความกว้าง Sidenav ตอนย่อ
 
-    // ช่องไฟระหว่าง Sidenav กับ Content:
-    // - Tablet/desktop แนวนอนทั่วไป: 1.25rem (~20px)
-    // - Desktop กว้าง (>=1280px): 1.5rem (~24px)
-    // - อื่น ๆ (มือถือ/iPad แนวตั้ง): 0.75–1rem (ไม่ดัน content อยู่แล้ว)
-    const GAP = desktopLike ? (desktopWide ? "1.5rem" : "1.25rem") : "0.75rem";
+  //   // ช่องไฟระหว่าง Sidenav กับ Content:
+  //   // - Tablet/desktop แนวนอนทั่วไป: 1.25rem (~20px)
+  //   // - Desktop กว้าง (>=1280px): 1.5rem (~24px)
+  //   // - อื่น ๆ (มือถือ/iPad แนวตั้ง): 0.75–1rem (ไม่ดัน content อยู่แล้ว)
+  //   const GAP = desktopLike ? (desktopWide ? "1.5rem" : "1.25rem") : "0.75rem";
+
+  //   document.documentElement.style.setProperty("--sidenav-w", miniMode ? W_MINI : W_FULL);
+  //   document.documentElement.style.setProperty("--sidenav-gap", GAP);
+
+  //   // ดัน content = ความกว้าง Sidenav + ช่องไฟ (เฉพาะ desktopLike เท่านั้น)
+  //   const contentML = desktopLike
+  //     ? `calc(${miniMode ? W_MINI : W_FULL} + ${GAP})`
+  //     : "0";
+  //   document.documentElement.style.setProperty("--content-ml", contentML);
+  // }, [miniMode, desktopLike, desktopWide]);
+
+  React.useEffect(() => {
+    const W_FULL = "18rem";
+    const W_MINI = "4.5rem";
+
+    let GAP = "0.75rem"; // ค่าเริ่มต้นมือถือ
+    if (desktopLike) {
+      GAP = desktopWide ? "1.5rem" : "1.25rem";
+    } else if (isIPadMini) {
+      GAP = "1rem"; // iPad Mini: ช่องไฟปานกลาง
+    }
 
     document.documentElement.style.setProperty("--sidenav-w", miniMode ? W_MINI : W_FULL);
     document.documentElement.style.setProperty("--sidenav-gap", GAP);
 
-    // ดัน content = ความกว้าง Sidenav + ช่องไฟ (เฉพาะ desktopLike เท่านั้น)
     const contentML = desktopLike
       ? `calc(${miniMode ? W_MINI : W_FULL} + ${GAP})`
-      : "0";
+      : "0"; // iPad mini จะเป็น 0
     document.documentElement.style.setProperty("--content-ml", contentML);
-  }, [miniMode, desktopLike, desktopWide]);
+  }, [miniMode, desktopLike, desktopWide, isIPadMini]);
+
 
   const collapseItemClasses =
     sidenavType === "dark"
@@ -226,7 +252,7 @@ export default function Sidenav({ }: PropTypes) {
         )}
 
         {/* ปุ่มย่อ/ขยาย: เฉพาะ desktopLike */}
-        {desktopLike && (
+        {/* {desktopLike && (
           <div className="tw-flex tw-items-center">
             <IconButton
               variant="text"
@@ -238,7 +264,26 @@ export default function Sidenav({ }: PropTypes) {
               {collapsed ? <Bars3Icon className="tw-h-8 tw-w-8" /> : <Bars3CenterLeftIcon className="tw-h-7 tw-w-7" />}
             </IconButton>
           </div>
+        )} */}
+        {/* ปุ่มย่อ/ขยาย: เฉพาะ desktop จริง (ไม่รวม iPad Mini) */}
+        {desktopLike && !isIPadMini && (
+          <div className="tw-flex tw-items-center">
+            <IconButton
+              variant="text"
+              onClick={() => setCollapsed((c) => !c)}
+              title={collapsed ? "Expand" : "Collapse to mini"}
+              aria-label={collapsed ? "Expand sidenav" : "Collapse sidenav"}
+              className={`${collapsed ? "" : "!tw-ml-auto"}`}
+            >
+              {collapsed ? (
+                <Bars3Icon className="tw-h-8 tw-w-8" />
+              ) : (
+                <Bars3CenterLeftIcon className="tw-h-7 tw-w-7" />
+              )}
+            </IconButton>
+          </div>
         )}
+
 
         {/* ปิด: มือถือ + iPad แนวตั้ง */}
         {!desktopLike && (
