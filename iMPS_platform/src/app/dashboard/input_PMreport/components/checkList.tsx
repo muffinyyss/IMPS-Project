@@ -291,6 +291,8 @@ function PassFailRow({
     );
 }
 
+
+
 export default function CheckList({ onComplete, onNext }: CheckListProps) {
     const [photosR1, setPhotosR1] = useState<PhotoItem[]>([]);
     const [photosR4, setPhotosR4] = useState<PhotoItem[]>([]);
@@ -342,6 +344,25 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
         date: "",
         inspector: "",
     });
+
+    async function fetchStation(stationId: string, token: string) {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/selected/station/${stationId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+    }
+
+    function applyStationToJob(station: any) {
+        setJob((prev) => ({
+            ...prev,
+            workOrder: station.work_order ?? prev.workOrder,
+            sn: station.sn ?? prev.sn,
+            model: station.model ?? prev.model,
+            location: station.location ?? prev.location,
+            date: prev.date || new Date().toISOString().slice(0, 10),
+        }));
+    }
 
     const [rows, setRows] = useState<Record<string, { pf: "PASS" | "FAIL" | ""; remark: string }>>({
         r1: { pf: "", remark: "" },
