@@ -166,8 +166,52 @@ export default function EvPanel() {
         [data]
     );
 
+    // return (
+    //     <Card title="EV">
+    //         {/* แถบสถานะ */}
+    //         {(loading || err) && (
+    //             <div className="tw-px-3 tw-py-2">
+    //                 {loading && <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลด...</div>}
+    //                 {err && <div className="tw-text-sm tw-text-red-600">{err}</div>}
+    //             </div>
+    //         )}
+
+    //         {/* timestamp ล่าสุด (ถ้ามี) */}
+    //         {data?.timestamp && (
+    //             <div className="tw-px-3 tw-py-2 tw-text-xs tw-text-blue-gray-500">
+    //                 อัปเดตล่าสุด: {new Date(data.timestamp).toLocaleString("th-TH")}
+    //             </div>
+    //         )}
+
+    //         <div className="tw-rounded-lg tw-overflow-hidden">
+    //             {rows.map((r, i) => (
+    //                 <Row key={i} label={r.label} value={r.value} zebra={i % 2 === 1} />
+    //             ))}
+    //         </div>
+
+    //         {/* ถ้าต้องการเปิด SoC ในอนาคต */}
+    //         {/* <div className="tw-flex tw-flex-col tw-items-center tw-gap-6 tw-pt-6">
+    //     <CircleProgress label="SoC1 :" value={Number(data?.soc_h1 ?? 0)} />
+    //     <CircleProgress label="SoC2 :" value={Number(data?.soc_h2 ?? 0)} />
+    //   </div> */}
+    //     </Card>
+    // );
+    const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
+
     return (
-        <Card title="EV">
+        <Card
+            // ✅ แก้เฉพาะ title ให้เป็นแถวเดียว: ซ้าย "EV" ขวา timestamp
+            title={
+                <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+                    <span>EV</span>
+                    {lastUpdated && (
+                        <span className="tw-text-xs !tw-text-blue-gray-500">
+                            อัปเดตล่าสุด: {lastUpdated}
+                        </span>
+                    )}
+                </div>
+            }
+        >
             {/* แถบสถานะ */}
             {(loading || err) && (
                 <div className="tw-px-3 tw-py-2">
@@ -176,9 +220,9 @@ export default function EvPanel() {
                 </div>
             )}
 
-            {/* timestamp ล่าสุด (ถ้ามี) */}
+            {/* timestamp ล่าสุด (ถ้ามี) — ❗คงโค้ดเดิมไว้ ไม่ลบ เพียงซ่อนด้วย tw-hidden */}
             {data?.timestamp && (
-                <div className="tw-px-3 tw-py-2 tw-text-xs tw-text-blue-gray-500">
+                <div className="tw-px-3 tw-py-2 tw-text-xs tw-text-blue-gray-500 tw-hidden">
                     อัปเดตล่าสุด: {new Date(data.timestamp).toLocaleString("th-TH")}
                 </div>
             )}
@@ -189,11 +233,8 @@ export default function EvPanel() {
                 ))}
             </div>
 
-            {/* ถ้าต้องการเปิด SoC ในอนาคต */}
-            {/* <div className="tw-flex tw-flex-col tw-items-center tw-gap-6 tw-pt-6">
-        <CircleProgress label="SoC1 :" value={Number(data?.soc_h1 ?? 0)} />
-        <CircleProgress label="SoC2 :" value={Number(data?.soc_h2 ?? 0)} />
-      </div> */}
+            {/* ...ส่วนอื่น ๆ ของคุณคงเดิมทั้งหมด... */}
         </Card>
     );
+
 }

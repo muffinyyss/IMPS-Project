@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { PlayIcon, StopIcon, ArrowPathIcon, CheckIcon } from "@heroicons/react/24/solid";
+import { PlayIcon, StopIcon, ArrowPathIcon } from "@heroicons/react/24/solid"; // ⬅️ ลบ CheckIcon ออก
 
 import Card from "./chargerSetting-card";
 import CircleProgress from "./CircleProgress";
@@ -85,7 +85,7 @@ function StateText({ status }: { status: ChargeState }) {
     );
 }
 
-/* ---------- ปุ่ม Start/Stop (มีโหมด Done และ Try Again) ---------- */
+/* ---------- ปุ่ม Start/Stop (มีโหมด Try Again) ---------- */
 function PrimaryCTA({
     status, busy, onStart, onStop,
 }: {
@@ -100,34 +100,20 @@ function PrimaryCTA({
     const isFaulted = status === "faulted";
     const isAvailable = status === "avaliable";
 
-    // ปุ่มกดได้เมื่อ: charging(หยุดได้) หรือ preparing(เริ่มได้) หรือ faulted(ลองใหม่ได้)
-    // ปุ่มถูกปิดเมื่อ busy / finishing / available หรือสถานะอื่นที่ไม่อนุญาต
     const isDisabled =
         !!busy ||
         isFinishing ||
         isAvailable ||
         !(isCharging || isPreparing || isFaulted);
 
-    // label + icon
-    const label = isFinishing
-        ? "Done"
-        : isCharging
-            ? "Stop Charging"
-            : isFaulted
-                ? "Try Again"
-                : "Start Charging";
+    const label = isCharging ? "Stop Charging" : isFaulted ? "Try Again" : "Start Charging";
 
     const Icon = busy
         ? ArrowPathIcon
-        : isFinishing
-            ? CheckIcon
-            : isCharging
-                ? StopIcon
-                : isFaulted
-                    ? ArrowPathIcon
-                    : PlayIcon;
+        : isCharging
+            ? StopIcon
+            : PlayIcon;
 
-    // สีปุ่ม
     const color = isCharging || isFaulted
         ? "tw-bg-red-500 hover:tw-bg-red-600 focus-visible:tw-ring-red-300"
         : isFinishing
@@ -141,7 +127,7 @@ function PrimaryCTA({
         <button
             type="button"
             disabled={isDisabled}
-            onClick={isCharging ? onStop : onStart /* faulted จะเรียก onStart เพื่อลองใหม่ */}
+            onClick={isCharging ? onStop : onStart}
             className={`${base} ${color} ${isDisabled ? "tw-opacity-60 tw-cursor-not-allowed" : ""}`}
             title={label}
             aria-label={label}
@@ -151,8 +137,6 @@ function PrimaryCTA({
         </button>
     );
 }
-
-
 
 /* ---------- การ์ดหัวชาร์จ ---------- */
 function HeadRow({
@@ -180,7 +164,7 @@ function HeadRow({
 
                 <div className="tw-pt-1">
                     <PrimaryCTA
-                        status={status}     // ← ส่ง status เข้าไป
+                        status={status}
                         busy={!!busy}
                         onStart={onStart}
                         onStop={onStop}
@@ -201,6 +185,18 @@ export default function Head1() {
     const [h1Status, setH1Status] = useState<ChargeState>("avaliable");
     const [busyH1, setBusyH1] = useState(false);
 
+    // baseline สำหรับเช็คว่ามีการเปลี่ยนแปลงหรือไม่
+    const [lastSaved, setLastSaved] = useState({ maxCurrentH1: 66, maxPowerH1: 136 });
+    const isDirty =
+        maxCurrentH1 !== lastSaved.maxCurrentH1 || maxPowerH1 !== lastSaved.maxPowerH1;
+
+    // ไม่ใช่การ "บันทึก" — แค่ยืนยัน/ใช้ค่าปัจจุบัน
+    function applySettings() {
+        console.log("apply settings:", { maxCurrentH1, maxPowerH1 });
+        // ถ้าต้องการให้ปุ่ม “ตกลง” กลับไปเป็น disable หลังยืนยัน:
+        setLastSaved({ maxCurrentH1, maxPowerH1 });
+    }
+
     async function chargeCommand(action: "start" | "stop") {
         // await fetch(`/api/charger/1/${action}`, { method: "POST" });
     }
@@ -208,11 +204,7 @@ export default function Head1() {
     const startH1 = async () => {
         try {
             setBusyH1(true);
-            // เงื่อนไขความปลอดภัย: เริ่มได้เฉพาะตอน preparing
-            if (h1Status !== "preparing") {
-                // ไม่ทำอะไรต่อ (ปุ่มก็จะถูก disable อยู่แล้ว)
-                return;
-            }
+            if (h1Status !== "preparing") return;
             await chargeCommand("start");
             setH1Status("cableCheck");
             setH1Status("preCharge");
@@ -240,11 +232,44 @@ export default function Head1() {
     return (
         <Card title="Head1">
             <div className="tw-space-y-8">
+
+                {/* -------- โซนสไลเดอร์ + ปุ่ม “ตกลง” ขวาล่าง -------- */}
                 <div className="tw-space-y-6">
-                    <LimitRow label="Dynamic Max Current H1" unit="A" value={maxCurrentH1} onChange={setMaxCurrentH1} />
-                    <LimitRow label="Dynamic Max Power H1" unit="kW" value={maxPowerH1} onChange={setMaxPowerH1} />
+                    <LimitRow
+                        label="Dynamic Max Current H1"
+                        unit="A"
+                        value={maxCurrentH1}
+                        onChange={setMaxCurrentH1}
+                    />
+                    <LimitRow
+                        label="Dynamic Max Power H1"
+                        unit="kW"
+                        value={maxPowerH1}
+                        onChange={setMaxPowerH1}
+                    />
+
+                    {/* ปุ่ม “ตกลง” — ชิดขวาล่าง, สีดำ, ไม่มีไอคอน */}
+                    <div className="tw-flex tw-justify-end">
+                        <button
+                            type="button"
+                            onClick={applySettings}
+                            disabled={!isDirty}
+                            className={[
+                                "tw-inline-flex tw-items-center tw-justify-center",
+                                "tw-rounded-lg tw-h-11 tw-px-5 tw-text-sm tw-font-semibold",
+                                "tw-text-white tw-bg-black hover:tw-bg-black/90 focus-visible:tw-ring-2 focus-visible:tw-ring-black/30",
+                                "tw-shadow-sm tw-transition",
+                                !isDirty ? "tw-opacity-60 tw-cursor-not-allowed" : "",
+                            ].join(" ")}
+                            aria-label="submit"
+                            title="submit"
+                        >
+                            submit
+                        </button>
+                    </div>
                 </div>
 
+                {/* -------- การ์ดสถานะหัวชาร์จ -------- */}
                 <HeadRow
                     title="Charger Head 1"
                     status={h1Status}
