@@ -1510,7 +1510,7 @@ async def setting_stream(request: Request, station_id: str = Query(...), current
     # if current.role != "admin" and station_id not in set(current.station_ids):
     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
 
-    coll = get_device_collection_for(station_id)
+    coll = get_setting_collection_for(station_id)
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -1551,5 +1551,48 @@ async def setting_stream(request: Request, station_id: str = Query(...), current
                 else:
                     yield ": keep-alive\n\n"
                 await asyncio.sleep(5)
+
+    return StreamingResponse(event_generator(), headers=headers)
+
+@app.get("/setting")
+async def setting_query(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
+    """
+    SSE แบบ query param:
+    - ส่ง snapshot ล่าสุดทันที (event: init)
+    - จากนั้น polling ของใหม่เป็นช่วง ๆ
+    """
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    coll = get_setting_collection_for(station_id)
+
+    async def event_generator():
+        last_id = None
+        latest = await coll.find_one({}, sort=[("_id", -1)])  # ⬅️ ไม่ต้อง filter station_id ภายในแล้ว
+        if latest:
+            latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
+            last_id = latest.get("_id")
+            yield "retry: 3000\n"
+            yield "event: init\n"
+            yield f"data: {to_json(latest)}\n\n"
+        else:
+            yield "retry: 3000\n\n"
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            doc = await coll.find_one({}, sort=[("_id", -1)])
+            if doc and doc.get("_id") != last_id:
+                doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                last_id = doc.get("_id")
+                yield f"data: {to_json(doc)}\n\n"
+            else:
+                yield ": keep-alive\n\n"
+
+            await asyncio.sleep(5)
 
     return StreamingResponse(event_generator(), headers=headers)
