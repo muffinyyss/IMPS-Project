@@ -54,8 +54,8 @@ type Question =
         hasPhoto?: boolean;
     }
     | {
-        no: 5 | 6 | 7 | 11 | 12;
-        key: `r${5 | 6 | 7 | 11 | 12}`;
+        no: 5 | 6 | 7 | 11 | 12 | 16;
+        key: `r${5 | 6 | 7 | 11 | 12 | 16}`;
         label: string; // ชื่อหัวข้อการวัด
         kind: "measure"; // การวัดค่า + PASS/FAIL (+ optional photo)
         hasPhoto?: boolean;
@@ -67,7 +67,7 @@ const QUESTIONS: Question[] = [
     { no: 2, key: "r2", label: "2) ตรวจสอบดักซีล,ซิลิโคนกันซึม", kind: "simple" },
     { no: 3, key: "r3", label: "3) ตรวจสอบสายอัดประจุ", kind: "simple" },
     { no: 4, key: "r4", label: "4) ตรวจสอบหัวจ่ายอัดประจุ", kind: "simple", hasPhoto: true },
-    { no: 5, key: "r5", label: "5) ตรวจสอบปุ่มหยุดฉุกเฉิน", kind: "measure" },
+    { no: 5, key: "r5", label: "5) ตรวจสอบปุ่มหยุดฉุกเฉิน", kind: "simple", hasPhoto: true },
 
     {
         no: 6,
@@ -674,7 +674,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                         remark={rows.r5.remark}
                         onRemarkChange={(v) => setRows({ ...rows, r5: { ...rows.r5, remark: v } })}
                     />
-                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    {/* <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                         {VOLTAGE_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`pre-${k}`}
@@ -686,7 +686,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                                 onUnitChange={(u) => handleVoltageUnitChange(k, u)}
                             />
                         ))}
-                    </div>
+                    </div> */}
                 </CardBody>
             </Card>
 
@@ -703,7 +703,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                         remark={rows.r6.remark}
                         onRemarkChange={(v) => setRows({ ...rows, r6: { ...rows.r6, remark: v } })}
                     />
-                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    {/* <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                         {INSUL_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`ins-pre-${k}`}
@@ -715,7 +715,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                                 onUnitChange={(u) => handleInsulInUnitChange(k, u)}
                             />
                         ))}
-                    </div>
+                    </div> */}
                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-border-blue-gray-50">
                         <PhotoMultiInput
                             label="แนบรูปประกอบ (ข้อ 6)"
@@ -745,7 +745,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                         remark={rows.r7.remark}
                         onRemarkChange={(v) => setRows({ ...rows, r7: { ...rows.r7, remark: v } })}
                     />
-                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-4 tw-gap-3">
+                    {/* <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-4 tw-gap-3">
                         {CHARGE_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`charge-${k}`}
@@ -757,7 +757,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                                 onUnitChange={(u) => handleInsulChargeUnitChange(k, u)}
                             />
                         ))}
-                    </div>
+                    </div> */}
                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-border-blue-gray-50">
                         <PhotoMultiInput
                             label="แนบรูปประกอบ (ข้อ 7)"
@@ -812,7 +812,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                         remark={rows.r11.remark}
                         onRemarkChange={(v) => setRows({ ...rows, r11: { ...rows.r11, remark: v } })}
                     />
-                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    {/* <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                         {INSUL_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`ins-post-${k}`}
@@ -824,7 +824,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                                 onUnitChange={(u) => handleInsulInPostUnitChange(k, u)}
                             />
                         ))}
-                    </div>
+                    </div> */}
                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-border-blue-gray-50">
                         <PhotoMultiInput
                             label="แนบรูปประกอบ (ข้อ 11)"
@@ -849,7 +849,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                         remark={rows.r12.remark}
                         onRemarkChange={(v) => setRows({ ...rows, r12: { ...rows.r12, remark: v } })}
                     />
-                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    {/* <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                         {VOLTAGE_FIELDS.map((k) => (
                             <InputWithUnit<UnitVoltage>
                                 key={`post-${k}`}
@@ -861,7 +861,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                                 onUnitChange={(u) => handleVoltagePostUnitChange(k, u)}
                             />
                         ))}
-                    </div>
+                    </div> */}
                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-border-blue-gray-50">
                         <PhotoMultiInput
                             label="แนบรูปประกอบ (ข้อ 12)"
@@ -898,84 +898,59 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                         </div>
                     ))}
 
-                    {/* ข้อ 16: remarkOnly + photo */}
-                    {/* {(() => {
-                        const q = QUESTIONS.find((x) => x.no === 16)!;
-                        return (
-                            <>
-                                <Typography variant="paragraph" className="tw-pt-2 tw-text-base tw-font-medium">
-                                    {q.label}
-                                </Typography>
-                                {q.hasPhoto && (
-                                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-border-blue-gray-50">
-                                        <PhotoMultiInput
-                                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                                            photos={photos[q.no] || []}
-                                            setPhotos={makePhotoSetter(q.no)}
-                                            max={20}
-                                        />
-                                    </div>
-                                )}
-                                <Input
-                                    label="หมายเหตุ (ถ้ามี)"
-                                    value={rows.r16.remark}
-                                    onChange={(e) => setRows({ ...rows, r16: { ...rows.r16, remark: e.target.value } })}
-                                    crossOrigin=""
-                                />
-                            </>
-                        );
-                    })()} */}
-                    {/* ข้อ 16: ใช้ VOLTAGE1_FIELDS */}
-                    {(() => {
-                        const q = QUESTIONS.find((x) => x.no === 16)!;
-                        return (
-                            <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                                <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                                    <Typography variant="h6">{q.label}</Typography>
-                                </CardHeader>
-                                <CardBody className="tw-space-y-4">
-                                    {/* ผลการทดสอบ (PASS/FAIL) */}
-                                    <PassFailRow
-                                        label="ผลการทดสอบ"
-                                        value={rows.r16.pf}
-                                        onChange={(v) => setRows({ ...rows, r16: { ...rows.r16, pf: v } })}
-                                        remark={rows.r16.remark}
-                                        onRemarkChange={(v) => setRows({ ...rows, r16: { ...rows.r16, remark: v } })}
-                                    />
 
-                                    {/* ช่องวัดค่าตาม VOLTAGE1_FIELDS */}
-                                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
-                                        {VOLTAGE1_FIELDS.map((label) => (
-                                            <InputWithUnit<UnitVoltage>
-                                                key={`v16-${label}`}
-                                                label={label}                  // ใช้ label จาก array ตรง ๆ
-                                                value={voltage16[label]?.value || ""}
-                                                unit={(voltage16[label]?.unit as UnitVoltage) || "V"}
-                                                units={UNITS.voltage}
-                                                onValueChange={(v) => patchVoltage16(label, { value: v })}
-                                                onUnitChange={(u) => handleVoltage16UnitChange(label, u)}
-                                            />
-                                        ))}
-                                    </div>
-
-                                    {/* แนบรูป (ถ้ามี) */}
-                                    {q.hasPhoto && (
-                                        <div className="tw-pt-2 tw-pb-4 tw-border-b tw-border-blue-gray-50">
-                                            <PhotoMultiInput
-                                                label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                                                photos={photos[q.no] || []}
-                                                setPhotos={makePhotoSetter(q.no)}
-                                                max={20}
-                                            />
-                                        </div>
-                                    )}
-                                </CardBody>
-                            </Card>
-                        );
-                    })()}
 
                 </CardBody>
             </Card>
+
+            {/* ข้อ 16: ใช้ VOLTAGE1_FIELDS */}
+            {(() => {
+                const q = QUESTIONS.find((x) => x.no === 16)!;
+                return (
+                    <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+                        <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+                            <Typography variant="h6">{q.label}</Typography>
+                        </CardHeader>
+                        <CardBody className="tw-space-y-4">
+                            {/* ผลการทดสอบ (PASS/FAIL) */}
+                            <PassFailRow
+                                label="ผลการทดสอบ"
+                                value={rows.r16.pf}
+                                onChange={(v) => setRows({ ...rows, r16: { ...rows.r16, pf: v } })}
+                                remark={rows.r16.remark}
+                                onRemarkChange={(v) => setRows({ ...rows, r16: { ...rows.r16, remark: v } })}
+                            />
+
+                            {/* ช่องวัดค่าตาม VOLTAGE1_FIELDS */}
+                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                                {VOLTAGE1_FIELDS.map((label) => (
+                                    <InputWithUnit<UnitVoltage>
+                                        key={`v16-${label}`}
+                                        label={label}                  // ใช้ label จาก array ตรง ๆ
+                                        value={voltage16[label]?.value || ""}
+                                        unit={(voltage16[label]?.unit as UnitVoltage) || "V"}
+                                        units={UNITS.voltage}
+                                        onValueChange={(v) => patchVoltage16(label, { value: v })}
+                                        onUnitChange={(u) => handleVoltage16UnitChange(label, u)}
+                                    />
+                                ))}
+                            </div>
+
+                            {/* แนบรูป (ถ้ามี) */}
+                            {q.hasPhoto && (
+                                <div className="tw-pt-2 tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                    <PhotoMultiInput
+                                        label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                        photos={photos[q.no] || []}
+                                        setPhotos={makePhotoSetter(q.no)}
+                                        max={20}
+                                    />
+                                </div>
+                            )}
+                        </CardBody>
+                    </Card>
+                );
+            })()}
 
             {/* 17–18 simple (array) */}
             <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
@@ -1003,6 +978,7 @@ export default function CheckList({ onComplete, onNext }: CheckListProps) {
                     ))}
                 </CardBody>
             </Card>
+
 
 
             {/* ===== Summary & Actions ===== */}

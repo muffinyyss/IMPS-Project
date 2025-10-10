@@ -94,7 +94,7 @@ export default function PM_Report() {
           </div>
 
           {/* Page 2 */}
-          <div className={page === 1 ? "" : "tw-hidden"} aria-hidden={page !== 1}>
+          <div className={page === 1 ? "" : "tw-hidden"}  aria-hidden={page !== 1}>
             {/* ส่ง callback เพื่อสลับกลับหน้า 1 */}
             <PMReportPhotos onBack={() => goTo(0)} />
           </div>
