@@ -2,7 +2,7 @@
 import React from "react";
 
 type Props = {
-  title?: string;
+  title?: React.ReactNode;
   right?: React.ReactNode;
   className?: string;
   children: React.ReactNode;

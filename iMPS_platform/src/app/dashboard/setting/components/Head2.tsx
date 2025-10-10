@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { PlayIcon, StopIcon, ArrowPathIcon, CheckIcon } from "@heroicons/react/24/solid";
+import { PlayIcon, StopIcon, ArrowPathIcon } from "@heroicons/react/24/solid";
 
 import Card from "./chargerSetting-card";
 import CircleProgress from "./CircleProgress";
@@ -60,7 +60,10 @@ type ChargeState =
     | "finishing"
     | "faulted";
 
-const STATE_META: Record<ChargeState, { label: string; className: string }> = {
+const STATE_META: Record<
+    ChargeState,
+    { label: string; className: string }
+> = {
     avaliable: { label: "Avaliable", className: "tw-text-blue-gray-600" },
     preparing: { label: "Preparing", className: "tw-text-blue-600" },
     cableCheck: { label: "Cable Check", className: "tw-text-amber-600" },
@@ -73,13 +76,16 @@ const STATE_META: Record<ChargeState, { label: string; className: string }> = {
 function StateText({ status }: { status: ChargeState }) {
     const meta = STATE_META[status];
     return (
-        <p className={`tw-text-sm tw-font-semibold tw-text-center ${meta.className}`} aria-live="polite">
+        <p
+            className={`tw-text-sm tw-font-semibold tw-text-center ${meta.className}`}
+            aria-live="polite"
+        >
             {meta.label}
         </p>
     );
 }
 
-/* ---------- ปุ่ม Start/Stop (Done / Try Again) ---------- */
+/* ---------- ปุ่ม Start/Stop (มีโหมด Try Again) ---------- */
 function PrimaryCTA({
     status, busy, onStart, onStop,
 }: {
@@ -95,25 +101,18 @@ function PrimaryCTA({
     const isAvailable = status === "avaliable";
 
     const isDisabled =
-        !!busy || isFinishing || isAvailable || !(isCharging || isPreparing || isFaulted);
+        !!busy ||
+        isFinishing ||
+        isAvailable ||
+        !(isCharging || isPreparing || isFaulted);
 
-    const label = isFinishing
-        ? "Done"
-        : isCharging
-            ? "Stop Charging"
-            : isFaulted
-                ? "Try Again"
-                : "Start Charging";
+    const label = isCharging ? "Stop Charging" : isFaulted ? "Try Again" : "Start Charging";
 
     const Icon = busy
         ? ArrowPathIcon
-        : isFinishing
-            ? CheckIcon
-            : isCharging
-                ? StopIcon
-                : isFaulted
-                    ? ArrowPathIcon
-                    : PlayIcon;
+        : isCharging
+            ? StopIcon
+            : PlayIcon;
 
     const color = isCharging || isFaulted
         ? "tw-bg-red-500 hover:tw-bg-red-600 focus-visible:tw-ring-red-300"
@@ -159,12 +158,17 @@ function HeadRow({
             <div className="tw-p-4 md:tw-p-5 tw-space-y-4">
                 <div className="tw-font-semibold tw-text-blue-gray-900">{title}</div>
 
-                <CircleProgress label="SoC :" value={85} />
+                <CircleProgress label="SoC :" value={87} />
 
                 <StateText status={status} />
 
                 <div className="tw-pt-1">
-                    <PrimaryCTA status={status} busy={!!busy} onStart={onStart} onStop={onStop} />
+                    <PrimaryCTA
+                        status={status}
+                        busy={!!busy}
+                        onStart={onStart}
+                        onStop={onStop}
+                    />
                     <p className="tw-mt-2 tw-text-center tw-text-xs tw-text-blue-gray-500">
                         {charging ? "Vehicle is charging" : "Vehicle is idle"}
                     </p>
@@ -181,14 +185,26 @@ export default function Head2() {
     const [h2Status, setH2Status] = useState<ChargeState>("faulted");
     const [busyH2, setBusyH2] = useState(false);
 
+    // baseline สำหรับเช็คว่ามีการเปลี่ยนแปลงหรือไม่
+    const [lastApplied, setLastApplied] = useState({ maxCurrentH2: 66, maxPowerH2: 136 });
+    const isDirty =
+        maxCurrentH2 !== lastApplied.maxCurrentH2 || maxPowerH2 !== lastApplied.maxPowerH2;
+
+    // ไม่ใช่การ "บันทึก" — แค่ยืนยัน/ใช้ค่าปัจจุบัน
+    function applySettings() {
+        console.log("apply settings (Head2):", { maxCurrentH2, maxPowerH2 });
+        setLastApplied({ maxCurrentH2, maxPowerH2 }); // ทำให้ปุ่มกลับไป disabled หลังยืนยัน
+    }
+
     async function chargeCommand(action: "start" | "stop") {
-        // await fetch(`/api/charger/2/${action}`, { method: "POST" }); // หัว 2
+        // ตัวอย่าง: เรียก API ของหัว 2
+        // await fetch(`/api/charger/2/${action}`, { method: "POST" });
     }
 
     const startH2 = async () => {
         try {
             setBusyH2(true);
-            if (h2Status !== "preparing") return;   // เริ่มได้เฉพาะตอน preparing
+            if (h2Status !== "preparing") return;
             await chargeCommand("start");
             setH2Status("cableCheck");
             setH2Status("preCharge");
@@ -216,11 +232,44 @@ export default function Head2() {
     return (
         <Card title="Head2">
             <div className="tw-space-y-8">
+
+                {/* -------- โซนสไลเดอร์ + ปุ่ม “ตกลง” ขวาล่าง -------- */}
                 <div className="tw-space-y-6">
-                    <LimitRow label="Dynamic Max Current H2" unit="A" value={maxCurrentH2} onChange={setMaxCurrentH2} />
-                    <LimitRow label="Dynamic Max Power H2" unit="kW" value={maxPowerH2} onChange={setMaxPowerH2} />
+                    <LimitRow
+                        label="Dynamic Max Current H2"
+                        unit="A"
+                        value={maxCurrentH2}
+                        onChange={setMaxCurrentH2}
+                    />
+                    <LimitRow
+                        label="Dynamic Max Power H2"
+                        unit="kW"
+                        value={maxPowerH2}
+                        onChange={setMaxPowerH2}
+                    />
+
+                    {/* ปุ่ม “ตกลง” — ชิดขวาล่าง, สีดำ, ไม่มีไอคอน */}
+                    <div className="tw-flex tw-justify-end">
+                        <button
+                            type="button"
+                            onClick={applySettings}
+                            disabled={!isDirty}
+                            className={[
+                                "tw-inline-flex tw-items-center tw-justify-center",
+                                "tw-rounded-lg tw-h-11 tw-px-5 tw-text-sm tw-font-semibold",
+                                "tw-text-white tw-bg-black hover:tw-bg-black/90 focus-visible:tw-ring-2 focus-visible:tw-ring-black/30",
+                                "tw-shadow-sm tw-transition",
+                                !isDirty ? "tw-opacity-60 tw-cursor-not-allowed" : "",
+                            ].join(" ")}
+                            aria-label="submit"
+                            title="submit"
+                        >
+                            submit
+                        </button>
+                    </div>
                 </div>
 
+                {/* -------- การ์ดสถานะหัวชาร์จ -------- */}
                 <HeadRow
                     title="Charger Head 2"
                     status={h2Status}
