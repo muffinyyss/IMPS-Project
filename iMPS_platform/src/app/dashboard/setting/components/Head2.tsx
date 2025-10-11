@@ -863,15 +863,15 @@ export default function Head1() {
     }, [data?.dynamic_max_current1]);
 
     // เพิ่มตัวช่วยอ่าน present_current1
-    const presentCurrent1 = useMemo(() => {
-        return toNum(data?.present_current1); // เช่น 56.0 จาก payload
-    }, [data?.present_current1]);
+    const presentCurrent2 = useMemo(() => {
+        return toNum(data?.present_current2); // เช่น 56.0 จาก payload
+    }, [data?.present_current2]);
 
-    // คำนวณ max ของสไลเดอร์กระแสจาก present_current1 (fallback 500)
+    // คำนวณ max ของสไลเดอร์กระแสจาก present_current2 (fallback 500)
     const maxCurrentSlider = useMemo(() => {
-        const n = presentCurrent1;
+        const n = presentCurrent2;
         return n !== null ? Math.max(1, Math.round(n)) : 500;
-    }, [presentCurrent1]);
+    }, [presentCurrent2]);
 
     // (อ๊อปชัน) บังคับค่าปัจจุบันของสไลเดอร์ไม่ให้เกิน max เมื่อ max เปลี่ยน
     useEffect(() => {
@@ -879,24 +879,24 @@ export default function Head1() {
     }, [maxCurrentSlider]);
 
     // ==== ใต้ presentCurrent1 / maxCurrentSlider ====
-    const presentPowerW1 = useMemo(() => {
+    const presentPowerW2 = useMemo(() => {
         // ลองใช้ค่าจากสตรีมก่อน (หน่วย W)
-        const p = toNum(data?.present_power1);
+        const p = toNum(data?.present_power2);
         if (p !== null) return p;
 
         // ถ้าไม่มี present_power1 ให้คำนวณจาก V × I (DC)
-        const v = toNum((data as any)?.measured_voltage1);
-        const i = toNum(data?.present_current1);
+        const v = toNum((data as any)?.measured_voltage2);
+        const i = toNum(data?.present_current2);
         if (v !== null && i !== null) return v * i;
 
         return null;
-    }, [data?.present_power1, (data as any)?.measured_voltage1, data?.present_current1]);
+    }, [data?.present_power2, (data as any)?.measured_voltage2, data?.present_current2]);
 
     // max ของสไลเดอร์ Power (หน่วย kW บน UI)
     const maxPowerSlider = useMemo(() => {
-        if (presentPowerW1 === null) return 500; // fallback เดิม 500 kW
-        return Math.max(1, Math.round(presentPowerW1 / 1000)); // W → kW
-    }, [presentPowerW1]);
+        if (presentPowerW2 === null) return 500; // fallback เดิม 500 kW
+        return Math.max(1, Math.round(presentPowerW2 / 1000)); // W → kW
+    }, [presentPowerW2]);
 
     // บังคับค่า power ปัจจุบันไม่ให้เกิน max เมื่อ max เปลี่ยน
     useEffect(() => {
@@ -1037,8 +1037,8 @@ export default function Head1() {
     }, [data]);
 
     // SoC (ถ้ามาเป็น string ก็แปลงเป็น number; ถ้า null → 0)
-    const soc1: number | null = useMemo(() => {
-        const n = toNum(data?.SOC1);
+    const soc2: number | null = useMemo(() => {
+        const n = toNum(data?.SOC2);
         if (n === null) return 0;
         // จำกัดช่วง 0–100 เผื่อค่าสะดุ้ง
         return Math.max(0, Math.min(100, n));
@@ -1049,7 +1049,7 @@ export default function Head1() {
         // await fetch(`${API_BASE}/charger/1/${action}?station_id=${encodeURIComponent(stationId ?? "")}`, { method: "POST", credentials: "include" });
     }
 
-    const startH1 = async () => {
+    const startH2 = async () => {
         try {
             setBusyH2(true);
             if (h2Status !== "preparing") return;
@@ -1062,7 +1062,7 @@ export default function Head1() {
         }
     };
 
-    const stopH1 = async () => {
+    const stopH2 = async () => {
         try {
             setBusyH2(true);
             await chargeCommand("stop");
@@ -1075,18 +1075,18 @@ export default function Head1() {
 
     const hasStation = !!stationId;
     const hasData = !!data;
-    const dynMaxCurrent1 = toNum(data?.dynamic_max_current2); // อาจเป็น null
+    const dynMaxCurrent2 = toNum(data?.dynamic_max_current2); // อาจเป็น null
 
     // สไลเดอร์ Current: “เลื่อนไม่ได้” ถ้ายังไม่มี station หรือไม่มี data
     const disableCurrent = !(hasStation && hasData);
 
     // สไลเดอร์ Power: “เลื่อนไม่ได้” ถ้ายังไม่มี station หรือไม่มี data หรือไม่มี dynMaxCurrent1 จริง
-    const disablePower = !(hasStation && hasData && dynMaxCurrent1 !== null);
+    const disablePower = !(hasStation && hasData && dynMaxCurrent2 !== null);
 
     // log สถานะล็อกฝั่ง UI
     useEffect(() => {
-        console.log(`[Head1] slider lock states → Current: ${disableCurrent}, Power: ${disablePower} (dynMaxCurrent1=${dynMaxCurrent1})`);
-    }, [disableCurrent, disablePower, dynMaxCurrent1]);
+        console.log(`[Head1] slider lock states → Current: ${disableCurrent}, Power: ${disablePower} (dynMaxCurrent1=${dynMaxCurrent2})`);
+    }, [disableCurrent, disablePower, dynMaxCurrent2]);
 
     const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
     return (
@@ -1170,9 +1170,9 @@ export default function Head1() {
                     title="Charger Head 2"
                     status={h2Status}
                     busy={busyH2}
-                    soc={soc1 ?? 0}
-                    onStart={startH1}
-                    onStop={stopH1}
+                    soc={soc2 ?? 0}
+                    onStart={startH2}
+                    onStop={stopH2}
                 />
             </div>
         </Card>
