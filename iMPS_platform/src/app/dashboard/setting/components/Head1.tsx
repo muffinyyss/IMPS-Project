@@ -485,9 +485,9 @@ const statusFromCP = (cp: any): ChargeState => {
         case "2": return "preparing";  // preparing
         case "3": return "cableCheck"; // cable check
         case "4": return "preCharge";  // precharge
-        case "5": return "charging";   // charging
+        case "7": return "charging";   // charging
         case "6": return "finishing";  // finishing
-        case "7": return "faulted";    // fault
+        case "5": return "faulted";    // fault
         default: return "avaliable";
     }
 };
@@ -522,7 +522,7 @@ function HeadRow({
                         onStart={onStart}
                         onStop={onStop}
                     />
-                    <PrimaryCTA status={status} busy={!!busy} onStart={onStart} onStop={onStop} />
+                    {/* <PrimaryCTA status={status} busy={!!busy} onStart={onStart} onStop={onStop} /> */}
                     <p className="tw-mt-2 tw-text-center tw-text-xs tw-text-blue-gray-500">
                         {charging ? "Vehicle is charging" : "Vehicle is idle"}
                     </p>
@@ -540,6 +540,8 @@ type SettingDoc = {
     SOC1?: string | number | null;
     dynamic_max_current1?: string | number; // A
     dynamic_max_power1?: string | number;   // W (backend), จอแสดง kW
+    present_current1?: string | number;
+    present_power1?: string | number;
     // ฟิลด์อื่น ๆ ที่อาจใช้อีกก็เพิ่มได้
     [key: string]: any;
 };
@@ -574,6 +576,47 @@ export default function Head1() {
         const n = toNum(data?.dynamic_max_current1); // ← เอาจาก dynamic_max_current1
         return n !== null ? Math.max(0, Math.round(n)) : 600; // fallback 600
     }, [data?.dynamic_max_current1]);
+
+    // เพิ่มตัวช่วยอ่าน present_current1
+    const presentCurrent1 = useMemo(() => {
+        return toNum(data?.present_current1); // เช่น 56.0 จาก payload
+    }, [data?.present_current1]);
+
+    // คำนวณ max ของสไลเดอร์กระแสจาก present_current1 (fallback 500)
+    const maxCurrentSlider = useMemo(() => {
+        const n = presentCurrent1;
+        return n !== null ? Math.max(1, Math.round(n)) : 500;
+    }, [presentCurrent1]);
+
+    // (อ๊อปชัน) บังคับค่าปัจจุบันของสไลเดอร์ไม่ให้เกิน max เมื่อ max เปลี่ยน
+    useEffect(() => {
+        setMaxCurrentH1((v) => Math.min(v, maxCurrentSlider));
+    }, [maxCurrentSlider]);
+
+    // ==== ใต้ presentCurrent1 / maxCurrentSlider ====
+    const presentPowerW1 = useMemo(() => {
+        // ลองใช้ค่าจากสตรีมก่อน (หน่วย W)
+        const p = toNum(data?.present_power1);
+        if (p !== null) return p;
+
+        // ถ้าไม่มี present_power1 ให้คำนวณจาก V × I (DC)
+        const v = toNum((data as any)?.measured_voltage1);
+        const i = toNum(data?.present_current1);
+        if (v !== null && i !== null) return v * i;
+
+        return null;
+    }, [data?.present_power1, (data as any)?.measured_voltage1, data?.present_current1]);
+
+    // max ของสไลเดอร์ Power (หน่วย kW บน UI)
+    const maxPowerSlider = useMemo(() => {
+        if (presentPowerW1 === null) return 500; // fallback เดิม 500 kW
+        return Math.max(1, Math.round(presentPowerW1 / 1000)); // W → kW
+    }, [presentPowerW1]);
+
+    // บังคับค่า power ปัจจุบันไม่ให้เกิน max เมื่อ max เปลี่ยน
+    useEffect(() => {
+        setMaxPowerH1((v) => Math.min(v, maxPowerSlider));
+    }, [maxPowerSlider]);
 
     // station_id จาก URL → localStorage
     useEffect(() => {
@@ -760,8 +803,23 @@ export default function Head1() {
         console.log(`[Head1] slider lock states → Current: ${disableCurrent}, Power: ${disablePower} (dynMaxCurrent1=${dynMaxCurrent1})`);
     }, [disableCurrent, disablePower, dynMaxCurrent1]);
 
+    const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
     return (
-        <Card title="Head1">
+        <Card 
+        // title="Head1"
+         title={
+                <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+                    <span>Head1</span>
+                    {lastUpdated && (
+                        <span className="tw-text-xs !tw-text-blue-gray-500">
+                            อัปเดตล่าสุด: {lastUpdated}
+                        </span>
+                    )}
+                </div>
+            }
+        >
+
+
             {(loading || err) && (
                 <div className="tw-px-3 tw-py-2">
                     {loading && <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลด...</div>}
@@ -769,11 +827,11 @@ export default function Head1() {
                 </div>
             )}
 
-            {data?.timestamp && (
+            {/* {data?.timestamp && (
                 <div className="tw-px-3 tw-py-2 tw-text-xs tw-text-blue-gray-500">
                     อัปเดตล่าสุด: {new Date(data.timestamp).toLocaleString("th-TH")}
                 </div>
-            )}
+            )} */}
 
             <div className="tw-space-y-8">
 
@@ -786,7 +844,7 @@ export default function Head1() {
                         value={maxCurrentH1}
                         onChange={setMaxCurrentH1}
                         min={0}
-                        max={500}
+                        max={maxCurrentSlider}
                         disabled={disableCurrent}
                     />
                     <LimitRow
@@ -794,6 +852,9 @@ export default function Head1() {
                         unit="kW"
                         value={maxPowerH1}
                         onChange={setMaxPowerH1}
+                        min={0}
+                        max={maxPowerSlider}
+                        disabled={disablePower}
                     />
 
                     {/* ปุ่ม “ตกลง” — ชิดขวาล่าง, สีดำ, ไม่มีไอคอน */}
@@ -815,9 +876,7 @@ export default function Head1() {
                             submit
                         </button>
                     </div>
-                        min={0}
-                        max={500}
-                        disabled={disablePower}
+
                     {/* /> */}
                 </div>
 
