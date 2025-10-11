@@ -191,7 +191,7 @@ export default function StatisticsCards() {
     },
     {
       title: "PM Schedule",
-      value: `ถัดไป: ${pm.pm.next}`,
+      value: `ถัดไป: ${pm.pm.latest}`,
       icon: pm.icons?.date ?? CalendarDaysIcon,
       footer: { color: "tw-text-blue-700", value: "Just updated", label: pm.pm.latest },
     },
