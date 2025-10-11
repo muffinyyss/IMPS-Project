@@ -289,7 +289,7 @@ def station_info(
     doc = station_collection.find_one(
         {"station_id": station_id},
         # เลือก field ที่อยากคืน (ตัด _id ออกเพื่อลด serialize ปัญหา ObjectId)
-        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "model": 1, "chargeBoxID": 1, "status": 1}
+        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "chargeBoxID": 1, "model": 1, "chargeBoxID": 1, "status": 1}
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Station not found")
@@ -990,7 +990,8 @@ class addStations(BaseModel):
     WO:str 
     PLCFirmware:str 
     PIFirmware:str 
-    RTFirmware:str 
+    RTFirmware:str
+    chargeBoxID: str 
     user_id: Optional[str] = None  
     owner: Optional[str] = None
     is_active:Optional[bool] = None
@@ -1006,6 +1007,7 @@ class StationOut(BaseModel):
     PLCFirmware:str 
     PIFirmware:str 
     RTFirmware:str 
+    chargeBoxID:str
     user_id: str 
     username: Optional[str] = None
     is_active:  Optional[bool] = None
@@ -1032,6 +1034,7 @@ def insert_stations(
     PLCFirmware           = body.PLCFirmware.strip()
     PIFirmware           = body.PIFirmware.strip()
     RTFirmware           = body.RTFirmware.strip()
+    chargeBoxID           = body.chargeBoxID.strip()
 
     # (ถ้าต้องการบังคับรูปแบบ station_id)
     # if not re.fullmatch(r"[A-Za-z0-9_]+", station_id):
@@ -1073,6 +1076,7 @@ def insert_stations(
         "PLCFirmware": PLCFirmware,
         "PIFirmware": PIFirmware,
         "RTFirmware": RTFirmware,
+        "chargeBoxID": chargeBoxID,
         "user_id": owner_oid,                 # ObjectId ใน DB
         "is_active": is_active,
         "createdAt": datetime.now(timezone.utc),
@@ -1100,6 +1104,7 @@ def insert_stations(
         "PLCFirmware": doc["PLCFirmware"],
         "PIFirmware": doc["PIFirmware"],
         "RTFirmware": doc["RTFirmware"],
+        "chargeBoxID": doc["chargeBoxID"],
         "user_id": str(doc["user_id"]),       # string สำหรับ client
         "username": owner_username,           # ส่งกลับให้ table โชว์ได้เลย
         "is_active": doc["is_active"],
@@ -1130,12 +1135,13 @@ class StationUpdate(BaseModel):
     PLCFirmware: Optional[str] = None
     PIFirmware: Optional[str] = None
     RTFirmware: Optional[str] = None
+    chargeBoxID: Optional[str] = None
     # status: Optional[bool] = None
     is_active: Optional[bool] = None
     user_id: str | None = None 
 
 
-ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "PLCFirmware", "PIFirmware", "RTFirmware", "status","is_active", "user_id"}
+ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "PLCFirmware", "PIFirmware", "RTFirmware", "chargeBoxID", "status","is_active", "user_id"}
 # ALLOW_FIELDS_NONADMIN = {"status"}
 
 def to_object_id_or_400(s: str) -> ObjectId:
@@ -1232,6 +1238,7 @@ def update_station(
         "PLCFirmware": doc.get("PLCFirmware", ""),
         "PIFirmware": doc.get("PIFirmware", ""),
         "RTFirmware": doc.get("RTFirmware", ""),
+        "chargeBoxID": doc.get("chargeBoxID", ""),
         "createdAt": created_at,  
         # ส่งกลับเป็น string เพื่อให้ฝั่ง client ใช้ง่าย
         "user_id": str(doc["user_id"]) if doc.get("user_id") else "",
@@ -1711,3 +1718,4 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
             await asyncio.sleep(5)
 
     return StreamingResponse(event_generator(), headers=headers)
+
