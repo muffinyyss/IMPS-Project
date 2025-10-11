@@ -256,36 +256,6 @@ def login(body: LoginRequest, response: Response):
         }
     }
 
-# @app.get("/my-stations/detail")
-# def my_stations_detail(current: UserClaims = Depends(get_current_user)):
-#     # ดึงรายละเอียดเฉพาะสถานีที่ user มีสิทธิ์
-#     docs = list(station_collection.find(
-#         {"station_id": {"$in": current.station_ids}},
-#         {"_id": 0, "station_id": 1, "station_name": 1}
-#     ))
-#     return {"stations": docs}
-
-# @app.get("/my-stations/detail")
-# def my_stations_detail(current: UserClaims = Depends(get_current_user)):
-#     # ถ้าเป็น admin → เห็นทุกสถานี
-#     if current.role == "admin":
-#         docs = list(
-#             station_collection.find(
-#                 {},
-#                 {"_id": 0, "station_id": 1, "station_name": 1}
-#             )
-#         )
-#         return {"stations": docs}
-
-#     # ถ้าไม่ใช่ admin → เห็นเฉพาะ station_ids ใน token
-#     docs = list(
-#         station_collection.find(
-#             {"station_id": {"$in": current.station_ids}},
-#             {"_id": 0, "station_id": 1, "station_name": 1}
-#         )
-#     )
-#     return {"stations": docs}
-
 @app.get("/my-stations/detail")
 def my_stations_detail(current: UserClaims = Depends(get_current_user)):
     proj = {"_id": 0, "station_id": 1, "station_name": 1}
@@ -318,7 +288,7 @@ def station_info(
     doc = station_collection.find_one(
         {"station_id": station_id},
         # เลือก field ที่อยากคืน (ตัด _id ออกเพื่อลด serialize ปัญหา ObjectId)
-        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "model": 1, "status": 1}
+        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "model": 1, "chargeBoxID": 1, "status": 1}
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Station not found")

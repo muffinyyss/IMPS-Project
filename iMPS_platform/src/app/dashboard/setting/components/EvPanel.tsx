@@ -98,10 +98,10 @@ export default function EvPanel() {
 
         // es.addEventListener("init", onInit);
         es.addEventListener("init", (e: MessageEvent) => {
-            console.log("INIT raw:", e.data);
+            // console.log("INIT raw:", e.data);
             try {
                 const obj = JSON.parse(e.data);
-                console.log("INIT parsed:", obj);
+                // console.log("INIT parsed:", obj);
                 setData(obj);
                 setLoading(false);
             } catch { }
@@ -119,10 +119,10 @@ export default function EvPanel() {
         // };
 
         es.onmessage = (e) => {
-            console.log("MSG raw:", e.data);
+            // console.log("MSG raw:", e.data);
             try {
                 const obj = JSON.parse(e.data);
-                console.log("MSG parsed:", obj);
+                // console.log("MSG parsed:", obj);
                 setData(obj);
             } catch { }
         };
