@@ -172,7 +172,7 @@ export const data_testReport = [
     color: "gray",
     icon: UserPlusIcon,
     title: "Followers",
-    value: "+91",
+    value: "+90",
     footer: {
       label: " Just updated",
     },
