@@ -88,7 +88,7 @@ export default function PM_Report() {
           <div className={page === 0 ? "" : "tw-hidden"} aria-hidden={page !== 0}>
             <CheckList
               onComplete={(status: boolean) => setIsCheckListComplete(status)}
-              onNext={() => goTo(1)}   // ✅ ให้ CheckList เรียกอันนี้เท่านั้นเมื่อกด "ถัดไป"
+              onNext={() => goTo(1)}   // ให้ CheckList เรียกอันนี้เท่านั้นเมื่อกด "ถัดไป"
               onPrev={() => goTo(0)}
             />
           </div>

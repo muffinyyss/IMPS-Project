@@ -64,6 +64,8 @@ export function DashboardNavbar() {
   else if (segs[1] === "ai") title = "Ai Module";
   else if (segs[2] === "settings") title = "My Profile";
   else if (segs[1] === "device") title = "DC Charger";
+  else if (segs[1] === "cm-report") title = "CM Report";
+
 
   // ล็อก dropdown
   const lockStationDropdown = pathname.startsWith("/dashboard/input_PMreport");

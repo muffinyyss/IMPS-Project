@@ -48,6 +48,11 @@ export const allRoutes = [
     path: "/dashboard/pm-report",
   },
   {
+    name: "CM report",
+    icon: <i className="far fa-file" />,
+    path: "#",
+  },
+  {
     name: "Test report",
     icon: <i className="fa fa-check-square" />,
     path: "/dashboard/test-report",
