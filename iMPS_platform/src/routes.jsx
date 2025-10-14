@@ -5,6 +5,7 @@ import React from "react";
 export const allRoutes = [
   {
     name: "admin",
+    icon: <i className="fa fa-user" />,
     divider: true,
     pages: [
       {
@@ -43,21 +44,6 @@ export const allRoutes = [
     path: "/dashboard/setting",
   },
   {
-    name: "PM report",
-    icon: <i className="fa fa-file-alt" />,
-    path: "/dashboard/pm-report",
-  },
-  {
-    name: "CM report",
-    icon: <i className="far fa-file" />,
-    path: "#",
-  },
-  {
-    name: "Test report",
-    icon: <i className="fa fa-check-square" />,
-    path: "/dashboard/test-report",
-  },
-  {
     name: "Monitor(CBM)",
     icon: <i className="fa fa-desktop" />,
     path: "#",
@@ -67,6 +53,21 @@ export const allRoutes = [
     icon: <i className="fa fa-database" />,
     path: "/dashboard/mdb",
   },
+  // {
+  //   name: "PM report",
+  //   icon: <i className="fa fa-file-alt" />,
+  //   path: "/dashboard/pm-report",
+  // },
+  // {
+  //   name: "CM report",
+  //   icon: <i className="far fa-file" />,
+  //   path: "#",
+  // },
+  // {
+  //   name: "Test report",
+  //   icon: <i className="fa fa-check-square" />,
+  //   path: "/dashboard/test-report",
+  // },
   {
     name: "Ai Module",
     icon: <i className="fa fa-robot" />,
@@ -81,6 +82,85 @@ export const allRoutes = [
     name: "Stations",
     icon: <i className="fa fa-charging-station" />,
     path: "/dashboard/stations",
+  },
+  {
+    name: "PM report",
+    title: "report",
+    icon: <i className="fa fa-clipboard-list" />,
+    pages: [
+      {
+        // icon: <i className="fa fa-clipboard-check" />,
+        name: "Charger - PM report",
+        path: "/dashboard/pm-report",
+      },
+      {
+        // icon: <i className="fa fa-server" />,
+        name: "MDB - PM report",
+        path: "#",
+      },
+      {
+        // icon: <i className="fa fa-network-wired" />,
+        name: "CCB - PM report",
+        path: "#",
+      },
+      {
+        // icon: <i className="fa fa-box" />,
+        name: "CB-BOX - PM report",
+        path: "#",
+      },
+      {
+        // icon: <i className="fa fa-map-marker-alt" />,
+        name: "Station - PM report",
+        path: "#",
+      },
+    ],
+  },
+  {
+    name: "CM report",
+    icon: <i className="fa fa-clipboard-list" />,
+    pages: [
+      {
+        // icon: <i className="fa fa-clipboard-check" />,
+        name: "Charger - CM report",
+        path: "/dashboard/cm-report", 
+      },
+      {
+        // icon: <i className="fa fa-server" />,
+        name: "MDB - CM report",
+        path: "#",
+      },
+      {
+        // icon: <i className="fa fa-network-wired" />,
+        name: "CCB - CM report",
+        path: "#",
+      },
+      {
+        // icon: <i className="fa fa-box" />,
+        name: "CB-BOX - CM report",
+        path: "#",
+      },
+      {
+        // icon: <i className="fa fa-map-marker-alt" />,
+        name: "Station - CM report",
+        path: "#",
+      },
+    ],
+  },
+  {
+    name: "Test report",
+    icon: <i className="fa fa-clipboard-list" />,
+    pages: [
+      {
+        name: "DC - Test report",
+        icon: <i className="fa fa-clipboard-check" />,
+        path: "#",
+      },
+      {
+        name: "AC - Test report",
+        icon: <i className="fa fa-server" />,
+        path: "#",
+      }
+    ],
   },
 ];
 

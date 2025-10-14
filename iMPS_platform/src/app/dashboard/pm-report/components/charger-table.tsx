@@ -116,10 +116,10 @@ export function SearchDataTables({ onSelectStation, token, apiBase = BASE }: Pro
   const stationIdFromUrl = sp.get("station_id") ?? "";
 
   const addHref = useMemo(() => {
-  if (!stationIdFromUrl) return "/dashboard/input_PMreport";
-  const p = new URLSearchParams({ station_id: stationIdFromUrl });
-  return `/dashboard/input_PMreport?${p.toString()}`;
-}, [stationIdFromUrl]);
+    if (!stationIdFromUrl) return "/pm-report/input_PMreport";
+    const p = new URLSearchParams({ station_id: stationIdFromUrl });
+    return `/pm-report/input_PMreport?${p.toString()}`;
+  }, [stationIdFromUrl]);
 
   function makeHeaders(token?: string): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -354,7 +354,8 @@ export function SearchDataTables({ onSelectStation, token, apiBase = BASE }: Pro
         ">
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
-              PM Report Documents
+              {/* PM Report Documents */}
+              Preventive Maintenance Checklist - เครื่องอัดประจุไฟฟ้า
             </Typography>
             <Typography
               variant="small"
@@ -413,23 +414,23 @@ export function SearchDataTables({ onSelectStation, token, apiBase = BASE }: Pro
               </Link> */}
 
               <Link
-  href={addHref}
-  className="tw-inline-block"
-  aria-disabled={!stationIdFromUrl}
-  onClick={(e) => { if (!stationIdFromUrl) e.preventDefault(); }}
->
+                href={addHref}
+                className="tw-inline-block"
+                aria-disabled={!stationIdFromUrl}
+                onClick={(e) => { if (!stationIdFromUrl) e.preventDefault(); }}
+              >
                 <Button
                   size="lg"
                   disabled={!stationIdFromUrl}   // <- ปิดปุ่มถ้ายังไม่มี station_id
                   className={`
-      !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
-      tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-      ${!stationIdFromUrl
+                    !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
+                    tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
+                    ${!stationIdFromUrl
                       ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
                       : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
-      tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-      focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-    `}
+                    tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                    focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
+                  `}
                   title={stationIdFromUrl ? "" : "กรุณาเลือกสถานีก่อน"}
                 >
                   <span className="tw-w-full tw-text-center">+add</span>
