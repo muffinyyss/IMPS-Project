@@ -98,10 +98,10 @@ export default function EvPanel() {
 
         // es.addEventListener("init", onInit);
         es.addEventListener("init", (e: MessageEvent) => {
-            console.log("INIT raw:", e.data);
+            // console.log("INIT raw:", e.data);
             try {
                 const obj = JSON.parse(e.data);
-                console.log("INIT parsed:", obj);
+                // console.log("INIT parsed:", obj);
                 setData(obj);
                 setLoading(false);
             } catch { }
@@ -119,10 +119,10 @@ export default function EvPanel() {
         // };
 
         es.onmessage = (e) => {
-            console.log("MSG raw:", e.data);
+            // console.log("MSG raw:", e.data);
             try {
                 const obj = JSON.parse(e.data);
-                console.log("MSG parsed:", obj);
+                // console.log("MSG parsed:", obj);
                 setData(obj);
             } catch { }
         };
@@ -220,12 +220,12 @@ export default function EvPanel() {
                 </div>
             )}
 
-            {/* timestamp ล่าสุด (ถ้ามี) — ❗คงโค้ดเดิมไว้ ไม่ลบ เพียงซ่อนด้วย tw-hidden */}
+            {/* timestamp ล่าสุด (ถ้ามี) — ❗คงโค้ดเดิมไว้ ไม่ลบ เพียงซ่อนด้วย tw-hidden
             {data?.timestamp && (
                 <div className="tw-px-3 tw-py-2 tw-text-xs tw-text-blue-gray-500 tw-hidden">
                     อัปเดตล่าสุด: {new Date(data.timestamp).toLocaleString("th-TH")}
                 </div>
-            )}
+            )} */}
 
             <div className="tw-rounded-lg tw-overflow-hidden">
                 {rows.map((r, i) => (

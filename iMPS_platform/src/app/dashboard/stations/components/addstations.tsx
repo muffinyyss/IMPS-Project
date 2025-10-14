@@ -23,6 +23,7 @@ export type NewStationForm = {
     PLCFirmware: string;
     PIFirmware: string;
     RTFirmware: string;
+    chargeBoxID: string;
     owner: string;
     is_active: boolean;
     // is_active: boolean;
@@ -59,6 +60,7 @@ export default function AddUserModal({
         PLCFirmware: "",
         PIFirmware: "",
         RTFirmware: "",
+        chargeBoxID: "",
         owner: "",
         is_active: true,
     });
@@ -88,6 +90,7 @@ export default function AddUserModal({
             PLCFirmware: form.PLCFirmware.trim(),
             PIFirmware: form.PIFirmware.trim(),
             RTFirmware: form.RTFirmware.trim(),
+            chargeBoxID: form.chargeBoxID.trim(),
             owner: (form.owner || currentUser).trim(),
             is_active: form.is_active
             // status เป็น boolean อยู่แล้ว
@@ -114,6 +117,7 @@ export default function AddUserModal({
             PLCFirmware: "",
             PIFirmware: "",
             RTFirmware: "",
+            chargeBoxID: "",
             owner: "",
             is_active: false,
         });
@@ -201,6 +205,13 @@ export default function AddUserModal({
                             required
                             value={form.RTFirmware}
                             onChange={(e) => onChange("RTFirmware", e.target.value)}
+                            crossOrigin={undefined}
+                        />
+                        <Input
+                            label="Charger Box ID"
+                            required
+                            value={form.chargeBoxID}
+                            onChange={(e) => onChange("chargeBoxID", e.target.value)}
                             crossOrigin={undefined}
                         />
 

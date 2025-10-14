@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 import re
 from fastapi import HTTPException, Depends
 from fastapi.responses import JSONResponse
+from dateutil.relativedelta import relativedelta
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
@@ -256,36 +257,6 @@ def login(body: LoginRequest, response: Response):
         }
     }
 
-# @app.get("/my-stations/detail")
-# def my_stations_detail(current: UserClaims = Depends(get_current_user)):
-#     # ดึงรายละเอียดเฉพาะสถานีที่ user มีสิทธิ์
-#     docs = list(station_collection.find(
-#         {"station_id": {"$in": current.station_ids}},
-#         {"_id": 0, "station_id": 1, "station_name": 1}
-#     ))
-#     return {"stations": docs}
-
-# @app.get("/my-stations/detail")
-# def my_stations_detail(current: UserClaims = Depends(get_current_user)):
-#     # ถ้าเป็น admin → เห็นทุกสถานี
-#     if current.role == "admin":
-#         docs = list(
-#             station_collection.find(
-#                 {},
-#                 {"_id": 0, "station_id": 1, "station_name": 1}
-#             )
-#         )
-#         return {"stations": docs}
-
-#     # ถ้าไม่ใช่ admin → เห็นเฉพาะ station_ids ใน token
-#     docs = list(
-#         station_collection.find(
-#             {"station_id": {"$in": current.station_ids}},
-#             {"_id": 0, "station_id": 1, "station_name": 1}
-#         )
-#     )
-#     return {"stations": docs}
-
 @app.get("/my-stations/detail")
 def my_stations_detail(current: UserClaims = Depends(get_current_user)):
     proj = {"_id": 0, "station_id": 1, "station_name": 1}
@@ -318,7 +289,7 @@ def station_info(
     doc = station_collection.find_one(
         {"station_id": station_id},
         # เลือก field ที่อยากคืน (ตัด _id ออกเพื่อลด serialize ปัญหา ObjectId)
-        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "model": 1, "status": 1}
+        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "chargeBoxID": 1, "model": 1, "chargeBoxID": 1, "status": 1}
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Station not found")
@@ -336,31 +307,6 @@ def get_history(
     if station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
-# @app.post("/refresh")
-# async def refresh(refresh_token: str):
-#     try:
-#         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-#         email = payload.get("sub")
-
-#         user = users_collection.find_one({"email": email})
-#         if not user:
-#             raise HTTPException(status_code=401, detail="User not found")
-
-#         # ตรวจสอบว่ามี refresh token ใน users มั้ย
-#         token_exists = next(
-#             (t for t in user.get("refreshTokens", []) if t["token"] == refresh_token), None
-#         )
-#         if not token_exists:
-#             raise HTTPException(status_code=401, detail="Invalid refresh token")
-
-#         # ออก access token ใหม่
-#         new_access_token = create_access_token(
-#             {"sub": email}, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-#         )
-#         return {"access_token": new_access_token}
-
-#     except JWTError:
-#         raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.post("/refresh")
 async def refresh(refresh_token: str):
@@ -1044,7 +990,8 @@ class addStations(BaseModel):
     WO:str 
     PLCFirmware:str 
     PIFirmware:str 
-    RTFirmware:str 
+    RTFirmware:str
+    chargeBoxID: str 
     user_id: Optional[str] = None  
     owner: Optional[str] = None
     is_active:Optional[bool] = None
@@ -1060,6 +1007,7 @@ class StationOut(BaseModel):
     PLCFirmware:str 
     PIFirmware:str 
     RTFirmware:str 
+    chargeBoxID:str
     user_id: str 
     username: Optional[str] = None
     is_active:  Optional[bool] = None
@@ -1086,6 +1034,7 @@ def insert_stations(
     PLCFirmware           = body.PLCFirmware.strip()
     PIFirmware           = body.PIFirmware.strip()
     RTFirmware           = body.RTFirmware.strip()
+    chargeBoxID           = body.chargeBoxID.strip()
 
     # (ถ้าต้องการบังคับรูปแบบ station_id)
     # if not re.fullmatch(r"[A-Za-z0-9_]+", station_id):
@@ -1127,6 +1076,7 @@ def insert_stations(
         "PLCFirmware": PLCFirmware,
         "PIFirmware": PIFirmware,
         "RTFirmware": RTFirmware,
+        "chargeBoxID": chargeBoxID,
         "user_id": owner_oid,                 # ObjectId ใน DB
         "is_active": is_active,
         "createdAt": datetime.now(timezone.utc),
@@ -1154,6 +1104,7 @@ def insert_stations(
         "PLCFirmware": doc["PLCFirmware"],
         "PIFirmware": doc["PIFirmware"],
         "RTFirmware": doc["RTFirmware"],
+        "chargeBoxID": doc["chargeBoxID"],
         "user_id": str(doc["user_id"]),       # string สำหรับ client
         "username": owner_username,           # ส่งกลับให้ table โชว์ได้เลย
         "is_active": doc["is_active"],
@@ -1184,12 +1135,13 @@ class StationUpdate(BaseModel):
     PLCFirmware: Optional[str] = None
     PIFirmware: Optional[str] = None
     RTFirmware: Optional[str] = None
+    chargeBoxID: Optional[str] = None
     # status: Optional[bool] = None
     is_active: Optional[bool] = None
     user_id: str | None = None 
 
 
-ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "PLCFirmware", "PIFirmware", "RTFirmware", "status","is_active", "user_id"}
+ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "PLCFirmware", "PIFirmware", "RTFirmware", "chargeBoxID", "status","is_active", "user_id"}
 # ALLOW_FIELDS_NONADMIN = {"status"}
 
 def to_object_id_or_400(s: str) -> ObjectId:
@@ -1286,6 +1238,7 @@ def update_station(
         "PLCFirmware": doc.get("PLCFirmware", ""),
         "PIFirmware": doc.get("PIFirmware", ""),
         "RTFirmware": doc.get("RTFirmware", ""),
+        "chargeBoxID": doc.get("chargeBoxID", ""),
         "createdAt": created_at,  
         # ส่งกลับเป็น string เพื่อให้ฝั่ง client ใช้ง่าย
         "user_id": str(doc["user_id"]) if doc.get("user_id") else "",
@@ -1362,12 +1315,201 @@ def get_pmreport_collection_for(station_id: str):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return PMReportDB.get_collection(str(station_id))
 
+# async def _pmreport_latest_core(station_id: str, current: UserClaims):
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_pmreport_collection_for(station_id)
+#     pipeline = [
+#         {"$addFields": {
+#             "_ts": {
+#                 "$ifNull": [
+#                     {
+#                         "$cond": [
+#                             {"$eq": [{"$type": "$timestamp"}, "string"]},
+#                             {"$dateFromString": {
+#                                 "dateString": "$timestamp",
+#                                 "timezone": "UTC",
+#                                 "onError": None,
+#                                 "onNull": None
+#                             }},
+#                             "$timestamp"
+#                         ]
+#                     },
+#                     {"$toDate": "$_id"}
+#                 ]
+#             }
+#         }},
+#         {"$sort": {"_ts": -1, "_id": -1}},
+#         {"$limit": 1},
+#         {"$project": {"_id": 1, "pi_firmware": 1, "plc_firmware": 1, "rt_firmware": 1, "pm_date": 1, "timestamp": 1}}
+#     ]
+#     cursor = coll.aggregate(pipeline)
+#     docs = await cursor.to_list(length=1)
+#     if not docs:
+#         raise HTTPException(status_code=404, detail="PMReport not found")
+
+#     doc = docs[0]
+
+#     ts_raw = doc.get("timestamp")
+#     ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
+#              else (ts_raw if isinstance(ts_raw, datetime) else None))
+#     ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
+#     ts_th  = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
+
+#     return {
+#         "_id": str(doc["_id"]),
+#         "pi_firmware": doc.get("pi_firmware"),
+#         "plc_firmware": doc.get("plc_firmware"),
+#         "rt_firmware": doc.get("rt_firmware"),
+#         "pm_date": doc.get("pm_date"),
+#         "timestamp": ts_raw,      # raw ใน DB
+#         "timestamp_utc": ts_utc,  # แปลงแล้ว
+#         "timestamp_th": ts_th,    # แปลงแล้ว
+#     }
+
+def _compute_next_pm_date_str(pm_date_str: str | None) -> str | None:
+    if not pm_date_str:
+        return None
+    # pm_date เก็บเป็น "YYYY-MM-DD"
+    try:
+        d = datetime.fromisoformat(pm_date_str).date()  # date object
+    except ValueError:
+        return None
+    next_d = d + relativedelta(months=+6)              # ← ตรง 6 เดือน
+    return next_d.isoformat()     
+
+def _pick_latest_from_pm_reports(pm_reports: list[dict] | None):
+    """เลือกอันล่าสุดจาก array pm_reports โดยดู timestamp (string/datetime)"""
+    if not pm_reports:
+        return None
+
+    def _to_dt(x):
+        ts = x.get("timestamp")
+        if isinstance(ts, str):
+            try:
+                return parse_iso_any_tz(ts)
+            except Exception:
+                return None
+        if isinstance(ts, datetime):
+            return ts
+        return None
+
+    pm_reports_sorted = sorted(
+        pm_reports,
+        key=lambda r: (_to_dt(r) or datetime.min.replace(tzinfo=ZoneInfo("UTC")))
+    )
+    return pm_reports_sorted[-1] if pm_reports_sorted else None
+
+
+# async def _pmreport_latest_core(station_id: str, current: UserClaims):
+#     # --- auth เดิม ---
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+#     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+#         raise HTTPException(status_code=400, detail="Bad station_id")
+
+#     # --- ดึงจากคอลเลกชัน stations ---
+#     # ลองหาโดย station_id (ถ้าของคุณบางเคสเก็บ _id เป็น station_id ก็เสริม OR ได้)
+#     st = station_collection.find_one(
+#         {"station_id": station_id},
+#         {
+#             "_id": 1,
+#             # top-level firmwares ที่มีในสคีมาของคุณ
+#             "PIFirmware": 1,
+#             "PLCFirmware": 1,
+#             "RTFirmware": 1,
+#             # "pm_date": 1,
+#             "timestamp": 1,     # ถ้ามี
+#             "updatedAt": 1,     # fallback เวลา
+#             # ถ้าคุณเก็บประวัติ PM เป็น array
+#             "pm_reports": 1,    # [{ pi_firmware, plc_firmware, rt_firmware, pm_date, timestamp }, ...]
+#         }
+#     )
+#     if not st:
+#         raise HTTPException(status_code=404, detail="Station not found")
+
+#     latest = _pick_latest_from_pm_reports(st.get("pm_reports"))
+#     src = latest or st
+
+#     # map ค่า firmware: รองรับทั้งชื่อฟิลด์แบบ pm_report (snake) และ stations (Camel/Pascal)
+#     pi_fw  = src.get("pi_firmware")  or src.get("PIFirmware")
+#     plc_fw = src.get("plc_firmware") or src.get("PLCFirmware")
+#     rt_fw  = src.get("rt_firmware")  or src.get("RTFirmware")
+#     # pm_date = src.get("pm_date")
+
+#     # เวลา: ใช้ของ src ก่อน ถ้าไม่มีค่อย fallback ไปที่ doc สถานี
+#     ts_raw = src.get("timestamp") or st.get("timestamp") or st.get("updatedAt")
+
+#     ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
+#              else (ts_raw if isinstance(ts_raw, datetime) else None))
+#     ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
+#     ts_th  = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
+
+#     return {
+#         "_id": str(st["_id"]),
+#         "pi_firmware": pi_fw,
+#         "plc_firmware": plc_fw,
+#         "rt_firmware": rt_fw,
+#         # "pm_date": pm_date,
+#         "timestamp": ts_raw,      # raw จาก stations/pm_reports
+#         "timestamp_utc": ts_utc,  # แปลงแล้ว
+#         "timestamp_th": ts_th,    # แปลงแล้ว
+#         "source": "stations.pm_reports" if latest else "stations",  # เผื่อ debug
+#     }
 
 async def _pmreport_latest_core(station_id: str, current: UserClaims):
+    # --- auth & validate ---
     if current.role != "admin" and station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
 
-    coll = get_pmreport_collection_for(station_id)
+    # 1) ดึงจาก stations
+    st = station_collection.find_one(
+        {"station_id": station_id},
+        {"_id": 1, "PIFirmware": 1, "PLCFirmware": 1, "RTFirmware": 1, "timestamp": 1, "updatedAt": 1}
+    )
+    if not st:
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    pi_fw  = st.get("PIFirmware")
+    plc_fw = st.get("PLCFirmware")
+    rt_fw  = st.get("RTFirmware")
+
+    # 2) ดึง pm_date ล่าสุดจาก PMReportDB
+    pm_latest = await _latest_pm_date_from_pmreport(station_id)
+    pm_date = pm_latest.get("pm_date") if pm_latest else None
+
+    # เวลา: ใช้ timestamp จาก pm report ถ้ามี ไม่งั้น fallback ไปของสถานี
+    ts_raw = (pm_latest.get("timestamp") if pm_latest else None) or st.get("timestamp") or st.get("updatedAt")
+
+    ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
+             else (ts_raw if isinstance(ts_raw, datetime) else None))
+    ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
+    ts_th  = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
+
+    pm_next_date = _compute_next_pm_date_str(pm_date)
+
+    return {
+        "_id": str(st["_id"]),
+        "pi_firmware": pi_fw,
+        "plc_firmware": plc_fw,
+        "rt_firmware": rt_fw,
+        "pm_date": pm_date,              # ← มาจาก PMReportDB
+        "pm_next_date": pm_next_date, 
+        "timestamp": ts_raw,             # pmreport.timestamp ถ้ามี
+        "timestamp_utc": ts_utc,
+        "timestamp_th": ts_th,
+        "source": "stations + PMReportDB",  # เผื่อ debug
+    }
+
+# --- helper: เอา pm_date ล่าสุดจาก PMReportDB/<station_id> ---
+async def _latest_pm_date_from_pmreport(station_id: str) -> dict | None:
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    coll = PMReportDB.get_collection(str(station_id))
+
     pipeline = [
         {"$addFields": {
             "_ts": {
@@ -1390,32 +1532,12 @@ async def _pmreport_latest_core(station_id: str, current: UserClaims):
         }},
         {"$sort": {"_ts": -1, "_id": -1}},
         {"$limit": 1},
-        {"$project": {"_id": 1, "pi_firmware": 1, "plc_firmware": 1, "rt_firmware": 1, "pm_date": 1, "timestamp": 1}}
+        {"$project": {"_id": 1, "pm_date": 1, "timestamp": 1}}
     ]
+
     cursor = coll.aggregate(pipeline)
     docs = await cursor.to_list(length=1)
-    if not docs:
-        raise HTTPException(status_code=404, detail="PMReport not found")
-
-    doc = docs[0]
-
-    ts_raw = doc.get("timestamp")
-    ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
-             else (ts_raw if isinstance(ts_raw, datetime) else None))
-    ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
-    ts_th  = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
-
-    return {
-        "_id": str(doc["_id"]),
-        "pi_firmware": doc.get("pi_firmware"),
-        "plc_firmware": doc.get("plc_firmware"),
-        "rt_firmware": doc.get("rt_firmware"),
-        "pm_date": doc.get("pm_date"),
-        "timestamp": ts_raw,      # raw ใน DB
-        "timestamp_utc": ts_utc,  # แปลงแล้ว
-        "timestamp_th": ts_th,    # แปลงแล้ว
-    }
-
+    return docs[0] if docs else None
 
 # เดิม (path param) → เปลี่ยนให้เรียก helper
 @app.get("/pmreport/latest/{station_id}")
@@ -1596,3 +1718,4 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
             await asyncio.sleep(5)
 
     return StreamingResponse(event_generator(), headers=headers)
+
