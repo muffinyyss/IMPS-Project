@@ -272,7 +272,7 @@ function DeviceCard({ d }: { d: Device }) {
                                     tw-tabular-nums
                                     tw-max-w-[180px] md:tw-max-w-[280px] lg:tw-max-w-[300px] xl:tw-max-w-[220px]
                                     tw-whitespace-nowrap tw-truncate
-                                    md:tw-whitespace-normal md:tw-truncate-0 md:tw-break-words md:tw-line-clamp-2`}
+                                    md:tw-whitespace-normal md:tw-truncate-0 md:tw-break-words md:tw-line-clamp-2 tw-mb-2`}
                                 title={valueStr}
                             >
                                 {valueStr}
@@ -413,7 +413,7 @@ function Group({
                             lg:tw-grid-cols-2
                             xl:tw-grid-cols-3
                             2xl:tw-grid-cols-3"
-                        >
+                    >
 
 
                         {filtered.map((d) => (
