@@ -125,6 +125,48 @@ function StatusBadge({ status }: { status: Status }) {
     );
 }
 
+// function MetricBadge({
+//     value,
+//     type,
+//     status,
+// }: {
+//     value?: string;
+//     type?: MetricType;
+//     status: Status;
+// }) {
+//     const cls =
+//         status === "error"
+//             ? "tw-bg-red-100 tw-text-red-800"
+//             : status === "warn"
+//                 ? "tw-bg-amber-100 tw-text-amber-800"
+//                 : "tw-bg-green-100 tw-text-green-800";
+
+//     let display = value ?? "-";
+
+//     if (type === "times") {
+//         const n = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
+//         display = isNaN(n) ? value ?? "-" : n.toLocaleString();
+//     } else if (type === "hour") {
+//         const s = String(value ?? "");
+//         const mH = /(\d+)\s*h/i.exec(s);
+//         const mM = /(\d+)\s*m/i.exec(s);
+//         const h = mH ? Number(mH[1]) : undefined;
+//         const m = mM ? Number(mM[1]) : undefined;
+//         if (h != null || m != null) {
+//             const hh = h != null ? h.toLocaleString() : "0";
+//             const mm = m != null ? m : 0;
+//             display = `${hh} h ${mm} m`;
+//         }
+//     }
+
+//     return (
+//         <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-full tw-px-3 tw-py-[6px] tw-text-[12.5px] tw-font-semibold ${cls}`}>
+//             {type === "hour" ? <HourglassIcon className="tw-h-4 tw-w-4" /> : <ClockIcon className="tw-h-4 tw-w-4" />}
+//             {display}
+//         </span>
+//     );
+// }
+
 function MetricBadge({
     value,
     type,
@@ -160,12 +202,22 @@ function MetricBadge({
     }
 
     return (
-        <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-full tw-px-3 tw-py-[6px] tw-text-[12.5px] tw-font-semibold ${cls}`}>
-            {type === "hour" ? <HourglassIcon className="tw-h-4 tw-w-4" /> : <ClockIcon className="tw-h-4 tw-w-4" />}
+        <span
+            className={`tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full
+                  tw-px-3.5 tw-py-[7px]
+                  tw-font-bold tw-tabular-nums tw-whitespace-nowrap
+                  tw-text-[14px] md:tw-text-[15px] ${cls}`}
+        >
+            {type === "hour" ? (
+                <HourglassIcon className="tw-h-5 tw-w-5" />
+            ) : (
+                <ClockIcon className="tw-h-5 tw-w-5" />
+            )}
             {display}
         </span>
     );
 }
+
 
 /* =========================
    DeviceCard
@@ -328,7 +380,7 @@ function SideList({
                 </div>
             </div>
 
-            <ul className="tw-space-y-2.5 md:tw-space-y-3">
+            {/* <ul className="tw-space-y-2.5 md:tw-space-y-3">
                 {filtered.map((d) => (
                     <li
                         key={d.id}
@@ -361,7 +413,62 @@ function SideList({
                         ไม่พบอุปกรณ์ตามตัวกรอง
                     </li>
                 )}
+            </ul> */}
+
+            <ul className="tw-space-y-2.5 md:tw-space-y-3">
+                {filtered.map((d) => (
+                    <li
+                        key={d.id}
+                        className="
+        tw-grid tw-grid-cols-[56px_1fr] md:tw-grid-cols-[64px_1fr]
+        tw-items-center tw-gap-3 md:tw-gap-4
+        tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-p-3.5
+        hover:tw-shadow-sm tw-transition-shadow
+      "
+                    >
+                        {/* รูป */}
+                        <div className="tw-h-14 tw-w-14 md:tw-h-16 md:tw-w-16 tw-rounded-xl tw-bg-gray-50 tw-border tw-border-gray-200 tw-grid tw-place-items-center tw-overflow-hidden">
+                            {d.imageUrl ? (
+                                <Image
+                                    src={d.imageUrl}
+                                    alt={d.name}
+                                    width={64}
+                                    height={64}
+                                    className="tw-object-contain tw-max-h-15 tw-max-w-15 tw-p-1.5"
+                                />
+                            ) : (
+                                <PhotoIcon className="tw-h-7 tw-w-7 md:tw-h-8 md:tw-w-8 tw-text-gray-300" />
+                            )}
+                        </div>
+
+                        {/* เนื้อหา: ชื่อ (บน) + ค่า (ล่าง) — ชิดขวา */}
+                        <div className="tw-min-w-0 tw-flex tw-flex-col tw-items-end">
+                            <p
+                                className="
+                                    tw-w-full tw-text-right
+                                    tw-text-[14.5px] md:tw-text-[15px] tw-font-medium tw-text-gray-800
+                                    tw-leading-snug tw-whitespace-normal tw-break-words
+                                    md:tw-line-clamp-1 xl:tw-truncate
+                                "
+                                title={d.name}
+                            >
+                                {d.name}
+                            </p>
+
+                            <div className="tw-mt-1">
+                                <MetricBadge value={d.value} type={d.metricType} status={d.status} />
+                            </div>
+                        </div>
+                    </li>
+                ))}
+
+                {filtered.length === 0 && (
+                    <li className="tw-text-center tw-text-sm tw-text-gray-500 tw-py-4">
+                        ไม่พบอุปกรณ์ตามตัวกรอง
+                    </li>
+                )}
             </ul>
+
         </aside>
     );
 }
