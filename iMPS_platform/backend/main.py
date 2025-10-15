@@ -2186,7 +2186,7 @@ async def utilization_stream(request: Request, station_id: str = Query(...), cur
         latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
         if latest:
             latest["_id"] = str(latest["_id"])
-            latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
+            latest["timestamp_utc"] = _ensure_utc_iso(latest.get("timestamp_utc"))
             yield f"event: init\ndata: {json.dumps(latest)}\n\n"
 
         # ต่อด้วย change stream (ต้องเป็น replica set / Atlas tier ที่รองรับ)
@@ -2199,17 +2199,17 @@ async def utilization_stream(request: Request, station_id: str = Query(...), cur
                     if not doc:
                         continue
                     doc["_id"] = str(doc["_id"])
-                    doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                    doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
                     yield f"data: {json.dumps(doc)}\n\n"
         except Exception:
             # fallback: ถ้าใช้ไม่ได้ (เช่น standalone) ให้ polling
             last_id = latest.get("_id") if latest else None
             while not await request.is_disconnected():
-                doc = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+                doc = await coll.find_one({}, sort=[("timestamp_utc", -1), ("_id", -1)])
                 if doc and str(doc["_id"]) != str(last_id):
                     last_id = str(doc["_id"])
                     doc["_id"] = last_id
-                    doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                    doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
                     yield f"data: {json.dumps(doc)}\n\n"
                 else:
                     yield ": keep-alive\n\n"
