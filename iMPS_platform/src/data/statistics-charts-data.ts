@@ -4,9 +4,9 @@ import type { MDBType } from "@/app/dashboard/mdb/components/mdb-info";
 
 export type HistoryRow = {
   timestamp: string; // ISO
-  VL1N?:  number; VL2N?:  number; VL3N?:  number;
-  I1?:  number; I2?:  number; I3?:  number;
-  PL1N?:  number; PL2N?:  number; PL3N?:  number;
+  VL1N?: number; VL2N?: number; VL3N?: number;
+  I1?: number; I2?: number; I3?: number;
+  PL1N?: number; PL2N?: number; PL3N?: number;
 };
 
 type Point = { x: number; y: number | null };
@@ -19,7 +19,7 @@ type RowWithTs = HistoryRow & { ts: string };
 // ✅ FIXED: ปรับค่าที่ผิดปกติ
 const toNumOrNull = (v: unknown): number | null => {
   if (typeof v !== "number" || !Number.isFinite(v)) return null;
-  
+
   // ✅ แก้ค่าที่สูงผิดปกติ (ถ้าข้อมูลจาก sensor มีหน่วยผิด)
   // ถ้า I > 10000 คูณด้วย 0.001 (แปลง mA -> A)
   // ถ้า P > 1000000 คูณด้วย 0.001 (แปลง mW -> W)
@@ -51,6 +51,7 @@ const baseOptions = {
   },
   xaxis: {
     type: "datetime",
+    categories: [],
     labels: {
       datetimeUTC: false, // แสดงเวลาท้องถิ่น
       format: "dd/MM HH:mm",
@@ -85,26 +86,43 @@ const baseOptions = {
 export function buildChartsFromHistory(
   MDB: MDBType,
   history: HistoryRow[],
+
   startDate: string,
   endDate: string
 ) {
-  console.log("📊 Building charts from history:", {
-    historyLength: history.length,
-    startDate,
-    endDate,
-    firstItem: history[0],
-  });
+  // console.log("📊 Building charts from history:", {
+  //   historyLength: history.length,
+  //   startDate,
+  //   endDate,
+  //   firstItem: history[0],
+  // });
 
   // ✅ ใช้ UTC เหมือนข้อมูลจาก backend
-  const fromTs = Date.parse(`${startDate}T00:00:00Z`);
-  const toTs = Date.parse(`${endDate}T23:59:59.999Z`);
+  // const fromTs = Date.parse(`${startDate}T00:00:00Z`);
+  // const toTs = Date.parse(`${endDate}T23:59:59.999Z`);
+  // const fromTs = Date.parse(`${startDate}T00:00:00+07:00`);
+  // const toTs = Date.parse(`${endDate}T23:59:59.999+07:00`);
+  // helper
+  const isToday = (d: string) => {
+    const now = new Date();
+    const dd = new Date(`${d}T00:00:00+07:00`);
+    return now.getFullYear() === dd.getFullYear() &&
+      now.getMonth() === dd.getMonth() &&
+      now.getDate() === dd.getDate();
+  };
 
-  console.log("📅 Date range:", {
-    fromTs,
-    toTs,
-    fromDate: new Date(fromTs).toISOString(),
-    toDate: new Date(toTs).toISOString(),
-  });
+  const fromTs = Date.parse(`${startDate}T00:00:00+07:00`);
+  const toTsDefault = Date.parse(`${endDate}T23:59:59.999+07:00`);
+  const nowTs = Date.now();
+  const toTs = isToday(endDate) ? nowTs : toTsDefault;  // 👈 ใช้เวลาปัจจุบันถ้าเป็นวันนี้
+
+  // console.log("102",history);
+  // console.log("📅 Date range:", {
+  //   fromTs,
+  //   toTs,
+  //   fromDate: new Date(fromTs).toISOString(),
+  //   toDate: new Date(toTs).toISOString(),
+  // });
 
   // ✅ FIXED: normalize timestamp ให้เป็น UTC
   const normalizeTs = (s: string): string => {
@@ -139,7 +157,7 @@ export function buildChartsFromHistory(
       return { ...item, ts };
     });
 
-  console.log("🔄 Mapped history sample:", mappedHistory.slice(0, 3));
+  // console.log("🔄 Mapped history sample:", mappedHistory.slice(0, 3));
 
   const filteredHistory = mappedHistory.filter(item => {
     const t = Date.parse(item.ts);
@@ -147,11 +165,11 @@ export function buildChartsFromHistory(
     return inRange;
   });
 
-  console.log("✅ Filtered history:", {
-    total: filteredHistory.length,
-    first: filteredHistory[0]?.ts,
-    last: filteredHistory[filteredHistory.length - 1]?.ts,
-  });
+  // console.log("✅ Filtered history:", {
+  //   total: filteredHistory.length,
+  //   first: filteredHistory[0]?.ts,
+  //   last: filteredHistory[filteredHistory.length - 1]?.ts,
+  // });
 
   // ✅ สร้างจุดข้อมูล (x = epoch ms, y = value)
   const toXY = (rows: RowWithTs[], key: NumericKey): Point[] => {
@@ -177,13 +195,13 @@ export function buildChartsFromHistory(
         return { x, y };
       });
 
-    console.log(`📈 ${key}:`, {
-      points: points.length,
-      sample: points.slice(0, 2),
-      range: points.length > 0 
-        ? [Math.min(...points.map(p => p.y ?? 0)), Math.max(...points.map(p => p.y ?? 0))]
-        : []
-    });
+    // console.log(`📈 ${key}:`, {
+    //   points: points.length,
+    //   sample: points.slice(0, 2),
+    //   range: points.length > 0 
+    //     ? [Math.min(...points.map(p => p.y ?? 0)), Math.max(...points.map(p => p.y ?? 0))]
+    //     : []
+    // });
 
     return points;
   };
@@ -214,11 +232,12 @@ export function buildChartsFromHistory(
     series: voltageSeries,
     options: {
       ...baseOptions,
-      xaxis: {
-        ...baseOptions.xaxis,
-        min: fromTs,
-        max: toTs,
-      },
+      // xaxis: {
+      //   ...baseOptions.xaxis,
+      //   min: fromTs,
+      //   max: toTs,
+      // },
+      xaxis: { ...baseOptions.xaxis, min: fromTs, max: toTs },
       yaxis: {
         title: { text: "Voltage (V)" },
         labels: { formatter: (v: number) => `${Math.round(v)} V` }
@@ -278,7 +297,7 @@ export function buildChartsFromHistory(
     },
   };
 
-  console.log("✅ Charts built successfully");
+  // console.log("✅ Charts built successfully");
 
   return [
     {

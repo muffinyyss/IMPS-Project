@@ -1,5 +1,5 @@
 "use client"
-
+from zoneinfo import ZoneInfo
 from fastapi import FastAPI,HTTPException,Depends, status,Request,Query,APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder 
 from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
@@ -31,7 +31,7 @@ SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป�
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 7
-
+th_tz = ZoneInfo("Asia/Bangkok")
 
 app = FastAPI()
 
@@ -49,8 +49,8 @@ MDB_DB = client["MDB"]
 PMReportDB = client["PMReport"]
 
 
+MDB_collection = MDB_DB["Klongluang3"]
 
-# MDB_collection = MDB_DB["nongKhae"]
 def get_mdb_collection_for(station_id: str):
     # กันชื่อคอลเลกชันแปลก ๆ / injection: อนุญาต a-z A-Z 0-9 _ -
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
@@ -59,9 +59,14 @@ def get_mdb_collection_for(station_id: str):
 
 def _ensure_utc_iso(v):
     """
-    รับ string เวลาแบบ 'YYYY-MM-DDTHH:MM:SS(.ffffff)' ที่ 'ไม่มีโซนเวลา'
-    → เติม 'Z' ให้เป็น UTC ISO เสมอ
+    คืนค่าเป็นสตริง ISO-8601 (UTC 'Z') เสมอ
+    - ถ้าเป็น datetime → แปลงเป็น UTC + เติม 'Z'
+    - ถ้าเป็นสตริง ISO ที่ไม่มีโซนเวลา → เติม 'Z'
+    - อย่างอื่น → คืนเดิม
     """
+    if isinstance(v, datetime):
+        return v.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
     if isinstance(v, str) and re.match(r'^\d{4}-\d{2}-\d{2}T', v) and not re.search(r'(Z|[+\-]\d{2}:\d{2})$', v):
         return v + 'Z'
     return v
@@ -508,6 +513,383 @@ async def mdb_query(request: Request, station_id: str = Query(...), current: Use
 
     return StreamingResponse(event_generator(), headers=headers)
 
+def _coerce_date_range(start: str, end: str) -> tuple[str, str]:
+    def _norm(s: str, is_end: bool=False) -> str:
+        if "T" not in s:  # วันล้วน
+            hhmmss = "23:59:59.999" if is_end else "00:00:00.000"
+            dt = datetime.fromisoformat(f"{s}T{hhmmss}+07:00")
+            # print("521",dt)
+            # print("522",dt.astimezone(timezone.utc).isoformat())
+            iso_th = dt.astimezone(th_tz).isoformat()
+            # print("iso_th", iso_th)
+
+            test = dt.astimezone(timezone.utc).isoformat()
+            # print("526",dt)
+            # print("527",type(dt.astimezone(timezone.utc).isoformat().replace("+00:00", "T")))
+            # print("528",type(dt))
+            # return dt.astimezone(timezone.utc).isoformat().replace("+07:00", "T")
+            return iso_th
+            
+            # return dt
+        # มี T แล้ว แต่ไม่มี timezone → ถือเป็นเวลาไทย
+        has_tz = bool(re.search(r'(Z|[+\-]\d{2}:\d{2})$', s))
+        if not has_tz:
+            dt = datetime.fromisoformat(s + "+07:00")
+            # print("528",dt)
+        else:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            # print("531",datetime.fromisoformat(s))
+            # print("532",dt)
+        # print("533",dt.astimezone(timezone.utc).isoformat())    
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    try:
+        return _norm(start, False), _norm(end, True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad date range")
+    
+@app.get("/MDB/history")
+async def stream_history(
+    request: Request,
+    station_id: str = Query(...),
+    start: str = Query(...),   # "YYYY-MM-DD" (วันไทย)
+    end: str = Query(...),     # "YYYY-MM-DD" (วันไทย)
+    current: UserClaims = Depends(get_current_user),
+):
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", start) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end):
+        raise HTTPException(status_code=400, detail="start/end must be YYYY-MM-DD")
+    if start > end:
+        start, end = end, start
+
+    tz_th = ZoneInfo("Asia/Bangkok")
+    now_th = datetime.now(tz_th)
+    def ensure_dt_with_current_time_th(datestr: str) -> datetime:
+        """
+        - 'YYYY-MM-DD'                  -> เติมเวลาเป็นเวลาปัจจุบันของไทย แล้วตีความเป็นเวลาไทย (+07:00)
+        - 'YYYY-MM-DDTHH[:MM[:SS]]'    -> ถ้าไม่มีโซนเวลา ให้ตีความเป็นเวลาไทย (+07:00)
+        - ลงท้ายด้วย 'Z' หรือมี '+/-HH:MM' -> ใช้โซนที่มากับสตริง
+        แล้วคืนค่าเป็น UTC datetime
+        """
+        # เติมเวลาไทยปัจจุบัน หากเป็นวันที่ล้วน
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}$", datestr):
+            datestr = f"{datestr}T{now_th.strftime('%H:%M:%S')}"
+
+        # มีโซนเวลาแล้ว (Z หรือ +/-HH:MM)
+        if re.search(r"(Z|[+\-]\d{2}:\d{2})$", datestr):
+            # รองรับ 'Z' ให้เป็น +00:00
+            dt = datetime.fromisoformat(datestr.replace("Z", "+00:00"))
+            return dt.astimezone(timezone.utc)
+
+        # ไม่มีโซนเวลา -> ตีความว่าเป็น "เวลาไทย" (+07:00) แล้วค่อยแปลงเป็น UTC
+        naive = datetime.fromisoformat(datestr)        # ไม่ผูกโซนก่อน
+        dt_th = naive.replace(tzinfo=tz_th)            # ← ตรงนี้คือการ “ผูก +07:00”
+        return dt_th.astimezone(timezone.utc)          # ← แปลงเป็น UTC (ผล = ลบ 7 ชม.)
+
+    # start_utc = datetime.fromisoformat(start + "T07:00:00").replace(tzinfo=tz_th).astimezone(timezone.utc)
+    # start_utc = start 
+    # start_utc = ensure_dt_with_current_time_th(start).astimezone(tz_th)
+    start_utc = ensure_dt_with_current_time_th(start)
+    print("565",start_utc)
+    # end_utc   = datetime.fromisoformat(end   + "T23:59:59.999").replace(tzinfo=tz_th).astimezone(timezone.utc)
+    # end_utc   = end
+    # end_utc   = ensure_dt_with_current_time_th(end).astimezone(tz_th)
+    end_utc   = ensure_dt_with_current_time_th(end)
+    print("567",end_utc)
+
+
+    coll = get_mdb_collection_for(station_id)
+
+    # ไม่ใช้ $regexReplace/$replaceOne — แยก case ด้วย $regexMatch + $toDate/$dateFromString
+    def _parse_string(varname: str):
+        # ถ้ามีโซนเวลา (Z หรือ ±HH:MM) → ให้ Mongo แปลงเองด้วย $toDate
+        # ถ้าไม่มีโซนเวลา → ตีความเป็นเวลาไทยด้วย $dateFromString timezone "+07:00"
+        return {
+            "$cond": [
+                { "$regexMatch": { "input": f"$${varname}", "regex": r"(Z|[+\-]\d{2}:\d{2})$" } },
+                { "$toDate": f"$${varname}" },
+                { "$dateFromString": {
+                    "dateString": f"$${varname}",
+                    "timezone": "+07:00",
+                    "onError": None,
+                    "onNull": None
+                } }
+            ]
+        }
+
+    pipeline = [
+        {   # ✅ สร้าง ts ให้เป็น Date เสมอ จาก timestamp หรือ Datetime (รับได้ทั้ง string/date)
+            "$addFields": {
+                "ts": {
+                    "$let": { "vars": { "t": "$timestamp", "d": "$Datetime" }, "in":
+                        { "$cond": [
+                            { "$ne": ["$$t", None] },
+                            { "$switch": {
+                                "branches": [
+                                    { "case": { "$eq": [ { "$type": "$$t" }, "date"   ] }, "then": "$$t" },
+                                    { "case": { "$eq": [ { "$type": "$$t" }, "string" ] }, "then": _parse_string("t") },
+                                ],
+                                "default": None
+                            }},
+                            { "$switch": {
+                                "branches": [
+                                    { "case": { "$eq": [ { "$type": "$$d" }, "date"   ] }, "then": "$$d" },
+                                    { "case": { "$eq": [ { "$type": "$$d" }, "string" ] }, "then": _parse_string("d") },
+                                ],
+                                "default": None
+                            }}
+                        ] }
+                    }
+                }
+            }
+        },
+        { "$addFields": { "dayTH": {
+            "$dateToString": { "date": "$ts", "format": "%Y-%m-%d", "timezone": "+07:00" }
+        }}},
+        {   # ชั้นที่ 1: วันไทยต้องอยู่ในช่วง
+            "$match": { "dayTH": { "$gte": start, "$lte": end } }
+        },
+        {   # ✅ ชั้นที่ 2: ts (UTC) ต้องอยู่ในกรอบวันไทยที่แปลงเป็น UTC แล้วด้วย
+            "$match": {
+                "$expr": {
+                    "$and": [
+                        { "$gte": ["$ts", start_utc] },   # <-- ใช้ตัวแปร start_utc/end_utc จาก Python ที่คำนวณไว้ด้านบน
+                        { "$lte": ["$ts", end_utc] }
+                    ]
+                }
+            }
+        },
+        { "$sort": { "ts": 1 } },
+        { "$project": {
+            "_id": 1,
+            "timestamp": "$ts",
+            "VL1N": 1, "VL2N": 1, "VL3N": 1,
+            "I1": 1, "I2": 1, "I3": 1,
+            "PL1N": 1, "PL2N": 1, "PL3N": 1,
+            # (debug) จะโชว์ dayTH ชั่วคราวก็ได้:
+            # "dayTH": 1,
+        }}
+    ]
+
+    cursor = coll.aggregate(pipeline, allowDiskUse=True)
+
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    async def event_generator():
+        try:
+            base = pipeline[:-2]
+            cnt = await coll.aggregate(base + [{"$count": "n"}]).to_list(length=1)
+            n = cnt[0]["n"] if cnt else 0
+            yield "retry: 3000\n"
+            yield f"event: stats\ndata: {json.dumps({'matched': n})}\n\n"
+
+            sent = 0
+            async for doc in cursor:
+                if await request.is_disconnected():
+                    break
+                doc["_id"] = str(doc["_id"])
+                doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                yield f"data: {json.dumps(doc, ensure_ascii=False)}\n\n"
+                sent += 1
+                await asyncio.sleep(0.001)
+
+            if sent == 0:
+                yield "event: empty\ndata: no documents in range\n\n"
+            else:
+                yield ": keep-alive\n\n"
+        except Exception as e:
+            yield f"event: error\ndata: {str(e)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
+
+# def parse_interval(s: str) -> tuple[Literal["minute","hour"], int]:
+#     # รองรับ 1m,5m,10m,15m,30m,60m
+#     m = re.fullmatch(r"(\d+)([mh])", s.lower())
+#     if not m:
+#         return ("minute", 5)
+#     n, unit = int(m.group(1)), m.group(2)
+#     if unit == "m":
+#         return ("minute", max(1, n))
+#     else:
+#         return ("hour", max(1, n))
+# TZ_TH = ZoneInfo("Asia/Bangkok")
+# def day_bound_th(datestr: str, bound: str) -> datetime:
+#     """
+#     ให้ค่าเป็น UTC datetime (tzinfo=UTC)
+#     - ถ้า `datestr` เป็น 'YYYY-MM-DD'  → คืน 00:00:00+07:00 (bound='start') หรือ 23:59:59.999+07:00 (bound='end') แล้วแปลงเป็น UTC
+#     - ถ้า `datestr` มีเวลา/โซน (เช่น '2025-10-15T12:34:00', '...+07:00', '...Z') → ใช้ค่านั้น (ถ้าไม่มีโซนจะตีความเป็นเวลาไทย) แล้วแปลงเป็น UTC
+#     """
+#     datestr = datestr.strip()
+#     # เคสวันที่ล้วน → ใช้ขอบวันไทย
+#     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", datestr):
+#         if bound == "start":
+#             dt_th = datetime.fromisoformat(datestr + "T00:00:00").replace(tzinfo=TZ_TH)
+#         else:  # 'end'
+#             dt_th = datetime.fromisoformat(datestr + "T23:59:59.999").replace(tzinfo=TZ_TH)
+#         return dt_th.astimezone(timezone.utc)
+
+#     # มี 'Z' → UTC อยู่แล้ว
+#     if datestr.endswith("Z"):
+#         return datetime.fromisoformat(datestr.replace("Z", "+00:00")).astimezone(timezone.utc)
+
+#     # มี offset +HH:MM/-HH:MM → แปลงตามนั้น
+#     if re.search(r"[+\-]\d{2}:\d{2}$", datestr):
+#         return datetime.fromisoformat(datestr).astimezone(timezone.utc)
+
+#     # ไม่มีโซนแต่มีเวลา → ตีความเป็นเวลาไทยก่อน แล้วค่อยแปลงเป็น UTC
+#     return datetime.fromisoformat(datestr).replace(tzinfo=TZ_TH).astimezone(timezone.utc)
+  
+# @app.get("/MDB/history")
+# async def stream_history(
+#     request: Request,
+#     station_id: str = Query(...),
+#     start: str = Query(...),
+#     end: str = Query(...),
+#     interval: str = Query("5m"),  # 👈 เพิ่มพารามิเตอร์
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", start) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end):
+#         raise HTTPException(status_code=400, detail="start/end must be YYYY-MM-DD")
+#     if start > end:
+#         start, end = end, start    
+
+#     unit, bin_size = parse_interval(interval)  # ex. ("minute", 5)
+
+#     tz_th = ZoneInfo("Asia/Bangkok")
+#     # ใช้ day_bound_th(...) ตามที่แนะนำก่อนหน้า
+#     start_utc = day_bound_th(start, "start")
+#     end_utc   = day_bound_th(end, "end")
+
+#     coll = get_mdb_collection_for(station_id)
+
+#     def _parse_string(varname: str):
+#         return {
+#             "$cond": [
+#                 { "$regexMatch": { "input": f"$${varname}", "regex": r"(Z|[+\-]\d{2}:\d{2})$" } },
+#                 { "$toDate": f"$${varname}" },
+#                 { "$dateFromString": {
+#                     "dateString": f"$${varname}",
+#                     "timezone": "+07:00",
+#                     "onError": None,
+#                     "onNull": None
+#                 } }
+#             ]
+#         }
+
+#     base_pipeline = [
+#         {"$addFields": {
+#             "ts": {
+#                 "$let": { "vars": { "t": "$timestamp", "d": "$Datetime" }, "in":
+#                     { "$cond": [
+#                         { "$ne": ["$$t", None] },
+#                         { "$switch": {
+#                             "branches": [
+#                                 { "case": { "$eq": [ { "$type": "$$t" }, "date"   ] }, "then": "$$t" },
+#                                 { "case": { "$eq": [ { "$type": "$$t" }, "string" ] }, "then": _parse_string("t") },
+#                             ],
+#                             "default": None
+#                         }},
+#                         { "$switch": {
+#                             "branches": [
+#                                 { "case": { "$eq": [ { "$type": "$$d" }, "date"   ] }, "then": "$$d" },
+#                                 { "case": { "$eq": [ { "$type": "$$d" }, "string" ] }, "then": _parse_string("d") },
+#                             ],
+#                             "default": None
+#                         }}
+#                     ] }
+#                 }
+#             }
+#         }},
+#         {"$addFields": {
+#             "dayTH": { "$dateToString": { "date": "$ts", "format": "%Y-%m-%d", "timezone": "+07:00" } }
+#         }},
+#         {"$match": { "dayTH": { "$gte": start, "$lte": end } }},
+#         {"$match": {
+#             "$expr": { "$and": [
+#                 { "$gte": ["$ts", start_utc] },
+#                 { "$lte": ["$ts", end_utc] }
+#             ]}
+#         }},
+#         # 👇 จับ bucket 5 นาที (ตาม interval)
+#         {"$addFields": {
+#             "bucket": {
+#                 "$dateTrunc": {
+#                     "date": "$ts",
+#                     "unit": unit,          # "minute"
+#                     "binSize": bin_size,   # 5
+#                     "timezone": "+07:00"   # ผูกตามเวลาไทย
+#                 }
+#             }
+#         }},
+#         # 👇 สรุปค่าในแต่ละ bucket
+#         {"$group": {
+#             "_id": "$bucket",
+#             "VL1N": { "$avg": "$VL1N" },
+#             "VL2N": { "$avg": "$VL2N" },
+#             "VL3N": { "$avg": "$VL3N" },
+#             "I1":   { "$avg": "$I1" },
+#             "I2":   { "$avg": "$I2" },
+#             "I3":   { "$avg": "$I3" },
+#             "PL1N": { "$avg": "$PL1N" },
+#             "PL2N": { "$avg": "$PL2N" },
+#             "PL3N": { "$avg": "$PL3N" },
+#             # ถ้าต้องการ “จำนวนจุดใน bucket” ด้วย
+#             "count": { "$sum": 1 }
+#         }},
+#         {"$sort": { "_id": 1 }},
+#         {"$project": {
+#             "_id": 0,
+#             "timestamp": "$_id",  # เวลาต้นช่วง bucket (UTC)
+#             "VL1N": 1, "VL2N": 1, "VL3N": 1,
+#             "I1": 1, "I2": 1, "I3": 1,
+#             "PL1N": 1, "PL2N": 1, "PL3N": 1,
+#             "count": 1
+#         }}
+#     ]
+
+#     cursor = coll.aggregate(base_pipeline, allowDiskUse=True)
+
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",
+#     }
+
+#     async def event_generator():
+#         try:
+#             # สถิติคร่าว ๆ
+#             cnt = await coll.aggregate(base_pipeline[:-2] + [{"$count": "n"}]).to_list(length=1)
+#             n = cnt[0]["n"] if cnt else 0
+#             yield "retry: 3000\n"
+#             yield f"event: stats\ndata: {json.dumps({'matched': n, 'interval': interval})}\n\n"
+
+#             async for doc in cursor:
+#                 if await request.is_disconnected():
+#                     break
+#                 doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+#                 yield f"data: {json.dumps(doc, ensure_ascii=False)}\n\n"
+#                 await asyncio.sleep(0.001)
+
+#             yield ": keep-alive\n\n"
+#         except Exception as e:
+#             yield f"event: error\ndata: {str(e)}\n\n"
+
+#     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
+
+@app.get("/MDB/history/debug")
+async def mdb_history_debug(station_id: str, start: str, end: str):
+    start_iso, end_iso = _coerce_date_range(start, end)
+    start_key, end_key = start_iso.rstrip("Z"), end_iso.rstrip("Z")
+    coll = get_mdb_collection_for(station_id)
+    q = {"timestamp": {"$gte": start_key, "$lte": end_key}}
+    docs = await coll.find(q, {"_id":0,"timestamp":1}).sort("timestamp", 1).limit(5).to_list(length=5)
+    n = await coll.count_documents(q)
+    return {"matched": n, "start_key": start_key, "end_key": end_key, "sample": docs}
+
 @app.get("/MDB/{station_id}")
 async def mdb(request: Request, station_id: str, current: UserClaims = Depends(get_current_user)):
     headers = {
@@ -562,13 +944,13 @@ def parse_iso_dt(s: str) -> datetime:
 #     print(f"Querying station_id={station_id} from {start} to {end}")
 
 #     query = {
-#         "station_id": station_id,
-#         "Datetime": {"$gte": start, "$lte": end}
+#         # "station_id": station_id,
+#         "timestamp": {"$gte": start, "$lte": end}
 #     }
 
 #     projection = {
 #         "_id": 1,
-#         "station_id": 1,
+#         # "station_id": 1,
 #         "VL1N": 1,
 #         "VL2N": 1,
 #         "VL3N": 1,
@@ -578,10 +960,10 @@ def parse_iso_dt(s: str) -> datetime:
 #         "PL1N": 1,
 #         "PL2N": 1,
 #         "PL3N": 1,
-#         "Datetime": 1
+#         "timestamp": 1
 #     }
 
-#     cursor = MDB_collection.find(query, projection).sort("Datetime", 1)
+#     cursor = MDB_collection.find(query, projection).sort("timestamp", 1)
 
 #     async def event_generator():
 #         try:
@@ -596,73 +978,294 @@ def parse_iso_dt(s: str) -> datetime:
 
 #     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-def _coerce_date_range(start: str, end: str) -> tuple[str, str]:
-    # รับได้ทั้ง "YYYY-MM-DD" และ ISO ครบเวลา
-    try:
-        def _norm(s: str, end: bool=False) -> str:
-            if "T" in s:
-                # เป็น ISO อยู่แล้ว
-                dt = parse_iso_dt(s)  # ใช้ helper ด้านบน
-            else:
-                # เป็นแค่วัน -> เติมเวลา
-                if end:
-                    dt = datetime.fromisoformat(f"{s}T23:59:59.999+00:00")
-                else:
-                    dt = datetime.fromisoformat(f"{s}T00:00:00+00:00")
-            return dt.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
-        return _norm(start, end=False), _norm(end, end=True)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad date range")
 
-@app.get("/MDB/history")
-async def stream_history(
-    request: Request,
-    station_id: str = Query(..., description="ID ของ turbine/station"),
-    start: str = Query(..., description="เริ่ม (YYYY-MM-DD หรือ ISO)"),
-    end: str = Query(..., description="สิ้นสุด (YYYY-MM-DD หรือ ISO)"),
-):
-    headers = {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",
-    }
 
-    start_iso, end_iso = _coerce_date_range(start, end)
-    coll = get_mdb_collection_for(station_id)   # ⬅️ ใช้ coll ตามสถานี
+# @app.get("/MDB/history")
+# async def stream_history(
+#     station_id: str = Query(..., description="ID ของ turbine/station"),
+#     start: str = Query(..., description="วันที่เริ่มต้นในรูปแบบ ISO string"),
+#     end: str = Query(..., description="วันที่สิ้นสุดในรูปแบบ ISO string"),
+# ):
+#     print(f"Querying station_id={station_id} from {start} to {end}")
 
-    query = {"timestamp": {"$gte": start_iso, "$lte": end_iso}}
-    projection = {
-        "_id": 1, "station_id": 1, "timestamp": 1,
-        "VL1N": 1, "VL2N": 1, "VL3N": 1,
-        "I1": 1, "I2": 1, "I3": 1,
-        "PL1N": 1, "PL2N": 1, "PL3N": 1,
-    }
+#     # ดึงคอลเลกชันตาม station_id
+#     collection = MDB_DB[station_id]
 
-    cursor = coll.find(query, projection).sort("timestamp", 1)
+#     query = {
+#         "timestamp": {"$gte": start, "$lte": end}  # ถ้า timestamp เก็บเป็น string ISO
+#     }
+#     projection = {
+#         "_id": 1,
+#         "VL1N": 1, "VL2N": 1, "VL3N": 1,
+#         "I1": 1, "I2": 1, "I3": 1,
+#         "PL1N": 1, "PL2N": 1, "PL3N": 1,
+#         "timestamp": 1
+#     }
 
-    async def event_generator():
-        try:
-            yield "retry: 3000\n\n"
-            sent_any = False
-            # async for doc in cursor:
-            #     doc["_id"] = str(doc["_id"])
-            #     yield f"data: {json.dumps(doc)}\n\n"
-            #     sent_any = True
-            #     await asyncio.sleep(0.001)
-            async for doc in cursor:
-                doc["_id"] = str(doc["_id"])
-                if "timestamp" in doc:
-                    doc["timestamp"] = _ensure_utc_iso(doc["timestamp"])
-                yield f"data: {json.dumps(doc)}\n\n"
-                sent_any = True
-                await asyncio.sleep(0.001)
-            if not sent_any:
-                yield ": keep-alive\n\n"
-        except Exception as e:
-            yield f"event: error\ndata: {str(e)}\n\n"
+#     cursor = collection.find(query, projection).sort("timestamp", 1)
 
-    return StreamingResponse(event_generator(), headers=headers)
+#     async def event_generator():
+#         try:
+#             async for doc in cursor:
+#                 doc["_id"] = str(doc["_id"])
+#                 yield f"data: {json.dumps(doc)}\n\n"
+#                 await asyncio.sleep(0.005)
+#         except Exception as e:
+#             print("Error in SSE generator:", e)
+#             yield f"event: error\ndata: {str(e)}\n\n"
+
+#     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+
+# @app.get("/MDB/history")
+# async def stream_history(
+#     request: Request,
+#     station_id: str = Query(..., description="ID ของ turbine/station"),
+#     start: str = Query(..., description="วันที่เริ่มต้นในรูปแบบ ISO string"),
+#     end: str = Query(..., description="วันที่สิ้นสุดในรูปแบบ ISO string"),
+# ):
+#     print(f"Querying station_id={station_id} from {start} to {end}")
+
+#     # เลือกคอลเลกชันตาม station_id
+#     try:
+#         collection = MDB_DB[station_id]
+#     except Exception:
+#         raise HTTPException(status_code=400, detail="Invalid station_id collection")
+
+#     query = {
+#         "timestamp": {"$gte": start, "$lte": end}  # ใช้ได้ถ้าเก็บ ISO string สม่ำเสมอ
+#     }
+#     projection = {
+#         "_id": 1,
+#         "VL1N": 1, "VL2N": 1, "VL3N": 1,
+#         "I1": 1, "I2": 1, "I3": 1,
+#         "PL1N": 1, "PL2N": 1, "PL3N": 1,
+#         "timestamp": 1,
+#     }
+
+#     cursor = collection.find(query, projection).sort("timestamp", 1)
+
+#     async def event_generator():
+#         found = False
+#         try:
+#             async for doc in cursor:
+#                 # ถ้าคลายเอนต์ปิดไปแล้ว หยุดทันที
+#                 if await request.is_disconnected():
+#                     break
+#                 found = True
+#                 doc["_id"] = str(doc["_id"])
+#                 yield f"data: {json.dumps(doc, ensure_ascii=False)}\n\n"
+#                 # เว้นนิดหน่อยกันคอนซูมเมอร์ค้าง/บัฟเฟอร์
+#                 await asyncio.sleep(0.003)
+#             if not found:
+#                 yield "event: empty\ndata: no documents in range\n\n"
+#         except asyncio.CancelledError:
+#             # การเชื่อมต่อโดนยกเลิก เป็นเหตุการณ์ปกติของ SSE
+#             pass
+#         except Exception as e:
+#             print("Error in SSE generator:", e)
+#             yield f"event: error\ndata: {str(e)}\n\n"
+#         finally:
+#             # ปิดคอร์เซอร์ให้เรียบร้อย
+#             try:
+#                 await cursor.close()
+#             except Exception:
+#                 pass
+
+#     return StreamingResponse(
+#         event_generator(),
+#         media_type="text/event-stream; charset=utf-8",
+#         headers={
+#             "Cache-Control": "no-cache",
+#             "Connection": "keep-alive",
+#             # ถ้าอยู่หลัง Nginx/Traefik ให้ปิด proxy buffering เพื่อให้สตรีมได้ลื่น
+#             "X-Accel-Buffering": "no",
+#         },
+#     )
+
+
+
+    
+# @app.get("/MDB/history")
+# async def stream_history(
+#     request: Request,
+#     station_id: str = Query(..., description="ID ของ turbine/station"),
+#     start: str = Query(..., description="เริ่ม (YYYY-MM-DD หรือ ISO)"),
+#     end: str = Query(..., description="สิ้นสุด (YYYY-MM-DD หรือ ISO)"),
+# ):
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",
+#     }
+
+#     start_iso, end_iso = _coerce_date_range(start, end)
+#     coll = get_mdb_collection_for(station_id)   # ⬅️ ใช้ coll ตามสถานี
+
+#     query = {"timestamp": {"$gte": start_iso, "$lte": end_iso}}
+#     projection = {
+#         "_id": 1, "station_id": 1, "timestamp": 1,
+#         "VL1N": 1, "VL2N": 1, "VL3N": 1,
+#         "I1": 1, "I2": 1, "I3": 1,
+#         "PL1N": 1, "PL2N": 1, "PL3N": 1,
+#     }
+
+#     cursor = coll.find(query, projection).sort("timestamp", 1)
+
+#     async def event_generator():
+#         try:
+#             yield "retry: 3000\n\n"
+#             sent_any = False
+#             # async for doc in cursor:
+#             #     doc["_id"] = str(doc["_id"])
+#             #     yield f"data: {json.dumps(doc)}\n\n"
+#             #     sent_any = True
+#             #     await asyncio.sleep(0.001)
+#             async for doc in cursor:
+#                 doc["_id"] = str(doc["_id"])
+#                 if "timestamp" in doc:
+#                     doc["timestamp"] = _ensure_utc_iso(doc["timestamp"])
+#                 yield f"data: {json.dumps(doc)}\n\n"
+#                 sent_any = True
+#                 await asyncio.sleep(0.001)
+#             if not sent_any:
+#                 yield ": keep-alive\n\n"
+#         except Exception as e:
+#             yield f"event: error\ndata: {str(e)}\n\n"
+
+#     return StreamingResponse(event_generator(), headers=headers)
+
+def _to_utc_dt(iso_str: str) -> datetime:
+    # รับ ISO ที่อาจลงท้าย Z หรือไม่ก็ได้ แล้วบังคับเป็น aware UTC
+    s = iso_str
+    if s.endswith("Z"):
+        s = s.replace("Z", "+00:00")
+    dt = datetime.fromisoformat(s)  # ได้ทั้ง aware/naive
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt
+
+# @app.get("/MDB/history")
+# async def stream_history(
+#     request: Request,
+#     station_id: str = Query(..., description="ID ของ turbine/station"),
+#     start: str = Query(..., description="เริ่ม (YYYY-MM-DD หรือ ISO)"),
+#     end: str = Query(..., description="สิ้นสุด (YYYY-MM-DD หรือ ISO)"),
+# ):
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",
+#     }
+
+#     start_iso, end_iso = _coerce_date_range(start, end)
+#     # แปลงเป็น datetime (UTC) ไว้ใช้ใน $expr
+#     start_dt = _to_utc_dt(start_iso)
+#     end_dt   = _to_utc_dt(end_iso)
+
+#     coll = get_mdb_collection_for(station_id)
+
+#     # แทนที่บล็อก query/cursor เดิมทั้งหมดด้วย pipeline นี้
+#     pipeline = [
+#         {   # ➜ ทำฟิลด์เวลา ts (Date) จาก timestamp/Datetime
+#             "$addFields": {
+#                 "ts": {
+#                     "$let": {
+#                         "vars": { "t": "$timestamp", "d": "$Datetime" },
+#                         "in": {
+#                             "$cond": [
+#                                 { "$ne": ["$$t", None] },
+#                                 {
+#                                     "$cond": [
+#                                         { "$eq": [ { "$type": "$$t" }, "string" ] },
+#                                         { "$dateFromString": { "dateString": "$$t", "timezone": "+07:00" } },
+#                                         "$$t"
+#                                     ]
+#                                 },
+#                                 {
+#                                     "$cond": [
+#                                         { "$ne": ["$$d", None] },
+#                                         {
+#                                             "$cond": [
+#                                                 { "$eq": [ { "$type": "$$d" }, "string" ] },
+#                                                 { "$dateFromString": { "dateString": "$$d", "timezone": "+07:00" } },
+#                                                 "$$d"
+#                                             ]
+#                                         },
+#                                         None
+#                                     ]
+#                                 }
+#                             ]
+#                         }
+#                     }
+#                 }
+#             }
+#         },
+#         {   # ➜ กรองช่วงเวลา “จาก ts” อย่างเดียว (ไม่ต้องมี station_id แล้ว)
+#             "$match": {
+#                 "$expr": {
+#                     "$and": [
+#                         { "$ne": ["$ts", None] },
+#                         { "$gte": ["$ts", start_dt] },
+#                         { "$lte": ["$ts", end_dt] }
+#                     ]
+#                 }
+#             }
+#         },
+#         { "$sort": { "ts": 1 } },
+#         {   # ➜ ส่งออก timestamp ที่ normalize แล้ว (UTC Date) เป็นฟิลด์เดียว
+#             "$project": {
+#                 "_id": 1,
+#                 "timestamp": "$ts",
+#                 "frequency": 1, "humidity": 1,
+#                 "VL1N": 1, "VL2N": 1, "VL3N": 1,
+#                 "VL1L2": 1, "VL2L3": 1, "VL1L3": 1,
+#                 "I1": 1, "I2": 1, "I3": 1, "I_total": 1,
+#                 "PL1N": 1, "PL2N": 1, "PL3N": 1, "PL123N": 1,
+#                 "EL1": 1, "EL2": 1, "EL3": 1, "EL123": 1,
+#                 "THDU_L1N": 1, "THDU_L2N": 1, "THDU_L3N": 1,
+#                 "THDI_L1": 1, "THDI_L2": 1, "THDI_L3": 1,
+#                 "pfL1": 1, "pfL2": 1, "pfL3": 1,
+#                 "tempc": 1, "RSSI": 1, "MCU_temp": 1,
+#                 "breaker_main": 1, "breaker_charger": 1
+#             }
+#         }
+#     ]
+
+#     cursor = coll.aggregate(pipeline, allowDiskUse=True)
+
+#     async def event_generator():
+#         try:
+#             # (แนะนำ) ส่งสถิติดูจำนวนที่แมตช์ก่อน
+#             count_docs = await coll.aggregate(pipeline + [{"$count": "n"}]).to_list(length=1)
+#             n = count_docs[0]["n"] if count_docs else 0
+#             yield f"event: stats\ndata: {{\"matched\": {n}}}\n\n"
+
+#             sent_any = False
+#             async for doc in cursor:
+#                 doc["_id"] = str(doc["_id"])
+
+#                 # ทำให้ timestamp เป็นสตริง ISO-UTC เสมอ
+#                 if "timestamp" in doc and doc["timestamp"] is not None:
+#                     doc["timestamp"] = _ensure_utc_iso(doc["timestamp"])
+
+#                 # ป้องกัน field อื่น ๆ ที่อาจเป็น datetime/ชนิดพิเศษ
+#                 yield f"data: {json.dumps(doc, ensure_ascii=False, default=str)}\n\n"
+
+#                 sent_any = True
+#                 await asyncio.sleep(0.001)
+
+#             if not sent_any:
+#                 yield ": keep-alive\n\n"
+#         except Exception as e:
+#             yield f"event: error\ndata: {str(e)}\n\n"
+
+#     return StreamingResponse(event_generator(), headers=headers)
 
 def to_float(x, default=0.0):
     try:

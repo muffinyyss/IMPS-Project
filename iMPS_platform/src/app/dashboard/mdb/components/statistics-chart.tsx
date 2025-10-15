@@ -29,8 +29,14 @@ const toDateSafe = (v: any): Date | null => {
   if (v == null) return null;
 
   // Handle epoch milliseconds
+  // if (typeof v === "number" || /^\d+$/.test(String(v))) {
+  //   const n = typeof v === "number" ? v : parseInt(String(v), 10);
+  //   const d = new Date(n);
+  //   return isNaN(d.getTime()) ? null : d;
+  // }
   if (typeof v === "number" || /^\d+$/.test(String(v))) {
-    const n = typeof v === "number" ? v : parseInt(String(v), 10);
+    let n = typeof v === "number" ? v : parseInt(String(v), 10);
+    if (n < 1_000_000_000_000) n *= 1000; // แปลงวินาที -> มิลลิวินาที
     const d = new Date(n);
     return isNaN(d.getTime()) ? null : d;
   }
@@ -58,20 +64,40 @@ const toDateSafe = (v: any): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+const isToday = (d: string) => {
+  const now = new Date();
+  const dd  = new Date(`${d}T00:00:00+07:00`);
+  return now.getFullYear() === dd.getFullYear() &&
+         now.getMonth() === dd.getMonth() &&
+         now.getDate() === dd.getDate();
+};
+
 // ✅ FIXED: ลดความซับซ้อนและใช้ UTC
 function filterApexChartByDate(chart: any, start?: string, end?: string) {
   if (!chart) return chart;
 
   // ✅ ใช้ UTC เหมือน backend
-  const startD = start ? toDateSafe(`${start}T00:00:00Z`) : null;
-  const endD = end ? toDateSafe(`${end}T23:59:59.999Z`) : null;
+  // const startD = start ? toDateSafe(`${start}T00:00:00Z`) : null;
+  // const endD = end ? toDateSafe(`${end}T23:59:59.999Z`) : null;
+  const startD = start ? toDateSafe(`${start}T00:00:00+07:00`) : null;
+  let  endD = end ? toDateSafe(`${end}T23:59:59.999+07:00`) : null;
+
+  // 👇 ถ้า end เป็น “วันนี้” ให้ใช้เวลาปัจจุบันแทน
+  if (end && isToday(end)) endD = new Date();
 
   if (!startD && !endD) return chart;
 
+  // console.log("78",chart)
   const options = chart.options ?? {};
-  const xaxis = options.xaxis ?? {};
+  // console.log("80",options)
+  // const xaxis = options.xaxis ?? {};
+  const xaxis = {
+    ...(options.xaxis ?? {}),
+    categories: Array.isArray(options.xaxis?.categories) ? options.xaxis!.categories : [],
+  };
   const series: any[] = Array.isArray(chart.series) ? chart.series : [];
-
+  // console.log("83",series)
+  // console.log("84",chart.series)
   if (series.length === 0) {
     return {
       ...chart,
@@ -85,14 +111,16 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
 
   // ตรวจสอบว่าเป็น XY mode หรือ categories mode
   const firstSeries = series[0];
+  // console.log("97",firstSeries)
   const firstData = Array.isArray(firstSeries?.data) ? firstSeries.data : [];
+  // console.log("98",firstData)
   const isXYMode =
     firstData.length > 0 &&
-    firstData.some((pt: any) => 
-      (pt && typeof pt === "object" && "x" in pt) || 
+    firstData.some((pt: any) =>
+      (pt && typeof pt === "object" && "x" in pt) ||
       Array.isArray(pt)
     );
-
+  // console.log("104",isXYMode)
   // ---- XY Mode: [{x, y}] or [[x, y]] ----
   if (isXYMode) {
     const newSeries = series.map((s) => {
@@ -118,7 +146,7 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
         xaxis: {
           ...xaxis,
           type: "datetime",
-          categories: undefined, // ✅ บังคับ XY mode
+          categories: [],
         },
         noData: { text: hasData ? "Loading..." : "No data in selected range" },
       },
@@ -127,7 +155,7 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
 
   // ---- Categories Mode ----
   const categories: any[] = Array.isArray(xaxis.categories) ? xaxis.categories : [];
-  
+  // console.log("137",categories)
   if (categories.length === 0) {
     return {
       ...chart,
@@ -195,20 +223,24 @@ export default function StatisticChart({ startDate, endDate, charts }: Props) {
     setSelectedItem(null);
   };
 
+
+
+
   return (
     <div className="tw-grid tw-grid-cols-1 tw-gap-6 md:tw-grid-cols-1 xl:tw-grid-cols-1">
       {charts.map((item) => {
         const filteredChart = filterApexChartByDate(item.chart, startDate, endDate);
+        // console.log("214",item.chart)
 
         // ✅ Debug logging (ใน development เท่านั้น)
         if (process.env.NODE_ENV === 'development') {
           const firstPoint = filteredChart?.series?.[0]?.data?.[0];
           const xValue = firstPoint?.x ?? filteredChart?.options?.xaxis?.categories?.[0];
-          console.log(`[${item.title}]`, {
-            seriesCount: filteredChart?.series?.length,
-            firstPoint,
-            parsedDate: xValue ? toDateSafe(xValue)?.toISOString() : null,
-          });
+          // console.log(`[${item.title}]`, {
+          //   seriesCount: filteredChart?.series?.length,
+          //   firstPoint,
+          //   parsedDate: xValue ? toDateSafe(xValue)?.toISOString() : null,
+          // });
         }
 
         const hasPoints =
@@ -237,6 +269,12 @@ export default function StatisticChart({ startDate, endDate, charts }: Props) {
           item.description
         );
 
+        console.log("[UI] chart safe check", {
+          seriesIsArray: Array.isArray(filteredChart?.series),
+          data0IsArray: Array.isArray(filteredChart?.series?.[0]?.data),
+          catsIsArray: Array.isArray(filteredChart?.options?.xaxis?.categories),
+        });
+
         return (
           <div key={item.title} className="tw-relative">
             <StatisticsChartCard
@@ -255,16 +293,22 @@ export default function StatisticChart({ startDate, endDate, charts }: Props) {
               <Maximize2 className="tw-w-4 tw-h-4" />
             </button>
           </div>
+
+
         );
+
+
       })}
+
+
 
       {/* Fullscreen Modal */}
       {isFullscreen && selectedChart && selectedItem && (
-        <div 
+        <div
           className="tw-fixed tw-inset-0 tw-bg-black/50 tw-flex tw-items-center tw-justify-center tw-z-50"
           onClick={closeFullscreen}
         >
-          <div 
+          <div
             className="tw-bg-white tw-rounded-lg tw-w-11/12 tw-h-[85vh] tw-relative tw-flex tw-flex-col tw-p-6"
             onClick={(e) => e.stopPropagation()}
           >

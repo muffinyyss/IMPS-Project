@@ -99,10 +99,10 @@ export default function MDBPage() {
     // default: ล่าสุด 30 วัน
     const today = useMemo(() => new Date(), []);
     const twentyFourHoursAgo = useMemo(() => {
-    const d = new Date();
-    d.setHours(d.getHours() - 24);
-    return d;  // Date object
-}, []);
+        const d = new Date();
+        d.setHours(d.getHours() - 24);
+        return d;  // Date object
+    }, []);
     // const [startDate, setStartDate] = useState<string>(fmt(thirtyDaysAgo));
     // const [endDate, setEndDate] = useState<string>(fmt(today));
 
@@ -378,58 +378,193 @@ export default function MDBPage() {
         };
     }, [stationId]);
     // SSE history (range)
+    // useEffect(() => {
+    //     if (!stationId) return;
+    //     setLoading2(true);
+    //     setErr2(null);
+
+    //     const startISO = new Date(`${startDate}`).toISOString();
+    //     const endISO = new Date(`${endDate}`).toISOString();
+    //     const push = makePusher(startISO, endISO);
+
+    //     // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+    //     // const es = new EventSource(url);
+    //     const es = new EventSource(
+    //         `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`,
+    //         { withCredentials: true }                  // ★ สำคัญ
+    //     );
+    //     es.onopen = () => setErr2(null);
+
+    //     const onInit = (e: MessageEvent) => {
+    //         try {
+    //             const doc = JSON.parse(e.data);
+    //             setMdb2(doc);
+    //             setLoading2(false);
+    //             push(doc);
+    //             setErr2(null);
+    //         } catch { }
+    //     };
+
+    //     const onMsg = (e: MessageEvent) => {
+    //         try {
+    //             const doc = JSON.parse(e.data);
+    //             setMdb2(doc);
+    //             push(doc);
+    //             setErr2(null);
+    //         } catch { }
+    //     };
+
+    //     const onErr = () => {
+    //         setErr2("SSE disconnected (auto-retry)");
+    //         setLoading2(false);
+    //     };
+
+    //     es.addEventListener("init", onInit);
+    //     es.onmessage = onMsg;
+    //     es.onerror = onErr;
+
+    //     return () => {
+    //         es.removeEventListener("init", onInit);
+    //         es.close();
+    //     };
+    // }, [stationId, startDate, endDate]);
+
+    // useEffect(() => {
+    //     if (!stationId) return;
+
+    //     setLoading2(true);
+    //     setErr2(null);
+
+    //     const es = new EventSource(
+    //         `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`,
+    //         { withCredentials: true }
+    //     );
+
+    //     const handle = (e: MessageEvent) => {
+    //         try {
+    //             const doc = JSON.parse(e.data);
+    //             setMdb2(doc);
+    //             setLoading2(false);
+    //             // ถ้ามี push ก็เรียกเลย (ไม่ต้องส่งช่วงเวลาแล้ว)
+    //             // push(doc);
+    //         } catch { }
+    //     };
+
+    //     es.addEventListener("init", handle);
+    //     es.onmessage = handle;
+    //     es.onerror = () => {
+    //         setErr2("SSE disconnected (auto-retry)");
+    //         setLoading2(false);
+    //     };
+
+    //     return () => {
+    //         es.removeEventListener("init", handle);
+    //         es.close();
+    //     };
+    // }, [stationId, startDate, endDate]);
+    // utils เล็ก ๆ
+    const normalizeTs = (s: any) => {
+        if (typeof s === "number") {
+            const ms = s < 1_000_000_000_000 ? s * 1000 : s;
+            return new Date(ms).toISOString();
+        }
+        let x = String(s ?? "").trim();
+        if (!x) return null;
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(x)) x = x.replace(" ", "T");
+        x = x.replace(/\.(\d{3})\d+/, ".$1");
+        if (!/(Z|[+\-]\d{2}:\d{2})$/.test(x)) x += "Z";
+        const d = new Date(x);
+        return isNaN(d.getTime()) ? null : d.toISOString();
+    };
+
+    const mapRow = (d: any): HistoryRow | null => {
+        const ts = normalizeTs(d.timestamp ?? d.Datetime);
+        if (!ts) return null;
+        const num = (v: any) => (v == null ? undefined : Number(v));
+        return {
+            timestamp: ts,
+            VL1N: num(d.VL1N), VL2N: num(d.VL2N), VL3N: num(d.VL3N),
+            I1: num(d.I1), I2: num(d.I2), I3: num(d.I3),
+            PL1N: num(d.PL1N), PL2N: num(d.PL2N), PL3N: num(d.PL3N),
+        };
+    };
+
+    const inRange = (iso: string, startISO: string, endISO: string) => {
+        const t = new Date(iso).getTime();
+        return t >= new Date(startISO).getTime() && t <= new Date(endISO).getTime();
+    };
+
+    const pruneSort = (rows: HistoryRow[], startISO: string, endISO: string) =>
+        rows
+            .filter(r => inRange(r.timestamp, startISO, endISO))
+            .slice(-5000)
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     useEffect(() => {
         if (!stationId) return;
+
         setLoading2(true);
         setErr2(null);
+        setHistory([]); // เคลียร์ก่อนโหลดช่วงใหม่
 
-        const startISO = new Date(`${startDate}T00:00:00Z`).toISOString();
-        const endISO = new Date(`${endDate}T23:59:59.999Z`).toISOString();
-        const push = makePusher(startISO, endISO);
+        // ใช้วันที่แบบ UTC boundary (สอดคล้องกับฝั่ง chart)
+        const startISO = `${startDate}T00:00:00Z`;
+        const endISO = `${endDate}T23:59:59.999Z`;
 
-        // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
-        // const es = new EventSource(url);
-        const es = new EventSource(
-            `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`,
-            { withCredentials: true }                  // ★ สำคัญ
-        );
-        es.onopen = () => setErr2(null);
+        const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+        // console.log("[SSE history] url =", url);
 
-        const onInit = (e: MessageEvent) => {
+        const es = new EventSource(url, { withCredentials: true });
+
+        const handleMessage = (e: MessageEvent) => {
             try {
-                const doc = JSON.parse(e.data);
-                setMdb2(doc);
+                const payload = JSON.parse(e.data);
+                setMdb2(payload);
                 setLoading2(false);
-                push(doc);
-                setErr2(null);
-            } catch { }
+
+                // กรณีส่งมาเป็นอาเรย์ก้อนเดียว
+                if (Array.isArray(payload)) {
+                    const rows = payload.map(mapRow).filter(Boolean) as HistoryRow[];
+                    setHistory(prev => pruneSort([...prev, ...rows], startISO, endISO));
+                    return;
+                }
+
+                // กรณีห่อใน { data: [...] }
+                if (Array.isArray(payload?.data)) {
+                    const rows = payload.data.map(mapRow).filter(Boolean) as HistoryRow[];
+                    setHistory(prev => pruneSort([...prev, ...rows], startISO, endISO));
+                    return;
+                }
+
+                // กรณีส่งมา “ทีละแถว”
+                const one = mapRow(payload);
+                if (one) {
+                    setHistory(prev => pruneSort([...prev, one], startISO, endISO));
+                }
+            } catch (err) {
+                // เผื่อข้อความ keepalive ที่ไม่ใช่ JSON
+            }
         };
 
-        const onMsg = (e: MessageEvent) => {
-            try {
-                const doc = JSON.parse(e.data);
-                setMdb2(doc);
-                push(doc);
-                setErr2(null);
-            } catch { }
-        };
-
-        const onErr = () => {
+        es.addEventListener("init", handleMessage);
+        es.onmessage = handleMessage;
+        es.onerror = () => {
             setErr2("SSE disconnected (auto-retry)");
             setLoading2(false);
         };
 
-        es.addEventListener("init", onInit);
-        es.onmessage = onMsg;
-        es.onerror = onErr;
-
         return () => {
-            es.removeEventListener("init", onInit);
+            es.removeEventListener("init", handleMessage);
             es.close();
         };
     }, [stationId, startDate, endDate]);
 
+    // useEffect(() => {
+    //     console.log("[MDBPage] draft range changed", { draftStart, draftEnd });
+    // }, [draftStart, draftEnd]);
 
+    // useEffect(() => {
+    //     console.log("[MDBPage] applied range changed", { startDate, endDate });
+    // }, [startDate, endDate]);
     // console.log(startDate)
     // console.log(history)
     // if (loading) return <p>Loading...</p>;
@@ -503,6 +638,7 @@ export default function MDBPage() {
     // const MDB_type = statisticsChartsData(MDB)
     // const charts = data_MDB(MDB)
     // const charts = useMemo(() => buildChartsFromHistory(MDB, history), [MDB, history]);
+    console.log("546", history)
     const charts = useMemo(() => buildChartsFromHistory(MDB, history, startDate, endDate), [MDB, history, startDate, endDate]);
 
     return (
