@@ -1,0 +1,57 @@
+// app/pm-report/charger/input_PMreport/lib/draft.ts
+type DraftData = {
+  job: any;
+  rows: any;
+  cp: any;
+  m17: any;
+  summary: string;
+  // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
+  // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
+};
+
+function safeStorage() {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function draftKey(stationId: string | null | undefined) {
+  // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
+  return `pmDraft:${stationId ?? "unknown"}`;
+}
+
+export function saveDraftLocal(key: string, data: DraftData) {
+  const ls = safeStorage();
+  if (!ls) return;
+  try {
+    ls.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.error("saveDraftLocal failed:", e);
+  }
+}
+
+export function loadDraftLocal<T = DraftData>(key: string): T | null {
+  const ls = safeStorage();
+  if (!ls) return null;
+  try {
+    const raw = ls.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch (e) {
+    console.error("loadDraftLocal failed:", e);
+    return null;
+  }
+}
+
+export function clearDraftLocal(key: string) {
+  const ls = safeStorage();
+  if (!ls) return;
+  try {
+    ls.removeItem(key);
+  } catch (e) {
+    console.error("clearDraftLocal failed:", e);
+  }
+}

@@ -15,17 +15,19 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import json, os, asyncio
 from pdf.pdf_routes import router as pdf_router
 from fastapi.responses import StreamingResponse,Response
-from typing import List, Any,Dict, Optional, Union, Literal
+from typing import List, Any,Dict, Optional, Union, Literal,Mapping
 import bcrypt
 from dateutil import parser as dtparser
 from bson.decimal128 import Decimal128
-from fastapi import Path
+from fastapi import Path,UploadFile, File, Form
+from starlette.staticfiles import StaticFiles
 import uuid
 from zoneinfo import ZoneInfo
 import re
 from fastapi import HTTPException, Depends
 from fastapi.responses import JSONResponse
 from dateutil.relativedelta import relativedelta
+import pathlib, secrets
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
@@ -90,9 +92,23 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["http://localhost:3001"],  # เปลี่ยนเป็น port 3001 ชั่วคราวครับ เชลซีกับพี่โจ้ รัน 3000 ไม่ได้
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001"],  # เปลี่ยนเป็น port 3001 ชั่วคราวครับ เชลซีกับพี่โจ้ รัน 3000 ไม่ได้
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://203.154.130.132:3000",
+        "http://203.154.130.132:3001",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -299,6 +315,19 @@ def station_info(
     if not doc:
         raise HTTPException(status_code=404, detail="Station not found")
 
+    return {"station": doc}
+
+@app.get("/station/info/public")
+def station_info_public(
+    station_id: str = Query(...)
+):
+    doc = station_collection.find_one(
+        {"station_id": station_id},
+        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1,"chargeBoxID": 1,
+         "model": 1, "status": 1}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Station not found")
     return {"station": doc}
 
 @app.get("/get_history")
@@ -2168,6 +2197,229 @@ async def _ensure_util_index(coll):
     except Exception:
         pass
 
+class PMMeasureRow(BaseModel):
+    value: str = ""
+    unit: str = "V"
+
+class PMMeasures(BaseModel):
+    m17: Dict[str, PMMeasureRow] = Field(default_factory=dict)  # L1-L2, L2-L3, ...
+    cp: PMMeasureRow = PMMeasureRow()
+
+class PMRowPF(BaseModel):
+    pf: Optional[Literal["PASS","FAIL","NA",""]] = ""
+    remark: Optional[str] = ""
+
+# class PMSubmitIn(BaseModel):
+#     station_id: str
+#     job: Dict[str, Any] = Field(default_factory=dict)       # {chargerNo, sn, model, station_name, date, inspector}
+#     rows: Dict[str, PMRowPF] = Field(default_factory=dict)  # { r1:{pf,remark}, ... }
+#     measures: PMMeasures = PMMeasures()
+#     summary: str = ""
+#     photos: List[str] = Field(default_factory=list)         # เผื่อแนบ url/fileId ในอนาคต
+
+def get_pmreport_collection_for(station_id: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return PMReportDB.get_collection(str(station_id))
+
+# @app.post("/pmreport/submit")
+# async def pmreport_submit(body: PMSubmitIn):  # ใส่ Depends(get_current_user) ถ้าจะบังคับ auth
+#     station_id = body.station_id.strip()
+#     if not station_id:
+#         raise HTTPException(status_code=400, detail="station_id is required")
+
+#     coll = get_pmreport_collection_for(station_id)
+
+#     # สร้างดัชนีไว้สำหรับดึงล่าสุด/ลิสต์
+#     try:
+#         await coll.create_index([("createdAt", -1)])
+#         await coll.create_index([("job.date", -1)])
+#     except Exception:
+#         pass
+
+#     # pm_date ใช้จาก job.date (รูปแบบ yyyy-mm-dd) ถ้าไม่ได้ส่งมา จะใส่วันที่ไทยวันนี้
+#     pm_date = (body.job or {}).get("date")
+#     if not pm_date:
+#         pm_date = datetime.now(th_tz).date().isoformat()
+
+#     doc = {
+#         "station_id": station_id,
+#         "job": body.job,
+#         "rows": jsonable_encoder(body.rows),
+#         "measures": jsonable_encoder(body.measures),
+#         "summary": body.summary,
+#         "photos": body.photos,
+#         "pm_date": pm_date,
+#         "timestamp": datetime.now(timezone.utc),  # ไว้ใช้ sort ล่าสุด
+#         "createdAt": datetime.now(timezone.utc),
+#         "updatedAt": datetime.now(timezone.utc),
+#     }
+
+#     res = await coll.insert_one(doc)
+#     return {"ok": True, "id": str(res.inserted_id), "pm_date": pm_date}
+
+class PMSubmitIn(BaseModel):
+    station_id: str
+    job: dict
+    rows: dict
+    measures: dict
+    summary: str
+    pm_date:str
+
+@app.post("/pmreport/submit")
+async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_current_user)):
+    station_id = body.station_id.strip()
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_pmreport_collection_for(station_id)
+    doc = {
+        "station_id": station_id,
+        "job": body.job,
+        "rows": body.rows,
+        "measures": body.measures,
+        "summary": body.summary,
+        "pm_date": body.pm_date,
+        "photos": {},                   # จะถูกเติมภายหลัง
+        "status": "draft",              # หรือ "submitted" ถ้าต้องการ
+        "timestamp": datetime.now(timezone.utc),
+    }
+    res = await coll.insert_one(doc)
+    report_id = str(res.inserted_id)
+    return {"ok": True, "report_id": report_id}
+
+@app.get("/pmreport/list")
+async def pmreport_list(
+    station_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+):
+    coll = get_pmreport_collection_for(station_id)
+    skip = (page - 1) * pageSize
+
+    cursor = coll.find({}, {"_id": 1, "pm_date": 1, "createdAt": 1}).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+    items_raw = await cursor.to_list(length=pageSize)
+    total = await coll.count_documents({})
+
+    items = [{
+        "id": str(it["_id"]),
+        "pm_date": it.get("pm_date"),
+        "createdAt": _ensure_utc_iso(it.get("createdAt")),
+        "file_url": "",  # เผื่ออนาคตมีลิงก์ไฟล์ PDF
+    } for it in items_raw]
+
+    # เผื่อฟรอนต์อยากได้ array วันที่แบบเดิม
+    pm_date = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+
+    return {"items": items, "pm_date": pm_date, "page": page, "pageSize": pageSize, "total": total}
+
+# ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
+UPLOADS_ROOT = os.getenv("UPLOADS_ROOT", "./uploads")
+os.makedirs(UPLOADS_ROOT, exist_ok=True)
+
+# เสิร์ฟไฟล์คืนให้ Frontend ผ่าน /uploads/...
+app.mount("/uploads", StaticFiles(directory=UPLOADS_ROOT, html=False), name="uploads")
+
+ALLOWED_EXTS = {"jpg","jpeg","png","webp","gif"}
+MAX_FILE_MB = 10
+
+def _safe_name(name: str) -> str:
+    # กัน path traversal และอักขระแปลก ๆ
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+    return base[:120] or secrets.token_hex(4)
+
+def _ext(fname: str) -> str:
+    return (fname.rsplit(".",1)[-1].lower() if "." in fname else "")
+
+@app.post("/pmreport/{report_id}/photos")
+async def pmreport_upload_photos(
+    report_id: str,
+    station_id: str = Form(...),
+    group: str = Form(...),                   # เช่น "g1" .. "g10"
+    files: list[UploadFile] = File(...),
+    remark: str | None = Form(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+    if not re.fullmatch(r"g\d+", group):
+        raise HTTPException(status_code=400, detail="Bad group key")
+
+    coll = get_pmreport_collection_for(station_id)
+    from bson import ObjectId
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    # ยืนยันว่ารายงานนี้อยู่ใน station นี้
+    doc = await coll.find_one({"_id": oid}, {"_id":1, "station_id":1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if doc.get("station_id") != station_id:
+        raise HTTPException(status_code=400, detail="station_id mismatch")
+
+    # โฟลเดอร์ปลายทาง
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "pm" / station_id / report_id / group
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    total = 0
+    for f in files:
+        ext = _ext(f.filename or "")
+        if ext not in ALLOWED_EXTS:
+            raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
+
+        data = await f.read()
+        total += len(data)
+        if len(data) > MAX_FILE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        path = dest_dir / fname
+        with open(path, "wb") as out:
+            out.write(data)
+
+        # URL สำหรับแสดงบน Frontend
+        url_path = f"/uploads/pm/{station_id}/{report_id}/{group}/{fname}"
+        saved.append({
+            "filename": fname,
+            "size": len(data),
+            "url": url_path,
+            "remark": remark or "",
+            "uploadedAt": datetime.now(timezone.utc)
+        })
+
+    # อัปเดตเอกสาร PMReport: push ลง photos.<group>
+    await coll.update_one(
+        {"_id": oid},
+        {"$push": {f"photos.{group}": {"$each": saved}}}
+    )
+
+    return {"ok": True, "count": len(saved), "group": group, "files": saved}
+
+
+@app.post("/pmreport/{report_id}/finalize")
+async def pmreport_finalize(
+    report_id: str,
+    station_id: str = Form(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_pmreport_collection_for(station_id)
+    from bson import ObjectId
+    oid = ObjectId(report_id)
+    res = await coll.update_one(
+        {"_id": oid},
+        {"$set": {"status": "submitted", "submittedAt": datetime.now(timezone.utc)}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"ok": True}
+
+
 @app.get("/utilization/stream")
 async def utilization_stream(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
     # if current.role != "admin" and station_id not in set(current.station_ids):
@@ -2216,6 +2468,8 @@ async def utilization_stream(request: Request, station_id: str = Query(...), cur
                 await asyncio.sleep(5)
 
     return StreamingResponse(event_generator(), headers=headers)
+
+
 
 # device page
 def get_setting_collection_for(station_id: str):
