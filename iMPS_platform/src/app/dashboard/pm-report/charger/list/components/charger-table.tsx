@@ -116,9 +116,9 @@ export function SearchDataTables({ onSelectStation, token, apiBase = BASE }: Pro
   const stationIdFromUrl = sp.get("station_id") ?? "";
 
   const addHref = useMemo(() => {
-    if (!stationIdFromUrl) return "/pm-report/input_PMreport";
+    if (!stationIdFromUrl) return "/dashboard/pm-report/charger/input_PMreport";
     const p = new URLSearchParams({ station_id: stationIdFromUrl });
-    return `/pm-report/input_PMreport?${p.toString()}`;
+    return `/dashboard/pm-report/charger/input_PMreport?${p.toString()}`;
   }, [stationIdFromUrl]);
 
   function makeHeaders(token?: string): Record<string, string> {

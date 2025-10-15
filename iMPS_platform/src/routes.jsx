@@ -53,21 +53,21 @@ export const allRoutes = [
     icon: <i className="fa fa-database" />,
     path: "/dashboard/mdb",
   },
-  // {
-  //   name: "PM report",
-  //   icon: <i className="fa fa-file-alt" />,
-  //   path: "/dashboard/pm-report",
-  // },
-  // {
-  //   name: "CM report",
-  //   icon: <i className="far fa-file" />,
-  //   path: "#",
-  // },
-  // {
-  //   name: "Test report",
-  //   icon: <i className="fa fa-check-square" />,
-  //   path: "/dashboard/test-report",
-  // },
+  {
+    name: "PM report",
+    icon: <i className="fa fa-file-alt" />,
+    path: "/dashboard/pm-report",
+  },
+  {
+    name: "CM report",
+    icon: <i className="far fa-file" />,
+    path: "/dashboard/cm-report",
+  },
+  {
+    name: "Test report",
+    icon: <i className="fa fa-check-square" />,
+    path: "/dashboard/test-report",
+  },
   {
     name: "Ai Module",
     icon: <i className="fa fa-robot" />,
@@ -83,69 +83,69 @@ export const allRoutes = [
     icon: <i className="fa fa-charging-station" />,
     path: "/dashboard/stations",
   },
-  {
-    name: "PM report",
-    title: "report",
-    icon: <i className="fa fa-clipboard-list" />,
-    pages: [
-      {
-        // icon: <i className="fa fa-clipboard-check" />,
-        name: "Charger - PM report",
-        path: "/dashboard/pm-report",
-      },
-      {
-        // icon: <i className="fa fa-server" />,
-        name: "MDB - PM report",
-        path: "#",
-      },
-      {
-        // icon: <i className="fa fa-network-wired" />,
-        name: "CCB - PM report",
-        path: "#",
-      },
-      {
-        // icon: <i className="fa fa-box" />,
-        name: "CB-BOX - PM report",
-        path: "#",
-      },
-      {
-        // icon: <i className="fa fa-map-marker-alt" />,
-        name: "Station - PM report",
-        path: "#",
-      },
-    ],
-  },
-  {
-    name: "CM report",
-    icon: <i className="fa fa-clipboard-list" />,
-    pages: [
-      {
-        // icon: <i className="fa fa-clipboard-check" />,
-        name: "Charger - CM report",
-        path: "/dashboard/cm-report", 
-      },
-      {
-        // icon: <i className="fa fa-server" />,
-        name: "MDB - CM report",
-        path: "#",
-      },
-      {
-        // icon: <i className="fa fa-network-wired" />,
-        name: "CCB - CM report",
-        path: "#",
-      },
-      {
-        // icon: <i className="fa fa-box" />,
-        name: "CB-BOX - CM report",
-        path: "#",
-      },
-      {
-        // icon: <i className="fa fa-map-marker-alt" />,
-        name: "Station - CM report",
-        path: "#",
-      },
-    ],
-  },
+  // {
+  //   name: "PM report",
+  //   title: "report",
+  //   icon: <i className="fa fa-clipboard-list" />,
+  //   pages: [
+  //     {
+  //       // icon: <i className="fa fa-clipboard-check" />,
+  //       name: "Charger",
+  //       path: "/dashboard/pm-report",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-server" />,
+  //       name: "MDB",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-network-wired" />,
+  //       name: "CCB",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-box" />,
+  //       name: "CB-BOX",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-map-marker-alt" />,
+  //       name: "Station",
+  //       path: "#",
+  //     },
+  //   ],
+  // },
+  // {
+  //   name: "CM report",
+  //   icon: <i className="fa fa-clipboard-list" />,
+  //   pages: [
+  //     {
+  //       // icon: <i className="fa fa-clipboard-check" />,
+  //       name: "Charger",
+  //       path: "/dashboard/cm-report", 
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-server" />,
+  //       name: "MDB",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-network-wired" />,
+  //       name: "CCB",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-box" />,
+  //       name: "CB-BOX",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-map-marker-alt" />,
+  //       name: "Station",
+  //       path: "#",
+  //     },
+  //   ],
+  // },
   {
     name: "Test report",
     icon: <i className="fa fa-clipboard-list" />,
