@@ -61,7 +61,7 @@ export const allRoutes = [
   {
     name: "CM report",
     icon: <i className="far fa-file" />,
-    path: "/dashboard/cm-report",
+    path: "/dashboard/cm-report/charger",
   },
   {
     name: "Test report",
