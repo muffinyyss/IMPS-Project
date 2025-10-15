@@ -68,7 +68,9 @@ export function DashboardNavbar() {
 
 
   // ล็อก dropdown
-  const lockStationDropdown = pathname.startsWith("/dashboard/input_PMreport");
+  // const lockStationDropdown = pathname.startsWith("/dashboard/input_PMreport");
+  const lockStationDropdown = pathname.startsWith("/dashboard/pm-report/charger/input_PMreport");
+
 
   // Dropdown state
   const [query, setQuery] = useState("");
