@@ -32,14 +32,16 @@ type Job = {
 };
 
 type CMFormProps = {
-    /** ชนิดอุปกรณ์จากแท็บ */
-    type: EquipmentType;
+    /** ชนิดอุปกรณ์จากแท็บ (ถ้าไม่ส่งมา จะ default เป็น "mdb") */
+    type?: EquipmentType;
     /** station id ที่เลือกไว้จากแถบขวาบน */
     stationId: string;
     /** ชื่อสถานี (ถ้ามี) ใช้โชว์หัวเรื่องสวยๆ */
     stationName?: string;
     /** callback เดิม (optional) */
     onComplete?: (status: boolean) => void;
+    /** ปุ่มย้อนกลับ/ปิดฟอร์ม (parent ส่งมา) */
+    onCancel?: () => void;
 };
 
 /* =========================
@@ -73,7 +75,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 /* =========================
  *          MAIN
  * ========================= */
-export default function CMForm({ type, stationId, stationName, onComplete }: CMFormProps) {
+export default function CMForm({ type = "charger", stationId, stationName, onComplete, onCancel }: CMFormProps) {
     const [editMode, setEditMode] = useState(false);
 
     const [job, setJob] = useState<Job>({
