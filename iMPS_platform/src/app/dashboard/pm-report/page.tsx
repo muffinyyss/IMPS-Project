@@ -64,8 +64,7 @@ export default function DataTablesPage() {
         <TabPanel value="mdb" className="tw-p-0">
           {/* <div className="tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-p-5">เนื้อหา MDB …</div> */}
           <div className="tw-space-y-5">
-            <FirmwareCards />
-            <ChargerTables />
+            {/* <ChargerTables /> */}
           </div>
         </TabPanel>
 
