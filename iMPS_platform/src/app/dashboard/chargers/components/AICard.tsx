@@ -15,8 +15,7 @@ const AICard = () => {
                     <div className="tw-flex tw-items-center tw-gap-3">
                         {/* ใช้ <i> ของ Font Awesome */}
                         <i
-                            // className="fa-fw fa-solid fa-brain tw-text-xl tw-text-gray-800"
-                            className="fa-fw fa-solid fa-person-praying tw-text-xl tw-text-gray-800"
+                            className="fa-fw fa-solid fa-brain tw-text-xl tw-text-gray-800"
                             aria-hidden="true"
                         />
                         <div>

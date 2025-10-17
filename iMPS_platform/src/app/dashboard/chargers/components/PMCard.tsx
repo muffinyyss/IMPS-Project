@@ -12,10 +12,8 @@ const PMCard = () => {
       <CardHeader floated={false} shadow={false} color="transparent" className="tw-overflow-visible tw-rounded-none">
         <div className="tw-flex tw-items-center tw-justify-between">
           <div className="tw-flex tw-items-center tw-gap-3">
-            {/* ใช้ <i> ของ Font Awesome */}
             <i
-              className="fa-fw fa-solid fa-smoking tw-text-xl tw-text-gray-800"
-              // className="fa-fw fa-solid fa-screwdriver-wrench tw-text-xl tw-text-gray-800"
+              className="fa-fw fa-solid fa-screwdriver-wrench tw-text-xl tw-text-gray-800"
               aria-hidden="true"
             />
             <div>
