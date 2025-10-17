@@ -57,6 +57,9 @@ PMReportDB = client["PMReport"]
 
 PMUrlDB = client["PMReportURL"]
 
+CMReportDB = client["CMReport"]
+CMUrlDB = client["CMReportURL"]
+
 
 MDB_collection = MDB_DB["Klongluang3"]
 
@@ -2007,6 +2010,301 @@ async def pmurl_list(
     return {
         "items": items,
         "pm_date": [d for d in pm_date_arr if d],          # ให้เหมือน /pmreport/list
+        "page": page,
+        "pageSize": pageSize,
+        "total": total,
+    }
+
+
+# CM Report
+def get_cmreport_collection_for(station_id: str):
+    _validate_station_id(station_id)
+    coll = CMReportDB.get_collection(str(station_id))
+    return coll
+
+def get_cmurl_coll_upload(station_id: str):
+    _validate_station_id(station_id)
+    coll = CMUrlDB.get_collection(str(station_id))
+    return coll
+
+@app.get("/cmreport/list")
+async def cmreport_list(
+    station_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+):
+    coll = get_cmreport_collection_for(station_id)
+    skip = (page - 1) * pageSize
+
+    cursor = coll.find({}, {"_id": 1, "cm_date": 1, "createdAt": 1}).sort(
+        [("createdAt", -1), ("_id", -1)]
+    ).skip(skip).limit(pageSize)
+    items_raw = await cursor.to_list(length=pageSize)
+    total = await coll.count_documents({})
+
+    # --- ดึงไฟล์จาก PMReportURL โดย map ด้วย pm_date (string) ---
+    cm_dates = [it.get("cm_date") for it in items_raw if it.get("cm_date")]
+    urls_coll = get_cmurl_coll_upload(station_id)
+    url_by_day: dict[str, str] = {}
+
+    if cm_dates:
+        ucur = urls_coll.find({"cm_date": {"$in": cm_dates}}, {"cm_date": 1, "urls": 1})
+        url_docs = await ucur.to_list(length=10_000)
+        for u in url_docs:
+            day = u.get("cm_date")
+            first_url = (u.get("urls") or [None])[0]
+            if day and first_url and day not in url_by_day:
+                url_by_day[day] = first_url
+
+    items = [{
+        "id": str(it["_id"]),
+        "cm_date": it.get("cm_date"),
+        "createdAt": _ensure_utc_iso(it.get("createdAt")),
+        "file_url": url_by_day.get(it.get("cm_date") or "", ""),
+    } for it in items_raw]
+
+    cm_date_arr = [it.get("cm_date") for it in items_raw if it.get("cm_date")]
+    return {"items": items, "cm_date": cm_date_arr, "page": page, "pageSize": pageSize, "total": total}
+
+# ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
+UPLOADS_ROOT = os.getenv("UPLOADS_ROOT", "./uploads")
+os.makedirs(UPLOADS_ROOT, exist_ok=True)
+
+# เสิร์ฟไฟล์คืนให้ Frontend ผ่าน /uploads/...
+app.mount("/uploads", StaticFiles(directory=UPLOADS_ROOT, html=False), name="uploads")
+
+# ALLOWED_EXTS = {"jpg","jpeg","png","webp","gif"}
+# MAX_FILE_MB = 10
+
+def _safe_name(name: str) -> str:
+    # กัน path traversal และอักขระแปลก ๆ
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+    return base[:120] or secrets.token_hex(4)
+
+def _ext(fname: str) -> str:
+    return (fname.rsplit(".",1)[-1].lower() if "." in fname else "")
+
+@app.post("/pmreport/{report_id}/photos")
+async def cmreport_upload_photos(
+    report_id: str,
+    station_id: str = Form(...),
+    group: str = Form(...),                   # เช่น "g1" .. "g10"
+    files: list[UploadFile] = File(...),
+    remark: str | None = Form(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+    if not re.fullmatch(r"g\d+", group):
+        raise HTTPException(status_code=400, detail="Bad group key")
+
+    coll = get_cmreport_collection_for(station_id)
+    from bson import ObjectId
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    # ยืนยันว่ารายงานนี้อยู่ใน station นี้
+    doc = await coll.find_one({"_id": oid}, {"_id":1, "station_id":1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if doc.get("station_id") != station_id:
+        raise HTTPException(status_code=400, detail="station_id mismatch")
+
+    # โฟลเดอร์ปลายทาง
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "cm" / station_id / report_id / group
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    total = 0
+    for f in files:
+        ext = _ext(f.filename or "")
+        if ext not in ALLOWED_EXTS:
+            raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
+
+        data = await f.read()
+        total += len(data)
+        if len(data) > MAX_FILE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        path = dest_dir / fname
+        with open(path, "wb") as out:
+            out.write(data)
+
+        # URL สำหรับแสดงบน Frontend
+        url_path = f"/uploads/cm/{station_id}/{report_id}/{group}/{fname}"
+        saved.append({
+            "filename": fname,
+            "size": len(data),
+            "url": url_path,
+            "remark": remark or "",
+            "uploadedAt": datetime.now(timezone.utc)
+        })
+
+    # อัปเดตเอกสาร PMReport: push ลง photos.<group>
+    await coll.update_one(
+        {"_id": oid},
+        {"$push": {f"photos.{group}": {"$each": saved}}}
+    )
+
+    return {"ok": True, "count": len(saved), "group": group, "files": saved}
+
+@app.post("/cmreport/{report_id}/finalize")
+async def cmreport_finalize(
+    report_id: str,
+    station_id: str = Form(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_cmreport_collection_for(station_id)
+    from bson import ObjectId
+    oid = ObjectId(report_id)
+    res = await coll.update_one(
+        {"_id": oid},
+        {"$set": {"status": "submitted", "submittedAt": datetime.now(timezone.utc)}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"ok": True}
+
+@app.post("/cmurl/upload-files", status_code=201)
+async def cmurl_upload_files(
+    station_id: str = Form(...),
+    reportDate: str = Form(...),                 # "YYYY-MM-DD" หรือ ISO
+    files: list[UploadFile] = File(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    # auth
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    # ตรวจ/เตรียมคอลเลกชัน
+    coll = get_cmurl_coll_upload(station_id)
+
+    # parse วันที่เป็น UTC datetime (มีฟังก์ชันอยู่แล้ว)
+    cm_date = normalize_pm_date(reportDate)
+
+    # โฟลเดอร์ปลายทาง: /uploads/pmurl/<station_id>/<YYYY-MM-DD>/
+    # subdir = report_dt_utc.astimezone(th_tz).date().isoformat()
+    subdir = cm_date
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "cmurl" / station_id / subdir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    urls = []
+    metas = []
+    total_size = 0
+
+    for f in files:
+        ext = (f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else "")
+        if ext not in ALLOWED_EXTS or ext != "pdf":
+            raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
+
+        data = await f.read()
+        total_size += len(data)
+        if len(data) > MAX_FILE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+        safe = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
+        dest = dest_dir / safe
+        with open(dest, "wb") as out:
+            out.write(data)
+
+        url = f"/uploads/cmurl/{station_id}/{subdir}/{safe}"   # ← จะเสิร์ฟได้จาก StaticFiles ที่ mount ไว้แล้ว
+        urls.append(url)
+        metas.append({"name": f.filename, "size": len(data)})
+
+    now = datetime.now(timezone.utc)
+    doc = {
+        "station": station_id,
+        "cm_date": cm_date,   
+        "urls": urls,
+        "meta": {"files": metas},
+        "source": "upload-files",
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    res = await coll.insert_one(doc)
+
+    return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls}
+
+@app.get("/cmurl/list")
+async def cmurl_list(
+    station_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+):
+    """
+    ดึงรายการไฟล์ PM (PDF) ที่อัปโหลดไว้ต่อสถานี จาก PMUrlDB/<station_id>
+    - รองรับทั้งเอกสารที่เก็บ pm_date (string 'YYYY-MM-DD') และ reportDate (Date/ISO)
+    - เรียงจากใหม่ไปเก่า (createdAt desc, _id desc)
+    - รูปแบบผลลัพธ์ให้เหมือน /pmreport/list (มี file_url สำหรับลิงก์ตัวแรก)
+    """
+    coll = get_cmurl_coll_upload(station_id)
+    skip = (page - 1) * pageSize
+
+    # ดึงเฉพาะฟิลด์ที่จำเป็น
+    cursor = coll.find(
+        {},
+        {"_id": 1, "cm_date": 1, "reportDate": 1, "urls": 1, "createdAt": 1}
+    ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+
+    items_raw = await cursor.to_list(length=pageSize)
+    total = await coll.count_documents({})
+
+    def _cm_date_from(doc: dict) -> str | None:
+        """
+        แปลงวันที่ในเอกสารให้ได้ string 'YYYY-MM-DD'
+        - ถ้ามี pm_date (string) → คืนค่านั้น
+        - ถ้ามี reportDate (datetime/string) → แปลงเป็นวันไทย แล้ว .date().isoformat()
+        """
+        # รุ่นใหม่: เก็บเป็น pm_date (string)
+        s = doc.get("cm_date")
+        if isinstance(s, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
+            return s
+
+        # รุ่นเก่า: เก็บเป็น reportDate (Date/ISO)
+        rd = doc.get("reportDate")
+        if isinstance(rd, datetime):
+            return rd.astimezone(th_tz).date().isoformat()
+        if isinstance(rd, str):
+            try:
+                dt = datetime.fromisoformat(rd.replace("Z", "+00:00"))
+            except Exception:
+                # เผื่อไม่มีโซนเวลา → ถือเป็นเวลาไทย
+                try:
+                    dt = datetime.fromisoformat(rd).replace(tzinfo=th_tz)
+                except Exception:
+                    return None
+            return dt.astimezone(th_tz).date().isoformat()
+
+        return None
+
+    items = []
+    cm_date_arr = []
+
+    for it in items_raw:
+        cm_date_str = _cm_date_from(it)
+        if cm_date_str:
+            cm_date_arr.append(cm_date_str)
+
+        urls = it.get("urls") or []
+        first_url = urls[0] if urls else ""
+
+        items.append({
+            "id": str(it["_id"]),
+            "cm_date": cm_date_str,                         # 'YYYY-MM-DD' | None
+            "createdAt": _ensure_utc_iso(it.get("createdAt")),
+            "file_url": first_url,                          # ไฟล์แรก (ไว้ให้ปุ่มดาวน์โหลด)
+            "urls": urls,                                   # เผื่อฟรอนต์อยากแสดงทั้งหมด
+        })
+
+    return {
+        "items": items,
+        "cm_date": [d for d in cm_date_arr if d],          # ให้เหมือน /pmreport/list
         "page": page,
         "pageSize": pageSize,
         "total": total,
