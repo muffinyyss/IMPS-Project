@@ -63,11 +63,11 @@ export const allRoutes = [
     icon: <i className="far fa-file" />,
     path: "/dashboard/cm-report",
   },
-  // {
-  //   name: "Test report",
-  //   icon: <i className="fa fa-check-square" />,
-  //   path: "/dashboard/test-report",
-  // },
+  {
+    name: "Test report",
+    icon: <i className="fa fa-check-square" />,
+    path: "/dashboard/test-report",
+  },
   {
     name: "Ai Module",
     icon: <i className="fa fa-robot" />,
