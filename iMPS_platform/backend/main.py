@@ -13,13 +13,15 @@ from bson.objectid import ObjectId
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import json, os, asyncio
-from pdf.pdf_routes import router as pdf_router
+
 from fastapi.responses import StreamingResponse,Response
 from typing import List, Any,Dict, Optional, Union, Literal,Mapping
 import bcrypt
 from dateutil import parser as dtparser
 from bson.decimal128 import Decimal128
 from fastapi import Path,UploadFile, File, Form
+# from fastapi import UploadFile, File, Form
+# from pathlib import Path 
 from starlette.staticfiles import StaticFiles
 import uuid
 from zoneinfo import ZoneInfo
@@ -36,6 +38,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 th_tz = ZoneInfo("Asia/Bangkok")
 
+# BASE = Path(__file__).parent
 app = FastAPI()
 
 client1 = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
@@ -398,7 +401,7 @@ async def logout(email: str, refresh_token: str):
     return {"msg": "Logged out successfully"}
 
 
-app.include_router(pdf_router)
+
 
 
 @app.get("/username")
@@ -2165,3 +2168,5 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
 
     return StreamingResponse(event_generator(), headers=headers)
 
+from pdf.pdf_routes import router as pdf_router
+app.include_router(pdf_router)
