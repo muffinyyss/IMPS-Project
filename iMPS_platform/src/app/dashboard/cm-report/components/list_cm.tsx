@@ -731,19 +731,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 size="lg"
                 disabled={!stationIdFromUrl}
                 onClick={() => pdfInputRef.current?.click()}
-                // className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
-                // title="อัปโหลด PDF (demo)">
-                className={`
-                  !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
-                  tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                  ${!stationIdFromUrl
-                    ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                    : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
-                  tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                  focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                `}
-                >
-                title={stationIdFromUrl ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
+                className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
+                title="อัปโหลด PDF (demo)">
+                
                 <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
                 <span className="tw-text-sm">Upload</span>
               </Button>
