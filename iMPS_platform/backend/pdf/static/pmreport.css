@@ -1,0 +1,117 @@
+@page {
+  size: A4;
+  margin: 18mm 14mm 18mm 14mm;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: "TH Sarabun New", "Sarabun", Tahoma, Arial, sans-serif;
+  font-size: 12pt;
+  color: #111;
+}
+
+/* Header */
+.doc-header {
+  display: grid;
+  grid-template-columns: 120pt 1fr 110pt;
+  gap: 8pt;
+  align-items: center;
+  margin-bottom: 6pt;
+}
+.logo-box { border: 1pt solid #cfcfcf; height: 60pt; display:flex; align-items:center; justify-content:center; }
+.logo-box img { max-height: 58pt; max-width: 100%; object-fit: contain; }
+.logo-text { font-size: 20pt; font-weight: 700; }
+.title-box { text-align:center; }
+.title-box .org { font-size: 18pt; font-weight: 700; }
+.title-box .title { margin-top: 2pt; font-size: 12pt; }
+.meta-box { border: 1pt solid #cfcfcf; height: 60pt; display:flex; align-items:center; justify-content:center; font-size: 10pt; }
+
+/* Footer */
+.doc-foot {
+  position: fixed;
+  bottom: 8mm;
+  left: 14mm;
+  right: 14mm;
+  font-size: 9pt;
+  color: #666;
+  display: flex; justify-content: space-between;
+}
+
+/* Info table */
+.meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6pt 0 10pt;
+}
+.meta-table th, .meta-table td {
+  border: 1pt solid #9fb6cf;
+  padding: 4pt 6pt;
+}
+.meta-table th { background: #eef5ff; text-align: left; width: 34%; }
+.meta-table .w40 { width: 40%; }
+.meta-table .w60 { width: 60%; }
+
+/* Main grid */
+.grid { width: 100%; border-collapse: collapse; }
+.grid th, .grid td { border: 1pt solid #2b4f72; padding: 4pt 6pt; }
+.grid thead th { background: #e8f0ff; }
+.grid .subhead th { background: #f2f6ff; font-weight: normal; }
+.col-item { width: 44%; }
+.col-result { width: 14%; }
+.col-remark { width: 26%; }
+.col-photos { width: 16%; }
+.tiny { width: 4.5%; text-transform: lowercase; }
+.ta-center { text-align: center; }
+.ta-left { text-align: left; }
+.muted { color: #777; font-size: 10pt; }
+.highlight { background: #fff7a8; }
+
+/* photos */
+.photos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3pt;
+  min-height: 50pt;
+}
+.photo {
+  width: 100%;
+  height: 48pt;
+  object-fit: cover;
+  border: 1pt solid #bbb;
+  border-radius: 2pt;
+}
+
+/* measure row (ข้อ 17) */
+.measure-row td { background: #fafbff; }
+.measure-cell { padding: 6pt; }
+.mini { width: 100%; border-collapse: collapse; }
+.mini th, .mini td { border: 1pt solid #9fb6cf; padding: 3pt 4pt; text-align: center; }
+.sublabel { font-size: 10.5pt; color: #333; }
+
+/* Comment */
+.comment .label { margin: 10pt 0 4pt; }
+.comment .box {
+  min-height: 80pt;
+  border: 1pt dashed #bbb;
+  padding: 6pt 8pt;
+  white-space: pre-wrap;
+}
+
+/* Signatures */
+.sign-table { width: 100%; border-collapse: collapse; margin-top: 10pt; }
+.sign-table th, .sign-table td { border: 1pt solid #2b4f72; padding: 6pt; }
+.sign-table .highlight { background: #fff7a8; }
+.small { font-size: 10pt; color: #333; }
+.height-60 td { height: 60pt; vertical-align: bottom; }
+
+/* Print helpers */
+@media print {
+  .doc-foot { position: fixed; }
+}
+
+@font-face{
+  font-family: "Sarabun";
+  src: url("../fonts/THSarabunNew.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+body { font-family: "Sarabun","TH Sarabun New",Tahoma,Arial,sans-serif; }
