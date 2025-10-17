@@ -675,10 +675,10 @@ export default function Settings() {
     <div className="tw-mb-6 !tw-w-full">
       <div className="!tw-col-span-10">
         {/* Profile Header */}
-        <ProfileHeader />
+        {/* <ProfileHeader /> */}
 
         {/* ===== 2-Column Layout (Profile | Change Password) ===== */}
-        <div className="tw-grid tw-grid-cols-1 lg:tw-grid-cols-2 tw-gap-6">
+        <div className="tw-grid tw-grid-cols-1 lg:tw-grid-cols-2 tw-gap-6 tw-mt-8">
           {/* Profile / Basic Info (ซ้าย) */}
           <div className="tw-h-full">
             <Profile />

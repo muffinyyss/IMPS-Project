@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from dateutil.relativedelta import relativedelta
 import pathlib, secrets
 
+
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -48,10 +49,17 @@ users_collection = db["users"]
 station_collection = db["stations"]
 
 MDB_DB = client["MDB"]
+
 PMReportDB = client["PMReport"]
+
+PMUrlDB = client["PMReportURL"]
 
 
 MDB_collection = MDB_DB["Klongluang3"]
+
+def _validate_station_id(station_id: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
 
 def get_mdb_collection_for(station_id: str):
     # กันชื่อคอลเลกชันแปลก ๆ / injection: อนุญาต a-z A-Z 0-9 _ -
@@ -478,28 +486,6 @@ async def get_station_detail(station_id: str, current: UserClaims = Depends(get_
 
     return station
 
-# @app.get("/selected/station/{station_id}")
-# async def get_station_detail(station_id: str, current: UserClaims = Depends(get_current_user)):
-#     # (ถ้าจะเช็คสิทธิ์ด้วย เพิ่มเงื่อนไขนี้)
-#     # if current.role != "admin" and station_id not in set(current.station_ids):
-#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-
-#     station = station_collection.find_one({"station_id": station_id})
-#     if not station:
-#         raise HTTPException(status_code=404, detail="Station not found")
-
-#     # ✅ แปลงทุกชนิดพิเศษให้ serializable
-#     payload = jsonable_encoder(
-#         station,
-#         custom_encoder={
-#             ObjectId: str,
-#             Decimal128: lambda d: float(d.to_decimal()),
-#             datetime: lambda dt: dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
-#         }
-#     )
-#     return JSONResponse(content=payload)
-
-@app.get("/MDB")
 async def mdb_query(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
     """
     SSE แบบ query param:
@@ -734,181 +720,6 @@ async def stream_history(
 
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
-# def parse_interval(s: str) -> tuple[Literal["minute","hour"], int]:
-#     # รองรับ 1m,5m,10m,15m,30m,60m
-#     m = re.fullmatch(r"(\d+)([mh])", s.lower())
-#     if not m:
-#         return ("minute", 5)
-#     n, unit = int(m.group(1)), m.group(2)
-#     if unit == "m":
-#         return ("minute", max(1, n))
-#     else:
-#         return ("hour", max(1, n))
-# TZ_TH = ZoneInfo("Asia/Bangkok")
-# def day_bound_th(datestr: str, bound: str) -> datetime:
-#     """
-#     ให้ค่าเป็น UTC datetime (tzinfo=UTC)
-#     - ถ้า `datestr` เป็น 'YYYY-MM-DD'  → คืน 00:00:00+07:00 (bound='start') หรือ 23:59:59.999+07:00 (bound='end') แล้วแปลงเป็น UTC
-#     - ถ้า `datestr` มีเวลา/โซน (เช่น '2025-10-15T12:34:00', '...+07:00', '...Z') → ใช้ค่านั้น (ถ้าไม่มีโซนจะตีความเป็นเวลาไทย) แล้วแปลงเป็น UTC
-#     """
-#     datestr = datestr.strip()
-#     # เคสวันที่ล้วน → ใช้ขอบวันไทย
-#     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", datestr):
-#         if bound == "start":
-#             dt_th = datetime.fromisoformat(datestr + "T00:00:00").replace(tzinfo=TZ_TH)
-#         else:  # 'end'
-#             dt_th = datetime.fromisoformat(datestr + "T23:59:59.999").replace(tzinfo=TZ_TH)
-#         return dt_th.astimezone(timezone.utc)
-
-#     # มี 'Z' → UTC อยู่แล้ว
-#     if datestr.endswith("Z"):
-#         return datetime.fromisoformat(datestr.replace("Z", "+00:00")).astimezone(timezone.utc)
-
-#     # มี offset +HH:MM/-HH:MM → แปลงตามนั้น
-#     if re.search(r"[+\-]\d{2}:\d{2}$", datestr):
-#         return datetime.fromisoformat(datestr).astimezone(timezone.utc)
-
-#     # ไม่มีโซนแต่มีเวลา → ตีความเป็นเวลาไทยก่อน แล้วค่อยแปลงเป็น UTC
-#     return datetime.fromisoformat(datestr).replace(tzinfo=TZ_TH).astimezone(timezone.utc)
-  
-# @app.get("/MDB/history")
-# async def stream_history(
-#     request: Request,
-#     station_id: str = Query(...),
-#     start: str = Query(...),
-#     end: str = Query(...),
-#     interval: str = Query("5m"),  # 👈 เพิ่มพารามิเตอร์
-#     current: UserClaims = Depends(get_current_user),
-# ):
-#     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", start) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end):
-#         raise HTTPException(status_code=400, detail="start/end must be YYYY-MM-DD")
-#     if start > end:
-#         start, end = end, start    
-
-#     unit, bin_size = parse_interval(interval)  # ex. ("minute", 5)
-
-#     tz_th = ZoneInfo("Asia/Bangkok")
-#     # ใช้ day_bound_th(...) ตามที่แนะนำก่อนหน้า
-#     start_utc = day_bound_th(start, "start")
-#     end_utc   = day_bound_th(end, "end")
-
-#     coll = get_mdb_collection_for(station_id)
-
-#     def _parse_string(varname: str):
-#         return {
-#             "$cond": [
-#                 { "$regexMatch": { "input": f"$${varname}", "regex": r"(Z|[+\-]\d{2}:\d{2})$" } },
-#                 { "$toDate": f"$${varname}" },
-#                 { "$dateFromString": {
-#                     "dateString": f"$${varname}",
-#                     "timezone": "+07:00",
-#                     "onError": None,
-#                     "onNull": None
-#                 } }
-#             ]
-#         }
-
-#     base_pipeline = [
-#         {"$addFields": {
-#             "ts": {
-#                 "$let": { "vars": { "t": "$timestamp", "d": "$Datetime" }, "in":
-#                     { "$cond": [
-#                         { "$ne": ["$$t", None] },
-#                         { "$switch": {
-#                             "branches": [
-#                                 { "case": { "$eq": [ { "$type": "$$t" }, "date"   ] }, "then": "$$t" },
-#                                 { "case": { "$eq": [ { "$type": "$$t" }, "string" ] }, "then": _parse_string("t") },
-#                             ],
-#                             "default": None
-#                         }},
-#                         { "$switch": {
-#                             "branches": [
-#                                 { "case": { "$eq": [ { "$type": "$$d" }, "date"   ] }, "then": "$$d" },
-#                                 { "case": { "$eq": [ { "$type": "$$d" }, "string" ] }, "then": _parse_string("d") },
-#                             ],
-#                             "default": None
-#                         }}
-#                     ] }
-#                 }
-#             }
-#         }},
-#         {"$addFields": {
-#             "dayTH": { "$dateToString": { "date": "$ts", "format": "%Y-%m-%d", "timezone": "+07:00" } }
-#         }},
-#         {"$match": { "dayTH": { "$gte": start, "$lte": end } }},
-#         {"$match": {
-#             "$expr": { "$and": [
-#                 { "$gte": ["$ts", start_utc] },
-#                 { "$lte": ["$ts", end_utc] }
-#             ]}
-#         }},
-#         # 👇 จับ bucket 5 นาที (ตาม interval)
-#         {"$addFields": {
-#             "bucket": {
-#                 "$dateTrunc": {
-#                     "date": "$ts",
-#                     "unit": unit,          # "minute"
-#                     "binSize": bin_size,   # 5
-#                     "timezone": "+07:00"   # ผูกตามเวลาไทย
-#                 }
-#             }
-#         }},
-#         # 👇 สรุปค่าในแต่ละ bucket
-#         {"$group": {
-#             "_id": "$bucket",
-#             "VL1N": { "$avg": "$VL1N" },
-#             "VL2N": { "$avg": "$VL2N" },
-#             "VL3N": { "$avg": "$VL3N" },
-#             "I1":   { "$avg": "$I1" },
-#             "I2":   { "$avg": "$I2" },
-#             "I3":   { "$avg": "$I3" },
-#             "PL1N": { "$avg": "$PL1N" },
-#             "PL2N": { "$avg": "$PL2N" },
-#             "PL3N": { "$avg": "$PL3N" },
-#             # ถ้าต้องการ “จำนวนจุดใน bucket” ด้วย
-#             "count": { "$sum": 1 }
-#         }},
-#         {"$sort": { "_id": 1 }},
-#         {"$project": {
-#             "_id": 0,
-#             "timestamp": "$_id",  # เวลาต้นช่วง bucket (UTC)
-#             "VL1N": 1, "VL2N": 1, "VL3N": 1,
-#             "I1": 1, "I2": 1, "I3": 1,
-#             "PL1N": 1, "PL2N": 1, "PL3N": 1,
-#             "count": 1
-#         }}
-#     ]
-
-#     cursor = coll.aggregate(base_pipeline, allowDiskUse=True)
-
-#     headers = {
-#         "Content-Type": "text/event-stream",
-#         "Cache-Control": "no-cache",
-#         "Connection": "keep-alive",
-#         "X-Accel-Buffering": "no",
-#     }
-
-#     async def event_generator():
-#         try:
-#             # สถิติคร่าว ๆ
-#             cnt = await coll.aggregate(base_pipeline[:-2] + [{"$count": "n"}]).to_list(length=1)
-#             n = cnt[0]["n"] if cnt else 0
-#             yield "retry: 3000\n"
-#             yield f"event: stats\ndata: {json.dumps({'matched': n, 'interval': interval})}\n\n"
-
-#             async for doc in cursor:
-#                 if await request.is_disconnected():
-#                     break
-#                 doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
-#                 yield f"data: {json.dumps(doc, ensure_ascii=False)}\n\n"
-#                 await asyncio.sleep(0.001)
-
-#             yield ": keep-alive\n\n"
-#         except Exception as e:
-#             yield f"event: error\ndata: {str(e)}\n\n"
-
-#     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
-
 @app.get("/MDB/history/debug")
 async def mdb_history_debug(station_id: str, start: str, end: str):
     start_iso, end_iso = _coerce_date_range(start, end)
@@ -964,208 +775,6 @@ def parse_iso_dt(s: str) -> datetime:
         raise HTTPException(status_code=400, detail=f"Bad datetime: {s}")
 
 
-# @app.get("/MDB/history")
-# async def stream_history(
-#     station_id: str = Query(..., description="ID ของ turbine/station"),
-#     start: str = Query(..., description="วันที่เริ่มต้นในรูปแบบ ISO string"),
-#     end: str = Query(..., description="วันที่สิ้นสุดในรูปแบบ ISO string")
-# ):
-#     print(f"Querying station_id={station_id} from {start} to {end}")
-
-#     query = {
-#         # "station_id": station_id,
-#         "timestamp": {"$gte": start, "$lte": end}
-#     }
-
-#     projection = {
-#         "_id": 1,
-#         # "station_id": 1,
-#         "VL1N": 1,
-#         "VL2N": 1,
-#         "VL3N": 1,
-#         "I1": 1,
-#         "I2": 1,
-#         "I3": 1,
-#         "PL1N": 1,
-#         "PL2N": 1,
-#         "PL3N": 1,
-#         "timestamp": 1
-#     }
-
-#     cursor = MDB_collection.find(query, projection).sort("timestamp", 1)
-
-#     async def event_generator():
-#         try:
-#             async for doc in cursor:   # iterate ทีละ record จาก Mongo
-#                 doc["_id"] = str(doc["_id"])
-#                 # ส่งเป็น SSE format → ต้องขึ้นต้นด้วย "data:" และจบด้วย \n\n
-#                 yield f"data: {json.dumps(doc)}\n\n"
-#                 await asyncio.sleep(0.01)  # กัน browser ค้าง (ปรับตามจริง)
-#         except Exception as e:
-#             print("Error in SSE generator:", e)
-#             yield f"event: error\ndata: {str(e)}\n\n"
-
-#     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
-
-# @app.get("/MDB/history")
-# async def stream_history(
-#     station_id: str = Query(..., description="ID ของ turbine/station"),
-#     start: str = Query(..., description="วันที่เริ่มต้นในรูปแบบ ISO string"),
-#     end: str = Query(..., description="วันที่สิ้นสุดในรูปแบบ ISO string"),
-# ):
-#     print(f"Querying station_id={station_id} from {start} to {end}")
-
-#     # ดึงคอลเลกชันตาม station_id
-#     collection = MDB_DB[station_id]
-
-#     query = {
-#         "timestamp": {"$gte": start, "$lte": end}  # ถ้า timestamp เก็บเป็น string ISO
-#     }
-#     projection = {
-#         "_id": 1,
-#         "VL1N": 1, "VL2N": 1, "VL3N": 1,
-#         "I1": 1, "I2": 1, "I3": 1,
-#         "PL1N": 1, "PL2N": 1, "PL3N": 1,
-#         "timestamp": 1
-#     }
-
-#     cursor = collection.find(query, projection).sort("timestamp", 1)
-
-#     async def event_generator():
-#         try:
-#             async for doc in cursor:
-#                 doc["_id"] = str(doc["_id"])
-#                 yield f"data: {json.dumps(doc)}\n\n"
-#                 await asyncio.sleep(0.005)
-#         except Exception as e:
-#             print("Error in SSE generator:", e)
-#             yield f"event: error\ndata: {str(e)}\n\n"
-
-#     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
-
-# @app.get("/MDB/history")
-# async def stream_history(
-#     request: Request,
-#     station_id: str = Query(..., description="ID ของ turbine/station"),
-#     start: str = Query(..., description="วันที่เริ่มต้นในรูปแบบ ISO string"),
-#     end: str = Query(..., description="วันที่สิ้นสุดในรูปแบบ ISO string"),
-# ):
-#     print(f"Querying station_id={station_id} from {start} to {end}")
-
-#     # เลือกคอลเลกชันตาม station_id
-#     try:
-#         collection = MDB_DB[station_id]
-#     except Exception:
-#         raise HTTPException(status_code=400, detail="Invalid station_id collection")
-
-#     query = {
-#         "timestamp": {"$gte": start, "$lte": end}  # ใช้ได้ถ้าเก็บ ISO string สม่ำเสมอ
-#     }
-#     projection = {
-#         "_id": 1,
-#         "VL1N": 1, "VL2N": 1, "VL3N": 1,
-#         "I1": 1, "I2": 1, "I3": 1,
-#         "PL1N": 1, "PL2N": 1, "PL3N": 1,
-#         "timestamp": 1,
-#     }
-
-#     cursor = collection.find(query, projection).sort("timestamp", 1)
-
-#     async def event_generator():
-#         found = False
-#         try:
-#             async for doc in cursor:
-#                 # ถ้าคลายเอนต์ปิดไปแล้ว หยุดทันที
-#                 if await request.is_disconnected():
-#                     break
-#                 found = True
-#                 doc["_id"] = str(doc["_id"])
-#                 yield f"data: {json.dumps(doc, ensure_ascii=False)}\n\n"
-#                 # เว้นนิดหน่อยกันคอนซูมเมอร์ค้าง/บัฟเฟอร์
-#                 await asyncio.sleep(0.003)
-#             if not found:
-#                 yield "event: empty\ndata: no documents in range\n\n"
-#         except asyncio.CancelledError:
-#             # การเชื่อมต่อโดนยกเลิก เป็นเหตุการณ์ปกติของ SSE
-#             pass
-#         except Exception as e:
-#             print("Error in SSE generator:", e)
-#             yield f"event: error\ndata: {str(e)}\n\n"
-#         finally:
-#             # ปิดคอร์เซอร์ให้เรียบร้อย
-#             try:
-#                 await cursor.close()
-#             except Exception:
-#                 pass
-
-#     return StreamingResponse(
-#         event_generator(),
-#         media_type="text/event-stream; charset=utf-8",
-#         headers={
-#             "Cache-Control": "no-cache",
-#             "Connection": "keep-alive",
-#             # ถ้าอยู่หลัง Nginx/Traefik ให้ปิด proxy buffering เพื่อให้สตรีมได้ลื่น
-#             "X-Accel-Buffering": "no",
-#         },
-#     )
-
-
-
-    
-# @app.get("/MDB/history")
-# async def stream_history(
-#     request: Request,
-#     station_id: str = Query(..., description="ID ของ turbine/station"),
-#     start: str = Query(..., description="เริ่ม (YYYY-MM-DD หรือ ISO)"),
-#     end: str = Query(..., description="สิ้นสุด (YYYY-MM-DD หรือ ISO)"),
-# ):
-#     headers = {
-#         "Content-Type": "text/event-stream",
-#         "Cache-Control": "no-cache",
-#         "Connection": "keep-alive",
-#         "X-Accel-Buffering": "no",
-#     }
-
-#     start_iso, end_iso = _coerce_date_range(start, end)
-#     coll = get_mdb_collection_for(station_id)   # ⬅️ ใช้ coll ตามสถานี
-
-#     query = {"timestamp": {"$gte": start_iso, "$lte": end_iso}}
-#     projection = {
-#         "_id": 1, "station_id": 1, "timestamp": 1,
-#         "VL1N": 1, "VL2N": 1, "VL3N": 1,
-#         "I1": 1, "I2": 1, "I3": 1,
-#         "PL1N": 1, "PL2N": 1, "PL3N": 1,
-#     }
-
-#     cursor = coll.find(query, projection).sort("timestamp", 1)
-
-#     async def event_generator():
-#         try:
-#             yield "retry: 3000\n\n"
-#             sent_any = False
-#             # async for doc in cursor:
-#             #     doc["_id"] = str(doc["_id"])
-#             #     yield f"data: {json.dumps(doc)}\n\n"
-#             #     sent_any = True
-#             #     await asyncio.sleep(0.001)
-#             async for doc in cursor:
-#                 doc["_id"] = str(doc["_id"])
-#                 if "timestamp" in doc:
-#                     doc["timestamp"] = _ensure_utc_iso(doc["timestamp"])
-#                 yield f"data: {json.dumps(doc)}\n\n"
-#                 sent_any = True
-#                 await asyncio.sleep(0.001)
-#             if not sent_any:
-#                 yield ": keep-alive\n\n"
-#         except Exception as e:
-#             yield f"event: error\ndata: {str(e)}\n\n"
-
-#     return StreamingResponse(event_generator(), headers=headers)
-
 def _to_utc_dt(iso_str: str) -> datetime:
     # รับ ISO ที่อาจลงท้าย Z หรือไม่ก็ได้ แล้วบังคับเป็น aware UTC
     s = iso_str
@@ -1177,124 +786,6 @@ def _to_utc_dt(iso_str: str) -> datetime:
     else:
         dt = dt.astimezone(timezone.utc)
     return dt
-
-# @app.get("/MDB/history")
-# async def stream_history(
-#     request: Request,
-#     station_id: str = Query(..., description="ID ของ turbine/station"),
-#     start: str = Query(..., description="เริ่ม (YYYY-MM-DD หรือ ISO)"),
-#     end: str = Query(..., description="สิ้นสุด (YYYY-MM-DD หรือ ISO)"),
-# ):
-#     headers = {
-#         "Content-Type": "text/event-stream",
-#         "Cache-Control": "no-cache",
-#         "Connection": "keep-alive",
-#         "X-Accel-Buffering": "no",
-#     }
-
-#     start_iso, end_iso = _coerce_date_range(start, end)
-#     # แปลงเป็น datetime (UTC) ไว้ใช้ใน $expr
-#     start_dt = _to_utc_dt(start_iso)
-#     end_dt   = _to_utc_dt(end_iso)
-
-#     coll = get_mdb_collection_for(station_id)
-
-#     # แทนที่บล็อก query/cursor เดิมทั้งหมดด้วย pipeline นี้
-#     pipeline = [
-#         {   # ➜ ทำฟิลด์เวลา ts (Date) จาก timestamp/Datetime
-#             "$addFields": {
-#                 "ts": {
-#                     "$let": {
-#                         "vars": { "t": "$timestamp", "d": "$Datetime" },
-#                         "in": {
-#                             "$cond": [
-#                                 { "$ne": ["$$t", None] },
-#                                 {
-#                                     "$cond": [
-#                                         { "$eq": [ { "$type": "$$t" }, "string" ] },
-#                                         { "$dateFromString": { "dateString": "$$t", "timezone": "+07:00" } },
-#                                         "$$t"
-#                                     ]
-#                                 },
-#                                 {
-#                                     "$cond": [
-#                                         { "$ne": ["$$d", None] },
-#                                         {
-#                                             "$cond": [
-#                                                 { "$eq": [ { "$type": "$$d" }, "string" ] },
-#                                                 { "$dateFromString": { "dateString": "$$d", "timezone": "+07:00" } },
-#                                                 "$$d"
-#                                             ]
-#                                         },
-#                                         None
-#                                     ]
-#                                 }
-#                             ]
-#                         }
-#                     }
-#                 }
-#             }
-#         },
-#         {   # ➜ กรองช่วงเวลา “จาก ts” อย่างเดียว (ไม่ต้องมี station_id แล้ว)
-#             "$match": {
-#                 "$expr": {
-#                     "$and": [
-#                         { "$ne": ["$ts", None] },
-#                         { "$gte": ["$ts", start_dt] },
-#                         { "$lte": ["$ts", end_dt] }
-#                     ]
-#                 }
-#             }
-#         },
-#         { "$sort": { "ts": 1 } },
-#         {   # ➜ ส่งออก timestamp ที่ normalize แล้ว (UTC Date) เป็นฟิลด์เดียว
-#             "$project": {
-#                 "_id": 1,
-#                 "timestamp": "$ts",
-#                 "frequency": 1, "humidity": 1,
-#                 "VL1N": 1, "VL2N": 1, "VL3N": 1,
-#                 "VL1L2": 1, "VL2L3": 1, "VL1L3": 1,
-#                 "I1": 1, "I2": 1, "I3": 1, "I_total": 1,
-#                 "PL1N": 1, "PL2N": 1, "PL3N": 1, "PL123N": 1,
-#                 "EL1": 1, "EL2": 1, "EL3": 1, "EL123": 1,
-#                 "THDU_L1N": 1, "THDU_L2N": 1, "THDU_L3N": 1,
-#                 "THDI_L1": 1, "THDI_L2": 1, "THDI_L3": 1,
-#                 "pfL1": 1, "pfL2": 1, "pfL3": 1,
-#                 "tempc": 1, "RSSI": 1, "MCU_temp": 1,
-#                 "breaker_main": 1, "breaker_charger": 1
-#             }
-#         }
-#     ]
-
-#     cursor = coll.aggregate(pipeline, allowDiskUse=True)
-
-#     async def event_generator():
-#         try:
-#             # (แนะนำ) ส่งสถิติดูจำนวนที่แมตช์ก่อน
-#             count_docs = await coll.aggregate(pipeline + [{"$count": "n"}]).to_list(length=1)
-#             n = count_docs[0]["n"] if count_docs else 0
-#             yield f"event: stats\ndata: {{\"matched\": {n}}}\n\n"
-
-#             sent_any = False
-#             async for doc in cursor:
-#                 doc["_id"] = str(doc["_id"])
-
-#                 # ทำให้ timestamp เป็นสตริง ISO-UTC เสมอ
-#                 if "timestamp" in doc and doc["timestamp"] is not None:
-#                     doc["timestamp"] = _ensure_utc_iso(doc["timestamp"])
-
-#                 # ป้องกัน field อื่น ๆ ที่อาจเป็น datetime/ชนิดพิเศษ
-#                 yield f"data: {json.dumps(doc, ensure_ascii=False, default=str)}\n\n"
-
-#                 sent_any = True
-#                 await asyncio.sleep(0.001)
-
-#             if not sent_any:
-#                 yield ": keep-alive\n\n"
-#         except Exception as e:
-#             yield f"event: error\ndata: {str(e)}\n\n"
-
-#     return StreamingResponse(event_generator(), headers=headers)
 
 def to_float(x, default=0.0):
     try:
@@ -1947,58 +1438,7 @@ def get_pmreport_collection_for(station_id: str):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return PMReportDB.get_collection(str(station_id))
 
-# async def _pmreport_latest_core(station_id: str, current: UserClaims):
-#     if current.role != "admin" and station_id not in set(current.station_ids):
-#         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
-#     coll = get_pmreport_collection_for(station_id)
-#     pipeline = [
-#         {"$addFields": {
-#             "_ts": {
-#                 "$ifNull": [
-#                     {
-#                         "$cond": [
-#                             {"$eq": [{"$type": "$timestamp"}, "string"]},
-#                             {"$dateFromString": {
-#                                 "dateString": "$timestamp",
-#                                 "timezone": "UTC",
-#                                 "onError": None,
-#                                 "onNull": None
-#                             }},
-#                             "$timestamp"
-#                         ]
-#                     },
-#                     {"$toDate": "$_id"}
-#                 ]
-#             }
-#         }},
-#         {"$sort": {"_ts": -1, "_id": -1}},
-#         {"$limit": 1},
-#         {"$project": {"_id": 1, "pi_firmware": 1, "plc_firmware": 1, "rt_firmware": 1, "pm_date": 1, "timestamp": 1}}
-#     ]
-#     cursor = coll.aggregate(pipeline)
-#     docs = await cursor.to_list(length=1)
-#     if not docs:
-#         raise HTTPException(status_code=404, detail="PMReport not found")
-
-#     doc = docs[0]
-
-#     ts_raw = doc.get("timestamp")
-#     ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
-#              else (ts_raw if isinstance(ts_raw, datetime) else None))
-#     ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
-#     ts_th  = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
-
-#     return {
-#         "_id": str(doc["_id"]),
-#         "pi_firmware": doc.get("pi_firmware"),
-#         "plc_firmware": doc.get("plc_firmware"),
-#         "rt_firmware": doc.get("rt_firmware"),
-#         "pm_date": doc.get("pm_date"),
-#         "timestamp": ts_raw,      # raw ใน DB
-#         "timestamp_utc": ts_utc,  # แปลงแล้ว
-#         "timestamp_th": ts_th,    # แปลงแล้ว
-#     }
 
 def _compute_next_pm_date_str(pm_date_str: str | None) -> str | None:
     if not pm_date_str:
@@ -2032,63 +1472,6 @@ def _pick_latest_from_pm_reports(pm_reports: list[dict] | None):
         key=lambda r: (_to_dt(r) or datetime.min.replace(tzinfo=ZoneInfo("UTC")))
     )
     return pm_reports_sorted[-1] if pm_reports_sorted else None
-
-
-# async def _pmreport_latest_core(station_id: str, current: UserClaims):
-#     # --- auth เดิม ---
-#     if current.role != "admin" and station_id not in set(current.station_ids):
-#         raise HTTPException(status_code=403, detail="Forbidden station_id")
-#     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
-#         raise HTTPException(status_code=400, detail="Bad station_id")
-
-#     # --- ดึงจากคอลเลกชัน stations ---
-#     # ลองหาโดย station_id (ถ้าของคุณบางเคสเก็บ _id เป็น station_id ก็เสริม OR ได้)
-#     st = station_collection.find_one(
-#         {"station_id": station_id},
-#         {
-#             "_id": 1,
-#             # top-level firmwares ที่มีในสคีมาของคุณ
-#             "PIFirmware": 1,
-#             "PLCFirmware": 1,
-#             "RTFirmware": 1,
-#             # "pm_date": 1,
-#             "timestamp": 1,     # ถ้ามี
-#             "updatedAt": 1,     # fallback เวลา
-#             # ถ้าคุณเก็บประวัติ PM เป็น array
-#             "pm_reports": 1,    # [{ pi_firmware, plc_firmware, rt_firmware, pm_date, timestamp }, ...]
-#         }
-#     )
-#     if not st:
-#         raise HTTPException(status_code=404, detail="Station not found")
-
-#     latest = _pick_latest_from_pm_reports(st.get("pm_reports"))
-#     src = latest or st
-
-#     # map ค่า firmware: รองรับทั้งชื่อฟิลด์แบบ pm_report (snake) และ stations (Camel/Pascal)
-#     pi_fw  = src.get("pi_firmware")  or src.get("PIFirmware")
-#     plc_fw = src.get("plc_firmware") or src.get("PLCFirmware")
-#     rt_fw  = src.get("rt_firmware")  or src.get("RTFirmware")
-#     # pm_date = src.get("pm_date")
-
-#     # เวลา: ใช้ของ src ก่อน ถ้าไม่มีค่อย fallback ไปที่ doc สถานี
-#     ts_raw = src.get("timestamp") or st.get("timestamp") or st.get("updatedAt")
-
-#     ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
-#              else (ts_raw if isinstance(ts_raw, datetime) else None))
-#     ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
-#     ts_th  = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
-
-#     return {
-#         "_id": str(st["_id"]),
-#         "pi_firmware": pi_fw,
-#         "plc_firmware": plc_fw,
-#         "rt_firmware": rt_fw,
-#         # "pm_date": pm_date,
-#         "timestamp": ts_raw,      # raw จาก stations/pm_reports
-#         "timestamp_utc": ts_utc,  # แปลงแล้ว
-#         "timestamp_th": ts_th,    # แปลงแล้ว
-#         "source": "stations.pm_reports" if latest else "stations",  # เผื่อ debug
-#     }
 
 async def _pmreport_latest_core(station_id: str, current: UserClaims):
     # --- auth & validate ---
@@ -2209,55 +1592,6 @@ class PMRowPF(BaseModel):
     pf: Optional[Literal["PASS","FAIL","NA",""]] = ""
     remark: Optional[str] = ""
 
-# class PMSubmitIn(BaseModel):
-#     station_id: str
-#     job: Dict[str, Any] = Field(default_factory=dict)       # {chargerNo, sn, model, station_name, date, inspector}
-#     rows: Dict[str, PMRowPF] = Field(default_factory=dict)  # { r1:{pf,remark}, ... }
-#     measures: PMMeasures = PMMeasures()
-#     summary: str = ""
-#     photos: List[str] = Field(default_factory=list)         # เผื่อแนบ url/fileId ในอนาคต
-
-def get_pmreport_collection_for(station_id: str):
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
-        raise HTTPException(status_code=400, detail="Bad station_id")
-    return PMReportDB.get_collection(str(station_id))
-
-# @app.post("/pmreport/submit")
-# async def pmreport_submit(body: PMSubmitIn):  # ใส่ Depends(get_current_user) ถ้าจะบังคับ auth
-#     station_id = body.station_id.strip()
-#     if not station_id:
-#         raise HTTPException(status_code=400, detail="station_id is required")
-
-#     coll = get_pmreport_collection_for(station_id)
-
-#     # สร้างดัชนีไว้สำหรับดึงล่าสุด/ลิสต์
-#     try:
-#         await coll.create_index([("createdAt", -1)])
-#         await coll.create_index([("job.date", -1)])
-#     except Exception:
-#         pass
-
-#     # pm_date ใช้จาก job.date (รูปแบบ yyyy-mm-dd) ถ้าไม่ได้ส่งมา จะใส่วันที่ไทยวันนี้
-#     pm_date = (body.job or {}).get("date")
-#     if not pm_date:
-#         pm_date = datetime.now(th_tz).date().isoformat()
-
-#     doc = {
-#         "station_id": station_id,
-#         "job": body.job,
-#         "rows": jsonable_encoder(body.rows),
-#         "measures": jsonable_encoder(body.measures),
-#         "summary": body.summary,
-#         "photos": body.photos,
-#         "pm_date": pm_date,
-#         "timestamp": datetime.now(timezone.utc),  # ไว้ใช้ sort ล่าสุด
-#         "createdAt": datetime.now(timezone.utc),
-#         "updatedAt": datetime.now(timezone.utc),
-#     }
-
-#     res = await coll.insert_one(doc)
-#     return {"ok": True, "id": str(res.inserted_id), "pm_date": pm_date}
-
 class PMSubmitIn(BaseModel):
     station_id: str
     job: dict
@@ -2288,6 +1622,31 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
     report_id = str(res.inserted_id)
     return {"ok": True, "report_id": report_id}
 
+# @app.get("/pmreport/list")
+# async def pmreport_list(
+#     station_id: str = Query(...),
+#     page: int = Query(1, ge=1),
+#     pageSize: int = Query(20, ge=1, le=100),
+# ):
+#     coll = get_pmreport_collection_for(station_id)
+#     skip = (page - 1) * pageSize
+
+#     cursor = coll.find({}, {"_id": 1, "pm_date": 1, "createdAt": 1}).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+#     items_raw = await cursor.to_list(length=pageSize)
+#     total = await coll.count_documents({})
+
+#     items = [{
+#         "id": str(it["_id"]),
+#         "pm_date": it.get("pm_date"),
+#         "createdAt": _ensure_utc_iso(it.get("createdAt")),
+#         "file_url": "",  # เผื่ออนาคตมีลิงก์ไฟล์ PDF
+#     } for it in items_raw]
+
+#     # เผื่อฟรอนต์อยากได้ array วันที่แบบเดิม
+#     pm_date = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+
+#     return {"items": items, "pm_date": pm_date, "page": page, "pageSize": pageSize, "total": total}
+
 @app.get("/pmreport/list")
 async def pmreport_list(
     station_id: str = Query(...),
@@ -2297,21 +1656,36 @@ async def pmreport_list(
     coll = get_pmreport_collection_for(station_id)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "pm_date": 1, "createdAt": 1}).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+    cursor = coll.find({}, {"_id": 1, "pm_date": 1, "createdAt": 1}).sort(
+        [("createdAt", -1), ("_id", -1)]
+    ).skip(skip).limit(pageSize)
     items_raw = await cursor.to_list(length=pageSize)
     total = await coll.count_documents({})
+
+    # --- ดึงไฟล์จาก PMReportURL โดย map ด้วย pm_date (string) ---
+    pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+    urls_coll = get_pmurl_coll_upload(station_id)
+    url_by_day: dict[str, str] = {}
+
+    if pm_dates:
+        ucur = urls_coll.find({"pm_date": {"$in": pm_dates}}, {"pm_date": 1, "urls": 1})
+        url_docs = await ucur.to_list(length=10_000)
+        for u in url_docs:
+            day = u.get("pm_date")
+            first_url = (u.get("urls") or [None])[0]
+            if day and first_url and day not in url_by_day:
+                url_by_day[day] = first_url
 
     items = [{
         "id": str(it["_id"]),
         "pm_date": it.get("pm_date"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
-        "file_url": "",  # เผื่ออนาคตมีลิงก์ไฟล์ PDF
+        "file_url": url_by_day.get(it.get("pm_date") or "", ""),
     } for it in items_raw]
 
-    # เผื่อฟรอนต์อยากได้ array วันที่แบบเดิม
-    pm_date = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+    pm_date_arr = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+    return {"items": items, "pm_date": pm_date_arr, "page": page, "pageSize": pageSize, "total": total}
 
-    return {"items": items, "pm_date": pm_date, "page": page, "pageSize": pageSize, "total": total}
 
 # ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
 UPLOADS_ROOT = os.getenv("UPLOADS_ROOT", "./uploads")
@@ -2419,6 +1793,221 @@ async def pmreport_finalize(
         raise HTTPException(status_code=404, detail="Report not found")
     return {"ok": True}
 
+def parse_report_date_to_utc(s: str) -> datetime:
+    # 'YYYY-MM-DD' => ตีความเป็นต้นวันเวลาไทย แล้วแปลงเป็น UTC
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
+        tz_th = ZoneInfo("Asia/Bangkok")
+        dt_th = datetime.fromisoformat(s + "T00:00:00").replace(tzinfo=tz_th)
+        return dt_th.astimezone(timezone.utc)
+    # ISO ที่ลงท้าย Z หรือมีออฟเซ็ต
+    if s.endswith("Z"):
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
+    if re.search(r"[+\-]\d{2}:\d{2}$", s):
+        return datetime.fromisoformat(s).astimezone(timezone.utc)
+    # ไม่มีโซน → ถือเป็นเวลาไทย
+    return datetime.fromisoformat(s + "+07:00").astimezone(timezone.utc)
+
+def get_pmurl_coll_upload(station_id: str):
+    _validate_station_id(station_id)
+    coll = PMUrlDB.get_collection(str(station_id))
+    # # เก็บวันที่แบบ Date จริงไว้ query ช่วงวันที่
+    # try:
+    #     coll.create_index([("reportDate", 1)])
+    #     coll.create_index([("createdAt", -1), ("_id", -1)])
+    # except Exception:
+    #     pass
+    return coll
+
+# @app.post("/pmurl/upload", status_code=201)
+# async def pmurl_upload(
+#     station_id: str = Form(...),
+#     rows: List[str] = Form(...),  # แถวละ JSON string: {"reportDate":"YYYY-MM-DD","urls":[...],"meta":{...}}
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+#     coll = get_pmurl_coll_upload(station_id)
+#     now = datetime.now(timezone.utc)
+#     docs = []
+#     for r in rows:
+#         o = json.loads(r)
+#         docs.append({
+#             "station": station_id,
+#             "reportDate": parse_report_date_to_utc(o["reportDate"]),
+#             "urls": o.get("urls", []),
+#             "meta": o.get("meta", {}),
+#             "source": "upload",
+#             "createdAt": now,
+#             "updatedAt": now,
+#         })
+#     if not docs:
+#         raise HTTPException(status_code=400, detail="rows is empty")
+#     res = await coll.insert_many(docs, ordered=False)
+#     return {"ok": True, "inserted": len(res.inserted_ids)}
+
+# --- เพิ่มให้รองรับ PDF ---
+ALLOWED_EXTS = {"jpg","jpeg","png","webp","gif","pdf"}  # <<-- เพิ่ม pdf
+MAX_FILE_MB = 20  # เผื่อไฟล์ใหญ่ขึ้น
+
+def _safe_name(name: str) -> str:
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+    return base[:120] or secrets.token_hex(4)
+
+def normalize_pm_date(s: str) -> str:
+    """
+    รับได้ทั้ง:
+      - 'YYYY-MM-DD'           -> คืนเดิม
+      - ISO (มี Z/offset หรือไม่มี) -> ตีความเป็นเวลาไทย แล้วคืน date().isoformat()
+    คืนค่าเป็น 'YYYY-MM-DD' (ไม่เก็บเวลา)
+    """
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
+        return s
+    # มีโซนเวลา
+    if s.endswith("Z") or re.search(r"[+\-]\d{2}:\d{2}$", s):
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    else:
+        # ไม่มีโซนเวลา -> ถือเป็นเวลาไทย
+        dt = datetime.fromisoformat(s).replace(tzinfo=th_tz)
+    return dt.astimezone(th_tz).date().isoformat()
+
+@app.post("/pmurl/upload-files", status_code=201)
+async def pmurl_upload_files(
+    station_id: str = Form(...),
+    reportDate: str = Form(...),                 # "YYYY-MM-DD" หรือ ISO
+    files: list[UploadFile] = File(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    # auth
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    # ตรวจ/เตรียมคอลเลกชัน
+    coll = get_pmurl_coll_upload(station_id)
+
+    # parse วันที่เป็น UTC datetime (มีฟังก์ชันอยู่แล้ว)
+    pm_date = normalize_pm_date(reportDate)
+
+    # โฟลเดอร์ปลายทาง: /uploads/pmurl/<station_id>/<YYYY-MM-DD>/
+    # subdir = report_dt_utc.astimezone(th_tz).date().isoformat()
+    subdir = pm_date
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "pmurl" / station_id / subdir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    urls = []
+    metas = []
+    total_size = 0
+
+    for f in files:
+        ext = (f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else "")
+        if ext not in ALLOWED_EXTS or ext != "pdf":
+            raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
+
+        data = await f.read()
+        total_size += len(data)
+        if len(data) > MAX_FILE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+        safe = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
+        dest = dest_dir / safe
+        with open(dest, "wb") as out:
+            out.write(data)
+
+        url = f"/uploads/pmurl/{station_id}/{subdir}/{safe}"   # ← จะเสิร์ฟได้จาก StaticFiles ที่ mount ไว้แล้ว
+        urls.append(url)
+        metas.append({"name": f.filename, "size": len(data)})
+
+    now = datetime.now(timezone.utc)
+    doc = {
+        "station": station_id,
+        "pm_date": pm_date,   
+        "urls": urls,
+        "meta": {"files": metas},
+        "source": "upload-files",
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    res = await coll.insert_one(doc)
+
+    return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls}
+
+@app.get("/pmurl/list")
+async def pmurl_list(
+    station_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+):
+    """
+    ดึงรายการไฟล์ PM (PDF) ที่อัปโหลดไว้ต่อสถานี จาก PMUrlDB/<station_id>
+    - รองรับทั้งเอกสารที่เก็บ pm_date (string 'YYYY-MM-DD') และ reportDate (Date/ISO)
+    - เรียงจากใหม่ไปเก่า (createdAt desc, _id desc)
+    - รูปแบบผลลัพธ์ให้เหมือน /pmreport/list (มี file_url สำหรับลิงก์ตัวแรก)
+    """
+    coll = get_pmurl_coll_upload(station_id)
+    skip = (page - 1) * pageSize
+
+    # ดึงเฉพาะฟิลด์ที่จำเป็น
+    cursor = coll.find(
+        {},
+        {"_id": 1, "pm_date": 1, "reportDate": 1, "urls": 1, "createdAt": 1}
+    ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+
+    items_raw = await cursor.to_list(length=pageSize)
+    total = await coll.count_documents({})
+
+    def _pm_date_from(doc: dict) -> str | None:
+        """
+        แปลงวันที่ในเอกสารให้ได้ string 'YYYY-MM-DD'
+        - ถ้ามี pm_date (string) → คืนค่านั้น
+        - ถ้ามี reportDate (datetime/string) → แปลงเป็นวันไทย แล้ว .date().isoformat()
+        """
+        # รุ่นใหม่: เก็บเป็น pm_date (string)
+        s = doc.get("pm_date")
+        if isinstance(s, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
+            return s
+
+        # รุ่นเก่า: เก็บเป็น reportDate (Date/ISO)
+        rd = doc.get("reportDate")
+        if isinstance(rd, datetime):
+            return rd.astimezone(th_tz).date().isoformat()
+        if isinstance(rd, str):
+            try:
+                dt = datetime.fromisoformat(rd.replace("Z", "+00:00"))
+            except Exception:
+                # เผื่อไม่มีโซนเวลา → ถือเป็นเวลาไทย
+                try:
+                    dt = datetime.fromisoformat(rd).replace(tzinfo=th_tz)
+                except Exception:
+                    return None
+            return dt.astimezone(th_tz).date().isoformat()
+
+        return None
+
+    items = []
+    pm_date_arr = []
+
+    for it in items_raw:
+        pm_date_str = _pm_date_from(it)
+        if pm_date_str:
+            pm_date_arr.append(pm_date_str)
+
+        urls = it.get("urls") or []
+        first_url = urls[0] if urls else ""
+
+        items.append({
+            "id": str(it["_id"]),
+            "pm_date": pm_date_str,                         # 'YYYY-MM-DD' | None
+            "createdAt": _ensure_utc_iso(it.get("createdAt")),
+            "file_url": first_url,                          # ไฟล์แรก (ไว้ให้ปุ่มดาวน์โหลด)
+            "urls": urls,                                   # เผื่อฟรอนต์อยากแสดงทั้งหมด
+        })
+
+    return {
+        "items": items,
+        "pm_date": [d for d in pm_date_arr if d],          # ให้เหมือน /pmreport/list
+        "page": page,
+        "pageSize": pageSize,
+        "total": total,
+    }
 
 @app.get("/utilization/stream")
 async def utilization_stream(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
