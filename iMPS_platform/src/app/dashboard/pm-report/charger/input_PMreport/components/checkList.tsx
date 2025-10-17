@@ -892,6 +892,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         onChange={(e) => setJob({ ...job, sn: e.target.value })}
                         crossOrigin=""
                         className="!tw-bg-blue-gray-50"
+                        readOnly
                     />
                     <Input
                         label="Model / รุ่น"
@@ -899,6 +900,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         onChange={(e) => setJob({ ...job, model: e.target.value })}
                         crossOrigin=""
                         className="!tw-bg-blue-gray-50"
+                        readOnly
                     />
                     <Input
                         label="Location / สถานที่"
@@ -906,6 +908,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         onChange={(e) => setJob({ ...job, station_name: e.target.value })}
                         crossOrigin=""
                         className="!tw-bg-blue-gray-50"
+                        readOnly
                     />
                     <Input
                         label="วันที่ตรวจ"

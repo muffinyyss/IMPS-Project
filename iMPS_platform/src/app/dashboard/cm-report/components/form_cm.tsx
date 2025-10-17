@@ -208,7 +208,7 @@ export default function CMForm() {
                         </div>
 
                         {/* ปุ่มด้านขวาใน HEADER */}
-                        <div className="tw-flex tw-items-start tw-gap-2 tw-print:tw-hidden">
+                        {/* <div className="tw-flex tw-items-start tw-gap-2 tw-print:tw-hidden">
                             <Button
                                 type="button"
                                 variant="text"
@@ -226,7 +226,7 @@ export default function CMForm() {
                             >
                                 พิมพ์เอกสาร
                             </Button>
-                        </div>
+                        </div> */}
                     </div>
 
                     {/* BODY */}
@@ -241,8 +241,9 @@ export default function CMForm() {
                                     value={job.issue_id}
                                     onChange={(e) => setJob({ ...job, issue_id: e.target.value })}
                                     crossOrigin=""
-                                    className="!tw-w-full"
                                     containerProps={{ className: "!tw-min-w-0" }}
+                                    readOnly
+                                    className="!tw-w-full !tw-bg-blue-gray-50"
                                 />
                             </div>
 
@@ -254,7 +255,8 @@ export default function CMForm() {
                                     value={job.location}
                                     onChange={(e) => setJob({ ...job, location: e.target.value })}
                                     crossOrigin=""
-                                    className="!tw-w-full"
+                                    readOnly
+                                    className="!tw-w-full !tw-bg-blue-gray-50"
                                     containerProps={{ className: "!tw-min-w-0" }}
                                 />
                             </div>
@@ -416,7 +418,7 @@ export default function CMForm() {
                                     className="!tw-w-full"
                                     containerProps={{ className: "!tw-min-w-0" }}
                                 />
-                                
+
                                 {/* สถานะงาน */}
                                 <div>
                                     <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-2">
