@@ -222,60 +222,6 @@ function MetricBadge({
 /* =========================
    DeviceCard
    ========================= */
-// function DeviceCard({ d }: { d: Device }) {
-//     const t = tone[d.status];
-//     const valueStr = String(d.value ?? "-").trim();
-
-//     return (
-//         <div className="tw-group tw-relative tw-rounded-2xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-overflow-hidden">
-//             {/* แถบสีซ้าย */}
-//             <div className={`tw-absolute tw-left-0 tw-top-0 tw-h-full tw-w-1.5 ${t.bar}`} />
-
-//             {/* รูป | เนื้อหา */}
-//             <div className="tw-grid tw-grid-cols-[88px_1fr] tw-gap-4 tw-p-4 tw-pl-5">
-//                 {/* รูป */}
-//                 <div className="tw-relative tw-h-20 tw-w-20 tw-rounded-xl tw-border tw-border-gray-200 tw-bg-gray-50 tw-overflow-hidden tw-grid tw-place-items-center">
-//                     {d.imageUrl ? (
-//                         <Image src={d.imageUrl} alt={d.name} fill sizes="96px" className="tw-object-contain tw-p-2" />
-//                     ) : (
-//                         <PhotoIcon className="tw-h-9 tw-w-9 tw-text-gray-300" />
-//                     )}
-//                 </div>
-
-//                 {/* ขวา: ชื่อ (บน) + ค่า(ล่าง) + สถานะใต้ค่า */}
-//                 <div className="tw-min-w-0">
-//                     <p
-//                         className="tw-font-semibold tw-text-[15.5px] tw-text-gray-900 tw-leading-snug
-//                        tw-whitespace-normal tw-break-words tw-text-right tw-line-clamp-2"
-//                         title={d.name}
-//                     >
-//                         {d.name}
-//                     </p>
-
-//                     <div className="tw-mt-2 tw-grid tw-grid-cols-[1fr_auto] tw-items-end tw-gap-3">
-//                         <div />
-//                         <div className="tw-text-right tw-flex tw-flex-col tw-items-end tw-gap-1">
-//                             {/* ขนาดคงที่: เล็กลงทุกค่า */}
-//                             <div
-//                                 className={`tw-font-extrabold ${t.text} tw-leading-none
-//                                     tw-text-[20px] md:tw-text-[22px]
-//                                     tw-max-w-[180px] md:tw-max-w-[220px]
-//                                     tw-whitespace-nowrap tw-truncate tw-tabular-nums tw-mb-2`}
-//                                 title={valueStr}
-//                             >
-//                                 {valueStr}
-//                             </div>
-//                             <StatusBadge status={d.status} />
-//                         </div>
-//                     </div>
-//                 </div>
-//             </div>
-
-//             <div className={`tw-absolute tw-inset-0 tw-opacity-0 group-hover:tw-opacity-10 ${t.bgSoft} tw-transition-opacity`} />
-//         </div>
-//     );
-// }
-
 function DeviceCard({ d }: { d: Device }) {
     const t = tone[d.status];
     const valueStr = String(d.value ?? "-").trim();
@@ -420,11 +366,11 @@ function SideList({
                     <li
                         key={d.id}
                         className="
-        tw-grid tw-grid-cols-[56px_1fr] md:tw-grid-cols-[64px_1fr]
-        tw-items-center tw-gap-3 md:tw-gap-4
-        tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-p-3.5
-        hover:tw-shadow-sm tw-transition-shadow
-      "
+                            tw-grid tw-grid-cols-[56px_1fr] md:tw-grid-cols-[64px_1fr]
+                            tw-items-center tw-gap-3 md:tw-gap-4
+                            tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-p-3.5
+                            hover:tw-shadow-sm tw-transition-shadow
+                        "
                     >
                         {/* รูป */}
                         <div className="tw-h-14 tw-w-14 md:tw-h-16 md:tw-w-16 tw-rounded-xl tw-bg-gray-50 tw-border tw-border-gray-200 tw-grid tw-place-items-center tw-overflow-hidden">
