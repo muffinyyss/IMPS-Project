@@ -638,16 +638,31 @@ async def get_stations(q: str = "", current: UserClaims = Depends(get_current_us
     return [{"station_name": s["station_name"], "station_id": s["station_id"]} for s in stations]
 
 
+# @app.get("/selected/station/{station_id}")
+# async def get_station_detail(station_id: str, current: UserClaims = Depends(get_current_user)):
+#     station = station_collection.find_one({"station_id": station_id})
+#     if not station:
+#         raise HTTPException(status_code=404, detail="Station not found")
+
+#     # ✅ แปลง _id เป็น string
+#     station["_id"] = str(station["_id"])
+
+#     return station
+
 @app.get("/selected/station/{station_id}")
 async def get_station_detail(station_id: str, current: UserClaims = Depends(get_current_user)):
     station = station_collection.find_one({"station_id": station_id})
     if not station:
         raise HTTPException(status_code=404, detail="Station not found")
 
-    # ✅ แปลง _id เป็น string
-    station["_id"] = str(station["_id"])
-
-    return station
+    # แปลงทุกอย่างให้ JSON ได้
+    return jsonable_encoder(
+        station,
+        custom_encoder={
+            ObjectId: str,
+            datetime: lambda v: v.isoformat()
+        }
+    )
 
 async def mdb_query(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
     """
@@ -1282,6 +1297,28 @@ class addStations(BaseModel):
     owner: Optional[str] = None
     is_active:Optional[bool] = None
 
+# class StationOut(BaseModel):
+#     id: str
+#     station_id:str
+#     station_name:str
+#     brand:str
+#     model:str
+#     SN:str
+#     WO:str 
+#     PLCFirmware:str 
+#     PIFirmware:str 
+#     RTFirmware:str 
+#     chargeBoxID:str
+#     user_id: str 
+#     username: Optional[str] = None
+#     is_active:  Optional[bool] = None
+#     createdAt: Optional[datetime] = None
+
+#     class Config:
+#         json_encoders = {
+#             datetime: lambda v: v.astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
+#         }
+
 class StationOut(BaseModel):
     id: str
     station_id:str
@@ -1297,8 +1334,8 @@ class StationOut(BaseModel):
     user_id: str 
     username: Optional[str] = None
     is_active:  Optional[bool] = None
+    images: Optional[dict] = None   # ⬅️ เพิ่มบรรทัดนี้
     createdAt: Optional[datetime] = None
-
     class Config:
         json_encoders = {
             datetime: lambda v: v.astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
@@ -1352,6 +1389,21 @@ def insert_stations(
     is_active = True if body.is_active is None else bool(body.is_active)
 
     # 4) สร้างเอกสาร (เก็บเป็น UTC และเก็บ user_id เป็น ObjectId เหมือนใน PATCH)
+    # doc: Dict[str, Any] = {
+    #     "station_id": station_id,
+    #     "station_name": station_name,
+    #     "brand": brand,
+    #     "model": model,
+    #     "SN": SN,
+    #     "WO": WO,
+    #     "PLCFirmware": PLCFirmware,
+    #     "PIFirmware": PIFirmware,
+    #     "RTFirmware": RTFirmware,
+    #     "chargeBoxID": chargeBoxID,
+    #     "user_id": owner_oid,                 # ObjectId ใน DB
+    #     "is_active": is_active,
+    #     "createdAt": datetime.now(timezone.utc),
+    # }
     doc: Dict[str, Any] = {
         "station_id": station_id,
         "station_name": station_name,
@@ -1363,8 +1415,9 @@ def insert_stations(
         "PIFirmware": PIFirmware,
         "RTFirmware": RTFirmware,
         "chargeBoxID": chargeBoxID,
-        "user_id": owner_oid,                 # ObjectId ใน DB
+        "user_id": owner_oid,
         "is_active": is_active,
+        "images": {},      
         "createdAt": datetime.now(timezone.utc),
     }
 
@@ -1379,6 +1432,24 @@ def insert_stations(
     owner_username = owner_doc.get("username") if owner_doc else None
 
     # 7) ส่งกลับรูปแบบเดียวกับ PATCH: user_id เป็น string, แถม username
+    # return {
+    #     "id": str(res.inserted_id),
+    #     "station_id": doc["station_id"],
+    #     "station_name": doc["station_name"],
+    #     "brand": doc["brand"],
+    #     "model": doc["model"],
+    #     "SN": doc["SN"],
+    #     "WO": doc["WO"],
+    #     "PLCFirmware": doc["PLCFirmware"],
+    #     "PIFirmware": doc["PIFirmware"],
+    #     "RTFirmware": doc["RTFirmware"],
+    #     "chargeBoxID": doc["chargeBoxID"],
+    #     "user_id": str(doc["user_id"]),       # string สำหรับ client
+    #     "username": owner_username,           # ส่งกลับให้ table โชว์ได้เลย
+    #     "is_active": doc["is_active"],
+    #     "createdAt": doc["createdAt"],
+    #     # "updatedAt": None,  # จะใส่ก็ได้ถ้าอยากให้ schemaเหมือน PATCH เป๊ะ
+    # }
     return {
         "id": str(res.inserted_id),
         "station_id": doc["station_id"],
@@ -1391,12 +1462,14 @@ def insert_stations(
         "PIFirmware": doc["PIFirmware"],
         "RTFirmware": doc["RTFirmware"],
         "chargeBoxID": doc["chargeBoxID"],
-        "user_id": str(doc["user_id"]),       # string สำหรับ client
-        "username": owner_username,           # ส่งกลับให้ table โชว์ได้เลย
+        "user_id": str(doc["user_id"]),
+        "username": owner_username,
         "is_active": doc["is_active"],
+        "images": doc.get("images", {}),        # ⬅️ เพิ่ม
         "createdAt": doc["createdAt"],
-        # "updatedAt": None,  # จะใส่ก็ได้ถ้าอยากให้ schemaเหมือน PATCH เป๊ะ
+        
     }
+
 
 
 @app.delete("/delete_stations/{id}", status_code=204)
@@ -1423,11 +1496,12 @@ class StationUpdate(BaseModel):
     RTFirmware: Optional[str] = None
     chargeBoxID: Optional[str] = None
     # status: Optional[bool] = None
+    images: Optional[dict] = None
     is_active: Optional[bool] = None
     user_id: str | None = None 
 
 
-ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "PLCFirmware", "PIFirmware", "RTFirmware", "chargeBoxID", "status","is_active", "user_id"}
+ALLOW_FIELDS_ADMIN = {"station_id", "station_name", "brand", "model", "SN", "WO", "PLCFirmware", "PIFirmware", "RTFirmware", "chargeBoxID", "status","is_active", "user_id","images"}
 # ALLOW_FIELDS_NONADMIN = {"status"}
 
 def to_object_id_or_400(s: str) -> ObjectId:
@@ -1436,6 +1510,44 @@ def to_object_id_or_400(s: str) -> ObjectId:
     except Exception:
         raise HTTPException(status_code=400, detail="invalid user_id")
 
+# ===== Helpers สำหรับรูปสถานี =====
+STATION_IMG_ALLOWED = {"image/jpeg", "image/png", "image/webp"}
+STATION_IMG_MAX_BYTES = 3 * 1024 * 1024  # 3 MB
+
+def _ensure_dir(p: pathlib.Path):
+    p.mkdir(parents=True, exist_ok=True)
+
+async def save_station_image(station_id: str, kind: str, up: UploadFile) -> str:
+    """
+    เซฟไฟล์ลงโฟลเดอร์ /uploads/stations/<station_id>/
+    คืนค่า URL ที่ฝั่ง Frontend ใช้แสดงได้เลย (/uploads/...)
+    """
+    if up.content_type not in STATION_IMG_ALLOWED:
+        raise HTTPException(status_code=415, detail=f"Unsupported file type: {up.content_type}")
+
+    data = await up.read()
+    if len(data) > STATION_IMG_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (> 3MB)")
+
+    # ปลายทาง
+    subdir = pathlib.Path(UPLOADS_ROOT) / "stations" / station_id
+    _ensure_dir(subdir)
+
+    # ชื่อไฟล์: kind-uuid.ext
+    ext = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }.get(up.content_type, "")
+    fname = f"{kind}-{uuid.uuid4().hex}{ext}"
+    dest  = subdir / fname
+
+    with open(dest, "wb") as f:
+        f.write(data)
+
+    # URL สำหรับเอาไปแสดง
+    url = f"/uploads/stations/{station_id}/{fname}"
+    return url
 
 @app.patch("/update_stations/{id}", response_model=StationOut)
 def update_station(
@@ -1530,8 +1642,48 @@ def update_station(
         "user_id": str(doc["user_id"]) if doc.get("user_id") else "",
         "username": doc.get("username"),
         "is_active": bool(doc.get("is_active", False)),
+        "images": doc.get("images", {}),       # ✅ ใส่ภาพกลับไปด้วย
         "updatedAt": datetime.now(timezone.utc)
     }
+
+@app.post("/stations/{station_id}/upload-images")
+async def upload_station_images(
+    station_id: str,
+    station: Optional[UploadFile] = File(None),
+    mdb: Optional[UploadFile]     = File(None),
+    charger: Optional[UploadFile] = File(None),
+    device: Optional[UploadFile]  = File(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    # หาเอกสารสถานี
+    doc = station_collection.find_one({"station_id": station_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="station not found")
+
+    # เช็คสิทธิ์: admin ผ่าน / owner เท่านั้น
+    owner_str = str(doc.get("user_id")) if doc.get("user_id") else None
+    if current.role != "admin" and current.user_id != owner_str:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    updated: dict[str, str] = {}
+    for kind, up in {"station": station, "mdb": mdb, "charger": charger, "device": device}.items():
+        if up is None:
+            continue
+        url = await save_station_image(station_id, kind, up)
+        updated[kind] = url
+
+    if not updated:
+        return {"updated": False, "images": doc.get("images", {})}
+
+    images = doc.get("images", {})
+    images.update(updated)
+
+    station_collection.update_one(
+        {"_id": doc["_id"]},
+        {"$set": {"images": images, "updatedAt": datetime.now(timezone.utc)}}
+    )
+
+    return {"updated": True, "images": images}
 
 @app.get("/owners")
 async def get_owners():

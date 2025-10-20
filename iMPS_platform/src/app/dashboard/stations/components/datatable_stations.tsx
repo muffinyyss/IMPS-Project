@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -60,6 +60,7 @@ type stationRow = {
   brand?: string;
   user_id?: string;
   username?: string;
+  images?: Record<string, string>;
 };
 
 export type StationUpdatePayload = {
@@ -107,6 +108,8 @@ type UsernamesResp = { username: string[] };
 type Owner = { user_id: string; username: string };
 type OwnersResp = { owners: Owner[] };
 
+type ImageKind = "station" | "mdb" | "charger" | "device";
+
 export function SearchDataTables() {
   const [me, setMe] = useState<{ user_id: string; username: string; role: string; } | null>(null);
   const [usernames, setUsernames] = useState<string[]>([]);
@@ -129,6 +132,65 @@ export function SearchDataTables() {
   const [statusStr, setStatusStr] = useState("false");
   const [activeStr, setActiveStr] = useState("false");
 
+  const [editForm, setEditForm] = useState({
+    station_name: "",
+    brand: "",
+    model: "",
+    SN: "",
+    WO: "",
+    PLCFirmware: "",
+    PIFirmware: "",
+    RTFirmware: "",
+    chargeBoxID: "",
+    is_active: true,
+  });
+
+  // sync เมื่อเปิด modal edit
+  useEffect(() => {
+    if (openEdit && editingRow) {
+      setEditForm({
+        station_name: editingRow.station_name ?? "",
+        brand: editingRow.brand ?? "",
+        model: editingRow.model ?? "",
+        SN: editingRow.SN ?? "",
+        WO: editingRow.WO ?? "",
+        PLCFirmware: editingRow.PLCFirmware ?? "",
+        PIFirmware: editingRow.PIFirmware ?? "",
+        RTFirmware: editingRow.RTFirmware ?? "",
+        chargeBoxID: editingRow.chargeBoxID ?? "",
+        is_active: !!editingRow.is_active,
+      });
+    }
+  }, [openEdit, editingRow]);
+  // รูป 4 ช่อง + พรีวิว + ref สำหรับ clear
+  const [editImages, setEditImages] = useState<Record<ImageKind, File | null>>({
+    station: null, mdb: null, charger: null, device: null,
+  });
+  const [editPreviews, setEditPreviews] = useState<Record<ImageKind, string>>({
+    station: "", mdb: "", charger: "", device: "",
+  });
+  const fileInputRefs = useRef<Record<ImageKind, HTMLInputElement | null>>({
+    station: null, mdb: null, charger: null, device: null,
+  });
+
+  const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+  const pickEditFile = (kind: ImageKind): React.ChangeEventHandler<HTMLInputElement> => (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { alert("กรุณาเลือกรูปภาพเท่านั้น"); return; }
+    if (f.size > MAX_IMAGE_BYTES) { alert("ไฟล์รูปใหญ่เกินไป (จำกัด 3MB)"); return; }
+    if (editPreviews[kind]) URL.revokeObjectURL(editPreviews[kind]);
+    setEditImages((s) => ({ ...s, [kind]: f }));
+    setEditPreviews((s) => ({ ...s, [kind]: URL.createObjectURL(f) }));
+  };
+  function clearEditFile(kind: ImageKind) {
+    if (editPreviews[kind]) URL.revokeObjectURL(editPreviews[kind]);
+    setEditImages((s) => ({ ...s, [kind]: null }));
+    setEditPreviews((s) => ({ ...s, [kind]: "" }));
+    const el = fileInputRefs.current[kind];
+    if (el) el.value = "";
+  }
+
   useEffect(() => {
     (async () => {
       if (me?.role !== "admin") return;
@@ -150,7 +212,7 @@ export function SearchDataTables() {
       const token =
         localStorage.getItem("access_token") ||
         localStorage.getItem("accessToken") || "";
-      const res = await fetch(`${API_BASE}/username`, {
+      const res = await apiFetch(`${API_BASE}/username`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
@@ -226,7 +288,8 @@ export function SearchDataTables() {
           model: s.model ?? "-",
           brand: s.brand ?? "-",
           user_id: s.user_id ?? "",
-          username: s.username ?? ""
+          username: s.username ?? "",
+          images: s.images ?? {},
         }));
         const ids = baseRows.map(r => r.station_id!).filter(Boolean);
         const statusMap = await fetchStatuses(ids, token);
@@ -362,7 +425,8 @@ export function SearchDataTables() {
           chargeBoxID: created.chargeBoxID,
           user_id: created.user_id,
           username: createdUsername,
-          is_active: created.is_active
+          is_active: created.is_active,
+          images: created.images ?? {},
         },
         ...prev,
       ]);
@@ -551,6 +615,49 @@ export function SearchDataTables() {
 
   const roLabel = !isAdmin ? { className: "!tw-text-blue-gray-400" } : {};
 
+  // function ImagesCell({ images }: { images?: Record<string, string> }) {
+  //   const entries = Object.entries(images ?? {});
+  //   if (!entries.length) return <span className="tw-text-blue-gray-300">-</span>;
+  //   return (
+  //     <div className="tw-flex tw-gap-1.5 tw-flex-wrap tw-items-center">
+  //       {entries.map(([k, url]) => (
+  //         <a key={k} href={`${API_BASE}${url}`} target="_blank" rel="noreferrer"
+  //           title={k}
+  //           className="tw-border tw-border-blue-gray-100 tw-rounded tw-overflow-hidden tw-w-10 tw-h-10 tw-bg-white hover:tw-shadow-sm">
+  //           <img src={`${API_BASE}${url}`} alt={k} className="tw-w-full tw-h-full tw-object-cover" loading="lazy" />
+  //         </a>
+  //       ))}
+  //     </div>
+  //   );
+  // }
+
+  function ImagesCell({ images }: { images?: Record<string, string> }) {
+    const entries = Object.entries(images ?? {});
+    if (!entries.length) return <span className="tw-text-blue-gray-300">-</span>;
+    return (
+      <div className="tw-max-w-[240px] tw-overflow-x-auto tw-overflow-y-hidden tw-py-0.5">
+        <div className="tw-flex tw-gap-1.5 tw-items-center tw-min-w-max">
+          {entries.map(([k, url]) => (
+            <a
+              key={k}
+              href={`${API_BASE}${url}`}
+              target="_blank"
+              rel="noreferrer"
+              title={k}
+              className="tw-border tw-border-blue-gray-100 tw-rounded tw-overflow-hidden tw-w-10 tw-h-10 tw-bg-white hover:tw-shadow-sm"
+            >
+              <img
+                src={`${API_BASE}${url}`}
+                alt={k}
+                className="tw-w-full tw-h-full tw-object-cover"
+                loading="lazy"
+              />
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   const columns: any[] = useMemo(() => [
     {
@@ -570,7 +677,14 @@ export function SearchDataTables() {
         );
       },
     },
-
+    {
+      id: "images",
+      header: () => "images",
+      enableSorting: false,
+      cell: ({ row }: { row: Row<stationRow> }) => (
+        <ImagesCell images={(row.original as any).images} />
+      ),
+    },
     {
       accessorFn: (row: stationRow) => row.station_id ?? "-",
       id: "station_id",
@@ -696,6 +810,7 @@ export function SearchDataTables() {
   // กำหนดความกว้างพื้นฐานของแต่ละคอลัมน์ (ปรับเลขได้ตามใจ)
   const COL_W: Record<string, string> = {
     no: "tw-w-[56px]",            // เลขลำดับ
+    images: "tw-w-[250px]",
     station_id: "tw-w-[140px]",
     username: "tw-w-[120px]",
     station_name: "tw-w-[260px]", // ชื่อสถานีมักยาว => ให้กว้างหน่อย
@@ -714,6 +829,7 @@ export function SearchDataTables() {
 
   const COL_W_MD: Record<string, string> = {
     no: "md:tw-w-[56px]",
+    images: "md:tw-w-[250px]",
     station_id: "md:tw-w-[140px]",
     username: "md:tw-w-[120px]",
     station_name: "md:tw-w-[260px]",
@@ -732,6 +848,7 @@ export function SearchDataTables() {
 
   const COL_W_LG: Record<string, string> = {
     no: "lg:tw-w-[56px]",
+    images: "lg:tw-w-[250px]",
     station_id: "lg:tw-w-[140px]",
     username: "lg:tw-w-[120px]",
     station_name: "lg:tw-w-[260px]",
@@ -747,6 +864,39 @@ export function SearchDataTables() {
     is_active: "lg:tw-w-[120px] lg:tw-whitespace-nowrap",
     actions: "lg:tw-w-[96px] tw-whitespace-nowrap",
   };
+
+  async function onSubmitImages(
+    stationId: string,
+    files: { station?: File | null; mdb?: File | null; charger?: File | null; device?: File | null }
+  ) {
+    const fd = new FormData();
+    if (files.station) fd.append("station", files.station);
+    if (files.mdb) fd.append("mdb", files.mdb);
+    if (files.charger) fd.append("charger", files.charger);
+    if (files.device) fd.append("device", files.device);
+
+    if (Array.from(fd.keys()).length === 0) return; // ไม่มีไฟล์ ไม่ต้องยิง
+
+    const token =
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("accessToken") || "";
+
+    await apiFetch(`${API_BASE}/stations/${encodeURIComponent(stationId)}/upload-images`, {
+      method: "POST",
+      // headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: fd,                 // อย่าตั้ง Content-Type เอง ปล่อยให้ browser ใส่ boundary
+      credentials: "include", // ถ้า auth ด้วย cookie ให้ใช้บรรทัดนี้แทน header
+    });
+
+    // ดึง station เดียวมาอัปเดต images ในตาราง (ใช้ endpoint ที่มี images เช่น /selected/station/{station_id})
+    const r = await apiFetch(`${API_BASE}/selected/station/${encodeURIComponent(stationId)}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (r.ok) {
+      const station = await r.json();
+      setData(prev => prev.map(x => x.station_id === stationId ? { ...x, images: station.images ?? {} } : x));
+    }
+  }
 
 
 
@@ -963,240 +1113,195 @@ export function SearchDataTables() {
         open={openAdd}
         onClose={() => setOpenAdd(false)}
         onSubmit={handleCreateStation}
+        onSubmitImages={onSubmitImages}
         loading={saving}
         currentUser={me?.username ?? ""}
         isAdmin={isAdmin}
         allOwners={usernames}
       />
 
-      <Dialog open={openEdit} handler={() => setOpenEdit(false)} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
-        <DialogHeader className="tw-flex tw-items-center tw-justify-between">
-          <Typography variant="h5" color="blue-gray">Edit Station</Typography>
-          <Button variant="text" onClick={() => setOpenEdit(false)}>✕</Button>
+      <Dialog
+        open={openEdit}
+        handler={() => setOpenEdit(false)}
+        size="md"
+        dismiss={{ outsidePress: !saving, escapeKey: !saving }}
+        className="tw-flex tw-flex-col tw-max-h-[90vh] tw-overflow-hidden tw-px-0 tw-py-0"
+      >
+        <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-white tw-px-6 tw-py-4 tw-border-b">
+          <div className="tw-flex tw-items-center tw-justify-between">
+            <Typography variant="h5" color="blue-gray">Edit Station</Typography>
+            <Button variant="text" onClick={() => setOpenEdit(false)}>✕</Button>
+          </div>
         </DialogHeader>
 
-        {/* <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (!editingRow?.id) return;
-
-            // map ชื่อฟิลด์ UI → API (SN/WO → sn/wo)
-            const formEl = e.currentTarget as HTMLFormElement;
-            const formData = new FormData(formEl);
-
-            const payload: StationUpdatePayload = {
-              station_name: String(formData.get("station_name") || "").trim(),
-              brand: String(formData.get("brand") || "").trim(),
-              model: String(formData.get("model") || "").trim(),
-              SN: String(formData.get("SN") || "").trim(),
-              WO: String(formData.get("WO") || "").trim(),
-              status: statusStr === "true",
-              // ถ้าจะให้แก้ station_id ด้วย ให้ใส่: station_id: String(formData.get("station_id")||"").trim(),
-            };
-
-            await handleUpdateStation(editingRow.id, payload);
-          }}
-        > */}
         <form
           onSubmit={async (e) => {
             e.preventDefault();
             if (!editingRow?.id) return;
 
-            // const basePayload: StationUpdatePayload = {
-            //   status: statusStr === "true",
-            // };
-
-            const basePayload: StationUpdatePayload = {
-              is_active: activeStr === "true",
+            const payload: StationUpdatePayload = {
+              station_name: editForm.station_name.trim(),
+              brand: editForm.brand.trim(),
+              model: editForm.model.trim(),
+              SN: editForm.SN.trim(),
+              WO: editForm.WO.trim(),
+              PLCFirmware: editForm.PLCFirmware.trim(),
+              PIFirmware: editForm.PIFirmware.trim(),
+              RTFirmware: editForm.RTFirmware.trim(),
+              chargeBoxID: editForm.chargeBoxID.trim(),
+              is_active: !!editForm.is_active,
+              ...(isAdmin ? { user_id: selectedOwnerId || undefined } : {}),
             };
 
-            const adminFields: StationUpdatePayload = {
-              station_name: (e.currentTarget as HTMLFormElement).station_name?.value?.trim(),
-              brand: (e.currentTarget as HTMLFormElement).brand?.value?.trim(),
-              model: (e.currentTarget as HTMLFormElement).model?.value?.trim(),
-              SN: (e.currentTarget as HTMLFormElement).SN?.value?.trim(),
-              WO: (e.currentTarget as HTMLFormElement).WO?.value?.trim(),
-              PLCFirmware: (e.currentTarget as HTMLFormElement).PLCFirmware?.value?.trim(),
-              PIFirmware: (e.currentTarget as HTMLFormElement).PIFirmware?.value?.trim(),
-              RTFirmware: (e.currentTarget as HTMLFormElement).RTFirmware?.value?.trim(),
-              chargeBoxID: (e.currentTarget as HTMLFormElement).chargeBoxID?.value?.trim(),
-            };
+            await handleUpdateStation(editingRow.id, payload);
 
-            // ✅ ส่ง user_id ถ้าเป็น admin และเลือกไว้
-            // const payload = isAdmin
-            //   ? { ...adminFields, ...basePayload, user_id: selectedOwnerId || undefined }
-            //   : basePayload;
+            // ถ้ามีเลือกไฟล์รูป ใส่เข้า endpoint upload แล้วรีเฟรช images แถวนี้
+            if (editingRow.station_id && (editImages.station || editImages.mdb || editImages.charger || editImages.device)) {
+              await onSubmitImages(editingRow.station_id, {
+                station: editImages.station,
+                mdb: editImages.mdb,
+                charger: editImages.charger,
+                device: editImages.device,
+              });
+              // เคลียร์ไฟล์หลังอัปโหลด
+              (["station", "mdb", "charger", "device"] as ImageKind[]).forEach(clearEditFile);
+            }
 
-            // await handleUpdateStation(editingRow.id!, payload);
-
-            // ✅ ส่ง user_id ถ้าเป็น admin และเลือกไว้
-            const payload = isAdmin
-              ? { ...adminFields, ...basePayload, user_id: selectedOwnerId || undefined }
-              : basePayload;
-
-            await handleUpdateStation(editingRow.id!, payload);
+            setOpenEdit(false);
           }}
+          className="tw-flex tw-flex-col tw-min-h-0"
         >
-          <DialogBody className="tw-space-y-6 tw-px-6 tw-py-4">
+          <DialogBody className="tw-flex-1 tw-min-h-0 tw-overflow-y-auto tw-space-y-6 tw-px-6 tw-py-4">
             <div className="tw-flex tw-flex-col tw-gap-4">
-
               <Input
                 name="station_id"
                 label="Station ID"
                 value={editingRow?.station_id ?? ""}
                 readOnly
-                className="!tw-bg-gray-100 !tw-text-blue-gray-500 tw-cursor-not-allowed focus:tw-ring-0 focus:tw-border-blue-gray-200"
+                className="!tw-bg-gray-100 !tw-text-blue-gray-500 tw-cursor-not-allowed"
                 labelProps={{ className: "!tw-text-blue-gray-400" }}
               />
 
-              <Input
-                name="station_name"
-                label="Station Name"
-                required={isAdmin}
-                defaultValue={editingRow?.station_name ?? ""}
-                readOnly={!isAdmin}
-                className={roClass}
-                labelProps={roLabel}
-              />
+              <Input label="Station Name" required value={editForm.station_name}
+                onChange={(e) => setEditForm(s => ({ ...s, station_name: e.target.value }))} crossOrigin={undefined} />
+              <Input label="Brand" required value={editForm.brand}
+                onChange={(e) => setEditForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
+              <Input label="Model" required value={editForm.model}
+                onChange={(e) => setEditForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
+              <Input label="Serial Number (S/N)" required value={editForm.SN}
+                onChange={(e) => setEditForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
+              <Input label="Work Order (WO)" required value={editForm.WO}
+                onChange={(e) => setEditForm(s => ({ ...s, WO: e.target.value }))} crossOrigin={undefined} />
+              <Input label="PLC Firmware" required value={editForm.PLCFirmware}
+                onChange={(e) => setEditForm(s => ({ ...s, PLCFirmware: e.target.value }))} crossOrigin={undefined} />
+              <Input label="Raspberry pi Firmware" required value={editForm.PIFirmware}
+                onChange={(e) => setEditForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
+              <Input label="Router Firmware" required value={editForm.RTFirmware}
+                onChange={(e) => setEditForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
+              <Input label="Charger Box ID" required value={editForm.chargeBoxID}
+                onChange={(e) => setEditForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
 
-              <Input
-                name="brand"
-                label="Brand"
-                required={isAdmin}
-                defaultValue={editingRow?.brand ?? ""}
-                readOnly={!isAdmin}
-                className={roClass}
-                labelProps={roLabel}
-              />
-              <Input
-                name="model"
-                label="Model"
-                required={isAdmin}
-                defaultValue={editingRow?.model ?? ""}
-                readOnly={!isAdmin}
-                className={roClass}
-                labelProps={roLabel}
-              />
-              <Input
-                name="SN"
-                label="S/N"
-                required={isAdmin}
-                defaultValue={editingRow?.SN ?? ""}
-                readOnly={!isAdmin}
-                className={roClass}
-                labelProps={roLabel}
-              />
-              <Input
-                name="WO"
-                label="WO"
-                required={isAdmin}
-                defaultValue={editingRow?.WO ?? ""}
-                readOnly={!isAdmin}
-                className={roClass}
-                labelProps={roLabel}
-              />
-              <Input
-                name="PLCFirmware"
-                label="PLC Firmware"
-                required={isAdmin}
-                defaultValue={editingRow?.PLCFirmware ?? ""}
-                readOnly={!isAdmin}
-                className={roClass}
-                labelProps={roLabel}
-              />
-              <Input
-                name="PIFirmware"
-                label="Raspberry pi Firmware"
-                required={isAdmin}
-                defaultValue={editingRow?.PIFirmware ?? ""}
-                readOnly={!isAdmin}
-                className={roClass}
-                labelProps={roLabel}
-              />
-              <Input
-                name="RTFirmware"
-                label="Router Firmware"
-                required={isAdmin}
-                defaultValue={editingRow?.RTFirmware ?? ""}
-                readOnly={!isAdmin}
-                className={roClass}
-                labelProps={roLabel}
-              />
-              <Input
-                name="chargeBoxID"
-                label="Charge Box ID"
-                required={isAdmin}
-                defaultValue={editingRow?.chargeBoxID ?? ""}
-                readOnly={!isAdmin}
-                className={roClass}
-                labelProps={roLabel}
-              />
+              {/* Owner */}
               {isAdmin ? (
                 <Select
-                  name="ownerSelect"
-                  label="Owner (username)"
-                  value={selectedOwnerId}                               // ✅ เก็บเป็น user_id
-                  onChange={(v) => {
-                    const uid = v ?? "";
-                    setSelectedOwnerId(uid);
-                    const u = owners.find(o => o.user_id === uid);
-                    setEditingRow(prev => prev ? { ...prev, username: u?.username ?? "" } : prev); // เพื่อให้แสดงชื่อในฟอร์มได้
-                  }}
+                  label="Owner"
+                  value={selectedOwnerId}
+                  onChange={(v) => setSelectedOwnerId(v ?? "")}
                   labelProps={{
                     className: "after:content-['*'] after:tw-ml-0.5 after:tw-text-red-500"
                   }}
                 >
                   {owners.map(o => (
-                    <Option key={o.user_id} value={o.user_id}>
-                      {o.username}
-                    </Option>
+                    <Option key={o.user_id} value={o.user_id}>{o.username}</Option>
                   ))}
                 </Select>
               ) : (
                 <Input
-                  name="username"
-                  label="Owner (username)"
+                  label="Owner"
                   value={editingRow?.username ?? "-"}
                   readOnly
-                  className="!tw-bg-gray-100 !tw-text-blue-gray-500 tw-cursor-not-allowed focus:tw-ring-0 focus:tw-border-blue-gray-200"
+                  className="!tw-bg-gray-100 !tw-text-blue-gray-500 tw-cursor-not-allowed"
                   labelProps={{ className: "!tw-text-blue-gray-400" }}
+                  crossOrigin={undefined}
                 />
               )}
 
-              {/* status: ทุก role แก้ได้ */}
-
-              {/* <Select label="status" value={statusStr} onChange={(v) => setStatusStr(v ?? "true")}>
-                <Option value="true">On</Option>
-                <Option value="false">Off</Option>
-              </Select> */}
-
-              {/* <Input
-                name="status"
-                label="Status"
-                value={
-                  editingRow?.status === true
-                    ? "online"
-                    : editingRow?.status === false
-                      ? "offline"
-                      : "-"
-                }
-                readOnly
-                className="!tw-bg-gray-100 !tw-text-blue-gray-500 tw-cursor-not-allowed focus:tw-ring-0 focus:tw-border-blue-gray-200"
-                labelProps={{ className: "!tw-text-blue-gray-400" }}
-              /> */}
-
-              <Select label="Is_active" value={activeStr} onChange={(v) => setActiveStr(v ?? "true")}>
-                <Option value="true">active</Option>
-                <Option value="false">inactive</Option>
+              {/* is_active */}
+              <Select
+                label="Is_active"
+                value={String(editForm.is_active)}
+                onChange={(v) => setEditForm(s => ({ ...s, is_active: v === "true" }))}
+              >
+                <Option value="true">Active</Option>
+                <Option value="false">Inactive</Option>
               </Select>
+
+              {/* ภาพเดิม (preview) */}
+              <div className="tw-space-y-2">
+                <Typography variant="small" className="!tw-text-blue-gray-600">Current Images</Typography>
+                <div className="tw-flex tw-gap-2 tw-flex-wrap">
+                  {Object.entries(editingRow?.images ?? {}).length ? (
+                    Object.entries(editingRow!.images!).map(([k, url]) => (
+                      <div key={k} className="tw-flex tw-flex-col tw-items-center tw-gap-1">
+                        <a
+                          href={`${API_BASE}${url}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="tw-border tw-border-blue-gray-100 tw-rounded tw-overflow-hidden tw-w-20 tw-h-20"
+                          title={k}
+                        >
+                          <img src={`${API_BASE}${url}`} alt={k} className="tw-w-full tw-h-full tw-object-cover" />
+                        </a>
+                        <span className="tw-text-xs tw-text-blue-gray-500">{k}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="tw-text-blue-gray-300">ไม่มีรูป</span>
+                  )}
+                </div>
+              </div>
+
+              {/* อัปโหลดรูปใหม่ 4 ช่อง + พรีวิว */}
+              <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-4">
+                {(["station", "mdb", "charger", "device"] as ImageKind[]).map(kind => (
+                  <div key={kind} className="tw-space-y-2">
+                    <Typography variant="small" className="!tw-text-blue-gray-600">
+                      {kind.toUpperCase()} Image
+                    </Typography>
+                    <div className="tw-flex tw-items-center tw-gap-3">
+                      <input
+                        ref={(el) => (fileInputRefs.current[kind] = el)}
+                        type="file"
+                        accept="image/*"
+                        onChange={pickEditFile(kind)}
+                        className="tw-block tw-w-full tw-text-sm file:tw-mr-3 file:tw-px-3 file:tw-py-2 file:tw-rounded-lg file:tw-border file:tw-border-blue-gray-100 file:tw-bg-white file:hover:tw-bg-gray-50"
+                      />
+                      {editImages[kind] && (
+                        <Button variant="text" onClick={() => clearEditFile(kind)} className="tw-text-red-600">
+                          ล้างรูป
+                        </Button>
+                      )}
+                    </div>
+                    {editPreviews[kind] && (
+                      <img
+                        src={editPreviews[kind]}
+                        alt={kind}
+                        className="tw-h-28 tw-w-28 tw-object-cover tw-rounded-lg tw-border tw-border-blue-gray-100"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </DialogBody>
 
-          <DialogFooter className="tw-gap-2">
-            <Button variant="outlined" type="button" onClick={() => setOpenEdit(false)}>Cancel</Button>
-            <Button type="submit" className="tw-bg-blue-600" disabled={saving}>
-              {saving ? "Saving..." : "Save Changes"}
-            </Button>
+          <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-6 tw-py-3 tw-border-t">
+            <div className="tw-flex tw-w-full tw-justify-end tw-gap-2">
+              <Button variant="outlined" type="button" onClick={() => setOpenEdit(false)}>Cancel</Button>
+              <Button type="submit" className="tw-bg-blue-600" disabled={saving}>
+                {saving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </Dialog>
