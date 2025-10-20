@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Severity = "" | "Low" | "Medium" | "High" | "Critical";
 type Status = "" | "Open" | "In Progress" | "Closed";
+
+
 
 type CorrectiveItem = {
     text: string;
@@ -71,10 +73,26 @@ const INITIAL_JOB: Job = {
     remarks: "",
 };
 
+type StationPublic = {
+    station_id: string;
+    station_name: string;
+    SN?: string;
+    WO?: string;
+    chargeBoxID?: string;
+    model?: string;
+    status?: boolean;
+};
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
 export default function CMForm() {
     const router = useRouter();
+    const searchParams = useSearchParams();                  // 👈
+    const stationId = searchParams.get("station_id");
     const [job, setJob] = useState<Job>({ ...INITIAL_JOB });
     const [summary, setSummary] = useState<string>("");
+    const [saving, setSaving] = useState(false);
+
 
     // เดิม header อิง label/type; ตอนนี้คงไว้เป็นค่าคงที่กลาง
     const headerLabel = useMemo(() => "CM Report", []);
@@ -84,11 +102,144 @@ export default function CMForm() {
         alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
     };
 
-    const onFinalSave = () => {
-        console.log({ job, summary });
-        alert("บันทึกเรียบร้อย (เดโม่) – ดูข้อมูลใน console");
-        // ถ้าหน้าแม่อยากสลับกลับ list ให้ฟังอีเวนต์นี้ (ไม่ต้องส่ง prop)
-        window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true } }));
+    // const onFinalSave = () => {
+    //     console.log({ job, summary });
+    //     alert("บันทึกเรียบร้อย (เดโม่) – ดูข้อมูลใน console");
+    //     // ถ้าหน้าแม่อยากสลับกลับ list ให้ฟังอีเวนต์นี้ (ไม่ต้องส่ง prop)
+    //     window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true } }));
+    // };
+
+    // const onFinalSave = async () => {
+    //     try {
+    //         if (!stationId) {
+    //             alert("ไม่พบ station_id ใน URL");
+    //             return;
+    //         }
+    //         const payload = {
+    //             station_id: stationId,
+    //             cm_date: (job.found_date || "").slice(0, 10),  // หรือปล่อยให้ backend derive จาก found_date ก็ได้
+    //             summary,
+    //             job: {
+    //                 ...job,
+    //                 // เก็บชื่อไฟล์ไว้เฉยๆ รูปจริงไปอัปโหลดที่ /cmreport/{report_id}/photos
+    //                 corrective_actions: job.corrective_actions.map(c => ({
+    //                     text: c.text,
+    //                     images: c.images.map(img => ({ name: img.file?.name ?? "" }))
+    //                 })),
+    //             },
+    //         };
+
+    //         const res = await fetch(`${API_BASE}/cmreport/submit`, {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json" },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+    //         const { report_id } = await res.json();
+
+    //         alert("บันทึกเรียบร้อย");
+    //         // ถ้าต้องอัปโหลดรูป: สร้าง FormData แล้ว POST ไป /cmreport/{report_id}/photos
+    //         // เสร็จแล้วค่อย finalize: POST /cmreport/{report_id}/finalize
+    //         window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true, report_id } }));
+    //     } catch (e: any) {
+    //         console.error(e);
+    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+    //     }
+    // };
+    // const onFinalSave = async () => {
+    //     try {
+    //         if (!stationId) {
+    //             alert("ไม่พบ station_id ใน URL");
+    //             return;
+    //         }
+    //         const payload = {
+    //             station_id: stationId,
+    //             cm_date: (job.found_date || "").slice(0, 10),
+    //             summary,
+    //             job: {
+    //                 ...job,
+    //                 corrective_actions: job.corrective_actions.map(c => ({
+    //                     text: c.text,
+    //                     images: c.images.map(img => ({ name: img.file?.name ?? "" }))
+    //                 })),
+    //             },
+    //         };
+
+    //         const res = await fetch(`${API_BASE}/cmreport/submit`, {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json" },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+    //         const { report_id } = await res.json();
+
+    //         // แจ้งหน้าแม่ (ถ้าใครฟังอีเวนต์อยู่)
+    //         window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true, report_id } }));
+
+    //         // ➜ ออกจากฟอร์มไปหน้ารายการ (แนบ station_id เพื่อให้ list โหลดข้อมูลถูกสถานี)
+    //         const listUrl = stationId ? `${LIST_ROUTE}?station_id=${encodeURIComponent(stationId)}` : LIST_ROUTE;
+    //         router.replace(listUrl);
+    //     } catch (e: any) {
+    //         console.error(e);
+    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+    //     }
+    // };
+
+    const onFinalSave = async () => {
+        try {
+            if (!stationId) {
+                alert("ไม่พบ station_id ใน URL");
+                return;
+            }
+            setSaving(true);
+
+            // 1) สร้างรายงานหลัก
+            const payload = {
+                station_id: stationId,
+                cm_date: (job.found_date || "").slice(0, 10),
+                summary,
+                job: {
+                    ...job,
+                    // ฝั่งหลักเก็บแค่ชื่อไฟล์ (optional) แต่รูปจริงไปอัปโหลดในขั้นตอนถัดไป
+                    corrective_actions: job.corrective_actions.map((c) => ({
+                        text: c.text,
+                        images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
+                    })),
+                },
+            };
+
+            const res = await fetch(`${API_BASE}/cmreport/submit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+            const { report_id } = await res.json();
+
+            // 2) อัปโหลดรูปตาม group (g1,g2,...) จาก Corrective Action
+            await uploadPhotosForReport(report_id);
+
+            // 3) (ถ้าต้องการ) finalize รายงาน
+            // await fetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/finalize`, {
+            //   method: "POST",
+            //   credentials: "include",
+            // });
+
+            // 4) กลับหน้า list พร้อมพารามิเตอร์สถานี
+            const listUrl = `${LIST_ROUTE}?station_id=${encodeURIComponent(stationId)}`;
+            router.replace(listUrl);
+        } catch (e: any) {
+            console.error(e);
+            alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+        } finally {
+            setSaving(false);
+        }
     };
 
     const onCancelLocal = () => {
@@ -160,6 +311,141 @@ export default function CMForm() {
         imgs.splice(j, 1);
         patchCorrective(i, { images: imgs });
     };
+    type NextIssueIdParams = {
+        latestId?: string | null; // รหัสล่าสุดของเดือนนั้น (ถ้ามี)
+        date?: Date | string;     // วันที่อ้างอิง (เช่น found_date)
+        prefix?: string;          // ค่าเริ่มต้น "EL"
+        pad?: number;             // จำนวนหลักของเลขรัน (เริ่มต้น 2 => 01, 02, ...)
+        start?: number;           // เริ่มนับที่เลขไหน (เริ่มต้น 1)
+    };
+
+    function makeNextIssueId({
+        latestId = null,
+        date = new Date(),
+        prefix = "EL",
+        pad = 2,
+        start = 1,
+    }: NextIssueIdParams = {}): string {
+        const d = typeof date === "string" ? new Date(date) : date;
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const base = `${prefix}-${y}-${m}`;
+
+        let seq = start;
+
+        if (latestId) {
+            // รองรับรูปแบบ EL-YYYY-MMNN...
+            const rx = new RegExp(`^${prefix}-(\\d{4})-(\\d{2})(\\d+)$`);
+            const m2 = latestId.match(rx);
+            if (m2) {
+                const [_, yy, mm, tail] = m2;
+                if (Number(yy) === y && mm === m) {
+                    seq = Math.max(Number(tail) + 1, start);
+                }
+            }
+        }
+
+        const tail = String(seq).padStart(pad, "0");
+        return `${base}${tail}`;
+    }
+
+    function localTodayISO(): string {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+    }
+
+    // ⭐ ดึง station_name จาก API แล้วอัปเดตช่อง "สถานที่"
+    useEffect(() => {
+        let alive = true;
+        if (!stationId) return;
+
+        (async () => {
+            try {
+                const res = await fetch(
+                    `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`,
+                    { cache: "no-store" }
+                );
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data: { station: StationPublic } = await res.json();
+
+                if (!alive) return;
+                setJob(prev => ({
+                    ...prev,
+                    location: data.station.station_name || prev.location, // 👈 เซ็ตสถานที่ = station_name
+                }));
+            } catch (err) {
+                console.error("โหลดข้อมูลสถานีไม่สำเร็จ:", err);
+                // จะ alert ก็ได้ถ้าต้องการ
+            }
+        })();
+
+        return () => { alive = false; };
+    }, [stationId]);
+
+
+    useEffect(() => {
+        let alive = true;
+
+        (async () => {
+            const todayStr = localTodayISO(); // เช่น 2025-10-17
+            const [y, m] = todayStr.split("-");
+
+            let latestId: string | null = null;
+            try {
+                const res = await fetch(`/api/cm/latest-id?y=${y}&m=${m}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    latestId = data?.id ?? null; // เช่น "EL-2025-1007"
+                }
+            } catch { /* fallback: เริ่ม 01 */ }
+
+            const nextId = makeNextIssueId({ latestId, date: todayStr });
+
+            if (!alive) return;
+            setJob(prev => ({
+                ...prev,
+                found_date: todayStr,
+                issue_id: nextId,
+            }));
+        })();
+
+        return () => { alive = false; };
+    }, []); // ⭐ รันครั้งเดียวตอน mount
+
+    async function uploadPhotosForReport(reportId: string) {
+        if (!stationId) return;
+
+        // loop แต่ละข้อของ Corrective Action → map เป็น group=g1,g2,...
+        for (let i = 0; i < job.corrective_actions.length; i++) {
+            const item = job.corrective_actions[i];
+            const files = item.images.map((im) => im.file).filter(Boolean) as File[];
+            if (!files.length) continue; // ข้อนี้ไม่มีรูปก็ข้าม
+
+            const group = `g${i + 1}`; // g1, g2, ... (อย่าเกินที่ backend รองรับ)
+            const fd = new FormData();
+            fd.append("station_id", stationId);
+            fd.append("group", group);
+            if (item.text) fd.append("remark", item.text); // จะไม่ส่งก็ได้
+
+            // แนบหลายไฟล์ด้วย key "files" ซ้ำ ๆ
+            files.forEach((f) => fd.append("files", f, f.name));
+
+            const res = await fetch(`${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`, {
+                method: "POST",
+                body: fd,
+                credentials: "include", // ถ้าใช้ cookie httpOnly
+                // ถ้าใช้ Bearer token ให้ใส่ headers.Authorization แทน
+            });
+
+            if (!res.ok) {
+                const msg = await res.text().catch(() => `HTTP ${res.status}`);
+                throw new Error(`อัปโหลดรูปข้อที่ ${i + 1} ล้มเหลว: ${msg}`);
+            }
+        }
+    }
 
     /* ----------------------------------------------------------------- */
 
@@ -207,8 +493,8 @@ export default function CMForm() {
                             </div>
                         </div>
 
-                        {/* ปุ่มด้านขวาใน HEADER */}
-                        {/* <div className="tw-flex tw-items-start tw-gap-2 tw-print:tw-hidden">
+                        {/* ปุ่มด้านขวาใน HEADER
+                        <div className="tw-flex tw-items-start tw-gap-2 tw-print:tw-hidden">
                             <Button
                                 type="button"
                                 variant="text"
@@ -237,12 +523,21 @@ export default function CMForm() {
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
                                     Issue ID
                                 </label>
-                                <Input
+                                {/* <Input
                                     value={job.issue_id}
                                     onChange={(e) => setJob({ ...job, issue_id: e.target.value })}
                                     crossOrigin=""
-                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    // className="!tw-w-full"
                                     readOnly
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full !tw-bg-blue-gray-50"
+                                /> */}
+                                <Input
+                                    value={job.issue_id || "๘๘๘"}
+                                    readOnly
+                                    key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
                                     className="!tw-w-full !tw-bg-blue-gray-50"
                                 />
                             </div>
@@ -257,6 +552,7 @@ export default function CMForm() {
                                     crossOrigin=""
                                     readOnly
                                     className="!tw-w-full !tw-bg-blue-gray-50"
+                                    // className="!tw-w-full"
                                     containerProps={{ className: "!tw-min-w-0" }}
                                 />
                             </div>
@@ -663,12 +959,8 @@ export default function CMForm() {
                                 >
                                     บันทึกชั่วคราว
                                 </Button>
-                                <Button
-                                    type="button"
-                                    onClick={onFinalSave}
-                                    className="tw-h-10 tw-text-sm"
-                                >
-                                    PRINT
+                                <Button type="button" onClick={onFinalSave} className="tw-h-10 tw-text-sm">
+                                    บันทึก
                                 </Button>
                             </div>
                         </div>

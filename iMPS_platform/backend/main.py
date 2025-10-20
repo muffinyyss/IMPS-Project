@@ -2084,7 +2084,7 @@ def _safe_name(name: str) -> str:
 def _ext(fname: str) -> str:
     return (fname.rsplit(".",1)[-1].lower() if "." in fname else "")
 
-@app.post("/pmreport/{report_id}/photos")
+@app.post("/cmreport/{report_id}/photos")
 async def cmreport_upload_photos(
     report_id: str,
     station_id: str = Form(...),
@@ -2309,6 +2309,54 @@ async def cmurl_list(
         "pageSize": pageSize,
         "total": total,
     }
+
+
+class CMSubmitIn(BaseModel):
+    station_id: str
+    job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
+    summary: str = ""            # สรุป/หมายเหตุแบบยาว (แล้วแต่จะใช้)
+    cm_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO; ถ้าไม่ส่งมาจะ fallback เป็น job.found_date
+
+async def _ensure_cm_indexes(coll):
+    try:
+        await coll.create_index([("createdAt", -1), ("_id", -1)])
+        # ถ้าอยากกันซ้ำเลขใบงานในแต่ละสถานี: เปิด unique issue_id ก็ได้ (ถ้าแน่ใจว่า unique)
+        # await coll.create_index("issue_id", unique=True, sparse=True)
+    except Exception:
+        pass
+
+@app.post("/cmreport/submit")
+async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_current_user)):
+    station_id = body.station_id.strip()
+    # Auth: admin ผ่านหมด, คนทั่วไปต้องมีสิทธิ์ใน station นี้
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_cmreport_collection_for(station_id)
+    await _ensure_cm_indexes(coll)
+
+    # กำหนด cm_date (string 'YYYY-MM-DD') ให้สอดคล้อง /cmreport/list
+    # ถ้าไม่ส่งมา → ใช้ job.found_date → ถ้าไม่มีอีก → ใช้วันนี้ (เวลาไทย)
+    cm_date_src = body.cm_date or body.job.get("found_date")
+    if cm_date_src:
+        cm_date = normalize_pm_date(cm_date_src)   # คืน "YYYY-MM-DD"
+    else:
+        cm_date = datetime.now(th_tz).date().isoformat()
+
+    doc = {
+        "station_id": station_id,
+        "cm_date": cm_date,
+        "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
+        "summary": body.summary,
+        "issue_id": body.job.get("issue_id"),
+        "status": body.job.get("status", "Open"),      # เผื่ออยาก query
+        "createdAt": datetime.now(timezone.utc),
+        "updatedAt": datetime.now(timezone.utc),
+        "photos": {},                 # รูปจะถูกเติมภายหลังที่ /cmreport/{report_id}/photos
+    }
+
+    res = await coll.insert_one(doc)
+    return {"ok": True, "report_id": str(res.inserted_id)}
 
 @app.get("/utilization/stream")
 async def utilization_stream(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
