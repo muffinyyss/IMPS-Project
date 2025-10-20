@@ -2,8 +2,11 @@
 
 import React, { useState } from "react";
 
+// components
 import ChargerTables from "@/app/dashboard/pm-report/charger/list/components/charger-table";
 import FirmwareCards from "@/app/dashboard/pm-report/charger/list/components/firmware-cards";
+import MDBTables from "@/app/dashboard/pm-report/mdb/list/components/mdb-table";
+
 
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
 import { BoltIcon, ServerIcon, CpuChipIcon, CubeIcon, MapPinIcon } from "@heroicons/react/24/solid";
@@ -64,7 +67,7 @@ export default function DataTablesPage() {
         <TabPanel value="mdb" className="tw-p-0">
           {/* <div className="tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-p-5">เนื้อหา MDB …</div> */}
           <div className="tw-space-y-5">
-            {/* <ChargerTables /> */}
+            <MDBTables />
           </div>
         </TabPanel>
 

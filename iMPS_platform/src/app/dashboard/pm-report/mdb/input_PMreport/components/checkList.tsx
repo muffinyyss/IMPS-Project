@@ -65,18 +65,25 @@ type PhotoItem = {
 
 type Question =
     | { no: number; key: `r${number}`; label: string; kind: "simple"; hasPhoto?: boolean }
-    | { no: 17; key: "r17"; label: string; kind: "measure"; hasPhoto?: boolean };
+    // | { no: 4; key: "r4"; label: string; kind: "measure"; hasPhoto?: boolean };
+    | { no: number; key: `r${number}`; label: string; kind: "measure"; hasPhoto?: boolean };
 
-const VOLTAGE1_FIELDS = [
-    "L1-L2",
-    "L2-L3",
-    "L3-L1",
+const VOLTAGE_FIELDS = [
     "L1-N",
     "L2-N",
     "L3-N",
     "L1-G",
     "L2-G",
     "L3-G",
+    "L1-L2",
+    "L2-L3",
+    "L3-L1",
+    "N-G",
+] as const;
+
+const VOLTAGE_FIELDS_CCB = [
+    "L1-N",
+    "L1-G",
     "N-G",
 ] as const;
 
@@ -97,40 +104,27 @@ const LABELS: Record<string, string> = {
 /** ทุกข้อมีการแนบรูป, ข้อ 17 เป็นหัวข้อวัดค่า */
 const QUESTIONS: Question[] = [
     { no: 1, key: "r1", label: "1) ตรวจสอบสภาพทั่วไป", kind: "simple", hasPhoto: true },
-    { no: 2, key: "r2", label: "2) ตรวจสอบดักซีล,ซิลิโคนกันซึม", kind: "simple", hasPhoto: true },
-    { no: 3, key: "r3", label: "3) ตรวจสอบสายอัดประจุ", kind: "simple", hasPhoto: true },
-    { no: 4, key: "r4", label: "4) ตรวจสอบหัวจ่ายอัดประจุ", kind: "simple", hasPhoto: true },
-    { no: 5, key: "r5", label: "5) ตรวจสอบปุ่มหยุดฉุกเฉิน", kind: "simple", hasPhoto: true },
-
-    { no: 6, key: "r6", label: "6) ตรวจสอบ QR CODE", kind: "simple", hasPhoto: true },
-    { no: 7, key: "r7", label: "7) ป้ายเตือนระวังไฟฟ้าช็อก", kind: "simple", hasPhoto: true },
-
-    { no: 8, key: "r8", label: "8) ป้ายเตือนต้องการระบายอากาศ", kind: "simple", hasPhoto: true },
-    { no: 9, key: "r9", label: "9) ป้ายเตือนปุ่มฉุกเฉิน", kind: "simple", hasPhoto: true },
-    { no: 10, key: "r10", label: "10) วัดแรงดันวงจรควบคุมการอัดประจุ", kind: "simple", hasPhoto: true },
-
-    { no: 11, key: "r11", label: "11) ตรวจสอบแผ่นกรองระบายอากาศ", kind: "simple", hasPhoto: true },
-    { no: 12, key: "r12", label: "12) ตรวจสอบจุดต่อทางไฟฟ้า", kind: "simple", hasPhoto: true },
-
-    { no: 13, key: "r13", label: "13) ตรวจสอบคอนแทคเตอร์", kind: "simple", hasPhoto: true },
-    { no: 14, key: "r14", label: "14) ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก", kind: "simple", hasPhoto: true },
-    { no: 15, key: "r15", label: "15) ตรวจสอบแรงดันไฟฟ้าที่พิน CP", kind: "simple", hasPhoto: true },
-    { no: 16, key: "r16", label: "16) ตรวจสอบลำดับเฟส", kind: "simple", hasPhoto: true },
-
-    { no: 17, key: "r17", label: "17) วัดแรงดันไฟฟ้าด้านเข้า", kind: "measure", hasPhoto: true },
-
-    { no: 18, key: "r18", label: "18) ทดสอบการอัดประจุ", kind: "simple", hasPhoto: true },
-    { no: 19, key: "r19", label: "19) ทำความสะอาด", kind: "simple", hasPhoto: true },
+    { no: 2, key: "r2", label: "2) ตรวจสอบดักซีล, ซิลิโคนกันซึม", kind: "simple", hasPhoto: true },
+    { no: 3, key: "r3", label: "3) ตรวจสอบ Power Meter", kind: "simple", hasPhoto: true },
+    { no: 4, key: "r4", label: "4) ตรวจสอบแรงดันไฟฟ้า Breaker Main", kind: "measure", hasPhoto: true },
+    { no: 5, key: "r5", label: "5) ตรวจสอบแรงดันไฟฟ้า Breaker Charger  ตัวที่ 1", kind: "measure", hasPhoto: true },
+    { no: 6, key: "r6", label: "6) ตรวจสอบแรงดันไฟฟ้า Breaker Charger  ตัวที่ 2", kind: "measure", hasPhoto: true },
+    { no: 7, key: "r7", label: "7) ตรวจสอบแรงดันไฟฟ้า Breaker Charger  ตัวที่ 3", kind: "measure", hasPhoto: true },
+    { no: 8, key: "r8", label: "8) ตรวจสอบแรงดันไฟฟ้า Breaker CCB ", kind: "measure", hasPhoto: true },
+    { no: 9, key: "r9", label: "9) ทดสอบปุ่ม Trip Test", kind: "simple", hasPhoto: true },
+    { no: 10, key: "r10", label: "10) ตรวจสอบจุดต่อทางไฟฟ้า", kind: "simple", hasPhoto: true },
+    { no: 11, key: "r11", label: "11) ทำความสะอาดตู้ MDB", kind: "simple", hasPhoto: true },
 ];
 
-/* เฉพาะข้อ 17 ที่มีชุดวัดค่า */
-const FIELD_GROUPS: Record<
-    number,
-    | { keys: readonly string[]; unitType: "voltage"; note?: string }
-    | undefined
-> = {
-    17: { keys: VOLTAGE1_FIELDS, unitType: "voltage" },
-};
+const FIELD_GROUPS: Record<number, { keys: readonly string[]; unitType: "voltage"; note?: string } | undefined> = {
+    4: { keys: VOLTAGE_FIELDS, unitType: "voltage" },
+    5: { keys: VOLTAGE_FIELDS, unitType: "voltage" },
+    6: { keys: VOLTAGE_FIELDS, unitType: "voltage" },
+    7: { keys: VOLTAGE_FIELDS, unitType: "voltage" },
+    8: { keys: VOLTAGE_FIELDS_CCB, unitType: "voltage" },
+
+} as const;
+
 
 /* =========================
  *        TYPES
@@ -427,12 +421,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
 
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
-    // const key = useMemo(() => draftKey(stationId), [stationId]);
-    // ใหม่
-    const key = useMemo(
-        () => `${draftKey(stationId)}:${draftId ?? "default"}`,
-        [stationId, draftId]
-    );
+    const key = useMemo(() => draftKey(stationId), [stationId]);
 
 
     /* ---------- job info ---------- */
@@ -454,7 +443,12 @@ export default function CheckList({ onComplete }: CheckListProps) {
     );
 
     /* ---------- measure group (เฉพาะข้อ 17) ---------- */
-    const m17 = useMeasure<UnitVoltage>(VOLTAGE1_FIELDS, "V");
+    const m4 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS, "V");
+    const m5 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS, "V");
+    const m6 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS, "V");
+    const m7 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS, "V");
+    const m8 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS_CCB, "V");
+
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -475,13 +469,32 @@ export default function CheckList({ onComplete }: CheckListProps) {
             .catch((err) => console.error("load public station info failed:", err));
     }, []);
 
+    // ครั้งแรก: อ่าน draft_id จาก URL หรือสร้างใหม่แล้วเขียนกลับไปที่ URL
     useEffect(() => {
-        if (!stationId) return;
+        const params = new URLSearchParams(window.location.search);
+        let d = params.get("draft_id");
+        if (!d) {
+            d = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+                ? crypto.randomUUID()
+                : String(Date.now());
+            params.set("draft_id", d);
+            const url = `${window.location.pathname}?${params.toString()}`;
+            window.history.replaceState({}, "", url);
+        }
+        setDraftId(d);
+    }, []);
+
+    useEffect(() => {
+        if (!stationId || !draftId) return;
         const draft = loadDraftLocal<{
             job: typeof job;
             rows: typeof rows;
             cp: typeof cp;
-            m17: typeof m17.state;
+            m4: typeof m4.state;
+            m5: typeof m5.state;
+            m6: typeof m6.state;
+            m7: typeof m7.state;
+            m8: typeof m8.state;
             summary: string;
         }>(key);
         if (!draft) return;
@@ -489,7 +502,11 @@ export default function CheckList({ onComplete }: CheckListProps) {
         setJob((prev) => ({ ...prev, ...draft.job }));
         setRows(draft.rows);
         setCp(draft.cp);
-        m17.setState(draft.m17);
+        m4.setState(draft.m4 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
+        m5.setState(draft.m5 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
+        m6.setState(draft.m6 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
+        m7.setState(draft.m7 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
+        m8.setState(draft.m8 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         setSummary(draft.summary);
     }, [stationId]); // โหลดครั้งเดียวเมื่อรู้ stationId
 
@@ -507,43 +524,6 @@ export default function CheckList({ onComplete }: CheckListProps) {
         window.addEventListener("station:info", onInfo as EventListener);
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
-
-    // ครั้งแรก: อ่าน draft_id จาก URL หรือสร้างใหม่แล้วเขียนกลับไปที่ URL
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        let d = params.get("draft_id");
-        if (!d) {
-            d = (typeof crypto !== "undefined" && "randomUUID" in crypto)
-                ? crypto.randomUUID()
-                : String(Date.now());
-            params.set("draft_id", d);
-            const url = `${window.location.pathname}?${params.toString()}`;
-            window.history.replaceState({}, "", url);
-        }
-        setDraftId(d);
-    }, []);
-
-    useEffect(() => {
-        if (!stationId || !draftId) return;   // <-- เพิ่ม check draftId
-        const draft = loadDraftLocal<{
-            job: typeof job;
-            rows: typeof rows;
-            cp: typeof cp;
-            m17: typeof m17.state;
-            summary: string;
-        }>(key);
-        if (!draft) return;
-
-        setJob((prev) => ({ ...prev, ...draft.job }));
-        setRows(draft.rows);
-        setCp(draft.cp);
-        m17.setState(draft.m17);
-        setSummary(draft.summary);
-    }, [stationId, draftId]);                // <-- เพิ่ม draftId ใน deps
-
-
-
-
 
     const makePhotoSetter =
         (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> =>
@@ -565,16 +545,24 @@ export default function CheckList({ onComplete }: CheckListProps) {
     );
     const allPhotosAttached = missingPhotoItems.length === 0;
 
-
-
-
     const MEASURE_BY_NO: Record<number, ReturnType<typeof useMeasure<UnitVoltage>> | undefined> = {
-        17: m17,
+        4: m4,
+        5: m5,
+        6: m6,
+        7: m7,
+        8: m8,
     };
 
     /* ---------- validations ---------- */
-    // ต้องตอบ PASS/FAIL ครบทุกข้อยกเว้น r17 (เป็นชุดวัดค่า)
-    const PF_REQUIRED_KEYS = useMemo(() => QUESTIONS.filter((q) => q.key !== "r17").map((q) => q.key), []);
+    // ต้องตอบ PASS/FAIL ครบทุกข้อยกเว้น r4 (เป็นชุดวัดค่า)
+    // const PF_REQUIRED_KEYS = useMemo(() => QUESTIONS.filter((q) => q.key !== "r4").map((q) => q.key), []);
+    const PF_REQUIRED_KEYS = useMemo(
+        () => QUESTIONS
+            .filter((q) => !(q.kind === "measure" && FIELD_GROUPS[q.no])) // ตัด 4–7 ออก
+            .map((q) => q.key),
+        []
+    );
+
     // ตอบอะไรก็ได้ที่ไม่ว่าง: PASS/FAIL/NA
     const allPFAnswered = useMemo(
         () => PF_REQUIRED_KEYS.every((k) => rows[k].pf !== ""),
@@ -588,13 +576,27 @@ export default function CheckList({ onComplete }: CheckListProps) {
         [rows, PF_REQUIRED_KEYS]
     );
 
-    // อินพุตที่บังคับ: เฉพาะข้อ 17
+    // อินพุตที่บังคับ: เฉพาะข้อ 4
+    // const missingInputs = useMemo(() => {
+    //     const r: Record<number, string[]> = {};
+    //     r[4] = VOLTAGE_FIELDS.filter((k) => {
+    //         const v = m4.state?.[k]?.value;
+    //         return !String(v ?? "").trim();
+    //     });
+    //     return r;
+    // }, [m4.state]);
     const missingInputs = useMemo(() => {
         const r: Record<number, string[]> = {};
-        r[15] = cp.value.trim() ? [] : ["CP"];
-        r[17] = VOLTAGE1_FIELDS.filter((k) => !m17.state[k]?.value?.toString().trim());
+        const check = (s: typeof m4.state, keys: readonly string[]) =>
+            keys.filter((k) => !String(s?.[k as string]?.value ?? "").trim());
+        r[4] = check(m4.state, VOLTAGE_FIELDS);
+        r[5] = check(m5.state, VOLTAGE_FIELDS);
+        r[6] = check(m6.state, VOLTAGE_FIELDS);
+        r[7] = check(m7.state, VOLTAGE_FIELDS);
+        r[8] = check(m8.state, VOLTAGE_FIELDS_CCB);  
         return r;
-    }, [cp.value, m17.state]);
+    }, [m4.state, m5.state, m6.state, m7.state, m8.state]);
+
 
 
     const allRequiredInputsFilled = useMemo(
@@ -719,20 +721,24 @@ export default function CheckList({ onComplete }: CheckListProps) {
 
     // เรียกใช้ – เก็บเฉพาะข้อมูลที่ serialize ได้
     useDebouncedEffect(() => {
-        if (!stationId || !draftId) return;   // <-- เพิ่ม check draftId
+        if (!stationId || !draftId) return;
         saveDraftLocal(key, {
             job,
             rows,
             cp,
-            m17: m17.state,
+            m4: m4.state,
+            m5: m5.state,
+            m6: m6.state,
+            m7: m7.state,
+            m8: m8.state,
             summary,
         });
-    }, [key, stationId, job, rows, cp, m17.state, summary]);
+    }, [key, stationId, job, rows, cp, m4.state, m5.state, m6.state, m7.state, summary]);
 
     /* ---------- actions ---------- */
     const onSave = () => {
-        if (!stationId  || !draftId) {
-            alert("ยังไม่ทราบ station_id หรือ draft_id — บันทึกชั่วคราวไม่สำเร็จ");
+        if (!stationId || !draftId) {
+            alert("ยังไม่ทราบ station_id — บันทึกชั่วคราวไม่สำเร็จ");
             return;
         }
         // เซฟดราฟต์ (ซ้ำกับ auto-save ก็ได้ เพื่อความชัวร์ตอนกดปุ่ม)
@@ -740,7 +746,11 @@ export default function CheckList({ onComplete }: CheckListProps) {
             job,
             rows,
             cp,
-            m17: m17.state,
+            m4: m4.state,
+            m5: m5.state,
+            m6: m6.state,
+            m7: m7.state,
+            m8: m8.state,
             summary,
         });
         alert("บันทึกชั่วคราวไว้ในเครื่องแล้ว (Offline Draft)");
@@ -843,7 +853,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
                     station_id: stationId,
                     job,
                     rows,
-                    measures: { m17: m17.state, cp },
+                    measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
                     summary,
                     pm_date,
                 }),
@@ -888,14 +898,14 @@ export default function CheckList({ onComplete }: CheckListProps) {
             <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
                 <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
 
-                    <Input
+                    {/* <Input
                         label="เครื่องประจุไฟฟ้าที่"
                         value={job.chargerNo}
                         onChange={(e) => setJob({ ...job, chargerNo: e.target.value })}
                         crossOrigin=""
                         readOnly
                         className="!tw-bg-blue-gray-50"
-                    />
+                    /> */}
                     <Input
                         label="Location / สถานที่"
                         value={job.station_name}
@@ -904,42 +914,25 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         className="!tw-bg-blue-gray-50"
                         readOnly
                     />
-                    {/* <Input
-                        type="text"                          // ใช้ text + กรองเอง จะกัน e,-,+ ได้ดีกว่า number
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        label="เครื่องประจุไฟฟ้าที่"
-                        value={job.chargerNo}
-                        onChange={(e) =>
-                            setJob({
-                                ...job,
-                                // กรองให้เหลือแต่ตัวเลข
-                                chargerNo: e.target.value.replace(/\D/g, ""),
-                            })
-                        }
-                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                        crossOrigin=""
-                        // ทำให้กล่องสั้นลง + ไม่ล้น
-                        containerProps={{ className: "tw-max-w-[160px] !tw-min-w-0" }}
-                        className="!tw-w-full"
-                    /> */}
 
-                    <Input
+                    {/* <Input
                         label="SN / หมายเลขเครื่อง"
                         value={job.sn}
                         onChange={(e) => setJob({ ...job, sn: e.target.value })}
                         crossOrigin=""
                         className="!tw-bg-blue-gray-50"
                         readOnly
-                    />
-                    <Input
+                    /> */}
+
+                    {/* <Input
                         label="Model / รุ่น"
                         value={job.model}
                         onChange={(e) => setJob({ ...job, model: e.target.value })}
                         crossOrigin=""
                         className="!tw-bg-blue-gray-50"
                         readOnly
-                    />
+                    /> */}
+
                     <Input
                         label="วันที่ตรวจ"
                         type="date"
@@ -955,10 +948,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
             {/* จัดช่วงการเรนเดอร์เป็นบล็อก ๆ */}
             {[
                 [1, 5],
-                [6, 10],
-                [11, 16],
-                [17, 17], // มีกริดวัดค่า
-                [18, 19],
+                [6, 11],
             ].map(([start, end]) => (
                 <Card key={`${start}-${end}`} className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
                     {start === 1 && (
@@ -1006,8 +996,9 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         }`}
                 >
                     <Typography className="tw-font-medium">
-                        1) สถานะ PASS / FAIL / N/A ทั้ง 18 ข้อ (ยกเว้นข้อ 17)
+                        1) สถานะ PASS / FAIL / N/A (ยกเว้นข้อ 4–7 ซึ่งเป็นชุดวัดค่า)
                     </Typography>
+
                     {allPFAnswered ? (
                         <Typography variant="small" className="!tw-text-green-700">
                             ครบเรียบร้อย ✅
@@ -1023,7 +1014,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
                     className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
                         }`}
                 >
-                    <Typography className="tw-font-medium">2) อินพุตข้อ 15 และ 17</Typography>
+                    <Typography className="tw-font-medium">2) อินพุตข้อ 4–7</Typography>
                     {allRequiredInputsFilled ? (
                         <Typography variant="small" className="!tw-text-green-700">
                             ครบเรียบร้อย ✅
@@ -1076,13 +1067,13 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         <Button
                             variant="outlined"
                             color="blue-gray"
-                            // type="button"
-                            // onClick={onSave}
-                            // title={
-                            //     !allPhotosAttached
-                            //         ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
-                            //         : "บันทึกชั่วคราว"
-                            // }
+                            type="button"
+                        // onClick={onSave}
+                        // title={
+                        //     !allPhotosAttached
+                        //         ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
+                        //         : "บันทึกชั่วคราว"
+                        // }
                         >
                             บันทึก
                         </Button>
