@@ -54,7 +54,7 @@ type stationRow = {
   PLCFirmware?: string;
   PIFirmware?: string;
   RTFirmware?: string;
-  chargeBoxID?:string;
+  chargeBoxID?: string;
   // status?: string;
   is_active?: boolean;
   brand?: string;
@@ -73,7 +73,7 @@ export type StationUpdatePayload = {
   PLCFirmware?: string;
   PIFirmware?: string;
   RTFirmware?: string;
-  chargeBoxID?:string;
+  chargeBoxID?: string;
   status?: boolean;
   is_active?: boolean;
   // status?: string;
@@ -377,6 +377,33 @@ export function SearchDataTables() {
       setSaving(false);
     }
   };
+  // ล็อกสกอร์ลของหน้าเมื่อเปิดโมดัล แล้วคืนค่าตำแหน่งเมื่อปิด
+  useEffect(() => {
+    const lock = openAdd || openEdit;
+    if (lock) {
+      const scrollY = window.scrollY;
+      document.body.style.position = "fixed";
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.left = "0";
+      document.body.style.right = "0";
+      document.body.style.width = "100%";      // กัน layout shift
+      document.body.style.overflow = "hidden"; // กันสกอร์ลฉากหลัง
+    } else {
+      // ปลดล็อก
+      const top = document.body.style.top;
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.left = "";
+      document.body.style.right = "";
+      document.body.style.width = "";
+      document.body.style.overflow = "";
+      // กลับไปตำแหน่งเดิมของหน้า
+      if (top) {
+        const y = parseInt(top || "0") * -1;
+        window.scrollTo(0, y);
+      }
+    }
+  }, [openAdd, openEdit]);
 
 
 

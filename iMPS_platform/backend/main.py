@@ -35,6 +35,7 @@ import pathlib, secrets
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+SESSION_IDLE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 th_tz = ZoneInfo("Asia/Bangkok")
 
@@ -231,9 +232,69 @@ ACCESS_COOKIE_NAME = "access_token"
 #         }
 #     }
 
+# @app.post("/login/")
+# def login(body: LoginRequest, response: Response):
+#     # หา user
+#     user = users_collection.find_one(
+#         {"email": body.email},
+#         {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1},
+#     )
+#     if not user or not bcrypt.checkpw(body.password.encode("utf-8"), user["password"].encode("utf-8")):
+#         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+#     # ให้ station_id เป็น list เสมอ
+#     station_ids = user.get("station_id", [])
+#     if not isinstance(station_ids, list):
+#         station_ids = [station_ids]
+
+#     # ออก access token
+#     jwt_token = create_access_token({
+#         "sub": user["email"],
+#         "user_id": str(user["_id"]),
+#         "username": user.get("username"),
+#         "role": user.get("role", "user"),
+#         "company": user.get("company"),
+#         "station_ids": station_ids,
+#     }, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+
+#     # ออก refresh token (ถ้าใช้)
+#     refresh_token = create_access_token({"sub": user["email"]}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
+#     users_collection.update_one({"_id": user["_id"]}, {"$set": {
+#         "refreshTokens": [{
+#             "token": refresh_token,
+#             "createdAt": datetime.now(timezone.utc),
+#             "expiresAt": datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+#         }]
+#     }})
+
+#     # คุกกี้สำหรับ SSE (สำคัญ)
+#     response.set_cookie(
+#         key=ACCESS_COOKIE_NAME,
+#         value=jwt_token,
+#         httponly=True,
+#         secure=False,          # 👈 dev บน http://localhost ให้ False
+#         samesite="lax",        # 👈 dev ข้ามพอร์ตบ่อย ใช้ "lax" (ถ้า cross-domain จริงค่อยใช้ "none"+secure=True)
+#         max_age=int(timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES).total_seconds()),
+#         path="/",
+#     )
+
+#     # คืนให้ frontend เก็บด้วย (ใช้กับ fetch อื่นๆ)
+#     return {
+#         "message": "ok",
+#         "access_token": jwt_token,
+#         "refresh_token": refresh_token,
+#         "user": {
+#             "user_id": str(user["_id"]),
+#             "username": user.get("username"),
+#             "email": user["email"],
+#             "role": user.get("role", "user"),
+#             "company": user.get("company"),
+#             "station_id": station_ids,
+#         }
+#     }
+
 @app.post("/login/")
 def login(body: LoginRequest, response: Response):
-    # หา user
     user = users_collection.find_one(
         {"email": body.email},
         {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1},
@@ -241,12 +302,14 @@ def login(body: LoginRequest, response: Response):
     if not user or not bcrypt.checkpw(body.password.encode("utf-8"), user["password"].encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # ให้ station_id เป็น list เสมอ
     station_ids = user.get("station_id", [])
     if not isinstance(station_ids, list):
         station_ids = [station_ids]
 
-    # ออก access token
+    # 👇 สร้าง session id + ตีตราเวลา
+    now = datetime.now(timezone.utc)
+    sid = str(uuid.uuid4())
+
     jwt_token = create_access_token({
         "sub": user["email"],
         "user_id": str(user["_id"]),
@@ -254,30 +317,35 @@ def login(body: LoginRequest, response: Response):
         "role": user.get("role", "user"),
         "company": user.get("company"),
         "station_ids": station_ids,
+        "sid": sid,  # ⬅️ แนบ session id ไว้ใน access token
     }, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
 
-    # ออก refresh token (ถ้าใช้)
     refresh_token = create_access_token({"sub": user["email"]}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
-    users_collection.update_one({"_id": user["_id"]}, {"$set": {
-        "refreshTokens": [{
-            "token": refresh_token,
-            "createdAt": datetime.now(timezone.utc),
-            "expiresAt": datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
-        }]
-    }})
 
-    # คุกกี้สำหรับ SSE (สำคัญ)
+    # ✅ ผูก session ใน DB (เก็บ lastActiveAt ไว้เช็ค idle)
+    users_collection.update_one(
+        {"_id": user["_id"]},
+        {"$set": {
+            "refreshTokens": [{
+                "sid": sid,
+                "token": refresh_token,
+                "createdAt": now,
+                "lastActiveAt": now,
+                "expiresAt": now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+            }]
+        }}
+    )
+
     response.set_cookie(
         key=ACCESS_COOKIE_NAME,
         value=jwt_token,
         httponly=True,
-        secure=False,          # 👈 dev บน http://localhost ให้ False
-        samesite="lax",        # 👈 dev ข้ามพอร์ตบ่อย ใช้ "lax" (ถ้า cross-domain จริงค่อยใช้ "none"+secure=True)
+        secure=False,
+        samesite="lax",
         max_age=int(timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES).total_seconds()),
         path="/",
     )
 
-    # คืนให้ frontend เก็บด้วย (ใช้กับ fetch อื่นๆ)
     return {
         "message": "ok",
         "access_token": jwt_token,
@@ -290,6 +358,27 @@ def login(body: LoginRequest, response: Response):
             "company": user.get("company"),
             "station_id": station_ids,
         }
+    }
+
+@app.get("/me")
+def me(current: UserClaims = Depends(get_current_user)):
+    if not current.user_id:
+        raise HTTPException(status_code=401, detail="Missing uid in token")
+
+    u = users_collection.find_one(
+        {"_id": ObjectId(current.user_id)},
+        {"_id": 1, "username": 1, "email": 1, "role": 1, "company": 1, "tel": 1}
+    )
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "id": str(u["_id"]),
+        "username": u.get("username") or "",
+        "email": u.get("email") or "",
+        "role": u.get("role") or "",
+        "company": u.get("company") or "",
+        "tel": u.get("tel") or "",
     }
 
 @app.get("/my-stations/detail")
@@ -355,11 +444,50 @@ def get_history(
     if station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
+class RefreshIn(BaseModel):
+    refresh_token: str
+
+# @app.post("/refresh")
+# async def refresh(refresh_token: str):
+#     try:
+#         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+#         email = payload.get("sub")
+#         if not email:
+#             raise HTTPException(status_code=401, detail="Invalid token")
+
+#         user = users_collection.find_one({"email": email})
+#         if not user:
+#             raise HTTPException(status_code=401, detail="User not found")
+
+#         token_exists = next((t for t in user.get("refreshTokens", []) if t["token"] == refresh_token), None)
+#         if not token_exists:
+#             raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+#         # <<< ออก access token พร้อม claims ครบถ้วน >>>
+#         station_ids = user.get("station_id", [])
+#         if not isinstance(station_ids, list):
+#             station_ids = [station_ids]
+
+#         new_access_token = create_access_token({
+#             "sub": user["email"],
+#             "user_id": str(user["_id"]),
+#             "username": user.get("username"),
+#             "role": user.get("role", "user"),
+#             "company": user.get("company"),
+#             "station_ids": station_ids,
+#         }, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+
+#         return {"access_token": new_access_token}
+#     except ExpiredSignatureError:
+#         # refresh token หมดอายุ
+#         raise HTTPException(status_code=401, detail="refresh_token_expired")
+#     except JWTError:
+#         raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.post("/refresh")
-async def refresh(refresh_token: str):
+def refresh(body: RefreshIn, response: Response):
     try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(body.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=401, detail="Invalid token")
@@ -368,27 +496,52 @@ async def refresh(refresh_token: str):
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
 
-        token_exists = next((t for t in user.get("refreshTokens", []) if t["token"] == refresh_token), None)
-        if not token_exists:
+        entry = next((t for t in user.get("refreshTokens", []) if t.get("token") == body.refresh_token), None)
+        if not entry:
             raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-        # <<< ออก access token พร้อม claims ครบถ้วน >>>
+        now = datetime.now(timezone.utc)
+        if entry.get("expiresAt") and now > entry["expiresAt"]:
+            raise HTTPException(status_code=401, detail="refresh_token_expired")
+
+        # optional: idle timeout
+        idle_at = entry.get("lastActiveAt")
+        if idle_at and (now - idle_at) > timedelta(minutes=SESSION_IDLE_MINUTES):
+            raise HTTPException(status_code=401, detail="session_idle_timeout")
+
+        # สร้าง access ใหม่ (คง sid เดิม)
         station_ids = user.get("station_id", [])
         if not isinstance(station_ids, list):
             station_ids = [station_ids]
 
-        new_access_token = create_access_token({
+        new_access = create_access_token({
             "sub": user["email"],
             "user_id": str(user["_id"]),
             "username": user.get("username"),
             "role": user.get("role", "user"),
             "company": user.get("company"),
             "station_ids": station_ids,
+            "sid": entry.get("sid"),
         }, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
 
-        return {"access_token": new_access_token}
+        # อัปเดต lastActiveAt
+        users_collection.update_one(
+            {"_id": user["_id"], "refreshTokens.token": body.refresh_token},
+            {"$set": {"refreshTokens.$.lastActiveAt": now}}
+        )
+
+        # ⚠️ ตั้งคุกกี้ access ใหม่ให้ SSE ทำงานต่อได้
+        response.set_cookie(
+            key=ACCESS_COOKIE_NAME,
+            value=new_access,
+            httponly=True,
+            secure=False,          # โปรดดูข้อ 2 ด้านล่าง
+            samesite="lax",        # โปรดดูข้อ 2 ด้านล่าง
+            max_age=int(timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES).total_seconds()),
+            path="/",
+        )
+        return {"access_token": new_access}
     except ExpiredSignatureError:
-        # refresh token หมดอายุ
         raise HTTPException(status_code=401, detail="refresh_token_expired")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -429,6 +582,8 @@ class register(BaseModel):
 async def create_users(users: register):
     # hash password
     hashed_pw = bcrypt.hashpw(users.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    
+    now = datetime.now(timezone.utc)
 
     users_collection.insert_one(
     {
@@ -439,6 +594,8 @@ async def create_users(users: register):
         "refreshTokens": [],
         "role":"Technician",
         "company":users.company,
+        "createdAt": now,   # ✅ เพิ่ม
+        "updatedAt": now,   # ✅ เพิ่ม
     })
 
 @app.get("/stations/")
