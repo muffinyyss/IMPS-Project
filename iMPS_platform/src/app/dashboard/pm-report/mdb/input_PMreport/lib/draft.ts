@@ -1,9 +1,12 @@
-// app/pm-report/charger/input_PMreport/lib/draft.ts
 type DraftData = {
   job: any;
   rows: any;
   cp: any;
-  m17: any;
+  m4: any;
+  m5: any;
+  m6: any;
+  m7: any;
+  m8: any;
   summary: string;
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
@@ -22,15 +25,12 @@ function safeStorage() {
 //   // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
 //   return `pmDraft:${stationId ?? "unknown"}`;
 // }
-
-// app/pm-report/charger/input_PMreport/lib/draft.ts
 export function draftKey(
   stationId: string | null | undefined,
   draftId: string = "default"
 ) {
   return `pmDraft:v2:${stationId ?? "unknown"}:${draftId}`;
 }
-
 
 export function saveDraftLocal(key: string, data: DraftData) {
   const ls = safeStorage();
