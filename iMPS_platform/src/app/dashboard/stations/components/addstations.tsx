@@ -130,140 +130,74 @@ export default function AddUserModal({
             handler={resetAndClose}
             size="md"
             dismiss={{ outsidePress: !loading, escapeKey: !loading }}
-            className="tw-space-y-5 tw-px-8 tw-py-4"
+            className="tw-flex tw-flex-col tw-max-h-[90vh] tw-overflow-hidden tw-px-0 tw-py-0"
         >
-            <DialogHeader className="tw-flex tw-items-center tw-justify-between">
-                <Typography variant="h5" color="blue-gray">
-                    Add New Station
-                </Typography>
-                <Button variant="text" onClick={resetAndClose}>
-                    ✕
-                </Button>
+            <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-white tw-px-6 tw-py-4 tw-border-b">
+                <div className="tw-flex tw-items-center tw-justify-between">
+                    <Typography variant="h5" color="blue-gray">Add New Station</Typography>
+                    <Button variant="text" onClick={resetAndClose}>✕</Button>
+                </div>
             </DialogHeader>
 
-            <form onSubmit={handleSubmit}>
-                <DialogBody className="tw-space-y-6 tw-px-6 tw-py-4">
+            <form onSubmit={handleSubmit} className="tw-flex tw-flex-col tw-min-h-0">
+                <DialogBody className="tw-flex-1 tw-min-h-0 tw-overflow-y-auto tw-space-y-6 tw-px-6 tw-py-4">
                     <div className="tw-flex tw-flex-col tw-gap-4">
-                        <Input
-                            label="Station ID"
-                            required
-                            value={form.station_id}
-                            onChange={(e) => onChange("station_id", e.target.value)}
-                            crossOrigin={undefined}
-                        />
-                        <Input
-                            label="Station Name"
-                            required
-                            value={form.station_name}
-                            onChange={(e) => onChange("station_name", e.target.value)}
-                            crossOrigin={undefined}
-                        />
-                        <Input
-                            label="Brand"
-                            required
-                            value={form.brand}
-                            onChange={(e) => onChange("brand", e.target.value)}
-                            crossOrigin={undefined}
-                        />
-                        <Input
-                            label="Model"
-                            required
-                            value={form.model}
-                            onChange={(e) => onChange("model", e.target.value)}
-                            crossOrigin={undefined}
-                        />
-                        <Input
-                            label="Serial Number (S/N)"
-                            required
-                            value={form.SN}
-                            onChange={(e) => onChange("SN", e.target.value)}
-                            crossOrigin={undefined}
-                        />
-                        <Input
-                            label="Work Order (WO)"
-                            required
-                            value={form.WO}
-                            onChange={(e) => onChange("WO", e.target.value)}
-                            crossOrigin={undefined}
-                        />
-                        <Input
-                            label="PLC Firmware"
-                            required
-                            value={form.PLCFirmware}
-                            onChange={(e) => onChange("PLCFirmware", e.target.value)}
-                            crossOrigin={undefined}
-                        />
-                        <Input
-                            label="Raspberry pi Firmware"
-                            required
-                            value={form.PIFirmware}
-                            onChange={(e) => onChange("PIFirmware", e.target.value)}
-                            crossOrigin={undefined}
-                        />
-                        <Input
-                            label="Router Firmware"
-                            required
-                            value={form.RTFirmware}
-                            onChange={(e) => onChange("RTFirmware", e.target.value)}
-                            crossOrigin={undefined}
-                        />
-                        <Input
-                            label="Charger Box ID"
-                            required
-                            value={form.chargeBoxID}
-                            onChange={(e) => onChange("chargeBoxID", e.target.value)}
-                            crossOrigin={undefined}
-                        />
+                        <Input label="Station ID" required value={form.station_id}
+                            onChange={(e) => onChange("station_id", e.target.value)} crossOrigin={undefined} />
+                        <Input label="Station Name" required value={form.station_name}
+                            onChange={(e) => onChange("station_name", e.target.value)} crossOrigin={undefined} />
+                        <Input label="Brand" required value={form.brand}
+                            onChange={(e) => onChange("brand", e.target.value)} crossOrigin={undefined} />
+                        <Input label="Model" required value={form.model}
+                            onChange={(e) => onChange("model", e.target.value)} crossOrigin={undefined} />
+                        <Input label="Serial Number (S/N)" required value={form.SN}
+                            onChange={(e) => onChange("SN", e.target.value)} crossOrigin={undefined} />
+                        <Input label="Work Order (WO)" required value={form.WO}
+                            onChange={(e) => onChange("WO", e.target.value)} crossOrigin={undefined} />
+                        <Input label="PLC Firmware" required value={form.PLCFirmware}
+                            onChange={(e) => onChange("PLCFirmware", e.target.value)} crossOrigin={undefined} />
+                        <Input label="Raspberry pi Firmware" required value={form.PIFirmware}
+                            onChange={(e) => onChange("PIFirmware", e.target.value)} crossOrigin={undefined} />
+                        <Input label="Router Firmware" required value={form.RTFirmware}
+                            onChange={(e) => onChange("RTFirmware", e.target.value)} crossOrigin={undefined} />
+                        <Input label="Charger Box ID" required value={form.chargeBoxID}
+                            onChange={(e) => onChange("chargeBoxID", e.target.value)} crossOrigin={undefined} />
 
-                        {/* OWNER */}
                         {isAdmin ? (
-                            <div>
-                                <Select
-                                    label="Owner"
-                                    value={form.owner || ""}
-                                    onChange={(v) => onChange("owner", v || "")}
-                                >
-                                    {(allOwners.length ? allOwners : [currentUser]).map((name) => (
-                                        <Option key={name} value={name}>
-                                            {name}
-                                        </Option>
-                                    ))}
-                                </Select>
-                            </div>
-                        ) : (
-                            // ผู้ใช้ทั่วไป: แสดงเป็น input readonly/disabled
-                            <Input
+                            <Select
                                 label="Owner"
-                                value={form.owner || currentUser || ""}
-                                crossOrigin={undefined}
-                                readOnly
-                                disabled
-                            />
+                                value={form.owner || ""}
+                                onChange={(v) => onChange("owner", v || "")}
+                            >
+                                {(allOwners.length ? allOwners : [currentUser]).map((name) => (
+                                    <Option key={name} value={name}>{name}</Option>
+                                ))}
+                            </Select>
+                        ) : (
+                            <Input label="Owner" value={form.owner || currentUser || ""} readOnly disabled crossOrigin={undefined} />
                         )}
 
-                        {/* Is_active */}
-                        <div>
-                            <Select
-                                label="Is_active"
-                                value={String(form.is_active)} // "true" | "false"
-                                onChange={(v) => onChange("is_active", v === "true")}
-                            >
-                                <Option value="true">Active</Option>
-                                <Option value="false">Inactive</Option>
-                            </Select>
-                        </div>
+                        <Select
+                            label="Is_active"
+                            value={String(form.is_active)}
+                            onChange={(v) => onChange("is_active", v === "true")}
+                        >
+                            <Option value="true">Active</Option>
+                            <Option value="false">Inactive</Option>
+                        </Select>
                     </div>
                 </DialogBody>
 
-                <DialogFooter className="tw-gap-2">
-                    <Button variant="outlined" onClick={resetAndClose} type="button">
-                        Cancel
-                    </Button>
-                    <Button type="submit" className="tw-bg-blue-600" disabled={loading || submitting}>
-                        {loading || submitting ? "Saving..." : "Create Station"}
-                    </Button>
+                <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-6 tw-py-3 tw-border-t">
+                    <div className="tw-flex tw-w-full tw-justify-end tw-gap-2">
+                        <Button variant="outlined" onClick={resetAndClose} type="button">Cancel</Button>
+                        <Button type="submit" className="tw-bg-blue-600" disabled={loading || submitting}>
+                            {loading || submitting ? "Saving..." : "Create Station"}
+                        </Button>
+                    </div>
                 </DialogFooter>
             </form>
         </Dialog>
+
     );
 }
