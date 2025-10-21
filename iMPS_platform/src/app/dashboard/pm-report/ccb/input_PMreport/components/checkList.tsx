@@ -337,10 +337,13 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
 
-    const key = useMemo(
-        () => draftKeyCCB(stationId, draftId ?? "default"),
-        [stationId, draftId]
-    );
+    // const key = useMemo(
+    //     () => draftKeyCCB(stationId, draftId ?? "default"),
+    //     [stationId, draftId]
+    // );
+
+    const key = useMemo(() => draftKeyCCB(stationId), [stationId]);
+
 
 
     /* ---------- job info ---------- */
