@@ -6,6 +6,8 @@ import React, { useState } from "react";
 import ChargerTables from "@/app/dashboard/pm-report/charger/list/components/charger-table";
 import FirmwareCards from "@/app/dashboard/pm-report/charger/list/components/firmware-cards";
 import MDBTables from "@/app/dashboard/pm-report/mdb/list/components/mdb-table";
+import CCBTables from "@/app/dashboard/pm-report/ccb/list/components/ccb-table";
+
 
 
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
@@ -65,14 +67,16 @@ export default function DataTablesPage() {
         </TabPanel>
 
         <TabPanel value="mdb" className="tw-p-0">
-          {/* <div className="tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-p-5">เนื้อหา MDB …</div> */}
           <div className="tw-space-y-5">
             <MDBTables />
           </div>
+
         </TabPanel>
 
         <TabPanel value="ccb" className="tw-p-0">
-          <div className="tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-p-5">เนื้อหา CCB …</div>
+          <div className="tw-space-y-5">
+            <CCBTables />
+          </div>
         </TabPanel>
 
         <TabPanel value="cb-box" className="tw-p-0">
