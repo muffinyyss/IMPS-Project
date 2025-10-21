@@ -7,7 +7,7 @@ import ChargerTables from "@/app/dashboard/pm-report/charger/list/components/cha
 import FirmwareCards from "@/app/dashboard/pm-report/charger/list/components/firmware-cards";
 import MDBTables from "@/app/dashboard/pm-report/mdb/list/components/mdb-table";
 import CCBTables from "@/app/dashboard/pm-report/ccb/list/components/ccb-table";
-
+import StationTables from "@/app/dashboard/pm-report/station/list/components/station-table";
 
 
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
@@ -84,7 +84,10 @@ export default function DataTablesPage() {
         </TabPanel>
 
         <TabPanel value="station" className="tw-p-0">
-          <div className="tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-p-5">เนื้อหา Station …</div>
+          {/* <div className="tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-p-5">เนื้อหา Station …</div> */}
+          <div className="tw-space-y-5">
+            <StationTables />
+          </div>
         </TabPanel>
       </TabsBody>
     </Tabs>
