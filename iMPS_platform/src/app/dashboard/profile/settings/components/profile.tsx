@@ -17,7 +17,7 @@ type Profile = {
   id: string;
   username: string;
   email: string;
-  tel: string;
+  phone: string;
   role: string;
   company?: string;
 };
@@ -56,7 +56,7 @@ export default function BasicInfo() {
       const body = {
         username: p.username,
         email: p.email,
-        tel: p.tel,
+        phone: p.phone,
         company: p.company ?? "",
       };
 
@@ -89,6 +89,9 @@ export default function BasicInfo() {
     );
   }
 
+ const roClasses =
+  "read-only:tw-bg-blue-gray-50";
+
   return (
     <Card className="tw-mb-6 tw-scroll-mt-4 tw-border tw-border-blue-gray-100 tw-shadow-sm tw-rounded-xl tw-overflow-hidden" id="Profile">
       <CardHeader shadow={false} floated={false}>
@@ -99,31 +102,51 @@ export default function BasicInfo() {
       <CardBody className="tw-flex tw-flex-col">
         <div className="tw-grid tw-grid-cols-1 tw-gap-6">
           <Input
+            label="Role"
+            value={p?.role ?? ""}
+            containerProps={{ className: "tw-w-full" }}
+            // disabled
+            readOnly
+            className={roClasses}
+          />
+          <Input
             label="Username"
             value={p?.username ?? ""}
             onChange={(e) => setP((prev) => prev ? { ...prev, username: e.target.value } : prev)}
             containerProps={{ className: "tw-w-full" }}
-            disabled={!editing}
+            // disabled={!editing}
+            readOnly={!editing}
+            // className="!tw-bg-blue-gray-50"
+            className={roClasses}
           />
           <Input
             label="Email"
             value={p?.email ?? ""}
             onChange={(e) => setP((prev) => prev ? { ...prev, email: e.target.value } : prev)}
             containerProps={{ className: "tw-w-full" }}
-            disabled={!editing}
+            // disabled={!editing}
+            readOnly={!editing}
+            // className="!tw-bg-blue-gray-50"
+            className={roClasses}
           />
           <Input
             label="Phone number"
-            value={p?.tel ?? ""}
-            onChange={(e) => setP((prev) => prev ? { ...prev, tel: e.target.value } : prev)}
+            value={p?.phone ?? ""}
+            onChange={(e) => setP((prev) => prev ? { ...prev, phone: e.target.value } : prev)}
             containerProps={{ className: "tw-w-full" }}
-            disabled={!editing}
+            // disabled={!editing}
+            readOnly={!editing}
+            // className="!tw-bg-blue-gray-50"
+            className={roClasses}
           />
+          
           <Input
-            label="Role"
-            value={p?.role ?? ""}
+            label="Company"
+            value={p?.company ?? ""}
             containerProps={{ className: "tw-w-full" }}
-            disabled
+            // disabled
+            readOnly={!editing}
+            className={roClasses}
           />
         </div>
       </CardBody>

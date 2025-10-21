@@ -39,6 +39,8 @@ type Props = {
 };
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const REPORT_PREFIX = "mdbpmreport";
+const URL_PREFIX = "mdbpmurl";
 
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -136,8 +138,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       };
 
       const [pmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL("/pmreport/list"), fetchOpts),
-        fetch(makeURL("/pmurl/list"), fetchOpts),
+        // fetch(makeURL("/pmreport/list"), fetchOpts),
+        // fetch(makeURL("/pmurl/list"), fetchOpts),
+        fetch(makeURL(`/${REPORT_PREFIX}/list`), fetchOpts),
+        fetch(makeURL(`/${URL_PREFIX}/list`), fetchOpts),
       ]);
 
       let pmItems: any[] = [];
@@ -185,7 +189,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
-        
+
         return {
           name: thDate(isoDay),
           position: isoDay,
@@ -305,13 +309,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </a>
         );
       },
-    
+
       size: 80,
       minSize: 64,
       maxSize: 120,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-   
+
   ];
 
   const table = useReactTable({
@@ -347,7 +351,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
     fd.append("rows", JSON.stringify({ reportDate, urls }));
 
-    const res = await fetch(`${apiBase}/pmurl/upload`, {
+    // const res = await fetch(`${apiBase}/pmurl/upload`, {
+    const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
       method: "POST",
       body: fd,
       credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
@@ -398,7 +403,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       fd.append("reportDate", reportDate);
       pendingFiles.forEach((f) => fd.append("files", f));
 
-      const res = await fetch(`${apiBase}/pmurl/upload-files`, {
+      // const res = await fetch(`${apiBase}/pmurl/upload-files`, {
+      const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
         method: "POST",
         body: fd,
         // ถ้าใช้ cookie httpOnly: เปิดบรรทัดนี้แทน header Authorization
