@@ -408,6 +408,7 @@ function PhotoMultiInput({
 export default function CheckList({ onComplete }: CheckListProps) {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+    const PM_PREFIX = "mdbpmreport";
 
     /* ---------- photos per question ---------- */
     const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
@@ -824,7 +825,8 @@ export default function CheckList({ onComplete }: CheckListProps) {
         files.forEach((f) => form.append("files", f)); // ชื่อ field ใน back คือ "files"
 
         const token = localStorage.getItem("access_token");
-        const res = await fetch(`${API_BASE}/pmreport/${reportId}/photos`, {
+        // const res = await fetch(`${API_BASE}/pmreport/${reportId}/photos`, {
+        const res = await fetch(`${API_BASE}/${PM_PREFIX}/${reportId}/photos`, {
             method: "POST",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
             body: form,                 // ⛔ ห้ามใส่ Content-Type เอง
@@ -842,7 +844,8 @@ export default function CheckList({ onComplete }: CheckListProps) {
             const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
 
             // 1) สร้างรายงาน (submit)
-            const res = await fetch(`${API_BASE}/pmreport/submit`, {
+            // const res = await fetch(`${API_BASE}/pmreport/submit`, {
+            const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -872,14 +875,17 @@ export default function CheckList({ onComplete }: CheckListProps) {
             }
 
             // 3) finalize (ออปชัน)
-            const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+            // const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+            const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
                 method: "POST",
                 headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 credentials: "include",
                 body: new URLSearchParams({ station_id: stationId }), // endpoint นี้รับ Form-encoded
             });
             if (!fin.ok) throw new Error(await fin.text());
-
+            console.log("SUBMIT URL:", `${API_BASE}/${PM_PREFIX}/submit`);
+            console.log("PHOTOS URL:", `${API_BASE}/${PM_PREFIX}/${report_id}/photos`);
+            console.log("FINALIZE URL:", `${API_BASE}/${PM_PREFIX}/${report_id}/finalize`);
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
         } catch (err: any) {
@@ -888,6 +894,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
             setSubmitting(false);
         }
     };
+
 
     /* =========================
      *        RENDER
