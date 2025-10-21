@@ -264,7 +264,8 @@ export default function ChargersPage() {
         <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 tw-gap-6">
           <StatisticChart />
           <AICard />
-          <PMCard />
+          {/* <PMCard /> */}
+          <PMCard stationId={stationId!} />
         </div>
       </div>
 

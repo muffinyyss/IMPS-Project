@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Typography } from "@material-tailwind/react";
 import { WrenchScrewdriverIcon, CpuChipIcon, CalendarDaysIcon } from "@heroicons/react/24/solid";
 import { data_pmReport as fallback, loadPmReport, type PMReportData } from "@/data";
 
