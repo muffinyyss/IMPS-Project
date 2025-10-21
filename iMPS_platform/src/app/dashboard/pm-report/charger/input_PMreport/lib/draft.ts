@@ -18,18 +18,18 @@ function safeStorage() {
   }
 }
 
-// export function draftKey(stationId: string | null | undefined) {
-//   // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
-//   return `pmDraft:${stationId ?? "unknown"}`;
-// }
+export function draftKey(stationId: string | null | undefined) {
+  // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
+  return `pmDraft:${stationId ?? "unknown"}`;
+}
 
 // app/pm-report/charger/input_PMreport/lib/draft.ts
-export function draftKey(
-  stationId: string | null | undefined,
-  draftId: string = "default"
-) {
-  return `pmDraft:v2:${stationId ?? "unknown"}:${draftId}`;
-}
+// export function draftKey(
+//   stationId: string | null | undefined,
+//   draftId: string = "default"
+// ) {
+//   return `pmDraft:v2:${stationId ?? "unknown"}:${draftId}`;
+// }
 
 
 export function saveDraftLocal(key: string, data: DraftData) {

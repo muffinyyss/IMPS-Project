@@ -508,40 +508,6 @@ export default function CheckList({ onComplete }: CheckListProps) {
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
 
-    // ครั้งแรก: อ่าน draft_id จาก URL หรือสร้างใหม่แล้วเขียนกลับไปที่ URL
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        let d = params.get("draft_id");
-        if (!d) {
-            d = (typeof crypto !== "undefined" && "randomUUID" in crypto)
-                ? crypto.randomUUID()
-                : String(Date.now());
-            params.set("draft_id", d);
-            const url = `${window.location.pathname}?${params.toString()}`;
-            window.history.replaceState({}, "", url);
-        }
-        setDraftId(d);
-    }, []);
-
-    useEffect(() => {
-        if (!stationId || !draftId) return;   // <-- เพิ่ม check draftId
-        const draft = loadDraftLocal<{
-            job: typeof job;
-            rows: typeof rows;
-            cp: typeof cp;
-            m17: typeof m17.state;
-            summary: string;
-        }>(key);
-        if (!draft) return;
-
-        setJob((prev) => ({ ...prev, ...draft.job }));
-        setRows(draft.rows);
-        setCp(draft.cp);
-        m17.setState(draft.m17);
-        setSummary(draft.summary);
-    }, [stationId, draftId]);                // <-- เพิ่ม draftId ใน deps
-
-
 
 
 
@@ -719,7 +685,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
 
     // เรียกใช้ – เก็บเฉพาะข้อมูลที่ serialize ได้
     useDebouncedEffect(() => {
-        if (!stationId || !draftId) return;   // <-- เพิ่ม check draftId
+        if (!stationId) return;
         saveDraftLocal(key, {
             job,
             rows,
@@ -730,9 +696,20 @@ export default function CheckList({ onComplete }: CheckListProps) {
     }, [key, stationId, job, rows, cp, m17.state, summary]);
 
     /* ---------- actions ---------- */
+    // const onSave = () => {
+    //     console.log({
+    //         job,
+    //         rows,
+    //         cp,
+    //         m17: m17.state,
+    //         photos,
+    //         summary
+    //     });
+    //     alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
+    // };
     const onSave = () => {
-        if (!stationId  || !draftId) {
-            alert("ยังไม่ทราบ station_id หรือ draft_id — บันทึกชั่วคราวไม่สำเร็จ");
+        if (!stationId) {
+            alert("ยังไม่ทราบ station_id — บันทึกชั่วคราวไม่สำเร็จ");
             return;
         }
         // เซฟดราฟต์ (ซ้ำกับ auto-save ก็ได้ เพื่อความชัวร์ตอนกดปุ่ม)
@@ -1076,15 +1053,15 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         <Button
                             variant="outlined"
                             color="blue-gray"
-                            // type="button"
-                            // onClick={onSave}
-                            // title={
-                            //     !allPhotosAttached
-                            //         ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
-                            //         : "บันทึกชั่วคราว"
-                            // }
+                            type="button"
+                            onClick={onSave}
+                            title={
+                                !allPhotosAttached
+                                    ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
+                                    : "บันทึกชั่วคราว"
+                            }
                         >
-                            บันทึก
+                            บันทึกชั่วคราว
                         </Button>
                     ) : (
                         // <Button color="blue" type="button" onClick={onFinalSave}>
