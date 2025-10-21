@@ -369,7 +369,7 @@ def me(current: UserClaims = Depends(get_current_user)):
 
     u = users_collection.find_one(
         {"_id": ObjectId(current.user_id)},
-        {"_id": 1, "username": 1, "email": 1, "role": 1, "company": 1, "phone": 1}
+        {"_id": 1, "username": 1, "email": 1, "role": 1, "company": 1, "tel": 1}
     )
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
@@ -380,7 +380,7 @@ def me(current: UserClaims = Depends(get_current_user)):
         "email": u.get("email") or "",
         "role": u.get("role") or "",
         "company": u.get("company") or "",
-        "phone": u.get("phone") or "",
+        "tel": u.get("tel") or "",
     }
 
 @app.get("/my-stations/detail")
@@ -577,7 +577,7 @@ class register(BaseModel):
     username: str
     email: str
     password: str
-    phone: str
+    tel: str
     company: str
 #create
 @app.post("/insert_users/")
@@ -592,7 +592,7 @@ async def create_users(users: register):
         "username" : users.username,
         "email":users.email,
         "password":hashed_pw,
-        "phone":users.phone,
+        "tel":users.tel,
         "refreshTokens": [],
         "role":"Technician",
         "company":users.company,
@@ -1127,6 +1127,61 @@ ALLOW_FIELDS_SELF_USER  = {"username", "email", "tel", "company", "password"}
 
 
 # ===== Endpoint =====
+# @app.patch("/user_update/{id}", response_model=UserOut)
+# def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_current_user)):
+#     oid = to_object_id_or_400(id)
+
+#     doc = users_collection.find_one({"_id": oid})
+#     if not doc:
+#         raise HTTPException(status_code=404, detail="user not found")
+
+#     if current.role != "admin" and current.user_id != str(oid):
+#         raise HTTPException(status_code=403, detail="forbidden")
+
+#     incoming = {
+#         k: (v.strip() if isinstance(v, str) else v)
+#         for k, v in body.model_dump(exclude_none=True).items()
+#     }
+#     if not incoming:
+#         raise HTTPException(status_code=400, detail="no fields to update")
+
+#     allowed = ALLOW_FIELDS_ADMIN_USER if current.role == "admin" else ALLOW_FIELDS_SELF_USER
+#     payload = {k: v for k, v in incoming.items() if k in allowed}
+#     if not payload:
+#         raise HTTPException(status_code=400, detail="no permitted fields to update")
+
+#     if "password" in payload:
+#         payload["password"] = hash_password(payload["password"])
+
+#     if "is_active" in payload and not isinstance(payload["is_active"], bool):
+#         raise HTTPException(status_code=400, detail="is_active must be boolean")
+
+#     now = datetime.now(timezone.utc)
+#     payload["updatedAt"] = now
+
+#     try:
+#         users_collection.update_one({"_id": oid}, {"$set": payload})
+#     except DuplicateKeyError:
+#         raise HTTPException(status_code=409, detail="duplicate email or username")
+
+#     newdoc = users_collection.find_one({"_id": oid}) or {}
+#     created_at = newdoc.get("createdAt") or now
+#     if "createdAt" not in newdoc:
+#         users_collection.update_one({"_id": oid}, {"$set": {"createdAt": created_at}})
+
+#     # ✅ ใช้ tel ไม่ใช่ phone
+#     return {
+#         "id": str(newdoc["_id"]),
+#         "username": newdoc.get("username", ""),
+#         "email": newdoc.get("email", ""),
+#         "role": newdoc.get("role", ""),
+#         "company": (newdoc.get("company") or ""),
+#         "station_id": list(newdoc.get("station_id") or []),
+#         "tel": (newdoc.get("tel") or ""),
+#         "createdAt": created_at,
+#         "updatedAt": newdoc.get("updatedAt", now),
+#     }
+
 @app.patch("/user_update/{id}", response_model=UserOut)
 def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_current_user)):
     oid = to_object_id_or_400(id)
@@ -1135,9 +1190,17 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     if not doc:
         raise HTTPException(status_code=404, detail="user not found")
 
-    if current.role != "admin" and current.user_id != str(oid):
+    # ── Permission: admin ทำได้ทั้งหมด, owner ได้เฉพาะของตัวเอง, อื่น ๆ ห้าม
+    if current.role == "admin":
+        pass  # ผ่าน
+    elif current.role == "owner":
+        if current.user_id != str(oid):
+            raise HTTPException(status_code=403, detail="forbidden")
+    else:
+        # กันบทบาทอื่น ๆ (เช่น user) ไม่ให้เข้ามาอัปเดต
         raise HTTPException(status_code=403, detail="forbidden")
 
+    # ── เตรียม incoming fields
     incoming = {
         k: (v.strip() if isinstance(v, str) else v)
         for k, v in body.model_dump(exclude_none=True).items()
@@ -1145,14 +1208,24 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     if not incoming:
         raise HTTPException(status_code=400, detail="no fields to update")
 
-    allowed = ALLOW_FIELDS_ADMIN_USER if current.role == "admin" else ALLOW_FIELDS_SELF_USER
+    # ── จำกัดฟิลด์ตามบทบาท
+    # แนะนำให้ประกาศสองชุดนี้ไว้ด้านบนไฟล์หรือไฟล์ settings:
+    ALLOW_FIELDS_ADMIN_USER = {"username","email","password","role","company","tel","is_active"}
+    ALLOW_FIELDS_SELF_OWNER = {"username","email","password","tel"}  # ปรับตามที่อยากให้แก้เองได้
+    if current.role == "admin":
+        allowed = ALLOW_FIELDS_ADMIN_USER
+    else:  # owner
+        allowed = ALLOW_FIELDS_SELF_OWNER
+
     payload = {k: v for k, v in incoming.items() if k in allowed}
     if not payload:
         raise HTTPException(status_code=400, detail="no permitted fields to update")
 
+    # ── แฮชรหัสผ่านถ้ามี
     if "password" in payload:
         payload["password"] = hash_password(payload["password"])
 
+    # ── validate is_active (admin เท่านั้นที่เข้ามาถึงบรรทัดนี้ได้อยู่แล้ว)
     if "is_active" in payload and not isinstance(payload["is_active"], bool):
         raise HTTPException(status_code=400, detail="is_active must be boolean")
 
@@ -1169,7 +1242,6 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     if "createdAt" not in newdoc:
         users_collection.update_one({"_id": oid}, {"$set": {"createdAt": created_at}})
 
-    # ✅ ใช้ tel ไม่ใช่ phone
     return {
         "id": str(newdoc["_id"]),
         "username": newdoc.get("username", ""),
