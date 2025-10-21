@@ -593,7 +593,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
         r[5] = check(m5.state, VOLTAGE_FIELDS);
         r[6] = check(m6.state, VOLTAGE_FIELDS);
         r[7] = check(m7.state, VOLTAGE_FIELDS);
-        r[8] = check(m8.state, VOLTAGE_FIELDS_CCB);  
+        r[8] = check(m8.state, VOLTAGE_FIELDS_CCB);
         return r;
     }, [m4.state, m5.state, m6.state, m7.state, m8.state]);
 
@@ -1062,7 +1062,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
                 </div>
 
 
-                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+                {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
                     {!canFinalSave ? (
                         <Button
                             variant="outlined"
@@ -1081,10 +1081,17 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         // <Button color="blue" type="button" onClick={onFinalSave}>
                         //     บันทึก
                         // </Button>
-                        <Button color="blue" type="button" onClick={onFinalSave} disabled={submitting}>
-                            {submitting ? "กำลังบันทึก..." : "บันทึก"}
-                        </Button>
+                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+                            <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
+                                {submitting ? "กำลังบันทึก..." : "บันทึก"}
+                            </Button>
+                        </div>
                     )}
+                </div> */}
+                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+                    <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
+                        {submitting ? "กำลังบันทึก..." : "บันทึก"}
+                    </Button>
                 </div>
             </CardFooter>
         </section>
