@@ -325,6 +325,7 @@ function PhotoMultiInput({
 export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps) {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+    const PM_PREFIX = "ccbpmreport";
 
     /* ---------- photos per question ---------- */
     const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
@@ -332,10 +333,12 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
     ) as Record<number, PhotoItem[]>;
     const [photos, setPhotos] = useState<Record<number, PhotoItem[]>>(initialPhotos);
 
+    const [cp, setCp] = useState<{ value: string; unit: UnitVoltage }>({ value: "", unit: "V" });
     const [summary, setSummary] = useState<string>("");
 
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
+
 
     // const key = useMemo(
     //     () => draftKeyCCB(stationId, draftId ?? "default"),
@@ -440,6 +443,21 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
         setSummary(draft.summary);
     }, [stationId, draftId, key]);
 
+    useEffect(() => {
+        const onInfo = (e: Event) => {
+            const detail = (e as CustomEvent).detail as { info?: StationPublic; station?: StationPublic };
+            const st = detail.info ?? detail.station;
+            if (!st) return;
+            setJob((prev) => ({
+                ...prev,
+                sn: st.SN ?? prev.sn,
+                model: st.model ?? prev.model,
+            }));
+        };
+        window.addEventListener("station:info", onInfo as EventListener);
+        return () => window.removeEventListener("station:info", onInfo as EventListener);
+    }, []);
+
     // ---------- render helpers ----------
     const makePhotoSetter = (
         no: number
@@ -533,7 +551,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
         form.append("group", group);
         files.forEach((f) => form.append("files", f));
         const token = localStorage.getItem("access_token");
-        const res = await fetch(`${API_BASE}/pmreport/${reportId}/photos`, {
+        const res = await fetch(`${API_BASE}/${PM_PREFIX}/${reportId}/photos`, {
             method: "POST",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
             body: form,
@@ -551,12 +569,37 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
             const pm_date = job.date?.trim() || "";
 
             // รูปร่าง measure สำหรับข้อ 9
-            const measures9 = M9_LIST.map((m, i) => ({
-                index: i,
-                data: m.state,
-            }));
+            // const measures9 = M9_LIST.map((m, i) => ({
+            //     index: i,
+            //     data: m.state,
+            // }));
 
-            const res = await fetch(`${API_BASE}/pmreport/submit`, {
+            // helper แปลง string → number (หรือ null ถ้าเว้นว่าง/ไม่ใช่ตัวเลข)
+            const toNum = (s: string) => {
+                const n = Number(s);
+                return Number.isFinite(n) ? n : null;
+            };
+
+            // ทำสำเนา state พร้อมแปลง value เป็น number
+            const normalizeMeasure = (state: typeof m9_0.state) =>
+                Object.fromEntries(
+                    Object.entries(state).map(([k, v]) => [
+                        k,
+                        { value: toNum(v.value), unit: v.unit },
+                    ])
+                );
+
+            // ✅ ส่งเป็น dict แทน โดยใช้ key เป็น "0".."5" (หรือจะใช้ชื่อ main/c1..c5 ก็ได้)
+            const r9 = {
+                "0": normalizeMeasure(m9_0.state), // เมนเบรกเกอร์
+                "1": normalizeMeasure(m9_1.state),
+                "2": normalizeMeasure(m9_2.state),
+                "3": normalizeMeasure(m9_3.state),
+                "4": normalizeMeasure(m9_4.state),
+                "5": normalizeMeasure(m9_5.state),
+            };
+
+            const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                 credentials: "include",
@@ -564,7 +607,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
                     station_id: stationId,
                     job,
                     rows,
-                    measures: { r9: measures9 },
+                    measures: { r9},
                     summary,
                     pm_date,
                 }),
@@ -582,7 +625,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
                 await uploadGroupPhotos(report_id, stationId, `g${no}`, files);
             }
 
-            const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+            const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
                 method: "POST",
                 headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 credentials: "include",
