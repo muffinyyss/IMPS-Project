@@ -83,23 +83,86 @@ export const allRoutes = [
     icon: <i className="fa fa-charging-station" />,
     path: "/dashboard/stations",
   },
-  
-  {
-    name: "Test report",
-    icon: <i className="fa fa-clipboard-list" />,
-    pages: [
-      {
-        name: "DC - Test report",
-        icon: <i className="fa fa-clipboard-check" />,
-        path: "#",
-      },
-      {
-        name: "AC - Test report",
-        icon: <i className="fa fa-server" />,
-        path: "#",
-      }
-    ],
-  },
+  // {
+  //   name: "PM report",
+  //   title: "report",
+  //   icon: <i className="fa fa-clipboard-list" />,
+  //   pages: [
+  //     {
+  //       // icon: <i className="fa fa-clipboard-check" />,
+  //       name: "Charger",
+  //       path: "/dashboard/pm-report",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-server" />,
+  //       name: "MDB",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-network-wired" />,
+  //       name: "CCB",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-box" />,
+  //       name: "CB-BOX",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-map-marker-alt" />,
+  //       name: "Station",
+  //       path: "#",
+  //     },
+  //   ],
+  // },
+  // {
+  //   name: "CM report",
+  //   icon: <i className="fa fa-clipboard-list" />,
+  //   pages: [
+  //     {
+  //       // icon: <i className="fa fa-clipboard-check" />,
+  //       name: "Charger",
+  //       path: "/dashboard/cm-report", 
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-server" />,
+  //       name: "MDB",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-network-wired" />,
+  //       name: "CCB",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-box" />,
+  //       name: "CB-BOX",
+  //       path: "#",
+  //     },
+  //     {
+  //       // icon: <i className="fa fa-map-marker-alt" />,
+  //       name: "Station",
+  //       path: "#",
+  //     },
+  //   ],
+  // },
+  // {
+  //   name: "Test report",
+  //   icon: <i className="fa fa-clipboard-list" />,
+  //   pages: [
+  //     {
+  //       name: "DC - Test report",
+  //       icon: <i className="fa fa-clipboard-check" />,
+  //       path: "#",
+  //     },
+  //     {
+  //       name: "AC - Test report",
+  //       icon: <i className="fa fa-server" />,
+  //       path: "#",
+  //     }
+  //   ],
+  // },
+
 ];
 
 export default allRoutes;
