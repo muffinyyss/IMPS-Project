@@ -598,8 +598,6 @@ export default function CheckList({ onComplete }: CheckListProps) {
         return r;
     }, [m4.state, m5.state, m6.state, m7.state, m8.state]);
 
-
-
     const allRequiredInputsFilled = useMemo(
         () => Object.values(missingInputs).every((arr) => arr.length === 0),
         [missingInputs]
@@ -1104,5 +1102,3 @@ export default function CheckList({ onComplete }: CheckListProps) {
         </section>
     );
 }
-
-
