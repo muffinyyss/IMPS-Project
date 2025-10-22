@@ -58,13 +58,7 @@ type PhotoItem = {
     error?: string;
 };
 
-
 type PF = "PASS" | "FAIL" | "NA" | "";
-const PF_TEXT = {
-    PASS: "Pass : ผ่าน",
-    FAIL: "Fail : ไม่ผ่าน",
-    NA: "N/A : ไม่พบ",
-} as const;
 
 /* ---------- ฟิลด์วัดแรงดัน (ใช้ในข้อ 5 เท่านั้น) ---------- */
 const VOLTAGE_FIELDS = [
