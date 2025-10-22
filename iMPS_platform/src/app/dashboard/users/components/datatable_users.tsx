@@ -41,7 +41,7 @@ import {
 
 //components
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
-
+import { apiFetch } from "@/utils/api";
 const API_BASE = "http://localhost:8000";
 
 // ------------ NEW: โครงสร้างข้อมูลผู้ใช้ (แถวในตาราง) ------------
@@ -121,7 +121,7 @@ export function SearchDataTables() {
           "";
         // const res = await fetch('/api/all-users/', { cache: 'no-store' });
 
-        const res = await fetch(`${API_BASE}/all-users/`, {
+        const res = await apiFetch(`${API_BASE}/all-users/`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -176,7 +176,7 @@ export function SearchDataTables() {
         localStorage.getItem("accessToken") ||
         "";
 
-      const res = await fetch(`${API_BASE}/add_users/`, {
+      const res = await apiFetch(`${API_BASE}/add_users/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -243,7 +243,7 @@ export function SearchDataTables() {
     // if (payload.is_active !== undefined) body.is_active = !!payload.is_active;
     if ((payload as any).password) body.password = String((payload as any).password);
 
-    const res = await fetch(`${API_BASE}/user_update/${id}`, {
+    const res = await apiFetch(`${API_BASE}/user_update/${id}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -295,7 +295,7 @@ export function SearchDataTables() {
         "";
 
       // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
-      const res = await fetch(`${API_BASE}/delete_users/${row.id}`, {
+      const res = await apiFetch(`${API_BASE}/delete_users/${row.id}`, {
         method: "DELETE",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),

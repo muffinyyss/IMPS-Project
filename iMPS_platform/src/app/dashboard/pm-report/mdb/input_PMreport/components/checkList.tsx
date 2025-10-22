@@ -881,9 +881,6 @@ export default function CheckList({ onComplete }: CheckListProps) {
                 body: new URLSearchParams({ station_id: stationId }), // endpoint นี้รับ Form-encoded
             });
             if (!fin.ok) throw new Error(await fin.text());
-            console.log("SUBMIT URL:", `${API_BASE}/${PM_PREFIX}/submit`);
-            console.log("PHOTOS URL:", `${API_BASE}/${PM_PREFIX}/${report_id}/photos`);
-            console.log("FINALIZE URL:", `${API_BASE}/${PM_PREFIX}/${report_id}/finalize`);
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
         } catch (err: any) {

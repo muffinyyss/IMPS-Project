@@ -162,6 +162,7 @@ export const allRoutes = [
   //     }
   //   ],
   // },
+
 ];
 
 export default allRoutes;
