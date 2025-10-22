@@ -38,7 +38,8 @@ type Props = {
 };
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
+const REPORT_PREFIX = "stationpmreport";
+const URL_PREFIX = "stationpmurl";
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -135,8 +136,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       };
 
       const [pmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL("/pmreport/list"), fetchOpts),
-        fetch(makeURL("/pmurl/list"), fetchOpts),
+        // fetch(makeURL("/pmreport/list"), fetchOpts),
+        // fetch(makeURL("/pmurl/list"), fetchOpts),
+        fetch(makeURL(`/${REPORT_PREFIX}/list`), fetchOpts),
+        fetch(makeURL(`/${URL_PREFIX}/list`), fetchOpts),
       ]);
 
       let pmItems: any[] = [];
@@ -346,7 +349,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
     fd.append("rows", JSON.stringify({ reportDate, urls }));
 
-    const res = await fetch(`${apiBase}/pmurl/upload`, {
+    const res = await fetch(`${apiBase}/${URL_PREFIX}/upload`, {
       method: "POST",
       body: fd,
       credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
@@ -397,7 +400,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       fd.append("reportDate", reportDate);
       pendingFiles.forEach((f) => fd.append("files", f));
 
-      const res = await fetch(`${apiBase}/pmurl/upload-files`, {
+      const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
         method: "POST",
         body: fd,
         // ถ้าใช้ cookie httpOnly: เปิดบรรทัดนี้แทน header Authorization
