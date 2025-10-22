@@ -146,22 +146,22 @@ export const allRoutes = [
   //     },
   //   ],
   // },
-  {
-    name: "Test report",
-    icon: <i className="fa fa-clipboard-list" />,
-    pages: [
-      {
-        name: "DC - Test report",
-        icon: <i className="fa fa-clipboard-check" />,
-        path: "#",
-      },
-      {
-        name: "AC - Test report",
-        icon: <i className="fa fa-server" />,
-        path: "#",
-      }
-    ],
-  },
+  // {
+  //   name: "Test report",
+  //   icon: <i className="fa fa-clipboard-list" />,
+  //   pages: [
+  //     {
+  //       name: "DC - Test report",
+  //       icon: <i className="fa fa-clipboard-check" />,
+  //       path: "#",
+  //     },
+  //     {
+  //       name: "AC - Test report",
+  //       icon: <i className="fa fa-server" />,
+  //       path: "#",
+  //     }
+  //   ],
+  // },
 ];
 
 export default allRoutes;
