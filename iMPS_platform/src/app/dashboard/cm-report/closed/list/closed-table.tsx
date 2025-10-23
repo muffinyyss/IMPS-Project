@@ -3,11 +3,12 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import CMForm from "@/app/dashboard/cm-report/components/form_cm"; // ✅ import ตรง
+import { AppDataTable } from "@/data";
 import {
   getCoreRowModel,
-  getFilteredRowModel,
   getPaginationRowModel,
+  getFilteredRowModel,
   getSortedRowModel,
   useReactTable,
   flexRender,
@@ -17,17 +18,11 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import {
-  Button,
-  Card,
-  CardBody,
-  CardFooter,
-  CardHeader,
-  Input,
-  Typography,
+  Button, Card, CardBody, CardHeader, Typography, CardFooter, Input,
 } from "@material-tailwind/react";
-import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
-import { AppDataTable } from "@/data";
+import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 
 type TData = (typeof AppDataTable)[number];
@@ -35,28 +30,21 @@ type TData = (typeof AppDataTable)[number];
 type Props = {
   token?: string;        // ใช้ได้ ถ้าจะส่ง Bearer แทนคุกกี้
   apiBase?: string;
-};
+}
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const REPORT_PREFIX = "ccbpmreport";
-const URL_PREFIX = "ccbpmurl";
-export default function SearchDataTables({ token, apiBase = BASE }: Props) {
+
+export default function CMReportPage({ token, apiBase = BASE }: Props) {
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"list" | "form">("list");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const pathname = usePathname();
-  const sp = useSearchParams();
 
   // อ่าน station_id จาก URL (Navbar เป็นคนอัปเดตให้)
+  const sp = useSearchParams();
   const stationIdFromUrl = sp.get("station_id") ?? "";
 
-  const addHref = useMemo(() => {
-    if (!stationIdFromUrl) return "/dashboard/pm-report/ccb/input_PMreport";
-    const p = new URLSearchParams({ station_id: stationIdFromUrl });
-    return `/dashboard/pm-report/ccb/input_PMreport?${p.toString()}`;
-  }, [stationIdFromUrl]);
 
   // เลือกโหมด auth: คุกกี้ httpOnly (credentials: "include") หรือ Bearer token
   const useHttpOnlyCookie = true;
@@ -135,19 +123,17 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return u.toString();
       };
 
-      const [pmRes, urlRes] = await Promise.allSettled([
-        // fetch(makeURL("/pmreport/list"), fetchOpts),
-        // fetch(makeURL("/pmurl/list"), fetchOpts),
-        fetch(makeURL(`/${REPORT_PREFIX}/list`), fetchOpts),
-        fetch(makeURL(`/${URL_PREFIX}/list`), fetchOpts),
+      const [cmRes, urlRes] = await Promise.allSettled([
+        fetch(makeURL("/cmreport/list"), fetchOpts),
+        fetch(makeURL("/cmurl/list"), fetchOpts),
       ]);
 
-      let pmItems: any[] = [];
+      let cmItems: any[] = [];
       let urlItems: any[] = [];
 
-      if (pmRes.status === "fulfilled" && pmRes.value.ok) {
-        const j = await pmRes.value.json();
-        if (Array.isArray(j?.items)) pmItems = j.items;
+      if (cmRes.status === "fulfilled" && cmRes.value.ok) {
+        const j = await cmRes.value.json();
+        if (Array.isArray(j?.items)) cmItems = j.items;
       }
       if (urlRes.status === "fulfilled" && urlRes.value.ok) {
         const j = await urlRes.value.json();
@@ -155,8 +141,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       }
 
 
-      const pmRows: TData[] = pmItems.map((it: any) => {
-        const isoDay = toISODateOnly(it.pm_date ?? it.createdAt ?? "");
+      const cmRows: TData[] = cmItems.map((it: any) => {
+        const isoDay = toISODateOnly(it.cm_date ?? it.createdAt ?? "");
 
         // ลิงก์ไฟล์ที่อัปโหลด (ถ้ามี)
         const rawUploaded =
@@ -187,7 +173,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
-        
+
         return {
           name: thDate(isoDay),
           position: isoDay,
@@ -197,7 +183,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
 
       const urlRows: TData[] = urlItems.map((it: any) => {
-        const isoDay = toISODateOnly(it.pm_date ?? it.reportDate ?? it.createdAt ?? "");
+        const isoDay = toISODateOnly(it.cm_date ?? it.reportDate ?? it.createdAt ?? "");
         const raw =
           it.file_url
           ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
@@ -214,7 +200,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
 
       // รวมทั้งหมด แล้ว sort ตามวันที่ (ใหม่ → เก่า) แต่ยัง “ไม่ตัดซ้ำ”
-      const allRows = [...pmRows, ...urlRows].sort((a, b) => {
+      const allRows = [...cmRows, ...urlRows].sort((a, b) => {
         const da = (a.position ?? "") as string;
         const db = (b.position ?? "") as string;
         return da < db ? 1 : da > db ? -1 : 0;
@@ -222,10 +208,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
       // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
       if (!allRows.length) {
-        const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
+        const res2 = await fetch(`${apiBase}/cmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
         if (res2.ok) {
           const j = await res2.json();
-          const iso = j?.pm_date ?? "";
+          const iso = j?.cm_date ?? "";
           const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
           setData(rows);
           return;
@@ -250,18 +236,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationIdFromUrl]);
 
-
-
-
   const columns: ColumnDef<TData, unknown>[] = [
     {
       id: "no",
       header: () => "No.",
       enableSorting: false,
       size: 25,
-      minSize: 10,
-      maxSize: 25,
-      cell: (info: CellContext<TData, unknown>) => {
+      cell: (info) => {
         const pageRows = info.table.getRowModel().rows as Row<TData>[];
         const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
         const { pageIndex, pageSize } = info.table.getState().pagination;
@@ -274,7 +255,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       id: "date",
       header: () => "date",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 80,
+      size: 50,
       minSize: 60,
       maxSize: 120,
       meta: { headerAlign: "center", cellAlign: "center" },
@@ -298,7 +279,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
             download
             onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
             className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-              ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+                  ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
             aria-disabled={!hasUrl}
             title={hasUrl ? "Download PDF" : "No file"}
           >
@@ -307,13 +288,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </a>
         );
       },
-    
+
       size: 80,
       minSize: 64,
       maxSize: 120,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-   
   ];
 
   const table = useReactTable({
@@ -322,46 +302,45 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting,
     onGlobalFilterChange: setFiltering,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     columnResizeMode: "onChange",
   });
 
-  // Upload: ตอนนี้ backend /pmurl/upload รับ URL ไม่ใช่ไฟล์จริง
+  // Upload (เดโม่ ไม่เชื่อม backend)
   const pdfInputRef = useRef<HTMLInputElement>(null);
-
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [urlText, setUrlText] = useState("");
 
-  // async function uploadUrls() {
-  //   if (!stationIdFromUrl) { alert("กรุณาเลือกสถานีก่อน"); return; }
-  //   if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
+  async function uploadUrls() {
+    if (!stationIdFromUrl) { alert("กรุณาเลือกสถานีก่อน"); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
 
-  //   const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
-  //   if (!urls.length) { alert("กรุณากรอก URL"); return; }
+    const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
+    if (!urls.length) { alert("กรุณากรอก URL"); return; }
 
-  //   const fd = new FormData();
-  //   fd.append("station_id", stationIdFromUrl);
-  //   // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
-  //   fd.append("rows", JSON.stringify({ reportDate, urls }));
+    const fd = new FormData();
+    fd.append("station_id", stationIdFromUrl);
+    // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
+    fd.append("rows", JSON.stringify({ reportDate, urls }));
 
-  //   const res = await fetch(`${apiBase}/${URL_PREFIX}/upload`, {
-  //     method: "POST",
-  //     body: fd,
-  //     credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
-  //   });
+    const res = await fetch(`${apiBase}/cmurl/upload`, {
+      method: "POST",
+      body: fd,
+      credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
+    });
 
-  //   if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
-  //   alert("อัปโหลดสำเร็จ");
-  //   setDateOpen(false);
-  //   setUrlText("");
+    if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
+    alert("อัปโหลดสำเร็จ");
+    setDateOpen(false);
+    setUrlText("");
 
 
-  // }
+  }
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -400,7 +379,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       fd.append("reportDate", reportDate);
       pendingFiles.forEach((f) => fd.append("files", f));
 
-      const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
+      const res = await fetch(`${apiBase}/cmurl/upload-files`, {
         method: "POST",
         body: fd,
         // ถ้าใช้ cookie httpOnly: เปิดบรรทัดนี้แทน header Authorization
@@ -431,20 +410,45 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
   }
 
+  const onPdfPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    const pdfs = files.filter(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
+    if (pdfs.length !== files.length) alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
+    console.log("Picked PDFs (demo):", pdfs.map(f => ({ name: f.name, size: f.size })));
+    e.currentTarget.value = "";
+  };
+
+  const goAdd = () => setMode("form");
+  const goList = () => setMode("list");
+
+  if (mode === "form") {
+    return (
+      <div className="tw-mt-6">
+        {/* <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
+          <Button variant="outlined" size="sm" onClick={goList} className="tw-py-2 tw-px-2" title="กลับไปหน้า List">
+            <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
+          </Button>
+          <Typography variant="h6" color="blue-gray">Corrective Maintenance Form</Typography>
+        </div> */}
+
+        {/* ✅ เรนเดอร์ฟอร์มตรง ๆ */}
+        <CMForm />
+        {/* ถ้า CMForm ของคุณไม่มี prop onCancel ก็ลบออกได้ */}
+      </div>
+    );
+  }
+
   return (
     <>
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
-        <CardHeader
-          floated={false}
-          shadow={false}
-          className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-3 md:tw-!px-4 tw-!py-3 md:tw-!py-4 tw-mb-6"
-        >
+        <CardHeader floated={false} shadow={false}
+          className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-3 md:tw-!px-4 tw-!py-3 md:tw-!py-4 tw-mb-6">
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
-              Preventive Maintenance Checklist - CCB
+              Corrective Maintenance Report
             </Typography>
-            <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm">
-              ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM report) 
+            <Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-normal tw-mt-1 tw-text-sm md:tw-text-[15px]">
+              ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (CM Report)
             </Typography>
           </div>
 
@@ -456,72 +460,76 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 accept="application/pdf,.pdf"
                 multiple
                 className="tw-hidden"
+                // onChange={onPdfPick} 
                 onChange={handlePdfChange}
               />
               <Button
                 variant="text"
                 size="lg"
+                disabled={!stationIdFromUrl}
                 onClick={() => pdfInputRef.current?.click()}
-                className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-bg-white tw-text-blue-gray-900 tw-border tw-border-blue-gray-100 tw-shadow-[0_1px_0_rgba(0,0,0,0.04)] hover:tw-bg-black hover:tw-text-black hover:tw-border-black hover:tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)] tw-transition-colors tw-duration-200 focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none"
-              >
-                <ArrowUpTrayIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-200 group-hover:-tw-translate-y-0.5" />
+                className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
+                title="อัปโหลด PDF (demo)">
+                
+                <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
                 <span className="tw-text-sm">Upload</span>
               </Button>
 
-              <Link
-                href={addHref}
-                className="tw-inline-block"
-                aria-disabled={!stationIdFromUrl}
-                onClick={(e) => { if (!stationIdFromUrl) e.preventDefault(); }}
-              >
-                <Button
-                  size="lg"
-                  disabled={!stationIdFromUrl}
-                  className={`
+
+
+              {/* +ADD → แสดงฟอร์มทันที (ไม่ route) */}
+              {/* <Button size="lg" onClick={goAdd}
+                className="tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4 tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"
+                title="ไปหน้าแบบฟอร์ม CM">
+                <span className="tw-w-full tw-text-center">+ADD</span>
+              </Button> */}
+
+              <Button
+                size="lg"
+                onClick={goAdd}
+                disabled={!stationIdFromUrl}
+                className={`
                   !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
                   tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
                   ${!stationIdFromUrl
-                      ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                      : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
+                    ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+                    : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
                   tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
                   focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
                 `}
-                  title={stationIdFromUrl ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
-                >
-                  <span className="tw-w-full tw-text-center">+add</span>
-                </Button>
-              </Link>
+                title={stationIdFromUrl ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
+              >
+                <span className="tw-w-full tw-text-center">+add</span>
+              </Button>
+
+
             </div>
           </div>
         </CardHeader>
 
-        {/* แถบ filter (ไม่มี dropdown แล้ว) */}
-        <CardBody className="tw-flex tw-items-center tw-gap-3 tw-px-3 md:tw-px-4">
-          <div className="tw-flex tw-items-center tw-gap-3">
+        {/* FILTER BAR */}
+        <CardBody className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4">
+          <div className="tw-flex tw-items-center tw-gap-3 tw-flex-none">
             <select
               value={table.getState().pagination.pageSize}
               onChange={(e) => table.setPageSize(Number(e.target.value))}
               className="tw-border tw-p-2 tw-border-blue-gray-100 tw-rounded-lg tw-w-[72px]"
+              aria-label="จำนวนแถวต่อหน้า"
             >
-              {[5, 10, 15, 20, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
+              {[5, 10, 15, 20, 25].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
-            <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal">
+            <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-hidden sm:tw-inline">
               entries per page
             </Typography>
           </div>
+
           <div className="tw-ml-auto tw-min-w-0 tw-flex-1 md:tw-flex-none md:tw-w-64">
-            <Input
-              variant="outlined"
-              value={filtering}
-              onChange={(e) => setFiltering(e.target.value)}
-              label="Search"
-              crossOrigin={undefined}
-              containerProps={{ className: "tw-min-w-0" }}
-              className="tw-w-full"
-            />
+            <Input variant="outlined" value={filtering} onChange={(e) => setFiltering(e.target.value)}
+              label="Search" crossOrigin={undefined} containerProps={{ className: "tw-min-w-0" }} className="tw-w-full" />
           </div>
         </CardBody>
 
+        {/* TABLE */}
         <CardFooter className="tw-p-0">
           <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
             <table className="tw-w-full tw-text-left tw-min-w-[720px] md:tw-min-w-0 md:tw-table-fixed">
@@ -530,7 +538,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   <col key={header.id} style={{ width: header.getSize() }} />
                 ))}
               </colgroup>
-
               <thead className="tw-bg-gray-50 tw-sticky tw-top-0">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
@@ -538,28 +545,21 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                       const canSort = header.column.getCanSort();
                       const align = (header.column.columnDef as any).meta?.headerAlign ?? "left";
                       return (
-                        <th
-                          key={header.id}
-                          style={{ width: header.getSize() }}
+                        <th key={header.id} style={{ width: header.getSize() }}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                          className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap
-                          ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
-                        >
+                          className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
+                            }`}>
                           {canSort ? (
-                            <Typography
-                              color="blue-gray"
-                              className={`tw-flex tw-items-center tw-gap-1 md:tw-gap-2 tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                              ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}
-                            >
+                            <Typography color="blue-gray"
+                              className={`tw-flex tw-items-center tw-gap-1 md:tw-gap-2 tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"
+                                }`}>
                               {flexRender(header.column.columnDef.header, header.getContext())}
                               <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
                             </Typography>
                           ) : (
-                            <Typography
-                              color="blue-gray"
-                              className={`tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                              ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
-                            >
+                            <Typography color="blue-gray"
+                              className={`tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
+                                }`}>
                               {flexRender(header.column.columnDef.header, header.getContext())}
                             </Typography>
                           )}
@@ -583,16 +583,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
                         return (
-                          <td
-                            key={cell.id}
-                            style={{ width: cell.column.getSize() }}
-                            className={`!tw-border-y !tw-border-x-0 tw-align-middle
-                            ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
-                          >
-                            <Typography
-                              variant="small"
-                              className="!tw-font-normal !tw-text-blue-gray-600 tw-py-3 md:tw-py-4 tw-px-3 md:tw-px-4 tw-truncate md:tw-whitespace-normal"
-                            >
+                          <td key={cell.id} style={{ width: cell.column.getSize() }}
+                            className={`!tw-border-y !tw-border-x-0 tw-align-middle ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
+                              }`}>
+                            <Typography variant="small"
+                              className="!tw-font-normal !tw-text-blue-gray-600 tw-py-3 md:tw-py-4 tw-px-3 md:tw-px-4 tw-truncate md:tw-whitespace-normal">
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>
                           </td>
@@ -612,39 +607,29 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
         </CardFooter>
 
+        {/* PAGINATION */}
         <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4 tw-py-4">
           <span className="tw-text-sm">
             <Typography className="!tw-font-bold tw-inline">Page</Typography>{" "}
             <strong>{table.getState().pagination.pageIndex + 1} of {table.getPageCount()}</strong>
           </span>
           <div className="tw-flex tw-items-center tw-gap-2">
-            <Button
-              variant="outlined"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              className="disabled:tw-opacity-30 tw-py-2 tw-px-2"
-            >
+            <Button variant="outlined" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="disabled:tw-opacity-30 tw-py-2 tw-px-2">
               <ChevronLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
               <span className="tw-sr-only">Previous</span>
             </Button>
-            <Button
-              variant="outlined"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              className="disabled:tw-opacity-30 tw-py-2 tw-px-2"
-            >
+            <Button variant="outlined" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="disabled:tw-opacity-30 tw-py-2 tw-px-2">
               <ChevronRightIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
               <span className="tw-sr-only">Next</span>
             </Button>
           </div>
         </div>
       </Card>
+
       {/* ⬇️ วาง Dialog นอกร่าง Card แต่ยังอยู่ใน component */}
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
         <DialogHeader className="tw-text-base sm:tw-text-lg">
-          เลือกวันที่รายงาน (PM Report)
+          เลือกวันที่รายงาน (CM Report)
         </DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
