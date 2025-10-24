@@ -15,6 +15,7 @@ import PMCard from "./components/PMCard";
 import CBMCard from "./components/condition-Based";
 import Lightbox from "./components/Lightbox";
 import { useSearchParams } from "next/navigation";
+import { apiFetch } from "@/utils/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -84,22 +85,35 @@ export default function ChargersPage() {
 
   // station info
   useEffect(() => {
-    if (!stationId) return;
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") || "";
-    if (!token) return;
+    // if (!stationId) return;
+    // const token =
+    //   localStorage.getItem("access_token") ||
+    //   localStorage.getItem("accessToken") || "";
+    // // if (!token) return;
 
     const ctrl = new AbortController();
     (async () => {
+      if (!stationId) return;
+      const token =
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("accessToken") || "";
+      // if (!token) return;
+
+      // const ctrl = new AbortController();
       try {
-        const res = await fetch(
-          `${API_BASE}/station/info?station_id=${encodeURIComponent(stationId)}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            credentials: "include",
-            signal: ctrl.signal,
-          }
+        // const res = await fetch(
+        // `${API_BASE}/station/info?station_id=${encodeURIComponent(stationId)}`,
+        // const res = await apiFetch(
+        //   `${API_BASE}/station/info?station_id=${encodeURIComponent(stationId)}`,
+        //   {
+        //     headers: { Authorization: `Bearer ${token}` },
+        //     credentials: "include",
+        //     signal: ctrl.signal,
+        //   }
+        // );
+        const res = await apiFetch(
+          `/station/info?station_id=${encodeURIComponent(stationId)}`,
+          { signal: ctrl.signal }
         );
         if (!res.ok) {
           console.warn("station/info failed", res.status);
@@ -125,18 +139,24 @@ export default function ChargersPage() {
     const token =
       localStorage.getItem("access_token") ||
       localStorage.getItem("accessToken") || "";
-    if (!token) return;
+    // if (!token) return;
 
     const ctrl = new AbortController();
     const fetchStatus = async () => {
       try {
-        const res = await fetch(
-          `${API_BASE}/station-onoff/${encodeURIComponent(stationId)}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            credentials: "include",
-            signal: ctrl.signal,
-          }
+        // const res = await fetch(
+        //   `${API_BASE}/station-onoff/${encodeURIComponent(stationId)}`,
+        // const res = await apiFetch(
+        //   `${API_BASE}/station-onoff/${encodeURIComponent(stationId)}`,
+        //   {
+        //     headers: { Authorization: `Bearer ${token}` },
+        //     credentials: "include",
+        //     signal: ctrl.signal,
+        //   }
+        // );
+        const res = await apiFetch(
+          `/station-onoff/${encodeURIComponent(stationId)}`,
+          { signal: ctrl.signal }
         );
         if (!res.ok) return;
         const data = await res.json();
@@ -157,18 +177,24 @@ export default function ChargersPage() {
     const token =
       localStorage.getItem("access_token") ||
       localStorage.getItem("accessToken") || "";
-    if (!token) { setImages([]); return; }
+    // if (!token) { setImages([]); return; }
 
     const ctrl = new AbortController();
     (async () => {
       try {
-        const res = await fetch(
-          `${API_BASE}/selected/station/${encodeURIComponent(stationId)}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            credentials: "include",
-            signal: ctrl.signal,
-          }
+        // const res = await fetch(
+        //   `${API_BASE}/selected/station/${encodeURIComponent(stationId)}`,
+        // const res = await apiFetch(
+        //   `${API_BASE}/selected/station/${encodeURIComponent(stationId)}`,
+        //   {
+        //     headers: { Authorization: `Bearer ${token}` },
+        //     credentials: "include",
+        //     signal: ctrl.signal,
+        //   }
+        // );
+        const res = await apiFetch(
+          `/selected/station/${encodeURIComponent(stationId)}`,
+          { signal: ctrl.signal }
         );
 
         if (!res.ok) {

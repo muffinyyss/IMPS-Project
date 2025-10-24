@@ -70,7 +70,7 @@ CMReportDB = client["CMReport"]
 CMUrlDB = client["CMReportURL"]
 
 
-# MDB_collection = MDB_DB["Klongluang3"]
+MDB_collection = MDB_DB["Klongluang3"]
 
 def _validate_station_id(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
@@ -454,43 +454,6 @@ def get_history(
 
 class RefreshIn(BaseModel):
     refresh_token: str
-
-# @app.post("/refresh")
-# async def refresh(refresh_token: str):
-#     try:
-#         payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-#         email = payload.get("sub")
-#         if not email:
-#             raise HTTPException(status_code=401, detail="Invalid token")
-
-#         user = users_collection.find_one({"email": email})
-#         if not user:
-#             raise HTTPException(status_code=401, detail="User not found")
-
-#         token_exists = next((t for t in user.get("refreshTokens", []) if t["token"] == refresh_token), None)
-#         if not token_exists:
-#             raise HTTPException(status_code=401, detail="Invalid refresh token")
-
-#         # <<< ออก access token พร้อม claims ครบถ้วน >>>
-#         station_ids = user.get("station_id", [])
-#         if not isinstance(station_ids, list):
-#             station_ids = [station_ids]
-
-#         new_access_token = create_access_token({
-#             "sub": user["email"],
-#             "user_id": str(user["_id"]),
-#             "username": user.get("username"),
-#             "role": user.get("role", "user"),
-#             "company": user.get("company"),
-#             "station_ids": station_ids,
-#         }, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-
-#         return {"access_token": new_access_token}
-#     except ExpiredSignatureError:
-#         # refresh token หมดอายุ
-#         raise HTTPException(status_code=401, detail="refresh_token_expired")
-#     except JWTError:
-#         raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.post("/refresh")
 def refresh(body: RefreshIn, response: Response):
@@ -916,6 +879,13 @@ async def mdb_history_debug(station_id: str, start: str, end: str):
     n = await coll.count_documents(q)
     return {"matched": n, "start_key": start_key, "end_key": end_key, "sample": docs}
 
+def extract_token(authorization: str | None, access_token: str | None):
+    if authorization and authorization.startswith("Bearer "):
+        return authorization.split(" ", 1)[1]
+    if access_token:
+        return access_token
+    raise HTTPException(status_code=401, detail="Not authenticated")
+    
 @app.get("/MDB/{station_id}")
 async def mdb(request: Request, station_id: str, current: UserClaims = Depends(get_current_user)):
     headers = {
@@ -1020,17 +990,30 @@ def floor_bin(dt: datetime, step_sec: int) -> datetime:
 #     return json.dumps(doc, default=str)
 
 ################ Users
+# @app.get("/all-users/")
+# def all_users():
+#     # เอาทุกฟิลด์ ยกเว้น password และ refreshTokens
+#     cursor = users_collection.find({}, {"password": 0, "refreshTokens": 0})
+#     docs = list(cursor)
+
+#     # ถ้าจะส่ง _id ไปด้วย ต้องแปลง ObjectId -> str
+#     for d in docs:
+#         if "_id" in d:
+#             d["_id"] = str(d["_id"])
+
+#     return {"users": docs}
+
 @app.get("/all-users/")
-def all_users():
-    # เอาทุกฟิลด์ ยกเว้น password และ refreshTokens
+def all_users(current: UserClaims = Depends(get_current_user)):
+    # อนุญาตเฉพาะ admin (จะเพิ่ม owner ก็ได้ตามนโยบาย)
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="forbidden")
+
     cursor = users_collection.find({}, {"password": 0, "refreshTokens": 0})
     docs = list(cursor)
-
-    # ถ้าจะส่ง _id ไปด้วย ต้องแปลง ObjectId -> str
     for d in docs:
         if "_id" in d:
             d["_id"] = str(d["_id"])
-
     return {"users": docs}
 
 class addUsers(BaseModel):
@@ -1052,12 +1035,59 @@ class UserOut(BaseModel):
     tel: str
     # payment: Optional[bool] = None
 
+# @app.post("/add_users/", response_model=UserOut, status_code=201)
+# def insert_users(body: addUsers):
+#     email = body.email.lower()
+#     hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+#     # station_id -> list[str]
+#     station_ids: List[str] = []
+#     if body.station_id is not None and body.station_id != "":
+#         if isinstance(body.station_id, list):
+#             station_ids = [str(x) for x in body.station_id if str(x).strip() != ""]
+#         else:
+#             station_ids = [str(body.station_id)]
+
+#     doc = {
+#         "username": body.username.strip(),
+#         "email": email,
+#         "password": hashed,
+#         "role": body.role,
+#         # "company": (body.company_name or body.company or "").strip() or None,
+#         "company": (body.company_name or "").strip() or None,
+#         "tel": (body.tel or "").strip() or None,
+#         # "payment": (body.payment.lower() == "y"),
+#         "station_id": station_ids,
+#         "refreshTokens": [],
+#         "createdAt": datetime.now(timezone.utc),
+        
+#     }
+
+#     try:
+#         res = users_collection.insert_one(doc)
+#     except DuplicateKeyError:
+#         raise HTTPException(status_code=409, detail="Email already exists")
+
+#     return {
+#         "id": str(res.inserted_id),
+#         "username": doc["username"],
+#         "email": doc["email"],
+#         "role": doc["role"],
+#         "company": doc.get("company"),
+#         "station_id": doc["station_id"],
+#         "tel": doc.get("tel"),
+#         # "payment": doc.get("payment"),
+#         "createdAt": doc["createdAt"],
+#     }
+
 @app.post("/add_users/", response_model=UserOut, status_code=201)
-def insert_users(body: addUsers):
+def insert_users(body: addUsers, current: UserClaims = Depends(get_current_user)):
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="forbidden")
+
     email = body.email.lower()
     hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
-    # station_id -> list[str]
     station_ids: List[str] = []
     if body.station_id is not None and body.station_id != "":
         if isinstance(body.station_id, list):
@@ -1070,14 +1100,11 @@ def insert_users(body: addUsers):
         "email": email,
         "password": hashed,
         "role": body.role,
-        # "company": (body.company_name or body.company or "").strip() or None,
         "company": (body.company_name or "").strip() or None,
         "tel": (body.tel or "").strip() or None,
-        # "payment": (body.payment.lower() == "y"),
         "station_id": station_ids,
         "refreshTokens": [],
         "createdAt": datetime.now(timezone.utc),
-        
     }
 
     try:
@@ -1093,7 +1120,6 @@ def insert_users(body: addUsers):
         "company": doc.get("company"),
         "station_id": doc["station_id"],
         "tel": doc.get("tel"),
-        # "payment": doc.get("payment"),
         "createdAt": doc["createdAt"],
     }
 

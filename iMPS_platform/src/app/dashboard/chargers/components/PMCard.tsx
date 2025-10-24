@@ -167,7 +167,7 @@
 //               </Typography>
 //               <Typography color="blue-gray">{fmtDateTH(pmNextDate)}</Typography>
 //             </div>
-            
+
 //           </>
 //         )}
 //       </CardBody>
@@ -178,6 +178,7 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardHeader, CardBody, Typography, Switch } from "@material-tailwind/react";
+import { apiFetch } from "@/utils/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -283,13 +284,17 @@ export default function PMCard({ stationId }: PMCardProps) {
       setError(null);
       try {
         // 1) แหล่งหลัก
-        const res = await fetch(
-          `${API_BASE}/pmreport/latest/?station_id=${encodeURIComponent(stationId)}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-            credentials: "include",
-            signal: ctrl.signal,
-          }
+        // const res = await apiFetch(
+        //   `${API_BASE}/pmreport/latest/?station_id=${encodeURIComponent(stationId)}`,
+        //   {
+        //     headers: { Authorization: `Bearer ${token}` },
+        //     credentials: "include",
+        //     signal: ctrl.signal,
+        //   }
+        // );
+        const res = await apiFetch(
+          `/pmreport/latest/?station_id=${encodeURIComponent(stationId)}`,
+          { signal: ctrl.signal }
         );
 
         if (res.ok) {
@@ -300,15 +305,19 @@ export default function PMCard({ stationId }: PMCardProps) {
           }
         } else {
           // 2) fallback จากไฟล์ PM URL
-          const res2 = await fetch(
-            `${API_BASE}/pmurl/list?station_id=${encodeURIComponent(
-              stationId
-            )}&page=1&pageSize=1`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-              credentials: "include",
-              signal: ctrl.signal,
-            }
+          // const res2 = await apiFetch(
+          //   `${API_BASE}/pmurl/list?station_id=${encodeURIComponent(
+          //     stationId
+          //   )}&page=1&pageSize=1`,
+          //   {
+          //     headers: { Authorization: `Bearer ${token}` },
+          //     credentials: "include",
+          //     signal: ctrl.signal,
+          //   }
+          // );
+          const res2 = await apiFetch(
+            `/pmurl/list?station_id=${encodeURIComponent(stationId)}&page=1&pageSize=1`,
+            { signal: ctrl.signal }
           );
           if (res2.ok) {
             const j = await res2.json();
