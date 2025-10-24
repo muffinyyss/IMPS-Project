@@ -46,7 +46,7 @@ export const allRoutes = [
   {
     name: "Monitor(CBM)",
     icon: <i className="fa fa-desktop" />,
-    path: "#",
+    path: "/dashboard/cbm",
   },
   {
     name: "MDB/CCB",
