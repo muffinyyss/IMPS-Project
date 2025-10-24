@@ -46,6 +46,7 @@ client = AsyncIOMotorClient("mongodb://imps_platform:eds_imps@203.154.130.132:27
 
 deviceDB = client["utilizationFactor"]
 settingDB = client["settingParameter"]
+errorDB = client["errorCode"]
 
 db = client1["iMPS"]
 users_collection = db["users"]
@@ -72,6 +73,11 @@ def get_mdb_collection_for(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return MDB_DB.get_collection(str(station_id))
+
+def get_errorCode_collection_for(station_id: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return errorDB.get_collection(str(station_id))
 
 def _ensure_utc_iso(v):
     """
@@ -771,6 +777,61 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
                 yield ": keep-alive\n\n"
 
             await asyncio.sleep(60)
+
+    return StreamingResponse(event_generator(), headers=headers)
+
+
+
+@app.get("/error/{station_id}")
+async def error_stream(request: Request, station_id: str, current: UserClaims = Depends(get_current_user)):
+    """
+    สตรีมข้อความ error ล่าสุดของสถานีแบบ SSE
+    - ส่ง event แรกเป็น 'init' พร้อมค่า error ล่าสุด (ถ้ามี)
+    - จากนั้นโพลล์ดูเอกสารล่าสุด ถ้า _id เปลี่ยนจะส่งค่า error ตัวใหม่
+    - ถ้าไม่มีอะไรใหม่จะส่ง keep-alive คอมเมนต์เพื่อกันคอนเนกชันหลุด
+    """
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    coll = get_errorCode_collection_for(station_id)
+
+    async def event_generator():
+        last_id = None
+
+        # ส่งค่าเริ่มต้น (init) เฉพาะ key "error"
+        latest = await coll.find_one({}, sort=[("_id", -1)])
+        if latest and ("error" in latest):
+            last_id = latest.get("_id")
+            payload = {
+                "Chargebox_ID": latest.get("Chargebox_ID"),
+                "error": latest.get("error"),
+            }
+            yield f"event: init\ndata: {to_json(payload)}\n\n"
+        else:
+            # ไม่มีข้อมูล -> ส่ง keep-alive
+            yield ": keep-alive\n\n"
+
+        # วนลูปสตรีมอัปเดตใหม่
+        while True:
+            if await request.is_disconnected():
+                break
+
+            doc = await coll.find_one({}, sort=[("_id", -1)])
+            if doc and doc.get("_id") != last_id and ("error" in doc):
+                last_id = doc.get("_id")
+                payload = {
+                    "Chargebox_ID": doc.get("Chargebox_ID"),
+                    "error": doc.get("error"),
+                }
+                yield f"data: {to_json(payload)}\n\n"
+            else:
+                yield ": keep-alive\n\n"
+
+            await asyncio.sleep(60)  # ปรับช่วงได้ตามต้องการ
 
     return StreamingResponse(event_generator(), headers=headers)
 
