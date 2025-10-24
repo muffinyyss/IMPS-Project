@@ -65,7 +65,7 @@ export function DashboardNavbar() {
   else if (segs[1] === "pm-report") title = "PM Report";
   else if (segs[1] === "input_PMreport") title = "Add PM Report";
   else if (segs[1] === "cm-report") title = "CM Report";
-
+  else if (segs[1] === "cbm") title = "CBM";
 
   // ล็อก dropdown
   // const lockStationDropdown = pathname.startsWith("/dashboard/input_PMreport");
