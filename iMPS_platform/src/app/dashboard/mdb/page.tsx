@@ -359,9 +359,13 @@ export default function MDBPage() {
 
         // const url = `${API_BASE}/MDB?station_id=${encodeURIComponent(stationId)}`;
         // const es = new EventSource(url) ;
+        // const es = new EventSource(
+        //     `${API_BASE}/MDB?station_id=${encodeURIComponent(stationId)}`,
+        //     { withCredentials: true }                  // ★ สำคัญ
+        // );
         const es = new EventSource(
-            `${API_BASE}/MDB?station_id=${encodeURIComponent(stationId)}`,
-            { withCredentials: true }                  // ★ สำคัญ
+            `${API_BASE}/MDB/${encodeURIComponent(stationId)}`,
+            { withCredentials: true }
         );
         es.onopen = () => setErr(null);
         const onInit = (e: MessageEvent) => { setMdb(JSON.parse(e.data)); setLoading(false); setErr(null); };

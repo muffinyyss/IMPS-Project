@@ -40,7 +40,7 @@ async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
     const res = await fetch(url, { cache: "no-store" }); // ✅ กัน cache
     if (res.status === 404) throw new Error("Station not found");
-    
+
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
     const json = await res.json();
     return json.station ?? json;
@@ -303,21 +303,20 @@ function PassFailRow({
 
             {onRemarkChange && (
                 <div className="tw-w-full tw-min-w-0">
-                    <Input
-                        label="หมายเหตุ (ถ้ามี)"
-                        value={remark || ""}
-                        onChange={(e) => onRemarkChange(e.target.value)}
-                        crossOrigin=""
-                        containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
-                        className="!tw-w-full"
-                    />
+                    <div className="tw-w-full tw-min-w-0">
+                        <Textarea
+                            label="หมายเหตุ (ถ้ามี)"
+                            value={remark || ""}
+                            onChange={(e) => onRemarkChange(e.target.value)}
+                            containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
+                            className="!tw-w-full"
+                        />
+                    </div>
                 </div>
             )}
         </div>
     );
 }
-
-
 
 function PhotoMultiInput({
     label,
@@ -415,17 +414,25 @@ function PhotoMultiInput({
 export default function CheckList({ onComplete }: CheckListProps) {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+
     /* ---------- photos per question ---------- */
     const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
         QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
     ) as Record<number, PhotoItem[]>;
     const [photos, setPhotos] = useState<Record<number, PhotoItem[]>>(initialPhotos);
+
     // ค่า CP ของข้อ 15 (ช่องเดียว หน่วย V)
     const [cp, setCp] = useState<{ value: string; unit: UnitVoltage }>({ value: "", unit: "V" });
     const [summary, setSummary] = useState<string>("");
 
     const [stationId, setStationId] = useState<string | null>(null);
-    const key = useMemo(() => draftKey(stationId), [stationId]);
+    const [draftId, setDraftId] = useState<string | null>(null);
+    // const key = useMemo(() => draftKey(stationId), [stationId]);
+    // ใหม่
+    const key = useMemo(
+        () => `${draftKey(stationId)}:${draftId ?? "default"}`,
+        [stationId, draftId]
+    );
 
 
     /* ---------- job info ---------- */
@@ -799,7 +806,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-             const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
+            const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
 
             // 1) สร้างรายงาน (submit)
             const res = await fetch(`${API_BASE}/pmreport/submit`, {
@@ -866,6 +873,14 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         readOnly
                         className="!tw-bg-blue-gray-50"
                     />
+                    <Input
+                        label="Location / สถานที่"
+                        value={job.station_name}
+                        onChange={(e) => setJob({ ...job, station_name: e.target.value })}
+                        crossOrigin=""
+                        className="!tw-bg-blue-gray-50"
+                        readOnly
+                    />
                     {/* <Input
                         type="text"                          // ใช้ text + กรองเอง จะกัน e,-,+ ได้ดีกว่า number
                         inputMode="numeric"
@@ -898,14 +913,6 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         label="Model / รุ่น"
                         value={job.model}
                         onChange={(e) => setJob({ ...job, model: e.target.value })}
-                        crossOrigin=""
-                        className="!tw-bg-blue-gray-50"
-                        readOnly
-                    />
-                    <Input
-                        label="Location / สถานที่"
-                        value={job.station_name}
-                        onChange={(e) => setJob({ ...job, station_name: e.target.value })}
                         crossOrigin=""
                         className="!tw-bg-blue-gray-50"
                         readOnly

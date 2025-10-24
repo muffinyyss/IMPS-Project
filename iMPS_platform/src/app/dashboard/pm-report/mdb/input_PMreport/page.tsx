@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -12,8 +10,7 @@ import {
 } from "@material-tailwind/react";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 
-import CheckList from "./components/checkList";
-import PMReportPhotos from "./components/photoPM";
+import CheckList from "@/app/dashboard/pm-report/mdb/input_PMreport/components/checkList";
 
 export default function PM_Report() {
   const router = useRouter();
@@ -77,7 +74,7 @@ export default function PM_Report() {
           >
             <ArrowLeftIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-800" />
           </Button>
-          <Typography variant="h5">Preventive Maintenance Report (PM)</Typography>
+          <Typography variant="h5">Preventive Maintenance Report - MDB</Typography>
           <div />
         </div>
       </div>
@@ -86,10 +83,11 @@ export default function PM_Report() {
       <Card className="tw-mt-3 tw-shadow-sm tw-border tw-border-blue-gray-100">
         <CardBody className="tw-space-y-1">
           <Typography className="tw-font-semibold">
-            บริษัท อีแกท ไดมอนด์ เซอร์วิส จำกัด (สำนักงานใหญ่) — Tax ID: 0125552017292
+            การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.) — ศูนย์บริการข้อมูล กฟผ. สายด่วน: 1416
           </Typography>
           <Typography className="!tw-text-blue-gray-600">
-            56/25 หมู่ 20 ต.คลองหนึ่ง อ.คลองหลวง จ.ปทุมธานี 12120
+            เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย
+            อำเภอบางกรวย จังหวัดนนทบุรี 11130
           </Typography>
         </CardBody>
       </Card>
@@ -107,7 +105,7 @@ export default function PM_Report() {
           </div>
 
           {/* Page 2: Photos */}
-          <div className={page === 1 ? "" : "tw-hidden"} aria-hidden={page !== 1}>
+          {/* <div className={page === 1 ? "" : "tw-hidden"} aria-hidden={page !== 1}>
             {!stationId ? (
               <div className="tw-p-4 tw-text-red-700 tw-bg-red-50 tw-rounded-lg">
                 ไม่พบ <code>station_id</code> ใน URL และ localStorage
@@ -119,7 +117,7 @@ export default function PM_Report() {
                 reportId={reportId}
               />
             )}
-          </div>
+          </div> */}
         </CardBody>
       </Card>
     </section>

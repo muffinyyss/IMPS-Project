@@ -169,6 +169,7 @@ export default function Lightbox({
             fill
             sizes="100vw"
             priority
+            unoptimized
             className="tw-object-contain tw-rounded-2xl tw-shadow-2xl tw-select-none"
           />
         </div>

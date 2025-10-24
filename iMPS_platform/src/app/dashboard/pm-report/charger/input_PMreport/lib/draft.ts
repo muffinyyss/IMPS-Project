@@ -23,6 +23,15 @@ export function draftKey(stationId: string | null | undefined) {
   return `pmDraft:${stationId ?? "unknown"}`;
 }
 
+// app/pm-report/charger/input_PMreport/lib/draft.ts
+// export function draftKey(
+//   stationId: string | null | undefined,
+//   draftId: string = "default"
+// ) {
+//   return `pmDraft:v2:${stationId ?? "unknown"}:${draftId}`;
+// }
+
+
 export function saveDraftLocal(key: string, data: DraftData) {
   const ls = safeStorage();
   if (!ls) return;

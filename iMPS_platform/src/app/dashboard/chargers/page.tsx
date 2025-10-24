@@ -1,59 +1,62 @@
+
+
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import dynamic from "next/dynamic";
-import Image from "next/image"
-
-// @material-tailwind/react
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+// import Image from "next/image"
 import {
-  Card,
-  CardHeader,
-  CardBody,
-  Typography,
-  Carousel,
+  Card, CardHeader, CardBody, Typography, Carousel,
 } from "@/components/MaterialTailwind";
 
-// components
 import StationInfo from "./components/station-info";
 import StatisticChart from "./components/statistics-chart";
 import AICard from "./components/AICard";
 import PMCard from "./components/PMCard";
 import CBMCard from "./components/condition-Based";
 import Lightbox from "./components/Lightbox";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { apiFetch } from "@/utils/api";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
+type StationDoc = { images?: Record<string, string> };
+type GalleryImage = { src: string; alt?: string };
 
 export default function ChargersPage() {
   const searchParams = useSearchParams();
   const stationId = searchParams.get("station_id");
+
   const [stationDetail, setStationDetail] = useState({
     station_name: "-",
     model: "-",
     status: null as boolean | null,
   });
+
+  const [images, setImages] = useState<GalleryImage[]>([]);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [current, setCurrent] = useState<number>(0);
 
-  const images = [
-    { src: "/img/products/GIGAEV.webp", alt: "image 1" },
-    { src: "/img/products/equipment.jpg", alt: "image 2" },
-    { src: "/img/products/MDB.jpg", alt: "image 3" },
-    { src: "/img/products/GIGAEV.webp", alt: "image 4" },
-  ];
-
-  const openAt = (idx: number) => {
+  const openAt = useCallback((idx: number) => {
     setCurrent(idx);
     setLightboxOpen(true);
-  };
-  const close = () => setLightboxOpen(false);
+  }, []);
+  const close = useCallback(() => setLightboxOpen(false), []);
 
   const prev = useCallback(() => {
-    setCurrent((i) => (i - 1 + images.length) % images.length);
-  }, []);
+    if (!images.length) return;
+    setCurrent(i => (i - 1 + images.length) % images.length);
+  }, [images.length]);
 
   const next = useCallback(() => {
-    setCurrent((i) => (i + 1) % images.length);
-  }, []);
+    if (!images.length) return;
+    setCurrent(i => (i + 1) % images.length);
+  }, [images.length]);
+
+  // ให้ Carousel รี-มาวน์ทเมื่อรายการรูปเปลี่ยน
+  const carouselKey = useMemo(
+    () => (images.length ? images.map(x => x.src).join("|") : "empty"),
+    [images]
+  );
 
   useEffect(() => {
     if (lightboxOpen) {
@@ -69,112 +72,176 @@ export default function ChargersPage() {
     };
   }, [lightboxOpen]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!lightboxOpen) return;
-
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        close();
-      } else if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        prev();
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        next();
-      }
+      if (e.key === "Escape") { e.preventDefault(); close(); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); prev(); }
+      else if (e.key === "ArrowRight") { e.preventDefault(); next(); }
     };
-
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [lightboxOpen, close, prev, next]);
 
+  // station info
   useEffect(() => {
-    if (!stationId) return;
-
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") ||
-      "";
-    if (!token) return;
+    // if (!stationId) return;
+    // const token =
+    //   localStorage.getItem("access_token") ||
+    //   localStorage.getItem("accessToken") || "";
+    // // if (!token) return;
 
     const ctrl = new AbortController();
-
     (async () => {
+      if (!stationId) return;
+      const token =
+        localStorage.getItem("access_token") ||
+        localStorage.getItem("accessToken") || "";
+      // if (!token) return;
+
+      // const ctrl = new AbortController();
       try {
-        const res = await fetch(
-          `http://localhost:8000/station/info?station_id=${encodeURIComponent(stationId)}`,
-          { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal }
+        // const res = await fetch(
+        // `${API_BASE}/station/info?station_id=${encodeURIComponent(stationId)}`,
+        // const res = await apiFetch(
+        //   `${API_BASE}/station/info?station_id=${encodeURIComponent(stationId)}`,
+        //   {
+        //     headers: { Authorization: `Bearer ${token}` },
+        //     credentials: "include",
+        //     signal: ctrl.signal,
+        //   }
+        // );
+        const res = await apiFetch(
+          `/station/info?station_id=${encodeURIComponent(stationId)}`,
+          { signal: ctrl.signal }
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.warn("station/info failed", res.status);
+          return;
+        }
         const data = await res.json();
         const info = data.station ?? data;
-
-        setStationDetail((prev) => ({
+        setStationDetail(prev => ({
           ...prev,
           station_name: info?.station_name ?? "-",
           model: info?.model ?? "-",
         }));
-      } catch { }
+      } catch (e) {
+        console.error("station/info error", e);
+      }
     })();
-
     return () => ctrl.abort();
   }, [stationId]);
 
+  // on/off status
   useEffect(() => {
     if (!stationId) return;
-
     const token =
       localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") ||
-      "";
-    if (!token) return;
+      localStorage.getItem("accessToken") || "";
+    // if (!token) return;
 
     const ctrl = new AbortController();
-
     const fetchStatus = async () => {
       try {
-        const res = await fetch(
-          `http://localhost:8000/station-onoff/${encodeURIComponent(stationId)}`,
-          { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal }
+        // const res = await fetch(
+        //   `${API_BASE}/station-onoff/${encodeURIComponent(stationId)}`,
+        // const res = await apiFetch(
+        //   `${API_BASE}/station-onoff/${encodeURIComponent(stationId)}`,
+        //   {
+        //     headers: { Authorization: `Bearer ${token}` },
+        //     credentials: "include",
+        //     signal: ctrl.signal,
+        //   }
+        // );
+        const res = await apiFetch(
+          `/station-onoff/${encodeURIComponent(stationId)}`,
+          { signal: ctrl.signal }
         );
         if (!res.ok) return;
         const data = await res.json();
-        setStationDetail((prev) => ({
+        setStationDetail(prev => ({
           ...prev,
           status: typeof data?.status === "boolean" ? data.status : null,
         }));
       } catch { }
     };
-
     fetchStatus();
     const id = setInterval(fetchStatus, 5000);
-
-    return () => {
-      clearInterval(id);
-      ctrl.abort();
-    };
+    return () => { clearInterval(id); ctrl.abort(); };
   }, [stationId]);
 
+  useEffect(() => {
+    if (!stationId) { setImages([]); return; }
+
+    const token =
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("accessToken") || "";
+    // if (!token) { setImages([]); return; }
+
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        // const res = await fetch(
+        //   `${API_BASE}/selected/station/${encodeURIComponent(stationId)}`,
+        // const res = await apiFetch(
+        //   `${API_BASE}/selected/station/${encodeURIComponent(stationId)}`,
+        //   {
+        //     headers: { Authorization: `Bearer ${token}` },
+        //     credentials: "include",
+        //     signal: ctrl.signal,
+        //   }
+        // );
+        const res = await apiFetch(
+          `/selected/station/${encodeURIComponent(stationId)}`,
+          { signal: ctrl.signal }
+        );
+
+        if (!res.ok) {
+          console.warn("selected/station failed", res.status);
+          setImages([]);                      // ไม่มี = ไม่แสดง
+          return;
+        }
+
+        const station: StationDoc = await res.json();
+        const imgsObj = station?.images ?? {};
+        const arr: GalleryImage[] = Object.values(imgsObj)
+          .filter((v): v is string => typeof v === "string" && !!v)
+          .map((url) => ({
+            src: url.startsWith("http") ? url : `${API_BASE}${url}`,
+          }));
+
+        setImages(arr);                       // ⬅️ สำคัญ! อัปเดต state
+      } catch (e) {
+        console.error("selected/station error", e);
+        setImages([]);                        // error ก็ไม่แสดง
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [stationId]);
+
+
   return (
-    <div className="tw-mt-8 tw-mb-4  tw-mx-auto tw-px-4 sm:tw-px-6">
+    <div className="tw-mt-8 tw-mb-4 tw-mx-auto tw-px-4 sm:tw-px-6">
       <div className="tw-mt-8 tw-mb-4">
         <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 lg:tw-gap-6 tw-gap-y-6 tw-items-stretch">
           {/* LEFT: Carousel */}
           <div className="lg:tw-col-span-2 tw-min-h-0">
             <Carousel
+              key={carouselKey}
               className="
-                  tw-w-full !tw-max-w-none
-                  tw-rounded-2xl tw-overflow-hidden tw-shadow-2xl
-                  tw-h-[44vh]
-                  sm:tw-h-[52vh]
-                  md:tw-h-[70vh] md:tw-max-h-[80vh]
-                  lg:tw-h-[64vh] lg:tw-max-h-[74vh]
-                  xl:tw-h-[68vh]"
+                tw-w-full !tw-max-w-none
+                tw-rounded-2xl tw-overflow-hidden tw-shadow-2xl
+                tw-h-[44vh]
+                sm:tw-h-[52vh]
+                md:tw-h-[70vh] md:tw-max-h-[80vh]
+                lg:tw-h-[64vh] lg:tw-max-h-[74vh]
+                xl:tw-h-[68vh]"
             >
               {(images?.length ? images : []).map((img, i) => (
                 <img
-                  key={(img?.src ?? 'img') + i}
+                  key={(img?.src ?? "img") + i}
                   src={img?.src}
                   alt={img?.alt ?? `image-${i + 1}`}
                   loading="lazy"
@@ -195,7 +262,7 @@ export default function ChargersPage() {
               open={lightboxOpen}
               index={current}
               images={images}
-              onClose={() => setLightboxOpen(false)}
+              onClose={close}
               onIndexChange={setCurrent}
             />
           </div>
@@ -219,19 +286,18 @@ export default function ChargersPage() {
           </div>
         </div>
 
-        {/* แถวล่าง: ตัด sm:2 คอลัมน์ -> ให้เป็น 1 คอลัมน์จนถึง lg ค่อย 3 คอลัมน์ */}
+        {/* แถวล่าง */}
         <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 tw-gap-6">
           <StatisticChart />
           <AICard />
-          <PMCard />
+          {/* <PMCard /> */}
+          <PMCard stationId={stationId!} />
         </div>
       </div>
 
-      {/* ระยะห่าง CBMCard */}
       <div className="tw-mt-6">
         <CBMCard />
       </div>
     </div>
   );
-
 }

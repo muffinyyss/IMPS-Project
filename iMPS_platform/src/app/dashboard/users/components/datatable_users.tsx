@@ -41,7 +41,7 @@ import {
 
 //components
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
-
+import { apiFetch } from "@/utils/api";
 const API_BASE = "http://localhost:8000";
 
 // ------------ NEW: โครงสร้างข้อมูลผู้ใช้ (แถวในตาราง) ------------
@@ -115,21 +115,22 @@ export function SearchDataTables() {
   useEffect(() => {
     (async () => {
       try {
-        const token =
-          localStorage.getItem("access_token") ||
-          localStorage.getItem("accessToken") ||
-          "";
+        // const token =
+        //   localStorage.getItem("access_token") ||
+        //   localStorage.getItem("accessToken") ||
+        //   "";
         // const res = await fetch('/api/all-users/', { cache: 'no-store' });
 
-        const res = await fetch(`${API_BASE}/all-users/`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        // const res = await apiFetch(`${API_BASE}/all-users/`, {
+        //   headers: { Authorization: `Bearer ${token}` },
+        // });
+        const res = await apiFetch(`/all-users/`);
 
-        if (res.status === 401) {
-          setErr("Unauthorized (401) – กรุณาเข้าสู่ระบบอีกครั้ง");
-          setData([]);
-          return;
-        }
+        // if (res.status === 401) {
+        //   setErr("Unauthorized (401) – กรุณาเข้าสู่ระบบอีกครั้ง");
+        //   setData([]);
+        //   return;
+        // }
         if (!res.ok) {
           setErr(`Fetch failed: ${res.status}`);
           setData([]);
@@ -171,17 +172,19 @@ export function SearchDataTables() {
     try {
       setSaving(true);
 
-      const token =
-        localStorage.getItem("access_token") ||
-        localStorage.getItem("accessToken") ||
-        "";
+      // const token =
+      //   localStorage.getItem("access_token") ||
+      //   localStorage.getItem("accessToken") ||
+      //   "";
 
-      const res = await fetch(`${API_BASE}/add_users/`, {
+      // const res = await apiFetch(`${API_BASE}/add_users/`, {
+      const res = await apiFetch(`/add_users/`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        // headers: {
+        //   "Content-Type": "application/json",
+        //   ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        // },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -228,10 +231,10 @@ export function SearchDataTables() {
   };
 
   async function handleUpdateUser(id: string, payload: Partial<UserRow> & { password?: string }) {
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") ||
-      "";
+    // const token =
+    //   localStorage.getItem("access_token") ||
+    //   localStorage.getItem("accessToken") ||
+    //   "";
 
     // map phone -> tel
     const body: any = {};
@@ -243,12 +246,14 @@ export function SearchDataTables() {
     // if (payload.is_active !== undefined) body.is_active = !!payload.is_active;
     if ((payload as any).password) body.password = String((payload as any).password);
 
-    const res = await fetch(`${API_BASE}/user_update/${id}`, {
+    // const res = await apiFetch(`${API_BASE}/user_update/${id}`, {
+    const res = await apiFetch(`/user_update/${id}`, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      // headers: {
+      //   "Content-Type": "application/json",
+      //   ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
@@ -289,17 +294,18 @@ export function SearchDataTables() {
     }
 
     try {
-      const token =
-        localStorage.getItem("access_token") ||
-        localStorage.getItem("accessToken") ||
-        "";
+      // const token =
+      //   localStorage.getItem("access_token") ||
+      //   localStorage.getItem("accessToken") ||
+      //   "";
 
       // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
-      const res = await fetch(`${API_BASE}/delete_users/${row.id}`, {
+      // const res = await apiFetch(`${API_BASE}/delete_users/${row.id}`, {
+      const res = await apiFetch(`/delete_users/${row.id}`, {
         method: "DELETE",
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+          // headers: {
+          //   ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          // },
       });
 
       if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
