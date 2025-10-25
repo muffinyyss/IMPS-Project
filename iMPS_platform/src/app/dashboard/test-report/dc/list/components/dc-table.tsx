@@ -266,7 +266,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import CMForm from "@/app/dashboard/cm-report/components/form_cm"; // ✅ import ตรง
+import CMForm from "@/app/dashboard/test-report/dc/input_dc/checkList"; // ✅ import ตรง
 import { AppDataTable } from "@/data";
 import {
   getCoreRowModel,
