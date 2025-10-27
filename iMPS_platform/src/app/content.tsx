@@ -1,17 +1,20 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import routes from "@/routes";
+import { getRoutes }  from "@/routes";
 import { DashboardNavbar, Configurator } from "@/widgets/layout";
 import Sidenav from "@/widgets/layout/sidenav";
 import { usePathname } from "next/navigation";
 import { useMaterialTailwindController } from "@/context";
 
+
 export default function InnerContent({ children }: { children: React.ReactNode }) {
   const [isMounted, setIsMounted] = useState(false);
+  const [routes, setRoutes] = useState<any[]>([]); 
 
   useEffect(() => {
     setIsMounted(true);
+    setRoutes(getRoutes());
   }, []);
 
   // ยังไม่ mount → return null
