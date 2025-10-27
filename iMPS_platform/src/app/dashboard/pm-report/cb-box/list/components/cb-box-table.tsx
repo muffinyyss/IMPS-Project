@@ -27,10 +27,11 @@ import {
 } from "@material-tailwind/react";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
-import { AppDataTable } from "@/data";
+// import { AppDataTable } from "@/data";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 
-type TData = (typeof AppDataTable)[number];
+// type TData = (typeof AppDataTable)[number];
+type TData = { name: React.ReactNode; position: string; office: string };
 
 type Props = {
   token?: string;        // ใช้ได้ ถ้าจะส่ง Bearer แทนคุกกี้
@@ -39,17 +40,22 @@ type Props = {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+const REPORT_PREFIX = "cbboxpmreport";
+const URL_PREFIX = "cbboxpmurl";
+
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const pathname = usePathname();
+  // const pathname = usePathname();
   const sp = useSearchParams();
 
   // อ่าน station_id จาก URL (Navbar เป็นคนอัปเดตให้)
   const stationIdFromUrl = sp.get("station_id") ?? "";
+
+
 
   const addHref = useMemo(() => {
     if (!stationIdFromUrl) return "/dashboard/pm-report/cb-box/input_PMreport";
@@ -135,8 +141,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       };
 
       const [pmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL("/pmreport/list"), fetchOpts),
-        fetch(makeURL("/pmurl/list"), fetchOpts),
+        // fetch(makeURL("/pmreport/list"), fetchOpts),
+        // fetch(makeURL("/pmurl/list"), fetchOpts),
+
+        fetch(makeURL(`/${REPORT_PREFIX}/list`), fetchOpts),
+        fetch(makeURL(`/${URL_PREFIX}/list`), fetchOpts),
       ]);
 
       let pmItems: any[] = [];
@@ -184,7 +193,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
-        
+
         return {
           name: thDate(isoDay),
           position: isoDay,
@@ -218,23 +227,31 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       });
 
       // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
+      // if (!allRows.length) {
+      //   const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
+      //   if (res2.ok) {
+      //     const j = await res2.json();
+      //     const iso = j?.pm_date ?? "";
+      //     const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
+      //     setData(rows);
+      //     return;
+      //   }
+      //   setData([...AppDataTable] as TData[]);
+      //   return;
+      // }
       if (!allRows.length) {
-        const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
-        if (res2.ok) {
-          const j = await res2.json();
-          const iso = j?.pm_date ?? "";
-          const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-          setData(rows);
-          return;
-        }
-        setData([...AppDataTable] as TData[]);
+        setData([]);            // ปล่อยว่าง เพื่อให้ tbody แสดง "ไม่มีข้อมูล"
         return;
       }
 
       setData(allRows);
+      // } catch (err) {
+      //   console.error("fetch both lists error:", err);
+      //   setData([...AppDataTable] as TData[]);
+      // } finally {
     } catch (err) {
       console.error("fetch both lists error:", err);
-      setData([...AppDataTable] as TData[]);
+      setData([]);            // ว่าง → ให้ UI แสดง "ไม่มีข้อมูล"
     } finally {
       setLoading(false);
     }
@@ -304,13 +321,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </a>
         );
       },
-    
+
       size: 80,
       minSize: 64,
       maxSize: 120,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-   
+
   ];
 
   const table = useReactTable({
@@ -346,7 +363,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
     fd.append("rows", JSON.stringify({ reportDate, urls }));
 
-    const res = await fetch(`${apiBase}/pmurl/upload`, {
+    const res = await fetch(`${apiBase}/${URL_PREFIX}/upload`, {
       method: "POST",
       body: fd,
       credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
@@ -397,7 +414,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       fd.append("reportDate", reportDate);
       pendingFiles.forEach((f) => fd.append("files", f));
 
-      const res = await fetch(`${apiBase}/pmurl/upload-files`, {
+      const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
         method: "POST",
         body: fd,
         // ถ้าใช้ cookie httpOnly: เปิดบรรทัดนี้แทน header Authorization
@@ -441,7 +458,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               Preventive Maintenance Checklist - CB-BOX
             </Typography>
             <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm">
-              ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM report) 
+              ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM report)
             </Typography>
           </div>
 
