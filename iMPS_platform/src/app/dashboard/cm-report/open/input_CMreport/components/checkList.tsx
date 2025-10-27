@@ -21,6 +21,8 @@ type Job = {
     issue_id: string;
     found_date: string;
     location: string;
+    wo: string;
+    sn: string;
     equipment_list: string[];
     problem_details: string;
     problem_type: string;
@@ -62,6 +64,8 @@ const INITIAL_JOB: Job = {
     issue_id: "",
     found_date: "",
     location: "",
+    wo: "",
+    sn: "",
     equipment_list: [""],
     problem_details: "",
     problem_type: "",
@@ -399,6 +403,8 @@ export default function CMOpenForm() {
                 setJob(prev => ({
                     ...prev,
                     location: data.station.station_name || prev.location, // 👈 เซ็ตสถานที่ = station_name
+                    wo: data.station.WO ?? prev.wo,
+                    sn: data.station.SN ?? prev.sn
                 }));
             } catch (err) {
                 console.error("โหลดข้อมูลสถานีไม่สำเร็จ:", err);
@@ -557,7 +563,7 @@ export default function CMOpenForm() {
                                     className="!tw-w-full !tw-bg-blue-gray-50"
                                 /> */}
                                 <Input
-                                    value={job.issue_id || "๘๘๘"}
+                                    value={job.issue_id || "-"}
                                     readOnly
                                     key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
                                     crossOrigin=""
@@ -566,8 +572,23 @@ export default function CMOpenForm() {
                                 />
                             </div>
 
+                            <div className="sm:tw-col-span-2 lg:tw-col-span-3">
+                                <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
+                                    Location
+                                </label>
+                                <Input
+                                    value={job.location}
+                                    onChange={(e) => setJob({ ...job, location: e.target.value })}
+                                    crossOrigin=""
+                                    readOnly
+                                    className="!tw-w-full !tw-bg-blue-gray-50"
+                                    // className="!tw-w-full"
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                />
+                            </div>
 
-                            <div className="lg:tw-col-span-1">
+
+                            <div className="lg:tw-col-span-2">
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
                                     วันที่ต้องการ
                                 </label>
@@ -602,8 +623,8 @@ export default function CMOpenForm() {
                                     Work order
                                 </label>
                                 <Input
-                                    value={job.location}
-                                    onChange={(e) => setJob({ ...job, location: e.target.value })}
+                                    value={job.wo}
+                                    onChange={(e) => setJob({ ...job, wo: e.target.value })}
                                     crossOrigin=""
                                     readOnly
                                     className="!tw-w-full !tw-bg-blue-gray-50"
@@ -617,8 +638,8 @@ export default function CMOpenForm() {
                                     Serial
                                 </label>
                                 <Input
-                                    value={job.location}
-                                    onChange={(e) => setJob({ ...job, location: e.target.value })}
+                                    value={job.sn}
+                                    onChange={(e) => setJob({ ...job, sn: e.target.value })}
                                     crossOrigin=""
                                     readOnly
                                     className="!tw-w-full !tw-bg-blue-gray-50"
@@ -629,6 +650,19 @@ export default function CMOpenForm() {
 
 
                         </div>
+                        {/* <div className="lg:tw-col-span-2">
+                            <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
+                                วันที่ต้องการ
+                            </label>
+                            <Input
+                                type="date"
+                                value={(job.found_date || "").slice(0, 10)}
+                                onChange={(e) => setJob({ ...job, found_date: e.target.value })}
+                                crossOrigin=""
+                                className="!tw-w-full"
+                                containerProps={{ className: "!tw-min-w-0" }}
+                            />
+                        </div> */}
 
                         {/* 2 คอลัมน์: อุปกรณ์ */}
                         {/* <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">

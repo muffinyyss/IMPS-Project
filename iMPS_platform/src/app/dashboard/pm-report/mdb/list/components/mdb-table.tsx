@@ -660,7 +660,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               value={reportDate}
               onChange={(e) => setReportDate(e.target.value)}
               crossOrigin=""
-            />
+            />stationIdFromUrl
           </div>
 
           <div className="tw-text-sm tw-text-blue-gray-500">
