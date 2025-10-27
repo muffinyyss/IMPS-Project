@@ -4,21 +4,21 @@ import React from "react";
 import { Typography } from "@material-tailwind/react";
 
 /* ---------- types ---------- */
-type Item = {
+type PLCItem = {
   id: string;
-  name: string;   // e.g. "Power module 1 Temperature"
+  name: string;   // e.g. "PLC 1 Temperature"
   temp: number;   // °C
-  target?: number;
+  target?: number; // default 60
 };
 
-type Props = {
+type PLCProps = {
   title?: string;
   updatedAt?: string;
-  items: Item[];
+  items: PLCItem[]; // ควรส่งมา 2 รายการ: PLC 1 / PLC 2
 };
 
 /* ---------- utils ---------- */
-function statusColor(temp: number) {
+function statusTone(temp: number) {
   if (temp > 65)
     return {
       bar: "tw-bg-red-500",
@@ -41,38 +41,34 @@ function statusColor(temp: number) {
   };
 }
 
-function clampPct(n: number) {
-  return Math.max(0, Math.min(100, Math.round(n)));
-}
-
-function calcPct(temp: number, target: number) {
+function pctOfTarget(temp: number, target: number) {
   if (!target || target <= 0) return 0;
-  return clampPct((temp / target) * 100);
+  const p = Math.round((temp / target) * 100);
+  return Math.max(0, Math.min(100, p));
 }
 
-/* ---------- tile (no hover/hold effects) ---------- */
-function TempTile({ name, temp, target = 60 }: { name: string; temp: number; target?: number }) {
-  const tone = statusColor(temp);
-  const pct = calcPct(temp, target);
+/* ---------- small tile ---------- */
+function PLCTile({ name, temp, target = 60 }: { name: string; temp: number; target?: number }) {
+  const tone = statusTone(temp);
+  const pct = pctOfTarget(temp, target);
 
   return (
     <div
       className="
-        tw-flex tw-flex-col tw-gap-2 tw-rounded-xl tw-border tw-border-blue-gray-50 tw-p-3 tw-bg-white
+        tw-flex tw-flex-col tw-gap-2 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4
         tw-shadow-[0_1px_0_0_rgba(16,24,40,0.02)]
       "
-      data-testid="power-temp-tile"
     >
-      {/* ชื่อ */}
-      <div className="tw-flex tw-items-start tw-justify-between tw-w-full">
-        <span className="tw-text-xs tw-font-semibold tw-text-blue-gray-800 tw-truncate" title={name}>
+      {/* header */}
+      <div className="tw-flex tw-items-start tw-justify-between">
+        <span className="tw-text-xs tw-font-semibold tw-text-blue-gray-800 tw-tracking-wide tw-truncate" title={name}>
           {name}
         </span>
       </div>
 
-      {/* ค่า + เป้าหมาย + สถานะ */}
+      {/* value + target + chip */}
       <div className="tw-mt-1">
-        <div className="tw-text-[26px] tw-leading-none tw-font-semibold tw-text-blue-gray-900">
+        <div className="tw-text-[28px] tw-leading-none tw-font-semibold tw-text-blue-gray-900">
           {temp}
           <span className="tw-text-sm tw-font-normal tw-text-blue-gray-500"> °C</span>
         </div>
@@ -81,8 +77,8 @@ function TempTile({ name, temp, target = 60 }: { name: string; temp: number; tar
         </div>
       </div>
 
-      {/* แถบความคืบหน้าแนวนอน */}
-      <div className="tw-mt-2">
+      {/* progress bar */}
+      <div className="tw-mt-3">
         <div
           className="tw-h-2.5 tw-w-full tw-rounded-full tw-bg-blue-gray-50 tw-overflow-hidden"
           role="progressbar"
@@ -112,30 +108,30 @@ function TempTile({ name, temp, target = 60 }: { name: string; temp: number; tar
   );
 }
 
-/* ---------- Card (3 columns, no hover effects) ---------- */
-export default function PowerModulesCard({
-  title = "Power Modules Temperature",
+/* ---------- card ---------- */
+export default function PLCTemperaturesCard({
+  title = "PLC Temperatures",
   updatedAt,
   items,
-}: Props) {
+}: PLCProps) {
   return (
-    <section className="tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-      <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+    <section className="tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5">
+      <div className="tw-flex tw-items-center tw-justify-between tw-mb-4">
         <Typography variant="h6" color="blue-gray" className="tw-leading-tight">
           {title}
         </Typography>
         {updatedAt && <span className="tw-text-xs tw-text-blue-gray-500">Updated {updatedAt}</span>}
       </div>
 
-      {/* 3 คอลัมน์ตลอด */}
-      <div className="tw-grid tw-gap-3 tw-grid-cols-3 [&>div]:tw-h-full">
+      {/* 2 คอลัมน์สวย ๆ (มือถือเป็น 1) */}
+      <div className="tw-grid tw-gap-4 tw-grid-cols-1 sm:tw-grid-cols-2 [&>div]:tw-h-full">
         {items.length === 0 ? (
           <div className="tw-col-span-full tw-text-center tw-text-sm tw-text-blue-gray-400 tw-py-6">
-            No power module data
+            No PLC temperature data
           </div>
         ) : (
           items.map((it) => (
-            <TempTile key={it.id} name={it.name} temp={it.temp} target={it.target ?? 60} />
+            <PLCTile key={it.id} name={it.name} temp={it.temp} target={it.target ?? 60} />
           ))
         )}
       </div>
