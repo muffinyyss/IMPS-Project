@@ -77,7 +77,7 @@ function DeviceTile({
 
       {/* footer */}
       <div className="tw-mt-2 tw-flex tw-flex-col tw-items-center">
-        <span className={`tw-text-[11px] tw-mb-1 tw-rounded-full tw-px-2 tw-py-[2px] ${tone.badge}`}>
+        <span className={`tw-text-[11px] tw-mb-3 tw-rounded-full tw-px-2 tw-py-[2px] ${tone.badge}`}>
           {tone.label}
         </span>
         <div className="tw-text-2xl tw-font-semibold tw-text-blue-gray-900">
