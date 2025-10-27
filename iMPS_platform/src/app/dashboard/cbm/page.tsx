@@ -1,36 +1,30 @@
 "use client";
 import dynamic from "next/dynamic";
-import { Typography, Card, CardHeader, CardBody } from "@/components/MaterialTailwind";
-
-const SalesByAge = dynamic(() => import("@/app/dashboard/cbm/components/sales-by-age"), { ssr: false });
-const RevenueChart = dynamic(() => import("@/app/dashboard/cbm/components/revenue-chart"), { ssr: false });
 
 import ChargerEnv from "@/app/dashboard/cbm/components/chargerEnv";
 import MDBEnv from "@/app/dashboard/cbm/components/mdbEnv";
 import DeviceTempsCard from "@/app/dashboard/cbm/components/deviceTemp";
 import PowerModulesCard from "@/app/dashboard/cbm/components/powermodule";
 
+const SalesByAge = dynamic(() => import("@/app/dashboard/cbm/components/sales-by-age"), { ssr: false });
+const RevenueChart = dynamic(() => import("@/app/dashboard/cbm/components/revenue-chart"), { ssr: false });
+
 export default function SalesPage() {
   return (
     <div className="tw-mt-8 tw-mb-4">
-      <div className="tw-mt-2 tw-grid tw-grid-cols-1 md:tw-grid-cols-12 tw-gap-y-6 md:tw-gap-x-4">
+      {/* ใช้กริด 12 คอลัมน์ */}
+      <div className="tw-mt-2 tw-grid tw-grid-cols-1 lg:tw-grid-cols-12 tw-gap-4">
 
-        {/* ⬇️ กล่องบน: ทำให้ช่องว่างกลางเท่ากันด้วย flex + gap-4 */}
-        <div className="md:tw-col-span-12">
-          <div className="tw-w-full tw-mr-auto">
-            <div className="tw-flex tw-flex-wrap md:tw-flex-nowrap tw-gap-4">
-              {/* การ์ดซ้าย */}
-              <div className="tw-w-full md:tw-w-[340px]">
-                <ChargerEnv />
-              </div>
+        {/* แถวบน (3 + 3 + 6 = 12) */}
+        <div className="lg:tw-col-span-3 tw-col-span-12">
+          <ChargerEnv />
+        </div>
 
-              {/* การ์ดขวา */}
-              <div className="tw-w-full md:tw-w-[340px]">
-                <MDBEnv />
-              </div>
+        <div className="lg:tw-col-span-3 tw-col-span-12">
+          <MDBEnv />
+        </div>
 
-              {/* การ์ดขวา */}
-              <div className="md:tw-col-span-6 tw-h-full">
+        <div className="lg:tw-col-span-6 tw-col-span-12">
           <DeviceTempsCard
             updatedAt="10:32"
             devices={[
@@ -40,24 +34,9 @@ export default function SalesPage() {
             ]}
           />
         </div>
-            </div>
-          </div>
-        </div>
 
-
-        {/* แถวล่างคงเดิม */}
-        {/* <div className="md:tw-col-span-6 tw-h-full">
-          <DeviceTempsCard
-            updatedAt="10:32"
-            devices={[
-              { id: "edge", name: "EdgeBox", temp: 38, target: 60 },
-              { id: "pi", name: "Raspberry Pi", temp: 47, target: 60 },
-              { id: "router", name: "Router", temp: 71, target: 70 },
-            ]}
-          />
-        </div> */}
-
-        <div className="md:tw-col-span-6 tw-h-full">
+        {/* แถวล่าง – ให้กินเต็มแถว */}
+        <div className="lg:tw-col-span-6 tw-col-span-12">
           <PowerModulesCard
             updatedAt="10:32"
             items={[
@@ -73,5 +52,3 @@ export default function SalesPage() {
     </div>
   );
 }
-
-
