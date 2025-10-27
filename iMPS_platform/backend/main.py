@@ -47,6 +47,7 @@ client = AsyncIOMotorClient("mongodb://imps_platform:eds_imps@203.154.130.132:27
 
 deviceDB = client["utilizationFactor"]
 settingDB = client["settingParameter"]
+errorDB = client["errorCode"]
 
 db = client1["iMPS"]
 users_collection = db["users"]
@@ -62,6 +63,9 @@ MDBPMUrlDB = client["MDBPMReportURL"]
 
 CCBPMReportDB = client["CCBPMReport"]
 CCBPMUrlDB = client["CCBPMReportURL"]
+
+CBBOXPMReportDB = client["CBBOXPMReport"]
+CBBOXPMUrlDB = client["CBBOXPMReportURL"]
 
 stationPMReportDB = client["stationPMReport"]
 stationPMUrlDB = client["stationPMReportURL"]
@@ -81,6 +85,11 @@ def get_mdb_collection_for(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return MDB_DB.get_collection(str(station_id))
+
+def get_errorCode_collection_for(station_id: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return errorDB.get_collection(str(station_id))
 
 def _ensure_utc_iso(v):
     """
@@ -921,6 +930,61 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
                 yield ": keep-alive\n\n"
 
             await asyncio.sleep(60)
+
+    return StreamingResponse(event_generator(), headers=headers)
+
+
+
+@app.get("/error/{station_id}")
+async def error_stream(request: Request, station_id: str, current: UserClaims = Depends(get_current_user)):
+    """
+    สตรีมข้อความ error ล่าสุดของสถานีแบบ SSE
+    - ส่ง event แรกเป็น 'init' พร้อมค่า error ล่าสุด (ถ้ามี)
+    - จากนั้นโพลล์ดูเอกสารล่าสุด ถ้า _id เปลี่ยนจะส่งค่า error ตัวใหม่
+    - ถ้าไม่มีอะไรใหม่จะส่ง keep-alive คอมเมนต์เพื่อกันคอนเนกชันหลุด
+    """
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    coll = get_errorCode_collection_for(station_id)
+
+    async def event_generator():
+        last_id = None
+
+        # ส่งค่าเริ่มต้น (init) เฉพาะ key "error"
+        latest = await coll.find_one({}, sort=[("_id", -1)])
+        if latest and ("error" in latest):
+            last_id = latest.get("_id")
+            payload = {
+                "Chargebox_ID": latest.get("Chargebox_ID"),
+                "error": latest.get("error"),
+            }
+            yield f"event: init\ndata: {to_json(payload)}\n\n"
+        else:
+            # ไม่มีข้อมูล -> ส่ง keep-alive
+            yield ": keep-alive\n\n"
+
+        # วนลูปสตรีมอัปเดตใหม่
+        while True:
+            if await request.is_disconnected():
+                break
+
+            doc = await coll.find_one({}, sort=[("_id", -1)])
+            if doc and doc.get("_id") != last_id and ("error" in doc):
+                last_id = doc.get("_id")
+                payload = {
+                    "Chargebox_ID": doc.get("Chargebox_ID"),
+                    "error": doc.get("error"),
+                }
+                yield f"data: {to_json(payload)}\n\n"
+            else:
+                yield ": keep-alive\n\n"
+
+            await asyncio.sleep(60)  # ปรับช่วงได้ตามต้องการ
 
     return StreamingResponse(event_generator(), headers=headers)
 
@@ -2885,15 +2949,273 @@ async def ccbpmurl_list(
     return {"items": items, "pm_date": [i["pm_date"] for i in items if i.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
 
 # -------------------------------------------------- PMReportPage (CCB)       
-def get_ccbpmreport_collection_for(station_id: str):
-    _validate_station_id(station_id)
-    return CCBPMReportDB.get_collection(str(station_id))
+# def get_ccbpmreport_collection_for(station_id: str):
+#     _validate_station_id(station_id)
+#     return CCBPMReportDB.get_collection(str(station_id))
 
-def get_ccbpmurl_coll_upload(station_id: str):
-    _validate_station_id(station_id)
-    return CCBPMUrlDB.get_collection(str(station_id))
+# def get_ccbpmurl_coll_upload(station_id: str):
+#     _validate_station_id(station_id)
+#     return CCBPMUrlDB.get_collection(str(station_id))
 
-class CCBPMSubmitIn(BaseModel):
+# class CCBPMSubmitIn(BaseModel):
+#     station_id: str
+#     job: Dict[str, Any]         # โครงงาน (location/date/inspector ฯลฯ)
+#     rows: Dict[str, Dict[str, Any]]  # {"r1": {"pf": "...", "remark": "..."}, ...}
+#     measures: Dict[str, Dict[str, Any]]  # {"m4": {...}, "m5": {...}, ..., "m8": {...}}
+#     summary: str
+#     pm_date: str                # "YYYY-MM-DD"
+
+# @app.post("/ccbpmreport/submit")
+# async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(get_current_user)):
+#     print("HIT /ccbpmreport/submit")  # debug
+#     station_id = body.station_id.strip()
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_ccbpmreport_collection_for(station_id)
+
+#     # เก็บเอกสารเป็น draft ก่อน
+#     doc = {
+#         "station_id": station_id,
+#         "job": body.job,
+#         "rows": body.rows,
+#         "measures": body.measures,         # m4..m8
+#         "summary": body.summary,
+#         "pm_date": body.pm_date,           # string YYYY-MM-DD (ตามฟรอนต์)
+#         "status": "draft",
+#         "photos": {},                      # จะถูกเติมใน /photos
+#         "createdAt": datetime.now(timezone.utc),
+#         "updatedAt": datetime.now(timezone.utc),
+#     }
+
+#     res = await coll.insert_one(doc)
+#     return {"ok": True, "report_id": str(res.inserted_id)}
+
+# @app.get("/ccbpmreport/list")
+# async def ccbpmreport_list(
+#     station_id: str = Query(...),
+#     page: int = Query(1, ge=1),
+#     pageSize: int = Query(20, ge=1, le=100),
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     skip = (page - 1) * pageSize
+
+#     cursor = coll.find({}, {"_id": 1, "pm_date": 1, "createdAt": 1}).sort(
+#         [("createdAt", -1), ("_id", -1)]
+#     ).skip(skip).limit(pageSize)
+
+#     items_raw = await cursor.to_list(length=pageSize)
+#     total = await coll.count_documents({})
+
+#     # ผูก URL PDF รายวันจาก MDBPMUrlDB (ถ้ามี)
+#     pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+#     url_by_day: Dict[str, str] = {}
+#     if pm_dates:
+#         ucoll = get_ccbpmurl_coll_upload(station_id)
+#         ucur = ucoll.find({"pm_date": {"$in": pm_dates}}, {"pm_date": 1, "urls": 1})
+#         url_docs = await ucur.to_list(length=10_000)
+#         for u in url_docs:
+#             day = u.get("pm_date")
+#             first_url = (u.get("urls") or [None])[0]
+#             if day and first_url and day not in url_by_day:
+#                 url_by_day[day] = first_url
+
+#     items = [{
+#         "id": str(it["_id"]),
+#         "pm_date": it.get("pm_date"),
+#         "createdAt": _ensure_utc_iso(it.get("createdAt")),
+#         "file_url": url_by_day.get(it.get("pm_date") or "", ""),
+#     } for it in items_raw]
+
+#     return {"items": items, "pm_date": [it.get("pm_date") for it in items_raw if it.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
+
+# @app.post("/ccbpmreport/{report_id}/photos")
+# async def ccbpmreport_upload_photos(
+#     report_id: str,
+#     station_id: str = Form(...),
+#     group: str = Form(...),                   # "g1" .. "g11"
+#     files: List[UploadFile] = File(...),
+#     remark: Optional[str] = Form(None),
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+#     if not re.fullmatch(r"g\d+", group):
+#         raise HTTPException(status_code=400, detail="Bad group key")
+
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     try:
+#         oid = ObjectId(report_id)
+#     except Exception:
+#         raise HTTPException(status_code=400, detail="Bad report_id")
+
+#     doc = await coll.find_one({"_id": oid}, {"_id": 1, "station_id": 1})
+#     if not doc:
+#         raise HTTPException(status_code=404, detail="Report not found")
+#     if doc.get("station_id") != station_id:
+#         raise HTTPException(status_code=400, detail="station_id mismatch")
+
+#     # โฟลเดอร์: /uploads/mdbpm/{station_id}/{report_id}/{group}/
+#     dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpm" / station_id / report_id / group
+#     dest_dir.mkdir(parents=True, exist_ok=True)
+
+#     saved = []
+#     for f in files:
+#         ext = (f.filename.rsplit(".",1)[-1].lower() if f.filename and "." in f.filename else "")
+#         if ext not in ALLOWED_EXTS:
+#             raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
+
+#         data = await f.read()
+#         if len(data) > MAX_FILE_MB * 1024 * 1024:
+#             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+#         fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+#         path = dest_dir / fname
+#         with open(path, "wb") as out:
+#             out.write(data)
+
+#         url_path = f"/uploads/ccbpm/{station_id}/{report_id}/{group}/{fname}"
+#         saved.append({
+#             "filename": fname,
+#             "size": len(data),
+#             "url": url_path,
+#             "remark": remark or "",
+#             "uploadedAt": datetime.now(timezone.utc)
+#         })
+
+#     await coll.update_one(
+#         {"_id": oid},
+#         {
+#             "$push": {f"photos.{group}": {"$each": saved}},
+#             "$set": {"updatedAt": datetime.now(timezone.utc)}
+#         }
+#     )
+#     return {"ok": True, "count": len(saved), "group": group, "files": saved}
+
+# @app.post("/ccbpmreport/{report_id}/finalize")
+# async def ccbpmreport_finalize(
+#     report_id: str,
+#     station_id: str = Form(...),
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     try:
+#         oid = ObjectId(report_id)
+#     except Exception:
+#         raise HTTPException(status_code=400, detail="Bad report_id")
+
+#     # (ออปชัน) ตรวจความครบถ้วนก่อน finalize ได้ที่นี่
+#     res = await coll.update_one(
+#         {"_id": oid},
+#         {"$set": {"status": "submitted", "submittedAt": datetime.now(timezone.utc), "updatedAt": datetime.now(timezone.utc)}}
+#     )
+#     if res.matched_count == 0:
+#         raise HTTPException(status_code=404, detail="Report not found")
+#     return {"ok": True}
+
+# # -------------------------- ไฟล์ PDF รายวัน (MDB PM URL) --------------------------
+
+# @app.post("/ccbpmurl/upload-files", status_code=201)
+# async def ccbpmurl_upload_files(
+#     station_id: str = Form(...),
+#     reportDate: str = Form(...),            # "YYYY-MM-DD" หรือ ISO -> จะ normalize เป็น YYYY-MM-DD
+#     files: List[UploadFile] = File(...),    # อนุญาตเฉพาะ .pdf
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_ccbpmurl_coll_upload(station_id)
+#     pm_date = normalize_pm_date(reportDate)  # คืน YYYY-MM-DD
+
+#     # เก็บไว้ที่ /uploads/mdbpmurl/<station_id>/<YYYY-MM-DD>/
+#     dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpmurl" / station_id / pm_date
+#     dest_dir.mkdir(parents=True, exist_ok=True)
+
+#     urls, metas = [], []
+#     for f in files:
+#         ext = (f.filename.rsplit(".",1)[-1].lower() if f.filename and "." in f.filename else "")
+#         if ext != "pdf":
+#             raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
+
+#         data = await f.read()
+#         if len(data) > MAX_FILE_MB * 1024 * 1024:
+#             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+#         fname = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
+#         path = dest_dir / fname
+#         with open(path, "wb") as out:
+#             out.write(data)
+
+#         url = f"/uploads/ccbpmurl/{station_id}/{pm_date}/{fname}"
+#         urls.append(url)
+#         metas.append({"name": f.filename, "size": len(data)})
+
+#     now = datetime.now(timezone.utc)
+#     res = await coll.insert_one({
+#         "station": station_id,
+#         "pm_date": pm_date,
+#         "urls": urls,
+#         "meta": {"files": metas},
+#         "source": "upload-files",
+#         "createdAt": now,
+#         "updatedAt": now,
+#     })
+#     return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls}
+
+# @app.get("/ccbpmurl/list")
+# async def ccbpmurl_list(
+#     station_id: str = Query(...),
+#     page: int = Query(1, ge=1),
+#     pageSize: int = Query(20, ge=1, le=100),
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_ccbpmurl_coll_upload(station_id)
+#     skip = (page - 1) * pageSize
+
+#     cursor = coll.find(
+#         {},
+#         {"_id": 1, "pm_date": 1, "urls": 1, "createdAt": 1}
+#     ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+
+#     items_raw = await cursor.to_list(length=pageSize)
+#     total = await coll.count_documents({})
+
+#     items = []
+#     for it in items_raw:
+#         urls = it.get("urls") or []
+#         first_url = urls[0] if urls else ""
+#         items.append({
+#             "id": str(it["_id"]),
+#             "pm_date": it.get("pm_date"),
+#             "createdAt": _ensure_utc_iso(it.get("createdAt")),
+#             "file_url": first_url,
+#             "urls": urls,
+#         })
+
+#     return {"items": items, "pm_date": [i["pm_date"] for i in items if i.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
+
+# -------------------------------------------------- PMReportPage (CB-BOX)       
+
+def get_cbboxpmreport_collection_for(station_id: str):
+    _validate_station_id(station_id)
+    return CBBOXPMReportDB.get_collection(str(station_id))
+
+def get_cbboxpmurl_coll_upload(station_id: str):
+    _validate_station_id(station_id)
+    return CBBOXPMUrlDB.get_collection(str(station_id))
+
+class CBBOXPMSubmitIn(BaseModel):
     station_id: str
     job: Dict[str, Any]         # โครงงาน (location/date/inspector ฯลฯ)
     rows: Dict[str, Dict[str, Any]]  # {"r1": {"pf": "...", "remark": "..."}, ...}
@@ -2901,14 +3223,14 @@ class CCBPMSubmitIn(BaseModel):
     summary: str
     pm_date: str                # "YYYY-MM-DD"
 
-@app.post("/ccbpmreport/submit")
-async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(get_current_user)):
-    print("HIT /ccbpmreport/submit")  # debug
+@app.post("/cbboxpmreport/submit")
+async def cbboxpmreport_submit(body: CBBOXPMSubmitIn, current: UserClaims = Depends(get_current_user)):
+   
     station_id = body.station_id.strip()
     if current.role != "admin" and station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
-    coll = get_ccbpmreport_collection_for(station_id)
+    coll = get_cbboxpmreport_collection_for(station_id)
 
     # เก็บเอกสารเป็น draft ก่อน
     doc = {
@@ -2927,8 +3249,8 @@ async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(
     res = await coll.insert_one(doc)
     return {"ok": True, "report_id": str(res.inserted_id)}
 
-@app.get("/ccbpmreport/list")
-async def ccbpmreport_list(
+@app.get("/cbboxpmreport/list")
+async def cbboxpmreport_list(
     station_id: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
@@ -2937,7 +3259,7 @@ async def ccbpmreport_list(
     if current.role != "admin" and station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
-    coll = get_ccbpmreport_collection_for(station_id)
+    coll = get_cbboxpmreport_collection_for(station_id)
     skip = (page - 1) * pageSize
 
     cursor = coll.find({}, {"_id": 1, "pm_date": 1, "createdAt": 1}).sort(
@@ -2951,7 +3273,7 @@ async def ccbpmreport_list(
     pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
     url_by_day: Dict[str, str] = {}
     if pm_dates:
-        ucoll = get_ccbpmurl_coll_upload(station_id)
+        ucoll = get_cbboxpmurl_coll_upload(station_id)
         ucur = ucoll.find({"pm_date": {"$in": pm_dates}}, {"pm_date": 1, "urls": 1})
         url_docs = await ucur.to_list(length=10_000)
         for u in url_docs:
@@ -2969,8 +3291,8 @@ async def ccbpmreport_list(
 
     return {"items": items, "pm_date": [it.get("pm_date") for it in items_raw if it.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
 
-@app.post("/ccbpmreport/{report_id}/photos")
-async def ccbpmreport_upload_photos(
+@app.post("/cbboxpmreport/{report_id}/photos")
+async def cbboxpmreport_upload_photos(
     report_id: str,
     station_id: str = Form(...),
     group: str = Form(...),                   # "g1" .. "g11"
@@ -2983,7 +3305,7 @@ async def ccbpmreport_upload_photos(
     if not re.fullmatch(r"g\d+", group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
-    coll = get_ccbpmreport_collection_for(station_id)
+    coll = get_cbboxpmreport_collection_for(station_id)
     try:
         oid = ObjectId(report_id)
     except Exception:
@@ -2996,7 +3318,7 @@ async def ccbpmreport_upload_photos(
         raise HTTPException(status_code=400, detail="station_id mismatch")
 
     # โฟลเดอร์: /uploads/mdbpm/{station_id}/{report_id}/{group}/
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpm" / station_id / report_id / group
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "cbboxpm" / station_id / report_id / group
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     saved = []
@@ -3014,7 +3336,7 @@ async def ccbpmreport_upload_photos(
         with open(path, "wb") as out:
             out.write(data)
 
-        url_path = f"/uploads/ccbpm/{station_id}/{report_id}/{group}/{fname}"
+        url_path = f"/uploads/cbboxpm/{station_id}/{report_id}/{group}/{fname}"
         saved.append({
             "filename": fname,
             "size": len(data),
@@ -3032,8 +3354,8 @@ async def ccbpmreport_upload_photos(
     )
     return {"ok": True, "count": len(saved), "group": group, "files": saved}
 
-@app.post("/ccbpmreport/{report_id}/finalize")
-async def ccbpmreport_finalize(
+@app.post("/cbboxpmreport/{report_id}/finalize")
+async def cbboxpmreport_finalize(
     report_id: str,
     station_id: str = Form(...),
     current: UserClaims = Depends(get_current_user),
@@ -3041,7 +3363,7 @@ async def ccbpmreport_finalize(
     if current.role != "admin" and station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
-    coll = get_ccbpmreport_collection_for(station_id)
+    coll = get_cbboxpmreport_collection_for(station_id)
     try:
         oid = ObjectId(report_id)
     except Exception:
@@ -3058,8 +3380,8 @@ async def ccbpmreport_finalize(
 
 # -------------------------- ไฟล์ PDF รายวัน (MDB PM URL) --------------------------
 
-@app.post("/ccbpmurl/upload-files", status_code=201)
-async def ccbpmurl_upload_files(
+@app.post("/cbboxpmurl/upload-files", status_code=201)
+async def cbboxpmurl_upload_files(
     station_id: str = Form(...),
     reportDate: str = Form(...),            # "YYYY-MM-DD" หรือ ISO -> จะ normalize เป็น YYYY-MM-DD
     files: List[UploadFile] = File(...),    # อนุญาตเฉพาะ .pdf
@@ -3068,11 +3390,11 @@ async def ccbpmurl_upload_files(
     if current.role != "admin" and station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
-    coll = get_ccbpmurl_coll_upload(station_id)
+    coll = get_cbboxpmurl_coll_upload(station_id)
     pm_date = normalize_pm_date(reportDate)  # คืน YYYY-MM-DD
 
     # เก็บไว้ที่ /uploads/mdbpmurl/<station_id>/<YYYY-MM-DD>/
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpmurl" / station_id / pm_date
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "cbboxpmurl" / station_id / pm_date
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     urls, metas = [], []
@@ -3090,7 +3412,7 @@ async def ccbpmurl_upload_files(
         with open(path, "wb") as out:
             out.write(data)
 
-        url = f"/uploads/ccbpmurl/{station_id}/{pm_date}/{fname}"
+        url = f"/uploads/cbboxpmurl/{station_id}/{pm_date}/{fname}"
         urls.append(url)
         metas.append({"name": f.filename, "size": len(data)})
 
@@ -3106,8 +3428,8 @@ async def ccbpmurl_upload_files(
     })
     return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls}
 
-@app.get("/ccbpmurl/list")
-async def ccbpmurl_list(
+@app.get("/cbboxpmurl/list")
+async def cbboxpmurl_list(
     station_id: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
@@ -3116,7 +3438,7 @@ async def ccbpmurl_list(
     if current.role != "admin" and station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
-    coll = get_ccbpmurl_coll_upload(station_id)
+    coll = get_cbboxpmurl_coll_upload(station_id)
     skip = (page - 1) * pageSize
 
     cursor = coll.find(
@@ -3140,6 +3462,8 @@ async def ccbpmurl_list(
         })
 
     return {"items": items, "pm_date": [i["pm_date"] for i in items if i.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
+
+
 
 # -------------------------------------------------- PMReportPage (station)       
 def get_stationpmreport_collection_for(station_id: str):
@@ -3419,7 +3743,7 @@ async def cmreport_list(
     coll = get_cmreport_collection_for(station_id)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "cm_date": 1, "createdAt": 1}).sort(
+    cursor = coll.find({}, {"_id": 1, "cm_date": 1, "status": 1, "createdAt": 1}).sort(
         [("createdAt", -1), ("_id", -1)]
     ).skip(skip).limit(pageSize)
     items_raw = await cursor.to_list(length=pageSize)
@@ -3431,7 +3755,7 @@ async def cmreport_list(
     url_by_day: dict[str, str] = {}
 
     if cm_dates:
-        ucur = urls_coll.find({"cm_date": {"$in": cm_dates}}, {"cm_date": 1, "urls": 1})
+        ucur = urls_coll.find({"cm_date": {"$in": cm_dates}}, {"cm_date": 1, "status": 1, "urls": 1})
         url_docs = await ucur.to_list(length=10_000)
         for u in url_docs:
             day = u.get("cm_date")
@@ -3442,12 +3766,14 @@ async def cmreport_list(
     items = [{
         "id": str(it["_id"]),
         "cm_date": it.get("cm_date"),
+        "status": it.get("status"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("cm_date") or "", ""),
     } for it in items_raw]
 
     cm_date_arr = [it.get("cm_date") for it in items_raw if it.get("cm_date")]
-    return {"items": items, "cm_date": cm_date_arr, "page": page, "pageSize": pageSize, "total": total}
+    status_arr = [it.get("status") for it in items_raw if it.get("status")]
+    return {"items": items, "cm_date": cm_date_arr, "status": status_arr, "page": page, "pageSize": pageSize, "total": total}
 
 # ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
 UPLOADS_ROOT = os.getenv("UPLOADS_ROOT", "./uploads")

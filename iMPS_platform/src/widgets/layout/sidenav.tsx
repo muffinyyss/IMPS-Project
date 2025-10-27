@@ -597,7 +597,7 @@ type RouteItem = {
   divider?: boolean;
 };
 
-type PropTypes = { brandImg?: string; brandName?: string };
+type PropTypes = { routes: RouteItem[];  brandImg?: string; brandName?: string };
 
 /* ---------- Helpers ---------- */
 const toKey = (v: string) => String(v || "").toLowerCase();
