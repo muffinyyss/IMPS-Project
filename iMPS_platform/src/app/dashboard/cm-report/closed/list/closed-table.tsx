@@ -2,9 +2,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import CMForm from "@/app/dashboard/cm-report/components/form_cm"; // ✅ import ตรง
-import { AppDataTable } from "@/data";
+import CMForm from "@/app/dashboard/cm-report/closed/input_CMreport/components/checkList"; // ✅ import ตรง
+
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -25,7 +24,12 @@ import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ArrowLeftIcon } f
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 
-type TData = (typeof AppDataTable)[number];
+type TData = {
+  name: string;     // วันที่ (แสดงผล)
+  position: string; // YYYY-MM-DD ใช้ sort/filter
+  office: string;   // ลิงก์ไฟล์
+  status: string;     // ⬅️ สถานะที่จะแสดง
+};
 
 type Props = {
   token?: string;        // ใช้ได้ ถ้าจะส่ง Bearer แทนคุกกี้
@@ -36,7 +40,7 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<"list" | "form">("list");
+  // const [mode, setMode] = useState<"list" | "form">("list");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
@@ -45,6 +49,16 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const sp = useSearchParams();
   const stationIdFromUrl = sp.get("station_id") ?? "";
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const mode = (sp.get("view") === "form" ? "form" : "list") as "list" | "form";
+
+  const setView = (view: "list" | "form", { replace = false } = {}) => {
+    const params = new URLSearchParams(sp.toString());
+    if (view === "form") params.set("view", "form");
+    else params.delete("view");
+    router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   // เลือกโหมด auth: คุกกี้ httpOnly (credentials: "include") หรือ Bearer token
   const useHttpOnlyCookie = true;
@@ -85,30 +99,48 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     }
   }
 
+  // function resolveFileHref(v: any, apiBase: string) {
+  //   if (!v) return "";
+  //   // ถ้าเป็น object เช่น { url: "..." }
+  //   if (typeof v === "object") {
+  //     const c = v.url ?? v.href ?? v.link ?? "";
+  //     return resolveFileHref(c, apiBase);
+  //   }
+  //   const s = String(v).trim();
+  //   if (!s) return "";
+
+  //   // ถ้าเป็น absolute URL อยู่แล้ว ก็ใช้ได้เลย
+  //   try {
+  //     const u = new URL(s);
+  //     return u.toString();
+  //   } catch { /* not absolute */ }
+
+  //   // ถ้าเป็น path เช่น /files/<id> → เติม apiBase
+  //   if (s.startsWith("/")) return `${apiBase}${s}`;
+
+  //   // ถ้าเป็นแค่ id (เช่น GridFS id) → สร้างเป็น /files/<id>
+  //   if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
+
+  //   // อื่น ๆ: ลองเติม apiBase เผื่อเป็น path แบบไม่ขึ้นต้นด้วย /
+  //   return `${apiBase}/${s}`;
+  // }
+
   function resolveFileHref(v: any, apiBase: string) {
     if (!v) return "";
-    // ถ้าเป็น object เช่น { url: "..." }
     if (typeof v === "object") {
       const c = v.url ?? v.href ?? v.link ?? "";
       return resolveFileHref(c, apiBase);
     }
     const s = String(v).trim();
     if (!s) return "";
-
-    // ถ้าเป็น absolute URL อยู่แล้ว ก็ใช้ได้เลย
-    try {
-      const u = new URL(s);
-      return u.toString();
-    } catch { /* not absolute */ }
-
-    // ถ้าเป็น path เช่น /files/<id> → เติม apiBase
+    try { return new URL(s).toString(); } catch { }
     if (s.startsWith("/")) return `${apiBase}${s}`;
-
-    // ถ้าเป็นแค่ id (เช่น GridFS id) → สร้างเป็น /files/<id>
     if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
-
-    // อื่น ๆ: ลองเติม apiBase เผื่อเป็น path แบบไม่ขึ้นต้นด้วย /
     return `${apiBase}/${s}`;
+  }
+
+  function getStatusText(it: any) {
+    return String(it?.status ?? it?.job?.status ?? "").trim();
   }
 
   const fetchRows = async () => {
@@ -120,6 +152,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         u.searchParams.set("station_id", stationIdFromUrl);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
+        u.searchParams.set("status", "Closed");
         return u.toString();
       };
 
@@ -139,6 +172,16 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const j = await urlRes.value.json();
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
+
+      const isClosed = (it: any) => {
+        const hasStatus = it?.status != null || it?.job?.status != null;
+        if (!hasStatus) return true;
+        const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
+        return s === "closed";
+      };
+
+      cmItems = cmItems.filter(isClosed);
+      urlItems = urlItems.filter(isClosed);
 
 
       const cmRows: TData[] = cmItems.map((it: any) => {
@@ -178,7 +221,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           name: thDate(isoDay),
           position: isoDay,
           office: fileUrl,
-        } as TData;
+          status: getStatusText(it) || "-"
+        };
       });
 
 
@@ -194,7 +238,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           name: thDate(isoDay),
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
-        } as TData;
+          status: getStatusText(it) || "-",
+        };
       });
 
 
@@ -207,23 +252,24 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       });
 
       // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
-      if (!allRows.length) {
-        const res2 = await fetch(`${apiBase}/cmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
-        if (res2.ok) {
-          const j = await res2.json();
-          const iso = j?.cm_date ?? "";
-          const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-          setData(rows);
-          return;
-        }
-        setData([...AppDataTable] as TData[]);
-        return;
-      }
+      // if (!allRows.length) {
+      //   const res2 = await fetch(`${apiBase}/cmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
+      //   if (res2.ok) {
+      //     const j = await res2.json();
+      //     const iso = j?.cm_date ?? "";
+      //     const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
+      //     setData(rows);
+      //     return;
+      //   }
+      //   setData([...AppDataTable] as TData[]);
+      //   return;
+      // }
+      if (!allRows.length) { setData([]); return; }
 
       setData(allRows);
     } catch (err) {
       console.error("fetch both lists error:", err);
-      setData([...AppDataTable] as TData[]);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -258,6 +304,29 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       size: 50,
       minSize: 60,
       maxSize: 120,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.status ?? "-",
+      id: "status",
+      header: () => "status",
+      cell: (info: CellContext<TData, unknown>) => {
+        const s = String(info.getValue() ?? "-");
+        const sl = s.toLowerCase();
+        const color =
+          sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
+            sl === "closed" || sl === "close" ? "tw-bg-red-200 tw-text-red-800" :
+              sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
+                "tw-bg-blue-gray-100 tw-text-blue-gray-800";
+        return (
+          <span className={`tw-inline-block tw-px-2 tw-py-0.5 tw-rounded ${color}`}>
+            {s}
+          </span>
+        );
+      },
+      size: 80,
+      minSize: 60,
+      maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
@@ -392,8 +461,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         return;
       }
 
-      const j = await res.json();
-      console.log("uploaded:", j);
       alert("อัปโหลดสำเร็จ");
 
       // เคลียร์สถานะ + ปิด dialog
@@ -410,28 +477,32 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     }
   }
 
-  const onPdfPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    const pdfs = files.filter(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-    if (pdfs.length !== files.length) alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
-    console.log("Picked PDFs (demo):", pdfs.map(f => ({ name: f.name, size: f.size })));
-    e.currentTarget.value = "";
-  };
 
-  const goAdd = () => setMode("form");
-  const goList = () => setMode("list");
+  // const onPdfPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const files = Array.from(e.target.files ?? []);
+  //   const pdfs = files.filter(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
+  //   if (pdfs.length !== files.length) alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
+  //   console.log("Picked PDFs (demo):", pdfs.map(f => ({ name: f.name, size: f.size })));
+  //   e.currentTarget.value = "";
+  // };
+
+  const goAdd = () => setView("form");
+  const goList = () => setView("list");
 
   if (mode === "form") {
     return (
       <div className="tw-mt-6">
-        {/* <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
-          <Button variant="outlined" size="sm" onClick={goList} className="tw-py-2 tw-px-2" title="กลับไปหน้า List">
+        <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
+          <Button
+            variant="outlined"
+            size="sm"
+            onClick={goList}
+            className="tw-py-2 tw-px-2"
+            title="กลับไปหน้า List"
+          >
             <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
           </Button>
-          <Typography variant="h6" color="blue-gray">Corrective Maintenance Form</Typography>
-        </div> */}
-
-        {/* ✅ เรนเดอร์ฟอร์มตรง ๆ */}
+        </div>
         <CMForm />
         {/* ถ้า CMForm ของคุณไม่มี prop onCancel ก็ลบออกได้ */}
       </div>
@@ -470,7 +541,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 onClick={() => pdfInputRef.current?.click()}
                 className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
                 title="อัปโหลด PDF (demo)">
-                
+
                 <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
                 <span className="tw-text-sm">Upload</span>
               </Button>

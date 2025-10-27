@@ -491,7 +491,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
         form.append("group", group);
         files.forEach((f) => form.append("files", f));
         const token = localStorage.getItem("access_token");
-        const res = await fetch(`${API_BASE}/pmreport/${reportId}/photos`, {
+        const res = await fetch(`${API_BASE}/cbboxpmreport/${reportId}/photos`, {
             method: "POST",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
             body: form,
@@ -508,7 +508,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || "";
 
-            const res = await fetch(`${API_BASE}/pmreport/submit`, {
+            const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                 credentials: "include",
@@ -516,7 +516,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
                     station_id: stationId,
                     job,
                     rows,
-                    measures: { r5: m5.state }, // ลบ r9 ออกแล้ว
+                    measures: { m5: m5.state }, // ลบ r9 ออกแล้ว
                     summary,
                     pm_date,
                 }),
@@ -534,7 +534,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
                 await uploadGroupPhotos(report_id, stationId, `g${no}`, files);
             }
 
-            const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+            const fin = await fetch(`${API_BASE}/cbboxpmreport/${report_id}/finalize`, {
                 method: "POST",
                 headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 credentials: "include",

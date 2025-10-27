@@ -1,11 +1,8 @@
 
-
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import CMForm from "@/app/dashboard/cm-report/components/form_cm"; // ✅ import ตรง
-import { AppDataTable } from "@/data";
+import React, { useEffect, useRef, useState } from "react";
+import CMOpenForm from "@/app/dashboard/cm-report/open/input_CMreport/components/checkList";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -26,28 +23,40 @@ import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ArrowLeftIcon } f
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 
-type TData = (typeof AppDataTable)[number];
+type TData = {
+  name: string;     // วันที่ (แสดงผล)
+  position: string; // YYYY-MM-DD ใช้ sort/filter
+  office: string;   // ลิงก์ไฟล์
+  status: string;     // ⬅️ สถานะที่จะแสดง
+};
 
 type Props = {
-  token?: string;        // ใช้ได้ ถ้าจะส่ง Bearer แทนคุกกี้
+  token?: string;
   apiBase?: string;
-}
+};
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<"list" | "form">("list");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
 
-  // อ่าน station_id จาก URL (Navbar เป็นคนอัปเดตให้)
   const sp = useSearchParams();
   const stationIdFromUrl = sp.get("station_id") ?? "";
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const mode = (sp.get("view") === "form" ? "form" : "list") as "list" | "form";
 
-  // เลือกโหมด auth: คุกกี้ httpOnly (credentials: "include") หรือ Bearer token
+  const setView = (view: "list" | "form", { replace = false } = {}) => {
+    const params = new URLSearchParams(sp.toString());
+    if (view === "form") params.set("view", "form");
+    else params.delete("view");
+    router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   const useHttpOnlyCookie = true;
   function makeHeaders(): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -65,9 +74,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   function thDate(iso?: string) {
     if (!iso) return "-";
     return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
+      day: "2-digit", month: "2-digit", year: "numeric",
     });
   }
 
@@ -88,28 +95,20 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   function resolveFileHref(v: any, apiBase: string) {
     if (!v) return "";
-    // ถ้าเป็น object เช่น { url: "..." }
     if (typeof v === "object") {
       const c = v.url ?? v.href ?? v.link ?? "";
       return resolveFileHref(c, apiBase);
     }
     const s = String(v).trim();
     if (!s) return "";
-
-    // ถ้าเป็น absolute URL อยู่แล้ว ก็ใช้ได้เลย
-    try {
-      const u = new URL(s);
-      return u.toString();
-    } catch { /* not absolute */ }
-
-    // ถ้าเป็น path เช่น /files/<id> → เติม apiBase
+    try { return new URL(s).toString(); } catch { }
     if (s.startsWith("/")) return `${apiBase}${s}`;
-
-    // ถ้าเป็นแค่ id (เช่น GridFS id) → สร้างเป็น /files/<id>
     if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
-
-    // อื่น ๆ: ลองเติม apiBase เผื่อเป็น path แบบไม่ขึ้นต้นด้วย /
     return `${apiBase}/${s}`;
+  }
+
+  function getStatusText(it: any) {
+    return String(it?.status ?? it?.job?.status ?? "").trim();
   }
 
   const fetchRows = async () => {
@@ -121,6 +120,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         u.searchParams.set("station_id", stationIdFromUrl);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
+        u.searchParams.set("status", "in progress"); // ส่งให้ backend กรอง Open
         return u.toString();
       };
 
@@ -141,11 +141,17 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
 
+      // อนุญาตอันที่ไม่มี status (เช่นเอกสาร URL ภายนอก) ผ่านได้
+      const isInProgress = (it: any) => {
+        const s = getStatusText(it).toLowerCase();
+        return s === "in progress";
+      };
+
+      cmItems = cmItems.filter(isInProgress);
+      urlItems = urlItems.filter(isInProgress);
 
       const cmRows: TData[] = cmItems.map((it: any) => {
         const isoDay = toISODateOnly(it.cm_date ?? it.createdAt ?? "");
-
-        // ลิงก์ไฟล์ที่อัปโหลด (ถ้ามี)
         const rawUploaded =
           it.file_url
           ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
@@ -154,34 +160,22 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
         const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
 
-        // ⬇️ วางไว้ใกล้ๆ ฟังก์ชันอื่น
-        function extractId(it: any): string {
-          if (!it) return "";
-          // ให้โฟกัส _id ก่อน เพราะเป็นของจริงจาก Mongo
-          const raw = (it._id !== undefined ? it._id : it.id) ?? "";
+        function extractId(x: any): string {
+          if (!x) return "";
+          const raw = (x._id !== undefined ? x._id : x.id) ?? "";
           if (raw && typeof raw === "object") {
-            // รองรับรูปแบบที่ซีเรียลไลซ์จาก Mongo: { "$oid": "..." } หรือ { "oid": "..." }
             return raw.$oid || raw.oid || raw.$id || "";
           }
           const s = String(raw || "");
           return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
         }
 
-
-        // ⬇️ ใช้ helper ใหม่
         const id = extractId(it);
-        // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/download` : "";
         const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
-
         const fileUrl = uploadedUrl || generatedUrl;
 
-        return {
-          name: thDate(isoDay),
-          position: isoDay,
-          office: fileUrl,
-        } as TData;
+        return { name: thDate(isoDay), position: isoDay, office: fileUrl, status: getStatusText(it) || "-"};
       });
-
 
       const urlRows: TData[] = urlItems.map((it: any) => {
         const isoDay = toISODateOnly(it.cm_date ?? it.reportDate ?? it.createdAt ?? "");
@@ -191,40 +185,22 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           ?? it.file
           ?? it.path;
 
-        return {
-          name: thDate(isoDay),
-          position: isoDay,
-          office: resolveFileHref(raw, apiBase),
-        } as TData;
+        return { name: thDate(isoDay), position: isoDay, office: resolveFileHref(raw, apiBase), status: getStatusText(it) || "-", };
       });
 
-
-
-      // รวมทั้งหมด แล้ว sort ตามวันที่ (ใหม่ → เก่า) แต่ยัง “ไม่ตัดซ้ำ”
       const allRows = [...cmRows, ...urlRows].sort((a, b) => {
         const da = (a.position ?? "") as string;
         const db = (b.position ?? "") as string;
         return da < db ? 1 : da > db ? -1 : 0;
       });
 
-      // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
-      if (!allRows.length) {
-        const res2 = await fetch(`${apiBase}/cmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
-        if (res2.ok) {
-          const j = await res2.json();
-          const iso = j?.cm_date ?? "";
-          const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-          setData(rows);
-          return;
-        }
-        setData([...AppDataTable] as TData[]);
-        return;
-      }
+      // ถ้าไม่มีอะไรเลยก็เคลียร์ (ให้ตารางขึ้น “ไม่มีข้อมูล”)
+      if (!allRows.length) { setData([]); return; }
 
       setData(allRows);
     } catch (err) {
       console.error("fetch both lists error:", err);
-      setData([...AppDataTable] as TData[]);
+      setData([]); // ❗ ไม่มี fallback ตัวอย่าง
     } finally {
       setLoading(false);
     }
@@ -262,18 +238,42 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
+      accessorFn: (row) => row.status,
+      id: "status",
+      header: () => "status",
+      enableSorting: true,
+      cell: (info: CellContext<TData, unknown>) => {
+        const s = String(info.getValue() ?? "");
+        const low = s.toLowerCase();
+        const badge =
+          low === "in progress" ? "tw-bg-amber-100 tw-text-amber-800" :
+            low === "open" ? "tw-bg-green-100 tw-text-green-800" :
+              low === "closed" || low === "done"
+                ? "tw-bg-blue-gray-100 tw-text-blue-gray-800" :
+                "tw-bg-blue-gray-50 tw-text-blue-gray-600";
+        return (
+          <span className={`tw-inline-block tw-text-xs tw-font-medium tw-px-2 tw-py-1 tw-rounded ${badge}`}>
+            {s || "-"}
+          </span>
+        );
+      },
+      size: 120,
+      minSize: 100,
+      maxSize: 160,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
       accessorFn: (row) => row.office,
       id: "pdf",
       header: () => "pdf",
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
-        const baseUrl = info.getValue() as string | undefined; // เช่น http://localhost:8000/pdf/<id>/file
+        const baseUrl = info.getValue() as string | undefined;
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
-        const viewUrl = hasUrl ? `${baseUrl}` : undefined;           // inline (พรีวิว)
+        const viewUrl = hasUrl ? `${baseUrl}` : undefined;
         return (
           <a
-            // href={hasUrl ? url : undefined}
             href={viewUrl}
             target="_blank"
             rel="noopener noreferrer"
@@ -289,7 +289,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           </a>
         );
       },
-
       size: 80,
       minSize: 64,
       maxSize: 120,
@@ -310,7 +309,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     columnResizeMode: "onChange",
   });
 
-  // Upload (เดโม่ ไม่เชื่อม backend)
+  // Upload
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -326,50 +325,37 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
     const fd = new FormData();
     fd.append("station_id", stationIdFromUrl);
-    // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
     fd.append("rows", JSON.stringify({ reportDate, urls }));
 
     const res = await fetch(`${apiBase}/cmurl/upload`, {
       method: "POST",
       body: fd,
-      credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
+      credentials: "include",
     });
 
     if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
     alert("อัปโหลดสำเร็จ");
     setDateOpen(false);
     setUrlText("");
-
-
+    await fetchRows();
   }
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.currentTarget.value = "";
     if (!files.length) return;
-
     const pdfs = files.filter(
       (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
     );
-    if (!pdfs.length) {
-      alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
-      return;
-    }
+    if (!pdfs.length) { alert("รองรับเฉพาะไฟล์ PDF เท่านั้น"); return; }
     setPendingFiles(pdfs);
-    setDateOpen(true);         // 👉 เปิด modal ให้เลือกวันที่รายงาน
+    setDateOpen(true);
   };
 
   async function uploadPdfs() {
     try {
-      if (!stationIdFromUrl) {
-        alert("กรุณาเลือกสถานีก่อน");
-        return;
-      }
-      if (!pendingFiles.length) {
-        setDateOpen(false);
-        return;
-      }
-      // ตรวจรูปแบบวันที่คร่าวๆ (YYYY-MM-DD)
+      if (!stationIdFromUrl) { alert("กรุณาเลือกสถานีก่อน"); return; }
+      if (!pendingFiles.length) { setDateOpen(false); return; }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
         alert("รูปแบบวันที่ไม่ถูกต้อง (ควรเป็น YYYY-MM-DD)");
         return;
@@ -383,7 +369,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       const res = await fetch(`${apiBase}/cmurl/upload-files`, {
         method: "POST",
         body: fd,
-        // ถ้าใช้ cookie httpOnly: เปิดบรรทัดนี้แทน header Authorization
         credentials: "include",
       });
 
@@ -393,48 +378,34 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         return;
       }
 
-      const j = await res.json();
-      console.log("uploaded:", j);
       alert("อัปโหลดสำเร็จ");
-
-      // เคลียร์สถานะ + ปิด dialog
       setPendingFiles([]);
       setDateOpen(false);
-
       await fetchRows();
-
-      // TODO: trigger reload ตาราง ถ้าคุณมีฟังก์ชัน fetchRows แยกไว้ ก็เรียกตรงนี้
-      // await fetchRows();
     } catch (err) {
       console.error(err);
       alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
     }
   }
 
-  const onPdfPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    const pdfs = files.filter(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-    if (pdfs.length !== files.length) alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
-    console.log("Picked PDFs (demo):", pdfs.map(f => ({ name: f.name, size: f.size })));
-    e.currentTarget.value = "";
-  };
-
-  const goAdd = () => setMode("form");
-  const goList = () => setMode("list");
+  const goAdd = () => setView("form");
+  const goList = () => setView("list");
 
   if (mode === "form") {
     return (
       <div className="tw-mt-6">
-        {/* <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
-          <Button variant="outlined" size="sm" onClick={goList} className="tw-py-2 tw-px-2" title="กลับไปหน้า List">
+        <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
+          <Button
+            variant="outlined"
+            size="sm"
+            onClick={goList}
+            className="tw-py-2 tw-px-2"
+            title="กลับไปหน้า List"
+          >
             <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
           </Button>
-          <Typography variant="h6" color="blue-gray">Corrective Maintenance Form</Typography>
-        </div> */}
-
-        {/* ✅ เรนเดอร์ฟอร์มตรง ๆ */}
-        <CMForm />
-        {/* ถ้า CMForm ของคุณไม่มี prop onCancel ก็ลบออกได้ */}
+        </div>
+        <CMOpenForm />
       </div>
     );
   }
@@ -461,7 +432,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 accept="application/pdf,.pdf"
                 multiple
                 className="tw-hidden"
-                // onChange={onPdfPick} 
                 onChange={handlePdfChange}
               />
               <Button
@@ -470,20 +440,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 disabled={!stationIdFromUrl}
                 onClick={() => pdfInputRef.current?.click()}
                 className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
-                title="อัปโหลด PDF (demo)">
-                
+                title="อัปโหลด PDF"
+              >
                 <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
                 <span className="tw-text-sm">Upload</span>
               </Button>
-
-
-
-              {/* +ADD → แสดงฟอร์มทันที (ไม่ route) */}
-              {/* <Button size="lg" onClick={goAdd}
-                className="tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4 tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"
-                title="ไปหน้าแบบฟอร์ม CM">
-                <span className="tw-w-full tw-text-center">+ADD</span>
-              </Button> */}
 
               <Button
                 size="lg"
@@ -502,8 +463,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               >
                 <span className="tw-w-full tw-text-center">+add</span>
               </Button>
-
-
             </div>
           </div>
         </CardHeader>
@@ -548,19 +507,19 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                       return (
                         <th key={header.id} style={{ width: header.getSize() }}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                          className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
-                            }`}>
+                          className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
+                        >
                           {canSort ? (
                             <Typography color="blue-gray"
-                              className={`tw-flex tw-items-center tw-gap-1 md:tw-gap-2 tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"
-                                }`}>
+                              className={`tw-flex tw-items-center tw-gap-1 md:tw-gap-2 tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}
+                            >
                               {flexRender(header.column.columnDef.header, header.getContext())}
                               <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
                             </Typography>
                           ) : (
                             <Typography color="blue-gray"
-                              className={`tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
-                                }`}>
+                              className={`tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
+                            >
                               {flexRender(header.column.columnDef.header, header.getContext())}
                             </Typography>
                           )}
@@ -585,8 +544,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
                         return (
                           <td key={cell.id} style={{ width: cell.column.getSize() }}
-                            className={`!tw-border-y !tw-border-x-0 tw-align-middle ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
-                              }`}>
+                            className={`!tw-border-y !tw-border-x-0 tw-align-middle ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
+                          >
                             <Typography variant="small"
                               className="!tw-font-normal !tw-text-blue-gray-600 tw-py-3 md:tw-py-4 tw-px-3 md:tw-px-4 tw-truncate md:tw-whitespace-normal">
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -627,7 +586,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         </div>
       </Card>
 
-      {/* ⬇️ วาง Dialog นอกร่าง Card แต่ยังอยู่ใน component */}
+      {/* Upload dialog */}
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
         <DialogHeader className="tw-text-base sm:tw-text-lg">
           เลือกวันที่รายงาน (CM Report)
