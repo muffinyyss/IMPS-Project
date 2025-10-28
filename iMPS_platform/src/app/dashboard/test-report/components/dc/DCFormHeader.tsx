@@ -35,7 +35,7 @@ export default function CMFormHeader({
 
         <div>
           <div className="tw-font-semibold tw-text-blue-gray-900">
-            รายงานการทดสอบ (DC)
+            รายงานการทดสอบ (DC Charger)
           </div>
           <div className="tw-text-sm tw-text-blue-gray-600">
             การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)

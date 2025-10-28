@@ -95,6 +95,8 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({
     "GUN 2"
   ];
 
+  
+
   return (
     <div className="tw-space-y-6">
       <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">

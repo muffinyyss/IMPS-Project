@@ -504,7 +504,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           </Button>
         </div>
         <CMForm />
-        {/* ถ้า CMForm ของคุณไม่มี prop onCancel ก็ลบออกได้ */}
       </div>
     );
   }

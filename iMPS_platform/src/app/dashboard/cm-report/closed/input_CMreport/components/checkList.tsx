@@ -10,8 +10,6 @@ type Severity = "" | "Low" | "Medium" | "High" | "Critical";
 type Status = "" | "Open";
 
 
-
-
 type CorrectiveItem = {
     text: string;
     images: { file: File; url: string }[];
@@ -119,93 +117,6 @@ export default function CMOpenForm() {
         console.log({ job, summary });
         alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
     };
-
-    // const onFinalSave = () => {
-    //     console.log({ job, summary });
-    //     alert("บันทึกเรียบร้อย (เดโม่) – ดูข้อมูลใน console");
-    //     // ถ้าหน้าแม่อยากสลับกลับ list ให้ฟังอีเวนต์นี้ (ไม่ต้องส่ง prop)
-    //     window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true } }));
-    // };
-
-    // const onFinalSave = async () => {
-    //     try {
-    //         if (!stationId) {
-    //             alert("ไม่พบ station_id ใน URL");
-    //             return;
-    //         }
-    //         const payload = {
-    //             station_id: stationId,
-    //             cm_date: (job.found_date || "").slice(0, 10),  // หรือปล่อยให้ backend derive จาก found_date ก็ได้
-    //             summary,
-    //             job: {
-    //                 ...job,
-    //                 // เก็บชื่อไฟล์ไว้เฉยๆ รูปจริงไปอัปโหลดที่ /cmreport/{report_id}/photos
-    //                 corrective_actions: job.corrective_actions.map(c => ({
-    //                     text: c.text,
-    //                     images: c.images.map(img => ({ name: img.file?.name ?? "" }))
-    //                 })),
-    //             },
-    //         };
-
-    //         const res = await fetch(`${API_BASE}/cmreport/submit`, {
-    //             method: "POST",
-    //             headers: { "Content-Type": "application/json" },
-    //             credentials: "include",
-    //             body: JSON.stringify(payload),
-    //         });
-    //         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
-
-    //         const { report_id } = await res.json();
-
-    //         alert("บันทึกเรียบร้อย");
-    //         // ถ้าต้องอัปโหลดรูป: สร้าง FormData แล้ว POST ไป /cmreport/{report_id}/photos
-    //         // เสร็จแล้วค่อย finalize: POST /cmreport/{report_id}/finalize
-    //         window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true, report_id } }));
-    //     } catch (e: any) {
-    //         console.error(e);
-    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
-    //     }
-    // };
-    // const onFinalSave = async () => {
-    //     try {
-    //         if (!stationId) {
-    //             alert("ไม่พบ station_id ใน URL");
-    //             return;
-    //         }
-    //         const payload = {
-    //             station_id: stationId,
-    //             cm_date: (job.found_date || "").slice(0, 10),
-    //             summary,
-    //             job: {
-    //                 ...job,
-    //                 corrective_actions: job.corrective_actions.map(c => ({
-    //                     text: c.text,
-    //                     images: c.images.map(img => ({ name: img.file?.name ?? "" }))
-    //                 })),
-    //             },
-    //         };
-
-    //         const res = await fetch(`${API_BASE}/cmreport/submit`, {
-    //             method: "POST",
-    //             headers: { "Content-Type": "application/json" },
-    //             credentials: "include",
-    //             body: JSON.stringify(payload),
-    //         });
-    //         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
-
-    //         const { report_id } = await res.json();
-
-    //         // แจ้งหน้าแม่ (ถ้าใครฟังอีเวนต์อยู่)
-    //         window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true, report_id } }));
-
-    //         // ➜ ออกจากฟอร์มไปหน้ารายการ (แนบ station_id เพื่อให้ list โหลดข้อมูลถูกสถานี)
-    //         const listUrl = stationId ? `${LIST_ROUTE}?station_id=${encodeURIComponent(stationId)}` : LIST_ROUTE;
-    //         router.replace(listUrl);
-    //     } catch (e: any) {
-    //         console.error(e);
-    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
-    //     }
-    // };
 
     const onFinalSave = async () => {
         try {
