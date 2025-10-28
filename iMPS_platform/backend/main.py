@@ -30,6 +30,9 @@ from fastapi import HTTPException, Depends
 from fastapi.responses import JSONResponse
 from dateutil.relativedelta import relativedelta
 import pathlib, secrets
+from email.message import EmailMessage
+import aiosmtplib
+
 
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
@@ -38,6 +41,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 SESSION_IDLE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 th_tz = ZoneInfo("Asia/Bangkok")
+
+# .env หรือผ่านตัวแปรแวดล้อม
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "eds194655@gmail.com")
+SMTP_PASS = os.getenv("SMTP_PASS", "depllvpufjwtpysc")
+SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
 # BASE = Path(__file__).parent
 app = FastAPI()
@@ -73,8 +83,6 @@ stationPMUrlDB = client["stationPMReportURL"]
 CMReportDB = client["CMReport"]
 CMUrlDB = client["CMReportURL"]
 
-DCTestReportDB = client["DCTestReport"]
-DCUrlDB = client["DCReportURL"]
 
 MDB_collection = MDB_DB["Klongluang3"]
 
@@ -87,6 +95,10 @@ def get_mdb_collection_for(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return MDB_DB.get_collection(str(station_id))
+
+def to_json(obj) -> str:
+    # บังคับให้เป็น single-line และรองรับ UTF-8
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
 def get_errorCode_collection_for(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
@@ -936,15 +948,97 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
     return StreamingResponse(event_generator(), headers=headers)
 
 
+async def _resolve_user_id_by_chargebox(chargebox_id: Optional[str]) -> Optional[str]:
+    if not chargebox_id:
+        return None
+    doc = await stations_coll_async.find_one(
+        {"chargeBoxID": chargebox_id},
+        projection={"user_id": 1}
+    )
+    if not doc:
+        return None
+    return str(doc.get("user_id")) if doc.get("user_id") is not None else None
+
+async def _resolve_user_email_by_user_id(user_id: Optional[str]) -> Optional[str]:
+    if not user_id:
+        return None
+
+    queries = []
+    if ObjectId.is_valid(user_id):
+        queries.append({"_id": ObjectId(user_id)})
+    queries.append({"_id": user_id})  # เผื่อกรณีเก็บเป็น string
+
+    for q in queries:
+        doc = await users_coll_async.find_one(q, projection={"email": 1})
+        if doc:
+            return doc.get("email")
+    return None
+
+async def _send_email_async(to_email: str, subject: str, body: str) -> None:
+    msg = EmailMessage()
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(body)
+
+    # STARTTLS (port 587). ถ้าใช้ SMTPS (465) ให้เปลี่ยนเป็น use_tls=True และไม่ต้อง starttls
+    await aiosmtplib.send(
+        msg,
+        hostname=SMTP_HOST,
+        port=SMTP_PORT,
+        start_tls=True,
+        username=SMTP_USER,
+        password=SMTP_PASS,
+        timeout=30,
+    )
+
+async def send_error_email_once(to_email: str | None, chargebox_id: str | None, error_text: str | None, doc_id) -> bool:
+    """
+    ส่งเมลแจ้ง error แค่ครั้งเดียวต่อเอกสาร error (_id)
+    - ใช้ collection iMPS.errorEmailLog เก็บ _id เป็น unique key
+    - ถ้าส่งสำเร็จอัปเดตสถานะเป็น sent
+    - ถ้าส่งล้มเหลว ลบล็อกออกเพื่อให้พยายามใหม่ครั้งหน้า
+    """
+    if not to_email or not error_text:
+        return False
+
+    key = str(doc_id)  # รองรับ ObjectId/str
+    now_th = datetime.now(th_tz)
+
+    # ขั้นที่ 1: กันซ้ำด้วยการ insert ล็อก (pending) ถ้ามีอยู่แล้ว -> ไม่ต้องส่ง
+    try:
+        await email_log_coll.insert_one({
+            "_id": key,                    # ทำให้ unique key เป็น doc_id ของ error
+            "status": "pending",
+            "to": to_email,
+            "chargeBoxID": chargebox_id,
+            "createdAt": now_th,
+        })
+    except DuplicateKeyError:
+        return False  # เคยส่งหรือกำลังส่งอยู่แล้ว
+
+    # ขั้นที่ 2: สร้าง subject/body แล้วส่งอีเมล
+    subject = f"[IMPS Error] {chargebox_id or '-'}"
+    body = (
+        f"เรียนผู้ใช้,\n\n"
+        f"มี Error จากสถานี/อุปกรณ์: {chargebox_id or '-'}\n"
+        f"เวลา (TH): {now_th:%Y-%m-%d %H:%M:%S}\n\n"
+        f"รายละเอียด:\n{error_text}\n\n"
+        f"-- ระบบ iMPS"
+    )
+    try:
+        await _send_email_async(to_email, subject, body)
+        await email_log_coll.update_one({"_id": key}, {"$set": {"status": "sent", "sentAt": datetime.now(th_tz)}})
+        return True
+    except Exception:
+        # ถ้าส่งล้มเหลว ลบล็อก pending ออก เพื่อให้ลองส่งใหม่ได้ในรอบถัดไป
+        await email_log_coll.delete_one({"_id": key})
+        raise
+
+
 
 @app.get("/error/{station_id}")
 async def error_stream(request: Request, station_id: str, current: UserClaims = Depends(get_current_user)):
-    """
-    สตรีมข้อความ error ล่าสุดของสถานีแบบ SSE
-    - ส่ง event แรกเป็น 'init' พร้อมค่า error ล่าสุด (ถ้ามี)
-    - จากนั้นโพลล์ดูเอกสารล่าสุด ถ้า _id เปลี่ยนจะส่งค่า error ตัวใหม่
-    - ถ้าไม่มีอะไรใหม่จะส่ง keep-alive คอมเมนต์เพื่อกันคอนเนกชันหลุด
-    """
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -957,20 +1051,33 @@ async def error_stream(request: Request, station_id: str, current: UserClaims = 
     async def event_generator():
         last_id = None
 
-        # ส่งค่าเริ่มต้น (init) เฉพาะ key "error"
+        # ----- init -----
         latest = await coll.find_one({}, sort=[("_id", -1)])
         if latest and ("error" in latest):
             last_id = latest.get("_id")
+
+            chargebox_id = latest.get("Chargebox_ID")
+            user_id = await _resolve_user_id_by_chargebox(chargebox_id)
+            email = await _resolve_user_email_by_user_id(user_id)
+
+            # >>> ส่งอีเมลครั้งเดียวต่อเอกสาร
+            # try:
+            #     await send_error_email_once(email, chargebox_id, latest.get("error"), last_id)
+            # except Exception as e:
+            #     # ไม่ให้ตกสตรีม: log แล้วไปต่อ
+            #     print(f"[email] init send failed for {last_id}: {e}")
+
             payload = {
-                "Chargebox_ID": latest.get("Chargebox_ID"),
+                "Chargebox_ID": chargebox_id,
+                "user_id": user_id,
+                "email": email,
                 "error": latest.get("error"),
             }
-            yield f"event: init\ndata: {to_json(payload)}\n\n"
+            # yield f"event: init\ndata: {to_json(payload)}\n\n"
         else:
-            # ไม่มีข้อมูล -> ส่ง keep-alive
             yield ": keep-alive\n\n"
 
-        # วนลูปสตรีมอัปเดตใหม่
+        # ----- updates -----
         while True:
             if await request.is_disconnected():
                 break
@@ -978,15 +1085,28 @@ async def error_stream(request: Request, station_id: str, current: UserClaims = 
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id and ("error" in doc):
                 last_id = doc.get("_id")
+
+                chargebox_id = doc.get("Chargebox_ID")
+                user_id = await _resolve_user_id_by_chargebox(chargebox_id)
+                email = await _resolve_user_email_by_user_id(user_id)
+
+                # >>> ส่งอีเมลครั้งเดียวต่อเอกสาร
+                # try:
+                #     await send_error_email_once(email, chargebox_id, doc.get("error"), last_id)
+                # except Exception as e:
+                #     print(f"[email] update send failed for {last_id}: {e}")
+
                 payload = {
-                    "Chargebox_ID": doc.get("Chargebox_ID"),
+                    "Chargebox_ID": chargebox_id,
+                    "user_id": user_id,
+                    "email": email,
                     "error": doc.get("error"),
                 }
-                yield f"data: {to_json(payload)}\n\n"
+                # yield f"data: {to_json(payload)}\n\n"
             else:
                 yield ": keep-alive\n\n"
 
-            await asyncio.sleep(60)  # ปรับช่วงได้ตามต้องการ
+            await asyncio.sleep(60)
 
     return StreamingResponse(event_generator(), headers=headers)
 
