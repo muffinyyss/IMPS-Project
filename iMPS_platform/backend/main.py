@@ -102,10 +102,10 @@ MQTT_CLIENT_ID = "imps-backend-setting-plc"
 mqtt_client = mqtt.Client(client_id=MQTT_CLIENT_ID, clean_session=True)
 
 def _on_connect(client, userdata, flags, rc):
-    print(f"[MQTT] on_connect rc={rc}")
+    pass
 
 def _on_disconnect(client, userdata, rc):
-    print(f"[MQTT] on_disconnect rc={rc}")
+    pass
 
 mqtt_client.on_connect = _on_connect
 mqtt_client.on_disconnect = _on_disconnect
@@ -114,7 +114,6 @@ async def lifespan(app: FastAPI):
     # ใช้ connect_async + loop_start เพื่อไม่ block event loop
     mqtt_client.connect_async(BROKER_HOST, BROKER_PORT, keepalive=60)
     mqtt_client.loop_start()
-    print("[MQTT] connecting async ...")
     try:
         yield
     finally:
