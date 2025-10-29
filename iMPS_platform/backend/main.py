@@ -4894,15 +4894,14 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
 from pdf.pdf_routes import router as pdf_router
 app.include_router(pdf_router)
 
-class PLCSetting(BaseModel):
+class PLCMaxSetting(BaseModel):
     station_id: str
     dynamic_max_current1: float   # A
     dynamic_max_power1: float     # kW (จาก front)
-    cp_status1:int
 
 
-@app.post("/setting/PLC")
-async def setting_plc(payload: PLCSetting):
+@app.post("/setting/PLC/MAX")
+async def setting_plc(payload: PLCMaxSetting):
     now_iso = datetime.now().isoformat()
 
     # log ฝั่งเซิร์ฟเวอร์
@@ -4910,14 +4909,11 @@ async def setting_plc(payload: PLCSetting):
     print(f"  station_id = {payload.station_id}")
     print(f"  dynamic_max_current1 = {payload.dynamic_max_current1} A")
     print(f"  dynamic_max_power1 = {payload.dynamic_max_power1} kW")
-    print(f"  cp_status1 = {payload.cp_status1} ({'START' if payload.cp_status1==1 else 'STOP'})")
-
     # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
     msg = {
         "station_id": payload.station_id,
         "dynamic_max_current1": payload.dynamic_max_current1,
         "dynamic_max_power1": payload.dynamic_max_power1,
-        "cp_status1": payload.cp_status1,
         "timestamp": now_iso,
         "source": "fastapi/setting_plc"
     }
@@ -4948,6 +4944,51 @@ async def setting_plc(payload: PLCSetting):
         "data": msg,
     }
 
+class PLCCPCommand(BaseModel):
+    station_id: str
+    cp_status1: Literal["start", "stop"]
+
+@app.post("/setting/PLC/CP")
+async def setting_plc(payload: PLCCPCommand):
+    now_iso = datetime.now().isoformat()
+
+    # log ฝั่งเซิร์ฟเวอร์
+    print(f"[{now_iso}] รับค่าจาก Front:")
+    print(f"  station_id = {payload.station_id}")
+    print(f"  cp_status1 = {payload.cp_status1}")
+    # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
+    msg = {
+        "station_id": payload.station_id,
+        "cp_status1": payload.cp_status1,
+        "timestamp": now_iso,
+        "source": "fastapi/setting_plc"
+    }
+    payload_str = json.dumps(msg, ensure_ascii=False)
+
+    # ส่งขึ้น MQTT (QoS 1, ไม่ retain)
+    try:
+        pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
+        # รอให้ส่งเสร็จแบบสั้น ๆ (ถ้าต้องการความชัวร์)
+        pub_result.wait_for_publish(timeout=2.0)
+        published = pub_result.is_published()
+        rc = pub_result.rc
+        print(f"[MQTT] publish rc={rc}, published={published}, topic={MQTT_TOPIC}")
+    except Exception as e:
+        print(f"[MQTT] publish error: {e}")
+        published = False
+
+    # ตอบกลับ frontend
+    return {
+        "ok": True,
+        "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
+        "timestamp": now_iso,
+        "mqtt": {
+            "broker": f"{BROKER_HOST}:{BROKER_PORT}",
+            "topic": MQTT_TOPIC,
+            "published": bool(published),
+        },
+        "data": msg,
+    }
 
 # ----------------------------------------------- CBM 
 def get_cbm_collection_for(station_id: str):

@@ -31,7 +31,7 @@ type CBMDoc = {
   [key: string]: any;
 };
 export default function SalesPage() {
-  const [data, setData] = useState<CBMDoc | null>(null);
+  // const [data, setData] = useState<CBMDoc | null>(null);
 
   // const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
 
