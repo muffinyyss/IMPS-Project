@@ -65,6 +65,8 @@ station_collection = db["stations"]
 
 MDB_DB = client["MDB"]
 
+CBM_DB = client["monitorCBM"]
+
 PMReportDB = client["PMReport"]
 PMUrlDB = client["PMReportURL"]
 
@@ -4936,6 +4938,7 @@ async def setting_plc(payload: PLCSetting):
     # ตอบกลับ frontend
     return {
         "ok": True,
+<<<<<<< Updated upstream
         "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
         "timestamp": now_iso,
         "mqtt": {
@@ -4945,3 +4948,96 @@ async def setting_plc(payload: PLCSetting):
         },
         "data": msg,
     }
+=======
+        "message": "รับค่าจาก frontend แล้ว",
+        "timestamp": datetime.now().isoformat(),
+        "data": payload.dict(),
+    }
+
+
+# ----------------------------------------------- CBM 
+def get_cbm_collection_for(station_id: str):
+    # กันชื่อคอลเลกชันแปลก ๆ / injection: อนุญาต a-z A-Z 0-9 _ -
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return CBM_DB.get_collection(str(station_id))
+
+# @app.get("/CBM/{station_id}")
+# async def cbm(request: Request,station_id: str):
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",
+#     }
+
+#     coll = get_cbm_collection_for(station_id)
+
+#     async def event_generator():
+#         last_id = None
+
+#         latest = await coll.find_one({}, sort=[("_id", -1)])
+#         if latest:
+#             latest["timestamp"] = latest.get("timestamp")
+#             last_id = latest.get("_id")
+#             yield f"event: init\ndata: {to_json(latest)}\n\n"
+#         else:
+#             yield ": keep-alive\n\n"
+
+#         while True:
+#             if await request.is_disconnected():
+#                 break
+
+#             doc = await coll.find_one({}, sort=[("_id", -1)])
+#             if doc and doc.get("_id") != last_id:
+#                 doc["timestamp"] = doc.get("timestamp")
+#                 last_id = doc.get("_id")
+#                 yield f"data: {to_json(doc)}\n\n"
+#             else:
+#                 yield ": keep-alive\n\n"
+
+#             await asyncio.sleep(60)
+
+#     return StreamingResponse(event_generator(), headers=headers)
+
+
+@app.get("/CBM/{station_id}")
+async def mdb(request: Request, station_id: str, current: UserClaims = Depends(get_current_user)):
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    coll = get_cbm_collection_for(station_id)  # ⬅️ ใช้ coll ตามสถานี
+
+    async def event_generator():
+        last_id = None
+
+        latest = await coll.find_one({}, sort=[("_id", -1)])
+        if latest:
+            latest["timestamp"] = latest.get("timestamp")
+            last_id = latest.get("_id")
+            yield f"event: init\ndata: {to_json(latest)}\n\n"
+        else:
+            yield ": keep-alive\n\n"
+
+        while True:
+            if await request.is_disconnected():
+                break
+
+            doc = await coll.find_one({}, sort=[("_id", -1)])
+            if doc and doc.get("_id") != last_id:
+                doc["timestamp"] = doc.get("timestamp")
+                last_id = doc.get("_id")
+                yield f"data: {to_json(doc)}\n\n"
+            else:
+                yield ": keep-alive\n\n"
+
+            await asyncio.sleep(60)
+
+    return StreamingResponse(event_generator(), headers=headers)
+
+
+>>>>>>> Stashed changes

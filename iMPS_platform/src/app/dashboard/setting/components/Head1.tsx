@@ -293,6 +293,7 @@ export default function Head1() {
                 credentials: "include",
                 body: JSON.stringify(body),
             });
+            
 
             if (!res.ok) {
                 const t = await res.text().catch(() => "");
