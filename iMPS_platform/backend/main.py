@@ -4854,6 +4854,8 @@ class PLCSetting(BaseModel):
     station_id: str
     dynamic_max_current1: float   # A
     dynamic_max_power1: float     # kW (จาก front)
+    cp_status1:int
+
 
 @app.post("/setting/PLC")
 async def setting_plc(payload: PLCSetting):
