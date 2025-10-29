@@ -1,267 +1,7 @@
-// "use client";
-
-// import React, { useState } from "react";
-// import { PlayIcon, StopIcon, ArrowPathIcon, CheckIcon } from "@heroicons/react/24/solid";
-
-// import Card from "./chargerSetting-card";
-// import CircleProgress from "./CircleProgress";
-
-// /* ---------- Slider (มีสีเติมด้านซ้าย) ---------- */
-// function LimitRow({
-//     label, unit, value, onChange, min = 0, max = 200,
-// }: {
-//     label: string; unit: string; value: number;
-//     onChange: (v: number) => void; min?: number; max?: number;
-// }) {
-//     const percent = ((value - min) * 100) / (max - min);
-//     const fillColor = "#ca3333ff";
-//     const trackColor = "#E5EDF2";
-//     return (
-//         <div className="tw-space-y-2">
-//             <div className="tw-flex tw-items-end tw-justify-between">
-//                 <span className="tw-text-sm tw-text-blue-gray-700">{label}</span>
-//                 <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-900">
-//                     {value} {unit}
-//                 </span>
-//             </div>
-//             <input
-//                 type="range"
-//                 min={min}
-//                 max={max}
-//                 step={1}
-//                 value={value}
-//                 onChange={(e) => onChange(Number(e.target.value))}
-//                 style={{
-//                     background: `linear-gradient(to right, ${fillColor} 0%, ${fillColor} ${percent}%, ${trackColor} ${percent}%, ${trackColor} 100%)`,
-//                 }}
-//                 className={[
-//                     "tw-w-full tw-appearance-none tw-h-2 tw-rounded-full",
-//                     "tw-bg-transparent",
-//                     "tw-[&::-webkit-slider-thumb]:appearance-none",
-//                     "tw-[&::-webkit-slider-thumb]:h-4 tw-[&::-webkit-slider-thumb]:w-4",
-//                     "tw-[&::-webkit-slider-thumb]:rounded-full tw-[&::-webkit-slider-thumb]:bg-white",
-//                     "tw-[&::-webkit-slider-thumb]:shadow tw-[&::-webkit-slider-thumb]:ring-1 tw-[&::-webkit-slider-thumb]:ring-black/10",
-//                     "tw-[&::-moz-range-thumb]:h-4 tw-[&::-moz-range-thumb]:w-4",
-//                     "tw-[&::-moz-range-thumb]:rounded-full tw-[&::-moz-range-thumb]:bg-white",
-//                     "tw-[&::-moz-range-thumb]:border tw-[&::-moz-range-thumb]:border-blue-gray-200",
-//                 ].join(" ")}
-//             />
-//         </div>
-//     );
-// }
-
-// /* ---------- ข้อความบอกสถานะ (รองรับ 7 state) ---------- */
-// type ChargeState =
-//     | "avaliable"
-//     | "preparing"
-//     | "cableCheck"
-//     | "preCharge"
-//     | "charging"
-//     | "finishing"
-//     | "faulted";
-
-// const STATE_META: Record<
-//     ChargeState,
-//     { label: string; className: string }
-// > = {
-//     avaliable: { label: "Avaliable", className: "tw-text-blue-gray-600" },
-//     preparing: { label: "Preparing", className: "tw-text-blue-600" },
-//     cableCheck: { label: "Cable Check", className: "tw-text-amber-600" },
-//     preCharge: { label: "Precharge", className: "tw-text-amber-600" },
-//     charging: { label: "Charging..", className: "tw-text-green-600" },
-//     finishing: { label: "Finishing…", className: "tw-text-amber-600" },
-//     faulted: { label: "Faulted", className: "tw-text-red-600" },
-// };
-
-// function StateText({ status }: { status: ChargeState }) {
-//     const meta = STATE_META[status];
-//     return (
-//         <p
-//             className={`tw-text-sm tw-font-semibold tw-text-center ${meta.className}`}
-//             aria-live="polite"
-//         >
-//             {meta.label}
-//         </p>
-//     );
-// }
-
-// /* ---------- ปุ่ม Start/Stop (มีโหมด Done และ Try Again) ---------- */
-// function PrimaryCTA({
-//     status, busy, onStart, onStop,
-// }: {
-//     status: ChargeState;
-//     busy?: boolean;
-//     onStart: () => void;
-//     onStop: () => void;
-// }) {
-//     const isCharging = status === "charging";
-//     const isPreparing = status === "preparing";
-//     const isFinishing = status === "finishing";
-//     const isFaulted = status === "faulted";
-//     const isAvailable = status === "avaliable";
-
-//     // ปุ่มกดได้เมื่อ: charging(หยุดได้) หรือ preparing(เริ่มได้) หรือ faulted(ลองใหม่ได้)
-//     // ปุ่มถูกปิดเมื่อ busy / finishing / available หรือสถานะอื่นที่ไม่อนุญาต
-//     const isDisabled =
-//         !!busy ||
-//         isFinishing ||
-//         isAvailable ||
-//         !(isCharging || isPreparing || isFaulted);
-
-//     // label + icon
-//     const label = isFinishing
-//         ? "Done"
-//         : isCharging
-//             ? "Stop Charging"
-//             : isFaulted
-//                 ? "Try Again"
-//                 : "Start Charging";
-
-//     const Icon = busy
-//         ? ArrowPathIcon
-//         : isFinishing
-//             ? CheckIcon
-//             : isCharging
-//                 ? StopIcon
-//                 : isFaulted
-//                     ? ArrowPathIcon
-//                     : PlayIcon;
-
-//     // สีปุ่ม
-//     const color = isCharging || isFaulted
-//         ? "tw-bg-red-500 hover:tw-bg-red-600 focus-visible:tw-ring-red-300"
-//         : isFinishing
-//             ? "tw-bg-green-500"
-//             : "tw-bg-green-500 hover:tw-bg-green-600 focus-visible:tw-ring-green-300";
-
-//     const base =
-//         "tw-inline-flex tw-items-center tw-justify-center tw-gap-2 tw-rounded-lg tw-h-12 tw-px-5 tw-text-sm tw-font-semibold tw-text-white tw-shadow-sm focus-visible:tw-ring-2 tw-transition tw-w-full";
-
-//     return (
-//         <button
-//             type="button"
-//             disabled={isDisabled}
-//             onClick={isCharging ? onStop : onStart /* faulted จะเรียก onStart เพื่อลองใหม่ */}
-//             className={`${base} ${color} ${isDisabled ? "tw-opacity-60 tw-cursor-not-allowed" : ""}`}
-//             title={label}
-//             aria-label={label}
-//         >
-//             <Icon className={`tw-w-5 tw-h-5 ${busy ? "tw-animate-spin" : ""}`} />
-//             <span>{label}</span>
-//         </button>
-//     );
-// }
-
-
-
-// /* ---------- การ์ดหัวชาร์จ ---------- */
-// function HeadRow({
-//     title, status, busy, onStart, onStop,
-// }: {
-//     title: string;
-//     status: ChargeState;
-//     busy?: boolean;
-//     onStart: () => void;
-//     onStop: () => void;
-// }) {
-//     const charging = status === "charging";
-
-//     return (
-//         <div
-//             className={`tw-overflow-hidden tw-rounded-xl tw-border tw-bg-white tw-shadow-sm ${charging ? "tw-border-green-200" : "tw-border-blue-gray-100"
-//                 }`}
-//         >
-//             <div className="tw-p-4 md:tw-p-5 tw-space-y-4">
-//                 <div className="tw-font-semibold tw-text-blue-gray-900">{title}</div>
-
-//                 <CircleProgress label="SoC :" value={43} />
-
-//                 <StateText status={status} />
-
-//                 <div className="tw-pt-1">
-//                     <PrimaryCTA
-//                         status={status}     // ← ส่ง status เข้าไป
-//                         busy={!!busy}
-//                         onStart={onStart}
-//                         onStop={onStop}
-//                     />
-//                     <p className="tw-mt-2 tw-text-center tw-text-xs tw-text-blue-gray-500">
-//                         {charging ? "Vehicle is charging" : "Vehicle is idle"}
-//                     </p>
-//                 </div>
-//             </div>
-//         </div>
-//     );
-// }
-
-// /* ------------------------------ Main: Head1 ------------------------------- */
-// export default function Head1() {
-//     const [maxCurrentH1, setMaxCurrentH1] = useState(66);
-//     const [maxPowerH1, setMaxPowerH1] = useState(136);
-//     const [h1Status, setH1Status] = useState<ChargeState>("avaliable");
-//     const [busyH1, setBusyH1] = useState(false);
-
-//     async function chargeCommand(action: "start" | "stop") {
-//         // await fetch(`/api/charger/1/${action}`, { method: "POST" });
-//     }
-
-//     const startH1 = async () => {
-//         try {
-//             setBusyH1(true);
-//             // เงื่อนไขความปลอดภัย: เริ่มได้เฉพาะตอน preparing
-//             if (h1Status !== "preparing") {
-//                 // ไม่ทำอะไรต่อ (ปุ่มก็จะถูก disable อยู่แล้ว)
-//                 return;
-//             }
-//             await chargeCommand("start");
-//             setH1Status("cableCheck");
-//             setH1Status("preCharge");
-//             setH1Status("charging");
-//         } catch (e) {
-//             setH1Status("faulted");
-//         } finally {
-//             setBusyH1(false);
-//         }
-//     };
-
-//     const stopH1 = async () => {
-//         try {
-//             setBusyH1(true);
-//             setH1Status("finishing");
-//             await chargeCommand("stop");
-//             setH1Status("avaliable");
-//         } catch (e) {
-//             setH1Status("faulted");
-//         } finally {
-//             setBusyH1(false);
-//         }
-//     };
-
-//     return (
-//         <Card title="Head1">
-//             <div className="tw-space-y-8">
-//                 <div className="tw-space-y-6">
-//                     <LimitRow label="Dynamic Max Current H1" unit="A" value={maxCurrentH1} onChange={setMaxCurrentH1} />
-//                     <LimitRow label="Dynamic Max Power H1" unit="kW" value={maxPowerH1} onChange={setMaxPowerH1} />
-//                 </div>
-
-//                 <HeadRow
-//                     title="Charger Head 1"
-//                     status={h1Status}
-//                     busy={busyH1}
-//                     onStart={startH1}
-//                     onStop={stopH1}
-//                 />
-//             </div>
-//         </Card>
-//     );
-// }
 
 
 "use client";
 
-// import React, { useState } from "react";
-// import { PlayIcon, StopIcon, ArrowPathIcon } from "@heroicons/react/24/solid"; // ⬅️ ลบ CheckIcon ออก
 import React, { useEffect, useMemo, useState } from "react";
 import { PlayIcon, StopIcon, ArrowPathIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useSearchParams } from "next/navigation";
@@ -270,50 +10,6 @@ import Card from "./chargerSetting-card";
 import CircleProgress from "./CircleProgress";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
-
-/* ---------- Slider (มีสีเติมด้านซ้าย) ---------- */
-// function LimitRow({
-//     label, unit, value, onChange, min = 0, max = 200,
-// }: {
-//     label: string; unit: string; value: number;
-//     onChange: (v: number) => void; min?: number; max?: number;
-// }) {
-//     const percent = ((value - min) * 100) / (max - min);
-//     const fillColor = "#ca3333ff";
-//     const trackColor = "#E5EDF2";
-//     return (
-//         <div className="tw-space-y-2">
-//             <div className="tw-flex tw-items-end tw-justify-between">
-//                 <span className="tw-text-sm tw-text-blue-gray-700">{label}</span>
-//                 <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-900">
-//                     {value} {unit}
-//                 </span>
-//             </div>
-//             <input
-//                 type="range"
-//                 min={min}
-//                 max={max}
-//                 step={1}
-//                 value={value}
-//                 onChange={(e) => onChange(Number(e.target.value))}
-//                 style={{
-//                     background: `linear-gradient(to right, ${fillColor} 0%, ${fillColor} ${percent}%, ${trackColor} ${percent}%, ${trackColor} 100%)`,
-//                 }}
-//                 className={[
-//                     "tw-w-full tw-appearance-none tw-h-2 tw-rounded-full",
-//                     "tw-bg-transparent",
-//                     "tw-[&::-webkit-slider-thumb]:appearance-none",
-//                     "tw-[&::-webkit-slider-thumb]:h-4 tw-[&::-webkit-slider-thumb]:w-4",
-//                     "tw-[&::-webkit-slider-thumb]:rounded-full tw-[&::-webkit-slider-thumb]:bg-white",
-//                     "tw-[&::-webkit-slider-thumb]:shadow tw-[&::-webkit-slider-thumb]:ring-1 tw-[&::-webkit-slider-thumb]:ring-black/10",
-//                     "tw-[&::-moz-range-thumb]:h-4 tw-[&::-moz-range-thumb]:w-4",
-//                     "tw-[&::-moz-range-thumb]:rounded-full tw-[&::-moz-range-thumb]:bg-white",
-//                     "tw-[&::-moz-range-thumb]:border tw-[&::-moz-range-thumb]:border-blue-gray-200",
-//                 ].join(" ")}
-//             />
-//         </div>
-//     );
-// }
 
 function LimitRow({
     label, unit, value, onChange, min = 0, max = 200, disabled = false,
@@ -554,6 +250,8 @@ export default function Head1() {
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
+    const [saving, setSaving] = useState(false);
+
     // ค่า UI (เริ่มจาก default; จะ sync จาก data เมื่อมีสตรีม)
     const [maxCurrentH1, setMaxCurrentH1] = useState(0); // A
     const [maxPowerH1, setMaxPowerH1] = useState(0);    // kW (UI)
@@ -561,15 +259,51 @@ export default function Head1() {
     const [busyH1, setBusyH1] = useState(false);
 
     // baseline สำหรับเช็คว่ามีการเปลี่ยนแปลงหรือไม่
-    const [lastSaved, setLastSaved] = useState({ maxCurrentH1: 66, maxPowerH1: 136 });
+    // const [lastSaved, setLastSaved] = useState({ maxCurrentH1: 66, maxPowerH1: 136 });
+    const [lastSaved, setLastSaved] = useState({ maxCurrentH1: 0, maxPowerH1: 0 });
     const isDirty =
         maxCurrentH1 !== lastSaved.maxCurrentH1 || maxPowerH1 !== lastSaved.maxPowerH1;
 
     // ไม่ใช่การ "บันทึก" — แค่ยืนยัน/ใช้ค่าปัจจุบัน
-    function applySettings() {
-        console.log("apply settings:", { maxCurrentH1, maxPowerH1 });
-        // ถ้าต้องการให้ปุ่ม “ตกลง” กลับไปเป็น disable หลังยืนยัน:
-        setLastSaved({ maxCurrentH1, maxPowerH1 });
+    async function applySettings() {
+        if (!stationId) {
+            console.warn("[Head1] no station_id, skip submit");
+            return;
+        }
+        setSaving(true);
+        try {
+            // backend ใช้หน่วย W
+            const body = {
+                station_id: stationId,
+                dynamic_max_current1: maxCurrentH1,        // A
+                dynamic_max_power1: maxPowerH1,     // kW -> W
+            };
+
+            const res = await fetch(`${API_BASE}/setting/PLC`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+                const t = await res.text().catch(() => "");
+                throw new Error(`Submit failed: ${res.status} ${t}`);
+            }
+
+            // อัปเดต baseline เพื่อปิดปุ่ม
+            setLastSaved({ maxCurrentH1, maxPowerH1 });
+
+            // ถ้าต้องการแจ้งผู้ใช้ (เด้ง toast ฯลฯ) ใส่ตรงนี้ได้
+            console.log("[Head1] submit success");
+        } catch (e) {
+            console.error(e);
+            // แจ้ง error แบบเบา ๆ ใน UI
+            setErr("บันทึกการตั้งค่าไม่สำเร็จ");
+            // ตามจริงอาจเลือกไม่อัปเดต lastSaved เพื่อให้ปุ่มยัง active อยู่
+        } finally {
+            setSaving(false);
+        }
     }
     // ด้านบนใน component Head1 (หลัง state/data พร้อมแล้ว)
     const maxForPowerSlider = useMemo(() => {
@@ -682,53 +416,7 @@ export default function Head1() {
         };
     }, [stationId]);
 
-    // useEffect(() => {
-    //     if (!stationId) return;
-    //     setLoading(true);
-    //     setErr(null);
 
-    //     console.log("[Head1] opening SSE:", `${API_BASE}/setting?station_id=${stationId}`);
-
-    //     const es = new EventSource(
-    //         `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
-    //         { withCredentials: true }
-    //     );
-
-    //     es.addEventListener("init", (e: MessageEvent) => {
-    //         console.log("[Head1] SSE init raw:", e.data);
-    //         try {
-    //             const obj = JSON.parse(e.data);
-    //             console.log("[Head1] SSE init parsed:", obj);
-    //             setData(obj);
-    //             setLoading(false);
-    //         } catch {
-    //             console.error("[Head1] init parse error");
-    //             setErr("ผิดรูปแบบข้อมูล init");
-    //             setLoading(false);
-    //         }
-    //     });
-
-    //     es.onmessage = (e) => {
-    //         // log เฉพาะหัวข้อสำคัญ ลด spam ได้ตามต้องการ
-    //         try {
-    //             const obj = JSON.parse(e.data);
-    //             // ตัวอย่าง log สั้น ๆ
-    //             console.log("[Head1] SSE msg dyn_max_current1:", obj.dynamic_max_current1, "dyn_max_power1:", obj.dynamic_max_power1);
-    //             setData(obj);
-    //         } catch { }
-    //     };
-
-    //     es.onerror = () => {
-    //         console.warn("[Head1] SSE error (browser will retry)");
-    //         setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
-    //         setLoading(false);
-    //     };
-
-    //     return () => {
-    //         console.log("[Head1] closing SSE");
-    //         es.close();
-    //     };
-    // }, [stationId]);
 
     // เมื่อ data อัปเดต → sync เข้าสู่ state UI
     useEffect(() => {
@@ -788,6 +476,11 @@ export default function Head1() {
         }
     };
 
+
+
+
+
+
     const hasStation = !!stationId;
     const hasData = !!data;
     const dynMaxCurrent1 = toNum(data?.dynamic_max_current1); // อาจเป็น null
@@ -805,9 +498,9 @@ export default function Head1() {
 
     const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
     return (
-        <Card 
-        // title="Head1"
-         title={
+        <Card
+            // title="Head1"
+            title={
                 <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
                     <span>Head1</span>
                     {lastUpdated && (
@@ -873,7 +566,8 @@ export default function Head1() {
                             aria-label="submit"
                             title="submit"
                         >
-                            submit
+                            {/* submit */}
+                            {saving ? "send..." : "submit"}
                         </button>
                     </div>
 

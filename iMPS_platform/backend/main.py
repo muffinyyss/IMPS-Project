@@ -4849,3 +4849,27 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
 
 from pdf.pdf_routes import router as pdf_router
 app.include_router(pdf_router)
+
+class PLCSetting(BaseModel):
+    station_id: str
+    dynamic_max_current1: float   # A
+    dynamic_max_power1: float     # kW (จาก front)
+
+@app.post("/setting/PLC")
+async def setting_plc(payload: PLCSetting):
+    # ---- ใช้ค่าที่รับมาได้เลย ----
+    print(f"[{datetime.now().isoformat()}] รับค่าจาก Front:")
+    print(f"station_id = {payload.station_id}")
+    print(f"dynamic_max_current1 = {payload.dynamic_max_current1} A")
+    print(f"dynamic_max_power1 = {payload.dynamic_max_power1} kW")
+
+    # ---- ถ้ามีระบบจริง (เช่นส่งไป PLC ผ่าน MQTT / Modbus / API) ----
+    # await send_to_plc(payload.station_id, payload.dynamic_max_current1, payload.dynamic_max_power1)
+
+    # ---- ส่งกลับ front ----
+    return {
+        "ok": True,
+        "message": "รับค่าจาก frontend แล้ว",
+        "timestamp": datetime.now().isoformat(),
+        "data": payload.dict(),
+    }
