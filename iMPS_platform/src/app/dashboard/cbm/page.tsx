@@ -10,12 +10,39 @@ import PLCCard from "@/app/dashboard/cbm/components/plc";
 import ChargingGunsCard from "@/app/dashboard/cbm/components/chargingGuns";
 import InsulationAndContactorStatusCard from "@/app/dashboard/cbm/components/InsulationAndContactorStatusCard"; // 👈 เพิ่ม import
 
+import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
 const SalesByAge = dynamic(() => import("@/app/dashboard/cbm/components/sales-by-age"), { ssr: false });
 const RevenueChart = dynamic(() => import("@/app/dashboard/cbm/components/revenue-chart"), { ssr: false });
 
+type CBMDoc = {
+  _id: string;
+  timestamp?: string;
+  // CP_status1?: string | number;
+  // SOC1?: string | number | null;
+  // dynamic_max_current1?: string | number; // A
+  // dynamic_max_power1?: string | number;   // W (backend), จอแสดง kW
+  // present_current1?: string | number;
+  // present_power1?: string | number;
+  // ฟิลด์อื่น ๆ ที่อาจใช้อีกก็เพิ่มได้
+  [key: string]: any;
+};
 export default function SalesPage() {
+  const [data, setData] = useState<CBMDoc | null>(null);
+
+  // const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
+
   return (
     <div className="tw-mt-8 tw-mb-4">
+      {/* {lastUpdated && (
+        <span className="tw-text-xs !tw-text-blue-gray-500">
+          อัปเดตล่าสุด: {lastUpdated}
+        </span>
+      )} */}
+
       {/* กริด 12 คอลัมน์ */}
       <div className="tw-mt-2 tw-grid tw-grid-cols-1 lg:tw-grid-cols-12 tw-gap-4">
 
