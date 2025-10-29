@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Button, Input } from "@material-tailwind/react";
+import { Button, Input, Textarea } from "@material-tailwind/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 // Import the new components
 import CMFormHeader from "@/app/dashboard/test-report/components/dc/DCFormHeader";
-import CMFormHeader1 from "@/app/dashboard/test-report/components/dc/DCFormHeader1";
+// import CMFormHeader1 from "@/app/dashboard/test-report/components/dc/DCFormHeader1";
 import DCFormMeta from "@/app/dashboard/test-report/components/dc/DCFormMeta";
 import EquipmentSection from "@/app/dashboard/test-report/components/dc/DCEquipmentSection";
 import ACFormActions from "@/app/dashboard/test-report/components/dc/DCFormActions";
@@ -41,7 +41,7 @@ type Job = {
   repair_result: RepairOption | "";
   preventive_action: string[];
   status: Status;
-  remarks: string;
+  // remarks: string;
   manufacturer?: string;
   model?: string;
   power?: string;
@@ -118,7 +118,7 @@ const INITIAL_JOB: Job = {
   repair_result: "",
   preventive_action: [""],
   status: "",
-  remarks: "",
+  // remarks: "",
   model: "",
   brand: "",
 };
@@ -212,6 +212,9 @@ export default function DCForm() {
     approved: { name: "", signature: "", date: "", company: "" },
     witnessed: { name: "", signature: "", date: "", company: "" },
   });
+
+  const [testRemark, setTestRemark] = useState<string>("");
+  const [imgRemark, setImgRemark] = useState<string>("");
 
 
   const onHeadChange = (updates: Partial<Head>) =>
@@ -350,8 +353,12 @@ export default function DCForm() {
         equipment,
         electrical_safety, // ⬅️ แนบข้อมูลจาก DCTest1Grid
         charger_safety,
+        remarks: {
+          testRematk: testRemark,       // remark ด้านบน
+          imgRemark: imgRemark // remark หลังรูป
+        },
         signature: {
-          remark: sigRemark,
+          // remark: sigRemark,
           symbol: sigSymbol,
           phaseSequence: sigPhase,
           responsibility: sigResp,
@@ -718,9 +725,25 @@ export default function DCForm() {
               <ACTest2Grid onResultsChange={setDCChargerTest} />
             </div>
 
+            <div className="tw-mb-3">
+              <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
+                Remark
+              </span>
+            </div>
+            <div className="tw-space-y-2">
+              <Textarea
+                value={testRemark}
+                onChange={(e) => setTestRemark(e.target.value)}
+                className="!tw-border-gray-400"
+                containerProps={{ className: "!tw-min-w-0" }}
+              // placeholder=""
+              />
+            </div>
+
             {/* Signature Section */}
-            <div className="tw-space-y-4">
-              <ACSignatureSection1 onRemarkChange={(v) => setSigRemark(v)}
+            {/* <div className="tw-space-y-4">
+              <ACSignatureSection1
+                // onRemarkChange={(v) => setSigRemark(v)}
                 onSymbolChange={(sym, checked) => checked && setSigSymbol(sym)}
                 onPhaseSequenceChange={(ph, checked) => checked && setSigPhase(ph)}
                 onResponsibilityChange={(field, who, val) => {
@@ -729,19 +752,36 @@ export default function DCForm() {
                     [who]: { ...prev[who], [field]: val }
                   }));
                 }} />
-            </div>
+            </div> */}
             {/* HEADER */}
-            <CMFormHeader1 headerLabel="DC Report" />
+            {/* <CMFormHeader1 headerLabel="DC Report" /> */}
 
             {/* META – การ์ดหัวเรื่อง */}
-            <DCFormMeta
+            {/* <DCFormMeta
               head={head} onHeadChange={onHeadChange}
-            />
+            /> */}
 
 
             <ACPhotoSection initialItems={photoItems}
               onItemsChange={setPhotoItems}
-              title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)" />
+              title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)"
+            />
+
+            <div className="tw-mb-3">
+              <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
+                Remark
+              </span>
+            </div>
+            <div className="tw-space-y-2">
+              <Textarea
+                value={imgRemark}
+                onChange={(e) => setImgRemark(e.target.value)}
+                className="!tw-border-gray-400"
+                containerProps={{ className: "!tw-min-w-0" }}
+              // placeholder=""
+              />
+            </div>
+
 
             {/* Signature Section */}
             <div className="tw-space-y-4">

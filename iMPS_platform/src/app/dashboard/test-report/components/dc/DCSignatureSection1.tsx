@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Input } from "@material-tailwind/react";
 
 interface SignatureSectionProps {
-  onRemarkChange?: (value: string) => void;
+  // onRemarkChange?: (value: string) => void;
   onSymbolChange?: (
     symbolType: "pass" | "notPass" | "notTest",
     checked: boolean
@@ -50,12 +50,12 @@ interface ResponsibilityData {
 }
 
 const ACSignatureSection: React.FC<SignatureSectionProps> = ({
-  onRemarkChange,
+  // onRemarkChange,
   onSymbolChange,
   onPhaseSequenceChange,
   onResponsibilityChange,
 }) => {
-  const [remark, setRemark] = useState<string>("");
+  // const [remark, setRemark] = useState<string>("");
   const [symbols, setSymbols] = useState<SymbolState>({
     selected: "",
   });
@@ -68,10 +68,10 @@ const ACSignatureSection: React.FC<SignatureSectionProps> = ({
     witnessed: { name: "", signature: "", date: "", company: "" },
   });
 
-  const handleRemarkChange = (value: string) => {
-    setRemark(value);
-    onRemarkChange?.(value);
-  };
+  // const handleRemarkChange = (value: string) => {
+  //   setRemark(value);
+  //   onRemarkChange?.(value);
+  // };
 
   const handleSymbolChange = (symbolType: "pass" | "notPass" | "notTest") => {
     setSymbols({ selected: symbolType });
@@ -102,7 +102,7 @@ const ACSignatureSection: React.FC<SignatureSectionProps> = ({
   return (
     <div className="tw-space-y-6 tw-p-4 tw-border tw-border-gray-300 tw-bg-white">
       {/* Remark Section */}
-      <div>
+      {/* <div>
         <div className="tw-mb-3">
           <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
             Remark
@@ -118,7 +118,7 @@ const ACSignatureSection: React.FC<SignatureSectionProps> = ({
             placeholder=""
           />
         </div>
-      </div>
+      </div> */}
 {/* Symbol and Phase Sequence Section */}
       <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
         {/* Symbol Section */}

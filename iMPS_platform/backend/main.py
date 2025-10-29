@@ -77,12 +77,19 @@ CCBPMUrlDB = client["CCBPMReportURL"]
 CBBOXPMReportDB = client["CBBOXPMReport"]
 CBBOXPMUrlDB = client["CBBOXPMReportURL"]
 
+DCTestReportDB = client["DCTestReport"]
+DCUrlDB = client["DCUrl"]
+
 stationPMReportDB = client["stationPMReport"]
 stationPMUrlDB = client["stationPMReportURL"]
 
 CMReportDB = client["CMReport"]
 CMUrlDB = client["CMReportURL"]
 
+imps_db_async = client["iMPS"]
+stations_coll_async = imps_db_async["stations"]
+users_coll_async = imps_db_async["users"]
+email_log_coll = imps_db_async["errorEmailLog"]
 
 MDB_collection = MDB_DB["Klongluang3"]
 
@@ -4604,6 +4611,7 @@ class DCSubmitIn(BaseModel):
     equipment: Optional[EquipmentBlock] = None
     electrical_safety: Dict[str, Any] = Field(default_factory=dict)
     charger_safety: Dict[str, Any] = Field(default_factory=dict)
+    remarks: Dict[str, Any] = Field(default_factory=dict)
     signature: Optional[SignatureBlock] = None 
 
 async def _ensure_dc_indexes(coll):
@@ -4656,6 +4664,7 @@ async def dcreport_submit(body: DCSubmitIn, current: UserClaims = Depends(get_cu
         "equipment": body.equipment.dict() if body.equipment else {"manufacturers": [], "models": [], "serialNumbers": []},
         "electrical_safety": electrical_safety,
         "charger_safety": charger_safety,
+        "remarks": body.remarks or {},
         "signature": body.signature.dict() if body.signature else None,
         "createdAt": datetime.now(timezone.utc),
         "updatedAt": datetime.now(timezone.utc),
@@ -4812,7 +4821,8 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
         last_id = None
         latest = await coll.find_one({}, sort=[("_id", -1)])  # ⬅️ ไม่ต้อง filter station_id ภายในแล้ว
         if latest:
-            latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
+            # latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
+            latest["timestamp"] = latest.get("timestamp")
             last_id = latest.get("_id")
             yield "retry: 3000\n"
             yield "event: init\n"
@@ -4826,7 +4836,8 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
 
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id:
-                doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                # doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+                doc["timestamp"] = doc.get("timestamp")
                 last_id = doc.get("_id")
                 yield f"data: {to_json(doc)}\n\n"
             else:
