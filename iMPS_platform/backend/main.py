@@ -4938,7 +4938,6 @@ async def setting_plc(payload: PLCSetting):
     # ตอบกลับ frontend
     return {
         "ok": True,
-<<<<<<< Updated upstream
         "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
         "timestamp": now_iso,
         "mqtt": {
@@ -4947,11 +4946,6 @@ async def setting_plc(payload: PLCSetting):
             "published": bool(published),
         },
         "data": msg,
-    }
-=======
-        "message": "รับค่าจาก frontend แล้ว",
-        "timestamp": datetime.now().isoformat(),
-        "data": payload.dict(),
     }
 
 
@@ -5040,4 +5034,3 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
     return StreamingResponse(event_generator(), headers=headers)
 
 
->>>>>>> Stashed changes
