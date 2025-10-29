@@ -20,6 +20,9 @@ const RevenueChart = dynamic(() => import("@/app/dashboard/cbm/components/revenu
 
 type CBMDoc = {
   _id: string;
+  edgebox_temp?: number
+  pi5_temp?: number
+  router_temp?: number
   timestamp?: string;
   [key: string]: any;
 };
@@ -107,6 +110,13 @@ export default function SalesPage() {
 
   const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
 
+  const toDec = (v: unknown, fallback = 0, digits = 1): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    const p = Math.pow(10, digits);
+    return Math.round(n * p) / p;
+  };
+
   return (
     <div className="tw-mt-8 tw-mb-4">
       {lastUpdated && (
@@ -131,9 +141,9 @@ export default function SalesPage() {
           <DeviceTempsCard
             updatedAt="10:32"
             devices={[
-              { id: "edge", name: "EdgeBox", temp: 38, target: 60 },
-              { id: "pi", name: "Raspberry Pi", temp: 47, target: 60 },
-              { id: "router", name: "Router", temp: 71, target: 70 },
+              { id: "edge", name: "EdgeBox", temp: toDec(data?.edgebox_temp ?? 0), target: 60 },
+              { id: "pi", name: "Raspberry Pi", temp: toDec(data?.pi5_temp ?? 0), target: 60 },
+              { id: "router", name: "Router", temp: toDec(data?.router_temp ?? 0), target: 70 },
             ]}
           />
         </div>
