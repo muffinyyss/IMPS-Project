@@ -213,6 +213,9 @@ export default function DCForm() {
     witnessed: { name: "", signature: "", date: "", company: "" },
   });
 
+  const handleSymbolChange = (sym: SymbolPick) => setSigSymbol(sym);
+  const handlePhaseSequenceChange = (ph: PhasePick) => setSigPhase(ph);
+
   const [testRemark, setTestRemark] = useState<string>("");
   const [imgRemark, setImgRemark] = useState<string>("");
 
@@ -357,10 +360,12 @@ export default function DCForm() {
           testRematk: testRemark,       // remark ด้านบน
           imgRemark: imgRemark // remark หลังรูป
         },
+        symbol: sigSymbol,
+        phaseSequence: sigPhase,
         signature: {
           // remark: sigRemark,
-          symbol: sigSymbol,
-          phaseSequence: sigPhase,
+          // symbol: sigSymbol,
+          // phaseSequence: sigPhase,
           responsibility: sigResp,
         },
       };
@@ -744,8 +749,6 @@ export default function DCForm() {
             {/* <div className="tw-space-y-4">
               <ACSignatureSection1
                 // onRemarkChange={(v) => setSigRemark(v)}
-                onSymbolChange={(sym, checked) => checked && setSigSymbol(sym)}
-                onPhaseSequenceChange={(ph, checked) => checked && setSigPhase(ph)}
                 onResponsibilityChange={(field, who, val) => {
                   setSigResp(prev => ({
                     ...prev,
@@ -761,11 +764,21 @@ export default function DCForm() {
               head={head} onHeadChange={onHeadChange}
             /> */}
 
-
-            <ACPhotoSection initialItems={photoItems}
+            <div className="tw-mb-3">
+              <ACPhotoSection initialItems={photoItems}
               onItemsChange={setPhotoItems}
               title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)"
             />
+            </div>
+            
+
+
+            {/* <ACPhotoSection initialItems={photoItems}
+              onItemsChange={setPhotoItems}
+              title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)"
+            /> */}
+
+
 
             <div className="tw-mb-3">
               <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
@@ -782,10 +795,99 @@ export default function DCForm() {
               />
             </div>
 
+            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
+              {/* Symbol Section */}
+              <div>
+                <div className="tw-mb-3">
+                  <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Symbol :</span>
+                </div>
+                <div className="tw-flex tw-gap-3">
+                  {/* PASS Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleSymbolChange('pass')}
+                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
+                ${sigSymbol === 'pass'
+                        ? 'tw-bg-green-600 tw-text-white tw-border-green-600'
+                        : 'tw-bg-white tw-text-green-600 tw-border-green-600 hover:tw-bg-green-50'
+                      }`}
+                  >
+                    PASS
+                  </button>
+
+                  {/* FAIL Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleSymbolChange('notPass')}
+                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
+                ${sigSymbol === 'notPass'
+                        ? 'tw-bg-red-600 tw-text-white tw-border-red-600'
+                        : 'tw-bg-white tw-text-red-600 tw-border-red-600 hover:tw-bg-red-50'
+                      }`}
+                  >
+                    FAIL
+                  </button>
+
+                  {/* N/A Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleSymbolChange('notTest')}
+                    className={`tw-px-4 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
+                ${sigSymbol === 'notTest'
+                        ? 'tw-bg-gray-600 tw-text-white tw-border-gray-600'
+                        : 'tw-bg-white tw-text-gray-600 tw-border-gray-600 hover:tw-bg-gray-50'
+                      }`}
+                  >
+                    N/A
+                  </button>
+                </div>
+              </div>
+
+              {/* Phase Sequence Section */}
+              <div>
+                <div className="tw-mb-3">
+                  <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Phase Sequence</span>
+                </div>
+                <div className="tw-flex tw-gap-3">
+                  {/* L1-L2-L3 Button */}
+                  <button
+                    type="button"
+                    onClick={() => handlePhaseSequenceChange('L1L2L3')}
+                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
+                ${sigPhase === 'L1L2L3'
+                        ? 'tw-bg-blue-600 tw-text-white tw-border-blue-600'
+                        : 'tw-bg-white tw-text-blue-600 tw-border-blue-600 hover:tw-bg-blue-50'
+                      }`}
+                  >
+                    L1-L2-L3
+                  </button>
+
+                  {/* L3-L2-L1 Button */}
+                  <button
+                    type="button"
+                    onClick={() => handlePhaseSequenceChange('L3L2L1')}
+                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
+                ${sigPhase === 'L3L2L1'
+                        ? 'tw-bg-orange-600 tw-text-white tw-border-orange-600'
+                        : 'tw-bg-white tw-text-orange-600 tw-border-orange-600 hover:tw-bg-orange-50'
+                      }`}
+                  >
+                    L3-L2-L1
+                  </button>
+                </div>
+              </div>
+            </div>
 
             {/* Signature Section */}
             <div className="tw-space-y-4">
-              <ACSignatureSection1 />
+              <ACSignatureSection1
+                // onRemarkChange={(v) => setSigRemark(v)}
+                onResponsibilityChange={(field, who, val) => {
+                  setSigResp(prev => ({
+                    ...prev,
+                    [who]: { ...prev[who], [field]: val }
+                  }));
+                }} />
             </div>
             {/* FOOTER + ปุ่มบันทึก */}
             <ACFormActions
