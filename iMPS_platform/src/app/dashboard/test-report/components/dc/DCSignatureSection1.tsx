@@ -5,14 +5,14 @@ import { Input } from "@material-tailwind/react";
 
 interface SignatureSectionProps {
   // onRemarkChange?: (value: string) => void;
-  onSymbolChange?: (
-    symbolType: "pass" | "notPass" | "notTest",
-    checked: boolean
-  ) => void;
-  onPhaseSequenceChange?: (
-    phaseType: "L1L2L3" | "L3L2L1",
-    checked: boolean
-  ) => void;
+  // onSymbolChange?: (
+  //   symbolType: "pass" | "notPass" | "notTest",
+  //   checked: boolean
+  // ) => void;
+  // onPhaseSequenceChange?: (
+  //   phaseType: "L1L2L3" | "L3L2L1",
+  //   checked: boolean
+  // ) => void;
   onResponsibilityChange?: (
     field: string,
     person: "performed" | "approved" | "witnessed",
@@ -20,13 +20,13 @@ interface SignatureSectionProps {
   ) => void;
 }
 
-interface SymbolState {
-  selected: "pass" | "notPass" | "notTest" | "";
-}
+// interface SymbolState {
+//   selected: "pass" | "notPass" | "notTest" | "";
+// }
 
-interface PhaseSequenceState {
-  selected: "L1L2L3" | "L3L2L1" | "";
-}
+// interface PhaseSequenceState {
+//   selected: "L1L2L3" | "L3L2L1" | "";
+// }
 
 interface ResponsibilityData {
   performed: {
@@ -51,17 +51,17 @@ interface ResponsibilityData {
 
 const ACSignatureSection: React.FC<SignatureSectionProps> = ({
   // onRemarkChange,
-  onSymbolChange,
-  onPhaseSequenceChange,
+  // onSymbolChange,
+  // onPhaseSequenceChange,
   onResponsibilityChange,
 }) => {
   // const [remark, setRemark] = useState<string>("");
-  const [symbols, setSymbols] = useState<SymbolState>({
-    selected: "",
-  });
-  const [phaseSequence, setPhaseSequence] = useState<PhaseSequenceState>({
-    selected: "",
-  });
+  // const [symbols, setSymbols] = useState<SymbolState>({
+  //   selected: "",
+  // });
+  // const [phaseSequence, setPhaseSequence] = useState<PhaseSequenceState>({
+  //   selected: "",
+  // });
   const [responsibility, setResponsibility] = useState<ResponsibilityData>({
     performed: { name: "", signature: "", date: "", company: "" },
     approved: { name: "", signature: "", date: "", company: "" },
@@ -73,15 +73,15 @@ const ACSignatureSection: React.FC<SignatureSectionProps> = ({
   //   onRemarkChange?.(value);
   // };
 
-  const handleSymbolChange = (symbolType: "pass" | "notPass" | "notTest") => {
-    setSymbols({ selected: symbolType });
-    onSymbolChange?.(symbolType, true);
-  };
+  // const handleSymbolChange = (symbolType: "pass" | "notPass" | "notTest") => {
+  //   setSymbols({ selected: symbolType });
+  //   onSymbolChange?.(symbolType, true);
+  // };
 
-  const handlePhaseSequenceChange = (phaseType: "L1L2L3" | "L3L2L1") => {
-    setPhaseSequence({ selected: phaseType });
-    onPhaseSequenceChange?.(phaseType, true);
-  };
+  // const handlePhaseSequenceChange = (phaseType: "L1L2L3" | "L3L2L1") => {
+  //   setPhaseSequence({ selected: phaseType });
+  //   onPhaseSequenceChange?.(phaseType, true);
+  // };
 
   const handleResponsibilityChange = (
     field: string,
@@ -120,88 +120,7 @@ const ACSignatureSection: React.FC<SignatureSectionProps> = ({
         </div>
       </div> */}
 {/* Symbol and Phase Sequence Section */}
-      <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
-        {/* Symbol Section */}
-        <div>
-          <div className="tw-mb-3">
-            <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Symbol :</span>
-          </div>
-          <div className="tw-flex tw-gap-3">
-            {/* PASS Button */}
-            <button
-              type="button"
-              onClick={() => handleSymbolChange('pass')}
-              className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
-                ${symbols.selected === 'pass'
-                  ? 'tw-bg-green-600 tw-text-white tw-border-green-600'
-                  : 'tw-bg-white tw-text-green-600 tw-border-green-600 hover:tw-bg-green-50'
-                }`}
-            >
-              PASS
-            </button>
-
-            {/* FAIL Button */}
-            <button
-              type="button"
-              onClick={() => handleSymbolChange('notPass')}
-              className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
-                ${symbols.selected === 'notPass'
-                  ? 'tw-bg-red-600 tw-text-white tw-border-red-600'
-                  : 'tw-bg-white tw-text-red-600 tw-border-red-600 hover:tw-bg-red-50'
-                }`}
-            >
-              FAIL
-            </button>
-
-            {/* N/A Button */}
-            <button
-              type="button"
-              onClick={() => handleSymbolChange('notTest')}
-              className={`tw-px-4 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
-                ${symbols.selected === 'notTest'
-                  ? 'tw-bg-gray-600 tw-text-white tw-border-gray-600'
-                  : 'tw-bg-white tw-text-gray-600 tw-border-gray-600 hover:tw-bg-gray-50'
-                }`}
-            >
-              N/A
-            </button>
-          </div>
-        </div>
-
-        {/* Phase Sequence Section */}
-        <div>
-          <div className="tw-mb-3">
-            <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Phase Sequence</span>
-          </div>
-          <div className="tw-flex tw-gap-3">
-            {/* L1-L2-L3 Button */}
-            <button
-              type="button"
-              onClick={() => handlePhaseSequenceChange('L1L2L3')}
-              className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
-                ${phaseSequence.selected === 'L1L2L3'
-                  ? 'tw-bg-blue-600 tw-text-white tw-border-blue-600'
-                  : 'tw-bg-white tw-text-blue-600 tw-border-blue-600 hover:tw-bg-blue-50'
-                }`}
-            >
-              L1-L2-L3
-            </button>
-
-            {/* L3-L2-L1 Button */}
-            <button
-              type="button"
-              onClick={() => handlePhaseSequenceChange('L3L2L1')}
-              className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
-                ${phaseSequence.selected === 'L3L2L1'
-                  ? 'tw-bg-orange-600 tw-text-white tw-border-orange-600'
-                  : 'tw-bg-white tw-text-orange-600 tw-border-orange-600 hover:tw-bg-orange-50'
-                }`}
-            >
-              L3-L2-L1
-            </button>
-          </div>
-        </div>
-      </div>
+      
       {/* Responsibility Table */}
       <div>
         <div className="tw-border tw-border-gray-800 tw-bg-white">

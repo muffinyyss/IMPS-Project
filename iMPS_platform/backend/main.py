@@ -4583,6 +4583,9 @@ class EquipmentBlock(BaseModel):
     models: List[str] = []
     serialNumbers: List[str] = []
 
+SymbolLiteral = Literal["", "pass", "notPass", "notTest"]
+PhaseLiteral  = Literal["", "L1L2L3", "L3L2L1"]
+
 class PersonSig(BaseModel):
     name: str = ""
     signature: str = ""   # เก็บ path/ข้อมูลลายเซ็น (หรือข้อความ)
@@ -4595,9 +4598,6 @@ class ResponsibilityBlock(BaseModel):
     witnessed: PersonSig = PersonSig()
 
 class SignatureBlock(BaseModel):
-    remark: str = ""
-    symbol: Literal["pass", "notPass", "notTest", ""] = ""
-    phaseSequence: Literal["L1L2L3", "L3L2L1", ""] = ""
     responsibility: ResponsibilityBlock = ResponsibilityBlock()
 
 class DCSubmitIn(BaseModel):
@@ -4605,13 +4605,13 @@ class DCSubmitIn(BaseModel):
     issue_id: Optional[str] = None 
     job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
     head: Dict[str,Any]
-    # remark1: str = ""            # สรุป/หมายเหตุแบบยาว (แล้วแต่จะใช้)
-    # remark2: str = "" 
     inspection_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO; ถ้าไม่ส่งมาจะ fallback เป็น job.found_date
     equipment: Optional[EquipmentBlock] = None
     electrical_safety: Dict[str, Any] = Field(default_factory=dict)
     charger_safety: Dict[str, Any] = Field(default_factory=dict)
     remarks: Dict[str, Any] = Field(default_factory=dict)
+    symbol: Optional[SymbolLiteral] = None
+    phaseSequence: Optional[PhaseLiteral] = None
     signature: Optional[SignatureBlock] = None 
 
 async def _ensure_dc_indexes(coll):
@@ -4665,6 +4665,8 @@ async def dcreport_submit(body: DCSubmitIn, current: UserClaims = Depends(get_cu
         "electrical_safety": electrical_safety,
         "charger_safety": charger_safety,
         "remarks": body.remarks or {},
+        "symbol": body.symbol,
+        "phaseSequence": body.phaseSequence,
         "signature": body.signature.dict() if body.signature else None,
         "createdAt": datetime.now(timezone.utc),
         "updatedAt": datetime.now(timezone.utc),
