@@ -4893,15 +4893,14 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
 from pdf.pdf_routes import router as pdf_router
 app.include_router(pdf_router)
 
-class PLCSetting(BaseModel):
+class PLCMaxSetting(BaseModel):
     station_id: str
     dynamic_max_current1: float   # A
     dynamic_max_power1: float     # kW (จาก front)
-    cp_status1:int
 
 
-@app.post("/setting/PLC")
-async def setting_plc(payload: PLCSetting):
+@app.post("/setting/PLC/MAX")
+async def setting_plc(payload: PLCMaxSetting):
     now_iso = datetime.now().isoformat()
 
     # log ฝั่งเซิร์ฟเวอร์
@@ -4909,13 +4908,56 @@ async def setting_plc(payload: PLCSetting):
     print(f"  station_id = {payload.station_id}")
     print(f"  dynamic_max_current1 = {payload.dynamic_max_current1} A")
     print(f"  dynamic_max_power1 = {payload.dynamic_max_power1} kW")
-    print(f"  cp_status1 = {payload.cp_status1} ({'START' if payload.cp_status1==1 else 'STOP'})")
-
     # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
     msg = {
         "station_id": payload.station_id,
         "dynamic_max_current1": payload.dynamic_max_current1,
         "dynamic_max_power1": payload.dynamic_max_power1,
+        "timestamp": now_iso,
+        "source": "fastapi/setting_plc"
+    }
+    payload_str = json.dumps(msg, ensure_ascii=False)
+
+    # ส่งขึ้น MQTT (QoS 1, ไม่ retain)
+    try:
+        pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
+        # รอให้ส่งเสร็จแบบสั้น ๆ (ถ้าต้องการความชัวร์)
+        pub_result.wait_for_publish(timeout=2.0)
+        published = pub_result.is_published()
+        rc = pub_result.rc
+        print(f"[MQTT] publish rc={rc}, published={published}, topic={MQTT_TOPIC}")
+    except Exception as e:
+        print(f"[MQTT] publish error: {e}")
+        published = False
+
+    # ตอบกลับ frontend
+    return {
+        "ok": True,
+        "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
+        "timestamp": now_iso,
+        "mqtt": {
+            "broker": f"{BROKER_HOST}:{BROKER_PORT}",
+            "topic": MQTT_TOPIC,
+            "published": bool(published),
+        },
+        "data": msg,
+    }
+
+class PLCCPCommand(BaseModel):
+    station_id: str
+    cp_status1: Literal["start", "stop"]
+
+@app.post("/setting/PLC/CP")
+async def setting_plc(payload: PLCCPCommand):
+    now_iso = datetime.now().isoformat()
+
+    # log ฝั่งเซิร์ฟเวอร์
+    print(f"[{now_iso}] รับค่าจาก Front:")
+    print(f"  station_id = {payload.station_id}")
+    print(f"  cp_status1 = {payload.cp_status1}")
+    # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
+    msg = {
+        "station_id": payload.station_id,
         "cp_status1": payload.cp_status1,
         "timestamp": now_iso,
         "source": "fastapi/setting_plc"
@@ -4947,7 +4989,6 @@ async def setting_plc(payload: PLCSetting):
         "data": msg,
     }
 
-
 # ----------------------------------------------- CBM 
 def get_cbm_collection_for(station_id: str):
     # กันชื่อคอลเลกชันแปลก ๆ / injection: อนุญาต a-z A-Z 0-9 _ -
@@ -4955,66 +4996,34 @@ def get_cbm_collection_for(station_id: str):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return CBM_DB.get_collection(str(station_id))
 
-# @app.get("/CBM/{station_id}")
-# async def cbm(request: Request,station_id: str):
-#     headers = {
-#         "Content-Type": "text/event-stream",
-#         "Cache-Control": "no-cache",
-#         "Connection": "keep-alive",
-#         "X-Accel-Buffering": "no",
-#     }
 
-#     coll = get_cbm_collection_for(station_id)
-
-#     async def event_generator():
-#         last_id = None
-
-#         latest = await coll.find_one({}, sort=[("_id", -1)])
-#         if latest:
-#             latest["timestamp"] = latest.get("timestamp")
-#             last_id = latest.get("_id")
-#             yield f"event: init\ndata: {to_json(latest)}\n\n"
-#         else:
-#             yield ": keep-alive\n\n"
-
-#         while True:
-#             if await request.is_disconnected():
-#                 break
-
-#             doc = await coll.find_one({}, sort=[("_id", -1)])
-#             if doc and doc.get("_id") != last_id:
-#                 doc["timestamp"] = doc.get("timestamp")
-#                 last_id = doc.get("_id")
-#                 yield f"data: {to_json(doc)}\n\n"
-#             else:
-#                 yield ": keep-alive\n\n"
-
-#             await asyncio.sleep(60)
-
-#     return StreamingResponse(event_generator(), headers=headers)
-
-
-@app.get("/CBM/{station_id}")
-async def mdb(request: Request, station_id: str, current: UserClaims = Depends(get_current_user)):
+@app.get("/CBM")
+async def cbm_query(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
+    """
+    SSE แบบ query param:
+    - ส่ง snapshot ล่าสุดทันที (event: init)
+    - จากนั้น polling ของใหม่เป็นช่วง ๆ
+    """
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     }
-
-    coll = get_cbm_collection_for(station_id)  # ⬅️ ใช้ coll ตามสถานี
+    coll = get_cbm_collection_for(station_id)
 
     async def event_generator():
         last_id = None
-
-        latest = await coll.find_one({}, sort=[("_id", -1)])
+        latest = await coll.find_one({}, sort=[("_id", -1)])  # ⬅️ ไม่ต้อง filter station_id ภายในแล้ว
         if latest:
+            # latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
             latest["timestamp"] = latest.get("timestamp")
             last_id = latest.get("_id")
-            yield f"event: init\ndata: {to_json(latest)}\n\n"
+            yield "retry: 3000\n"
+            yield "event: init\n"
+            yield f"data: {to_json(latest)}\n\n"
         else:
-            yield ": keep-alive\n\n"
+            yield "retry: 3000\n\n"
 
         while True:
             if await request.is_disconnected():
@@ -5022,14 +5031,13 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
 
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id:
+                # doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
                 doc["timestamp"] = doc.get("timestamp")
                 last_id = doc.get("_id")
                 yield f"data: {to_json(doc)}\n\n"
             else:
                 yield ": keep-alive\n\n"
 
-            await asyncio.sleep(60)
+            await asyncio.sleep(5)
 
     return StreamingResponse(event_generator(), headers=headers)
-
-

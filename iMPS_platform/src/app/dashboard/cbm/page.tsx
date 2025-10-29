@@ -1,4 +1,4 @@
-// "use client";
+"use client";
 import dynamic from "next/dynamic";
 
 import ChargerEnv from "@/app/dashboard/cbm/components/chargerEnv";
@@ -21,27 +21,99 @@ const RevenueChart = dynamic(() => import("@/app/dashboard/cbm/components/revenu
 type CBMDoc = {
   _id: string;
   timestamp?: string;
-  // CP_status1?: string | number;
-  // SOC1?: string | number | null;
-  // dynamic_max_current1?: string | number; // A
-  // dynamic_max_power1?: string | number;   // W (backend), จอแสดง kW
-  // present_current1?: string | number;
-  // present_power1?: string | number;
-  // ฟิลด์อื่น ๆ ที่อาจใช้อีกก็เพิ่มได้
   [key: string]: any;
 };
 export default function SalesPage() {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<CBMDoc | null>(null);
+  const [stationId, setStationId] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
+  useEffect(() => {
+    const sidFromUrl = searchParams.get("station_id");
+    if (sidFromUrl) {
+      setStationId(sidFromUrl);
+      localStorage.setItem("selected_station_id", sidFromUrl);
+      return;
+    }
+    const sidLocal = localStorage.getItem("selected_station_id");
+    setStationId(sidLocal);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!stationId) return;
+    setLoading(true);
+    setErr(null);
+
+    const es = new EventSource(
+      `${API_BASE}/CBM?station_id=${encodeURIComponent(stationId)}`,
+      { withCredentials: true } // สำคัญสำหรับ cookie-auth
+    );
+
+    const onInit = (e: MessageEvent) => {
+      try {
+        setData(JSON.parse(e.data));
+        setLoading(false);
+        setErr(null);
+      } catch {
+        setErr("ผิดรูปแบบข้อมูล init");
+        setLoading(false);
+      }
+    };
+
+    // es.addEventListener("init", onInit);
+    es.addEventListener("init", (e: MessageEvent) => {
+      // console.log("INIT raw:", e.data);
+      try {
+        const obj = JSON.parse(e.data);
+        // console.log("INIT parsed:", obj);
+        setData(obj);
+        setLoading(false);
+      } catch { }
+    });
+
+    es.onopen = () => setErr(null);
+
+    // es.onmessage = (e) => {
+    //     try {
+    //         setData(JSON.parse(e.data));
+    //         setErr(null);
+    //     } catch {
+    //         setErr("ผิดรูปแบบข้อมูล message");
+    //     }
+    // };
+
+    es.onmessage = (e) => {
+      // console.log("MSG raw:", e.data);
+      try {
+        const obj = JSON.parse(e.data);
+        // console.log("MSG parsed:", obj);
+        setData(obj);
+      } catch { }
+    };
+
+    es.onerror = () => {
+      setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
+      setLoading(false);
+      // ไม่ปิด es เพื่อให้ browser retry ตาม retry: 3000 ที่ server ส่งมา
+    };
+
+    return () => {
+      es.removeEventListener("init", onInit);
+      es.close();
+    };
+  }, [stationId]);
+
+  const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
 
   return (
     <div className="tw-mt-8 tw-mb-4">
-      {/* {lastUpdated && (
+      {lastUpdated && (
         <span className="tw-text-xs !tw-text-blue-gray-500">
           อัปเดตล่าสุด: {lastUpdated}
         </span>
-      )} */}
+      )}
 
       {/* กริด 12 คอลัมน์ */}
       <div className="tw-mt-2 tw-grid tw-grid-cols-1 lg:tw-grid-cols-12 tw-gap-4">
