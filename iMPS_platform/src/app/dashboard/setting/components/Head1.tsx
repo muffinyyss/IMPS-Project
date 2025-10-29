@@ -277,6 +277,7 @@ export default function Head1() {
                 station_id: stationId,
                 dynamic_max_current1: maxCurrentH1,        // A
                 dynamic_max_power1: maxPowerH1,     // kW -> W
+                cp_status1: data?.CP_status1 ?? null
             };
 
             const res = await fetch(`${API_BASE}/setting/PLC`, {
