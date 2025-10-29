@@ -81,7 +81,7 @@ function LimitRow({
 
 /* ---------- ข้อความบอกสถานะ (รองรับ 7 state) ---------- */
 type ChargeState =
-    | "avaliable"
+    | "available"
     | "preparing"
     | "cableCheck"
     | "preCharge"
@@ -89,8 +89,15 @@ type ChargeState =
     | "finishing"
     | "faulted";
 
+type PLCSetting = {
+    station_id: string;
+    dynamic_max_current1: number; // A
+    dynamic_max_power1: number;   // kW
+    cp_status1: number;           // 1 = start, 0 = stop
+};
+
 const STATE_META: Record<ChargeState, { label: string; className: string }> = {
-    avaliable: { label: "Avaliable", className: "tw-text-blue-gray-600" },
+    available: { label: "Avaliable", className: "tw-text-blue-gray-600" },
     preparing: { label: "Preparing", className: "tw-text-blue-600" },
     cableCheck: { label: "Cable Check", className: "tw-text-amber-600" },
     preCharge: { label: "Precharge", className: "tw-text-amber-600" },
@@ -122,7 +129,7 @@ function PrimaryCTA({
     const isPreparing = status === "preparing";
     const isFinishing = status === "finishing";
     const isFaulted = status === "faulted";
-    const isAvailable = status === "avaliable";
+    const isAvailable = status === "available";
 
     const isDisabled =
         !!busy || isFinishing || isAvailable || !(isCharging || isPreparing || isFaulted);
@@ -177,14 +184,14 @@ const toNum = (v: any): number | null => {
 const statusFromCP = (cp: any): ChargeState => {
     const c = String(cp ?? "");
     switch (c) {
-        case "1": return "avaliable";  // idle / available
+        case "1": return "available";  // idle / available
         case "2": return "preparing";  // preparing
         case "3": return "cableCheck"; // cable check
         case "4": return "preCharge";  // precharge
         case "7": return "charging";   // charging
         case "6": return "finishing";  // finishing
         case "5": return "faulted";    // fault
-        default: return "avaliable";
+        default: return "available";
     }
 };
 
@@ -255,7 +262,7 @@ export default function Head1() {
     // ค่า UI (เริ่มจาก default; จะ sync จาก data เมื่อมีสตรีม)
     const [maxCurrentH1, setMaxCurrentH1] = useState(0); // A
     const [maxPowerH1, setMaxPowerH1] = useState(0);    // kW (UI)
-    const [h1Status, setH1Status] = useState<ChargeState>("avaliable");
+    const [h1Status, setH1Status] = useState<ChargeState>("available");
     const [busyH1, setBusyH1] = useState(false);
 
     // baseline สำหรับเช็คว่ามีการเปลี่ยนแปลงหรือไม่
@@ -449,17 +456,43 @@ export default function Head1() {
     }, [data]);
 
     async function chargeCommand(action: "start" | "stop") {
-        // TODO: ใส่ endpoint จริงเมื่อพร้อม เช่น:
-        // await fetch(`${API_BASE}/charger/1/${action}?station_id=${encodeURIComponent(stationId ?? "")}`, { method: "POST", credentials: "include" });
+        const stationId = "IMPS-001";   // TODO: ดึงจาก state/props
+        const dynamicMaxCurrent1 = 120; // TODO: ดึงจาก input ผู้ใช้
+        const dynamicMaxPower1 = 60;    // TODO: ดึงจาก input ผู้ใช้
+        const payload: PLCSetting = {
+            station_id: stationId,
+            dynamic_max_current1: dynamicMaxCurrent1,
+            dynamic_max_power1: dynamicMaxPower1,
+            cp_status1: action === "start" ? 1 : 0,
+        };
+
+        const res = await fetch(`${API_BASE}/setting/PLC`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(txt || `HTTP ${res.status}`);
+        }
+
+        // ถ้าต้องใช้ response ต่อ สามารถ return json ได้
+        return res.json();
     }
 
     const startH1 = async () => {
         try {
             setBusyH1(true);
+            // ถ้าจะให้ start ได้เฉพาะตอน 'preparing' คง logic นี้ไว้
+            // ถ้าอยากให้ start ได้ตอน 'available' ด้วย ให้เปลี่ยนเป็น:
+            // if (!(h1Status === "preparing" || h1Status === "available")) return;
+
             if (h1Status !== "preparing") return;
             await chargeCommand("start");
-            // สถานะจริงจะถูกอัปเดตจากสตรีมอยู่แล้ว — ไม่ต้อง set ต่อมือ
-        } catch {
+            // สถานะจริงปล่อยให้สตรีมอัปเดตเอง
+        } catch (e) {
+            console.error(e);
             setH1Status("faulted");
         } finally {
             setBusyH1(false);
@@ -470,7 +503,8 @@ export default function Head1() {
         try {
             setBusyH1(true);
             await chargeCommand("stop");
-        } catch {
+        } catch (e) {
+            console.error(e);
             setH1Status("faulted");
         } finally {
             setBusyH1(false);

@@ -32,8 +32,8 @@ from dateutil.relativedelta import relativedelta
 import pathlib, secrets
 from email.message import EmailMessage
 import aiosmtplib
-
-
+import paho.mqtt.client as mqtt
+from contextlib import asynccontextmanager
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
@@ -92,6 +92,46 @@ users_coll_async = imps_db_async["users"]
 email_log_coll = imps_db_async["errorEmailLog"]
 
 MDB_collection = MDB_DB["Klongluang3"]
+
+BROKER_HOST = "212.80.215.42"
+BROKER_PORT = 1883
+MQTT_TOPIC  = "iMPS/Test/settingPLC"
+MQTT_CLIENT_ID = "imps-backend-setting-plc"
+mqtt_client = mqtt.Client(client_id=MQTT_CLIENT_ID, clean_session=True)
+
+def _on_connect(client, userdata, flags, rc):
+    print(f"[MQTT] on_connect rc={rc}")
+
+def _on_disconnect(client, userdata, rc):
+    print(f"[MQTT] on_disconnect rc={rc}")
+
+mqtt_client.on_connect = _on_connect
+mqtt_client.on_disconnect = _on_disconnect
+
+async def lifespan(app: FastAPI):
+    # ใช้ connect_async + loop_start เพื่อไม่ block event loop
+    mqtt_client.connect_async(BROKER_HOST, BROKER_PORT, keepalive=60)
+    mqtt_client.loop_start()
+    print("[MQTT] connecting async ...")
+    try:
+        yield
+    finally:
+        try:
+            mqtt_client.loop_stop()
+            mqtt_client.disconnect()
+        except Exception as e:
+            print(f"[MQTT] disconnect error: {e}")
+
+app = FastAPI(lifespan=lifespan)
+
+# CORS (ระบุ origin จริงในโปรดักชัน)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def _validate_station_id(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
@@ -4861,19 +4901,47 @@ class PLCSetting(BaseModel):
 
 @app.post("/setting/PLC")
 async def setting_plc(payload: PLCSetting):
-    # ---- ใช้ค่าที่รับมาได้เลย ----
-    print(f"[{datetime.now().isoformat()}] รับค่าจาก Front:")
-    print(f"station_id = {payload.station_id}")
-    print(f"dynamic_max_current1 = {payload.dynamic_max_current1} A")
-    print(f"dynamic_max_power1 = {payload.dynamic_max_power1} kW")
+    now_iso = datetime.now().isoformat()
 
-    # ---- ถ้ามีระบบจริง (เช่นส่งไป PLC ผ่าน MQTT / Modbus / API) ----
-    # await send_to_plc(payload.station_id, payload.dynamic_max_current1, payload.dynamic_max_power1)
+    # log ฝั่งเซิร์ฟเวอร์
+    print(f"[{now_iso}] รับค่าจาก Front:")
+    print(f"  station_id = {payload.station_id}")
+    print(f"  dynamic_max_current1 = {payload.dynamic_max_current1} A")
+    print(f"  dynamic_max_power1 = {payload.dynamic_max_power1} kW")
+    print(f"  cp_status1 = {payload.cp_status1} ({'START' if payload.cp_status1==1 else 'STOP'})")
 
-    # ---- ส่งกลับ front ----
+    # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
+    msg = {
+        "station_id": payload.station_id,
+        "dynamic_max_current1": payload.dynamic_max_current1,
+        "dynamic_max_power1": payload.dynamic_max_power1,
+        "cp_status1": payload.cp_status1,
+        "timestamp": now_iso,
+        "source": "fastapi/setting_plc"
+    }
+    payload_str = json.dumps(msg, ensure_ascii=False)
+
+    # ส่งขึ้น MQTT (QoS 1, ไม่ retain)
+    try:
+        pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
+        # รอให้ส่งเสร็จแบบสั้น ๆ (ถ้าต้องการความชัวร์)
+        pub_result.wait_for_publish(timeout=2.0)
+        published = pub_result.is_published()
+        rc = pub_result.rc
+        print(f"[MQTT] publish rc={rc}, published={published}, topic={MQTT_TOPIC}")
+    except Exception as e:
+        print(f"[MQTT] publish error: {e}")
+        published = False
+
+    # ตอบกลับ frontend
     return {
         "ok": True,
-        "message": "รับค่าจาก frontend แล้ว",
-        "timestamp": datetime.now().isoformat(),
-        "data": payload.dict(),
+        "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
+        "timestamp": now_iso,
+        "mqtt": {
+            "broker": f"{BROKER_HOST}:{BROKER_PORT}",
+            "topic": MQTT_TOPIC,
+            "published": bool(published),
+        },
+        "data": msg,
     }
