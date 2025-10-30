@@ -279,67 +279,6 @@ export default function Head1() {
     const isDirty =
         maxCurrentH1 !== lastSaved.maxCurrentH1 || maxPowerH1 !== lastSaved.maxPowerH1;
 
-    // ไม่ใช่การ "บันทึก" — แค่ยืนยัน/ใช้ค่าปัจจุบัน
-    // async function applySettings() {
-    //     if (!stationId) {
-    //         console.warn("[Head1] no station_id, skip submit");
-    //         return;
-    //     }
-    //     //  if (cpCmd1 === null) { console.warn("[Head1] no cpCmd1, press Start/Stop first"); return; } // กัน nul
-    //     setSaving(true);
-    //     try {
-    //         // backend ใช้หน่วย W
-    //         const bodyMAX = {
-    //             station_id: stationId,
-    //             dynamic_max_current1: maxCurrentH1,        // A
-    //             dynamic_max_power1: maxPowerH1,     // kW -> W
-    //         };
-
-    //         const bodyCP = {
-    //             station_id: stationId,    // kW -> W
-    //             cp_status1: cpStatus1FromCmd(cpCmd1)!
-    //         };
-
-    //         console.log("[Head1] APPLY bodyMAX →", bodyMAX);
-    //         console.log("[Head1] APPLY bodyCP  →", bodyCP, "(from cmd =", cpCmd1, ")");
-
-    //         const resMAX = await fetch(`${API_BASE}/setting/PLC/MAX`, {
-    //             method: "POST",
-    //             headers: { "Content-Type": "application/json" },
-    //             credentials: "include",
-    //             body: JSON.stringify(bodyMAX),
-    //         });
-
-    //         const resCP = await fetch(`${API_BASE}/setting/PLC/CP`, {
-    //             method: "POST",
-    //             headers: { "Content-Type": "application/json" },
-    //             credentials: "include",
-    //             body: JSON.stringify(bodyCP),
-    //         });
-
-    //         if (!resMAX.ok) throw new Error("Send Max value failed");
-    //         if (!resCP.ok) throw new Error("Send CP state failed");
-
-
-    //         // if (!res.ok) {
-    //         //     const t = await res.text().catch(() => "");
-    //         //     throw new Error(`Submit failed: ${res.status} ${t}`);
-    //         // }
-
-    //         // อัปเดต baseline เพื่อปิดปุ่ม
-    //         setLastSaved({ maxCurrentH1, maxPowerH1 });
-
-    //         // ถ้าต้องการแจ้งผู้ใช้ (เด้ง toast ฯลฯ) ใส่ตรงนี้ได้
-    //         console.log("[Head1] submit success");
-    //     } catch (e) {
-    //         console.error(e);
-    //         // แจ้ง error แบบเบา ๆ ใน UI
-    //         setErr("บันทึกการตั้งค่าไม่สำเร็จ");
-    //         // ตามจริงอาจเลือกไม่อัปเดต lastSaved เพื่อให้ปุ่มยัง active อยู่
-    //     } finally {
-    //         setSaving(false);
-    //     }
-    // }
     async function applySettings() {
         if (!stationId) { console.warn("[Head1] no station_id"); return; }
         setSaving(true);
@@ -534,65 +473,7 @@ export default function Head1() {
         return Math.max(0, Math.min(100, n));
     }, [data]);
 
-    // async function chargeCommand(action: "start" | "stop") {
-
-    //     const stationId = "IMPS-001";   // TODO: ดึงจาก state/props
-    //     const dynamicMaxCurrent1 = 120; // TODO: ดึงจาก input ผู้ใช้
-    //     const dynamicMaxPower1 = 60;    // TODO: ดึงจาก input ผู้ใช้
-
-    //     const payload: PLCSetting = {
-    //         station_id: stationId,
-    //         dynamic_max_current1: dynamicMaxCurrent1,
-    //         dynamic_max_power1: dynamicMaxPower1,
-    //         cp_status1: action,
-    //     };
-
-    //     const res = await fetch(`${API_BASE}/setting/PLC`, {
-    //         method: "POST",
-    //         headers: { "Content-Type": "application/json" },
-    //         body: JSON.stringify(payload),
-    //     });
-
-    //     if (!res.ok) {
-    //         const txt = await res.text();
-    //         throw new Error(txt || `HTTP ${res.status}`);
-    //     }
-
-    //     // ถ้าต้องใช้ response ต่อ สามารถ return json ได้
-    //     return res.json();
-    // }
-
-    // const startH1 = async () => {
-    //     try {
-    //         setBusyH1(true);
-    //         setCpCmd1("start");
-    //         // ถ้าจะให้ start ได้เฉพาะตอน 'preparing' คง logic นี้ไว้
-    //         // ถ้าอยากให้ start ได้ตอน 'available' ด้วย ให้เปลี่ยนเป็น:
-    //         // if (!(h1Status === "preparing" || h1Status === "available")) return;
-
-    //         if (h1Status !== "preparing") return;
-    //         await chargeCommand("start");
-    //         // สถานะจริงปล่อยให้สตรีมอัปเดตเอง
-    //     } catch (e) {
-    //         console.error(e);
-    //         setH1Status("faulted");
-    //     } finally {
-    //         setBusyH1(false);
-    //     }
-    // };
-
-    // const stopH1 = async () => {
-    //     try {
-    //         setBusyH1(true);
-    //         setCpCmd1("stop");
-    //         await chargeCommand("stop");
-    //     } catch (e) {
-    //         console.error(e);
-    //         setH1Status("faulted");
-    //     } finally {
-    //         setBusyH1(false);
-    //     }
-    // };
+   
 
     async function sendCpCommand(action: "start" | "stop") {
         if (!stationId) throw new Error("no station_id");

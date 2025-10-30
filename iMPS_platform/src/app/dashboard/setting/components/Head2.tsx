@@ -12,8 +12,6 @@ import CircleProgress from "./CircleProgress";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
-
-
 function LimitRow({
     label, unit, value, onChange, min = 0, max = 200, disabled = false,
 }: {
@@ -93,29 +91,12 @@ type ChargeState =
     | "faulted";
 
 type PLCSetting = {
-  station_id: string;
-  dynamic_max_current1: number; // A
-  dynamic_max_power1: number;   // kW
-  cp_status1: number;           // 1 = start, 0 = stop
+    station_id: string;
+    dynamic_max_current2: number; // A
+    dynamic_max_power2: number;   // kW
+    cp_status2: "start" | "stop";          // 1 = start, 0 = stop
 };
 
-// async function sendPLCSetting(payload: PLCSetting) {
-//   const res = await fetch(`${API_BASE}/setting/PLC`, {
-//     method: "POST",
-//     headers: { "Content-Type": "application/json" },
-//     body: JSON.stringify(payload),
-//   });
-//   if (!res.ok) {
-//     const txt = await res.text();
-//     throw new Error(txt || `HTTP ${res.status}`);
-//   }
-//   return (await res.json()) as {
-//     ok: boolean;
-//     message: string;
-//     timestamp: string;
-//     data: PLCSetting;
-//   };
-// }
 
 const STATE_META: Record<ChargeState, { label: string; className: string }> = {
     available: { label: "Avaliable", className: "tw-text-blue-gray-600" },
@@ -278,11 +259,20 @@ export default function Head1() {
     const [err, setErr] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
+    const [saving, setSaving] = useState(false);
     // ค่า UI (เริ่มจาก default; จะ sync จาก data เมื่อมีสตรีม)
     const [maxCurrentH2, setMaxCurrentH2] = useState(0); // A
     const [maxPowerH2, setMaxPowerH2] = useState(0);    // kW (UI)
     const [h2Status, setH2Status] = useState<ChargeState>("available");
     const [busyH2, setBusyH2] = useState(false);
+
+    const [cpCmd2, setCpCmd2] = useState<"start" | "stop" | null>(null);
+
+    const cpStatus2FromCmd = (cmd: "start" | "stop" | null): "start" | "stop" | null => {
+        if (cmd === "start") return "start";
+        if (cmd === "stop") return "stop";
+        return null;
+    };
 
     // baseline สำหรับเช็คว่ามีการเปลี่ยนแปลงหรือไม่
     const [lastSaved, setLastSaved] = useState({ maxCurrentH2: 66, maxPowerH2: 136 });
@@ -290,10 +280,62 @@ export default function Head1() {
         maxCurrentH2 !== lastSaved.maxCurrentH2 || maxPowerH2 !== lastSaved.maxPowerH2;
 
     // ไม่ใช่การ "บันทึก" — แค่ยืนยัน/ใช้ค่าปัจจุบัน
-    function applySettings() {
-        console.log("apply settings:", { maxCurrentH2, maxPowerH2 });
-        // ถ้าต้องการให้ปุ่ม “ตกลง” กลับไปเป็น disable หลังยืนยัน:
-        setLastSaved({ maxCurrentH2, maxPowerH2 });
+    // function applySettings() {
+    //     console.log("apply settings:", { maxCurrentH2, maxPowerH2 });
+    //     // ถ้าต้องการให้ปุ่ม “ตกลง” กลับไปเป็น disable หลังยืนยัน:
+    //     setLastSaved({ maxCurrentH2, maxPowerH2 });
+    // }
+    async function applySettings() {
+        if (!stationId) { console.warn("[Head1] no station_id"); return; }
+        setSaving(true);
+        setErr(null);
+        try {
+            // 1) ส่ง MAX
+            const bodyMAX = {
+                station_id: stationId,
+                dynamic_max_current2: maxCurrentH2, // A
+                dynamic_max_power2: maxPowerH2,     // kW (ต้องตรงกับ backend)
+            };
+
+            const resMAX = await fetch(`${API_BASE}/setting/PLC/MAXH2`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify(bodyMAX),
+            });
+
+            if (!resMAX.ok) {
+                const t = await resMAX.text().catch(() => "");
+                throw new Error(`MAX failed: ${resMAX.status} ${t}`);
+            }
+
+            // อัปเดต baseline เฉพาะ MAX
+            setLastSaved({ maxCurrentH2, maxPowerH2 });
+
+            // 2) (ออปชัน) ส่ง CP ถ้ามีคำสั่งค้างอยู่เท่านั้น
+            if (cpCmd2) {
+                const bodyCP = { station_id: stationId, cp_status2: cpCmd2 }; // "start" | "stop"
+                const resCP = await fetch(`${API_BASE}/setting/PLC/CPH2`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify(bodyCP),
+                });
+                if (!resCP.ok) {
+                    const t = await resCP.text().catch(() => "");
+                    throw new Error(`CP failed: ${resCP.status} ${t}`);
+                }
+                // ส่งสำเร็จแล้วเคลียร์คำสั่ง
+                setCpCmd2(null);
+            }
+
+            console.log("[Head2] submit success");
+        } catch (e: any) {
+            console.error(e);
+            setErr(e?.message || "บันทึกการตั้งค่าไม่สำเร็จ");
+        } finally {
+            setSaving(false);
+        }
     }
     // ด้านบนใน component Head1 (หลัง state/data พร้อมแล้ว)
     const maxForPowerSlider = useMemo(() => {
@@ -406,53 +448,7 @@ export default function Head1() {
         };
     }, [stationId]);
 
-    // useEffect(() => {
-    //     if (!stationId) return;
-    //     setLoading(true);
-    //     setErr(null);
-
-    //     console.log("[Head1] opening SSE:", `${API_BASE}/setting?station_id=${stationId}`);
-
-    //     const es = new EventSource(
-    //         `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
-    //         { withCredentials: true }
-    //     );
-
-    //     es.addEventListener("init", (e: MessageEvent) => {
-    //         console.log("[Head1] SSE init raw:", e.data);
-    //         try {
-    //             const obj = JSON.parse(e.data);
-    //             console.log("[Head1] SSE init parsed:", obj);
-    //             setData(obj);
-    //             setLoading(false);
-    //         } catch {
-    //             console.error("[Head1] init parse error");
-    //             setErr("ผิดรูปแบบข้อมูล init");
-    //             setLoading(false);
-    //         }
-    //     });
-
-    //     es.onmessage = (e) => {
-    //         // log เฉพาะหัวข้อสำคัญ ลด spam ได้ตามต้องการ
-    //         try {
-    //             const obj = JSON.parse(e.data);
-    //             // ตัวอย่าง log สั้น ๆ
-    //             console.log("[Head1] SSE msg dyn_max_current1:", obj.dynamic_max_current1, "dyn_max_power1:", obj.dynamic_max_power1);
-    //             setData(obj);
-    //         } catch { }
-    //     };
-
-    //     es.onerror = () => {
-    //         console.warn("[Head1] SSE error (browser will retry)");
-    //         setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
-    //         setLoading(false);
-    //     };
-
-    //     return () => {
-    //         console.log("[Head1] closing SSE");
-    //         es.close();
-    //     };
-    // }, [stationId]);
+   
 
     // เมื่อ data อัปเดต → sync เข้าสู่ state UI
     useEffect(() => {
@@ -483,50 +479,52 @@ export default function Head1() {
         return Math.max(0, Math.min(100, n));
     }, [data]);
 
-    async function chargeCommand(cmd: "start" | "stop") {
-    // TODO: แทนที่ด้วยค่าจริง/ค่าจาก state ของคุณ
-    const stationId = "IMPS-001";
-    const dynamicMaxCurrent1 = 120; // ตัวอย่าง A
-    const dynamicMaxPower1 = 60;    // ตัวอย่าง kW
-
-    const payload: PLCSetting = {
-        station_id: stationId,
-        dynamic_max_current1: dynamicMaxCurrent1,
-        dynamic_max_power1: dynamicMaxPower1,
-        cp_status1: cmd === "start" ? 1 : 0,
-    };
-
-    // return await sendPLCSetting(payload);
+    async function sendCpCommand(action: "start" | "stop") {
+        if (!stationId) throw new Error("no station_id");
+        const body = { station_id: stationId, cp_status2: action };
+        const res = await fetch(`${API_BASE}/setting/PLC/CPH2`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const t = await res.text().catch(() => "");
+            throw new Error(`CP ${action} failed: ${res.status} ${t}`);
+        }
+        return res.json();
     }
 
     const startH2 = async () => {
-    try {
-        setBusyH2(true);
-        // ถ้าต้องการให้กด Start ได้เฉพาะตอน 'preparing' คง logic เดิมไว้
-        // หรือถ้าจะให้ start ได้ตอน 'available' ด้วย เปลี่ยนเป็น:
-        // if (!(h2Status === "preparing" || h2Status === "available")) return;
+        try {
+            setBusyH2(true);
+            setCpCmd2("start");
+            // ถ้าต้องการให้กด Start ได้เฉพาะตอน 'preparing' คง logic เดิมไว้
+            // หรือถ้าจะให้ start ได้ตอน 'available' ด้วย เปลี่ยนเป็น:
+            // if (!(h2Status === "preparing" || h2Status === "available")) return;
 
-        if (h2Status !== "preparing") return;
-        await chargeCommand("start");
-        // สถานะจริงปล่อยให้สตรีมอัปเดต
-    } catch (e) {
-        console.error(e);
-        setH2Status("faulted");
-    } finally {
-        setBusyH2(false);
-    }
+            if (h2Status !== "preparing") return;
+            await sendCpCommand("start");
+            // สถานะจริงปล่อยให้สตรีมอัปเดต
+        } catch (e) {
+            console.error(e);
+            setH2Status("faulted");
+        } finally {
+            setBusyH2(false);
+        }
     };
 
     const stopH2 = async () => {
-    try {
-        setBusyH2(true);
-        await chargeCommand("stop");
-    } catch (e) {
-        console.error(e);
-        setH2Status("faulted");
-    } finally {
-        setBusyH2(false);
-    }
+        try {
+            setBusyH2(true);
+            setCpCmd2("stop");
+            await sendCpCommand("stop");
+        } catch (e) {
+            console.error(e);
+            setH2Status("faulted");
+        } finally {
+            setBusyH2(false);
+        }
     };
 
     const hasStation = !!stationId;
@@ -614,7 +612,8 @@ export default function Head1() {
                             aria-label="submit"
                             title="submit"
                         >
-                            submit
+                            {/* submit */}
+                            {saving ? "send..." : "submit"}
                         </button>
                     </div>
 
