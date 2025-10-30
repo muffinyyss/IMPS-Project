@@ -5403,6 +5403,102 @@ async def setting_plc(payload: PLCCPCommand):
         "data": msg,
     }
 
+class PLCH2MaxSetting(BaseModel):
+    station_id: str
+    dynamic_max_current2: float   # A
+    dynamic_max_power2: float     # kW (จาก front)
+
+
+@app.post("/setting/PLC/MAXH2")
+async def setting_plc(payload: PLCH2MaxSetting):
+    now_iso = datetime.now().isoformat()
+
+    # log ฝั่งเซิร์ฟเวอร์
+    print(f"[{now_iso}] รับค่าจาก Front:")
+    print(f"  station_id = {payload.station_id}")
+    print(f"  dynamic_max_current2 = {payload.dynamic_max_current2} A")
+    print(f"  dynamic_max_power2 = {payload.dynamic_max_power2} kW")
+    # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
+    msg = {
+        "station_id": payload.station_id,
+        "dynamic_max_current2": payload.dynamic_max_current2,
+        "dynamic_max_power2": payload.dynamic_max_power2,
+        "timestamp": now_iso,
+        "source": "fastapi/setting_plc"
+    }
+    payload_str = json.dumps(msg, ensure_ascii=False)
+
+    # ส่งขึ้น MQTT (QoS 1, ไม่ retain)
+    try:
+        pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
+        # รอให้ส่งเสร็จแบบสั้น ๆ (ถ้าต้องการความชัวร์)
+        pub_result.wait_for_publish(timeout=2.0)
+        published = pub_result.is_published()
+        rc = pub_result.rc
+        print(f"[MQTT] publish rc={rc}, published={published}, topic={MQTT_TOPIC}")
+    except Exception as e:
+        print(f"[MQTT] publish error: {e}")
+        published = False
+
+    # ตอบกลับ frontend
+    return {
+        "ok": True,
+        "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
+        "timestamp": now_iso,
+        "mqtt": {
+            "broker": f"{BROKER_HOST}:{BROKER_PORT}",
+            "topic": MQTT_TOPIC,
+            "published": bool(published),
+        },
+        "data": msg,
+    }
+
+class PLCH2CPCommand(BaseModel):
+    station_id: str
+    cp_status2: Literal["start", "stop"]
+
+@app.post("/setting/PLC/CPH2")
+async def setting_plc(payload: PLCH2CPCommand):
+    now_iso = datetime.now().isoformat()
+
+    # log ฝั่งเซิร์ฟเวอร์
+    print(f"[{now_iso}] รับค่าจาก Front:")
+    print(f"  station_id = {payload.station_id}")
+    print(f"  cp_status2 = {payload.cp_status2}")
+    # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
+    msg = {
+        "station_id": payload.station_id,
+        "cp_status2": payload.cp_status2,
+        "timestamp": now_iso,
+        "source": "fastapi/setting_plc"
+    }
+    payload_str = json.dumps(msg, ensure_ascii=False)
+
+    # ส่งขึ้น MQTT (QoS 1, ไม่ retain)
+    try:
+        pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
+        # รอให้ส่งเสร็จแบบสั้น ๆ (ถ้าต้องการความชัวร์)
+        pub_result.wait_for_publish(timeout=2.0)
+        published = pub_result.is_published()
+        rc = pub_result.rc
+        print(f"[MQTT] publish rc={rc}, published={published}, topic={MQTT_TOPIC}")
+    except Exception as e:
+        print(f"[MQTT] publish error: {e}")
+        published = False
+
+    # ตอบกลับ frontend
+    return {
+        "ok": True,
+        "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
+        "timestamp": now_iso,
+        "mqtt": {
+            "broker": f"{BROKER_HOST}:{BROKER_PORT}",
+            "topic": MQTT_TOPIC,
+            "published": bool(published),
+        },
+        "data": msg,
+    }
+
 # ----------------------------------------------- CBM 
 def get_cbm_collection_for(station_id: str):
     # กันชื่อคอลเลกชันแปลก ๆ / injection: อนุญาต a-z A-Z 0-9 _ -
