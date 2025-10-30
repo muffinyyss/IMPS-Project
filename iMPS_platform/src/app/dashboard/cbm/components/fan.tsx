@@ -118,7 +118,7 @@ function FanTile({ name, rpm, active, maxRpm = 5000 }: FanItem) {
             <span className={`tw-inline-block tw-h-2 tw-w-2 tw-rounded-full ${tone.dot}`} />
             <span className="tw-text-[11px] tw-text-blue-gray-600">{tone.pct}%</span>
           </div>
-          <span className={`tw-text-[10px] tw-rounded-full tw-px-2 tw-py-[3px] ${tone.chip}`}>
+          <span className={`tw-text-[10px] tw-rounded-full tw-mt-2 tw-px-2 tw-py-[3px] ${tone.chip}`}>
             {tone.label}
           </span>
         </div>
