@@ -3,7 +3,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+
 import CMForm from "@/app/dashboard/test-report/ac/input_ac/checkList"; // ✅ import ตรง
 
 import {
@@ -101,31 +101,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     }
   }
 
-  // function resolveFileHref(v: any, apiBase: string) {
-  //   if (!v) return "";
-  //   // ถ้าเป็น object เช่น { url: "..." }
-  //   if (typeof v === "object") {
-  //     const c = v.url ?? v.href ?? v.link ?? "";
-  //     return resolveFileHref(c, apiBase);
-  //   }
-  //   const s = String(v).trim();
-  //   if (!s) return "";
-
-  //   // ถ้าเป็น absolute URL อยู่แล้ว ก็ใช้ได้เลย
-  //   try {
-  //     const u = new URL(s);
-  //     return u.toString();
-  //   } catch { /* not absolute */ }
-
-  //   // ถ้าเป็น path เช่น /files/<id> → เติม apiBase
-  //   if (s.startsWith("/")) return `${apiBase}${s}`;
-
-  //   // ถ้าเป็นแค่ id (เช่น GridFS id) → สร้างเป็น /files/<id>
-  //   if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
-
-  //   // อื่น ๆ: ลองเติม apiBase เผื่อเป็น path แบบไม่ขึ้นต้นด้วย /
-  //   return `${apiBase}/${s}`;
-  // }
 
   function resolveFileHref(v: any, apiBase: string) {
     if (!v) return "";
@@ -154,8 +129,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       };
 
       const [cmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL("/cmreport/list"), fetchOpts),
-        fetch(makeURL("/cmurl/list"), fetchOpts),
+        fetch(makeURL("/acreport/list"), fetchOpts),
+        fetch(makeURL("/acurl/list"), fetchOpts),
       ]);
 
       let cmItems: any[] = [];
@@ -174,7 +149,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const hasStatus = it?.status != null || it?.job?.status != null;
         if (!hasStatus) return true;
         const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
-        return s === "DC";
+        return s === "AC";
       };
 
       cmItems = cmItems.filter(isAC);
@@ -246,19 +221,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         return da < db ? 1 : da > db ? -1 : 0;
       });
 
-      // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
-      // if (!allRows.length) {
-      //   const res2 = await fetch(`${apiBase}/cmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
-      //   if (res2.ok) {
-      //     const j = await res2.json();
-      //     const iso = j?.cm_date ?? "";
-      //     const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-      //     setData(rows);
-      //     return;
-      //   }
-      //   setData([...AppDataTable] as TData[]);
-      //   return;
-      // }
       if (!allRows.length) { setData([]); return; }
 
       setData(allRows);
@@ -420,7 +382,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       fd.append("reportDate", reportDate);
       pendingFiles.forEach((f) => fd.append("files", f));
 
-      const res = await fetch(`${apiBase}/cmurl/upload-files`, {
+      const res = await fetch(`${apiBase}/acurl/upload-files`, {
         method: "POST",
         body: fd,
         // ถ้าใช้ cookie httpOnly: เปิดบรรทัดนี้แทน header Authorization
@@ -488,10 +450,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-3 md:tw-!px-4 tw-!py-3 md:tw-!py-4 tw-mb-6">
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
-              Corrective Maintenance Report
+              Test Report (AC Charger)
             </Typography>
             <Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-normal tw-mt-1 tw-text-sm md:tw-text-[15px]">
-              ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (CM Report)
+              ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (Test Report)
             </Typography>
           </div>
 
@@ -672,7 +634,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       {/* ⬇️ วาง Dialog นอกร่าง Card แต่ยังอยู่ใน component */}
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
         <DialogHeader className="tw-text-base sm:tw-text-lg">
-          เลือกวันที่รายงาน (CM Report)
+          เลือกวันที่รายงาน (AC Test Report)
         </DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">

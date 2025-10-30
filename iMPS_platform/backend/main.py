@@ -82,6 +82,9 @@ CBBOXPMUrlDB = client["CBBOXPMReportURL"]
 DCTestReportDB = client["DCTestReport"]
 DCUrlDB = client["DCUrl"]
 
+ACTestReportDB = client["ACTestReport"]
+ACUrlDB = client["ACUrl"]
+
 stationPMReportDB = client["stationPMReport"]
 stationPMUrlDB = client["stationPMReportURL"]
 
@@ -4717,6 +4720,417 @@ async def dcreport_submit(body: DCSubmitIn, current: UserClaims = Depends(get_cu
     res = await coll.insert_one(doc)
     return {"ok": True, "report_id": str(res.inserted_id)}
 
+#---------------------------------------------------------------------- Test Report (AC)
+def get_ac_testreport_collection_for(station_id: str):
+    _validate_station_id(station_id)
+    coll = ACTestReportDB.get_collection(str(station_id))
+    return coll
+
+def get_acurl_coll_upload(station_id: str):
+    _validate_station_id(station_id)
+    coll = ACUrlDB.get_collection(str(station_id))
+    return coll
+
+@app.get("/actestreport/list")
+async def actestreport_list(
+    station_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+):
+    coll = get_ac_testreport_collection_for(station_id)
+    skip = (page - 1) * pageSize
+
+    cursor = coll.find({}, {"_id": 1, "inspection_date": 1, "createdAt": 1}).sort(
+        [("createdAt", -1), ("_id", -1)]
+    ).skip(skip).limit(pageSize)
+    items_raw = await cursor.to_list(length=pageSize)
+    total = await coll.count_documents({})
+
+    # --- ดึงไฟล์จาก PMReportURL โดย map ด้วย pm_date (string) ---
+    ac_dates = [it.get("inspection_date") for it in items_raw if it.get("inspection_date")]
+    urls_coll = get_acurl_coll_upload(station_id)
+    url_by_day: dict[str, str] = {}
+
+    if ac_dates:
+        ucur = urls_coll.find({"inspection_date": {"$in": ac_dates}}, {"inspection_date": 1, "urls": 1})
+        url_docs = await ucur.to_list(length=10_000)
+        for u in url_docs:
+            day = u.get("inspection_date")
+            first_url = (u.get("urls") or [None])[0]
+            if day and first_url and day not in url_by_day:
+                url_by_day[day] = first_url
+
+    items = [{
+        "id": str(it["_id"]),
+        "inspection_date": it.get("inspection_date"),
+        "createdAt": _ensure_utc_iso(it.get("createdAt")),
+        "file_url": url_by_day.get(it.get("inspection_date") or "", ""),
+    } for it in items_raw]
+
+    ac_date_arr = [it.get("inspection_date") for it in items_raw if it.get("inspection_date")]
+    # status_arr = [it.get("status") for it in items_raw if it.get("status")]
+    return {"items": items, "inspection_date": ac_date_arr, "page": page, "pageSize": pageSize, "total": total}
+
+# ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
+UPLOADS_ROOT = os.getenv("UPLOADS_ROOT", "./uploads")
+os.makedirs(UPLOADS_ROOT, exist_ok=True)
+
+# เสิร์ฟไฟล์คืนให้ Frontend ผ่าน /uploads/...
+app.mount("/uploads", StaticFiles(directory=UPLOADS_ROOT, html=False), name="uploads")
+
+# ALLOWED_EXTS = {"jpg","jpeg","png","webp","gif"}
+# MAX_FILE_MB = 10
+
+def _safe_name(name: str) -> str:
+    # กัน path traversal และอักขระแปลก ๆ
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+    return base[:120] or secrets.token_hex(4)
+
+def _ext(fname: str) -> str:
+    return (fname.rsplit(".",1)[-1].lower() if "." in fname else "")
+
+# ---- config ไฟล์/อัปโหลด (ถ้ายังไม่มีให้วางไว้ด้านบน) ----
+ALLOWED_IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "gif"}
+MAX_IMAGE_FILE_MB = 10
+
+PHOTO_GROUP_KEYS = [
+    "nameplate",       # index 0
+    "charger",         # index 1
+    "circuit_breaker", # index 2
+    "rcd",             # index 3
+    "gun1",            # index 4
+    "gun2",            # index 5
+]
+
+def _key_for_index(i: int) -> str:
+    return PHOTO_GROUP_KEYS[i] if 0 <= i < len(PHOTO_GROUP_KEYS) else f"extra{i-5}"
+
+@app.post("/actestreport/{report_id}/photos")
+async def ac_testreport_upload_photos(
+    report_id: str,
+    station_id: str = Form(...),
+    item_index: int = Form(...),               # <<-- เปลี่ยนจาก group → index
+    files: list[UploadFile] = File(...),
+    remark: str | None = Form(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    # auth
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    # รายงานต้องอยู่ในสถานีนี้
+    coll = get_ac_testreport_collection_for(station_id)
+    from bson import ObjectId
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    doc = await coll.find_one({"_id": oid}, {"_id": 1, "station_id": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if doc.get("station_id") != station_id:
+        raise HTTPException(status_code=400, detail="station_id mismatch")
+
+    # แปลง index → ชื่อคีย์โฟลเดอร์/คีย์ในเอกสาร
+    key = _key_for_index(item_index)  # e.g. nameplate/charger/.../extra1
+
+    # โฟลเดอร์ปลายทาง
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "actest" / station_id / report_id / key
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    for f in files:
+        ext = (f.filename.rsplit(".", 1)[-1].lower() if "." in (f.filename or "") else "")
+        if ext not in ALLOWED_IMAGE_EXTS:
+            raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
+
+        data = await f.read()
+        if len(data) > MAX_IMAGE_FILE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_IMAGE_FILE_MB} MB)")
+
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        path = dest_dir / fname
+        with open(path, "wb") as out:
+            out.write(data)
+
+        url_path = f"/uploads/actest/{station_id}/{report_id}/{key}/{fname}"
+        saved.append({
+            "filename": fname,
+            "size": len(data),
+            "url": url_path,
+            "remark": remark or "",
+            "uploadedAt": datetime.now(timezone.utc),
+            "index": item_index,          # เก็บ index เผื่ออ้างอิงกลับ
+        })
+
+    # อัปเดตเอกสารรายงาน: push ลง photos.<key>
+    await coll.update_one(
+        {"_id": oid},
+        {"$push": {f"photos.{key}": {"$each": saved}}, "$set": {"updatedAt": datetime.now(timezone.utc)}}
+    )
+
+    return {"ok": True, "count": len(saved), "key": key, "files": saved}
+
+
+@app.post("/actestreport/{report_id}/finalize")
+async def ac_testreport_finalize(
+    report_id: str,
+    station_id: str = Form(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_ac_testreport_collection_for(station_id)
+    from bson import ObjectId
+    oid = ObjectId(report_id)
+    res = await coll.update_one(
+        {"_id": oid},
+        {"$set": {"status": "submitted", "submittedAt": datetime.now(timezone.utc)}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"ok": True}
+
+@app.post("/acurl/upload-files", status_code=201)
+async def acurl_upload_files(
+    station_id: str = Form(...),
+    reportDate: str = Form(...),                 # "YYYY-MM-DD" หรือ ISO
+    files: list[UploadFile] = File(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    # auth
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    # ตรวจ/เตรียมคอลเลกชัน
+    coll = get_acurl_coll_upload(station_id)
+
+    # parse วันที่เป็น UTC datetime (มีฟังก์ชันอยู่แล้ว)
+    ac_date = normalize_pm_date(reportDate)
+
+    # โฟลเดอร์ปลายทาง: /uploads/pmurl/<station_id>/<YYYY-MM-DD>/
+    # subdir = report_dt_utc.astimezone(th_tz).date().isoformat()
+    subdir = ac_date
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "acurl" / station_id / subdir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    urls = []
+    metas = []
+    total_size = 0
+
+    for f in files:
+        ext = (f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else "")
+        if ext not in ALLOWED_EXTS or ext != "pdf":
+            raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
+
+        data = await f.read()
+        total_size += len(data)
+        if len(data) > MAX_FILE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+        safe = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
+        dest = dest_dir / safe
+        with open(dest, "wb") as out:
+            out.write(data)
+
+        url = f"/uploads/acurl/{station_id}/{subdir}/{safe}"   # ← จะเสิร์ฟได้จาก StaticFiles ที่ mount ไว้แล้ว
+        urls.append(url)
+        metas.append({"name": f.filename, "size": len(data)})
+
+    now = datetime.now(timezone.utc)
+    doc = {
+        "station": station_id,
+        "ac_date": ac_date,   
+        "urls": urls,
+        "meta": {"files": metas},
+        "source": "upload-files",
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    res = await coll.insert_one(doc)
+
+    return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls}
+
+@app.get("/acurl/list")
+async def acurl_list(
+    station_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+):
+    """
+    ดึงรายการไฟล์ PM (PDF) ที่อัปโหลดไว้ต่อสถานี จาก PMUrlDB/<station_id>
+    - รองรับทั้งเอกสารที่เก็บ pm_date (string 'YYYY-MM-DD') และ reportDate (Date/ISO)
+    - เรียงจากใหม่ไปเก่า (createdAt desc, _id desc)
+    - รูปแบบผลลัพธ์ให้เหมือน /pmreport/list (มี file_url สำหรับลิงก์ตัวแรก)
+    """
+    coll = get_acurl_coll_upload(station_id)
+    skip = (page - 1) * pageSize
+
+    # ดึงเฉพาะฟิลด์ที่จำเป็น
+    cursor = coll.find(
+        {},
+        {"_id": 1, "ac_date": 1, "reportDate": 1, "urls": 1, "createdAt": 1}
+    ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+
+    items_raw = await cursor.to_list(length=pageSize)
+    total = await coll.count_documents({})
+
+    def _ac_date_from(doc: dict) -> str | None:
+        """
+        แปลงวันที่ในเอกสารให้ได้ string 'YYYY-MM-DD'
+        - ถ้ามี pm_date (string) → คืนค่านั้น
+        - ถ้ามี reportDate (datetime/string) → แปลงเป็นวันไทย แล้ว .date().isoformat()
+        """
+        # รุ่นใหม่: เก็บเป็น pm_date (string)
+        s = doc.get("ac_date")
+        if isinstance(s, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
+            return s
+
+        # รุ่นเก่า: เก็บเป็น reportDate (Date/ISO)
+        rd = doc.get("reportDate")
+        if isinstance(rd, datetime):
+            return rd.astimezone(th_tz).date().isoformat()
+        if isinstance(rd, str):
+            try:
+                dt = datetime.fromisoformat(rd.replace("Z", "+00:00"))
+            except Exception:
+                # เผื่อไม่มีโซนเวลา → ถือเป็นเวลาไทย
+                try:
+                    dt = datetime.fromisoformat(rd).replace(tzinfo=th_tz)
+                except Exception:
+                    return None
+            return dt.astimezone(th_tz).date().isoformat()
+
+        return None
+
+    items = []
+    ac_date_arr = []
+
+    for it in items_raw:
+        ac_date_str = _ac_date_from(it)
+        if ac_date_str:
+            ac_date_arr.append(ac_date_str)
+
+        urls = it.get("urls") or []
+        first_url = urls[0] if urls else ""
+
+        items.append({
+            "id": str(it["_id"]),
+            "ac_date": ac_date_str,                         # 'YYYY-MM-DD' | None
+            "createdAt": _ensure_utc_iso(it.get("createdAt")),
+            "file_url": first_url,                          # ไฟล์แรก (ไว้ให้ปุ่มดาวน์โหลด)
+            "urls": urls,                                   # เผื่อฟรอนต์อยากแสดงทั้งหมด
+        })
+
+    return {
+        "items": items,
+        "ac_date": [d for d in ac_date_arr if d],          # ให้เหมือน /pmreport/list
+        "page": page,
+        "pageSize": pageSize,
+        "total": total,
+    }
+
+
+
+# class ACEquipmentBlock(BaseModel):
+#     manufacturers: List[str] = []
+#     models: List[str] = []
+#     serialNumbers: List[str] = []
+
+# ACSymbolLiteral = Literal["", "pass", "notPass", "notTest"]
+# ACPhaseLiteral  = Literal["", "L1L2L3", "L3L2L1"]
+
+# class ACPersonSig(BaseModel):
+#     name: str = ""
+#     signature: str = ""   # เก็บ path/ข้อมูลลายเซ็น (หรือข้อความ)
+#     date: str = ""        # "YYYY-MM-DD"
+#     company: str = ""
+
+# class ACResponsibilityBlock(BaseModel):
+#     performed: PersonSig = PersonSig()
+#     approved:  PersonSig = PersonSig()
+#     witnessed: PersonSig = PersonSig()
+
+# class ACSignatureBlock(BaseModel):
+#     responsibility: ResponsibilityBlock = ResponsibilityBlock()
+
+class ACSubmitIn(BaseModel):
+    station_id: str
+    issue_id: Optional[str] = None 
+    job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
+    head: Dict[str,Any]
+    inspection_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO; ถ้าไม่ส่งมาจะ fallback เป็น job.found_date
+    equipment: Optional[EquipmentBlock] = None
+    electrical_safety: Dict[str, Any] = Field(default_factory=dict)
+    charger_safety: Dict[str, Any] = Field(default_factory=dict)
+    remarks: Dict[str, Any] = Field(default_factory=dict)
+    symbol: Optional[SymbolLiteral] = None
+    phaseSequence: Optional[PhaseLiteral] = None
+    signature: Optional[SignatureBlock] = None 
+
+async def _ensure_dc_indexes(coll):
+    try:
+        await coll.create_index([("createdAt", -1), ("_id", -1)])
+        # ถ้าอยากกันซ้ำเลขใบงานในแต่ละสถานี: เปิด unique issue_id ก็ได้ (ถ้าแน่ใจว่า unique)
+        # await coll.create_index("issue_id", unique=True, sparse=True)
+    except Exception:
+        pass
+
+def _normalize_tick_to_pass(obj):
+    if isinstance(obj, dict):
+        return {k: _normalize_tick_to_pass(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_normalize_tick_to_pass(v) for v in obj]
+    if isinstance(obj, str):
+        return "pass" if obj == "✓" else obj
+    return obj
+
+
+@app.post("/acreport/submit")
+async def acreport_submit(body: ACSubmitIn, current: UserClaims = Depends(get_current_user)):
+    station_id = body.station_id.strip()
+    # Auth: admin ผ่านหมด, คนทั่วไปต้องมีสิทธิ์ใน station นี้
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_ac_testreport_collection_for(station_id)
+    await _ensure_dc_indexes(coll)
+
+    # กำหนด cm_date (string 'YYYY-MM-DD') ให้สอดคล้อง /cmreport/list
+    # ถ้าไม่ส่งมา → ใช้ job.found_date → ถ้าไม่มีอีก → ใช้วันนี้ (เวลาไทย)
+    ac_date_src = body.inspection_date or body.head.get("inspection_date")
+    if ac_date_src:
+        ac_date = normalize_pm_date(ac_date_src)   # คืน "YYYY-MM-DD"
+    else:
+        ac_date = datetime.now(th_tz).date().isoformat()
+
+    issue_id = (body.head or {}).get("issue_id")  or (body.job or {}).get("issue_id") 
+
+    electrical_safety = _normalize_tick_to_pass(body.electrical_safety or {})
+
+    charger_safety = _normalize_tick_to_pass(body.charger_safety or {})
+    doc = {
+        "station_id": station_id,
+        "issue_id": issue_id,
+        "inspection_date": ac_date,
+        "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
+        "head": body.head,
+        "equipment": body.equipment.dict() if body.equipment else {"manufacturers": [], "models": [], "serialNumbers": []},
+        "electrical_safety": electrical_safety,
+        "charger_safety": charger_safety,
+        "remarks": body.remarks or {},
+        "symbol": body.symbol,
+        "phaseSequence": body.phaseSequence,
+        "signature": body.signature.dict() if body.signature else None,
+        "createdAt": datetime.now(timezone.utc),
+        "updatedAt": datetime.now(timezone.utc),
+        "photos": {},                 # รูปจะถูกเติมภายหลังที่ /cmreport/{report_id}/photos
+    }
+
+    res = await coll.insert_one(doc)
+    return {"ok": True, "report_id": str(res.inserted_id)}
 
 
 # ----------------------------------------------------------------------- device page

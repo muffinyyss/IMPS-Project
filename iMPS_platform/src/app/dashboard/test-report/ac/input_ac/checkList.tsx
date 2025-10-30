@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Button, Input } from "@material-tailwind/react";
+import { Button, Input, Textarea } from "@material-tailwind/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 // Import the new components
