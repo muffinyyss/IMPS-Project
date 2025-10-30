@@ -204,18 +204,6 @@ export default function SalesPage() {
         </div>
 
         <div className="lg:tw-col-span-6 tw-col-span-12">
-          <PowerModulesCard
-            updatedAt="10:32"
-            items={[
-              { id: "pm1", name: "Power module 1 Temperature", temp: 38, target: 60 },
-              { id: "pm2", name: "Power module 2 Temperature", temp: 47, target: 60 },
-              { id: "pm3", name: "Power module 3 Temperature", temp: 41, target: 60 },
-              { id: "pm4", name: "Power module 4 Temperature", temp: 52, target: 60 },
-              { id: "pm5", name: "Power module 5 Temperature", temp: 44, target: 60 },
-            ]}
-          />
-        </div>
-        <div className="lg:tw-col-span-6 tw-col-span-12">
           <DCContactorsTimesCard
             title="DC Contactor"
             updatedAt="10:32"
@@ -228,6 +216,31 @@ export default function SalesPage() {
               { id: "dc4", name: "DC Contactor No.4", times: data?.dcContNo4Times, mode: data?.dcContNo4Mode },
               { id: "dc5", name: "DC Contactor No.5", times: data?.dcContNo5Times, mode: data?.dcContNo5Mode },
               { id: "dc6", name: "DC Contactor No.6", times: data?.dcContNo6Times, mode: data?.dcContNo6Mode },
+            ]}
+          />
+        </div>
+
+        <div className="lg:tw-col-span-6 tw-col-span-12">
+          <EnergyPowerCard
+            title="Energy Power (kWh)"
+            updatedAt="10:32"
+            /* mapping ตามที่กำหนด: dikW -> No.1, diKW -> No.2 */
+            energy1={data?.dikW}
+            energy2={data?.diKW}
+            unit="kWh"
+            decimals={0} // เป็น int ถ้าจะโชว์ทศนิยมเปลี่ยนเป็น 1/2 ได้
+          />
+        </div>
+
+        <div className="lg:tw-col-span-12 tw-col-span-12">
+          <PowerModulesCard
+            updatedAt="10:32"
+            items={[
+              { id: "pm1", name: "Power module 1 Temperature", temp: 38, target: 60 },
+              { id: "pm2", name: "Power module 2 Temperature", temp: 47, target: 60 },
+              { id: "pm3", name: "Power module 3 Temperature", temp: 41, target: 60 },
+              { id: "pm4", name: "Power module 4 Temperature", temp: 52, target: 60 },
+              { id: "pm5", name: "Power module 5 Temperature", temp: 44, target: 60 },
             ]}
           />
         </div>
@@ -246,18 +259,6 @@ export default function SalesPage() {
               { id: "fan7", name: "FAN7", rpm: null, active: false },
               { id: "fan8", name: "FAN8", rpm: 3600, active: true },
             ]}
-          />
-        </div>
-
-        <div className="lg:tw-col-span-6 tw-col-span-12">
-          <EnergyPowerCard
-            title="Energy Power (kWh)"
-            updatedAt="10:32"
-            /* mapping ตามที่กำหนด: dikW -> No.1, diKW -> No.2 */
-            energy1={data?.dikW}
-            energy2={data?.diKW}
-            unit="kWh"
-            decimals={0} // เป็น int ถ้าจะโชว์ทศนิยมเปลี่ยนเป็น 1/2 ได้
           />
         </div>
       </div>

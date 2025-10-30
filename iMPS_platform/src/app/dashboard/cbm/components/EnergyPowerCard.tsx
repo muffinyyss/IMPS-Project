@@ -63,7 +63,7 @@ const EnergyPowerCard: React.FC<EnergyPowerCardProps> = ({
     decimals = 0, // ค่าเป็น int ตามสเปค
 }) => {
     return (
-        <section className="tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-space-y-4">
+        <section className="tw-h-full tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-space-y-4">
             <div className="tw-flex tw-items-baseline tw-justify-between">
                 <Typography variant="h6" color="blue-gray" className="tw-leading-tight">
                     {title}
