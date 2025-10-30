@@ -5328,7 +5328,7 @@ async def setting_plc(payload: PLCMaxSetting):
         "dynamic_max_current1": payload.dynamic_max_current1,
         "dynamic_max_power1": payload.dynamic_max_power1,
         "timestamp": now_iso,
-        "source": "fastapi/setting_plc"
+        # "source": "fastapi/setting_plc"
     }
     payload_str = json.dumps(msg, ensure_ascii=False)
 
@@ -5374,7 +5374,7 @@ async def setting_plc(payload: PLCCPCommand):
         "station_id": payload.station_id,
         "cp_status1": payload.cp_status1,
         "timestamp": now_iso,
-        "source": "fastapi/setting_plc"
+        # "source": "fastapi/setting_plc"
     }
     payload_str = json.dumps(msg, ensure_ascii=False)
 
@@ -5424,7 +5424,7 @@ async def setting_plc(payload: PLCH2MaxSetting):
         "dynamic_max_current2": payload.dynamic_max_current2,
         "dynamic_max_power2": payload.dynamic_max_power2,
         "timestamp": now_iso,
-        "source": "fastapi/setting_plc"
+        # "source": "fastapi/setting_plc"
     }
     payload_str = json.dumps(msg, ensure_ascii=False)
 
@@ -5470,7 +5470,7 @@ async def setting_plc(payload: PLCH2CPCommand):
         "station_id": payload.station_id,
         "cp_status2": payload.cp_status2,
         "timestamp": now_iso,
-        "source": "fastapi/setting_plc"
+        # "source": "fastapi/setting_plc"
     }
     payload_str = json.dumps(msg, ensure_ascii=False)
 
