@@ -8,7 +8,10 @@ import PowerModulesCard from "@/app/dashboard/cbm/components/powermodule";
 import FansCard from "@/app/dashboard/cbm/components/fan";
 import PLCCard from "@/app/dashboard/cbm/components/plc";
 import ChargingGunsCard from "@/app/dashboard/cbm/components/chargingGuns";
-import InsulationAndContactorStatusCard from "@/app/dashboard/cbm/components/InsulationAndContactorStatusCard"; // 👈 เพิ่ม import
+import InsuContactorStatusCard from "@/app/dashboard/cbm/components/InsuContactorStatusCard";
+import EnergyPowerCard from "@/app/dashboard/cbm/components/EnergyPowerCard";
+import DCContactorsTimesCard from "@/app/dashboard/cbm/components/DCContactorsCard";
+import ACMagneticContactorsCard from "@/app/dashboard/cbm/components/ACMagneticContactorsCard";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -171,18 +174,65 @@ export default function SalesPage() {
 
         {/* แถวถัดไป: สถานะไฟฟ้า + Power Modules แบ่ง 6/6 */}
         <div className="lg:tw-col-span-6 tw-col-span-12">
-          <InsulationAndContactorStatusCard
+          <InsuContactorStatusCard
+            title="Insulation Status"
             updatedAt="10:32"
             items={[
-              { id: "i1", name: "Insulation monitoring No.1 (Active/Inactive)", value: "Active", keyName: "InsuFault1" },
-              { id: "i2", name: "Insulation monitoring No.2 (Active/Inactive)", value: "Inactive", keyName: "InsuFault2" },
-              { id: "c1", name: "AC Magnetic Contactor Head 1 Status", value: "Closed", keyName: "ACMag" },
-              { id: "c2", name: "AC Magnetic Contactor Head 2 Status", value: "Open", keyName: "ACMag" },
+              {
+                id: "insu1",
+                name: "Insulation monitoring No.1 (Active/Inactive)",
+                value: "Active", // หรือ true / "Closed" ก็ได้
+              },
+              {
+                id: "insu2",
+                name: "Insulation monitoring No.2 (Active/Inactive)",
+                value: "Inactive", // หรือ false / "Open"
+              },
+            ]}
+          />
+        </div>
+
+        {/* การ์ด AC Magnetic Contactor ใหม่ */}
+        <div className="lg:tw-col-span-6 tw-col-span-12">
+          <ACMagneticContactorsCard
+            updatedAt="10:32"
+            items={[
+              { id: "ac1", name: "AC Magnetic Contactor Head 1 Status", value: "Closed" },  // หรือ true
+              { id: "ac2", name: "AC Magnetic Contactor Head 2 Status", value: "Open" },     // หรือ false
             ]}
           />
         </div>
 
         <div className="lg:tw-col-span-6 tw-col-span-12">
+          <DCContactorsTimesCard
+            title="DC Contactor"
+            updatedAt="10:32"
+            unit="Times"      // หรือ "ครั้ง"
+            decimals={0}
+            items={[
+              { id: "dc1", name: "DC Contactor No.1", times: data?.dcContNo1Times, mode: data?.dcContNo1Mode }, // mode: "NC"|"NO"
+              { id: "dc2", name: "DC Contactor No.2", times: data?.dcContNo2Times, mode: data?.dcContNo2Mode },
+              { id: "dc3", name: "DC Contactor No.3", times: data?.dcContNo3Times, mode: data?.dcContNo3Mode },
+              { id: "dc4", name: "DC Contactor No.4", times: data?.dcContNo4Times, mode: data?.dcContNo4Mode },
+              { id: "dc5", name: "DC Contactor No.5", times: data?.dcContNo5Times, mode: data?.dcContNo5Mode },
+              { id: "dc6", name: "DC Contactor No.6", times: data?.dcContNo6Times, mode: data?.dcContNo6Mode },
+            ]}
+          />
+        </div>
+
+        <div className="lg:tw-col-span-6 tw-col-span-12">
+          <EnergyPowerCard
+            title="Energy Power (kWh)"
+            updatedAt="10:32"
+            /* mapping ตามที่กำหนด: dikW -> No.1, diKW -> No.2 */
+            energy1={data?.dikW}
+            energy2={data?.diKW}
+            unit="kWh"
+            decimals={0} // เป็น int ถ้าจะโชว์ทศนิยมเปลี่ยนเป็น 1/2 ได้
+          />
+        </div>
+
+        <div className="lg:tw-col-span-12 tw-col-span-12">
           <PowerModulesCard
             updatedAt="10:32"
             items={[

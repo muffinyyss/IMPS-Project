@@ -103,7 +103,7 @@ function TempTile({ name, temp, target = 60 }: { name: string; temp: number; tar
             <span className={`tw-inline-block tw-h-2 tw-w-2 tw-rounded-full ${tone.dot}`} />
             <span className="tw-text-[11px] tw-text-blue-gray-600">{pct}%</span>
           </div>
-          <span className={`tw-text-[10px] tw-rounded-full tw-px-2 tw-py-[3px] ${tone.chip}`}>
+          <span className={`tw-text-[10px] tw-mt-2 tw-rounded-full tw-px-2 tw-py-[3px] ${tone.chip}`}>
             {tone.label}
           </span>
         </div>
