@@ -593,12 +593,12 @@ export default function DCForm() {
               <ACTest2Grid onResultsChange={setDCChargerTest} />
             </div>
 
-            <div className="">
+            <div className="tw-mb-3">
               <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
                 Remark
               </span>
             </div>
-            <div className="">
+            <div className="tw-space-y-2">
               <Textarea
                 value={testRemark}
                 onChange={(e) => setTestRemark(e.target.value)}
