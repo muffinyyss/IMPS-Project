@@ -4,22 +4,18 @@ import React, { useState, useEffect } from "react";
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-// Import the new components
+// components
 import CMFormHeader from "@/app/dashboard/test-report/components/dc/DCFormHeader";
-// import CMFormHeader1 from "@/app/dashboard/test-report/components/dc/DCFormHeader1";
 import DCFormMeta from "@/app/dashboard/test-report/components/dc/DCFormMeta";
 import EquipmentSection from "@/app/dashboard/test-report/components/dc/DCEquipmentSection";
 import ACFormActions from "@/app/dashboard/test-report/components/dc/DCFormActions";
-// import DCTest1Grid from "@/app/dashboard/test-report/components/dc/DCTest1Grid";
 import DCTest1Grid, { mapToElectricalPayload, type TestResults } from "@/app/dashboard/test-report/components/dc/DCTest1Grid";
 import ACTest2Grid, { mapToChargerPayload, type TestCharger } from "@/app/dashboard/test-report/components/dc/DCTest2Grid";
 import ACPhotoSection from "@/app/dashboard/test-report/components/dc/DCPhotoSection";
-import ACSignatureSection from "@/app/dashboard/test-report/components/dc/DCSignatureSection";
 import ACSignatureSection1 from "@/app/dashboard/test-report/components/dc/DCSignatureSection1";
 
 type Severity = "" | "Low" | "Medium" | "High" | "Critical";
 type Status = "" | "DC" | "AC";
-
 type CorrectiveItem = {
   text: string;
   images: { file: File; url: string }[];
@@ -70,7 +66,6 @@ type EquipmentBlock = {
 
 type RepairOption = (typeof REPAIR_OPTIONS)[number];
 
-
 type SymbolPick = "pass" | "notPass" | "notTest" | "";
 type PhasePick = "L1L2L3" | "L3L2L1" | "";
 
@@ -79,18 +74,6 @@ type ResponsibilityData = {
   approved: { name: string; signature: string; date: string; company: string };
   witnessed: { name: string; signature: string; date: string; company: string };
 };
-
-const PHOTO_GROUP_KEYS = [
-  "nameplate",       // index 0
-  "charger",         // index 1
-  "circuit_breaker", // index 2
-  "rcd",             // index 3
-  "gun1",            // index 4
-  "gun2",            // index 5
-] as const;
-
-
-
 
 const REPAIR_OPTIONS = [
   "แก้ไขสำเร็จ",
@@ -274,9 +257,6 @@ export default function DCForm() {
       return { manufacturers: man, models: mod, serialNumbers: ser };
     });
 
-
-
-
   const onFinalSave = async () => {
     try {
       if (!stationId) {
@@ -320,7 +300,7 @@ export default function DCForm() {
       const electrical_safety = electricalTest.electricalSafety;
 
       const chargerTest = mapToChargerPayload(dcChargerTest);
-      const charger_safety = chargerTest.electricalSafety;
+      const charger_safety = chargerTest.ChargerSafety;
 
       // 1) สร้างรายงานหลัก
       // const payload = {
@@ -406,97 +386,8 @@ export default function DCForm() {
     }
   };
 
-  const onCancelLocal = () => {
-    const evt = new CustomEvent("dcform:cancel", { cancelable: true });
-    const wasPrevented = !window.dispatchEvent(evt); // false = มีคนเรียก preventDefault()
-    if (!wasPrevented) {
-      router.replace(LIST_ROUTE);
-    }
-  };
-
-  const handlePrint = () => window.print();
-
   /* -------------------- Helpers: ลดความซ้ำซ้อน -------------------- */
   type StringListKey = "equipment_list" | "preventive_action" | "reported_by";
-
-  const setStringItem = (key: StringListKey) => (i: number, val: string) =>
-    setJob((prev) => {
-      const list = [...prev[key]];
-      list[i] = val;
-      return { ...prev, [key]: list };
-    });
-
-  const addStringItem = (key: StringListKey) => () =>
-    setJob((prev) => ({ ...prev, [key]: [...prev[key], ""] }));
-
-  const removeStringItem = (key: StringListKey) => (i: number) =>
-    setJob((prev) => {
-      const list = [...prev[key]];
-      if (list.length <= 1) return { ...prev, [key]: [""] }; // อย่างน้อย 1 ช่อง
-      list.splice(i, 1);
-      return { ...prev, [key]: list };
-    });
-
-  const patchCorrective = (i: number, patch: Partial<CorrectiveItem>) =>
-    setJob((prev) => {
-      const list = [...prev.corrective_actions];
-      list[i] = { ...list[i], ...patch };
-      return { ...prev, corrective_actions: list };
-    });
-
-  const addCorrective = () =>
-    setJob((prev) => ({
-      ...prev,
-      corrective_actions: [
-        ...prev.corrective_actions,
-        { text: "", images: [] },
-      ],
-    }));
-
-  const removeCorrective = (i: number) =>
-    setJob((prev) => {
-      const list = [...prev.corrective_actions];
-      if (list.length <= 1)
-        return { ...prev, corrective_actions: [{ text: "", images: [] }] };
-      list.splice(i, 1);
-      return { ...prev, corrective_actions: list };
-    });
-
-  const addCorrectiveImages = (i: number, files: FileList | null) => {
-    if (!files?.length) return;
-    const imgs = Array.from(files).map((file) => ({
-      file,
-      url: URL.createObjectURL(file),
-    }));
-    const current = job.corrective_actions[i];
-    patchCorrective(i, { images: [...current.images, ...imgs] });
-  };
-
-  const removeCorrectiveImage = (i: number, j: number) => {
-    const imgs = [...job.corrective_actions[i].images];
-    const url = imgs[j]?.url;
-    if (url) URL.revokeObjectURL(url);
-    imgs.splice(j, 1);
-    patchCorrective(i, { images: imgs });
-  };
-
-  // Memoized handlers to prevent re-creating functions on every render
-  const handleRemarkChange = React.useCallback((key: string, value: string) => {
-    console.log("Remark changed:", key, value);
-  }, []);
-
-  const handlePFChange = React.useCallback((key: string, value: string) => {
-    console.log("PF changed:", key, value);
-  }, []);
-
-  /* ---------- renderers ---------- */
-  const renderMeasureGrid = (no: number) => {
-    return <div></div>;
-  };
-
-  const renderQuestionBlock = (q: any) => {
-    return <div></div>;
-  };
 
   type NextIssueIdParams = {
     latestId?: string | null; // รหัสล่าสุดของเดือนนั้น (ถ้ามี)
@@ -506,36 +397,6 @@ export default function DCForm() {
     start?: number; // เริ่มนับที่เลขไหน (เริ่มต้น 1)
   };
 
-  function makeNextIssueId({
-    latestId = null,
-    date = new Date(),
-    prefix = "EL",
-    pad = 2,
-    start = 1,
-  }: NextIssueIdParams = {}): string {
-    const d = typeof date === "string" ? new Date(date) : date;
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const base = `${prefix}-${y}-${m}`;
-
-    let seq = start;
-
-    if (latestId) {
-      // รองรับรูปแบบ EL-YYYY-MMNN...
-      const rx = new RegExp(`^${prefix}-(\\d{4})-(\\d{2})(\\d+)$`);
-      const m2 = latestId.match(rx);
-      if (m2) {
-        const [_, yy, mm, tail] = m2;
-        if (Number(yy) === y && mm === m) {
-          seq = Math.max(Number(tail) + 1, start);
-        }
-      }
-    }
-
-    const tail = String(seq).padStart(pad, "0");
-    return `${base}${tail}`;
-  }
-
   function localTodayISO(): string {
     const d = new Date();
     const y = d.getFullYear();
@@ -544,7 +405,7 @@ export default function DCForm() {
     return `${y}-${m}-${day}`;
   }
 
-  // ⭐ ดึง station_name จาก API แล้วอัปเดตช่อง "สถานที่"
+  // ดึง station_name จาก API แล้วอัปเดตช่อง "สถานที่"
   useEffect(() => {
     let alive = true;
     if (!stationId) return;
@@ -688,7 +549,10 @@ export default function DCForm() {
           if (e.key === "Enter") e.preventDefault();
         }}
       >
-        <div className="tw-mx-auto tw-max-w-4xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
+        <div className="tw-mx-auto tw-w-full tw-max-w-[1000px] lg:tw-max-w-[1100px] tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
+
+
+          {/* <div className="tw-mx-auto tw-max-w-4xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0"> */}
           {/* HEADER */}
           <CMFormHeader headerLabel="DC Report" />
 
@@ -715,8 +579,7 @@ export default function DCForm() {
             <div className="tw-space-y-4">
               <h3 className="tw-text-lg tw-font-semibold tw-text-blue-gray-800">
                 <span className="tw-underline">
-                  Testing Topics for Safety (Specifically Power Supply/Input
-                  Side)
+                  Testing Topics for Safety (Specifically Power Supply/Input Side)
                 </span>
               </h3>
               <DCTest1Grid onResultsChange={setDCTest1Results} />
@@ -730,55 +593,26 @@ export default function DCForm() {
               <ACTest2Grid onResultsChange={setDCChargerTest} />
             </div>
 
-            <div className="tw-mb-3">
+            <div className="">
               <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
                 Remark
               </span>
             </div>
-            <div className="tw-space-y-2">
+            <div className="">
               <Textarea
                 value={testRemark}
                 onChange={(e) => setTestRemark(e.target.value)}
                 className="!tw-border-gray-400"
                 containerProps={{ className: "!tw-min-w-0" }}
-              // placeholder=""
               />
             </div>
 
-            {/* Signature Section */}
-            {/* <div className="tw-space-y-4">
-              <ACSignatureSection1
-                // onRemarkChange={(v) => setSigRemark(v)}
-                onResponsibilityChange={(field, who, val) => {
-                  setSigResp(prev => ({
-                    ...prev,
-                    [who]: { ...prev[who], [field]: val }
-                  }));
-                }} />
-            </div> */}
-            {/* HEADER */}
-            {/* <CMFormHeader1 headerLabel="DC Report" /> */}
-
-            {/* META – การ์ดหัวเรื่อง */}
-            {/* <DCFormMeta
-              head={head} onHeadChange={onHeadChange}
-            /> */}
-
             <div className="tw-mb-3">
               <ACPhotoSection initialItems={photoItems}
-              onItemsChange={setPhotoItems}
-              title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)"
-            />
+                onItemsChange={setPhotoItems}
+                title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)"
+              />
             </div>
-            
-
-
-            {/* <ACPhotoSection initialItems={photoItems}
-              onItemsChange={setPhotoItems}
-              title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)"
-            /> */}
-
-
 
             <div className="tw-mb-3">
               <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
@@ -807,7 +641,7 @@ export default function DCForm() {
                     type="button"
                     onClick={() => handleSymbolChange('pass')}
                     className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
-                ${sigSymbol === 'pass'
+                      ${sigSymbol === 'pass'
                         ? 'tw-bg-green-600 tw-text-white tw-border-green-600'
                         : 'tw-bg-white tw-text-green-600 tw-border-green-600 hover:tw-bg-green-50'
                       }`}
@@ -833,7 +667,7 @@ export default function DCForm() {
                     type="button"
                     onClick={() => handleSymbolChange('notTest')}
                     className={`tw-px-4 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
-                ${sigSymbol === 'notTest'
+                      ${sigSymbol === 'notTest'
                         ? 'tw-bg-gray-600 tw-text-white tw-border-gray-600'
                         : 'tw-bg-white tw-text-gray-600 tw-border-gray-600 hover:tw-bg-gray-50'
                       }`}
@@ -854,7 +688,7 @@ export default function DCForm() {
                     type="button"
                     onClick={() => handlePhaseSequenceChange('L1L2L3')}
                     className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
-                ${sigPhase === 'L1L2L3'
+                      ${sigPhase === 'L1L2L3'
                         ? 'tw-bg-blue-600 tw-text-white tw-border-blue-600'
                         : 'tw-bg-white tw-text-blue-600 tw-border-blue-600 hover:tw-bg-blue-50'
                       }`}
@@ -867,7 +701,7 @@ export default function DCForm() {
                     type="button"
                     onClick={() => handlePhaseSequenceChange('L3L2L1')}
                     className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
-                ${sigPhase === 'L3L2L1'
+                      ${sigPhase === 'L3L2L1'
                         ? 'tw-bg-orange-600 tw-text-white tw-border-orange-600'
                         : 'tw-bg-white tw-text-orange-600 tw-border-orange-600 hover:tw-bg-orange-50'
                       }`}
