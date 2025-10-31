@@ -604,6 +604,7 @@ export default function DCForm() {
                 onChange={(e) => setTestRemark(e.target.value)}
                 className="!tw-border-gray-400"
                 containerProps={{ className: "!tw-min-w-0" }}
+
               />
             </div>
 
@@ -630,61 +631,89 @@ export default function DCForm() {
             </div>
 
             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
-              {/* Symbol Section */}
+              {/* Symbol (legend ขนาดเล็ก) */}
               <div>
-                <div className="tw-mb-3">
-                  <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Symbol :</span>
-                </div>
-                <div className="tw-flex tw-gap-3">
-                  {/* PASS Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleSymbolChange('pass')}
-                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
-                      ${sigSymbol === 'pass'
-                        ? 'tw-bg-green-600 tw-text-white tw-border-green-600'
-                        : 'tw-bg-white tw-text-green-600 tw-border-green-600 hover:tw-bg-green-50'
-                      }`}
-                  >
-                    PASS
-                  </button>
+                <div className="tw-flex tw-items-center tw-gap-3 tw-mb-2">
+                  <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Symbol</span>
+                  <span className="tw-font-semibold tw-text-base">:</span>
 
-                  {/* FAIL Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleSymbolChange('notPass')}
-                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
-                ${sigSymbol === 'notPass'
-                        ? 'tw-bg-red-600 tw-text-white tw-border-red-600'
-                        : 'tw-bg-white tw-text-red-600 tw-border-red-600 hover:tw-bg-red-50'
-                      }`}
-                  >
-                    FAIL
-                  </button>
+                  <div className="tw-flex tw-items-center tw-flex-wrap tw-gap-8">
+                    {/* ☑ PASS */}
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                      <span
+                        className="tw-inline-flex tw-items-center tw-justify-center tw-w-6 tw-h-6 tw-border-2 tw-border-black"
+                        aria-hidden="true"
+                      >
+                        <span className="tw-text-sm tw-leading-none">✓</span>
+                      </span>
+                      <span className="tw-text-sm tw-text-gray-800 tw-whitespace-nowrap">PASS</span>
+                    </div>
 
-                  {/* N/A Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleSymbolChange('notTest')}
-                    className={`tw-px-4 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
-                      ${sigSymbol === 'notTest'
-                        ? 'tw-bg-gray-600 tw-text-white tw-border-gray-600'
-                        : 'tw-bg-white tw-text-gray-600 tw-border-gray-600 hover:tw-bg-gray-50'
-                      }`}
-                  >
-                    N/A
-                  </button>
+                    {/* ☒ Not PASS (บรรทัดเดียว) */}
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                      <span
+                        className="tw-inline-flex tw-items-center tw-justify-center tw-w-6 tw-h-6 tw-border-2 tw-border-black"
+                        aria-hidden="true"
+                      >
+                        <span className="tw-text-sm tw-leading-none">X</span>
+                      </span>
+                      <span className="tw-text-sm tw-text-gray-800 tw-whitespace-nowrap">Not PASS</span>
+                    </div>
+
+                    {/* ☐ N/A (Not TEST) — บรรทัดเดียว */}
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                      <span
+                        className="tw-inline-flex tw-w-6 tw-h-6 tw-border-2 tw-border-black"
+                        aria-hidden="true"
+                      />
+                      <span className="tw-text-sm tw-text-gray-800 tw-whitespace-nowrap">N/A (Not TEST)</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
+
+              {/* Phase Sequence (ปุ่มเล็ก) */}
+              <div className="tw-flex tw-items-center tw-gap-3 tw-flex-wrap md:tw-flex-nowrap">
+                <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Phase Sequence</span>
+                <span className="tw-font-semibold tw-text-base">:</span>
+
+                <button
+                  type="button"
+                  onClick={() => handlePhaseSequenceChange('L1L2L3')}
+                  className={`tw-ml-1 tw-px-3 tw-py-1 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors ${sigPhase === 'L1L2L3'
+                      ? 'tw-bg-blue-600 tw-text-white tw-border-blue-600'
+                      : 'tw-bg-white tw-text-blue-600 tw-border-blue-500 hover:tw-bg-blue-50'
+                    }`}
+                  aria-pressed={sigPhase === 'L1L2L3'}
+                >
+                  L1-L2-L3
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handlePhaseSequenceChange('L3L2L1')}
+                  className={`tw-px-3 tw-py-1 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors ${sigPhase === 'L3L2L1'
+                      ? 'tw-bg-orange-600 tw-text-white tw-border-orange-600'
+                      : 'tw-bg-white tw-text-orange-600 tw-border-orange-500 hover:tw-bg-orange-50'
+                    }`}
+                  aria-pressed={sigPhase === 'L3L2L1'}
+                >
+                  L3-L2-L1
+                </button>
+              </div>
+
+
+
+
               {/* Phase Sequence Section */}
-              <div>
+              {/* <div>
                 <div className="tw-mb-3">
                   <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Phase Sequence</span>
                 </div>
-                <div className="tw-flex tw-gap-3">
-                  {/* L1-L2-L3 Button */}
-                  <button
+                <div className="tw-flex tw-gap-3"> */}
+              {/* L1-L2-L3 Button */}
+              {/* <button
                     type="button"
                     onClick={() => handlePhaseSequenceChange('L1L2L3')}
                     className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
@@ -694,10 +723,10 @@ export default function DCForm() {
                       }`}
                   >
                     L1-L2-L3
-                  </button>
+                  </button> */}
 
-                  {/* L3-L2-L1 Button */}
-                  <button
+              {/* L3-L2-L1 Button */}
+              {/* <button
                     type="button"
                     onClick={() => handlePhaseSequenceChange('L3L2L1')}
                     className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
@@ -707,9 +736,9 @@ export default function DCForm() {
                       }`}
                   >
                     L3-L2-L1
-                  </button>
-                </div>
-              </div>
+                  </button> */}
+              {/* </div> */}
+              {/* </div> */}
             </div>
 
             {/* Signature Section */}
