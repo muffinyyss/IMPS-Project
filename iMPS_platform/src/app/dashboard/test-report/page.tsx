@@ -4,8 +4,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 // components
-import ChargerTables from "@/app/dashboard/pm-report/charger/list/components/charger-table";
-import FirmwareCards from "@/app/dashboard/pm-report/charger/list/components/firmware-cards";
 import DCTables from "@/app/dashboard/test-report/dc/list/components/dc-table";
 import ACTables from "@/app/dashboard/test-report/ac/list/components/ac-table";
 
@@ -16,8 +14,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 type TabId = "DC" | "AC";
 
 const TABS: { id: TabId; label: string; slug: "DC" | "AC" }[] = [
-  { id: "DC", label: "DC Charegr", slug: "DC" },
-  { id: "AC", label: "AC Charegr", slug: "AC" },
+  { id: "DC", label: "DC Charger", slug: "DC" },
+  { id: "AC", label: "AC Charger", slug: "AC" },
 ];
 
 function slugToTab(slug: string | null): TabId {
