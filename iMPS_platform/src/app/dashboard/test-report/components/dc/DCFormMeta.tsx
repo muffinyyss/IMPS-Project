@@ -45,6 +45,7 @@ export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
           </label>
           <Input
             value={head.location }
+            readOnly
             onChange={(e) => onHeadChange({ location: e.target.value })}
             crossOrigin=""
             className="!tw-w-full !tw-bg-gray-100"
@@ -129,7 +130,7 @@ export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
           </label>
           <Input
             type="date"
-            value={(head.inspection_date || "").slice(0, 10) || "2025-10-24"}
+            value={(head.inspection_date || "").slice(0, 10)}
             onChange={(e) => onHeadChange({ inspection_date: e.target.value })}
             crossOrigin=""
             className="!tw-w-full"

@@ -6,18 +6,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 // Import the new components
 import CMFormHeader from "@/app/dashboard/test-report/components/ac/ACFormHeader";
-import CMFormHeader1 from "@/app/dashboard/test-report/components/ac/ACFormHeader1";
+// import CMFormHeader1 from "@/app/dashboard/test-report/components/ac/ACFormHeader1";
 import ACFormMeta from "@/app/dashboard/test-report/components/ac/ACFormMeta";
 import EquipmentSection from "@/app/dashboard/test-report/components/ac/ACEquipmentSection";
 import ACFormActions from "@/app/dashboard/test-report/components/ac/ACFormActions";
-import ACTest1Grid from "@/app/dashboard/test-report/components/ac/ACTest1Grid";
-import ACTest2Grid from "@/app/dashboard/test-report/components/ac/ACTest2Grid";
+import ACTest1Grid, { mapToElectricalPayload, type TestResults } from "@/app/dashboard/test-report/components/ac/ACTest1Grid";
+import ACTest2Grid, { mapToChargerPayload, type TestCharger } from "@/app/dashboard/test-report/components/ac/ACTest2Grid";
 import ACPhotoSection from "@/app/dashboard/test-report/components/ac/ACPhotoSection";
-import ACSignatureSection from "@/app/dashboard/test-report/components/ac/ACSignatureSection";
+// import ACSignatureSection from "@/app/dashboard/test-report/components/ac/ACSignatureSection";
 import ACSignatureSection1 from "@/app/dashboard/test-report/components/ac/ACSignatureSection1";
 
 type Severity = "" | "Low" | "Medium" | "High" | "Critical";
-type Status = "" | "Open" | "In Progress" | "Closed";
+type Status = "" | "DC" | "AC";
 
 type CorrectiveItem = {
   text: string;
@@ -26,7 +26,7 @@ type CorrectiveItem = {
 
 type Job = {
   issue_id: string;
-  found_date: string;
+  inspection_date: string;
   location: string;
   equipment_list: string[];
   problem_details: string;
@@ -48,6 +48,23 @@ type Job = {
   serial_number?: string;
 };
 
+type Head = {
+  issue_id: string;            // ← เพิ่ม
+  inspection_date: string;     // ← เพิ่ม
+  location: string;
+  manufacturer?: string;
+  model?: string;
+  power?: string;
+  firmware_version?: string;
+  serial_number?: string;
+};
+
+type EquipmentBlock = {
+  manufacturers: string[];
+  models: string[];
+  serialNumbers: string[];
+};
+
 type RepairOption = (typeof REPAIR_OPTIONS)[number];
 
 const REPAIR_OPTIONS = [
@@ -57,12 +74,12 @@ const REPAIR_OPTIONS = [
   "อยู่ระหว่างการรออะไหล่",
 ] as const;
 
-const LIST_ROUTE = "/dashboard/cm-report";
+const LIST_ROUTE = "/dashboard/test-report";
 
 /* ค่าตั้งต้นของฟอร์ม (ใช้สำหรับ reset ด้วย) */
 const INITIAL_JOB: Job = {
   issue_id: "",
-  found_date: "",
+  inspection_date: "",
   location: "",
   equipment_list: [""],
   problem_details: "",
@@ -79,6 +96,23 @@ const INITIAL_JOB: Job = {
   remarks: "",
 };
 
+const INITIAL_HEAD: Head = {
+  issue_id: "",                // ← เพิ่ม
+  inspection_date: "",         // ← เพิ่ม
+  location: "",
+  manufacturer: "",
+  model: "",
+  power: "",
+  firmware_version: "",
+  serial_number: "",
+};
+
+const INITIAL_EQUIPMENT: EquipmentBlock = {
+  manufacturers: [""],
+  models: [""],
+  serialNumbers: [""],
+};
+
 type StationPublic = {
   station_id: string;
   station_name: string;
@@ -89,6 +123,18 @@ type StationPublic = {
   status?: boolean;
 };
 
+type SymbolPick = "pass" | "notPass" | "notTest" | "";
+type PhasePick = "L1L2L3" | "L3L2L1" | "";
+
+type ResponsibilityData = {
+  performed: { name: string; signature: string; date: string; company: string };
+  approved: { name: string; signature: string; date: string; company: string };
+  witnessed: { name: string; signature: string; date: string; company: string };
+};
+
+type PhotoItem = { text: string; images: { file: File; url: string }[] };
+
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -97,9 +143,107 @@ export default function CMForm() {
   const searchParams = useSearchParams();
   const stationId = searchParams.get("station_id");
 
+  const buildListUrl = () => {
+    const params = new URLSearchParams();
+    if (stationId) params.set("station_id", stationId);
+    const tab = (searchParams.get("tab") ?? "AC"); // กลับแท็บเดิม (default = open)
+    params.set("tab", tab);
+    return `${LIST_ROUTE}?${params.toString()}`;
+  };
+
   const [job, setJob] = useState<Job>({ ...INITIAL_JOB });
+  const [head, setHead] = useState<Head>({ ...INITIAL_HEAD });
+  const [equipment, setEquipment] = useState<EquipmentBlock>({ ...INITIAL_EQUIPMENT });
+  const [dcTest1Results, setDCTest1Results] = useState<TestResults | null>(null);
+  const [acChargerTest, setACChargerTest] = useState<TestCharger | null>(null);
+  const [testRemark, setTestRemark] = useState<string>("");
+  const [imgRemark, setImgRemark] = useState<string>("");
+  const [sigSymbol, setSigSymbol] = useState<SymbolPick>("");
+  const [sigPhase, setSigPhase] = useState<PhasePick>("");
+  const [sigResp, setSigResp] = useState<ResponsibilityData>({
+    performed: { name: "", signature: "", date: "", company: "" },
+    approved: { name: "", signature: "", date: "", company: "" },
+    witnessed: { name: "", signature: "", date: "", company: "" },
+  });
+  const handleSymbolChange = (sym: SymbolPick) => setSigSymbol(sym);
+  const handlePhaseSequenceChange = (ph: PhasePick) => setSigPhase(ph);
+
+  async function uploadPhotoSection(reportId: string, items: PhotoItem[]) {
+    if (!stationId) return; // ใช้ stationId จาก useSearchParams()
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const files = (it?.images || []).map(im => im.file).filter(Boolean) as File[];
+      if (!files.length) continue;
+
+      const fd = new FormData();
+      fd.append("station_id", stationId);
+      fd.append("item_index", String(i));     // <<-- ส่ง index
+      if (it.text) fd.append("remark", it.text);
+      files.forEach(f => fd.append("files", f, f.name));
+
+      const res = await fetch(`${API_BASE}/actestreport/${encodeURIComponent(reportId)}/photos`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`อัปโหลดรูป index ${i} ล้มเหลว: ${msg}`);
+      }
+    }
+  }
+  const [photoItems, setPhotoItems] = useState<PhotoItem[]>([]);
+
   const [summary, setSummary] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  const onHeadChange = (updates: Partial<Head>) =>
+    setHead((prev) => ({ ...prev, ...updates }));
+
+  // ตัวช่วยสำหรับ equipment (อัปเดตเป็นรายแถว)
+  const updateManufacturer = (i: number, val: string) =>
+    setEquipment(prev => {
+      const arr = [...prev.manufacturers];
+      arr[i] = val;
+      return { ...prev, manufacturers: arr };
+    });
+
+  const updateModel = (i: number, val: string) =>
+    setEquipment(prev => {
+      const arr = [...prev.models];
+      arr[i] = val;
+      return { ...prev, models: arr };
+    });
+
+  const updateSerial = (i: number, val: string) =>
+    setEquipment(prev => {
+      const arr = [...prev.serialNumbers];
+      arr[i] = val;
+      return { ...prev, serialNumbers: arr };
+    });
+
+  const addEquipmentRow = () =>
+    setEquipment(prev => ({
+      manufacturers: [...prev.manufacturers, ""],
+      models: [...prev.models, ""],
+      serialNumbers: [...prev.serialNumbers, ""],
+    }));
+
+  const removeEquipmentRow = (i: number) =>
+    setEquipment(prev => {
+      const man = [...prev.manufacturers];
+      const mod = [...prev.models];
+      const ser = [...prev.serialNumbers];
+
+      if (man.length <= 1) {
+        return { manufacturers: [""], models: [""], serialNumbers: [""] };
+      }
+      man.splice(i, 1);
+      mod.splice(i, 1);
+      ser.splice(i, 1);
+      return { manufacturers: man, models: mod, serialNumbers: ser };
+    });
 
   const onSave = () => {
     console.log({ job, summary });
@@ -112,13 +256,51 @@ export default function CMForm() {
         alert("ไม่พบ station_id ใน URL");
         return;
       }
+
+
+      if (!dcTest1Results) {
+        alert("กรุณากรอกผลการทดสอบ AC (Test 1) ให้ครบก่อนบันทึก");
+        setSaving(false);
+        return;
+      }
+
+      if (!acChargerTest) {
+        alert("ยังไม่ได้กรอกผลทดสอบ (Electrical Safety)");
+        return;
+      }
+
       setSaving(true);
+      const {
+        inspection_date: headInspectionDate,
+        issue_id: headIssueId,
+        ...headWithoutDatesAndIssue
+      } = head;
+
+      // 👉 รวมค่า head ลงใน job ก่อนส่ง (ให้ head มีสิทธิ์ override)
+      const mergedJob: Job = {
+        ...job,
+        issue_id: headIssueId || job.issue_id,
+        inspection_date: headInspectionDate || job.inspection_date,
+        location: head.location || job.location,
+        manufacturer: head.manufacturer || job.manufacturer,
+        model: head.model || job.model,
+        power: head.power || job.power,
+        firmware_version: head.firmware_version || job.firmware_version,
+        serial_number: head.serial_number || job.serial_number,
+      };
+
+      const electricalTest = mapToElectricalPayload(dcTest1Results);
+      const electrical_safety = electricalTest.electricalSafety;
+
+      const chargerTest = mapToChargerPayload(acChargerTest);
+      const charger_safety = chargerTest.electricalSafety;
 
       // 1) สร้างรายงานหลัก
       const payload = {
         station_id: stationId,
-        cm_date: (job.found_date || "").slice(0, 10),
-        summary,
+        issue_id: mergedJob.issue_id,
+        inspection_date: mergedJob.inspection_date,
+        // summary,
         job: {
           ...job,
           // ฝั่งหลักเก็บแค่ชื่อไฟล์ (optional) แต่รูปจริงไปอัปโหลดในขั้นตอนถัดไป
@@ -127,9 +309,22 @@ export default function CMForm() {
             images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
           })),
         },
+        head: headWithoutDatesAndIssue,
+        equipment,
+        electrical_safety,
+        charger_safety,
+        remarks: {
+          testRematk: testRemark,       // remark ด้านบน
+          imgRemark: imgRemark // remark หลังรูป
+        },
+        symbol: sigSymbol,
+        phaseSequence: sigPhase,
+        signature: {
+          responsibility: sigResp,
+        },
       };
 
-      const res = await fetch(`${API_BASE}/cmreport/submit`, {
+      const res = await fetch(`${API_BASE}/acreport/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -142,6 +337,7 @@ export default function CMForm() {
 
       // 2) อัปโหลดรูปตาม group (g1,g2,...) จาก Corrective Action
       await uploadPhotosForReport(report_id);
+      await uploadPhotoSection(report_id, photoItems);
 
       // 3) (ถ้าต้องการ) finalize รายงาน
       // await fetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/finalize`, {
@@ -150,10 +346,10 @@ export default function CMForm() {
       // });
 
       // 4) กลับหน้า list พร้อมพารามิเตอร์สถานี
-      const listUrl = `${LIST_ROUTE}?station_id=${encodeURIComponent(
-        stationId
-      )}`;
-      router.replace(listUrl);
+      // const listUrl = `${LIST_ROUTE}?station_id=${encodeURIComponent(
+      //   stationId
+      // )}`;
+      router.replace(buildListUrl());
     } catch (e: any) {
       console.error(e);
       alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
@@ -317,7 +513,7 @@ export default function CMForm() {
         const data: { station: StationPublic } = await res.json();
 
         if (!alive) return;
-        setJob((prev) => ({
+        setHead((prev) => ({
           ...prev,
           location: data.station.station_name || prev.location, // 👈 เซ็ตสถานที่ = station_name
         }));
@@ -371,7 +567,7 @@ export default function CMForm() {
 
       let latestId: string | null = null;
       try {
-        const res = await fetch(`/api/cm/latest-id?y=${y}&m=${m}`);
+        const res = await fetch(`/api/ac/latest-id?y=${y}&m=${m}`);
         if (res.ok) {
           const data = await res.json();
           latestId = data?.id ?? null; // เช่น "EL-2025-1007"
@@ -383,9 +579,9 @@ export default function CMForm() {
       const nextId = makeNextIssueId({ latestId, date: todayStr });
 
       if (!alive) return;
-      setJob((prev) => ({
+      setHead((prev) => ({
         ...prev,
-        found_date: todayStr,
+        inspection_date: todayStr,
         issue_id: nextId,
       }));
     })();
@@ -414,7 +610,7 @@ export default function CMForm() {
       files.forEach((f) => fd.append("files", f, f.name));
 
       const res = await fetch(
-        `${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`,
+        `${API_BASE}/acreport/${encodeURIComponent(reportId)}/photos`,
         {
           method: "POST",
           body: fd,
@@ -452,28 +648,19 @@ export default function CMForm() {
           <div className="tw-mt-8 tw-space-y-8">
             {/* META – การ์ดหัวเรื่อง */}
             <ACFormMeta
-              job={job}
-              onJobChange={(updates: any) =>
-                setJob((prev) => ({ ...prev, ...updates }))
-              }
+              head={head} onHeadChange={onHeadChange}
             />
 
             {/* Equipment Identification Details */}
             <EquipmentSection
-              equipmentList={job.equipment_list}
-              reporterList={job.reported_by}
-              serialNumbers={job.preventive_action}
-              onAdd={addStringItem("equipment_list")}
-              onUpdateEquipment={(i, val) =>
-                setStringItem("equipment_list")(i, val)
-              }
-              onUpdateReporter={(i, val) =>
-                setStringItem("reported_by")(i, val)
-              }
-              onUpdateSerial={(i, val) =>
-                setStringItem("preventive_action")(i, val)
-              }
-              onRemove={removeStringItem("equipment_list")}
+              equipmentList={equipment.manufacturers}
+              reporterList={equipment.models}
+              serialNumbers={equipment.serialNumbers}
+              onAdd={addEquipmentRow}
+              onUpdateEquipment={updateManufacturer}
+              onUpdateReporter={updateModel}
+              onUpdateSerial={updateSerial}
+              onRemove={removeEquipmentRow}
             />
 
             {/* AC Test Results Grid */}
@@ -484,7 +671,7 @@ export default function CMForm() {
                   Side)
                 </span>
               </h3>
-              <ACTest1Grid />
+              <ACTest1Grid onResultsChange={setDCTest1Results} />
             </div>
             <div className="tw-space-y-4">
               <h3 className="tw-text-lg tw-font-semibold tw-text-blue-gray-800">
@@ -492,30 +679,157 @@ export default function CMForm() {
                   CHARGING PROCESS TESTING
                 </span>
               </h3>
-              <ACTest2Grid />
+              <ACTest2Grid onResultsChange={setACChargerTest} />
+            </div>
+
+            <div className="tw-mb-3">
+              <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
+                Remark
+              </span>
+            </div>
+            <div className="tw-space-y-2">
+              <Textarea
+                value={testRemark}
+                onChange={(e) => setTestRemark(e.target.value)}
+                className="!tw-border-gray-400"
+                containerProps={{ className: "!tw-min-w-0" }}
+              // placeholder=""
+              />
+            </div>
+
+            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
+              {/* Symbol Section */}
+              <div>
+                <div className="tw-mb-3">
+                  <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Symbol :</span>
+                </div>
+                <div className="tw-flex tw-gap-3">
+                  {/* PASS Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleSymbolChange('pass')}
+                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
+                ${sigSymbol === 'pass'
+                        ? 'tw-bg-green-600 tw-text-white tw-border-green-600'
+                        : 'tw-bg-white tw-text-green-600 tw-border-green-600 hover:tw-bg-green-50'
+                      }`}
+                  >
+                    PASS
+                  </button>
+
+                  {/* FAIL Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleSymbolChange('notPass')}
+                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
+                ${sigSymbol === 'notPass'
+                        ? 'tw-bg-red-600 tw-text-white tw-border-red-600'
+                        : 'tw-bg-white tw-text-red-600 tw-border-red-600 hover:tw-bg-red-50'
+                      }`}
+                  >
+                    FAIL
+                  </button>
+
+                  {/* N/A Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleSymbolChange('notTest')}
+                    className={`tw-px-4 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
+                ${sigSymbol === 'notTest'
+                        ? 'tw-bg-gray-600 tw-text-white tw-border-gray-600'
+                        : 'tw-bg-white tw-text-gray-600 tw-border-gray-600 hover:tw-bg-gray-50'
+                      }`}
+                  >
+                    N/A
+                  </button>
+                </div>
+              </div>
+
+              {/* Phase Sequence Section */}
+              <div>
+                <div className="tw-mb-3">
+                  <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Phase Sequence</span>
+                </div>
+                <div className="tw-flex tw-gap-3">
+                  {/* L1-L2-L3 Button */}
+                  <button
+                    type="button"
+                    onClick={() => handlePhaseSequenceChange('L1L2L3')}
+                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
+                ${sigPhase === 'L1L2L3'
+                        ? 'tw-bg-blue-600 tw-text-white tw-border-blue-600'
+                        : 'tw-bg-white tw-text-blue-600 tw-border-blue-600 hover:tw-bg-blue-50'
+                      }`}
+                  >
+                    L1-L2-L3
+                  </button>
+
+                  {/* L3-L2-L1 Button */}
+                  <button
+                    type="button"
+                    onClick={() => handlePhaseSequenceChange('L3L2L1')}
+                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
+                ${sigPhase === 'L3L2L1'
+                        ? 'tw-bg-orange-600 tw-text-white tw-border-orange-600'
+                        : 'tw-bg-white tw-text-orange-600 tw-border-orange-600 hover:tw-bg-orange-50'
+                      }`}
+                  >
+                    L3-L2-L1
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Signature Section */}
-            <div className="tw-space-y-4">
+            {/* <div className="tw-space-y-4">
               <ACSignatureSection />
-            </div>
+            </div> */}
             {/* HEADER */}
-          <CMFormHeader1 headerLabel="CM Report" />
+            {/* <CMFormHeader1 headerLabel="CM Report" /> */}
 
-          {/* META – การ์ดหัวเรื่อง */}
-            <ACFormMeta
+            {/* META – การ์ดหัวเรื่อง */}
+            {/* <ACFormMeta
               job={job}
               onJobChange={(updates: any) =>
                 setJob((prev) => ({ ...prev, ...updates }))
               }
-            />
+            /> */}
 
 
-            <ACPhotoSection />
+            <div className="tw-mb-3">
+              <ACPhotoSection initialItems={photoItems}
+                onItemsChange={setPhotoItems}
+                title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)"
+              />
+            </div>
+
+            {/* <ACPhotoSection /> */}
+
+            <div className="tw-mb-3">
+              <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
+                Remark
+              </span>
+            </div>
+            <div className="tw-space-y-2">
+              <Textarea
+                value={imgRemark}
+                onChange={(e) => setImgRemark(e.target.value)}
+                className="!tw-border-gray-400"
+                containerProps={{ className: "!tw-min-w-0" }}
+              // placeholder=""
+              />
+            </div>
 
             {/* Signature Section */}
             <div className="tw-space-y-4">
-              <ACSignatureSection1 />
+              <ACSignatureSection1
+                onResponsibilityChange={(field, who, val) => {
+                  setSigResp(prev => ({
+                    ...prev,
+                    [who]: { ...prev[who], [field]: val }
+                  }));
+                }}
+              />
             </div>
             {/* FOOTER + ปุ่มบันทึก */}
             <ACFormActions
@@ -525,7 +839,7 @@ export default function CMForm() {
               isSaving={saving}
             />
           </div>
-          
+
         </div>
       </form>
 
