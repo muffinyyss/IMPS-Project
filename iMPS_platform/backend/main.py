@@ -4703,7 +4703,7 @@ async def dcreport_submit(body: DCSubmitIn, current: UserClaims = Depends(get_cu
         "station_id": station_id,
         "issue_id": issue_id,
         "inspection_date": dc_date,
-        "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
+        # "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
         "head": body.head,
         "equipment": body.equipment.dict() if body.equipment else {"manufacturers": [], "models": [], "serialNumbers": []},
         "electrical_safety": electrical_safety,
@@ -5059,7 +5059,7 @@ async def acurl_list(
 class ACSubmitIn(BaseModel):
     station_id: str
     issue_id: Optional[str] = None 
-    job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
+    # job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
     head: Dict[str,Any]
     inspection_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO; ถ้าไม่ส่งมาจะ fallback เป็น job.found_date
     equipment: Optional[EquipmentBlock] = None
@@ -5106,7 +5106,7 @@ async def acreport_submit(body: ACSubmitIn, current: UserClaims = Depends(get_cu
     else:
         ac_date = datetime.now(th_tz).date().isoformat()
 
-    issue_id = (body.head or {}).get("issue_id")  or (body.job or {}).get("issue_id") 
+    issue_id = (body.head or {}).get("issue_id")  or (body.head or {}).get("issue_id") 
 
     electrical_safety = _normalize_tick_to_pass(body.electrical_safety or {})
 
@@ -5115,7 +5115,7 @@ async def acreport_submit(body: ACSubmitIn, current: UserClaims = Depends(get_cu
         "station_id": station_id,
         "issue_id": issue_id,
         "inspection_date": ac_date,
-        "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
+        # "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
         "head": body.head,
         "equipment": body.equipment.dict() if body.equipment else {"manufacturers": [], "models": [], "serialNumbers": []},
         "electrical_safety": electrical_safety,

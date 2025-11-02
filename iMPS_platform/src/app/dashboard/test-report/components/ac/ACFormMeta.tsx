@@ -3,22 +3,11 @@
 import React from "react";
 import { Input } from "@material-tailwind/react";
 
-interface Job {
+
+interface Head {
   issue_id: string;
-  found_date: string;
+  inspection_date: string;
   location: string;
-  equipment_list: string[];
-  problem_details: string;
-  problem_type: string;
-  severity: string;
-  reported_by: string[];
-  assignee: string;
-  initial_cause: string;
-  resolved_date: string;
-  repair_result: string;
-  preventive_action: string[];
-  status: string;
-  remarks: string;
   manufacturer?: string;
   model?: string;
   power?: string;
@@ -27,11 +16,11 @@ interface Job {
 }
 
 interface ACFormMetaProps {
-  job: Job;
-  onJobChange: (updates: Partial<Job>) => void;
+  head: Head;
+  onHeadChange: (updates: Partial<Head>) => void;
 }
 
-export default function ACFormMeta({ job, onJobChange }: ACFormMetaProps) {
+export default function ACFormMeta({  head, onHeadChange}: ACFormMetaProps) {
   return (
     <div className="tw-space-y-4">
       {/* First Row - Issue ID and Location */}
@@ -41,23 +30,24 @@ export default function ACFormMeta({ job, onJobChange }: ACFormMetaProps) {
             Issue ID
           </label>
           <Input
-            value={job.issue_id || "EL-2025-1001"}
+            value={head.issue_id || "" }
             readOnly
             crossOrigin=""
             containerProps={{ className: "!tw-min-w-0" }}
             className="!tw-w-full !tw-bg-gray-100"
           />
         </div>
-        
+
         <div className="md:tw-col-span-2">
           <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
             Location
           </label>
           <Input
-            value={job.location || "PT KhIong Luang3"}
-            onChange={(e) => onJobChange({ location: e.target.value })}
+            value={head.location }
+            onChange={(e) => onHeadChange({ location: e.target.value })}
+            readOnly
             crossOrigin=""
-            className="!tw-w-full"
+            className="!tw-w-full !tw-bg-gray-100"
             containerProps={{ className: "!tw-min-w-0" }}
           />
         </div>
@@ -70,34 +60,35 @@ export default function ACFormMeta({ job, onJobChange }: ACFormMetaProps) {
             Manufacturer
           </label>
           <Input
-            value={job.manufacturer || ""}
-            onChange={(e) => onJobChange({ manufacturer: e.target.value })}
+            value={head.manufacturer || ""}
+            
+            onChange={(e) => onHeadChange({ manufacturer: e.target.value })}
             crossOrigin=""
             className="!tw-w-full"
             containerProps={{ className: "!tw-min-w-0" }}
           />
         </div>
-        
+
         <div>
           <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
             Model
           </label>
           <Input
-            value={job.model || ""}
-            onChange={(e) => onJobChange({ model: e.target.value })}
+            value={head.model || ""}
+            onChange={(e) => onHeadChange({ model: e.target.value })}
             crossOrigin=""
             className="!tw-w-full"
             containerProps={{ className: "!tw-min-w-0" }}
           />
         </div>
-        
+
         <div>
           <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
             Power
           </label>
           <Input
-            value={job.power || ""}
-            onChange={(e) => onJobChange({ power: e.target.value })}
+            value={head.power || ""}
+            onChange={(e) => onHeadChange({ power: e.target.value })}
             crossOrigin=""
             className="!tw-w-full"
             containerProps={{ className: "!tw-min-w-0" }}
@@ -111,36 +102,36 @@ export default function ACFormMeta({ job, onJobChange }: ACFormMetaProps) {
             Firmware Version
           </label>
           <Input
-            value={job.firmware_version || ""}
-            onChange={(e) => onJobChange({ firmware_version: e.target.value })}
+            value={head.firmware_version || ""}
+            onChange={(e) => onHeadChange({ firmware_version: e.target.value })}
             crossOrigin=""
             className="!tw-w-full"
             containerProps={{ className: "!tw-min-w-0" }}
           />
         </div>
 
-      {/* Third Row - Serial Number and Inspection Date */}
+        {/* Third Row - Serial Number and Inspection Date */}
         <div>
           <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
             Serial Number
           </label>
           <Input
-            value={job.serial_number || ""}
-            onChange={(e) => onJobChange({ serial_number: e.target.value })}
+            value={head.serial_number || ""}
+            onChange={(e) => onHeadChange({ serial_number: e.target.value })}
             crossOrigin=""
             className="!tw-w-full"
             containerProps={{ className: "!tw-min-w-0" }}
           />
         </div>
-        
+
         <div>
           <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
             Inspection Date
           </label>
           <Input
             type="date"
-            value={(job.found_date || "").slice(0, 10) || "2025-10-24"}
-            onChange={(e) => onJobChange({ found_date: e.target.value })}
+            value={(head.inspection_date || "").slice(0, 10) }
+            onChange={(e) => onHeadChange({ inspection_date: e.target.value })}
             crossOrigin=""
             className="!tw-w-full"
             containerProps={{ className: "!tw-min-w-0" }}

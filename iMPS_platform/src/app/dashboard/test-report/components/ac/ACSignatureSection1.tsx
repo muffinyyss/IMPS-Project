@@ -4,15 +4,15 @@ import React, { useState } from "react";
 import { Input } from "@material-tailwind/react";
 
 interface SignatureSectionProps {
-  onRemarkChange?: (value: string) => void;
-  onSymbolChange?: (
-    symbolType: "pass" | "notPass" | "notTest",
-    checked: boolean
-  ) => void;
-  onPhaseSequenceChange?: (
-    phaseType: "L1L2L3" | "L3L2L1",
-    checked: boolean
-  ) => void;
+  // onRemarkChange?: (value: string) => void;
+  // onSymbolChange?: (
+  //   symbolType: "pass" | "notPass" | "notTest",
+  //   checked: boolean
+  // ) => void;
+  // onPhaseSequenceChange?: (
+  //   phaseType: "L1L2L3" | "L3L2L1",
+  //   checked: boolean
+  // ) => void;
   onResponsibilityChange?: (
     field: string,
     person: "performed" | "approved" | "witnessed",
@@ -20,13 +20,13 @@ interface SignatureSectionProps {
   ) => void;
 }
 
-interface SymbolState {
-  selected: "pass" | "notPass" | "notTest" | "";
-}
+// interface SymbolState {
+//   selected: "pass" | "notPass" | "notTest" | "";
+// }
 
-interface PhaseSequenceState {
-  selected: "L1L2L3" | "L3L2L1" | "";
-}
+// interface PhaseSequenceState {
+//   selected: "L1L2L3" | "L3L2L1" | "";
+// }
 
 interface ResponsibilityData {
   performed: {
@@ -50,38 +50,38 @@ interface ResponsibilityData {
 }
 
 const ACSignatureSection: React.FC<SignatureSectionProps> = ({
-  onRemarkChange,
-  onSymbolChange,
-  onPhaseSequenceChange,
+  // onRemarkChange,
+  // onSymbolChange,
+  // onPhaseSequenceChange,
   onResponsibilityChange,
 }) => {
-  const [remark, setRemark] = useState<string>("");
-  const [symbols, setSymbols] = useState<SymbolState>({
-    selected: "",
-  });
-  const [phaseSequence, setPhaseSequence] = useState<PhaseSequenceState>({
-    selected: "",
-  });
+  // const [remark, setRemark] = useState<string>("");
+  // const [symbols, setSymbols] = useState<SymbolState>({
+  //   selected: "",
+  // });
+  // const [phaseSequence, setPhaseSequence] = useState<PhaseSequenceState>({
+  //   selected: "",
+  // });
   const [responsibility, setResponsibility] = useState<ResponsibilityData>({
     performed: { name: "", signature: "", date: "", company: "" },
     approved: { name: "", signature: "", date: "", company: "" },
     witnessed: { name: "", signature: "", date: "", company: "" },
   });
 
-  const handleRemarkChange = (value: string) => {
-    setRemark(value);
-    onRemarkChange?.(value);
-  };
+  // const handleRemarkChange = (value: string) => {
+  //   setRemark(value);
+  //   onRemarkChange?.(value);
+  // };
 
-  const handleSymbolChange = (symbolType: "pass" | "notPass" | "notTest") => {
-    setSymbols({ selected: symbolType });
-    onSymbolChange?.(symbolType, true);
-  };
+  // const handleSymbolChange = (symbolType: "pass" | "notPass" | "notTest") => {
+  //   setSymbols({ selected: symbolType });
+  //   onSymbolChange?.(symbolType, true);
+  // };
 
-  const handlePhaseSequenceChange = (phaseType: "L1L2L3" | "L3L2L1") => {
-    setPhaseSequence({ selected: phaseType });
-    onPhaseSequenceChange?.(phaseType, true);
-  };
+  // const handlePhaseSequenceChange = (phaseType: "L1L2L3" | "L3L2L1") => {
+  //   setPhaseSequence({ selected: phaseType });
+  //   onPhaseSequenceChange?.(phaseType, true);
+  // };
 
   const handleResponsibilityChange = (
     field: string,
@@ -102,7 +102,7 @@ const ACSignatureSection: React.FC<SignatureSectionProps> = ({
   return (
     <div className="tw-space-y-6 tw-p-4 tw-border tw-border-gray-300 tw-bg-white">
       {/* Remark Section */}
-      <div>
+      {/* <div>
         <div className="tw-mb-3">
           <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
             Remark
@@ -118,7 +118,7 @@ const ACSignatureSection: React.FC<SignatureSectionProps> = ({
             placeholder=""
           />
         </div>
-      </div>
+      </div> */}
 
       {/* Responsibility Table */}
       <div>

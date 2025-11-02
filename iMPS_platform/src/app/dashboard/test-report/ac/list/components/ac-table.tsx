@@ -129,7 +129,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       };
 
       const [cmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL("/acreport/list"), fetchOpts),
+        fetch(makeURL("/actestreport/list"), fetchOpts),
         fetch(makeURL("/acurl/list"), fetchOpts),
       ]);
 
