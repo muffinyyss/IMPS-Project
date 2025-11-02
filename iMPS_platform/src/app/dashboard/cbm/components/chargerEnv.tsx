@@ -13,8 +13,8 @@ type Props = {
 
 export default function ChargerEnvCard({
   enabledDefault = true,
-  temp = 35,
-  humidity = 42,
+  temp = 0,
+  humidity = 0,
   title = "Charger Environment",
 }: Props) {
   const [enabled, setEnabled] = useState(enabledDefault);
