@@ -1,49 +1,62 @@
 # backend/pdf/pdf_routes.py
 from fastapi import APIRouter, Response, HTTPException, Query
-from fpdf import FPDF
+from fastapi.responses import RedirectResponse
+from fpdf import FPDF, HTMLMixin
 from pathlib import Path
 from urllib.parse import quote
 from bson import ObjectId
 from bson.errors import InvalidId
-import os
-import re
 from main import client1 as pymongo_client
-from datetime import datetime, date
-from fastapi.responses import RedirectResponse
+import os, re
 
 router = APIRouter(prefix="/pdf", tags=["pdf"])
 
 # ---------- ฟอนต์ไทย ----------
-CANDIDATES = [
-    "THSarabunNew.ttf",
-    "Sarabun-Regular.ttf",
-    "THSarabunNew Bold.ttf",
-    "THSarabunNew Italic.ttf",
-    "THSarabunNew BoldItalic.ttf",
-]
+FONT_FILES = {
+    "": "THSarabunNew.ttf",
+    "B": "THSarabunNew Bold.ttf",
+    "I": "THSarabunNew Italic.ttf",
+    "BI": "THSarabunNew BoldItalic.ttf",
+}
 
 
 def get_font_path() -> str:
-    here = Path(__file__).parent  # .../backend/pdf
-    fonts_dir = here / "fonts"  # .../backend/pdf/fonts
+    here = Path(__file__).parent
+    fonts_dir = here / "fonts"
     for name in CANDIDATES:
         p = fonts_dir / name
         if p.exists():
             return str(p)
     raise FileNotFoundError("ไม่พบฟอนต์ไทยใน backend/pdf/fonts/")
 
+def add_all_thsarabun_fonts(pdf: FPDF):
+    """เพิ่มฟอนต์ THSarabun ทั้ง 4 สไตล์: Regular, Bold, Italic, BoldItalic"""
+    fonts_dir = Path(__file__).parent / "fonts"
+    
+    # ตรวจสอบและเพิ่มฟอนต์ทุกสไตล์
+    for style, filename in FONT_FILES.items():
+        font_path = fonts_dir / filename
+        if not font_path.exists():
+            # ถ้าหาฟอนต์ Bold/Italic ไม่เจอ อาจต้องใช้ฟอนต์ Regular แทนสำหรับสไตล์นั้นๆ
+            # แต่เพื่อหลีกเลี่ยง FPDFException เราจะยกเว้นการเพิ่มฟอนต์สไตล์นั้นไปเลย
+            # หรือแค่ข้ามไปถ้าใช้ FPDF
+            pass # FPDF จะใช้ฟอนต์ที่ใกล้เคียงที่สุดถ้าหาไม่เจอ (แต่กรณีนี้คือต้องการให้มี)
+        else:
+            pdf.add_font("THSarabun", style, str(font_path), uni=True)
+            
+    # เราจะตั้งค่าหลักที่ Regular แต่เพื่อให้มั่นใจว่า Bold ถูกโหลดสำหรับ <th>
+    if not (fonts_dir / FONT_FILES[""]).exists():
+         raise FileNotFoundError("ไม่พบฟอนต์ THSarabunNew.ttf ใน backend/pdf/fonts/")
 
 # ---------- เชื่อม MongoDB ----------
 PMREPORT_DB_NAME = "PMReport"
 db = pymongo_client[PMREPORT_DB_NAME]
 
-# โฟลเดอร์จริงของไฟล์อัปโหลด
 UPLOADS_DIR = os.getenv("UPLOADS_DIR", "")
 
 
-# ---------- Helper Functions ----------
+# ---------- Helper ----------
 def safe_filename(name: str) -> str:
-    """ทำให้ชื่อไฟล์ปลอดภัย"""
     bad = '\\/:*?"<>|'
     for ch in bad:
         name = name.replace(ch, "_")
@@ -51,422 +64,353 @@ def safe_filename(name: str) -> str:
     return name or "report"
 
 
-ZWSP = "\u200b"
-
-
-def soft_wrap(s: str, hard_chunk: int = 40) -> str:
-    """แทรก zero-width space เพื่อช่วยตัดบรรทัด"""
-    if not s:
-        return ""
-    text = str(s)
-    # แทรก ZWSP หลังตัวอักษรไทย
-    text = re.sub("([\u0e00-\u0e7f])", lambda m: m.group(1) + ZWSP, text)
-
-    # ตัดโทเคนยาวที่ไม่มีช่องว่าง
-    def breaker(m):
-        w = m.group(0)
-        return ZWSP.join(w[i : i + hard_chunk] for i in range(0, len(w), hard_chunk))
-
-    text = re.sub(r"\S{" + str(hard_chunk) + r",}", breaker, text)
-    return text
-
-
-def force_wrap(text: str, n: int = 30) -> str:
-    """บังคับตัดบรรทัดทุก n ตัวอักษร (สำรองกรณีฟอนต์ไม่รองรับ)"""
-    s = str(text)
-    return "\n".join(s[i : i + n] for i in range(0, len(s), n))
-
-
-def map_upload_url_to_path(url: str) -> str | None:
-    """
-    แปลง URL ทรัพยากร /uploads/... ให้เป็นพาธจริงในดิสก์
-    """
-    if not UPLOADS_DIR or not url:
-        return None
-    url = url.strip()
-    if not url.startswith("/uploads/"):
-        return None
-    rel = url[len("/uploads/") :]  # ตัด prefix
-    return str(Path(UPLOADS_DIR) / rel)
-
-
 def _validate_station_id(station_id: str):
-    """ตรวจสอบความถูกต้องของ station_id"""
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
 
 
 def get_pmreport_collection_for(station_id: str):
-    """ดึง collection จาก station_id"""
     _validate_station_id(station_id)
     return db[str(station_id)]
 
 
-# ---------- สร้าง PDF (รูปแบบใหม่เท่านั้น) ----------
-def make_pm_report_pdf_bytes(doc: dict) -> bytes:
-    """
-    สร้าง PDF ด้วย FPDF เฉพาะ Layout แบบใหม่ (Enhanced)
-    """
-    pdf = FPDF()
-    pdf.set_margins(12, 12, 12)
-    pdf.set_auto_page_break(auto=True, margin=15)
+def _extract_station_and_date(doc: dict, fallback_station: str = "unknown"):
+    st = str(doc.get("station_id") or fallback_station or "unknown").strip()
+    raw_pm = doc.get("pm_date") or (doc.get("job") or {}).get("date") or ""
+    raw_pm = str(raw_pm)
+    pm_date_only = raw_pm.split("T")[0][:10].replace("-", "")
+    return st, pm_date_only
+
+
+# ---------- ใช้ fpdf2 + HTML ----------
+class HTML2PDF(FPDF, HTMLMixin):
+    pass
+
+
+def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
+    pdf = HTML2PDF()
     pdf.add_page()
 
-    # ฟอนต์ไทย
+    # ฟอนต์ไทย: โหลดทุกสไตล์
     try:
-        font_path = get_font_path()
-        pdf.add_font("THSarabun", "", font_path, uni=True)
-        font_family = "THSarabun"
+        add_all_thsarabun_fonts(pdf)
+        # กำหนดฟอนต์หลัก
+        pdf.set_font("THSarabun", size=14)
+    except FileNotFoundError:
+         # ในกรณีที่ฟอนต์หลักหายไปจริงๆ
+        pdf.set_font("Arial", size=12)
     except Exception:
-        font_family = "Arial"
+         # หากมีปัญหาอื่น ให้ใช้ฟอนต์สำรอง
+        pdf.set_font("Arial", size=12)
 
-    # เตรียมข้อมูล
+    # ดึงข้อมูล
     station_id = doc.get("station_id", "-")
     job = doc.get("job", {}) or {}
-    rows = doc.get("rows", {}) or {}
-    measures = doc.get("measures", {}) or {}
-    summary = doc.get("summary", "")
-    status = doc.get("status", "")
-    pm_date = doc.get("pm_date", job.get("date", "")) or ""
+    summary = doc.get("summary", "-")
+    pm_date = doc.get("pm_date", job.get("date", "-"))
 
-    content_w = pdf.w - pdf.l_margin - pdf.r_margin
+    # HTML Template
+    # **ลบ <colgroup> และ <col> ออกเพื่อแก้ Warning/Potential Error**
+    html = f"""
+    <h1 align="center">PM Report - {station_id}</h1>
+    <table border="1" width="100%" align="center">
+        <tr>
+            <th width="30%">Station Name</th><td width="70%">{job.get("station_name", "-")}</td>
+        </tr>
+        <tr><th width="30%">Model</th><td width="70%">{job.get("model", "-")}</td></tr>
+        <tr><th width="30%">Serial No.</th><td width="70%">{job.get("sn", "-")}</td></tr>
+        <tr><th width="30%">Inspector</th><td width="70%">{job.get("inspector", "-")}</td></tr>
+        <tr><th width="30%">PM Date</th><td width="70%">{pm_date}</td></tr>
+    </table>
 
-    # ========== Layout แบบใหม่ (สวยงามขึ้น) ==========
-    # Header พื้นหลังสี
-    pdf.set_fill_color(41, 128, 185)  # สีน้ำเงิน
-    pdf.rect(0, 0, pdf.w, 30, "F")
+    <br><b>Summary:</b><br>
+    <p>{summary}</p>
+    """
 
-    pdf.set_text_color(255, 255, 255)  # ตัวอักษรสีขาว
-    pdf.set_font(font_family, size=20)
-    pdf.set_y(10)
-    title = soft_wrap(f"PM Report - {station_id}")
+    pdf.write_html(html)
+
+    return bytes(pdf.output(dest="S"))
+# ---------- API Endpoint ----------
+@router.get("/{id}/export-html")
+async def export_pdf_from_html(
+    id: str,
+    station_id: str = Query(..., description="เช่น Klongluang3"),
+    dl: bool = Query(False),
+):
+    """สร้าง PDF จาก HTML"""
     try:
-        pdf.cell(content_w, 10, title, ln=1, align="C")
-    except:
-        pdf.cell(content_w, 10, force_wrap(title, 40), ln=1, align="C")
+        oid = ObjectId(id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="ID ไม่ถูกต้อง")
 
-    pdf.set_text_color(0, 0, 0)  # กลับเป็นสีดำ
-    pdf.set_y(35)
+    coll = get_pmreport_collection_for(station_id)
+    doc = coll.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="ไม่พบเอกสาร")
 
-    # Info Section แบบกล่อง
-    pdf.set_fill_color(245, 245, 245)
-    y_start = pdf.get_y()
-    pdf.rect(pdf.l_margin, y_start, content_w, 60, "F")
+    pdf_bytes = make_pm_report_html_pdf_bytes(doc)
 
-    pdf.set_font(font_family, size=12)
-    pdf.set_y(y_start + 5)
+    st, pm_date = _extract_station_and_date(doc, station_id)
+    filename = safe_filename(f"{pm_date}_{st}.pdf")
 
-    def kv_enhanced(label: str, value: str):
-        h = 7
-        lw = 50
-        vw = content_w - lw - 4
-        pdf.set_x(pdf.l_margin + 2)
-        pdf.set_font(font_family, size=11)
-        pdf.cell(lw, h, soft_wrap(label), border=0)
-        pdf.set_font(font_family, size=11)
-        pdf.cell(vw, h, soft_wrap(value), border=0, ln=1)
+    disposition = "attachment" if dl else "inline"
+    cd = f"{disposition}; filename={filename}; filename*=UTF-8''{quote(filename)}"
 
-    kv_enhanced("Station ID:", station_id)
-    kv_enhanced("Station Name:", str(job.get("station_name") or "-"))
-    kv_enhanced("Model:", str(job.get("model") or "-"))
-    kv_enhanced("Serial No.:", str(job.get("sn") or "-"))
-    kv_enhanced("Charger No.:", str(job.get("chargerNo") or "-"))
-    kv_enhanced("Inspector:", str(job.get("inspector") or "-"))
-    kv_enhanced("PM Date:", str(pm_date or "-"))
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": cd,
+            "Cache-Control": "no-store",
+        },
+    )
 
-    pdf.set_y(y_start + 65)
 
-    # Checklist
-    pdf.set_font(font_family, size=14)
-    pdf.set_text_color(41, 128, 185)
-    pdf.cell(0, 8, "Checklist", ln=1)
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(2)
-
-    pdf.set_font(font_family, size=12)
-    th_h = 8
-    col_w = [20, 60, content_w - 20 - 60 - 28, 28]
-
-    def th(text, w):
-        pdf.set_fill_color(52, 152, 219)
-        pdf.set_text_color(255, 255, 255)
-        pdf.cell(w, th_h, text, border=1, ln=0, align="C", fill=True)
-        pdf.set_text_color(0, 0, 0)
-
-    th("#", col_w[0])
-    th("Item", col_w[1])
-    th("Remark", col_w[2])
-    th("P/F", col_w[3])
-    pdf.ln(th_h)
-
-    def sort_key(k):
-        try:
-            return int(k[1:]) if k.startswith("r") else 9999
-        except:
-            return 9999
-
-    for i, key in enumerate(sorted(rows.keys(), key=sort_key), start=1):
-        row = rows.get(key, {}) or {}
-        pf = str(row.get("pf") or "-").upper()
-        remark = str(row.get("remark") or "")
-
-        if pf == "PASS":
-            pdf.set_fill_color(220, 255, 220)
-        elif pf == "FAIL":
-            pdf.set_fill_color(255, 220, 220)
-        elif pf == "NA":
-            pdf.set_fill_color(235, 235, 235)
-        else:
-            pdf.set_fill_color(255, 255, 255)
-
-        pdf.cell(col_w[0], th_h, str(i), border=1, ln=0, align="C")
-        pdf.cell(col_w[1], th_h, key, border=1, ln=0, align="L")
-
-        x_before = pdf.get_x()
-        y_before = pdf.get_y()
-        pdf.multi_cell(col_w[2], th_h, soft_wrap(remark) or "-", border=1)
-        y_after = pdf.get_y()
-        cell_height = max(th_h, y_after - y_before)
-
-        pdf.set_xy(x_before + col_w[2], y_before)
-        pdf.cell(col_w[3], cell_height, pf, border=1, ln=1, align="C", fill=True)
-
-    pdf.ln(3)
-
-    # Measures
-    if measures:
-        pdf.set_font(font_family, size=14)
-        pdf.set_text_color(41, 128, 185)
-        pdf.cell(0, 8, "Measures", ln=1)
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(2)
-        pdf.set_font(font_family, size=12)
-
-        m17 = measures.get("m17", {}) or {}
-        if m17:
-            th("Point", 80)
-            th("Value", 40)
-            th("Unit", 30)
-            pdf.ln(th_h)
-            for point, obj in m17.items():
-                val = str((obj or {}).get("value", ""))
-                unit = str((obj or {}).get("unit", ""))
-                pdf.cell(80, 8, point, border=1)
-                pdf.cell(40, 8, val, border=1, align="R")
-                pdf.cell(30, 8, unit, border=1, ln=1, align="C")
-            pdf.ln(2)
-
-        cp = measures.get("cp", {}) or {}
-        if cp:
-            th("CP", 80)
-            th("Value", 40)
-            th("Unit", 30)
-            pdf.ln(th_h)
-            pdf.cell(80, 8, "Control Pilot", border=1)
-            pdf.cell(40, 8, str(cp.get("value", "")), border=1, align="R")
-            pdf.cell(30, 8, str(cp.get("unit", "")), border=1, ln=1, align="C")
-            pdf.ln(2)
-
-    # Summary
-    pdf.set_font(font_family, size=14)
-    pdf.set_text_color(41, 128, 185)
-    pdf.cell(0, 8, "Summary", ln=1)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font(font_family, size=12)
+# ---------- Redirect (optional) ----------
+@router.get("/{id}/file-html")
+async def get_pm_report_redirect(
+    id: str,
+    station_id: str = Query(...),
+    dl: bool = Query(False),
+):
+    """Redirect เพื่อให้ชื่อไฟล์สวยงาม"""
     try:
-        pdf.multi_cell(content_w, 8, soft_wrap(summary or "-"))
-    except:
-        pdf.multi_cell(content_w, 8, force_wrap(summary or "-", 40))
-    pdf.ln(2)
+        oid = ObjectId(id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="ID ไม่ถูกต้อง")
 
-    pdf.set_font(font_family, size=12)
-    pdf.cell(0, 7, f"Overall Status: {status or '-'}", ln=1)
+    coll = get_pmreport_collection_for(station_id)
+    doc = coll.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="ไม่พบเอกสาร")
 
-    # Photos
-    photos = doc.get("photos") or {}
-    if UPLOADS_DIR and photos:
-        pdf.ln(5)
-        pdf.set_font(font_family, size=14)
-        pdf.set_text_color(41, 128, 185)
-        pdf.cell(0, 8, "Photos", ln=1)
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(2)
-
-        cols = 3
-        gutter = 3
-        img_w = (content_w - (gutter * (cols - 1))) / cols
-        img_h = img_w * 0.75
-
-        x0 = pdf.l_margin
-        y0 = pdf.get_y()
-        x = x0
-        y = y0
-        col_idx = 0
-
-        def sort_g(k):
-            try:
-                return int(k[1:]) if k.startswith("g") else 9999
-            except:
-                return 9999
-
-        for gkey in sorted(photos.keys(), key=sort_g):
-            arr = photos.get(gkey) or []
-            for item in arr:
-                url = str(item.get("url") or "")
-                local_path = map_upload_url_to_path(url)
-                if not local_path or not Path(local_path).exists():
-                    continue
-
-                if y + img_h > (pdf.h - pdf.b_margin):
-                    pdf.add_page()
-                    x, y = x0, pdf.get_y()
-
-                try:
-                    pdf.image(local_path, x=x, y=y, w=img_w)
-                    fname = os.path.basename(local_path)
-                    pdf.set_xy(x, y + img_h + 1)
-                    pdf.set_font(font_family, size=9)
-                    pdf.multi_cell(img_w, 4, soft_wrap(fname, 20), align="C")
-                except Exception as e:
-                    print(f"⚠️ Cannot load image {local_path}: {e}")
-
-                col_idx += 1
-                if col_idx % cols == 0:
-                    x = x0
-                    y += img_h + 10
-                else:
-                    x += img_w + gutter
-
-        pdf.set_xy(x0, y + img_h + 10)
-
-    # Output
-    out = pdf.output(dest="S")
-    if isinstance(out, (bytes, bytearray)):
-        return bytes(out)
-    elif isinstance(out, str):
-        return out.encode("latin1", "ignore")
-    return bytes(out)
+    st, pm_date = _extract_station_and_date(doc, station_id)
+    slug = quote(f"{pm_date}_{st}")
+    target = f"/pdf/{id}/export-html?station_id={station_id}&dl={int(bool(dl))}"
+    return RedirectResponse(url=target, status_code=307)
 
 
-# ---------- API Endpoint (HTML-only) ----------
-# @router.get("/{id}/file-html")
-# async def get_pm_report_enhanced(
+# from fastapi import APIRouter, Response, HTTPException, Query
+# from fastapi.responses import RedirectResponse
+# from fpdf import FPDF, HTMLMixin
+# from pathlib import Path
+# from urllib.parse import quote
+# from bson import ObjectId
+# from bson.errors import InvalidId
+# from main import client1 as pymongo_client
+# import os
+# import re
+# import html as _html
+
+# router = APIRouter(prefix="/pdf", tags=["pdf"])
+
+# class HTML2PDF(FPDF, HTMLMixin):
+#     pass
+
+# def safe_filename(name: str) -> str:
+#     bad = '\\/:*?"<>|'
+#     for ch in bad:
+#         name = name.replace(ch, "_")
+#     name = name.strip()
+#     return name or "report"
+
+# def _validate_station_id(station_id: str):
+#     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+#         raise HTTPException(status_code=400, detail="Bad station_id")
+
+# def get_pmreport_collection_for(station_id: str):
+#     _validate_station_id(station_id)
+#     return pymongo_client["PMReport"][str(station_id)]
+
+# def _extract_station_and_date(doc: dict, fallback_station: str = "unknown"):
+#     st = str(doc.get("station_id") or fallback_station or "unknown").strip()
+#     raw_pm = doc.get("pm_date") or (doc.get("job") or {}).get("date") or ""
+#     raw_pm = str(raw_pm)
+#     pm_date_only = raw_pm.split("T")[0][:10].replace("-", "")
+#     return st, pm_date_only
+
+# def convert_br_to_newline(text: str) -> str:
+#     if not text:
+#         return ""
+#     # แทนที่แท็ก <br> ทุกรูปแบบด้วย \n
+#     return re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+
+
+# def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
+#     pdf = HTML2PDF()
+#     pdf.add_page()
+
+#     fonts_dir = Path(__file__).parent / "fonts"
+#     try:
+#         pdf.add_font("THSarabun", "", str(fonts_dir / "THSarabunNew.ttf"), uni=True)
+#         pdf.add_font("THSarabun", "B", str(fonts_dir / "THSarabunNew Bold.ttf"), uni=True)
+#         pdf.add_font("THSarabun", "I", str(fonts_dir / "THSarabunNew Italic.ttf"), uni=True)
+#         pdf.add_font("THSarabun", "BI", str(fonts_dir / "THSarabunNew BoldItalic.ttf"), uni=True)
+#         pdf.set_font("THSarabun", size=14)
+#     except Exception as e:
+#         pdf.set_font("Arial", size=12)
+
+#     job = doc.get("job", {}) or {}
+
+#     # แปลง <br> เป็น \n ทุกรายการที่อาจมี และ Escape HTML
+#     station_id = _html.escape(convert_br_to_newline(str(doc.get("station_id", "-"))))
+#     summary = _html.escape(convert_br_to_newline(str(doc.get("summary", "-"))))
+#     pm_date = _html.escape(convert_br_to_newline(str(doc.get("pm_date", job.get("date", "-")))))
+#     inspector = _html.escape(convert_br_to_newline(str(job.get("inspector", "-"))))
+#     station_name = _html.escape(convert_br_to_newline(str(job.get("station_name", "-"))))
+#     model = _html.escape(convert_br_to_newline(str(job.get("model", "-"))))
+#     sn = _html.escape(convert_br_to_newline(str(job.get("sn", "-"))))
+
+#     # สร้าง HTML Template
+#     # **ส่วนที่แก้ไขคือในตารางลายเซ็นต์ด้านล่าง (บรรทัด 171-197) เปลี่ยน \n เป็น <br>**
+#     html = f"""
+#     <h2 align="center"><b>Preventive Maintenance Checklist - เครื่องอัดประจุไฟฟ้า</b></h2>
+#     <h4 align="center">Electricity Generating Authority of Thailand (EGAT)</h4>
+#     <p align="center"><i>53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130</i></p>
+
+#     <table border="1" width="100%" cellspacing="0" cellpadding="3">
+#         <tr>
+#             <th width="25%">สถานที่</th><td width="25%">{station_name}</td>
+#             <th width="25%">วันที่ตรวจ</th><td width="25%">{pm_date}</td>
+#         </tr>
+#         <tr>
+#             <th>Model</th><td>{model}</td>
+#             <th>Serial No.</th><td>{sn}</td>
+#         </tr>
+#         <tr>
+#             <th>ผู้ตรวจสอบ</th><td>{inspector}</td>
+#             <th>รหัสสถานี</th><td>{station_id}</td>
+#         </tr>
+#     </table>
+
+#     <h4><b>รายการตรวจสอบ (Checklist)</b></h4>
+#     <table border="1" width="100%" cellspacing="0" cellpadding="3">
+#         <tr align="center" bgcolor="#f0f0f0">
+#             <th width="10%">ลำดับ</th>
+#             <th width="60%">รายการตรวจ</th>
+#             <th width="15%">ผลตรวจ</th>
+#             <th width="15%">หมายเหตุ</th>
+#         </tr>
+#         <tr>
+#             <td align="center">1</td><td>ตรวจสอบสภาพทั่วไป</td>
+#             <td align="center">Pass</td><td>-</td>
+#         </tr>
+#         <tr>
+#             <td align="center">2</td><td>ตรวจสอบดักซีล, ซิลิโคนกันซึม</td>
+#             <td align="center">Pass</td><td>-</td>
+#         </tr>
+#         <tr>
+#             <td align="center">3</td><td>ตรวจสอบสายอัดประจุ</td>
+#             <td align="center">Fail</td><td>สายชาร์จชำรุด</td>
+#         </tr>
+#         <tr>
+#             <td align="center">4</td><td>ตรวจสอบหัวจ่ายอัดประจุ</td>
+#             <td align="center">Fail</td><td>มีฝุ่นอุดตัน</td>
+#         </tr>
+#         <tr>
+#             <td align="center">5</td><td>ตรวจสอบปุ่มหยุดฉุกเฉิน</td>
+#             <td align="center">Pass</td><td>-</td>
+#         </tr>
+#         <tr>
+#             <td align="center">6</td><td>ตรวจสอบป้ายเตือน / QR CODE</td>
+#             <td align="center">Pass</td>
+#             <td>-</td>
+#         </tr>
+#         <tr>
+#             <td align="center">7</td><td>ตรวจสอบอุปกรณ์ไฟฟ้าและแรงดัน</td>
+#             <td align="center">Pass</td><td>-</td>
+#         </tr>
+#         <tr>
+#             <td align="center">8</td><td>ทดสอบการอัดประจุ</td>
+#             <td align="center">N/A</td><td>-</td>
+#         </tr>
+#         <tr>
+#             <td align="center">9</td><td>ทำความสะอาด</td>
+#             <td align="center">Pass</td><td>-</td>
+#         </tr>
+#     </table>
+
+#     <p><b>สรุปผลการตรวจสอบ:</b> {summary}</p>
+
+#     <table width="100%" cellspacing="0" cellpadding="5" border="0">
+#         <tr align="center">
+#             <td width="33%">
+#                 <b>Performed by</b><br>
+#                 ( {inspector} )<br>
+#                 Date: {pm_date}
+#             </td>
+#             <td width="33%">
+#                 <b>Approved by</b><br>
+#                 ( นายศราวุฒิ คำแสน )<br>
+#                 Date: {pm_date}
+#             </td>
+#             <td width="33%">
+#                 <b>Witnessed by</b><br>
+#                 ( นายกิตติกานต์ ป่าไพร )<br>
+#                 Date: {pm_date}
+#             </td>
+#         </tr>
+#     </table>
+
+#     <p align="center" style="font-size:12px">
+#         <i>Pass = ผ่าน | Fail = ไม่ผ่าน | N/A = ไม่พบ</i><br>
+#         <i>เอกสารรหัส: EV-F-27</i>
+#     </p>
+#     """
+
+#     pdf.write_html(html)
+#     return bytes(pdf.output(dest="S"))
+
+
+# @router.get("/{id}/export-html")
+# async def export_pdf_from_html(
 #     id: str,
 #     station_id: str = Query(..., description="เช่น Klongluang3"),
 #     dl: bool = Query(False),
 # ):
-#     """ดาวน์โหลด/แสดง PDF (Layout แบบใหม่เท่านั้น)"""
 #     try:
 #         oid = ObjectId(id)
 #     except InvalidId:
-#         raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
+#         raise HTTPException(status_code=400, detail="ID ไม่ถูกต้อง")
 
 #     coll = get_pmreport_collection_for(station_id)
 #     doc = coll.find_one({"_id": oid})
 #     if not doc:
 #         raise HTTPException(status_code=404, detail="ไม่พบเอกสาร")
 
-#     try:
-#         pdf_bytes = make_pm_report_pdf_bytes(doc)
-#     except Exception as e:
-#         import traceback
+#     pdf_bytes = make_pm_report_html_pdf_bytes(doc)
+#     st, pm_date = _extract_station_and_date(doc, station_id)
+#     filename = safe_filename(f"{pm_date}_{st}.pdf")
 
-#         traceback.print_exc()
-#         raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
-
-#     filename = safe_filename(
-#         f"PM_Enhanced_{doc.get('station_id','unknown')}_{doc.get('pm_date', '')}.pdf"
-#     )
 #     disposition = "attachment" if dl else "inline"
-#     cd = f"{disposition}; filename=report.pdf; filename*=UTF-8''{quote(filename)}"
+#     cd = f"{disposition}; filename={filename}; filename*=UTF-8''{quote(filename)}"
 
 #     return Response(
 #         content=pdf_bytes,
 #         media_type="application/pdf",
-#         headers={"Content-Disposition": cd, "Cache-Control": "no-store"},
+#         headers={
+#             "Content-Disposition": cd,
+#             "Cache-Control": "no-store",
+#         },
 #     )
 
 
+# @router.get("/{id}/file-html")
+# async def get_pm_report_redirect(
+#     id: str,
+#     station_id: str = Query(...),
+#     dl: bool = Query(False),
+# ):
+#     try:
+#         oid = ObjectId(id)
+#     except InvalidId:
+#         raise HTTPException(status_code=400, detail="ID ไม่ถูกต้อง")
 
+#     coll = get_pmreport_collection_for(station_id)
+#     doc = coll.find_one({"_id": oid})
+#     if not doc:
+#         raise HTTPException(status_code=404, detail="ไม่พบเอกสาร")
 
-router = APIRouter(prefix="/pdf", tags=["pdf"])
-
-# ... (ฟังก์ชัน helper: safe_filename, get_pmreport_collection_for, make_pm_report_pdf_bytes etc. คงเดิม)
-
-def _extract_station_and_date(doc: dict, fallback_station: str = "unknown"):
-    st = str(doc.get("station_id") or fallback_station or "unknown").strip()
-    raw_pm = doc.get("pm_date") or (doc.get("job") or {}).get("date") or ""
-    if isinstance(raw_pm, dict) and "$date" in raw_pm:
-        raw_pm = str(raw_pm["$date"])
-    else:
-        raw_pm = str(raw_pm)
-    pm_date_only = raw_pm.split("T")[0][:10] if raw_pm else ""
-    pm_date_only = pm_date_only.replace("-", "")  # 👈 เปลี่ยนขีดเป็นขีดล่าง
-    return st, pm_date_only
-
-
-@router.get("/{id}/{slug}.pdf")
-async def get_pm_report_named(
-    id: str,
-    slug: str,
-    station_id: str = Query(..., description="เช่น Klongluang3"),
-    dl: bool = Query(False),
-):
-    """เสิร์ฟ PDF โดยชื่อที่แสดงจะมาจาก segment สุดท้ายของ URL (slug)."""
-    try:
-        oid = ObjectId(id)
-    except InvalidId:
-        raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
-
-    coll = get_pmreport_collection_for(station_id)
-    doc = coll.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(status_code=404, detail="ไม่พบเอกสาร")
-
-    pdf_bytes = make_pm_report_pdf_bytes(doc)
-
-    # ตั้งชื่อไฟล์สำหรับดาวน์โหลด (กันเหนียว)
-    st, pm_date_only = _extract_station_and_date(doc, station_id)
-    base_name = f"{st}_{pm_date_only}.pdf" if pm_date_only else f"{st}.pdf"
-    filename = safe_filename(base_name)
-
-    disposition = "attachment" if dl else "inline"
-    cd = (
-        f'{disposition}; '
-        f'filename="{filename}"; '
-        f"filename*=UTF-8''{quote(filename)}"
-    )
-
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": cd, "Cache-Control": "no-store"},
-    )
-
-@router.get("/{id}/file-html")
-async def get_pm_report_enhanced(
-    id: str,
-    station_id: str = Query(..., description="เช่น Klongluang3"),
-    dl: bool = Query(False),
-):
-    """
-    เดิมใช้เสิร์ฟ PDF ตรง ๆ
-    ตอนนี้เปลี่ยนเป็น redirect ไปยัง URL ที่มีชื่อไฟล์ใน path เพื่อให้ Viewer แสดงชื่อถูกต้อง
-    """
-    try:
-        oid = ObjectId(id)
-    except InvalidId:
-        raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
-
-    coll = get_pmreport_collection_for(station_id)
-    doc = coll.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(status_code=404, detail="ไม่พบเอกสาร")
-
-    st, pm_date_only = _extract_station_and_date(doc, station_id)
-    base_name = f"{st}_{pm_date_only}" if pm_date_only else f"{st}"
-    slug = quote(safe_filename(base_name).replace(".pdf", ""), safe="")  # ไม่ใส่ .pdf ใน slug
-
-    # ประกอบ URL ใหม่: /pdf/{id}/{slug}.pdf?station_id=...&dl=...
-    target = f"/pdf/{id}/{slug}.pdf?station_id={quote(station_id)}&dl={int(bool(dl))}"
-    return RedirectResponse(url=target, status_code=307)
+#     st, pm_date = _extract_station_and_date(doc, station_id)
+#     target = f"/pdf/{id}/export-html?station_id={station_id}&dl={int(bool(dl))}"
+#     return RedirectResponse(url=target, status_code=307)
