@@ -5306,6 +5306,9 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
 
 from pdf.pdf_routes import router as pdf_router
 app.include_router(pdf_router)
+from pdf.test_pdf import router as test_pdf_router
+app.include_router(test_pdf_router)
+
 
 class PLCMaxSetting(BaseModel):
     station_id: str
