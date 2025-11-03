@@ -23,9 +23,51 @@ const RevenueChart = dynamic(() => import("@/app/dashboard/cbm/components/revenu
 
 type CBMDoc = {
   _id: string;
+  DC_charger_temp?: number
+  charger_relative_humidity?: number
+  MDB_temp?: number
+  MDB_relative_humidity?: number
   edgebox_temp?: number
   pi5_temp?: number
   router_temp?: number
+  PLC_temp1?: number | undefined
+  PLC_temp2?: number | undefined
+  charger_gun_temp_plus1?: number
+  charger_gan_temp_minus1?: number
+  charger_gun_temp_plus2: number
+  charger_gan_temp_minus2?: number
+  insulation_monitoring_status1?: number
+  insulation_monitoring_status2?: number
+  AC_magnetic_contactor_status1?: number
+  AC_magnetic_contactor_status2?: number
+  DC_power_contractor1?: number
+  DC_power_contractor2?: number
+  DC_power_contractor3?: number
+  DC_power_contractor4?: number
+  DC_power_contractor5?: number
+  energy_power_kWh1?: number
+  energy_power_kWh2?: number
+  power_module_temp1?: number
+  power_module_temp2?: number
+  power_module_temp3?: number
+  power_module_temp4?: number
+  power_module_temp5?: number
+  fan_RPM1?: number
+  fan_RPM2?: number
+  fan_RPM3?: number
+  fan_RPM4?: number
+  fan_RPM5?: number
+  fan_RPM6?: number
+  fan_RPM7?: number
+  fan_RPM8?: number
+  fan_status1?: number
+  fan_status2?: number
+  fan_status3?: number
+  fan_status4?: number
+  fan_status5?: number
+  fan_status6?: number
+  fan_status7?: number
+  fan_status8?: number
   timestamp?: string;
   [key: string]: any;
 };
@@ -111,7 +153,7 @@ export default function SalesPage() {
     };
   }, [stationId]);
 
-  const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
+  const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : undefined;
 
   const toDec = (v: unknown, fallback = 0, digits = 1): number => {
     const n = Number(v);
@@ -133,60 +175,77 @@ export default function SalesPage() {
 
         {/* แถวบน (3 + 3 + 6 = 12) */}
         <div className="lg:tw-col-span-3 tw-col-span-12">
-          <ChargerEnv />
+          <ChargerEnv
+            temp={Math.trunc(data?.DC_charger_temp ?? 0)}
+            humidity={Math.trunc(data?.charger_relative_humidity ?? 0)}
+          />
         </div>
 
         <div className="lg:tw-col-span-3 tw-col-span-12">
-          <MDBEnv />
+          <MDBEnv
+            temp={Math.trunc(data?.MDB_temp ?? 0)}
+            humidity={Math.trunc(data?.MDB_relative_humidity ?? 0)}
+          />
         </div>
 
         <div className="lg:tw-col-span-6 tw-col-span-12">
           <DeviceTempsCard
-            updatedAt="10:32"
+            updatedAt={data?.timestamp}
             devices={[
-              { id: "edge", name: "EdgeBox", temp: toDec(data?.edgebox_temp ?? 0), target: 60 },
-              { id: "pi", name: "Raspberry Pi", temp: toDec(data?.pi5_temp ?? 0), target: 60 },
-              { id: "router", name: "Router", temp: toDec(data?.router_temp ?? 0), target: 70 },
-            ]}
-          />
-        </div>
-
-        {/* แถวกลาง: Thermal pair = PLC + Guns */}
-        <div className="lg:tw-col-span-6 tw-col-span-12">
-          <PLCCard
-            updatedAt="10:32"
-            items={[
-              { id: "plc1", name: "PLC 1 Temperature", temp: 42, target: 60 },
-              { id: "plc2", name: "PLC 2 Temperature", temp: 55, target: 60 },
+              { id: "edge", name: "EdgeBox", temp: Math.trunc(data?.edgebox_temp ?? 0), target: 60 },
+              { id: "pi", name: "Raspberry Pi", temp: Math.trunc(data?.pi5_temp ?? 0), target: 60 },
+              { id: "router", name: "Router", temp: Math.trunc(data?.router_temp ?? 0), target: 70 },
             ]}
           />
         </div>
 
         <div className="lg:tw-col-span-6 tw-col-span-12">
           <ChargingGunsCard
-            updatedAt="10:32"
+            updatedAt={lastUpdated}
             items={[
-              { id: "gun1", name: "Charging Gun 1 Temperature", temp: 43, target: 60 },
-              { id: "gun2", name: "Charging Gun 2 Temperature", temp: 58, target: 60 },
+              { id: "gun1", name: "Charging Gun 1 Temperature Plus", temp: toDec(data?.charger_gun_temp_plus1), target: 60 },
+              { id: "gun1", name: "Charging Gun 1 Temperature Minus", temp: toDec(data?.charger_gan_temp_minus1), target: 60 },
             ]}
           />
         </div>
+
+        <div className="lg:tw-col-span-6 tw-col-span-12">
+          <ChargingGunsCard
+            updatedAt={lastUpdated}
+            items={[
+              { id: "gun2", name: "Charging Gun 2 Temperature Plus", temp: toDec(data?.charger_gun_temp_plus2), target: 60 },
+              { id: "gun2", name: "Charging Gun 2 Temperature Minus", temp: toDec(data?.charger_gan_temp_minus2), target: 60 },
+            ]}
+          />
+        </div>
+
+        {/* แถวกลาง: Thermal pair = PLC + Guns */}
+        {/* <div className="lg:tw-col-span-6 tw-col-span-12">
+          <PLCCard
+            updatedAt="10:32"
+            items={[
+              { id: "plc1", name: "PLC 1 Temperature", temp: toDec(data?.PLC_temp1), target: 60 },
+              { id: "plc2", name: "PLC 2 Temperature", temp: toDec(data?.PLC_temp2), target: 60 },
+            ]}
+          />
+        </div> */}
+
 
         {/* แถวถัดไป: สถานะไฟฟ้า + Power Modules แบ่ง 6/6 */}
         <div className="lg:tw-col-span-6 tw-col-span-12">
           <InsuContactorStatusCard
             title="Insulation Status"
-            updatedAt="10:32"
+            updatedAt={lastUpdated}
             items={[
               {
                 id: "insu1",
                 name: "Insulation monitoring No.1 (Active/Inactive)",
-                value: "Active", // หรือ true / "Closed" ก็ได้
+                value: toDec(data?.insulation_monitoring_status1), // หรือ true / "Closed" ก็ได้
               },
               {
                 id: "insu2",
                 name: "Insulation monitoring No.2 (Active/Inactive)",
-                value: "Inactive", // หรือ false / "Open"
+                value: toDec(data?.insulation_monitoring_status2), // หรือ false / "Open"
               },
             ]}
           />
@@ -195,10 +254,10 @@ export default function SalesPage() {
         {/* การ์ด AC Magnetic Contactor ใหม่ */}
         <div className="lg:tw-col-span-6 tw-col-span-12">
           <ACMagneticContactorsCard
-            updatedAt="10:32"
+            updatedAt={lastUpdated}
             items={[
-              { id: "ac1", name: "AC Magnetic Contactor Head 1 Status", value: "Closed" },  // หรือ true
-              { id: "ac2", name: "AC Magnetic Contactor Head 2 Status", value: "Open" },     // หรือ false
+              { id: "ac1", name: "AC Magnetic Contactor Head 1 Status", value: toDec(data?.AC_magnetic_contactor_status1) },  // หรือ true
+              { id: "ac2", name: "AC Magnetic Contactor Head 2 Status", value: toDec(data?.AC_magnetic_contactor_status2) },     // หรือ false
             ]}
           />
         </div>
@@ -206,16 +265,16 @@ export default function SalesPage() {
         <div className="lg:tw-col-span-6 tw-col-span-12">
           <DCContactorsTimesCard
             title="DC Contactor"
-            updatedAt="10:32"
+            updatedAt={lastUpdated}
             unit="Times"      // หรือ "ครั้ง"
             decimals={0}
             items={[
-              { id: "dc1", name: "DC Contactor No.1", times: data?.dcContNo1Times, mode: data?.dcContNo1Mode }, // mode: "NC"|"NO"
-              { id: "dc2", name: "DC Contactor No.2", times: data?.dcContNo2Times, mode: data?.dcContNo2Mode },
-              { id: "dc3", name: "DC Contactor No.3", times: data?.dcContNo3Times, mode: data?.dcContNo3Mode },
-              { id: "dc4", name: "DC Contactor No.4", times: data?.dcContNo4Times, mode: data?.dcContNo4Mode },
-              { id: "dc5", name: "DC Contactor No.5", times: data?.dcContNo5Times, mode: data?.dcContNo5Mode },
-              { id: "dc6", name: "DC Contactor No.6", times: data?.dcContNo6Times, mode: data?.dcContNo6Mode },
+              { id: "dc1", name: "DC Contactor No.1", times: data?.DC_power_contractor1, mode: data?.dcContNo1Mode }, // mode: "NC"|"NO"
+              { id: "dc2", name: "DC Contactor No.2", times: data?.DC_power_contractor2, mode: data?.dcContNo2Mode },
+              { id: "dc3", name: "DC Contactor No.3", times: data?.DC_power_contractor3, mode: data?.dcContNo3Mode },
+              { id: "dc4", name: "DC Contactor No.4", times: data?.DC_power_contractor4, mode: data?.dcContNo4Mode },
+              { id: "dc5", name: "DC Contactor No.5", times: data?.DC_power_contractor5, mode: data?.dcContNo5Mode },
+              { id: "dc6", name: "DC Contactor No.6", times: data?.DC_power_contractor6, mode: data?.dcContNo6Mode },
             ]}
           />
         </div>
@@ -223,10 +282,10 @@ export default function SalesPage() {
         <div className="lg:tw-col-span-6 tw-col-span-12">
           <EnergyPowerCard
             title="Energy Power (kWh)"
-            updatedAt="10:32"
+            updatedAt={lastUpdated}
             /* mapping ตามที่กำหนด: dikW -> No.1, diKW -> No.2 */
-            energy1={data?.dikW}
-            energy2={data?.diKW}
+            energy1={data?.energy_power_kWh1}
+            energy2={data?.energy_power_kWh2}
             unit="kWh"
             decimals={0} // เป็น int ถ้าจะโชว์ทศนิยมเปลี่ยนเป็น 1/2 ได้
           />
@@ -234,13 +293,13 @@ export default function SalesPage() {
 
         <div className="lg:tw-col-span-12 tw-col-span-12">
           <PowerModulesCard
-            updatedAt="10:32"
+            updatedAt={lastUpdated}
             items={[
-              { id: "pm1", name: "Power module 1 Temperature", temp: 38, target: 60 },
-              { id: "pm2", name: "Power module 2 Temperature", temp: 47, target: 60 },
-              { id: "pm3", name: "Power module 3 Temperature", temp: 41, target: 60 },
-              { id: "pm4", name: "Power module 4 Temperature", temp: 52, target: 60 },
-              { id: "pm5", name: "Power module 5 Temperature", temp: 44, target: 60 },
+              { id: "pm1", name: "Power module 1 Temperature", temp: toDec(data?.power_module_temp1), target: 60 },
+              { id: "pm2", name: "Power module 2 Temperature", temp: toDec(data?.power_module_temp2), target: 60 },
+              { id: "pm3", name: "Power module 3 Temperature", temp: toDec(data?.power_module_temp3), target: 60 },
+              { id: "pm4", name: "Power module 4 Temperature", temp: toDec(data?.power_module_temp4), target: 60 },
+              { id: "pm5", name: "Power module 5 Temperature", temp: toDec(data?.power_module_temp5), target: 60 },
             ]}
           />
         </div>
@@ -248,16 +307,16 @@ export default function SalesPage() {
         {/* แถวล่าง: พัดลมเต็มแถว ให้ภาพรวมการระบายความร้อน */}
         <div className="lg:tw-col-span-12 tw-col-span-12">
           <FansCard
-            updatedAt="10:32"
+            updatedAt={lastUpdated}
             fans={[
-              { id: "fan1", name: "FAN1", rpm: 1800, active: true, maxRpm: 5000 },
-              { id: "fan2", name: "FAN2", rpm: 0, active: false, maxRpm: 5000 },
-              { id: "fan3", name: "FAN3", rpm: 2700, active: true, maxRpm: 5000 },
-              { id: "fan4", name: "FAN4", rpm: 4200, active: true, maxRpm: 5000 },
-              { id: "fan5", name: "FAN5", rpm: 5100, active: true, maxRpm: 6000 },
-              { id: "fan6", name: "FAN6", rpm: 800, active: true },
-              { id: "fan7", name: "FAN7", rpm: null, active: false },
-              { id: "fan8", name: "FAN8", rpm: 3600, active: true },
+              { id: "fan1", name: "FAN1", rpm: toDec(data?.fan_RPM1), active: !!data?.fan_status1 },
+              { id: "fan2", name: "FAN2", rpm: toDec(data?.fan_RPM2), active: !!data?.fan_status2, maxRpm: 3500 },
+              { id: "fan3", name: "FAN3", rpm: toDec(data?.fan_RPM3), active: !!data?.fan_status3, maxRpm: 3500 },
+              { id: "fan4", name: "FAN4", rpm: toDec(data?.fan_RPM4), active: !!data?.fan_status4, maxRpm: 3500 },
+              { id: "fan5", name: "FAN5", rpm: toDec(data?.fan_RPM5), active: !!data?.fan_status5, maxRpm: 3500 },
+              { id: "fan6", name: "FAN6", rpm: toDec(data?.fan_RPM6), active: !!data?.fan_status6, maxRpm: 3500 },
+              { id: "fan7", name: "FAN7", rpm: toDec(data?.fan_RPM7), active: !!data?.fan_status7, maxRpm: 3500 },
+              { id: "fan8", name: "FAN8", rpm: toDec(data?.fan_RPM8), active: !!data?.fan_status8, maxRpm: 3500 },
             ]}
           />
         </div>

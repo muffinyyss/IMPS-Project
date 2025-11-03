@@ -5197,7 +5197,7 @@ async def utilization_stream(request: Request, station_id: str = Query(...), cur
 
 
 
-# device page
+#-------------------------------------------------------------------- setting page
 def get_setting_collection_for(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
@@ -5502,7 +5502,7 @@ async def setting_plc(payload: PLCH2CPCommand):
         "data": msg,
     }
 
-# ----------------------------------------------- CBM 
+# --------------------------------------------------------------------- CBM Page
 def get_cbm_collection_for(station_id: str):
     # กันชื่อคอลเลกชันแปลก ๆ / injection: อนุญาต a-z A-Z 0-9 _ -
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
