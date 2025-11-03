@@ -1,15 +1,15 @@
-
 # backend/pdf/pdf_routes.py
 from fastapi import APIRouter, Response, HTTPException, Query
 from fpdf import FPDF
 from pathlib import Path
 from urllib.parse import quote
-from pymongo import MongoClient
 from bson import ObjectId
 from bson.errors import InvalidId
 import os
 import re
-from main import client1 as pymongo_client 
+from main import client1 as pymongo_client
+from datetime import datetime, date
+from fastapi.responses import RedirectResponse
 
 router = APIRouter(prefix="/pdf", tags=["pdf"])
 
@@ -34,22 +34,16 @@ def get_font_path() -> str:
 
 
 # ---------- เชื่อม MongoDB ----------
-# MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 PMREPORT_DB_NAME = "PMReport"
 db = pymongo_client[PMREPORT_DB_NAME]
-# client = MongoClient(MONGO_URI)
 
-# PMREPORT_DB = os.getenv("PMREPORT_DB", "PMReport")
-# PMREPORT_COLLECTION = os.getenv("PMREPORT_COLLECTION", "Klongluang3")
-# db = client[PMREPORT_DB]
-# pm_reports_collection = db[PMREPORT_COLLECTION]
-
-# โฟลเดอร์จริงของไฟล์อัปโหลด (ถ้าตั้งค่านี้ จะพยายามแทรกรูปลง PDF)
-UPLOADS_DIR = os.getenv("UPLOADS_DIR", "")  # ตัวอย่าง: /var/www/app/static/uploads
+# โฟลเดอร์จริงของไฟล์อัปโหลด
+UPLOADS_DIR = os.getenv("UPLOADS_DIR", "")
 
 
-# ---------- helper ----------
+# ---------- Helper Functions ----------
 def safe_filename(name: str) -> str:
+    """ทำให้ชื่อไฟล์ปลอดภัย"""
     bad = '\\/:*?"<>|'
     for ch in bad:
         name = name.replace(ch, "_")
@@ -61,6 +55,7 @@ ZWSP = "\u200b"
 
 
 def soft_wrap(s: str, hard_chunk: int = 40) -> str:
+    """แทรก zero-width space เพื่อช่วยตัดบรรทัด"""
     if not s:
         return ""
     text = str(s)
@@ -77,16 +72,14 @@ def soft_wrap(s: str, hard_chunk: int = 40) -> str:
 
 
 def force_wrap(text: str, n: int = 30) -> str:
-    """fallback: บังคับตัดบรรทัดทุก n ตัวอักษร"""
+    """บังคับตัดบรรทัดทุก n ตัวอักษร (สำรองกรณีฟอนต์ไม่รองรับ)"""
     s = str(text)
     return "\n".join(s[i : i + n] for i in range(0, len(s), n))
 
 
 def map_upload_url_to_path(url: str) -> str | None:
     """
-    แปลง URL ทรัพยากร /uploads/... ให้เป็นพาธจริงในดิสก์ ถ้าเซ็ต UPLOADS_DIR ไว้
-    เช่น URL: /uploads/pm/Klongluang3/<id>/g1/file.jpg
-         พาธ: {UPLOADS_DIR}/pm/Klongluang3/<id>/g1/file.jpg
+    แปลง URL ทรัพยากร /uploads/... ให้เป็นพาธจริงในดิสก์
     """
     if not UPLOADS_DIR or not url:
         return None
@@ -97,8 +90,23 @@ def map_upload_url_to_path(url: str) -> str | None:
     return str(Path(UPLOADS_DIR) / rel)
 
 
-# ---------- สร้าง PDF ----------
+def _validate_station_id(station_id: str):
+    """ตรวจสอบความถูกต้องของ station_id"""
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+
+
+def get_pmreport_collection_for(station_id: str):
+    """ดึง collection จาก station_id"""
+    _validate_station_id(station_id)
+    return db[str(station_id)]
+
+
+# ---------- สร้าง PDF (รูปแบบใหม่เท่านั้น) ----------
 def make_pm_report_pdf_bytes(doc: dict) -> bytes:
+    """
+    สร้าง PDF ด้วย FPDF เฉพาะ Layout แบบใหม่ (Enhanced)
+    """
     pdf = FPDF()
     pdf.set_margins(12, 12, 12)
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -112,7 +120,7 @@ def make_pm_report_pdf_bytes(doc: dict) -> bytes:
     except Exception:
         font_family = "Arial"
 
-    # เตรียมข้อมูลจากสคีมาที่ให้มา
+    # เตรียมข้อมูล
     station_id = doc.get("station_id", "-")
     job = doc.get("job", {}) or {}
     rows = doc.get("rows", {}) or {}
@@ -121,58 +129,74 @@ def make_pm_report_pdf_bytes(doc: dict) -> bytes:
     status = doc.get("status", "")
     pm_date = doc.get("pm_date", job.get("date", "")) or ""
 
-    # ความกว้างเนื้อหา
-    content_w = pdf.w - pdf.l_margin - pdf.r_margin  # epw
+    content_w = pdf.w - pdf.l_margin - pdf.r_margin
 
-    # ตั้งฟอนต์เริ่ม
-    pdf.set_font(font_family, size=16)
+    # ========== Layout แบบใหม่ (สวยงามขึ้น) ==========
+    # Header พื้นหลังสี
+    pdf.set_fill_color(41, 128, 185)  # สีน้ำเงิน
+    pdf.rect(0, 0, pdf.w, 30, "F")
 
-    # ชื่อรายงาน
+    pdf.set_text_color(255, 255, 255)  # ตัวอักษรสีขาว
+    pdf.set_font(font_family, size=20)
+    pdf.set_y(10)
     title = soft_wrap(f"PM Report - {station_id}")
     try:
-        pdf.cell(content_w, 10, title, ln=1)
-    except Exception:
-        pdf.cell(content_w, 10, force_wrap(title, 40), ln=1)
+        pdf.cell(content_w, 10, title, ln=1, align="C")
+    except:
+        pdf.cell(content_w, 10, force_wrap(title, 40), ln=1, align="C")
 
-    # บล็อคข้อมูลหัวกระดาษ (Job/Station)
-    pdf.set_font(font_family, size=13)
+    pdf.set_text_color(0, 0, 0)  # กลับเป็นสีดำ
+    pdf.set_y(35)
 
-    def kv(label: str, value: str):
-        """แสดง label: value สั้น ๆ สองคอลัมน์"""
-        label = soft_wrap(label)
-        value = soft_wrap(value)
+    # Info Section แบบกล่อง
+    pdf.set_fill_color(245, 245, 245)
+    y_start = pdf.get_y()
+    pdf.rect(pdf.l_margin, y_start, content_w, 60, "F")
+
+    pdf.set_font(font_family, size=12)
+    pdf.set_y(y_start + 5)
+
+    def kv_enhanced(label: str, value: str):
         h = 7
-        lw = 42
-        vw = content_w - lw
-        pdf.set_font(font_family, size=12)
-        pdf.cell(lw, h, label, border=0)
-        pdf.multi_cell(vw, h, value)
+        lw = 50
+        vw = content_w - lw - 4
+        pdf.set_x(pdf.l_margin + 2)
+        pdf.set_font(font_family, size=11)
+        pdf.cell(lw, h, soft_wrap(label), border=0)
+        pdf.set_font(font_family, size=11)
+        pdf.cell(vw, h, soft_wrap(value), border=0, ln=1)
 
-    kv("Station ID", station_id)
-    kv("Station Name", str(job.get("station_name") or "-"))
-    kv("Model", str(job.get("model") or "-"))
-    kv("Serial No.", str(job.get("sn") or "-"))
-    kv("Charger No.", str(job.get("chargerNo") or "-"))
-    kv("Inspector", str(job.get("inspector") or "-"))
-    kv("PM Date", str(pm_date or "-"))
-    pdf.ln(2)
+    kv_enhanced("Station ID:", station_id)
+    kv_enhanced("Station Name:", str(job.get("station_name") or "-"))
+    kv_enhanced("Model:", str(job.get("model") or "-"))
+    kv_enhanced("Serial No.:", str(job.get("sn") or "-"))
+    kv_enhanced("Charger No.:", str(job.get("chargerNo") or "-"))
+    kv_enhanced("Inspector:", str(job.get("inspector") or "-"))
+    kv_enhanced("PM Date:", str(pm_date or "-"))
 
-    # ---------- Checklist (rows r1..rN) ----------
+    pdf.set_y(y_start + 65)
+
+    # Checklist
     pdf.set_font(font_family, size=14)
+    pdf.set_text_color(41, 128, 185)
     pdf.cell(0, 8, "Checklist", ln=1)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(2)
 
     pdf.set_font(font_family, size=12)
     th_h = 8
-    col_w = [20, 55, content_w - 20 - 55 - 28, 28]  # No., Item, Remark, PF
+    col_w = [20, 60, content_w - 20 - 60 - 28, 28]
 
     def th(text, w):
-        pdf.set_fill_color(230, 230, 230)
+        pdf.set_fill_color(52, 152, 219)
+        pdf.set_text_color(255, 255, 255)
         pdf.cell(w, th_h, text, border=1, ln=0, align="C", fill=True)
+        pdf.set_text_color(0, 0, 0)
 
     th("#", col_w[0])
     th("Item", col_w[1])
     th("Remark", col_w[2])
-    th("PF", col_w[3])
+    th("P/F", col_w[3])
     pdf.ln(th_h)
 
     def sort_key(k):
@@ -181,13 +205,11 @@ def make_pm_report_pdf_bytes(doc: dict) -> bytes:
         except:
             return 9999
 
-    # NOTE: ชื่อรายการจริงของ r1..r19 ยังไม่ทราบ → แสดงเป็น key ไปก่อน
     for i, key in enumerate(sorted(rows.keys(), key=sort_key), start=1):
         row = rows.get(key, {}) or {}
         pf = str(row.get("pf") or "-").upper()
         remark = str(row.get("remark") or "")
 
-        # สีพื้นตาม PF
         if pf == "PASS":
             pdf.set_fill_color(220, 255, 220)
         elif pf == "FAIL":
@@ -197,77 +219,83 @@ def make_pm_report_pdf_bytes(doc: dict) -> bytes:
         else:
             pdf.set_fill_color(255, 255, 255)
 
-        # วาดทีละช่อง (ง่ายและเสถียร)
-        h = 8
-        pdf.cell(col_w[0], h, str(i), border=1, ln=0, align="C")
-        pdf.cell(col_w[1], h, key, border=1, ln=0, align="L")
-        x, y = pdf.get_x(), pdf.get_y()
-        pdf.multi_cell(col_w[2], h, soft_wrap(remark) or "-", border=1)
-        new_y = pdf.get_y()
-        pdf.set_xy(x + col_w[2], y)
-        pdf.cell(col_w[3], h, pf, border=1, ln=1, align="C", fill=True)
-        # หมายเหตุ: ถ้า remark สูงหลายบรรทัด PF จะสูงคงที่ 1 บรรทัด เพื่อความเรียบง่าย
+        pdf.cell(col_w[0], th_h, str(i), border=1, ln=0, align="C")
+        pdf.cell(col_w[1], th_h, key, border=1, ln=0, align="L")
 
-    pdf.ln(2)
+        x_before = pdf.get_x()
+        y_before = pdf.get_y()
+        pdf.multi_cell(col_w[2], th_h, soft_wrap(remark) or "-", border=1)
+        y_after = pdf.get_y()
+        cell_height = max(th_h, y_after - y_before)
 
-    # ---------- Measures ----------
+        pdf.set_xy(x_before + col_w[2], y_before)
+        pdf.cell(col_w[3], cell_height, pf, border=1, ln=1, align="C", fill=True)
+
+    pdf.ln(3)
+
+    # Measures
+    if measures:
+        pdf.set_font(font_family, size=14)
+        pdf.set_text_color(41, 128, 185)
+        pdf.cell(0, 8, "Measures", ln=1)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
+        pdf.set_font(font_family, size=12)
+
+        m17 = measures.get("m17", {}) or {}
+        if m17:
+            th("Point", 80)
+            th("Value", 40)
+            th("Unit", 30)
+            pdf.ln(th_h)
+            for point, obj in m17.items():
+                val = str((obj or {}).get("value", ""))
+                unit = str((obj or {}).get("unit", ""))
+                pdf.cell(80, 8, point, border=1)
+                pdf.cell(40, 8, val, border=1, align="R")
+                pdf.cell(30, 8, unit, border=1, ln=1, align="C")
+            pdf.ln(2)
+
+        cp = measures.get("cp", {}) or {}
+        if cp:
+            th("CP", 80)
+            th("Value", 40)
+            th("Unit", 30)
+            pdf.ln(th_h)
+            pdf.cell(80, 8, "Control Pilot", border=1)
+            pdf.cell(40, 8, str(cp.get("value", "")), border=1, align="R")
+            pdf.cell(30, 8, str(cp.get("unit", "")), border=1, ln=1, align="C")
+            pdf.ln(2)
+
+    # Summary
     pdf.set_font(font_family, size=14)
-    pdf.cell(0, 8, "Measures", ln=1)
-    pdf.set_font(font_family, size=12)
-
-    # m17 (แรงดัน)
-    m17 = measures.get("m17", {}) or {}
-    if m17:
-        th("Point", 60)
-        th("Value", 30)
-        th("Unit", 22)
-        pdf.ln(th_h)
-        for point, obj in m17.items():
-            val = str((obj or {}).get("value", ""))
-            unit = str((obj or {}).get("unit", ""))
-            pdf.cell(60, 8, point, border=1)
-            pdf.cell(30, 8, val, border=1, align="R")
-            pdf.cell(22, 8, unit, border=1, ln=1, align="C")
-        pdf.ln(1)
-
-    # cp
-    cp = measures.get("cp", {}) or {}
-    if cp:
-        th("CP", 60)
-        th("Value", 30)
-        th("Unit", 22)
-        pdf.ln(th_h)
-        pdf.cell(60, 8, "Control Pilot", border=1)
-        pdf.cell(30, 8, str(cp.get("value", "")), border=1, align="R")
-        pdf.cell(22, 8, str(cp.get("unit", "")), border=1, ln=1, align="C")
-        pdf.ln(1)
-
-    # ---------- Summary / Status ----------
-    pdf.set_font(font_family, size=14)
+    pdf.set_text_color(41, 128, 185)
     pdf.cell(0, 8, "Summary", ln=1)
+    pdf.set_text_color(0, 0, 0)
     pdf.set_font(font_family, size=12)
     try:
         pdf.multi_cell(content_w, 8, soft_wrap(summary or "-"))
-    except Exception:
+    except:
         pdf.multi_cell(content_w, 8, force_wrap(summary or "-", 40))
-    pdf.ln(1)
+    pdf.ln(2)
 
     pdf.set_font(font_family, size=12)
     pdf.cell(0, 7, f"Overall Status: {status or '-'}", ln=1)
 
-    # ---------- Photos (ออปชัน: ถ้ามีพาธไฟล์จริง) ----------
+    # Photos
     photos = doc.get("photos") or {}
     if UPLOADS_DIR and photos:
-        pdf.ln(2)
+        pdf.ln(5)
         pdf.set_font(font_family, size=14)
+        pdf.set_text_color(41, 128, 185)
         pdf.cell(0, 8, "Photos", ln=1)
-        pdf.set_font(font_family, size=11)
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
 
-        # grid 3 คอลัมน์
         cols = 3
         gutter = 3
         img_w = (content_w - (gutter * (cols - 1))) / cols
-        img_h = img_w * 0.75  # อัตราส่วนคร่าว ๆ
+        img_h = img_w * 0.75
 
         x0 = pdf.l_margin
         y0 = pdf.get_y()
@@ -275,7 +303,6 @@ def make_pm_report_pdf_bytes(doc: dict) -> bytes:
         y = y0
         col_idx = 0
 
-        # เดินตามกลุ่ม g1..gN ตามลำดับ
         def sort_g(k):
             try:
                 return int(k[1:]) if k.startswith("g") else 9999
@@ -288,37 +315,31 @@ def make_pm_report_pdf_bytes(doc: dict) -> bytes:
                 url = str(item.get("url") or "")
                 local_path = map_upload_url_to_path(url)
                 if not local_path or not Path(local_path).exists():
-                    continue  # ข้ามถ้าไม่มีพาธจริง
+                    continue
 
-                # ตรวจว่าพื้นที่พอในหน้าไหม
                 if y + img_h > (pdf.h - pdf.b_margin):
                     pdf.add_page()
                     x, y = x0, pdf.get_y()
 
                 try:
                     pdf.image(local_path, x=x, y=y, w=img_w)
-                except Exception:
-                    # ถ้ารูปมีปัญหา ให้ข้ามรูปนั้นไป
-                    pass
+                    fname = os.path.basename(local_path)
+                    pdf.set_xy(x, y + img_h + 1)
+                    pdf.set_font(font_family, size=9)
+                    pdf.multi_cell(img_w, 4, soft_wrap(fname, 20), align="C")
+                except Exception as e:
+                    print(f"⚠️ Cannot load image {local_path}: {e}")
 
-                # คำอธิบายสั้นใต้รูป (ชื่อไฟล์)
-                fname = os.path.basename(local_path)
-                pdf.set_xy(x, y + img_h + 1)
-                pdf.multi_cell(img_w, 5, soft_wrap(fname, 20), align="C")
-
-                # ไปคอลัมน์ถัดไป
                 col_idx += 1
                 if col_idx % cols == 0:
-                    # ขึ้นแถวใหม่
                     x = x0
-                    y += img_h + 10  # 10 = ระยะเผื่อ caption
+                    y += img_h + 10
                 else:
                     x += img_w + gutter
 
-        # ขยับ cursor ลงบรรทัดถัดไปให้เรียบร้อย
         pdf.set_xy(x0, y + img_h + 10)
 
-    # ---------- Output ----------
+    # Output
     out = pdf.output(dest="S")
     if isinstance(out, (bytes, bytearray)):
         return bytes(out)
@@ -327,93 +348,125 @@ def make_pm_report_pdf_bytes(doc: dict) -> bytes:
     return bytes(out)
 
 
-# ---------- Endpoints ----------
+# ---------- API Endpoint (HTML-only) ----------
+# @router.get("/{id}/file-html")
+# async def get_pm_report_enhanced(
+#     id: str,
+#     station_id: str = Query(..., description="เช่น Klongluang3"),
+#     dl: bool = Query(False),
+# ):
+#     """ดาวน์โหลด/แสดง PDF (Layout แบบใหม่เท่านั้น)"""
+#     try:
+#         oid = ObjectId(id)
+#     except InvalidId:
+#         raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
 
-def _validate_station_id(station_id: str):
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
-        raise HTTPException(status_code=400, detail="Bad station_id")
+#     coll = get_pmreport_collection_for(station_id)
+#     doc = coll.find_one({"_id": oid})
+#     if not doc:
+#         raise HTTPException(status_code=404, detail="ไม่พบเอกสาร")
 
-def get_pmreport_collection_for(station_id: str):
-    _validate_station_id(station_id)
-    return db[str(station_id)]
+#     try:
+#         pdf_bytes = make_pm_report_pdf_bytes(doc)
+#     except Exception as e:
+#         import traceback
+
+#         traceback.print_exc()
+#         raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
+
+#     filename = safe_filename(
+#         f"PM_Enhanced_{doc.get('station_id','unknown')}_{doc.get('pm_date', '')}.pdf"
+#     )
+#     disposition = "attachment" if dl else "inline"
+#     cd = f"{disposition}; filename=report.pdf; filename*=UTF-8''{quote(filename)}"
+
+#     return Response(
+#         content=pdf_bytes,
+#         media_type="application/pdf",
+#         headers={"Content-Disposition": cd, "Cache-Control": "no-store"},
+#     )
 
 
-@router.get("/{id}/file")
-async def get_pm_report_file(
+
+
+router = APIRouter(prefix="/pdf", tags=["pdf"])
+
+# ... (ฟังก์ชัน helper: safe_filename, get_pmreport_collection_for, make_pm_report_pdf_bytes etc. คงเดิม)
+
+def _extract_station_and_date(doc: dict, fallback_station: str = "unknown"):
+    st = str(doc.get("station_id") or fallback_station or "unknown").strip()
+    raw_pm = doc.get("pm_date") or (doc.get("job") or {}).get("date") or ""
+    if isinstance(raw_pm, dict) and "$date" in raw_pm:
+        raw_pm = str(raw_pm["$date"])
+    else:
+        raw_pm = str(raw_pm)
+    pm_date_only = raw_pm.split("T")[0][:10] if raw_pm else ""
+    pm_date_only = pm_date_only.replace("-", "")  # 👈 เปลี่ยนขีดเป็นขีดล่าง
+    return st, pm_date_only
+
+
+@router.get("/{id}/{slug}.pdf")
+async def get_pm_report_named(
     id: str,
+    slug: str,
     station_id: str = Query(..., description="เช่น Klongluang3"),
     dl: bool = Query(False),
 ):
+    """เสิร์ฟ PDF โดยชื่อที่แสดงจะมาจาก segment สุดท้ายของ URL (slug)."""
     try:
         oid = ObjectId(id)
     except InvalidId:
         raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
 
-    coll = get_pmreport_collection_for(station_id)   # ← ใช้ station_id เลือกคอลเลกชัน
+    coll = get_pmreport_collection_for(station_id)
     doc = coll.find_one({"_id": oid})
     if not doc:
-        raise HTTPException(status_code=404, detail="ไม่พบเอกสารตาม id นี้")
+        raise HTTPException(status_code=404, detail="ไม่พบเอกสาร")
 
     pdf_bytes = make_pm_report_pdf_bytes(doc)
-    filename = safe_filename(
-        f"PM_{doc.get('station_id','unknown')}_{doc.get('pm_date', doc.get('job',{}).get('date',''))}.pdf"
-    )
+
+    # ตั้งชื่อไฟล์สำหรับดาวน์โหลด (กันเหนียว)
+    st, pm_date_only = _extract_station_and_date(doc, station_id)
+    base_name = f"{st}_{pm_date_only}.pdf" if pm_date_only else f"{st}.pdf"
+    filename = safe_filename(base_name)
+
     disposition = "attachment" if dl else "inline"
-    cd = f"{disposition}; filename=report.pdf; filename*=UTF-8''{quote(filename)}"
-    return Response(content=pdf_bytes, media_type="application/pdf",
-                    headers={"Content-Disposition": cd, "Cache-Control": "no-store"})
-
-
-@router.get("/{id}/download")
-async def download_pm_report_by_id(
-    id: str,
-    station_id: str = Query(..., description="เช่น Klongluang3"),
-):
-    try:
-        oid = ObjectId(id)
-    except InvalidId:
-        raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
-
-    coll = get_pmreport_collection_for(station_id)     # ← ใช้ station_id
-    doc = coll.find_one({"_id": oid})
-    if not doc:
-        raise HTTPException(status_code=404, detail="ไม่พบเอกสารตาม id นี้")
-
-    pdf_bytes = make_pm_report_pdf_bytes(doc)
-    base = safe_filename(
-        f"PM_{doc.get('station_id','unknown')}_{doc.get('pm_date', doc.get('job',{}).get('date',''))}"
-    )
-    filename = f"{base}.pdf"
-    cd = f"attachment; filename=report.pdf; filename*=UTF-8''{quote(filename)}"
-    return Response(content=pdf_bytes, media_type="application/pdf",
-                    headers={"Content-Disposition": cd, "Cache-Control": "no-store"})
-
-
-
-@router.get("/download")
-async def download_sample(filename: str = "รายงาน.pdf"):
-    pdf = FPDF()
-    pdf.set_margins(12, 12, 12)
-    pdf.add_page()
-    font_path = get_font_path()
-    pdf.add_font("THSarabun", "", font_path, uni=True)
-    pdf.set_font("THSarabun", size=16)
-
-    content_w = pdf.w - pdf.l_margin - pdf.r_margin
-    pdf.cell(content_w, 10, soft_wrap("รายงานระบบ iMPS"), ln=1)
-    pdf.multi_cell(content_w, 8, soft_wrap("ไฟล์นี้สร้างในหน่วยความจำและส่งให้ดาวน์โหลด"))
-
-    out = pdf.output(dest="S")
-    pdf_bytes = (
-        bytes(out) if isinstance(out, (bytes, bytearray)) else out.encode("latin1")
+    cd = (
+        f'{disposition}; '
+        f'filename="{filename}"; '
+        f"filename*=UTF-8''{quote(filename)}"
     )
 
-    if not filename.lower().endswith(".pdf"):
-        filename += ".pdf"
-    ascii_fallback = "report.pdf"
-    cd = f"attachment; filename={ascii_fallback}; filename*=UTF-8''{quote(filename)}"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": cd, "Cache-Control": "no-store"},
     )
+
+@router.get("/{id}/file-html")
+async def get_pm_report_enhanced(
+    id: str,
+    station_id: str = Query(..., description="เช่น Klongluang3"),
+    dl: bool = Query(False),
+):
+    """
+    เดิมใช้เสิร์ฟ PDF ตรง ๆ
+    ตอนนี้เปลี่ยนเป็น redirect ไปยัง URL ที่มีชื่อไฟล์ใน path เพื่อให้ Viewer แสดงชื่อถูกต้อง
+    """
+    try:
+        oid = ObjectId(id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
+
+    coll = get_pmreport_collection_for(station_id)
+    doc = coll.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="ไม่พบเอกสาร")
+
+    st, pm_date_only = _extract_station_and_date(doc, station_id)
+    base_name = f"{st}_{pm_date_only}" if pm_date_only else f"{st}"
+    slug = quote(safe_filename(base_name).replace(".pdf", ""), safe="")  # ไม่ใส่ .pdf ใน slug
+
+    # ประกอบ URL ใหม่: /pdf/{id}/{slug}.pdf?station_id=...&dl=...
+    target = f"/pdf/{id}/{slug}.pdf?station_id={quote(station_id)}&dl={int(bool(dl))}"
+    return RedirectResponse(url=target, status_code=307)

@@ -6,7 +6,9 @@
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "build:pdf-css": "tailwindcss -i ./backend/pdf/templates/tw.css -o ./backend/pdf/static/css/pmreport.css --minify",
+    "watch:pdf-css": "tailwindcss -i ./backend/pdf/templates/tw.css -o ./backend/pdf/static/css/pmreport.css --watch"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.0.1",
