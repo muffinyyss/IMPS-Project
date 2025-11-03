@@ -19,12 +19,14 @@ import {
 import {
   Button, Card, CardBody, CardHeader, Typography, CardFooter, Input,
 } from "@material-tailwind/react";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon,DocumentArrowDownIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 
+
 type TData = {
+  id?: string;
   name: string;     // วันที่ (แสดงผล)
   position: string; // YYYY-MM-DD ใช้ sort/filter
   office: string;   // ลิงก์ไฟล์
@@ -35,6 +37,8 @@ type Props = {
   token?: string;
   apiBase?: string;
 };
+
+
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -55,12 +59,25 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   const router = useRouter();
   const pathname = usePathname();
-  const mode = (sp.get("view") === "form" ? "form" : "list") as "list" | "form";
+  const editId = sp.get("edit_id") ?? "";
+  const mode: "list" | "form" =
+    (sp.get("view") === "form" || !!editId) ? "form" : "list";
+  // const mode = (sp.get("view") === "form" ? "form" : "list") as "list" | "form";
 
+  // const setView = (view: "list" | "form", { replace = false } = {}) => {
+  //   const params = new URLSearchParams(sp.toString());
+  //   if (view === "form") params.set("view", "form");
+  //   else params.delete("view");
+  //   router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
+  // };
   const setView = (view: "list" | "form", { replace = false } = {}) => {
     const params = new URLSearchParams(sp.toString());
-    if (view === "form") params.set("view", "form");
-    else params.delete("view");
+    if (view === "form") {
+      params.set("view", "form");
+    } else {
+      params.delete("view");
+      params.delete("edit_id"); // 👈 ต้องลบอันนี้ด้วย
+    }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -187,7 +204,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
         const fileUrl = uploadedUrl || generatedUrl;
 
-        return { name: thDate(isoDay), position: isoDay, office: fileUrl, status: getStatusText(it) || "-", };
+        return { id, name: thDate(isoDay), position: isoDay, office: fileUrl, status: getStatusText(it) || "-", };
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -198,7 +215,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           ?? it.file
           ?? it.path;
 
-        return { name: thDate(isoDay), position: isoDay, office: resolveFileHref(raw, apiBase), status: getStatusText(it) || "-", };
+        return { id: it.id || it._id || "", name: thDate(isoDay), position: isoDay, office: resolveFileHref(raw, apiBase), status: getStatusText(it) || "-", };
       });
 
       const allRows = [...cmRows, ...urlRows].sort((a, b) => {
@@ -276,35 +293,77 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.office,
       id: "pdf",
-      header: () => "pdf",
+      header: () => "action",
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
-        const baseUrl = info.getValue() as string | undefined;
+        const row = info.row.original as TData;        // 👈 ใช้เอา id ไปแก้ไข
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
-        const viewUrl = hasUrl ? `${baseUrl}` : undefined;
+
+        const handleNoUrl = (e: React.MouseEvent) => {
+          if (!hasUrl) { e.preventDefault(); e.stopPropagation(); }
+        };
+
+        const handleEdit = (e: React.MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!row?.id) return;
+          goEdit(row);
+        };
+
         return (
-          <a
-            href={viewUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
-            className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-                  ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-            aria-disabled={!hasUrl}
-            title={hasUrl ? "Download PDF" : "No file"}
-          >
-            <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-            <span className="tw-sr-only">Download PDF</span>
-          </a>
+          <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+            {/* View */}
+            {/* <a
+              href={hasUrl ? url : undefined}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleNoUrl}
+              className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
+            ${hasUrl ? "tw-text-blue-600 hover:tw-text-blue-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+              aria-disabled={!hasUrl}
+              title={hasUrl ? "View PDF" : "No file"}
+            >
+              <EyeIcon className="tw-h-5 tw-w-5" />
+              <span className="tw-sr-only">View PDF</span>
+            </a> */}
+
+            {/* Edit */}
+            <button
+              type="button"
+              onClick={handleEdit}
+              disabled={!row?.id}
+              className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
+            ${row?.id ? "tw-text-amber-700 hover:tw-text-amber-900" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+              title={row?.id ? "Edit" : "No id to edit"}
+            >
+              <PencilSquareIcon className="tw-h-5 tw-w-5" />
+              <span className="tw-sr-only">Edit</span>
+            </button>
+
+            {/* Download */}
+            <a
+              href={hasUrl ? url : undefined}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleNoUrl}
+              className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
+            ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+              aria-disabled={!hasUrl}
+              title={hasUrl ? "Download PDF" : "No file"}
+            >
+              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+              <span className="tw-sr-only">Download PDF</span>
+            </a>
+          </div>
         );
       },
-      size: 80,
-      minSize: 64,
-      maxSize: 120,
+      size: 140,
+      minSize: 120,
+      maxSize: 200,
       meta: { headerAlign: "center", cellAlign: "center" },
-    },
+    }
   ];
 
   const table = useReactTable({
@@ -375,6 +434,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       const fd = new FormData();
       fd.append("station_id", stationIdFromUrl);
       fd.append("reportDate", reportDate);
+      fd.append("status", statusFromTab);
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await fetch(`${apiBase}/cmurl/upload-files`, {
@@ -400,7 +460,22 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }
 
   const goAdd = () => setView("form");
-  const goList = () => setView("list");
+  // const goList = () => setView("list");
+  const goList = () => {
+    const params = new URLSearchParams(sp.toString());
+    params.delete("view");
+    params.delete("edit_id"); // 👈 ลบด้วย
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+  function goEdit(row: TData) {
+    if (!row?.id) return;
+    const params = new URLSearchParams(sp.toString());
+    params.set("view", "form");
+    params.set("edit_id", row.id);       // 👈 ให้ฟอร์มใช้โหลดข้อมูล
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+
 
   if (mode === "form") {
     return (
