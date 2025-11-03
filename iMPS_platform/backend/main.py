@@ -4058,6 +4058,7 @@ async def cmurl_upload_files(
     station_id: str = Form(...),
     reportDate: str = Form(...),                 # "YYYY-MM-DD" หรือ ISO
     files: list[UploadFile] = File(...),
+    status: str = Form(...),  
     current: UserClaims = Depends(get_current_user),
 ):
     # auth
@@ -4100,9 +4101,11 @@ async def cmurl_upload_files(
         metas.append({"name": f.filename, "size": len(data)})
 
     now = datetime.now(timezone.utc)
+
     doc = {
         "station": station_id,
-        "cm_date": cm_date,   
+        "cm_date": cm_date,
+        "status": (status or "").strip(), 
         "urls": urls,
         "meta": {"files": metas},
         "source": "upload-files",
@@ -4118,37 +4121,41 @@ async def cmurl_list(
     station_id: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None),
 ):
-    """
-    ดึงรายการไฟล์ PM (PDF) ที่อัปโหลดไว้ต่อสถานี จาก PMUrlDB/<station_id>
-    - รองรับทั้งเอกสารที่เก็บ pm_date (string 'YYYY-MM-DD') และ reportDate (Date/ISO)
-    - เรียงจากใหม่ไปเก่า (createdAt desc, _id desc)
-    - รูปแบบผลลัพธ์ให้เหมือน /pmreport/list (มี file_url สำหรับลิงก์ตัวแรก)
-    """
     coll = get_cmurl_coll_upload(station_id)
     skip = (page - 1) * pageSize
 
-    # ดึงเฉพาะฟิลด์ที่จำเป็น
-    cursor = coll.find(
-        {},
-        {"_id": 1, "cm_date": 1, "reportDate": 1, "urls": 1, "createdAt": 1}
-    ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+    # --- สร้าง filter ตามสถานะ (optional แต่แนะนำ) ---
+    mongo_filter: dict = {}
+    if status:
+        want = (status or "").strip()
+        mongo_filter["$or"] = [
+            {"status": {"$regex": f"^{re.escape(want)}$", "$options": "i"}},
+            {"job.status": {"$regex": f"^{re.escape(want)}$", "$options": "i"}},
+        ]
+
+    # --- ขอฟิลด์ status มาด้วย ---
+    projection = {
+        "_id": 1, "cm_date": 1, "reportDate": 1,
+        "urls": 1, "createdAt": 1,
+        "status": 1, "job": 1,   # 👈 เพิ่ม
+    }
+
+    cursor = (
+        coll.find(mongo_filter, projection)
+            .sort([("createdAt", -1), ("_id", -1)])
+            .skip(skip)
+            .limit(pageSize)
+    )
 
     items_raw = await cursor.to_list(length=pageSize)
-    total = await coll.count_documents({})
+    total = await coll.count_documents(mongo_filter)
 
     def _cm_date_from(doc: dict) -> str | None:
-        """
-        แปลงวันที่ในเอกสารให้ได้ string 'YYYY-MM-DD'
-        - ถ้ามี pm_date (string) → คืนค่านั้น
-        - ถ้ามี reportDate (datetime/string) → แปลงเป็นวันไทย แล้ว .date().isoformat()
-        """
-        # รุ่นใหม่: เก็บเป็น pm_date (string)
         s = doc.get("cm_date")
         if isinstance(s, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
             return s
-
-        # รุ่นเก่า: เก็บเป็น reportDate (Date/ISO)
         rd = doc.get("reportDate")
         if isinstance(rd, datetime):
             return rd.astimezone(th_tz).date().isoformat()
@@ -4156,13 +4163,11 @@ async def cmurl_list(
             try:
                 dt = datetime.fromisoformat(rd.replace("Z", "+00:00"))
             except Exception:
-                # เผื่อไม่มีโซนเวลา → ถือเป็นเวลาไทย
                 try:
                     dt = datetime.fromisoformat(rd).replace(tzinfo=th_tz)
                 except Exception:
                     return None
             return dt.astimezone(th_tz).date().isoformat()
-
         return None
 
     items = []
@@ -4178,15 +4183,18 @@ async def cmurl_list(
 
         items.append({
             "id": str(it["_id"]),
-            "cm_date": cm_date_str,                         # 'YYYY-MM-DD' | None
+            "cm_date": cm_date_str,
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
-            "file_url": first_url,                          # ไฟล์แรก (ไว้ให้ปุ่มดาวน์โหลด)
-            "urls": urls,                                   # เผื่อฟรอนต์อยากแสดงทั้งหมด
+            "status": (it.get("status") or (it.get("job") or {}).get("status") or ""),  # 👈 ดึงตรงๆ
+            "file_url": first_url,
+            "urls": urls,
         })
 
     return {
         "items": items,
-        "cm_date": [d for d in cm_date_arr if d],          # ให้เหมือน /pmreport/list
+        "cm_date": [d for d in cm_date_arr if d],
+        # จะ echo ค่า query กลับด้วยก็ได้ แต่ไม่จำเป็น:
+        # "status": (status or "").strip(),
         "page": page,
         "pageSize": pageSize,
         "total": total,
@@ -4240,6 +4248,121 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
     res = await coll.insert_one(doc)
     return {"ok": True, "report_id": str(res.inserted_id)}
 
+
+@app.get("/cmreport/{report_id}")
+async def cmreport_detail_path(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    # auth
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    doc = await coll.find_one({"_id": oid, "station_id": station_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    return {
+        "id": str(doc["_id"]),
+        "station_id": doc.get("station_id"),
+        "cm_date": doc.get("cm_date"),
+        "issue_id": doc.get("issue_id"),
+        "status": doc.get("status"),
+        "summary": doc.get("summary", ""),
+        "job": doc.get("job", {}),
+        "photos": doc.get("photos", {}),
+        "createdAt": _ensure_utc_iso(doc.get("createdAt")),
+        "updatedAt": _ensure_utc_iso(doc.get("updatedAt")),
+    }
+
+@app.get("/cmreport/detail")
+async def cmreport_detail_query(
+    id: str = Query(..., alias="id"),
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    return await cmreport_detail_path(id, station_id, current)  # reuse logic
+
+class CMStatusUpdateIn(BaseModel):
+    station_id: str
+    status: Literal["Open", "In Progress", "Closed"]
+    job: Optional[Dict[str, Any]] = None
+    summary: Optional[str] = None
+    cm_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO
+
+ALLOWED_STATUS: set[str] = {"Open", "In Progress", "Closed"}
+
+@app.patch("/cmreport/{report_id}/status")
+async def cmreport_update_status(
+    report_id: str,
+    body: CMStatusUpdateIn,
+    current: UserClaims = Depends(get_current_user),
+):
+    station_id = body.station_id.strip()
+    if body.status not in ALLOWED_STATUS:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    updates: Dict[str, Any] = {
+        "status": body.status,          # top-level
+        "job.status": body.status,      # sync ใน job
+    }
+
+    if body.summary is not None:
+        updates["summary"] = body.summary
+
+    if body.cm_date is not None:
+        updates["cm_date"] = normalize_pm_date(body.cm_date)
+
+    if body.job is not None:
+        # เลือกเฉพาะคีย์ที่อนุญาตจากฟอร์ม
+        allowed_job_keys = {
+            "issue_id","found_date","location","wo","sn",
+            "equipment_list","problem_details","problem_type","severity",
+            "reported_by","assignee","initial_cause","corrective_actions",
+            "resolved_date","repair_result","preventive_action","remarks"
+        }
+        # ถ้า job.status ถูกส่งมา ให้ตรวจและ sync
+        if "status" in body.job:
+            js = body.job["status"]
+            if js not in ALLOWED_STATUS:
+                raise HTTPException(status_code=400, detail="Invalid job.status")
+            updates["status"] = js
+            updates["job.status"] = js
+
+        for k, v in body.job.items():
+            if k in allowed_job_keys:
+                updates[f"job.{k}"] = v
+
+        # optional: sync cm_date จาก found_date
+        if "found_date" in body.job and body.job.get("found_date"):
+            try:
+                updates.setdefault("cm_date", normalize_pm_date(body.job["found_date"]))
+            except Exception:
+                pass
+
+    updates["updatedAt"] = datetime.now(timezone.utc)
+
+    res = await coll.update_one({"_id": oid, "station_id": station_id}, {"$set": updates})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    return {"ok": True, "status": updates["status"]}
 #---------------------------------------------------------------------- Test Report (DC)
 def get_dc_testreport_collection_for(station_id: str):
     _validate_station_id(station_id)
