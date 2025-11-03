@@ -86,7 +86,7 @@ export default function DataTablesPage() {
             <Tab
               key={t.id}
               value={t.id}
-              onClick={() => go(t.id)}  
+              onClick={() => go(t.id)}
               className="
                 tw-rounded-lg tw-px-5 tw-py-2
                 tw-text-sm md:tw-text-base tw-font-medium
