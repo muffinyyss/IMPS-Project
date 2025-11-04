@@ -601,20 +601,20 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     comment_y += h_comment
 
     # --- แถวสรุปผลการตรวจสอบ ---
-    pdf.set_xy(comment_x, comment_y)
-    pdf.set_font(base_font, "B", 13)
-    pdf.cell(comment_item_w, h_summary, "สรุปผลการตรวจสอบ :", border=1, align="L")
+    # pdf.set_xy(comment_x, comment_y)
+    # pdf.set_font(base_font, "B", 13)
+    # pdf.cell(comment_item_w, h_summary, "สรุปผลการตรวจสอบ :", border=1, align="L")
 
     summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
-    pdf.set_font(base_font, "", 13)
-    pdf.cell(comment_result_w + comment_remark_w, h_summary, f"ผลการตรวจสอบ: {summary_check}", border=1, ln=1, align="L")
+    # pdf.set_font(base_font, "", 13)
+    # pdf.cell(comment_result_w + comment_remark_w, h_summary, f"ผลการตรวจสอบ: {summary_check}", border=1, ln=1, align="L")
 
-    comment_y += h_summary
+    # comment_y += h_summary
 
     # --- แถว Summary Checkbox ---
     pdf.set_xy(comment_x, comment_y)
     pdf.set_font(base_font, "B", 13)
-    pdf.cell(comment_item_w, h_checklist, "Summary :", border=1, align="L")
+    pdf.cell(comment_item_w, h_checklist, "ผลการตรวจสอบ :", border=1, align="L")
 
     pdf.set_font(base_font, "", 13)
     x_check_start = comment_x + comment_item_w + 10
@@ -679,7 +679,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_xy(x_table, y)
     for i in range(3):
         pdf.rect(x_table + i * col_w, y, col_w, row_h_name)
-        name_text = f"( \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0 )" # วงเล็บเปล่า
+        name_text = f"( \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0 )" # วงเล็บเปล่า
         pdf.set_xy(x_table + i * col_w, y)
         pdf.cell(col_w, row_h_name, name_text, border=0, ln=0 if i < 2 else 1, align="C")
         
