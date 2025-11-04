@@ -1,10 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
-import Link from "next/link";
-import { AppDataTable } from "@/data";
-import { ArrowUpTrayIcon } from "@heroicons/react/24/outline";
-import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -22,7 +19,6 @@ import {
   Typography,
   CardFooter,
   Input,
-  Switch,
   Alert,
   Dialog,
   DialogHeader,
@@ -39,20 +35,19 @@ import {
   TrashIcon,
 } from "@heroicons/react/24/solid";
 
-//components
+// components
 import AddUser, { NewUserPayload } from "@/app/dashboard/users/components/adduser";
 import { apiFetch } from "@/utils/api";
-const API_BASE = "http://localhost:8000";
 
-// ------------ NEW: โครงสร้างข้อมูลผู้ใช้ (แถวในตาราง) ------------
+/* -------------------- Types -------------------- */
 type UserRow = {
   id?: string;
-  _id?: string;                  // เผื่อ backend ยังส่ง _id มา
   username?: string;
   email?: string;
   role?: string;
   company?: string;
-  phone?: string;                  // ถ้ายังไม่มีใน DB จะโชว์ "-"
+  phone?: string;
+  station_id?: string[];
 };
 
 export type UserUpdatePayload = {
@@ -61,8 +56,7 @@ export type UserUpdatePayload = {
   role?: string;
   company?: string;
   phone?: string;
-
-}
+};
 
 type JwtClaims = {
   sub: string;
@@ -73,6 +67,7 @@ type JwtClaims = {
   station_ids?: string[];
   exp?: number;
 };
+
 function decodeJwt(token: string | null): JwtClaims | null {
   try {
     if (!token) return null;
@@ -84,12 +79,42 @@ function decodeJwt(token: string | null): JwtClaims | null {
   }
 }
 
+/* -------------------- Component -------------------- */
+export default function SearchDataTables() {
+  const router = useRouter();
 
-// ใช้ type ของข้อมูลแถวจาก AppDataTable โดยตรง
-type TData = (typeof AppDataTable)[number];
+  /* --- Auth state --- */
+  const [authChecked, setAuthChecked] = useState(false);
+  const [meRole, setMeRole] = useState<string>("user");
+  const isAdmin = meRole === "admin";
 
-export function SearchDataTables() {
-  // ------------ NEW: data/โหลด/เออเรอร์ ------------
+  const getToken = () =>
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("accessToken") ||
+    "";
+
+  const isTokenExpired = (token: string) => {
+    const claims = decodeJwt(token);
+    if (!claims?.exp) return true;
+    return claims.exp <= Math.floor(Date.now() / 1000);
+  };
+
+  // ตรวจ token + ตั้ง meRole + ปักธง authChecked (และ redirect ถ้าไม่ผ่าน)
+  useEffect(() => {
+    const token = getToken();
+    if (!token || isTokenExpired(token)) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("accessToken");
+      const next = encodeURIComponent(window.location.pathname);
+      router.replace(`/auth/signin/basic?next=${next}`);
+      return;
+    }
+    const claims = decodeJwt(token);
+    if (claims?.role) setMeRole(claims.role);
+    setAuthChecked(true);
+  }, [router]);
+
+  /* --- Table/UI states --- */
   const [data, setData] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -104,103 +129,75 @@ export function SearchDataTables() {
   const [editingRow, setEditingRow] = useState<UserRow | null>(null);
   const [roleValue, setRoleValue] = useState<string>("user");
 
-  const [meRole, setMeRole] = useState<string>("user");
+  // ดึงข้อมูลผู้ใช้หลัง auth ผ่านเท่านั้น
   useEffect(() => {
-    const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
-    const claims = decodeJwt(token);
-    if (claims?.role) setMeRole(claims.role);
-  }, []);
-  const isAdmin = meRole === "admin";
-  // ------------ NEW: ดึงข้อมูลผู้ใช้จาก FastAPI ------------
-  useEffect(() => {
+    if (!authChecked) return;
     (async () => {
       try {
-        // const token =
-        //   localStorage.getItem("access_token") ||
-        //   localStorage.getItem("accessToken") ||
-        //   "";
-        // const res = await fetch('/api/all-users/', { cache: 'no-store' });
-
-        // const res = await apiFetch(`${API_BASE}/all-users/`, {
-        //   headers: { Authorization: `Bearer ${token}` },
-        // });
         const res = await apiFetch(`/all-users/`);
-
-        // if (res.status === 401) {
-        //   setErr("Unauthorized (401) – กรุณาเข้าสู่ระบบอีกครั้ง");
-        //   setData([]);
-        //   return;
-        // }
+        if (res.status === 401 || res.status === 403) {
+          const next = encodeURIComponent(window.location.pathname);
+          router.replace(`/auth/signin/basic?next=${next}`);
+          return;
+        }
         if (!res.ok) {
           setErr(`Fetch failed: ${res.status}`);
           setData([]);
           return;
         }
-
         const json = await res.json();
         const list = Array.isArray(json?.users) ? (json.users as any[]) : [];
-        // แปลง _id -> id (ถ้ามี), กัน type แปลก ๆ
         const rows: UserRow[] = list.map((u) => ({
           id: u.id || u._id || undefined,
-          _id: undefined, // ไม่ใช้ _id ต่อจากนี้แล้ว
           username: u.username ?? "-",
           email: u.email ?? "-",
           role: u.role ?? "-",
           company: u.company ?? "-",
           station_id: u.station_id ?? [],
-          phone: u.phone ?? "-", // ถ้าไม่มีใน DB จะแสดง "-"
+          phone: u.phone ?? "-",
         }));
         setData(rows);
-      } catch (e) {
-        console.error(e);
+      } catch {
         setErr("Network/Server error");
         setData([]);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [authChecked, router]);
 
+  // ตั้งค่า default role ตอนเปิด dialog แก้ไข
   useEffect(() => {
-    if (openEdit && editingRow) {
-      setRoleValue(editingRow.role ?? "user");
-      // setActiveValue(editingRow.is_active ? "true" : "false");
-    }
+    if (openEdit && editingRow) setRoleValue(editingRow.role ?? "user");
   }, [openEdit, editingRow]);
+
+  /* -------------------- Handlers -------------------- */
+  const handleEdit = (row: UserRow) => {
+    setEditingRow(row);
+    setOpenEdit(true);
+  };
 
   const handleCreateUser = async (payload: NewUserPayload) => {
     try {
       setSaving(true);
-
-      // const token =
-      //   localStorage.getItem("access_token") ||
-      //   localStorage.getItem("accessToken") ||
-      //   "";
-
-      // const res = await apiFetch(`${API_BASE}/add_users/`, {
       const res = await apiFetch(`/add_users/`, {
         method: "POST",
-        // headers: {
-        //   "Content-Type": "application/json",
-        //   ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        // },
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      if (res.status === 409) throw new Error("อีเมลนี้ถูกใช้แล้ว");
-      if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
-      if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("Create user failed:", res.status, text);
-        alert(text || `Create failed: ${res.status}`);
+      if (res.status === 401 || res.status === 403) {
+        const next = encodeURIComponent(window.location.pathname);
+        router.replace(`/auth/signin/basic?next=${next}`);
         return;
       }
+      if (res.status === 409) throw new Error("อีเมลนี้ถูกใช้แล้ว");
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Create failed: ${res.status}`);
+      }
 
-      const created = await res.json(); // { id, username, email, role, company, station_id, ... }
-
-      // ✅ อัปเดตตารางทันที
+      const created = await res.json();
       setData((prev) => [
         {
           id: created.id,
@@ -219,63 +216,51 @@ export function SearchDataTables() {
       setTimeout(() => setNotice(null), 3000);
     } catch (e: any) {
       console.error(e);
-      alert(e.message || "สร้างผู้ใช้ไม่สำเร็จ");
+      setNotice({ type: "error", msg: e.message || "สร้างผู้ใช้ไม่สำเร็จ" });
+      setTimeout(() => setNotice(null), 3500);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleEdit = (row: UserRow) => {
-    setEditingRow(row);
-    setOpenEdit(true);
-  };
-
   async function handleUpdateUser(id: string, payload: Partial<UserRow> & { password?: string }) {
-    // const token =
-    //   localStorage.getItem("access_token") ||
-    //   localStorage.getItem("accessToken") ||
-    //   "";
-
-    // map phone -> tel
     const body: any = {};
     if (payload.username !== undefined) body.username = payload.username?.trim();
     if (payload.email !== undefined) body.email = payload.email?.trim();
     if (payload.company !== undefined) body.company = (payload.company || "").trim();
     if (payload.role !== undefined) body.role = payload.role;
     if (payload.phone !== undefined) body.tel = payload.phone?.trim();
-    // if (payload.is_active !== undefined) body.is_active = !!payload.is_active;
     if ((payload as any).password) body.password = String((payload as any).password);
 
-    // const res = await apiFetch(`${API_BASE}/user_update/${id}`, {
     const res = await apiFetch(`/user_update/${id}`, {
       method: "PATCH",
-      // headers: {
-      //   "Content-Type": "application/json",
-      //   ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      // },
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+
+    if (res.status === 401 || res.status === 403) {
+      const next = encodeURIComponent(window.location.pathname);
+      router.replace(`/auth/signin/basic?next=${next}`);
+      return;
+    }
 
     const raw = await res.text();
     if (!res.ok) throw new Error(raw || `Update failed: ${res.status}`);
 
     let updated: any = {};
-    try { updated = raw ? JSON.parse(raw) : {}; } catch { }
+    try { updated = raw ? JSON.parse(raw) : {}; } catch {}
 
-    // อัปเดตแถวในตาราง
     setData(prev =>
       prev.map(u =>
         u.id === id
           ? {
-            ...u,
-            username: updated.username ?? u.username,
-            email: updated.email ?? u.email,
-            company: updated.company ?? u.company,
-            role: updated.role ?? u.role,
-            phone: updated.tel ?? u.phone,          // backend ส่งกลับเป็น tel
-            // is_active: typeof updated.is_active === "boolean" ? updated.is_active : u.is_active,
-          }
+              ...u,
+              username: updated.username ?? u.username,
+              email: updated.email ?? u.email,
+              company: updated.company ?? u.company,
+              role: updated.role ?? u.role,
+              phone: updated.tel ?? u.phone,
+            }
           : u
       )
     );
@@ -285,41 +270,25 @@ export function SearchDataTables() {
     setTimeout(() => setNotice(null), 2500);
   }
 
-
   const handleDelete = async (row: UserRow) => {
     if (!row.id) return alert("ไม่พบ id ของผู้ใช้");
-
-    if (!confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) {
-      return;
-    }
+    if (!confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) return;
 
     try {
-      // const token =
-      //   localStorage.getItem("access_token") ||
-      //   localStorage.getItem("accessToken") ||
-      //   "";
+      const res = await apiFetch(`/delete_users/${row.id}`, { method: "DELETE" });
 
-      // ถ้า backend มี prefix /api ให้เปลี่ยนเป็น `${API_BASE}/api/users/${row.id}`
-      // const res = await apiFetch(`${API_BASE}/delete_users/${row.id}`, {
-      const res = await apiFetch(`/delete_users/${row.id}`, {
-        method: "DELETE",
-          // headers: {
-          //   ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          // },
-      });
-
-      if (res.status === 401) throw new Error("กรุณาเข้าสู่ระบบใหม่");
-      if (res.status === 403) throw new Error("สิทธิ์ไม่เพียงพอ");
+      if (res.status === 401 || res.status === 403) {
+        const next = encodeURIComponent(window.location.pathname);
+        router.replace(`/auth/signin/basic?next=${next}`);
+        return;
+      }
       if (res.status === 404) throw new Error("ไม่พบผู้ใช้นี้");
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `Delete failed: ${res.status}`);
       }
 
-      // ลบออกจากตาราง
       setData((prev) => prev.filter((u) => u.id !== row.id));
-
-      // แจ้งสำเร็จ
       setNotice({ type: "success", msg: "Delete success" });
       setTimeout(() => setNotice(null), 2500);
     } catch (e: any) {
@@ -329,7 +298,7 @@ export function SearchDataTables() {
     }
   };
 
-  // ------------ columns: ปรับ accessor ให้ตรงกับฟิลด์จริง ------------
+  /* -------------------- Table -------------------- */
   const columns: any[] = [
     {
       accessorFn: (_row: UserRow, index: number) => index + 1,
@@ -340,7 +309,6 @@ export function SearchDataTables() {
       sortDescFirst: true,
       cell: (info: any) => {
         const isSortingByNo = info.table.getState().sorting?.[0]?.id === "no";
-
         let num: number;
         if (isSortingByNo) {
           num = Number(info.getValue());
@@ -350,50 +318,14 @@ export function SearchDataTables() {
           const { pageIndex, pageSize } = info.table.getState().pagination;
           num = pageIndex * pageSize + indexInPage + 1;
         }
-
-        // ทำให้ข้อความใน cell อยู่กึ่งกลาง
         return <span className="tw-block tw-w-full">{num}</span>;
       },
     },
-    {
-      accessorFn: (row: UserRow) => row.username ?? "-",
-      id: "username",
-      header: () => "username",
-      cell: (info: any) => info.getValue(),
-    },
-    {
-      accessorFn: (row: UserRow) => row.email ?? "-",
-      id: "email",
-      header: () => "email",
-      cell: (info: any) => info.getValue(),
-    },
-    {
-      accessorFn: (row: UserRow) => row.phone ?? "-",
-      id: "phone",
-      header: () => "phone",
-      cell: (info: any) => info.getValue(),
-    },
-    {
-      accessorFn: (row: UserRow) => row.company ?? "-",
-      id: "company",
-      header: () => "company",
-      cell: (info: any) => info.getValue(),
-    },
-    {
-      accessorFn: (row: UserRow) => row.role ?? "-",
-      id: "role",
-      header: () => "role",
-      cell: (info: any) => info.getValue(),
-    },
-    // {
-    //   accessorFn: (row: UserRow) =>
-    //     Array.isArray(row.station_id)
-    //       ? row.station_id.join(", ")
-    //       : (row.station_id ?? "-"),
-    //   id: "stations",
-    //   header: () => "stations",
-    //   cell: (info: any) => info.getValue(),
-    // },
+    { accessorFn: (r: UserRow) => r.username ?? "-", id: "username", header: () => "username", cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.email ?? "-",    id: "email",    header: () => "email",    cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.phone ?? "-",    id: "phone",    header: () => "phone",    cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.company ?? "-",  id: "company",  header: () => "company",  cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.role ?? "-",     id: "role",     header: () => "role",     cell: (i: any) => i.getValue() },
     {
       id: "actions",
       header: () => "actions",
@@ -420,17 +352,10 @@ export function SearchDataTables() {
     },
   ];
 
-
-
-  // 
-
   const table = useReactTable({
     data,
     columns,
-    state: {
-      globalFilter: filtering,
-      sorting: sorting,
-    },
+    state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting as any,
     onGlobalFilterChange: setFiltering,
     getSortedRowModel: getSortedRowModel(),
@@ -439,35 +364,33 @@ export function SearchDataTables() {
     getPaginationRowModel: getPaginationRowModel(),
   });
 
+  /* -------------------- Guard while checking auth -------------------- */
+  if (!authChecked) {
+    return <div className="tw-p-4">Checking session…</div>;
+  }
+
+  /* -------------------- JSX -------------------- */
   return (
     <>
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
         {notice && (
           <div className="tw-px-4 tw-pt-4">
-            <Alert
-              color={notice.type === "success" ? "green" : "red"}
-              onClose={() => setNotice(null)}
-            >
+            <Alert color={notice.type === "success" ? "green" : "red"} onClose={() => setNotice(null)}>
               {notice.msg}
             </Alert>
           </div>
         )}
+
         <CardHeader
           floated={false}
           shadow={false}
-          className="tw-flex tw-flex-col md:tw-flex-row
-            tw-items-start md:tw-items-center tw-gap-3
-            tw-!px-3 md:tw-!px-4      /* padding เหมือนเดิม */
-            tw-!py-3 md:tw-!py-4
-            tw-mb-6">
+          className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-3 md:tw-!px-4 tw-!py-3 md:tw-!py-4 tw-mb-6"
+        >
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
               Users & Roles Management
             </Typography>
-            <Typography
-              variant="small"
-              className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm"
-            >
+            <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm">
               Manage Users: Add, Edit, or Remove users from the system.
             </Typography>
           </div>
@@ -477,23 +400,16 @@ export function SearchDataTables() {
               <Button
                 onClick={() => setOpenAdd(true)}
                 size="lg"
-                className="
-              tw-h-11 tw-rounded-xl tw-px-4 
-              tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
-              hover:tw-to-black
-              tw-text-white
-              tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-              focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none">
+                className="tw-h-11 tw-rounded-xl tw-px-4 tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)] focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none"
+              >
                 +add
               </Button>
             </div>
           </div>
-
         </CardHeader>
 
-        <CardBody
-          className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4">
-          {/* ซ้าย: dropdown + label (ขนาดคงที่) */}
+        <CardBody className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4">
+          {/* ซ้าย: page size */}
           <div className="tw-flex tw-items-center tw-gap-3 tw-flex-none">
             <select
               value={table.getState().pagination.pageSize}
@@ -506,15 +422,12 @@ export function SearchDataTables() {
                 </option>
               ))}
             </select>
-            <Typography
-              variant="small"
-              className="!tw-text-blue-gray-500 !tw-font-normal tw-hidden sm:tw-inline"
-            >
+            <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-hidden sm:tw-inline">
               entries per page
             </Typography>
           </div>
 
-          {/* ขวา: Search (ยืด/หดได้ และชิดขวา) */}
+          {/* ขวา: Search */}
           <div className="tw-ml-auto tw-min-w-0 tw-flex-1 md:tw-flex-none md:tw-w-64">
             <Input
               variant="outlined"
@@ -522,11 +435,12 @@ export function SearchDataTables() {
               onChange={(e) => setFiltering(e.target.value)}
               label="Search"
               crossOrigin={undefined}
-              containerProps={{ className: "tw-min-w-0" }} // ให้หดได้ใน flex
+              containerProps={{ className: "tw-min-w-0" }}
               className="tw-w-full"
             />
           </div>
         </CardBody>
+
         <CardFooter className="tw-p-0 tw-overflow-scroll">
           {loading ? (
             <div className="tw-p-4">Loading...</div>
@@ -556,8 +470,8 @@ export function SearchDataTables() {
                 ))}
               </thead>
               <tbody>
-                {table.getRowModel().rows.length
-                  ? table.getRowModel().rows.map((row) => (
+                {table.getRowModel().rows.length ? (
+                  table.getRowModel().rows.map((row) => (
                     <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50">
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} className="!tw-border-y !tw-border-x-0">
@@ -568,13 +482,13 @@ export function SearchDataTables() {
                       ))}
                     </tr>
                   ))
-                  : (
-                    <tr>
-                      <td className="tw-px-4 tw-py-6 tw-text-center" colSpan={columns.length}>
-                        ไม่พบผู้ใช้
-                      </td>
-                    </tr>
-                  )}
+                ) : (
+                  <tr>
+                    <td className="tw-px-4 tw-py-6 tw-text-center" colSpan={columns.length}>
+                      ไม่พบผู้ใช้
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}
@@ -610,17 +524,18 @@ export function SearchDataTables() {
         </div>
       </Card>
 
-      <AddUser
-        open={openAdd}
-        onClose={() => setOpenAdd(false)}
-        onSubmit={handleCreateUser}
-        loading={saving}
-      />
+      {/* Dialog: Add */}
+      <AddUser open={openAdd} onClose={() => setOpenAdd(false)} onSubmit={handleCreateUser} loading={saving} />
 
+      {/* Dialog: Edit */}
       <Dialog open={openEdit} handler={() => setOpenEdit(false)} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
         <DialogHeader className="tw-flex tw-items-center tw-justify-between">
-          <Typography variant="h5" color="blue-gray">Edit User</Typography>
-          <Button variant="text" onClick={() => setOpenEdit(false)}>✕</Button>
+          <Typography variant="h5" color="blue-gray">
+            Edit User
+          </Typography>
+          <Button variant="text" onClick={() => setOpenEdit(false)}>
+            ✕
+          </Button>
         </DialogHeader>
 
         <form
@@ -628,21 +543,24 @@ export function SearchDataTables() {
             e.preventDefault();
             if (!editingRow?.id) return;
 
-            const form = e.currentTarget as HTMLFormElement;
-            const payload: any = {
-              username: (form.username as any)?.value?.trim(),
-              email: (form.email as any)?.value?.trim(),
-              company: (form.company as any)?.value?.trim(),
-              phone: (form.phone as any)?.value?.trim(),     // จะถูก map เป็น tel ตอนส่ง
+            const form = e.currentTarget as HTMLFormElement & {
+              username: HTMLInputElement;
+              email: HTMLInputElement;
+              company: HTMLInputElement;
+              phone: HTMLInputElement;
+              password?: HTMLInputElement;
             };
 
-            // role / is_active เฉพาะ admin
-            if (isAdmin) {
-              payload.role = roleValue; 
-            }
+            const payload: any = {
+              username: form.username?.value?.trim(),
+              email: form.email?.value?.trim(),
+              company: form.company?.value?.trim(),
+              phone: form.phone?.value?.trim(),
+            };
 
-            // password: ใส่เมื่ออยากเปลี่ยน (ปล่อยว่าง = ไม่เปลี่ยน)
-            const newPw = (form.password as any)?.value?.trim();
+            if (isAdmin) payload.role = roleValue;
+
+            const newPw = form.password?.value?.trim();
             if (newPw) payload.password = newPw;
 
             try {
@@ -659,50 +577,29 @@ export function SearchDataTables() {
               <Input name="email" label="Email" type="email" defaultValue={editingRow?.email ?? ""} required />
               <Input name="company" label="Company" defaultValue={editingRow?.company ?? ""} />
               <Input name="phone" label="Phone" defaultValue={editingRow?.phone ?? ""} />
-
-              {/* เปลี่ยนรหัสผ่าน (ไม่บังคับ) */}
               {/* <Input name="password" label="New Password (optional)" type="password" /> */}
 
-              {/* เฉพาะ admin: role + is_active */}
               {isAdmin && (
-                <>
-                  <Select
-                    label="Role"
-                    value={roleValue}
-                    onChange={(v) => setRoleValue(v ?? "user")}
-                  >
-                    <Option value="admin">admin</Option>
-                    <Option value="owner">owner</Option>
-                    <Option value="Technician">Technician</Option>
-                    <Option value="user">user</Option>
-                  </Select>
-
-                  {/* ถ้าจะใช้ is_active แบบ select ด้วย
-    <Select
-      label="Is Active"
-      value={activeValue}
-      onChange={(v) => setActiveValue((v as "true" | "false") ?? "false")}
-    >
-      <Option value="true">active</Option>
-      <Option value="false">inactive</Option>
-    </Select>
-    */}
-                </>
+                <Select label="Role" value={roleValue} onChange={(v) => setRoleValue(v ?? "user")}>
+                  <Option value="admin">admin</Option>
+                  <Option value="owner">owner</Option>
+                  <Option value="Technician">Technician</Option>
+                  <Option value="user">user</Option>
+                </Select>
               )}
             </div>
           </DialogBody>
 
           <DialogFooter className="tw-gap-2">
-            <Button variant="outlined" type="button" onClick={() => setOpenEdit(false)}>Cancel</Button>
+            <Button variant="outlined" type="button" onClick={() => setOpenEdit(false)}>
+              Cancel
+            </Button>
             <Button type="submit" className="tw-bg-blue-600" disabled={saving}>
               {saving ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </form>
       </Dialog>
-
     </>
   );
 }
-
-export default SearchDataTables;

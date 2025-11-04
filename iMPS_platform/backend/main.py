@@ -90,13 +90,24 @@ stationPMUrlDB = client["stationPMReportURL"]
 
 CMReportDB = client["CMReport"]
 CMUrlDB = client["CMReportURL"]
-   
+
+outputModule1 = client["OutputModule1"]
+outputModule2 = client["OutputModule2"]
+outputModule3 = client["OutputModule3"]
+outputModule4 = client["OutputModule4"]
+outputModule5 = client["OutputModule5"]
+outputModule6 = client["OutputModule6"]
+outputModule7 = client["OutputModule7"]
+
+
 imps_db_async = client["iMPS"]
 stations_coll_async = imps_db_async["stations"]
 users_coll_async = imps_db_async["users"]
 email_log_coll = imps_db_async["errorEmailLog"]
 
 MDB_collection = MDB_DB["Klongluang3"]
+
+ 
 
 BROKER_HOST = "212.80.215.42"
 BROKER_PORT = 1883
@@ -135,6 +146,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["ETag"],              # ให้ FE อ่าน ETag ได้ (ใช้ใน /outputModule6)
+    max_age=86400  
 )
 
 def _validate_station_id(station_id: str):
@@ -209,6 +222,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["ETag"],              # ให้ FE อ่าน ETag ได้ (ใช้ใน /outputModule6)
+    max_age=86400  
 )
 
 
@@ -495,7 +510,7 @@ def station_info(
     doc = station_collection.find_one(
         {"station_id": station_id},
         # เลือก field ที่อยากคืน (ตัด _id ออกเพื่อลด serialize ปัญหา ObjectId)
-        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1,"brand":1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "chargeBoxID": 1, "model": 1, "status": 1}
+        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1,"brand":1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "chargeBoxID": 1, "model": 1, "status": 1, "module1_isActive":1, "module2_isActive":1, "module3_isActive":1, "module4_isActive":1, "module5_isActive":1, "module6_isActive":1, "module7_isActive":1}
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Station not found")
@@ -5711,3 +5726,200 @@ async def cbm_query(request: Request, station_id: str = Query(...), current: Use
             await asyncio.sleep(5)
 
     return StreamingResponse(event_generator(), headers=headers)
+
+# -------------------------------------------------------------- AI
+def get_outputModule6_collection_for(station_id: str):
+    # กันชื่อคอลเลกชันแปลก ๆ / injection: อนุญาต a-z A-Z 0-9 _ -
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return outputModule6.get_collection(str(station_id))
+
+@app.get("/outputModule6")
+async def get_latest(
+    request: Request,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    coll = get_outputModule6_collection_for(station_id)
+    doc = await coll.find_one({}, sort=[("_id", -1)])
+    if not doc:
+        raise HTTPException(status_code=404, detail="No data")
+
+    # ✅ ต้องใส่เครื่องหมายอัญประกาศรอบ ETag ตามสเปก
+    etag = f"\"{str(doc['_id'])}\""
+
+    inm = request.headers.get("if-none-match")
+    # ✅ ใช้ Response เปล่า ไม่ต้องมี body/JSONResponse
+    if inm and etag in inm:
+        return Response(status_code=304)
+
+    # ถ้าจะส่ง body ต้องแปลง _id ก่อน
+    doc["_id"] = str(doc["_id"])
+    payload = jsonable_encoder(doc)
+
+    resp = JSONResponse(content=payload)
+    resp.headers["ETag"] = etag
+    # ถ้า endpoint มี auth แนะนำให้ใช้ private
+    resp.headers["Cache-Control"] = "private, max-age=86400, stale-while-revalidate=604800"
+    return resp
+
+@app.get("/outputModule6/progress")
+async def get_module6_progress(
+    request: Request,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ดึงค่า progress/health index จาก MongoDB สำหรับ module 6"""
+    coll = get_outputModule6_collection_for(station_id)
+    doc = await coll.find_one({}, sort=[("_id", -1)])
+    
+    if not doc:
+        return JSONResponse(content={"progress": 0})
+    
+    # สมมติว่าค่า health index/progress อยู่ในฟิลด์ 'health_index' หรือ 'rul_percentage'
+    # ปรับตามโครงสร้างข้อมูลจริงของคุณ
+    progress = doc.get("health_index", 0)  # หรือ doc.get("rul_percentage", 0)
+    
+    etag = f"\"{str(doc['_id'])}\""
+    inm = request.headers.get("if-none-match")
+    
+    if inm and etag in inm:
+        return Response(status_code=304)
+    
+    resp = JSONResponse(content={"progress": progress})
+    resp.headers["ETag"] = etag
+    resp.headers["Cache-Control"] = "private, max-age=60, stale-while-revalidate=300"
+    return resp
+
+# สำหรับ modules อื่นๆ ทำแบบเดียวกัน
+@app.get("/modules/progress")
+async def get_all_modules_progress(
+    request: Request,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """ดึงค่า progress ของทุก modules พร้อมกัน"""
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    
+    result = {}
+    
+    # Module 1 - MDB Filters
+    try:
+        coll1 = outputModule1.get_collection(str(station_id))
+        doc1 = await coll1.find_one({}, sort=[("_id", -1)])
+        result["module1"] = doc1.get("pred_RUL_days", 0) if doc1 else 0
+    except:
+        result["module1"] = 0
+    # try:
+    #     coll1 = outputModule1.get_collection(str(station_id))
+    #     doc1 = await coll1.find_one({}, sort=[("_id", -1)])
+    #     if doc1:
+    #         doc1["_id"] = str(doc1["_id"])
+    #         result["module1"] = doc1
+    #     else:
+    #         result["module1"] = None
+    # except Exception as e:
+    #     print(f"Error fetching module1: {e}")
+    #     result["module1"] = None
+    
+    # Module 2 - Charger Filters
+    try:
+        coll2 = outputModule2.get_collection(str(station_id))
+        doc2 = await coll2.find_one({}, sort=[("_id", -1)])
+        result["module2"] = doc2.get("health_index", 0) if doc2 else 0
+    except:
+        result["module2"] = 0
+    
+    # Module 3 - Online/Offline
+    try:
+        coll3 = outputModule3.get_collection(str(station_id))
+        doc3 = await coll3.find_one({}, sort=[("_id", -1)])
+        result["module3"] = doc3.get("health_index", 0) if doc3 else 0
+    except:
+        result["module3"] = 0
+    
+    # Module 4 - Power Supply
+    try:
+        coll4 = outputModule4.get_collection(str(station_id))
+        doc4 = await coll4.find_one({}, sort=[("_id", -1)])
+        result["module4"] = doc4.get("health_index", 0) if doc4 else 0
+    except:
+        result["module4"] = 0
+    
+    # Module 5 - Network
+    try:
+        coll5 = outputModule5.get_collection(str(station_id))
+        doc5 = await coll5.find_one({}, sort=[("_id", -1)])
+        result["module5"] = doc5.get("health_index", 0) if doc5 else 0
+    except:
+        result["module5"] = 0
+    
+    # Module 6 - RUL
+    try:
+        coll6 = outputModule6.get_collection(str(station_id))
+        doc6 = await coll6.find_one({}, sort=[("_id", -1)])
+        result["module6"] = doc6.get("health_index", 0) if doc6 else 0
+    except:
+        result["module6"] = 0
+    
+    # Module 7 - Root Cause Analysis
+    try:
+        coll7 = outputModule7.get_collection(str(station_id))
+        doc7 = await coll7.find_one({}, sort=[("_id", -1)])
+        result["module7"] = doc7.get("health_index", 0) if doc7 else 0
+    except:
+        result["module7"] = 0
+    
+    resp = JSONResponse(content=result)
+    resp.headers["Cache-Control"] = "private, max-age=60"
+    return resp
+
+
+# from fastapi import HTTPException, Depends
+# from datetime import datetime, timezone
+# import re
+
+# ปรับให้รองรับหลายโมดูล
+MODULES = ["module1", "module2", "module3", "module4", "module5", "module6", "module7"]
+
+def get_station_collection():
+    return station_collection
+
+class ModuleToggleIn(BaseModel):
+    enabled: bool
+
+@app.patch("/station/{station_id}/{module_id}", status_code=204)
+async def patch_module_toggle(
+    station_id: str,
+    module_id: str,
+    body: ModuleToggleIn,
+    current: UserClaims = Depends(get_current_user),
+):
+    # ตรวจสอบว่า station_id ถูกต้อง
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", station_id):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+
+    # ตรวจสอบว่า module_id เป็นโมดูลที่ถูกต้อง
+    if module_id not in MODULES:
+        raise HTTPException(status_code=400, detail="Invalid module_id")
+
+    coll = get_station_collection()
+    now = datetime.now(timezone.utc)
+
+    # สร้างชื่อของฟิลด์ตาม module_id ที่ได้รับมา
+    module_field = f"{module_id}_isActive"
+
+    # อัปเดตสถานะโมดูล
+    res = coll.update_one(
+        {"station_id": station_id},
+        {"$set": {
+            module_field: body.enabled,
+            "updatedAt": now,
+            # "updated_by": getattr(current, "sub", None),
+        }},
+        upsert=False,   # ถ้าอยากสร้างเอกสารใหม่เมื่อไม่เจอ ให้ True
+    )
+
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Station not found")
