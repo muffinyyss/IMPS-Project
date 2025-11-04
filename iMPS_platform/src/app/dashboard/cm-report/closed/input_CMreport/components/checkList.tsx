@@ -6,9 +6,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Severity = "" | "Low" | "Medium" | "High" | "Critical";
-// type Status = "" | "Open" | "In Progress" | "Closed";
-type Status = "" | "Open";
-
+type Status = "" | "Closed";
 
 type CorrectiveItem = {
     text: string;
@@ -45,15 +43,13 @@ const REPAIR_OPTIONS = [
     "อยู่ระหว่างการรออะไหล่",
 ] as const;
 const STATUS_LABEL: Record<Exclude<Status, "">, string> = {
-    Open: "Open",
+    // Open: "Open",
     // "In Progress": "In Progress",
-    // Closed: "Closed",
+    Closed: "Closed",
 };
 
 const SEVERITY_OPTIONS: Severity[] = ["", "Low", "Medium", "High", "Critical"];
-// const STATUS_OPTIONS: Status[] = ["", "Open", "In Progress", "Closed"];
-const STATUS_OPTIONS: Status[] = ["", "Open"];
-
+// const STATUS_OPTIONS: Status[] = ["",  "In Progress", "Closed"];
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
 
@@ -91,12 +87,32 @@ type StationPublic = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-export default function CMOpenForm() {
+function absUrl(u?: string) {
+    if (!u) return "";
+    if (/^https?:\/\//i.test(u)) return u;
+    const left = (API_BASE || "").replace(/\/+$/, "");
+    const right = u.replace(/^\/+/, "");
+    return `${left}/${right}`;
+}
+
+export default function CMForm() {
     const router = useRouter();
     const searchParams = useSearchParams();                  // 👈
     const stationId = searchParams.get("station_id");
+    const editId = searchParams.get("edit_id") ?? "";
+    const isEdit = !!editId;
 
-    // ด้านบนใน component (ใต้ const stationId = ... ได้เลย)
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const STATUS_OPTIONS = useMemo<Status[]>(
+        () => (isEdit ? ["", "Closed"] : ["", "Closed"]),
+        [isEdit]
+    );
+
+    type PhotoItem = { url: string; remark?: string; uploadedAt?: string };
+    const [photos, setPhotos] = useState<Record<string, PhotoItem[]>>({});
+
     const buildListUrl = () => {
         const params = new URLSearchParams();
         if (stationId) params.set("station_id", stationId);
@@ -111,61 +127,322 @@ export default function CMOpenForm() {
 
 
     // เดิม header อิง label/type; ตอนนี้คงไว้เป็นค่าคงที่กลาง
-    const headerLabel = useMemo(() => "CM Report", []);
+    // const headerLabel = useMemo(() => "CM Report", []);
+    const headerLabel = useMemo(() => (editId ? "CM Report (Edit)" : "CM Report (Add)"), [editId]);
 
     const onSave = () => {
         console.log({ job, summary });
         alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
     };
 
+    // const onFinalSave = () => {
+    //     console.log({ job, summary });
+    //     alert("บันทึกเรียบร้อย (เดโม่) – ดูข้อมูลใน console");
+    //     // ถ้าหน้าแม่อยากสลับกลับ list ให้ฟังอีเวนต์นี้ (ไม่ต้องส่ง prop)
+    //     window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true } }));
+    // };
+
+    // const onFinalSave = async () => {
+    //     try {
+    //         if (!stationId) {
+    //             alert("ไม่พบ station_id ใน URL");
+    //             return;
+    //         }
+    //         const payload = {
+    //             station_id: stationId,
+    //             cm_date: (job.found_date || "").slice(0, 10),  // หรือปล่อยให้ backend derive จาก found_date ก็ได้
+    //             summary,
+    //             job: {
+    //                 ...job,
+    //                 // เก็บชื่อไฟล์ไว้เฉยๆ รูปจริงไปอัปโหลดที่ /cmreport/{report_id}/photos
+    //                 corrective_actions: job.corrective_actions.map(c => ({
+    //                     text: c.text,
+    //                     images: c.images.map(img => ({ name: img.file?.name ?? "" }))
+    //                 })),
+    //             },
+    //         };
+
+    //         const res = await fetch(`${API_BASE}/cmreport/submit`, {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json" },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+    //         const { report_id } = await res.json();
+
+    //         alert("บันทึกเรียบร้อย");
+    //         // ถ้าต้องอัปโหลดรูป: สร้าง FormData แล้ว POST ไป /cmreport/{report_id}/photos
+    //         // เสร็จแล้วค่อย finalize: POST /cmreport/{report_id}/finalize
+    //         window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true, report_id } }));
+    //     } catch (e: any) {
+    //         console.error(e);
+    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+    //     }
+    // };
+    // const onFinalSave = async () => {
+    //     try {
+    //         if (!stationId) {
+    //             alert("ไม่พบ station_id ใน URL");
+    //             return;
+    //         }
+    //         const payload = {
+    //             station_id: stationId,
+    //             cm_date: (job.found_date || "").slice(0, 10),
+    //             summary,
+    //             job: {
+    //                 ...job,
+    //                 corrective_actions: job.corrective_actions.map(c => ({
+    //                     text: c.text,
+    //                     images: c.images.map(img => ({ name: img.file?.name ?? "" }))
+    //                 })),
+    //             },
+    //         };
+
+    //         const res = await fetch(`${API_BASE}/cmreport/submit`, {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json" },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+    //         const { report_id } = await res.json();
+
+    //         // แจ้งหน้าแม่ (ถ้าใครฟังอีเวนต์อยู่)
+    //         window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true, report_id } }));
+
+    //         // ➜ ออกจากฟอร์มไปหน้ารายการ (แนบ station_id เพื่อให้ list โหลดข้อมูลถูกสถานี)
+    //         const listUrl = stationId ? `${LIST_ROUTE}?station_id=${encodeURIComponent(stationId)}` : LIST_ROUTE;
+    //         router.replace(listUrl);
+    //     } catch (e: any) {
+    //         console.error(e);
+    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+    //     }
+    // };
+
+    // const onFinalSave = async () => {
+    //     try {
+    //         if (!stationId) {
+    //             alert("ไม่พบ station_id ใน URL");
+    //             return;
+    //         }
+    //         setSaving(true);
+
+    //         if (isEdit && editId) {
+    //             // 👇 โหมดแก้ไข: อัปเดตสถานะอย่างเดียว
+    //             const res = await fetch(
+    //                 `${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`,
+    //                 {
+    //                     method: "PATCH",
+    //                     headers: { "Content-Type": "application/json" },
+    //                     credentials: "include",
+    //                     body: JSON.stringify({
+    //                         station_id: stationId,
+    //                         status: job.status || "Open",
+    //                     }),
+    //                 }
+    //             );
+    //             if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+    //         } else {
+    //             // 👇 โหมดเพิ่มใหม่: ทำเหมือนเดิม (สร้าง -> อัปโหลดรูป)
+    //             const payload = {
+    //                 station_id: stationId,
+    //                 cm_date: (job.found_date || "").slice(0, 10),
+    //                 summary,
+    //                 job: {
+    //                     ...job,
+    //                     corrective_actions: job.corrective_actions.map((c) => ({
+    //                         text: c.text,
+    //                         images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
+    //                     })),
+    //                 },
+    //             };
+
+    //             const res = await fetch(`${API_BASE}/cmreport/submit`, {
+    //                 method: "POST",
+    //                 headers: { "Content-Type": "application/json" },
+    //                 credentials: "include",
+    //                 body: JSON.stringify(payload),
+    //             });
+    //             if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+    //             const { report_id } = await res.json();
+    //             await uploadPhotosForReport(report_id);
+    //         }
+    //         router.replace(buildListUrl());
+    //     } catch (e: any) {
+    //         console.error(e);
+    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+    //     } finally {
+    //         setSaving(false);
+    //     }
+    // };
+
+    // const onFinalSave = async () => {
+    //     try {
+    //         if (!stationId) {
+    //             alert("ไม่พบ station_id ใน URL");
+    //             return;
+    //         }
+    //         setSaving(true);
+
+    //         if (isEdit && editId) {
+    //             // ✅ อัปเดตทั้งเอกสาร
+    //             const payload = {
+    //                 station_id: stationId,
+    //                 cm_date: (job.found_date || "").slice(0, 10),   // ถ้าต้องการ sync ให้ใช้ found_date เป็น cm_date
+    //                 summary,
+    //                 status: job.status || "In Progress",            // หรือไม่ส่งก็ได้ถ้าแก้ใน job อยู่แล้ว
+    //                 job: {
+    //                     issue_id: job.issue_id,
+    //                     found_date: (job.found_date || "").slice(0, 10),
+    //                     location: job.location,
+    //                     wo: job.wo,
+    //                     sn: job.sn,
+    //                     equipment_list: job.equipment_list,
+    //                     problem_details: job.problem_details,
+    //                     problem_type: job.problem_type,
+    //                     severity: job.severity,
+    //                     reported_by: job.reported_by,
+    //                     assignee: job.assignee,
+    //                     initial_cause: job.initial_cause,
+    //                     corrective_actions: job.corrective_actions.map(c => ({
+    //                         text: c.text,
+    //                         // อัปเดต metadata ของรูป (ชื่อไฟล์) เท่านั้น
+    //                         images: c.images.map(img => ({ name: img.file?.name ?? "" })),
+    //                     })),
+    //                     resolved_date: (job.resolved_date || "").slice(0, 10),
+    //                     repair_result: job.repair_result || "",
+    //                     preventive_action: job.preventive_action,
+    //                     status: job.status || "In Progress",
+    //                     remarks: job.remarks,
+    //                 },
+    //             };
+
+    //             const res = await fetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}`, {
+    //                 method: "PUT",
+    //                 headers: { "Content-Type": "application/json" },
+    //                 credentials: "include",
+    //                 body: JSON.stringify(payload),
+    //             });
+    //             if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+    //             // ถ้าผู้ใช้แก้/เพิ่มรูปใหม่ ➜ อัปโหลดไฟล์จริงหลังจาก PUT
+    //             await uploadPhotosForReport(editId);
+    //         } else {
+    //             // สร้างใหม่เหมือนเดิม
+    //             const payload = {
+    //                 station_id: stationId,
+    //                 cm_date: (job.found_date || "").slice(0, 10),
+    //                 summary,
+    //                 job: {
+    //                     ...job,
+    //                     corrective_actions: job.corrective_actions.map(c => ({
+    //                         text: c.text,
+    //                         images: c.images.map(img => ({ name: img.file?.name ?? "" })),
+    //                     })),
+    //                 },
+    //             };
+
+    //             const res = await fetch(`${API_BASE}/cmreport/submit`, {
+    //                 method: "POST",
+    //                 headers: { "Content-Type": "application/json" },
+    //                 credentials: "include",
+    //                 body: JSON.stringify(payload),
+    //             });
+    //             if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+    //             const { report_id } = await res.json();
+    //             await uploadPhotosForReport(report_id);
+    //         }
+
+    //         router.replace(buildListUrl());
+    //     } catch (e: any) {
+    //         console.error(e);
+    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+    //     } finally {
+    //         setSaving(false);
+    //     }
+    // };
     const onFinalSave = async () => {
         try {
-            if (!stationId) {
-                alert("ไม่พบ station_id ใน URL");
-                return;
-            }
+            if (!stationId) { alert("ไม่พบ station_id ใน URL"); return; }
             setSaving(true);
 
-            // 1) สร้างรายงานหลัก
-            const payload = {
-                station_id: stationId,
-                cm_date: (job.found_date || "").slice(0, 10),
-                summary,
-                job: {
-                    ...job,
-                    // ฝั่งหลักเก็บแค่ชื่อไฟล์ (optional) แต่รูปจริงไปอัปโหลดในขั้นตอนถัดไป
-                    corrective_actions: job.corrective_actions.map((c) => ({
-                        text: c.text,
-                        images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
-                    })),
-                },
-            };
+            if (isEdit && editId) {
+                // ✅ PATCH ทั้งเอกสาร (status + job + summary + cm_date)
+                const payload = {
+                    station_id: stationId,
+                    status: (job.status || "In Progress") as "Open" | "In Progress" | "Closed",
+                    summary, // ถ้าไม่อยากอัปเดตก็ไม่ต้องส่ง
+                    cm_date: (job.found_date || "").slice(0, 10), // ถ้าอยาก sync cm_date กับ found_date
+                    job: {
+                        issue_id: job.issue_id,
+                        found_date: (job.found_date || "").slice(0, 10),
+                        location: job.location,
+                        wo: job.wo,
+                        sn: job.sn,
+                        equipment_list: job.equipment_list,
+                        problem_details: job.problem_details,
+                        problem_type: job.problem_type,
+                        severity: job.severity,
+                        reported_by: job.reported_by,
+                        assignee: job.assignee,
+                        initial_cause: job.initial_cause,
+                        corrective_actions: job.corrective_actions.map(c => ({
+                            text: c.text,
+                            // ฝั่ง backend จะเก็บ metadata ที่ส่งมานี้ไว้ใน job;
+                            // ส่วนไฟล์จริงยังต้องอัปโหลดผ่าน /photos ตามเดิม
+                            images: c.images.map(img => ({ name: img.file?.name ?? "" })),
+                        })),
+                        resolved_date: (job.resolved_date || "").slice(0, 10),
+                        repair_result: job.repair_result || "",
+                        preventive_action: job.preventive_action,
+                        remarks: job.remarks,
+                        status: (job.status || "In Progress") as "Open" | "In Progress" | "Closed",
+                    },
+                };
 
-            const res = await fetch(`${API_BASE}/cmreport/submit`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+                const res = await fetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
 
-            const { report_id } = await res.json();
+                // ถ้ามีการเพิ่มรูปใหม่ในฟอร์ม ➜ อัปโหลดไฟล์จริง
+                await uploadPhotosForReport(editId);
+            } else {
+                // ➕ สร้างใหม่เหมือนเดิม
+                const payload = {
+                    station_id: stationId,
+                    cm_date: (job.found_date || "").slice(0, 10),
+                    summary,
+                    job: {
+                        ...job,
+                        corrective_actions: job.corrective_actions.map(c => ({
+                            text: c.text,
+                            images: c.images.map(img => ({ name: img.file?.name ?? "" })),
+                        })),
+                    },
+                };
 
-            // 2) อัปโหลดรูปตาม group (g1,g2,...) จาก Corrective Action
-            await uploadPhotosForReport(report_id);
+                const res = await fetch(`${API_BASE}/cmreport/submit`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
 
-            // 3) (ถ้าต้องการ) finalize รายงาน
-            // await fetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/finalize`, {
-            //   method: "POST",
-            //   credentials: "include",
-            // });
+                const { report_id } = await res.json();
+                await uploadPhotosForReport(report_id);
+            }
 
-            // 4) กลับหน้า list พร้อมพารามิเตอร์สถานี
-            // const listUrl = `${LIST_ROUTE}?station_id=${encodeURIComponent(stationId)}`;
-            // router.replace(listUrl);
-
-            const listUrl = buildListUrl();
-            router.replace(listUrl);
+            router.replace(buildListUrl());
         } catch (e: any) {
             console.error(e);
             alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
@@ -174,18 +451,11 @@ export default function CMOpenForm() {
         }
     };
 
-    // const onCancelLocal = () => {
-    //     const evt = new CustomEvent("cmform:cancel", { cancelable: true });
-    //     const wasPrevented = !window.dispatchEvent(evt); // false = มีคนเรียก preventDefault()
-    //     if (!wasPrevented) {
-    //         router.replace(LIST_ROUTE);
-    //     }
-    // };
     const onCancelLocal = () => {
         const evt = new CustomEvent("cmform:cancel", { cancelable: true });
-        const wasPrevented = !window.dispatchEvent(evt);
+        const wasPrevented = !window.dispatchEvent(evt); // false = มีคนเรียก preventDefault()
         if (!wasPrevented) {
-            router.replace(buildListUrl()); // 🔁 กลับไปหน้า list พร้อม station_id & tab
+            router.replace(LIST_ROUTE);
         }
     };
 
@@ -297,6 +567,33 @@ export default function CMOpenForm() {
     }
 
     // ⭐ ดึง station_name จาก API แล้วอัปเดตช่อง "สถานที่"
+    // useEffect(() => {
+    //     let alive = true;
+    //     if (!stationId) return;
+
+    //     (async () => {
+    //         try {
+    //             const res = await fetch(
+    //                 `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`,
+    //                 { cache: "no-store" }
+    //             );
+    //             if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    //             const data: { station: StationPublic } = await res.json();
+
+    //             if (!alive) return;
+    //             setJob(prev => ({
+    //                 ...prev,
+    //                 location: data.station.station_name || prev.location, // 👈 เซ็ตสถานที่ = station_name
+    //             }));
+    //         } catch (err) {
+    //             console.error("โหลดข้อมูลสถานีไม่สำเร็จ:", err);
+    //             // จะ alert ก็ได้ถ้าต้องการ
+    //         }
+    //     })();
+
+    //     return () => { alive = false; };
+    // }, [stationId]);
+
     useEffect(() => {
         let alive = true;
         if (!stationId) return;
@@ -356,6 +653,124 @@ export default function CMOpenForm() {
         return () => { alive = false; };
     }, []); // ⭐ รันครั้งเดียวตอน mount
 
+    // useEffect(() => {
+    //     if (!editId || !stationId) return;         // 👈 ต้องมีทั้ง editId และ stationId
+
+    //     (async () => {
+    //         try {
+    //             const url = `${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`;
+    //             const res = await fetch(url, { credentials: "include" });
+    //             if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    //             const data = await res.json();
+
+    //             setJob(prev => ({
+    //                 ...prev,
+    //                 // ใช้ค่า top-level ของ backend เป็นหลัก (มี backup เป็น job.*)
+    //                 issue_id: data.issue_id ?? data.job?.issue_id ?? prev.issue_id,
+    //                 // ใช้ cm_date เป็น found_date (ฟอร์แมต YYYY-MM-DD) ถ้าไม่มีค่อย fallback
+    //                 found_date: data.cm_date ?? data.job?.found_date ?? prev.found_date,
+    //                 location: data.job?.location ?? prev.location,
+    //                 wo: data.job?.wo ?? prev.wo,
+    //                 sn: data.job?.sn ?? prev.sn,
+    //                 problem_details: data.job?.problem_details ?? prev.problem_details,
+    //                 problem_type: data.job?.problem_type ?? prev.problem_type,
+    //                 severity: (data.job?.severity ?? "") as Severity,
+    //                 status: (data.job?.status ?? "Open") as Status,
+    //                 initial_cause: data.job?.initial_cause ?? prev.initial_cause,
+    //                 remarks: data.job?.remarks ?? prev.remarks,
+    //             }));
+    //             setSummary(data.summary ?? "");
+    //         } catch (e) {
+    //             console.error("โหลดรายงานเดิมไม่สำเร็จ:", e);
+    //         }
+    //     })();
+    // }, [editId, stationId]);
+    useEffect(() => {
+        if (!editId || !stationId) return;
+
+        const ac = new AbortController();
+        (async () => {
+            try {
+                setLoading(true);
+                setError(null);
+
+                const url = `${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`;
+                const res = await fetch(url, { credentials: "include", signal: ac.signal });
+                if (!res.ok) {
+                    let detail = "";
+                    try { detail = (await res.json()).detail; } catch { }
+                    throw new Error(detail || `HTTP ${res.status}`);
+                }
+                const data = await res.json();
+
+                // map ข้อมูลจาก backend → job state
+                setJob(prev => ({
+                    ...prev,
+                    issue_id: data.issue_id ?? data.job?.issue_id ?? prev.issue_id,
+                    found_date: data.cm_date ?? data.job?.found_date ?? prev.found_date, // YYYY-MM-DD
+                    location: data.job?.location ?? prev.location,
+                    wo: data.job?.wo ?? prev.wo,
+                    sn: data.job?.sn ?? prev.sn,
+                    problem_details: data.job?.problem_details ?? prev.problem_details,
+                    problem_type: data.job?.problem_type ?? prev.problem_type,
+                    severity: (data.job?.severity ?? "") as Severity,
+                    // ถ้าฟรอนต์คุณกำหนด Status ให้เลือกได้เฉพาะ "Closed",
+                    // แต่ backend อาจเป็น "Open"/"In Progress" ก็จับให้ว่างหรือแปลงเองตามนโยบาย
+                    status: (data.job?.status ?? "") as Status,
+                    initial_cause: data.job?.initial_cause ?? prev.initial_cause,
+                    remarks: data.job?.remarks ?? prev.remarks,
+                    // ถ้าอยากเติม lists อื่น ๆ ด้วย (equipment_list, reported_by, ฯลฯ)
+                    equipment_list: Array.isArray(data.job?.equipment_list) && data.job.equipment_list.length ? data.job.equipment_list : prev.equipment_list,
+                    reported_by: Array.isArray(data.job?.reported_by) && data.job.reported_by.length ? data.job.reported_by : prev.reported_by,
+                    preventive_action: Array.isArray(data.job?.preventive_action) && data.job.preventive_action.length ? data.job.preventive_action : prev.preventive_action,
+                    resolved_date: (data.job?.resolved_date ?? "") as string,
+                    repair_result: (data.job?.repair_result ?? "") as Job["repair_result"],
+                    corrective_actions: Array.isArray(data.job?.corrective_actions) && data.job.corrective_actions.length
+                        ? data.job.corrective_actions.map((c: any) => ({
+                            text: c?.text ?? "",
+                            // ฝั่ง backend เก็บแค่ metadata; ส่วนไฟล์จริงอยู่ที่ /uploads/... แล้ว
+                            images: [], // ในฟอร์มนี้ใช้สำหรับไฟล์ใหม่ที่ผู้ใช้จะอัปโหลด
+                        }))
+                        : prev.corrective_actions,
+                }));
+
+                setSummary(data.summary ?? "");
+
+                // เก็บ photos ที่ backend มีอยู่แล้ว (อ่านจาก data.photos)
+                // data.photos มีรูปเป็นกลุ่ม g1,g2,... แต่ละรายการจะมี { url, remark, uploadedAt }
+                const ph = data.photos || {};
+                const normalized: Record<string, PhotoItem[]> = {};
+                Object.keys(ph).forEach((groupKey) => {
+                    const arr = Array.isArray(ph[groupKey]) ? ph[groupKey] : [];
+                    // normalized[groupKey] = arr.map((x: any) => ({
+                    //     url: x?.url,
+                    //     remark: x?.remark,
+                    //     uploadedAt: x?.uploadedAt,
+                    // })).filter((x: PhotoItem) => !!x.url);
+                    normalized[groupKey] = arr
+                        .map((x: any) => ({
+                            url: absUrl(x?.url),        // ← สำคัญ
+                            remark: x?.remark,
+                            uploadedAt: x?.uploadedAt,
+                        }))
+                        .filter((x: PhotoItem) => !!x.url);
+                });
+                setPhotos(normalized);
+
+            } catch (e: any) {
+                if (e?.name !== "AbortError") {
+                    console.error(e);
+                    setError(e?.message || "โหลดข้อมูลไม่สำเร็จ");
+                }
+            } finally {
+                setLoading(false);
+            }
+        })();
+
+        return () => ac.abort();
+    }, [editId, stationId]);
+
+
     async function uploadPhotosForReport(reportId: string) {
         if (!stationId) return;
 
@@ -387,6 +802,8 @@ export default function CMOpenForm() {
             }
         }
     }
+
+    const groupKeyOf = (index: number) => `g${index + 1}`;
 
     /* ----------------------------------------------------------------- */
 
@@ -434,8 +851,8 @@ export default function CMOpenForm() {
                             </div>
                         </div>
 
-                        {/* ปุ่มด้านขวาใน HEADER */}
-                        {/* <div className="tw-flex tw-items-start tw-gap-2 tw-print:tw-hidden">
+                        {/* ปุ่มด้านขวาใน HEADER
+                        <div className="tw-flex tw-items-start tw-gap-2 tw-print:tw-hidden">
                             <Button
                                 type="button"
                                 variant="text"
@@ -474,7 +891,7 @@ export default function CMOpenForm() {
                                     className="!tw-w-full !tw-bg-blue-gray-50"
                                 /> */}
                                 <Input
-                                    value={job.issue_id || "-"}
+                                    value={job.issue_id || "๘๘๘"}
                                     readOnly
                                     key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
                                     crossOrigin=""
@@ -485,7 +902,7 @@ export default function CMOpenForm() {
 
                             <div className="sm:tw-col-span-2 lg:tw-col-span-3">
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                                    Location
+                                    สถานที่
                                 </label>
                                 <Input
                                     value={job.location}
@@ -498,22 +915,23 @@ export default function CMOpenForm() {
                                 />
                             </div>
 
-
-                            <div className="lg:tw-col-span-2">
+                            <div className="lg:tw-col-span-1">
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                                    วันที่ต้องการ
+                                    พบปัญหา
                                 </label>
                                 <Input
                                     type="date"
                                     value={(job.found_date || "").slice(0, 10)}
                                     onChange={(e) => setJob({ ...job, found_date: e.target.value })}
                                     crossOrigin=""
-                                    className="!tw-w-full"
+                                    // className="!tw-w-full"
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                     containerProps={{ className: "!tw-min-w-0" }}
                                 />
                             </div>
 
-                            {/* <div className="lg:tw-col-span-1">
+                            <div className="lg:tw-col-span-1">
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
                                     เสร็จสิ้น
                                 </label>
@@ -523,62 +941,19 @@ export default function CMOpenForm() {
                                     min={(job.found_date || "").slice(0, 10)}
                                     onChange={(e) => setJob({ ...job, resolved_date: e.target.value })}
                                     crossOrigin=""
-                                    className="!tw-w-full"
-                                    containerProps={{ className: "!tw-min-w-0" }}
-                                />
-                            </div> */}
-                        </div>
-                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-3">
-                                <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                                    Work order
-                                </label>
-                                <Input
-                                    value={job.wo}
-                                    onChange={(e) => setJob({ ...job, wo: e.target.value })}
-                                    crossOrigin=""
-                                    readOnly
-                                    className="!tw-w-full !tw-bg-blue-gray-50"
                                     // className="!tw-w-full"
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                     containerProps={{ className: "!tw-min-w-0" }}
                                 />
                             </div>
-
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-3">
-                                <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                                    Serial
-                                </label>
-                                <Input
-                                    value={job.sn}
-                                    onChange={(e) => setJob({ ...job, sn: e.target.value })}
-                                    crossOrigin=""
-                                    readOnly
-                                    className="!tw-w-full !tw-bg-blue-gray-50"
-                                    // className="!tw-w-full"
-                                    containerProps={{ className: "!tw-min-w-0" }}
-                                />
-                            </div>
-
-
                         </div>
-                        {/* <div className="lg:tw-col-span-2">
-                            <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                                วันที่ต้องการ
-                            </label>
-                            <Input
-                                type="date"
-                                value={(job.found_date || "").slice(0, 10)}
-                                onChange={(e) => setJob({ ...job, found_date: e.target.value })}
-                                crossOrigin=""
-                                className="!tw-w-full"
-                                containerProps={{ className: "!tw-min-w-0" }}
-                            />
-                        </div> */}
 
                         {/* 2 คอลัมน์: อุปกรณ์ */}
-                        {/* <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
+                        <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
+                            {/* อุปกรณ์ – หลายรายการ */}
                             <div className="tw-space-y-3">
-                                <div className="tw-flex tw-items-center tw-justify-between">
+                                {/* <div className="tw-flex tw-items-center tw-justify-between">
                                     <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
                                         อุปกรณ์
                                     </span>
@@ -589,7 +964,7 @@ export default function CMOpenForm() {
                                     >
                                         + เพิ่ม
                                     </button>
-                                </div>
+                                </div> */}
 
                                 {job.equipment_list.map((val, i) => (
                                     <div key={i} className="tw-flex tw-items-center tw-gap-2">
@@ -598,9 +973,11 @@ export default function CMOpenForm() {
                                             value={val}
                                             onChange={(e) => setStringItem("equipment_list")(i, e.target.value)}
                                             crossOrigin=""
-                                            className="tw-flex-1"
+                                            // className="tw-flex-1"
+                                            readOnly={isEdit}
+                                            className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                         />
-                                        <button
+                                        {/* <button
                                             type="button"
                                             onClick={() => removeStringItem("equipment_list")(i)}
                                             disabled={job.equipment_list.length <= 1}
@@ -615,13 +992,14 @@ export default function CMOpenForm() {
                                             }
                                         >
                                             ลบ
-                                        </button>
+                                        </button> */}
                                     </div>
                                 ))}
                             </div>
 
+                            {/* ผู้รายงาน */}
                             <div className="tw-space-y-3">
-                                <div className="tw-flex tw-items-center tw-justify-between">
+                                {/* <div className="tw-flex tw-items-center tw-justify-between">
                                     <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
                                         ผู้รายงาน
                                     </span>
@@ -632,7 +1010,7 @@ export default function CMOpenForm() {
                                     >
                                         + เพิ่ม
                                     </button>
-                                </div>
+                                </div> */}
 
                                 {job.reported_by.map((name, i) => (
                                     <div key={i} className="tw-flex tw-items-center tw-gap-2">
@@ -641,9 +1019,11 @@ export default function CMOpenForm() {
                                             value={name}
                                             onChange={(e) => setStringItem("reported_by")(i, e.target.value)}
                                             crossOrigin=""
-                                            className="tw-flex-1"
+                                            // className="tw-flex-1"
+                                            readOnly={isEdit}
+                                            className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                         />
-                                        <button
+                                        {/* <button
                                             type="button"
                                             onClick={() => removeStringItem("reported_by")(i)}
                                             disabled={job.reported_by.length <= 1}
@@ -654,12 +1034,12 @@ export default function CMOpenForm() {
                                             title={job.reported_by.length <= 1 ? "ต้องมีอย่างน้อย 1 คน" : "ลบผู้รายงานนี้"}
                                         >
                                             ลบ
-                                        </button>
+                                        </button> */}
                                     </div>
                                 ))}
                             </div>
 
-                        </div> */}
+                        </div>
 
                         {/* รายละเอียดปัญหา */}
                         <div>
@@ -673,8 +1053,11 @@ export default function CMOpenForm() {
                                     </div>
                                     <select
                                         value={job.severity}
+                                        disabled={isEdit}
                                         onChange={(e) => setJob({ ...job, severity: e.target.value as Severity })}
-                                        className="tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-3 tw-py-2"
+                                        // className="tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-3 tw-py-2"
+                                        className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-3 tw-py-2
+                                            ${isEdit ? "tw-bg-blue-gray-50 tw-text-blue-gray-400 tw-cursor-not-allowed" : ""}`}
                                     >
                                         {SEVERITY_OPTIONS.map((s) => (
                                             <option key={s} value={s}>
@@ -691,14 +1074,18 @@ export default function CMOpenForm() {
                                     value={job.problem_type}
                                     onChange={(e) => setJob({ ...job, problem_type: e.target.value })}
                                     crossOrigin=""
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                 />
                                 <Textarea
                                     label="รายละเอียด"
                                     rows={3}
                                     value={job.problem_details}
                                     onChange={(e) => setJob({ ...job, problem_details: e.target.value })}
-                                    className="!tw-w-full"
+                                    // className="!tw-w-full"
                                     containerProps={{ className: "!tw-min-w-0" }}
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                 />
 
                                 {/* สถานะงาน */}
@@ -720,6 +1107,7 @@ export default function CMOpenForm() {
                                                 <input
                                                     type="radio"
                                                     name="status"
+                                                    disabled
                                                     value={opt}
                                                     className="tw-h-4 tw-w-4 tw-border-blue-gray-300 focus:tw-ring-0 focus:tw-outline-none"
                                                     checked={job.status === opt}
@@ -746,20 +1134,23 @@ export default function CMOpenForm() {
                                 rows={3}
                                 value={job.initial_cause}
                                 onChange={(e) => setJob({ ...job, initial_cause: e.target.value })}
-                                className="!tw-w-full"
+                                // className="!tw-w-full"
                                 containerProps={{ className: "!tw-min-w-0" }}
+                                readOnly={isEdit}
+                                className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                             />
                         </div>
 
 
                         {/* การแก้ไข (Corrective Action) */}
-                        {/* <div>
+                        <div>
                             <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
                                 การแก้ไข (Corrective Action)
                             </div>
                             <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4">
+                                {/* รายการการแก้ไขหลายข้อ */}
                                 <div className="tw-space-y-4">
-                                    <div className="tw-flex tw-items-center tw-justify-between">
+                                    {/* <div className="tw-flex tw-items-center tw-justify-between">
                                         <span className="tw-text-sm tw-font-medium tw-text-blue-gray-800">
                                             รายการการแก้ไข
                                         </span>
@@ -770,10 +1161,12 @@ export default function CMOpenForm() {
                                         >
                                             + เพิ่ม
                                         </button>
-                                    </div>
+                                    </div> */}
 
                                     {job.corrective_actions.map((item, i) => {
-                                        const canDelete = job.corrective_actions.length > 1;
+                                        const groupKey = groupKeyOf(i);
+                                        const existing = photos[groupKey] ?? [];
+
                                         return (
                                             <div
                                                 key={i}
@@ -785,66 +1178,104 @@ export default function CMOpenForm() {
                                                         rows={3}
                                                         value={item.text}
                                                         onChange={(e) => patchCorrective(i, { text: e.target.value })}
-                                                        className="!tw-w-full"
+                                                        readOnly={isEdit}
+                                                        className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                                         containerProps={{ className: "!tw-min-w-0 tw-flex-1" }}
                                                     />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeCorrective(i)}
-                                                        disabled={!canDelete}
-                                                        className={`tw-shrink-0 tw-ml-2 tw-h-9 tw-rounded-md tw-border tw-px-3 ${!canDelete
-                                                            ? "tw-border-blue-gray-100 tw-text-blue-gray-300 tw-cursor-not-allowed"
-                                                            : "tw-border-red-200 tw-text-red-600 hover:tw-bg-red-50"
-                                                            }`}
-                                                        title={!canDelete ? "ต้องมีอย่างน้อย 1 ข้อ" : "ลบรายการนี้"}
-                                                        aria-disabled={!canDelete}
-                                                    >
-                                                        ลบ
-                                                    </button>
                                                 </div>
 
-                                                <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
-                                                    <label className="tw-inline-flex tw-items-center tw-gap-2 tw-cursor-pointer tw-rounded-md tw-border tw-border-blue-gray-200 tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50">
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            multiple
-                                                            capture="environment"
-                                                            className="tw-hidden"
-                                                            onChange={(e) => addCorrectiveImages(i, e.target.files)}
-                                                        />
-                                                        <span className="tw-text-sm">+ เพิ่มรูป / ถ่ายรูป</span>
-                                                    </label>
-
-                                                    {item.images.length > 0 && (
-                                                        <div className="tw-w-full tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-                                                            {item.images.map((img, j) => (
-                                                                <div
-                                                                    key={j}
-                                                                    className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100"
+                                                {/* พรีวิวไฟล์ "ใหม่" ที่เพิ่งแนบในฟอร์ม */}
+                                                {item.images.length > 0 && (
+                                                    <div className="tw-w-full tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
+                                                        {item.images.map((img, j) => (
+                                                            <div
+                                                                key={j}
+                                                                className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100"
+                                                            >
+                                                                <img src={img.url} alt={`action-${i}-img-${j}`} className="tw-w-full tw-h-full tw-object-cover" />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeCorrectiveImage(i, j)}
+                                                                    className="tw-absolute tw-top-1 tw-right-1 tw-bg-white/80 tw-backdrop-blur tw-text-red-600 tw-text-xs tw-rounded tw-px-2 tw-py-1 hover:tw-bg-white"
                                                                 >
-                                                                    <img
-                                                                        src={img.url}
-                                                                        alt={`action-${i}-img-${j}`}
-                                                                        className="tw-w-full tw-h-full tw-object-cover"
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => removeCorrectiveImage(i, j)}
-                                                                        className="tw-absolute tw-top-1 tw-right-1 tw-bg-white/80 tw-backdrop-blur tw-text-red-600 tw-text-xs tw-rounded tw-px-2 tw-py-1 hover:tw-bg-white"
-                                                                    >
-                                                                        ลบ
-                                                                    </button>
-                                                                </div>
+                                                                    ลบ
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* ✅ รูป "ที่มีอยู่แล้ว" จาก backend ของข้อ i (g{i+1}) */}
+                                                {isEdit && existing.length > 0 && (
+                                                    <div className="tw-space-y-2">
+                                                        <div className="tw-text-sm tw-font-medium">รูปที่อัปโหลดไว้แล้ว — ข้อที่ {i + 1}</div>
+                                                        <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
+                                                            {existing.map((p, k) => (
+                                                                <a
+                                                                    key={`${groupKey}-${k}`}
+                                                                    href={p.url}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow"
+                                                                >
+                                                                    <img src={p.url} alt={`photo-${groupKey}-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
+                                                                    {p.remark && (
+                                                                        <div className="tw-absolute tw-bottom-0 tw-left-0 tw-right-0 tw-bg-black/50 tw-text-white tw-text-xs tw-px-2 tw-py-1">
+                                                                            {p.remark}
+                                                                        </div>
+                                                                    )}
+                                                                </a>
                                                             ))}
                                                         </div>
-                                                    )}
-                                                </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })}
                                 </div>
+                                {/* ✅ แสดงรูปที่มีอยู่แล้วจาก backend */}
+                                {/* {isEdit && Object.keys(photos).length > 0 && (
+                                    <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4">
+                                        <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
+                                            รูปที่อัปโหลดไว้แล้ว
+                                        </div>
 
+                                        {Object.entries(photos).map(([groupKey, arr]) => (
+                                            <div key={groupKey} className="tw-space-y-2">
+                                                <div className="tw-text-sm tw-font-medium">กลุ่ม {groupKey.toUpperCase()}</div>
+
+                                                {arr.length === 0 ? (
+                                                    <div className="tw-text-sm tw-text-blue-gray-500">ไม่มีรูป</div>
+                                                ) : (
+                                                    <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
+                                                        {arr.map((p, i) => (
+                                                            <a
+                                                                key={`${groupKey}-${i}`}
+                                                                href={p.url}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow"
+                                                            >
+                                                                <img
+                                                                    src={p.url}
+                                                                    alt={`photo-${groupKey}-${i}`}
+                                                                    className="tw-w-full tw-h-full tw-object-cover"
+                                                                />
+                                                                {p.remark && (
+                                                                    <div className="tw-absolute tw-bottom-0 tw-left-0 tw-right-0 tw-bg-black/50 tw-text-white tw-text-xs tw-px-2 tw-py-1">
+                                                                        {p.remark}
+                                                                    </div>
+                                                                )}
+                                                            </a>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )} */}
+
+                                {/* ผลหลังซ่อม */}
                                 <div>
                                     <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-3">
                                         ผลหลังซ่อม
@@ -855,6 +1286,7 @@ export default function CMOpenForm() {
                                                 <input
                                                     type="radio"
                                                     name="repair_result"
+                                                    disabled
                                                     value={opt}
                                                     className="tw-h-4 tw-w-4 tw-border-blue-gray-300 focus:tw-ring-0 focus:tw-outline-none"
                                                     checked={job.repair_result === opt}
@@ -865,8 +1297,10 @@ export default function CMOpenForm() {
                                         ))}
                                     </div>
                                 </div>
+
+                                {/* วิธีป้องกันซ้ำ – หลายข้อ */}
                                 <div className="tw-space-y-3">
-                                    <div className="tw-flex tw-items-center tw-justify-between">
+                                    {/* <div className="tw-flex tw-items-center tw-justify-between">
                                         <span className="tw-text-sm tw-font-medium tw-text-blue-gray-800">
                                             วิธีป้องกันซ้ำ
                                         </span>
@@ -877,7 +1311,7 @@ export default function CMOpenForm() {
                                         >
                                             + เพิ่ม
                                         </button>
-                                    </div>
+                                    </div> */}
 
                                     {job.preventive_action.map((val, i) => (
                                         <div key={i} className="tw-flex tw-items-center tw-gap-2">
@@ -886,9 +1320,11 @@ export default function CMOpenForm() {
                                                 value={val}
                                                 onChange={(e) => setStringItem("preventive_action")(i, e.target.value)}
                                                 crossOrigin=""
-                                                className="tw-flex-1"
+                                                // className="tw-flex-1"
+                                                readOnly={isEdit}
+                                                className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                             />
-                                            <button
+                                            {/* <button
                                                 type="button"
                                                 onClick={() => removeStringItem("preventive_action")(i)}
                                                 disabled={job.preventive_action.length <= 1}
@@ -903,12 +1339,12 @@ export default function CMOpenForm() {
                                                 }
                                             >
                                                 ลบ
-                                            </button>
+                                            </button> */}
                                         </div>
                                     ))}
                                 </div>
                             </div>
-                        </div> */}
+                        </div>
 
 
                         {/* หมายเหตุ */}
@@ -922,14 +1358,16 @@ export default function CMOpenForm() {
                                     rows={3}
                                     value={job.remarks}
                                     onChange={(e) => setJob({ ...job, remarks: e.target.value })}
-                                    className="!tw-w-full"
+                                    // className="!tw-w-full"
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                     containerProps={{ className: "!tw-min-w-0" }}
                                 />
                             </div>
                         </div>
 
                         {/* FOOTER + ปุ่มบันทึก */}
-                        <div className="tw-flex tw-items-center tw-justify-between tw-print:tw-mt-8">
+                        {/* <div className="tw-flex tw-items-center tw-justify-between tw-print:tw-mt-8">
                             <div />
                             <div className="tw-flex tw-gap-2 tw-print:tw-hidden">
                                 <Button
@@ -945,7 +1383,7 @@ export default function CMOpenForm() {
                                     บันทึก
                                 </Button>
                             </div>
-                        </div>
+                        </div> */}
                     </div>
                 </div>
 

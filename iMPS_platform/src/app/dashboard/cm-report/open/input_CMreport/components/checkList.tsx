@@ -7,10 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 type Severity = "" | "Low" | "Medium" | "High" | "Critical";
 // type Status = "" | "Open" | "In Progress" | "Closed";
-type Status = "" | "Open";
-
-
-
+type Status = "" | "Open" | "In Progress";
 
 type CorrectiveItem = {
     text: string;
@@ -48,13 +45,14 @@ const REPAIR_OPTIONS = [
 ] as const;
 const STATUS_LABEL: Record<Exclude<Status, "">, string> = {
     Open: "Open",
-    // "In Progress": "In Progress",
+    "In Progress": "In Progress",
     // Closed: "Closed",
 };
 
 const SEVERITY_OPTIONS: Severity[] = ["", "Low", "Medium", "High", "Critical"];
 // const STATUS_OPTIONS: Status[] = ["", "Open", "In Progress", "Closed"];
-const STATUS_OPTIONS: Status[] = ["", "Open"];
+// const STATUS_OPTIONS: Status[] = ["", "Open"];
+
 
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
@@ -97,6 +95,13 @@ export default function CMOpenForm() {
     const router = useRouter();
     const searchParams = useSearchParams();                  // 👈
     const stationId = searchParams.get("station_id");
+    const editId = searchParams.get("edit_id") ?? "";
+    const isEdit = !!editId;
+
+    const STATUS_OPTIONS = useMemo<Status[]>(
+        () => (isEdit ? ["", "Open", "In Progress"] : ["", "Open"]),
+        [isEdit]
+    );
 
     // ด้านบนใน component (ใต้ const stationId = ... ได้เลย)
     const buildListUrl = () => {
@@ -113,19 +118,15 @@ export default function CMOpenForm() {
 
 
     // เดิม header อิง label/type; ตอนนี้คงไว้เป็นค่าคงที่กลาง
-    const headerLabel = useMemo(() => "CM Report", []);
+    // const headerLabel = useMemo(() => "CM Report", []);
+    const headerLabel = useMemo(() => (editId ? "CM Report (Edit)" : "CM Report (Add)"), [editId]);
+
 
     const onSave = () => {
         console.log({ job, summary });
         alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
     };
 
-    // const onFinalSave = () => {
-    //     console.log({ job, summary });
-    //     alert("บันทึกเรียบร้อย (เดโม่) – ดูข้อมูลใน console");
-    //     // ถ้าหน้าแม่อยากสลับกลับ list ให้ฟังอีเวนต์นี้ (ไม่ต้องส่ง prop)
-    //     window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true } }));
-    // };
 
     // const onFinalSave = async () => {
     //     try {
@@ -133,54 +134,19 @@ export default function CMOpenForm() {
     //             alert("ไม่พบ station_id ใน URL");
     //             return;
     //         }
-    //         const payload = {
-    //             station_id: stationId,
-    //             cm_date: (job.found_date || "").slice(0, 10),  // หรือปล่อยให้ backend derive จาก found_date ก็ได้
-    //             summary,
-    //             job: {
-    //                 ...job,
-    //                 // เก็บชื่อไฟล์ไว้เฉยๆ รูปจริงไปอัปโหลดที่ /cmreport/{report_id}/photos
-    //                 corrective_actions: job.corrective_actions.map(c => ({
-    //                     text: c.text,
-    //                     images: c.images.map(img => ({ name: img.file?.name ?? "" }))
-    //                 })),
-    //             },
-    //         };
+    //         setSaving(true);
 
-    //         const res = await fetch(`${API_BASE}/cmreport/submit`, {
-    //             method: "POST",
-    //             headers: { "Content-Type": "application/json" },
-    //             credentials: "include",
-    //             body: JSON.stringify(payload),
-    //         });
-    //         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
-
-    //         const { report_id } = await res.json();
-
-    //         alert("บันทึกเรียบร้อย");
-    //         // ถ้าต้องอัปโหลดรูป: สร้าง FormData แล้ว POST ไป /cmreport/{report_id}/photos
-    //         // เสร็จแล้วค่อย finalize: POST /cmreport/{report_id}/finalize
-    //         window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true, report_id } }));
-    //     } catch (e: any) {
-    //         console.error(e);
-    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
-    //     }
-    // };
-    // const onFinalSave = async () => {
-    //     try {
-    //         if (!stationId) {
-    //             alert("ไม่พบ station_id ใน URL");
-    //             return;
-    //         }
+    //         // 1) สร้างรายงานหลัก
     //         const payload = {
     //             station_id: stationId,
     //             cm_date: (job.found_date || "").slice(0, 10),
     //             summary,
     //             job: {
     //                 ...job,
-    //                 corrective_actions: job.corrective_actions.map(c => ({
+    //                 // ฝั่งหลักเก็บแค่ชื่อไฟล์ (optional) แต่รูปจริงไปอัปโหลดในขั้นตอนถัดไป
+    //                 corrective_actions: job.corrective_actions.map((c) => ({
     //                     text: c.text,
-    //                     images: c.images.map(img => ({ name: img.file?.name ?? "" }))
+    //                     images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
     //                 })),
     //             },
     //         };
@@ -195,15 +161,26 @@ export default function CMOpenForm() {
 
     //         const { report_id } = await res.json();
 
-    //         // แจ้งหน้าแม่ (ถ้าใครฟังอีเวนต์อยู่)
-    //         window.dispatchEvent(new CustomEvent("cmform:complete", { detail: { ok: true, report_id } }));
+    //         // 2) อัปโหลดรูปตาม group (g1,g2,...) จาก Corrective Action
+    //         await uploadPhotosForReport(report_id);
 
-    //         // ➜ ออกจากฟอร์มไปหน้ารายการ (แนบ station_id เพื่อให้ list โหลดข้อมูลถูกสถานี)
-    //         const listUrl = stationId ? `${LIST_ROUTE}?station_id=${encodeURIComponent(stationId)}` : LIST_ROUTE;
+    //         // 3) (ถ้าต้องการ) finalize รายงาน
+    //         // await fetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/finalize`, {
+    //         //   method: "POST",
+    //         //   credentials: "include",
+    //         // });
+
+    //         // 4) กลับหน้า list พร้อมพารามิเตอร์สถานี
+    //         // const listUrl = `${LIST_ROUTE}?station_id=${encodeURIComponent(stationId)}`;
+    //         // router.replace(listUrl);
+
+    //         const listUrl = buildListUrl();
     //         router.replace(listUrl);
     //     } catch (e: any) {
     //         console.error(e);
     //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+    //     } finally {
+    //         setSaving(false);
     //     }
     // };
 
@@ -215,46 +192,50 @@ export default function CMOpenForm() {
             }
             setSaving(true);
 
-            // 1) สร้างรายงานหลัก
-            const payload = {
-                station_id: stationId,
-                cm_date: (job.found_date || "").slice(0, 10),
-                summary,
-                job: {
-                    ...job,
-                    // ฝั่งหลักเก็บแค่ชื่อไฟล์ (optional) แต่รูปจริงไปอัปโหลดในขั้นตอนถัดไป
-                    corrective_actions: job.corrective_actions.map((c) => ({
-                        text: c.text,
-                        images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
-                    })),
-                },
-            };
+            if (isEdit && editId) {
+                // 👇 โหมดแก้ไข: อัปเดตสถานะอย่างเดียว
+                const res = await fetch(
+                    `${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`,
+                    {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify({
+                            station_id: stationId,
+                            status: job.status || "Open",
+                        }),
+                    }
+                );
+                if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+            } else {
+                // 👇 โหมดเพิ่มใหม่: ทำเหมือนเดิม (สร้าง -> อัปโหลดรูป)
+                const payload = {
+                    station_id: stationId,
+                    cm_date: (job.found_date || "").slice(0, 10),
+                    summary,
+                    job: {
+                        ...job,
+                        corrective_actions: job.corrective_actions.map((c) => ({
+                            text: c.text,
+                            images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
+                        })),
+                    },
+                };
 
-            const res = await fetch(`${API_BASE}/cmreport/submit`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+                const res = await fetch(`${API_BASE}/cmreport/submit`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
 
-            const { report_id } = await res.json();
+                const { report_id } = await res.json();
+                await uploadPhotosForReport(report_id);
+            }
 
-            // 2) อัปโหลดรูปตาม group (g1,g2,...) จาก Corrective Action
-            await uploadPhotosForReport(report_id);
-
-            // 3) (ถ้าต้องการ) finalize รายงาน
-            // await fetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/finalize`, {
-            //   method: "POST",
-            //   credentials: "include",
-            // });
-
-            // 4) กลับหน้า list พร้อมพารามิเตอร์สถานี
-            // const listUrl = `${LIST_ROUTE}?station_id=${encodeURIComponent(stationId)}`;
-            // router.replace(listUrl);
-
-            const listUrl = buildListUrl();
-            router.replace(listUrl);
+            // กลับหน้า list (คง tab/station เดิม)
+            router.replace(buildListUrl());
         } catch (e: any) {
             console.error(e);
             alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
@@ -445,6 +426,39 @@ export default function CMOpenForm() {
         return () => { alive = false; };
     }, []); // ⭐ รันครั้งเดียวตอน mount
 
+    useEffect(() => {
+        if (!editId || !stationId) return;         // 👈 ต้องมีทั้ง editId และ stationId
+
+        (async () => {
+            try {
+                const url = `${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`;
+                const res = await fetch(url, { credentials: "include" });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                setJob(prev => ({
+                    ...prev,
+                    // ใช้ค่า top-level ของ backend เป็นหลัก (มี backup เป็น job.*)
+                    issue_id: data.issue_id ?? data.job?.issue_id ?? prev.issue_id,
+                    // ใช้ cm_date เป็น found_date (ฟอร์แมต YYYY-MM-DD) ถ้าไม่มีค่อย fallback
+                    found_date: data.cm_date ?? data.job?.found_date ?? prev.found_date,
+                    location: data.job?.location ?? prev.location,
+                    wo: data.job?.wo ?? prev.wo,
+                    sn: data.job?.sn ?? prev.sn,
+                    problem_details: data.job?.problem_details ?? prev.problem_details,
+                    problem_type: data.job?.problem_type ?? prev.problem_type,
+                    severity: (data.job?.severity ?? "") as Severity,
+                    status: (data.job?.status ?? "Open") as Status,
+                    initial_cause: data.job?.initial_cause ?? prev.initial_cause,
+                    remarks: data.job?.remarks ?? prev.remarks,
+                }));
+                setSummary(data.summary ?? "");
+            } catch (e) {
+                console.error("โหลดรายงานเดิมไม่สำเร็จ:", e);
+            }
+        })();
+    }, [editId, stationId]);
+
     async function uploadPhotosForReport(reportId: string) {
         if (!stationId) return;
 
@@ -597,7 +611,10 @@ export default function CMOpenForm() {
                                     value={(job.found_date || "").slice(0, 10)}
                                     onChange={(e) => setJob({ ...job, found_date: e.target.value })}
                                     crossOrigin=""
-                                    className="!tw-w-full"
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
+
+
                                     containerProps={{ className: "!tw-min-w-0" }}
                                 />
                             </div>
@@ -650,105 +667,7 @@ export default function CMOpenForm() {
 
 
                         </div>
-                        {/* <div className="lg:tw-col-span-2">
-                            <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                                วันที่ต้องการ
-                            </label>
-                            <Input
-                                type="date"
-                                value={(job.found_date || "").slice(0, 10)}
-                                onChange={(e) => setJob({ ...job, found_date: e.target.value })}
-                                crossOrigin=""
-                                className="!tw-w-full"
-                                containerProps={{ className: "!tw-min-w-0" }}
-                            />
-                        </div> */}
 
-                        {/* 2 คอลัมน์: อุปกรณ์ */}
-                        {/* <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
-                            <div className="tw-space-y-3">
-                                <div className="tw-flex tw-items-center tw-justify-between">
-                                    <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
-                                        อุปกรณ์
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={addStringItem("equipment_list")}
-                                        className="tw-text-sm tw-rounded-md tw-border tw-border-blue-gray-200 tw-px-3 tw-py-1 hover:tw-bg-blue-gray-50"
-                                    >
-                                        + เพิ่ม
-                                    </button>
-                                </div>
-
-                                {job.equipment_list.map((val, i) => (
-                                    <div key={i} className="tw-flex tw-items-center tw-gap-2">
-                                        <Input
-                                            label={`รายการที่ ${i + 1}`}
-                                            value={val}
-                                            onChange={(e) => setStringItem("equipment_list")(i, e.target.value)}
-                                            crossOrigin=""
-                                            className="tw-flex-1"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => removeStringItem("equipment_list")(i)}
-                                            disabled={job.equipment_list.length <= 1}
-                                            className={`tw-h-10 tw-rounded-md tw-border tw-px-3 ${job.equipment_list.length <= 1
-                                                ? "tw-border-blue-gray-100 tw-text-blue-gray-300 tw-cursor-not-allowed"
-                                                : "tw-border-red-200 tw-text-red-600 hover:tw-bg-red-50"
-                                                }`}
-                                            title={
-                                                job.equipment_list.length <= 1
-                                                    ? "ต้องมีอย่างน้อย 1 รายการ"
-                                                    : "ลบรายการนี้"
-                                            }
-                                        >
-                                            ลบ
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="tw-space-y-3">
-                                <div className="tw-flex tw-items-center tw-justify-between">
-                                    <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
-                                        ผู้รายงาน
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={addStringItem("reported_by")}
-                                        className="tw-text-sm tw-rounded-md tw-border tw-border-blue-gray-200 tw-px-3 tw-py-1 hover:tw-bg-blue-gray-50"
-                                    >
-                                        + เพิ่ม
-                                    </button>
-                                </div>
-
-                                {job.reported_by.map((name, i) => (
-                                    <div key={i} className="tw-flex tw-items-center tw-gap-2">
-                                        <Input
-                                            label={`ผู้รายงานที่ ${i + 1}`}
-                                            value={name}
-                                            onChange={(e) => setStringItem("reported_by")(i, e.target.value)}
-                                            crossOrigin=""
-                                            className="tw-flex-1"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => removeStringItem("reported_by")(i)}
-                                            disabled={job.reported_by.length <= 1}
-                                            className={`tw-h-10 tw-rounded-md tw-border tw-px-3 ${job.reported_by.length <= 1
-                                                ? "tw-border-blue-gray-100 tw-text-blue-gray-300 tw-cursor-not-allowed"
-                                                : "tw-border-red-200 tw-text-red-600 hover:tw-bg-red-50"
-                                                }`}
-                                            title={job.reported_by.length <= 1 ? "ต้องมีอย่างน้อย 1 คน" : "ลบผู้รายงานนี้"}
-                                        >
-                                            ลบ
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-
-                        </div> */}
 
                         {/* รายละเอียดปัญหา */}
                         <div>
@@ -762,8 +681,10 @@ export default function CMOpenForm() {
                                     </div>
                                     <select
                                         value={job.severity}
+                                        disabled={isEdit}
                                         onChange={(e) => setJob({ ...job, severity: e.target.value as Severity })}
-                                        className="tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-3 tw-py-2"
+                                        className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-3 tw-py-2
+                                            ${isEdit ? "tw-bg-blue-gray-50 tw-text-blue-gray-400 tw-cursor-not-allowed" : ""}`}
                                     >
                                         {SEVERITY_OPTIONS.map((s) => (
                                             <option key={s} value={s}>
@@ -780,13 +701,16 @@ export default function CMOpenForm() {
                                     value={job.problem_type}
                                     onChange={(e) => setJob({ ...job, problem_type: e.target.value })}
                                     crossOrigin=""
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                 />
                                 <Textarea
                                     label="รายละเอียด"
                                     rows={3}
                                     value={job.problem_details}
                                     onChange={(e) => setJob({ ...job, problem_details: e.target.value })}
-                                    className="!tw-w-full"
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                     containerProps={{ className: "!tw-min-w-0" }}
                                 />
 
@@ -835,170 +759,11 @@ export default function CMOpenForm() {
                                 rows={3}
                                 value={job.initial_cause}
                                 onChange={(e) => setJob({ ...job, initial_cause: e.target.value })}
-                                className="!tw-w-full"
+                                readOnly={isEdit}
+                                className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                 containerProps={{ className: "!tw-min-w-0" }}
                             />
                         </div>
-
-
-                        {/* การแก้ไข (Corrective Action) */}
-                        {/* <div>
-                            <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
-                                การแก้ไข (Corrective Action)
-                            </div>
-                            <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4">
-                                <div className="tw-space-y-4">
-                                    <div className="tw-flex tw-items-center tw-justify-between">
-                                        <span className="tw-text-sm tw-font-medium tw-text-blue-gray-800">
-                                            รายการการแก้ไข
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={addCorrective}
-                                            className="tw-text-sm tw-rounded-md tw-border tw-border-blue-gray-200 tw-px-3 tw-py-1 hover:tw-bg-blue-gray-50"
-                                        >
-                                            + เพิ่ม
-                                        </button>
-                                    </div>
-
-                                    {job.corrective_actions.map((item, i) => {
-                                        const canDelete = job.corrective_actions.length > 1;
-                                        return (
-                                            <div
-                                                key={i}
-                                                className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-3 tw-space-y-3"
-                                            >
-                                                <div className="tw-flex tw-items-start tw-justify-between tw-gap-3">
-                                                    <Textarea
-                                                        label={`ข้อที่ ${i + 1}`}
-                                                        rows={3}
-                                                        value={item.text}
-                                                        onChange={(e) => patchCorrective(i, { text: e.target.value })}
-                                                        className="!tw-w-full"
-                                                        containerProps={{ className: "!tw-min-w-0 tw-flex-1" }}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeCorrective(i)}
-                                                        disabled={!canDelete}
-                                                        className={`tw-shrink-0 tw-ml-2 tw-h-9 tw-rounded-md tw-border tw-px-3 ${!canDelete
-                                                            ? "tw-border-blue-gray-100 tw-text-blue-gray-300 tw-cursor-not-allowed"
-                                                            : "tw-border-red-200 tw-text-red-600 hover:tw-bg-red-50"
-                                                            }`}
-                                                        title={!canDelete ? "ต้องมีอย่างน้อย 1 ข้อ" : "ลบรายการนี้"}
-                                                        aria-disabled={!canDelete}
-                                                    >
-                                                        ลบ
-                                                    </button>
-                                                </div>
-
-                                                <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
-                                                    <label className="tw-inline-flex tw-items-center tw-gap-2 tw-cursor-pointer tw-rounded-md tw-border tw-border-blue-gray-200 tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50">
-                                                        <input
-                                                            type="file"
-                                                            accept="image/*"
-                                                            multiple
-                                                            capture="environment"
-                                                            className="tw-hidden"
-                                                            onChange={(e) => addCorrectiveImages(i, e.target.files)}
-                                                        />
-                                                        <span className="tw-text-sm">+ เพิ่มรูป / ถ่ายรูป</span>
-                                                    </label>
-
-                                                    {item.images.length > 0 && (
-                                                        <div className="tw-w-full tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-                                                            {item.images.map((img, j) => (
-                                                                <div
-                                                                    key={j}
-                                                                    className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100"
-                                                                >
-                                                                    <img
-                                                                        src={img.url}
-                                                                        alt={`action-${i}-img-${j}`}
-                                                                        className="tw-w-full tw-h-full tw-object-cover"
-                                                                    />
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => removeCorrectiveImage(i, j)}
-                                                                        className="tw-absolute tw-top-1 tw-right-1 tw-bg-white/80 tw-backdrop-blur tw-text-red-600 tw-text-xs tw-rounded tw-px-2 tw-py-1 hover:tw-bg-white"
-                                                                    >
-                                                                        ลบ
-                                                                    </button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                <div>
-                                    <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-3">
-                                        ผลหลังซ่อม
-                                    </div>
-                                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-x-4 tw-gap-y-2">
-                                        {REPAIR_OPTIONS.map((opt) => (
-                                            <label key={opt} className="tw-inline-flex tw-items-center tw-gap-2 tw-select-none">
-                                                <input
-                                                    type="radio"
-                                                    name="repair_result"
-                                                    value={opt}
-                                                    className="tw-h-4 tw-w-4 tw-border-blue-gray-300 focus:tw-ring-0 focus:tw-outline-none"
-                                                    checked={job.repair_result === opt}
-                                                    onChange={() => setJob((prev) => ({ ...prev, repair_result: opt }))}
-                                                />
-                                                <span className="tw-text-sm tw-text-blue-gray-800">{opt}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="tw-space-y-3">
-                                    <div className="tw-flex tw-items-center tw-justify-between">
-                                        <span className="tw-text-sm tw-font-medium tw-text-blue-gray-800">
-                                            วิธีป้องกันซ้ำ
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={addStringItem("preventive_action")}
-                                            className="tw-text-sm tw-rounded-md tw-border tw-border-blue-gray-200 tw-px-3 tw-py-1 hover:tw-bg-blue-gray-50"
-                                        >
-                                            + เพิ่ม
-                                        </button>
-                                    </div>
-
-                                    {job.preventive_action.map((val, i) => (
-                                        <div key={i} className="tw-flex tw-items-center tw-gap-2">
-                                            <Input
-                                                label={`ข้อที่ ${i + 1}`}
-                                                value={val}
-                                                onChange={(e) => setStringItem("preventive_action")(i, e.target.value)}
-                                                crossOrigin=""
-                                                className="tw-flex-1"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => removeStringItem("preventive_action")(i)}
-                                                disabled={job.preventive_action.length <= 1}
-                                                className={`tw-h-10 tw-rounded-md tw-border tw-px-3 ${job.preventive_action.length <= 1
-                                                    ? "tw-border-blue-gray-100 tw-text-blue-gray-300 tw-cursor-not-allowed"
-                                                    : "tw-border-red-200 tw-text-red-600 hover:tw-bg-red-50"
-                                                    }`}
-                                                title={
-                                                    job.preventive_action.length <= 1
-                                                        ? "ต้องมีอย่างน้อย 1 ข้อ"
-                                                        : "ลบวิธีนี้"
-                                                }
-                                            >
-                                                ลบ
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div> */}
-
 
                         {/* หมายเหตุ */}
                         <div>
@@ -1011,7 +776,8 @@ export default function CMOpenForm() {
                                     rows={3}
                                     value={job.remarks}
                                     onChange={(e) => setJob({ ...job, remarks: e.target.value })}
-                                    className="!tw-w-full"
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
                                     containerProps={{ className: "!tw-min-w-0" }}
                                 />
                             </div>
