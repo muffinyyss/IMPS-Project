@@ -9,6 +9,8 @@ module.exports = withMT({
     "./src/data/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/theme/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/widgets/**/*.{js,ts,jsx,tsx,mdx}",
+    "./backend/pdf/templates/**/*.html", // ให้ Tailwind scan เทมเพลตที่ใช้จริง
+    "./src/**/*.{ts,tsx}",   
   ],
   theme: {
     extend: {
@@ -19,4 +21,5 @@ module.exports = withMT({
   },
   plugins: [],
   prefix: "tw-",
+  theme: { extend: {} },
 });
