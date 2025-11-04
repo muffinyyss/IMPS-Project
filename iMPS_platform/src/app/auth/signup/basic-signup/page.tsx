@@ -25,12 +25,12 @@ export default function BasicSignupPage() {
   const [phone, setPhone] = useState("");
   const [company, setCompany] = useState("");
   const [message, setMessage] = useState("");
-
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     try {
-      const res = await fetch(("http://localhost:8000/insert_users/"), {
+      const res = await fetch(`${API_BASE}/insert_users/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -60,11 +60,12 @@ export default function BasicSignupPage() {
   const [stations, setStations] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);        // ไอเท็มที่กำลังโฟกัส (คีย์บอร์ด)
-
+  
   useEffect(() => {
     const fetchStations = async () => {
       try {
-        const res = await fetch(`http://localhost:8000/stations/?q=${query}`);
+        const res = await fetch(`${API_BASE}/stations/?q=${query}`);
+        // const res = await fetch(`http://localhost:8000/stations/?q=${query}`);
         const data = await res.json();
         setStations(data);
       } catch (err) {

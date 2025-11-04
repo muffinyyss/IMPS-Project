@@ -20,6 +20,7 @@ export default function BasicPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -39,7 +40,7 @@ export default function BasicPage() {
       //   body: formData.toString(),
       // });
 
-      const res = await fetch("http://localhost:8000/login/", {
+      const res = await fetch(`${API_BASE}/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",                // ★ ให ้cookie ที่ backend set กลับมาเก็บใน browser
