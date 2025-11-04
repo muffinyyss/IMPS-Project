@@ -5311,34 +5311,60 @@ app.include_router(test_pdf_router)
 
 
 class PLCMaxSetting(BaseModel):
-    station_id: str
-    dynamic_max_current1: float   # A
-    dynamic_max_power1: float     # kW (จาก front)
+    station_id: str = Field(..., min_length=1)
+    dynamic_max_current1: Optional[float] = None   # A
+    dynamic_max_power1: Optional[float] = None  
 
 
 @app.post("/setting/PLC/MAX")
 async def setting_plc(payload: PLCMaxSetting):
     now_iso = datetime.now().isoformat()
 
-    # log ฝั่งเซิร์ฟเวอร์
+    # ดึงเฉพาะคีย์ที่ client ส่งมาจริง ๆ (ไม่ดึง default None)
+    try:
+        incoming = payload.model_dump(exclude_unset=True)   # Pydantic v2
+    except Exception:
+        incoming = payload.dict(exclude_unset=True)         # Pydantic v1
+
+    station_id = incoming.get("station_id", payload.station_id)
+
+    # สร้าง changes จากเฉพาะคีย์ที่มีใน request
+    keys = ("dynamic_max_current1", "dynamic_max_power1")
+    changes = {k: float(incoming[k]) for k in keys if k in incoming}
+
+    # logging ชัดเจน
     print(f"[{now_iso}] รับค่าจาก Front:")
-    print(f"  station_id = {payload.station_id}")
-    print(f"  dynamic_max_current1 = {payload.dynamic_max_current1} A")
-    print(f"  dynamic_max_power1 = {payload.dynamic_max_power1} kW")
-    # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
+    print(f"  station_id = {station_id}")
+    print("  dynamic_max_current1 =", changes.get("dynamic_max_current1", "(no change)"), "A")
+    print("  dynamic_max_power1  =", changes.get("dynamic_max_power1",  "(no change)"), "kW")
+
+    # ถ้าไม่มีสักฟิลด์ → ไม่ publish (จะตอบ 200 หรือ 400 ก็ได้แล้วแต่ดีไซน์)
+    if not changes:
+        return {
+            "ok": True,
+            "message": "ไม่มีฟิลด์ที่เปลี่ยนแปลง (ไม่ส่ง MQTT)",
+            "timestamp": now_iso,
+            "mqtt": {
+                "broker": f"{BROKER_HOST}:{BROKER_PORT}",
+                "topic": MQTT_TOPIC,
+                "published": False,
+            },
+            "data": {"station_id": station_id, "timestamp": now_iso},
+        }
+
+    # ประกอบ payload MQTT เฉพาะคีย์ที่เปลี่ยน
     msg = {
-        "station_id": payload.station_id,
-        "dynamic_max_current1": payload.dynamic_max_current1,
-        "dynamic_max_power1": payload.dynamic_max_power1,
+        "station_id": station_id,
+        **changes,
         "timestamp": now_iso,
         # "source": "fastapi/setting_plc"
     }
     payload_str = json.dumps(msg, ensure_ascii=False)
 
-    # ส่งขึ้น MQTT (QoS 1, ไม่ retain)
+    # ส่งขึ้น MQTT
+    published = False
     try:
         pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
-        # รอให้ส่งเสร็จแบบสั้น ๆ (ถ้าต้องการความชัวร์)
         pub_result.wait_for_publish(timeout=2.0)
         published = pub_result.is_published()
         rc = pub_result.rc
@@ -5350,7 +5376,7 @@ async def setting_plc(payload: PLCMaxSetting):
     # ตอบกลับ frontend
     return {
         "ok": True,
-        "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
+        "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว (เฉพาะฟิลด์ที่เปลี่ยน)",
         "timestamp": now_iso,
         "mqtt": {
             "broker": f"{BROKER_HOST}:{BROKER_PORT}",
@@ -5359,7 +5385,6 @@ async def setting_plc(payload: PLCMaxSetting):
         },
         "data": msg,
     }
-
 class PLCCPCommand(BaseModel):
     station_id: str
     cp_status1: Literal["start", "stop"]
@@ -5407,34 +5432,44 @@ async def setting_plc(payload: PLCCPCommand):
     }
 
 class PLCH2MaxSetting(BaseModel):
-    station_id: str
-    dynamic_max_current2: float   # A
-    dynamic_max_power2: float     # kW (จาก front)
+    station_id: str = Field(..., min_length=1)
+    dynamic_max_current2: Optional[float] = None   # A  ← optional
+    dynamic_max_power2: Optional[float] = None     # kW (จาก front)
 
 
 @app.post("/setting/PLC/MAXH2")
 async def setting_plc(payload: PLCH2MaxSetting):
     now_iso = datetime.now().isoformat()
 
-    # log ฝั่งเซิร์ฟเวอร์
-    print(f"[{now_iso}] รับค่าจาก Front:")
-    print(f"  station_id = {payload.station_id}")
-    print(f"  dynamic_max_current2 = {payload.dynamic_max_current2} A")
-    print(f"  dynamic_max_power2 = {payload.dynamic_max_power2} kW")
-    # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
-    msg = {
-        "station_id": payload.station_id,
-        "dynamic_max_current2": payload.dynamic_max_current2,
-        "dynamic_max_power2": payload.dynamic_max_power2,
-        "timestamp": now_iso,
-        # "source": "fastapi/setting_plc"
-    }
+    # ดึงเฉพาะ fields ที่ client ส่งมา (ไม่ใช้ค่า default)
+    try:
+        incoming = payload.model_dump(exclude_unset=True)  # Pydantic v2
+    except Exception:
+        incoming = payload.dict(exclude_unset=True)        # Pydantic v1
+
+    station_id = incoming.get("station_id", payload.station_id)
+
+    # บังคับว่าต้องมีอย่างน้อย 1 ฟิลด์จากสองตัวนี้
+    keys = ("dynamic_max_current2", "dynamic_max_power2")
+    changes = {k: float(incoming[k]) for k in keys if k in incoming}
+
+    if not changes:
+        # ถ้าอยากให้ไม่ถือเป็น error ก็ return ok=False ได้เช่นกัน
+        raise HTTPException(
+            status_code=400,
+            detail="At least one of dynamic_max_current2 or dynamic_max_power2 is required"
+        )
+
+    print(f"[{now_iso}] รับค่าจาก Front: station_id={station_id}")
+    print("  dynamic_max_current2 =", changes.get("dynamic_max_current2", "(no change)"), "A")
+    print("  dynamic_max_power2  =", changes.get("dynamic_max_power2", "(no change)"), "kW")
+
+    msg = {"station_id": station_id, **changes, "timestamp": now_iso}
     payload_str = json.dumps(msg, ensure_ascii=False)
 
-    # ส่งขึ้น MQTT (QoS 1, ไม่ retain)
+    published = False
     try:
         pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
-        # รอให้ส่งเสร็จแบบสั้น ๆ (ถ้าต้องการความชัวร์)
         pub_result.wait_for_publish(timeout=2.0)
         published = pub_result.is_published()
         rc = pub_result.rc
@@ -5443,10 +5478,9 @@ async def setting_plc(payload: PLCH2MaxSetting):
         print(f"[MQTT] publish error: {e}")
         published = False
 
-    # ตอบกลับ frontend
     return {
         "ok": True,
-        "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
+        "message": "ส่งเฉพาะฟิลด์ที่เปลี่ยน",
         "timestamp": now_iso,
         "mqtt": {
             "broker": f"{BROKER_HOST}:{BROKER_PORT}",

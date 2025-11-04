@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { PlayIcon, StopIcon, ArrowPathIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useSearchParams } from "next/navigation";
 
@@ -252,6 +252,7 @@ type SettingDoc = {
 export default function Head1() {
     const searchParams = useSearchParams();
     const [stationId, setStationId] = useState<string | null>(null);
+    const initSavedRef = useRef(false);
 
     const [data, setData] = useState<SettingDoc | null>(null);
     const [err, setErr] = useState<string | null>(null);
@@ -266,6 +267,8 @@ export default function Head1() {
     const [busyH1, setBusyH1] = useState(false);
 
     const [cpCmd1, setCpCmd1] = useState<"start" | "stop" | null>(null);
+    const [activeLimiter, setActiveLimiter] = useState<null | "current" | "power">(null);
+
 
     const cpStatus1FromCmd = (cmd: "start" | "stop" | null): "start" | "stop" | null => {
         if (cmd === "start") return "start";
@@ -278,37 +281,54 @@ export default function Head1() {
     const [lastSaved, setLastSaved] = useState({ maxCurrentH1: 0, maxPowerH1: 0 });
     const isDirty =
         maxCurrentH1 !== lastSaved.maxCurrentH1 || maxPowerH1 !== lastSaved.maxPowerH1;
+    const isDirtyCurrent = maxCurrentH1 !== lastSaved.maxCurrentH1;
+    const isDirtyPower = maxPowerH1 !== lastSaved.maxPowerH1;
+    const isGlobalDisabled = !!busyH1;
 
     async function applySettings() {
         if (!stationId) { console.warn("[Head1] no station_id"); return; }
         setSaving(true);
         setErr(null);
+
         try {
-            // 1) ส่ง MAX
-            const bodyMAX = {
-                station_id: stationId,
-                dynamic_max_current1: maxCurrentH1, // A
-                dynamic_max_power1: maxPowerH1,     // kW (ต้องตรงกับ backend)
-            };
+            // === สร้าง payload เฉพาะที่เปลี่ยน + ตาม activeLimiter ===
+            const bodyMAX: Record<string, number | string> = { station_id: stationId };
 
-            const resMAX = await fetch(`${API_BASE}/setting/PLC/MAX`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify(bodyMAX),
-            });
-
-            if (!resMAX.ok) {
-                const t = await resMAX.text().catch(() => "");
-                throw new Error(`MAX failed: ${resMAX.status} ${t}`);
+            if (activeLimiter === "current") {
+                if (isDirtyCurrent) bodyMAX["dynamic_max_current1"] = maxCurrentH1;
+            } else if (activeLimiter === "power") {
+                if (isDirtyPower) bodyMAX["dynamic_max_power1"] = maxPowerH1;
+            } else {
+                // ไม่มี active → ใส่เฉพาะที่ dirty จริง ๆ
+                if (isDirtyCurrent) bodyMAX["dynamic_max_current1"] = maxCurrentH1;
+                if (isDirtyPower) bodyMAX["dynamic_max_power1"] = maxPowerH1;
             }
 
-            // อัปเดต baseline เฉพาะ MAX
-            setLastSaved({ maxCurrentH1, maxPowerH1 });
+            const hasChange = ("dynamic_max_current1" in bodyMAX) || ("dynamic_max_power1" in bodyMAX);
 
-            // 2) (ออปชัน) ส่ง CP ถ้ามีคำสั่งค้างอยู่เท่านั้น
+            // === ยิงเฉพาะเมื่อมีการเปลี่ยน ===
+            if (hasChange) {
+                const resMAX = await fetch(`${API_BASE}/setting/PLC/MAX`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify(bodyMAX),
+                });
+                if (!resMAX.ok) {
+                    const t = await resMAX.text().catch(() => "");
+                    throw new Error(`MAX failed: ${resMAX.status} ${t}`);
+                }
+
+                // อัปเดต baseline เฉพาะที่ส่งไปจริง
+                setLastSaved((prev) => ({
+                    maxCurrentH1: ("dynamic_max_current1" in bodyMAX) ? maxCurrentH1 : prev.maxCurrentH1,
+                    maxPowerH1: ("dynamic_max_power1" in bodyMAX) ? maxPowerH1 : prev.maxPowerH1,
+                }));
+            }
+
+            // === ส่ง CP ถ้ามีคำสั่งค้าง ===
             if (cpCmd1) {
-                const bodyCP = { station_id: stationId, cp_status1: cpCmd1 }; // "start" | "stop"
+                const bodyCP = { station_id: stationId, cp_status1: cpCmd1 };
                 const resCP = await fetch(`${API_BASE}/setting/PLC/CP`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -319,11 +339,12 @@ export default function Head1() {
                     const t = await resCP.text().catch(() => "");
                     throw new Error(`CP failed: ${resCP.status} ${t}`);
                 }
-                // ส่งสำเร็จแล้วเคลียร์คำสั่ง
                 setCpCmd1(null);
             }
 
-            console.log("[Head1] submit success");
+            // เคลียร์โหมดแก้ไข
+            setActiveLimiter(null);
+            console.log("[Head1] submit success (only changed fields)");
         } catch (e: any) {
             console.error(e);
             setErr(e?.message || "บันทึกการตั้งค่าไม่สำเร็จ");
@@ -453,15 +474,19 @@ export default function Head1() {
 
         // dynamic_max_current1 (A)
         const curA = toNum(data.dynamic_max_current1);
-        if (curA !== null) {
-            setMaxCurrentH1(Math.round(curA));
-        }
+        if (curA !== null) setMaxCurrentH1(Math.round(curA));
 
-        // dynamic_max_power1 (backend ส่ง W) → UI แสดง kW
+        // dynamic_max_power1 (W) → UI (kW)
         const powW = toNum(data.dynamic_max_power1);
-        if (powW !== null) {
-            const kw = powW / 1000;
-            setMaxPowerH1(Math.round(kw));
+        if (powW !== null) setMaxPowerH1(Math.round(powW / 1000));
+
+        // ⬇️ เซ็ต baseline จากค่าจริง “ครั้งแรกที่มี data”
+        if (!initSavedRef.current) {
+            setLastSaved({
+                maxCurrentH1: curA !== null ? Math.round(curA) : 0,
+                maxPowerH1: powW !== null ? Math.round(powW / 1000) : 0,
+            });
+            initSavedRef.current = true;
         }
     }, [data]);
 
@@ -473,7 +498,7 @@ export default function Head1() {
         return Math.max(0, Math.min(100, n));
     }, [data]);
 
-   
+
 
     async function sendCpCommand(action: "start" | "stop") {
         if (!stationId) throw new Error("no station_id");
@@ -580,38 +605,105 @@ export default function Head1() {
                         label="Dynamic Max Current H1"
                         unit="A"
                         value={maxCurrentH1}
-                        onChange={setMaxCurrentH1}
+                        onChange={(v) => {
+                            if (isGlobalDisabled) return;                 // กันลากตอนล็อก
+                            if (activeLimiter === null) setActiveLimiter("current");
+                            if (activeLimiter === null || activeLimiter === "current") {
+                                setMaxCurrentH1(v);
+                            }
+                        }}
                         min={0}
                         max={maxCurrentSlider}
-                        disabled={disableCurrent}
+                        disabled={
+                            isGlobalDisabled ||                          // ⬅️ เพิ่ม
+                            disableCurrent ||
+                            (activeLimiter !== null && activeLimiter !== "current")
+                        }
                     />
+                    <div className="tw-flex tw-justify-between tw-items-center tw-mt-1">
+                        <span className="tw-text-xs tw-text-blue-gray-500">
+                            {activeLimiter === "current"
+                                ? "กำลังแก้ Current (Power ถูกล็อก)"
+                                : activeLimiter === "power"
+                                    ? "ล็อกชั่วคราว (กำลังแก้ Power)"
+                                    : "พร้อมแก้ไข"}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => { if (!isGlobalDisabled) { setMaxCurrentH1(lastSaved.maxCurrentH1); setActiveLimiter(null); } }}
+                            disabled={isGlobalDisabled || activeLimiter !== "current"}
+                            className={[
+                                "tw-inline-flex tw-items-center tw-gap-1 tw-text-xs tw-font-semibold",
+                                "tw-rounded-md tw-px-2 tw-py-1 tw-border tw-border-blue-gray-200",
+                                "hover:tw-bg-blue-gray-50 focus-visible:tw-ring-2 focus-visible:tw-ring-blue-200",
+                                activeLimiter !== "current" ? "tw-opacity-60 tw-cursor-not-allowed" : "",
+                            ].join(" ")}
+                        >
+                            <ArrowPathIcon className="tw-w-3 tw-h-3" />
+                            รีเซ็ต Current
+                        </button>
+                    </div>
+
+                    {/* Power */}
                     <LimitRow
                         label="Dynamic Max Power H1"
                         unit="kW"
                         value={maxPowerH1}
-                        onChange={setMaxPowerH1}
+                        onChange={(v) => {
+                            if (isGlobalDisabled) return;                 // กันลากตอนล็อก
+                            if (activeLimiter === null) setActiveLimiter("power");
+                            if (activeLimiter === null || activeLimiter === "power") {
+                                setMaxPowerH1(v);
+                            }
+                        }}
                         min={0}
                         max={maxPowerSlider}
-                        disabled={disablePower}
+                        disabled={
+                            isGlobalDisabled ||                          // ⬅️ เพิ่ม
+                            disablePower ||
+                            (activeLimiter !== null && activeLimiter !== "power")
+                        }
                     />
+                    <div className="tw-flex tw-justify-between tw-items-center tw-mt-1">
+                        <span className="tw-text-xs tw-text-blue-gray-500">
+                            {activeLimiter === "power"
+                                ? "กำลังแก้ Power (Current ถูกล็อก)"
+                                : activeLimiter === "current"
+                                    ? "ล็อกชั่วคราว (กำลังแก้ Current)"
+                                    : "พร้อมแก้ไข"}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => { if (!isGlobalDisabled) { setMaxPowerH1(lastSaved.maxPowerH1); setActiveLimiter(null); } }}
+                            disabled={isGlobalDisabled || activeLimiter !== "power"}
+                            className={[
+                                "tw-inline-flex tw-items-center tw-gap-1 tw-text-xs tw-font-semibold",
+                                "tw-rounded-md tw-px-2 tw-py-1 tw-border tw-border-blue-gray-200",
+                                "hover:tw-bg-blue-gray-50 focus-visible:tw-ring-2 focus-visible:tw-ring-blue-200",
+                                activeLimiter !== "power" ? "tw-opacity-60 tw-cursor-not-allowed" : "",
+                            ].join(" ")}
+                        >
+                            <ArrowPathIcon className="tw-w-3 tw-h-3" />
+                            รีเซ็ต Power
+                        </button>
+                    </div>
 
                     {/* ปุ่ม “ตกลง” — ชิดขวาล่าง, สีดำ, ไม่มีไอคอน */}
                     <div className="tw-flex tw-justify-end">
                         <button
                             type="button"
                             onClick={applySettings}
-                            disabled={!isDirty}
+                            disabled={isGlobalDisabled || !isDirty}  // ⬅️ เพิ่ม isGlobalDisabled
                             className={[
                                 "tw-inline-flex tw-items-center tw-justify-center",
                                 "tw-rounded-lg tw-h-11 tw-px-5 tw-text-sm tw-font-semibold",
                                 "tw-text-white tw-bg-black hover:tw-bg-black/90 focus-visible:tw-ring-2 focus-visible:tw-ring-black/30",
                                 "tw-shadow-sm tw-transition",
-                                !isDirty ? "tw-opacity-60 tw-cursor-not-allowed" : "",
+                                (!isDirty || isGlobalDisabled) ? "tw-opacity-60 tw-cursor-not-allowed" : "", // ⬅️ ปรับ
                             ].join(" ")}
                             aria-label="submit"
                             title="submit"
                         >
-                            {/* submit */}
                             {saving ? "send..." : "submit"}
                         </button>
                     </div>
