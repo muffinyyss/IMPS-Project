@@ -456,7 +456,7 @@ export default function DCChargerDashboard() {
     const [live, setLive] = useState<any | null>(null);
     const esRef = useRef<EventSource | null>(null);
 
-    const API_BASE = "http://localhost:8000";
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
     const STATION_ID = "Klongluang3";
 
     useEffect(() => {
