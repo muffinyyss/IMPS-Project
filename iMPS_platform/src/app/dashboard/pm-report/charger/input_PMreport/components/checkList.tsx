@@ -865,6 +865,16 @@ export default function CheckList({ onComplete }: CheckListProps) {
             <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
                 <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
 
+
+                    <Input
+                        label="Issue id"
+                        // value={job.issue_id || "-"}
+                        readOnly
+                        // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
+                        crossOrigin=""
+                        containerProps={{ className: "!tw-min-w-0" }}
+                        className="!tw-w-full !tw-bg-blue-gray-50"
+                    />
                     <Input
                         label="เครื่องประจุไฟฟ้าที่"
                         value={job.chargerNo}

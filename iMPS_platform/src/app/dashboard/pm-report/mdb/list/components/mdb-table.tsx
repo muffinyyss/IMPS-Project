@@ -223,18 +223,18 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       });
 
       // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
-      if (!allRows.length) {
-        const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
-        if (res2.ok) {
-          const j = await res2.json();
-          const iso = j?.pm_date ?? "";
-          const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-          setData(rows);
-          return;
-        }
-        setData([...AppDataTable] as TData[]);
-        return;
-      }
+      // if (!allRows.length) {
+      //   const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
+      //   if (res2.ok) {
+      //     const j = await res2.json();
+      //     const iso = j?.pm_date ?? "";
+      //     const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
+      //     setData(rows);
+      //     return;
+      //   }
+      //   setData([...AppDataTable] as TData[]);
+      //   return;
+      // }
 
       setData(allRows);
     } catch (err) {

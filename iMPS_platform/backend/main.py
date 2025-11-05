@@ -2105,14 +2105,57 @@ def parse_iso_any_tz(s: str) -> datetime | None:
         except Exception:
             return None
 
-# -------------------------------------------------- PMReportPage (charger)       
+# -------------------------------------------------- PMReport (charger)       
+# def get_pmreport_collection_for(station_id: str):
+#     # กันชื่อแปลก ๆ
+#     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+#         raise HTTPException(status_code=400, detail="Bad station_id")
+#     return PMReportDB.get_collection(str(station_id))
+
 def get_pmreport_collection_for(station_id: str):
-    # กันชื่อแปลก ๆ
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
-        raise HTTPException(status_code=400, detail="Bad station_id")
-    return PMReportDB.get_collection(str(station_id))
+    _validate_station_id(station_id)
+    coll = PMReportDB.get_collection(str(station_id))
+    return coll
 
+@app.get("/pmreport/list")
+async def pmreport_list(
+    station_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+):
+    coll = get_pmreport_collection_for(station_id)
+    skip = (page - 1) * pageSize
 
+    cursor = coll.find({}, {"_id": 1, "issue_id": 1 ,"pm_date": 1, "createdAt": 1}).sort(
+        [("createdAt", -1), ("_id", -1)]
+    ).skip(skip).limit(pageSize)
+    items_raw = await cursor.to_list(length=pageSize)
+    total = await coll.count_documents({})
+
+    # --- ดึงไฟล์จาก PMReportURL โดย map ด้วย pm_date (string) ---
+    pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+    urls_coll = get_pmurl_coll_upload(station_id)
+    url_by_day: dict[str, str] = {}
+
+    if pm_dates:
+        ucur = urls_coll.find({"pm_date": {"$in": pm_dates}}, {"pm_date": 1, "urls": 1})
+        url_docs = await ucur.to_list(length=10_000)
+        for u in url_docs:
+            day = u.get("pm_date")
+            first_url = (u.get("urls") or [None])[0]
+            if day and first_url and day not in url_by_day:
+                url_by_day[day] = first_url
+
+    items = [{
+        "id": str(it["_id"]),
+        "issue_id": it.get("issue_id"),
+        "pm_date": it.get("pm_date"),
+        "createdAt": _ensure_utc_iso(it.get("createdAt")),
+        "file_url": url_by_day.get(it.get("pm_date") or "", ""),
+    } for it in items_raw]
+
+    pm_date_arr = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+    return {"items": items, "pm_date": pm_date_arr, "page": page, "pageSize": pageSize, "total": total}
 
 def _compute_next_pm_date_str(pm_date_str: str | None) -> str | None:
     if not pm_date_str:
@@ -2285,45 +2328,6 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
     res = await coll.insert_one(doc)
     report_id = str(res.inserted_id)
     return {"ok": True, "report_id": report_id}
-
-@app.get("/pmreport/list")
-async def pmreport_list(
-    station_id: str = Query(...),
-    page: int = Query(1, ge=1),
-    pageSize: int = Query(20, ge=1, le=100),
-):
-    coll = get_pmreport_collection_for(station_id)
-    skip = (page - 1) * pageSize
-
-    cursor = coll.find({}, {"_id": 1, "pm_date": 1, "createdAt": 1}).sort(
-        [("createdAt", -1), ("_id", -1)]
-    ).skip(skip).limit(pageSize)
-    items_raw = await cursor.to_list(length=pageSize)
-    total = await coll.count_documents({})
-
-    # --- ดึงไฟล์จาก PMReportURL โดย map ด้วย pm_date (string) ---
-    pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
-    urls_coll = get_pmurl_coll_upload(station_id)
-    url_by_day: dict[str, str] = {}
-
-    if pm_dates:
-        ucur = urls_coll.find({"pm_date": {"$in": pm_dates}}, {"pm_date": 1, "urls": 1})
-        url_docs = await ucur.to_list(length=10_000)
-        for u in url_docs:
-            day = u.get("pm_date")
-            first_url = (u.get("urls") or [None])[0]
-            if day and first_url and day not in url_by_day:
-                url_by_day[day] = first_url
-
-    items = [{
-        "id": str(it["_id"]),
-        "pm_date": it.get("pm_date"),
-        "createdAt": _ensure_utc_iso(it.get("createdAt")),
-        "file_url": url_by_day.get(it.get("pm_date") or "", ""),
-    } for it in items_raw]
-
-    pm_date_arr = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
-    return {"items": items, "pm_date": pm_date_arr, "page": page, "pageSize": pageSize, "total": total}
 
 
 # ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
