@@ -145,9 +145,9 @@ function SectionCard({ title, subtitle, children }: { title?: string; subtitle?:
 }
 
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange,
+    label, value, onChange, remark, onRemarkChange, labels,
 }: {
-    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
+    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void; labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; 
 }) {
     return (
         <div className="tw-space-y-3 tw-py-3">
@@ -257,7 +257,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
 
     /* ---------- job info ---------- */
     const [job, setJob] = useState({ chargerNo: "", sn: "", model: "", station_name: "", date: "", inspector: "" });
-
+    const [สรุปผล, setสรุปผล] = useState<PF>("");
     /* ---------- PASS/FAIL + remark ---------- */
     // รวม key ทั้งหัวข้อหลัก (simple) + หัวข้อย่อย (group)
     const ALL_KEYS = useMemo(() => {
@@ -533,24 +533,36 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
             </Card>
 
             {/* Summary */}
-            <SectionCard title="สรุปผลการตรวจสอบ">
-                <div className="tw-space-y-2">
-                    <Textarea
-                        label="สรุปผลการตรวจสอบ"
-                        value={summary}
-                        onChange={(e) => setSummary(e.target.value)}
-                        rows={4}
-                        required
-                        autoComplete="off"
-                        error={!isSummaryFilled}
-                        containerProps={{ className: "!tw-min-w-0" }}
-                        className="!tw-w-full resize-none"
-                    />
-                    <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-                        {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-                    </Typography>
-                </div>
-            </SectionCard>
+            <SectionCard title="Comment">
+                            <div className="tw-space-y-2">
+                                <Textarea
+                                    label="Comment"
+                                    value={summary}
+                                    onChange={(e) => setSummary(e.target.value)}
+                                    rows={4}
+                                    required
+                                    autoComplete="off"
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full resize-none"
+                                />
+                                <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
+                                    {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
+                                </Typography>
+                            </div>
+            
+                            <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
+                                <PassFailRow
+                                    label="สรุปผลการตรวจสอบ"
+                                    value={สรุปผล}
+                                    onChange={(v) => setสรุปผล(v)}
+                                    labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
+                                        PASS: "Pass : ผ่าน",
+                                        FAIL: "Fail : ไม่ผ่าน",
+                                        NA: "N/A : ไม่พบ",
+                                    }}
+                                />
+                            </div>
+                        </SectionCard>
 
             {/* Footer checks */}
             <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
