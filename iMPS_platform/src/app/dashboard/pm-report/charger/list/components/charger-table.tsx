@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -150,15 +148,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return url.toString();
   }
 
-  // **HTML-only** link builder
+
   function buildHtmlLinks(baseUrl?: string) {
     const u = (baseUrl || "").trim();
     if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
 
-    // ตรวจจับ endpoint รูปแบบ /pdf/:id/file และบังคับให้ใช้ /file-html เสมอ
-    const isPdfEndpoint = /\/pdf\/[A-Fa-f0-9]{24}\/file(?:\b|$)/.test(u);
+    // ตรวจจับ endpoint ใหม่ เช่น /pdf/charger/<id>/export
+    const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
+
     if (isPdfEndpoint) {
-      const finalUrl = u.replace("/file", "/file-html");
+      const finalUrl = u;
       const withStation = appendParam(finalUrl, "station_id", stationIdFromUrl || "");
       return {
         previewHref: appendParam(withStation, "dl", "0"),
@@ -166,10 +165,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         isPdfEndpoint: true,
       };
     }
-    // สำหรับไฟล์อัปโหลด/ลิงก์ปกติ ให้ใช้ URL ตรง ๆ
+
+    // fallback เดิม
     return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
   }
 
+  
   // Fetch data
   const fetchRows = async () => {
     if (!stationIdFromUrl) {
@@ -221,7 +222,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
         }
         const id = extractId(it);
-        const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
+        // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
+        // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/export` : "";
+        const generatedUrl = id ? `${apiBase}/pdf/charger/${encodeURIComponent(id)}/export` : "";
+
+
         const fileUrl = uploadedUrl || generatedUrl;
 
         return { name: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
