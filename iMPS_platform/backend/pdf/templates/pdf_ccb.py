@@ -1,4 +1,4 @@
-# backend/pdf/templates/pdf_charger.py
+# backend/pdf/templates/pdf_ccb.py
 from .pdf_base import PDFBase
 
 def generate_pdf(data):

@@ -5,8 +5,7 @@ from datetime import datetime, date
 import re
 from typing import Optional, Tuple, List, Dict, Any, Union
 
-# -------------------- ฟอนต์ไทย (รองรับหลายชื่อไฟล์) --------------------
-# บางเครื่อง/แพ็กเกจตั้งชื่อไฟล์ต่างกัน เช่น "THSarabunNew-Bold.ttf" vs "THSarabunNew Bold.ttf"
+# -------------------- ฟอนต์ไทย --------------------
 FONT_CANDIDATES: Dict[str, List[str]] = {
     "":  ["THSarabunNew.ttf", "TH Sarabun New.ttf", "THSarabun.ttf", "TH SarabunPSK.ttf"],
     "B": ["THSarabunNew-Bold.ttf", "THSarabunNew Bold.ttf", "TH Sarabun New Bold.ttf", "THSarabun Bold.ttf"],
@@ -27,7 +26,7 @@ def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
     here = Path(__file__).parent
     search_dirs = [
         here / "fonts",               # backend/pdf/templates/fonts
-        here.parent / "fonts",        # backend/pdf/fonts  ✅ ตรงกับที่คุณเก็บไว้
+        here.parent / "fonts",        # backend/pdf/fonts ตรงกับที่คุณเก็บไว้
         Path("C:/Windows/Fonts"),     # Windows
         Path("/Library/Fonts"),       # macOS system
         Path(os.path.expanduser("~/Library/Fonts")),  # macOS user
@@ -91,9 +90,9 @@ LINE_W_INNER = 0.22
 PADDING_X = 2.0
 PADDING_Y = 1.2
 FONT_MAIN = 14.0
-FONT_SMALL = 14.0
+FONT_SMALL = 13.0
 LINE_H = 6.8
-ROW_MIN_H = 11
+ROW_MIN_H = 9
 CHECKBOX_SIZE = 4.0
 
 class HTML2PDF(FPDF, HTMLMixin):
@@ -171,9 +170,13 @@ def _cell_text_in_box(pdf: FPDF, x: float, y: float, w: float, h: float, text: s
         lines.extend(_wrap_paragraph(p))
 
     content_h = max(lh, len(lines) * lh)
+
+    # ปรับตำแหน่งให้ชิดบนสุดจริง ๆ ถ้า valign == "top"
     if valign == "top":
         start_y = y + PADDING_Y
-    else:
+    elif valign == "bottom":
+        start_y = y + h - content_h - PADDING_Y
+    else:  # middle
         start_y = y + max((h - content_h) / 2.0, PADDING_Y)
 
     cur_y = start_y
@@ -185,6 +188,7 @@ def _cell_text_in_box(pdf: FPDF, x: float, y: float, w: float, h: float, text: s
         pdf.cell(inner_w, lh, ln, border=0, ln=1, align=align)
         cur_y += lh
     pdf.set_xy(x + w, y)
+
 
 def _format_m17(measures: dict) -> str:
     ms = (measures or {}).get("m17") or {}
@@ -540,51 +544,61 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     pdf.rect(comment_x, comment_y, item_w + result_w + remark_w, h_checklist)
     y = comment_y + h_checklist
-
+    
     # ช่องเซ็นชื่อ
     signer_labels = ["Performed by", "Approved by", "Witnessed by"]
     pdf.set_line_width(LINE_W_INNER)
-    table_w = item_w + result_w + remark_w
-    col_w = table_w / 3.0
-    row_h_header = 8
-    row_h_sig = 15
-    row_h_name = 6
-    row_h_date = 6
+
+    # ใช้ความกว้างของแต่ละคอลัมน์จริงแทน col_w
+    col_widths = [item_w, result_w, remark_w]
+    row_h_header = 12
+    row_h_sig = 16
+    row_h_name = 7
+    row_h_date = 7
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
 
     _ensure_space(total_sig_h + 5)
 
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_fill_color(255, 255, 0)
-    pdf.set_xy(x_table, y)
+
+    # แถวหัวข้อ (Performed by, Approved by, Witnessed by)
+    x_pos = x_table
     for i, label in enumerate(signer_labels):
-        pdf.cell(col_w, row_h_header, label, border=1, ln=0 if i < 2 else 1, align="C", fill=True)
+        pdf.set_xy(x_pos, y)
+        pdf.cell(col_widths[i], row_h_header, label, border=1, align="C", fill=True)
+        x_pos += col_widths[i]
     y += row_h_header
 
-    pdf.set_xy(x_table, y)
+    # แถวลายเซ็น
+    x_pos = x_table
     for i in range(3):
-        pdf.rect(x_table + i * col_w, y, col_w, row_h_sig)
-        pdf.set_xy(x_table + (i + 1) * col_w, y)
+        pdf.rect(x_pos, y, col_widths[i], row_h_sig)
+        x_pos += col_widths[i]
     y += row_h_sig
 
+    # แถวชื่อ
     pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(x_table, y)
+    x_pos = x_table
     for i in range(3):
-        pdf.rect(x_table + i * col_w, y, col_w, row_h_name)
-        name_text = f"( {' ' * 20} )"
-        pdf.set_xy(x_table + i * col_w, y)
-        pdf.cell(col_w, row_h_name, name_text, border=0, ln=0 if i < 2 else 1, align="C")
-        pdf.set_xy(x_table + (i + 1) * col_w, y)
+        pdf.rect(x_pos, y, col_widths[i], row_h_name)
+        name_text = f"( {' ' * 40} )"
+        pdf.set_xy(x_pos, y)
+        pdf.cell(col_widths[i], row_h_name, name_text, border=0, align="C")
+        x_pos += col_widths[i]
     y += row_h_name
 
-    pdf.set_xy(x_table, y)
+    # แถววันที่
+    x_pos = x_table
     for i in range(3):
-        pdf.rect(x_table + i * col_w, y, col_w, row_h_date)
+        pdf.rect(x_pos, y, col_widths[i], row_h_date)
         date_text = "Date : " + " " * 9
-        pdf.set_xy(x_table + i * col_w, y)
-        pdf.cell(col_w, row_h_date, date_text, border=0, ln=0 if i < 2 else 1, align="C")
-        pdf.set_xy(x_table + (i + 1) * col_w, y)
+        margin_left = 5
+        pdf.set_xy(x_pos + margin_left, y)
+        pdf.cell(col_widths[i] - margin_left, row_h_date, date_text, border=0, align="L")
+        x_pos += col_widths[i]
     y += row_h_date
+
 
     return _output_pdf_bytes(pdf)
 
