@@ -38,7 +38,7 @@ export default function ChargerEnvCard({
         shadow={false}
         className="tw-flex tw-items-center tw-justify-between !tw-px-2 !tw-pt-1 !tw-pb-2"
       >
-        <Typography variant="h6" color="blue-gray" className="tw-leading-tight">
+        <Typography variant="h6" color="blue-gray" className="tw-leading-tight tw-whitespace-nowrap">
           {title}
         </Typography>
 
@@ -125,7 +125,7 @@ export default function ChargerEnvCard({
             </div>
           </div>
 
-          <div className="tw-text-xs tw-text-blue-gray-500">
+          <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-3">
             Recommended 40–60% RH • Current {h}% RH
           </div>
         </div>
