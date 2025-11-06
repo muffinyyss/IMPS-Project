@@ -171,7 +171,52 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
 
     return { state, setState, patch, syncUnits };
 }
+function PassFailRow({
+    label, value, onChange, remark, onRemarkChange, labels,
+}: {
+    label: string;
+    value: PF;
+    onChange: (v: Exclude<PF, "">) => void;
+    remark?: string;
+    onRemarkChange?: (v: string) => void;
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; // ⬅️ เพิ่ม
+}) {
+    const text = {
+        PASS: labels?.PASS ?? "PASS",
+        FAIL: labels?.FAIL ?? "FAIL",
+        NA: labels?.NA ?? "N/A",
+    };
 
+    return (
+        <div className="tw-space-y-3 tw-py-3">
+            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+                <Typography className="tw-font-medium">{label}</Typography>
+
+                <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
+                    <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"}
+                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>
+                        {text.PASS}
+                    </Button>
+                    <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"}
+                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>
+                        {text.FAIL}
+                    </Button>
+                    <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"}
+                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>
+                        {text.NA}
+                    </Button>
+                </div>
+            </div>
+
+            {onRemarkChange && (
+                <div className="tw-w-full tw-min-w-0">
+                    <Textarea label="หมายเหตุ (ถ้ามี)" value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
+                        containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
+                </div>
+            )}
+        </div>
+    );
+}
 /* =========================
  *       UI ATOMS
  * ========================= */
@@ -247,76 +292,6 @@ function InputWithUnit<U extends string>({
     );
 }
 
-function PassFailRow({
-    label,
-    value,
-    onChange,
-    remark,
-    onRemarkChange,
-}: {
-    label: string;
-    value: PF;
-    onChange: (v: Exclude<PF, "">) => void; // PASS | FAIL | NA
-    remark?: string;
-    onRemarkChange?: (v: string) => void;
-}) {
-    return (
-        <div className="tw-space-y-3 tw-py-3">
-            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-                <Typography className="tw-font-medium">{label}</Typography>
-
-                <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-                    <Button
-                        size="sm"
-                        color="green"
-                        variant={value === "PASS" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("PASS")}
-                        aria-pressed={value === "PASS"}
-                    >
-                        PASS
-                    </Button>
-
-                    <Button
-                        size="sm"
-                        color="red"
-                        variant={value === "FAIL" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("FAIL")}
-                        aria-pressed={value === "FAIL"}
-                    >
-                        FAIL
-                    </Button>
-
-                    <Button
-                        size="sm"
-                        color="blue-gray"
-                        variant={value === "NA" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("NA")}
-                        aria-pressed={value === "NA"}
-                    >
-                        N/A
-                    </Button>
-                </div>
-            </div>
-
-            {onRemarkChange && (
-                <div className="tw-w-full tw-min-w-0">
-                    <div className="tw-w-full tw-min-w-0">
-                        <Textarea
-                            label="หมายเหตุ (ถ้ามี)"
-                            value={remark || ""}
-                            onChange={(e) => onRemarkChange(e.target.value)}
-                            containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
-                            className="!tw-w-full"
-                        />
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
 
 function PhotoMultiInput({
     label,
@@ -427,6 +402,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
 
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
+    const [สรุปผล, setสรุปผล] = useState<PF>("");
     // const key = useMemo(() => draftKey(stationId), [stationId]);
     // ใหม่
     const key = useMemo(
@@ -949,30 +925,34 @@ export default function CheckList({ onComplete }: CheckListProps) {
                 </Card>
             ))}
 
-            <SectionCard title="สรุปผลการตรวจสอบ">
+            <SectionCard title="Comment">
                 <div className="tw-space-y-2">
                     <Textarea
-                        label="สรุปผลการตรวจสอบ"
+                        label="Comment"
                         value={summary}
                         onChange={(e) => setSummary(e.target.value)}
                         rows={4}
                         required
                         autoComplete="off"
-                        // แสดงกรอบแดงด้วย prop ของคอมโพเนนต์
-                        error={!isSummaryFilled}
-                        // กันล้นในกริด/ฟเลกซ์
                         containerProps={{ className: "!tw-min-w-0" }}
                         className="!tw-w-full resize-none"
                     />
-                    <Typography
-                        variant="small"
-                        className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"
-                            }`}
-                    >
-                        {isSummaryFilled
-                            ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก"
-                            : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
+                    <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
+                        {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
                     </Typography>
+                </div>
+
+                <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
+                    <PassFailRow
+                        label="สรุปผลการตรวจสอบ"
+                        value={สรุปผล}
+                        onChange={(v) => setสรุปผล(v)}
+                        labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
+                            PASS: "Pass : ผ่าน",
+                            FAIL: "Fail : ไม่ผ่าน",
+                            NA: "N/A : ไม่พบ",
+                        }}
+                    />
                 </div>
             </SectionCard>
 
