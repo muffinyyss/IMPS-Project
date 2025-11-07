@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -29,19 +28,21 @@ import {
   ChevronRightIcon,
   ChevronUpDownIcon,
 } from "@heroicons/react/24/solid";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon, DocumentArrowDownIcon, EyeIcon } from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 
 type TData = {
-  name: string;
-  position: string;
-  office: string;
+  issue_id?: string; // ทำเป็น optional และเติมค่าจาก id หรือ regex ใน url
+  name: string; // วันที่แบบไทย แสดงผลในตาราง
+  position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
+  office: string; // URL ไฟล์
 };
 
 type Props = {
   token?: string;
   apiBase?: string;
 };
+
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -60,7 +61,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return `/dashboard/pm-report/charger/input_PMreport?${p.toString()}`;
   }, [stationIdFromUrl]);
 
-  // Helper functions
+  // Helpers
   const useHttpOnlyCookie = true;
   function makeHeaders(): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -70,7 +71,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
     return h;
   }
-  const fetchOpts: RequestInit = {
+  const baseFetchOpts: RequestInit = {
     headers: makeHeaders(),
     ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
     cache: "no-store",
@@ -83,6 +84,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       month: "2-digit",
       year: "numeric",
     });
+  }
+    function todayLocalISO() {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 10);
   }
 
   function toISODateOnly(s?: string) {
@@ -118,6 +124,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       it?.timestamp,
       it?.createdAt,
       it?.updatedAt,
+      it?.date, // เผื่อบาง API ใช้ key นี้
     ];
     for (const v of cands) {
       const d = normalizeAnyDate(v);
@@ -136,7 +143,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     if (!s) return "";
     try {
       return new URL(s).toString();
-    } catch { }
+    } catch {}
     if (s.startsWith("/")) return `${apiBase}${s}`;
     if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
     return `${apiBase}/${s}`;
@@ -147,8 +154,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     if (!url.searchParams.has(key)) url.searchParams.set(key, val);
     return url.toString();
   }
-
-
+  
   function buildHtmlLinks(baseUrl?: string) {
     const u = (baseUrl || "").trim();
     if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
@@ -169,10 +175,24 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     // fallback เดิม
     return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
   }
-
   
-  // Fetch data
-  const fetchRows = async () => {
+    function extractDocIdFromAnything(x: any): string {
+    if (!x) return "";
+    // ลองอ่านจาก field id/_id ก่อน
+    const raw = (x._id !== undefined ? x._id : x.id) ?? "";
+    let id = "";
+    if (raw && typeof raw === "object") id = raw.$oid || raw.oid || raw.$id || "";
+    else id = String(raw || "");
+    if (/^[a-fA-F0-9]{24}$/.test(id)) return id;
+
+    // สุดท้ายลองดึงจากสตริง URL
+    const s = typeof x === "string" ? x : JSON.stringify(x);
+    const m = s.match(/[A-Fa-f0-9]{24}/);
+    return m ? m[0] : "";
+  }
+
+  // Fetch data (with abort support)
+  const fetchRows = async (signal?: AbortSignal) => {
     if (!stationIdFromUrl) {
       setData([]);
       return;
@@ -187,6 +207,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         u.searchParams.set("_ts", String(Date.now()));
         return u.toString();
       };
+
+      const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
 
       const [pmRes, urlRes] = await Promise.allSettled([
         fetch(makeURL("/pmreport/list"), fetchOpts),
@@ -222,14 +244,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
         }
         const id = extractId(it);
-        // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
-        // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/export` : "";
         const generatedUrl = id ? `${apiBase}/pdf/charger/${encodeURIComponent(id)}/export` : "";
 
-
         const fileUrl = uploadedUrl || generatedUrl;
+        // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
+        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
 
-        return { name: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
+        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -238,8 +259,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           it.file_url ??
           (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
           it.file ?? it.path;
-
-        return { name: thDate(isoDay), position: isoDay, office: resolveFileHref(raw, apiBase) } as TData;
+        const href = resolveFileHref(raw, apiBase);
+        // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
+        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
+        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: href } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
@@ -248,15 +271,18 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         if (!da && !db) return 0;
         if (!da) return 1;
         if (!db) return -1;
-        return da < db ? 1 : da > db ? -1 : 0;
+        return da < db ? 1 : da > db ? -1 : 0; // desc
       });
 
       if (!allRows.length) {
-        const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}?_ts=${Date.now()}`, fetchOpts);
+        const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}?_ts=${Date.now()}`, {
+          ...baseFetchOpts,
+          signal,
+        });
         if (res2.ok) {
           const j = await res2.json();
           const iso = j?.pm_date ?? "";
-          const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
+          const rows: TData[] = iso ? ([{ issue_id: "", name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
           setData(rows);
           return;
         }
@@ -265,7 +291,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       }
 
       setData(allRows);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === "AbortError") return; // ignore abort
       console.error("fetch both lists error:", err);
       setData([]);
     } finally {
@@ -274,12 +301,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   };
 
   useEffect(() => {
-    (async () => {
-      await fetchRows();
-    })();
+    const ac = new AbortController();
+    fetchRows(ac.signal);
+    return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationIdFromUrl, sp.toString()]);
 
-  // Table columns
+// Table columns
   const columns: ColumnDef<TData, unknown>[] = [
     {
       id: "no",
@@ -289,11 +317,19 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       minSize: 10,
       maxSize: 25,
       cell: (info: CellContext<TData, unknown>) => {
-        const pageRows = info.table.getRowModel().rows as Row<TData>[];
-        const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
         const { pageIndex, pageSize } = info.table.getState().pagination;
-        return pageIndex * pageSize + indexInPage + 1;
+        return pageIndex * pageSize + info.row.index + 1;
       },
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.issue_id || "—",
+      id: "issue_id",
+      header: () => "issue_id",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      size: 120,
+      minSize: 80,
+      maxSize: 160,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
@@ -301,9 +337,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       id: "date",
       header: () => "date",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 80,
-      minSize: 60,
-      maxSize: 120,
+      size: 100,
+      minSize: 80,
+      maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
@@ -319,31 +355,32 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           return <span className="tw-text-blue-gray-300" title="No file">—</span>;
         }
 
-        const { previewHref, downloadHref } = buildHtmlLinks(url);
+        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
         return (
           <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
             <a
+              aria-label="Preview"
               href={previewHref}
               target="_blank"
               rel="noopener noreferrer"
               className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-              title="Preview (HTML)"
+              title="Preview"
             >
-              {/* <span className="tw-text-sm">Preview</span> */}
               <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-
             </a>
-            {/* <a
+            {/*
+            <a
+              aria-label="Download"
               href={downloadHref}
               target="_blank"
               rel="noopener noreferrer"
-              download=""
+              download
               className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-              title="Download (HTML)"
+              title="Download"
             >
               <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-              <span className="tw-sr-only">Download HTML</span>
-            </a> */}
+            </a>
+            */}
           </div>
         );
       },
@@ -354,7 +391,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     },
   ];
 
-  const table = useReactTable({
+ const table = useReactTable({
     data,
     columns,
     state: { globalFilter: filtering, sorting },
@@ -367,10 +404,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     columnResizeMode: "onChange",
   });
 
-  // Upload dialog
+// Upload dialog
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [dateOpen, setDateOpen] = useState(false);
-  const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [reportDate, setReportDate] = useState<string>(todayLocalISO());
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -389,7 +426,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     setDateOpen(true);
   };
 
-  async function uploadPdfs() {
+async function uploadPdfs() {
     try {
       if (!stationIdFromUrl) {
         alert("กรุณาเลือกสถานีก่อน");
@@ -431,7 +468,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
     }
   }
-
   return (
     <>
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8">
@@ -521,58 +557,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
         </CardBody>
 
-        {/* <CardFooter className="tw-p-0">
-          <div className="tw-overflow-x-auto">
-            <table className="tw-w-full tw-text-left">
-              <thead className="tw-bg-gray-50">
-                {table.getHeaderGroups().map((hg) => (
-                  <tr key={hg.id}>
-                    {hg.headers.map((header) => (
-                      <th
-                        key={header.id}
-                        className="tw-p-4 tw-text-xs tw-font-bold tw-text-blue-gray-500 tw-uppercase"
-                        onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
-                      >
-                        <div className="tw-flex tw-items-center tw-gap-2">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {header.column.getCanSort() && <ChevronUpDownIcon className="tw-h-4 tw-w-4" />}
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      กำลังโหลด…
-                    </td>
-                  </tr>
-                ) : table.getRowModel().rows.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <tr key={row.id} className="tw-border-b">
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="tw-p-4">
-                          <Typography variant="small" className="tw-text-blue-gray-600">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </Typography>
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!stationIdFromUrl ? "กรุณาเลือกสถานี" : "ไม่มีข้อมูล"}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardFooter> */}
+      
         <CardFooter className="tw-p-0">
           <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
             <table className="tw-w-full tw-text-left tw-min-w-[720px] md:tw-min-w-0 md:tw-table-fixed">

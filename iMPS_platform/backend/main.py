@@ -7,7 +7,7 @@ from jose import JWTError,jwt
 from jose.exceptions import ExpiredSignatureError
 from datetime import datetime, timedelta, UTC, timezone, time
 from pymongo.errors import OperationFailure, PyMongoError,DuplicateKeyError
-from pymongo import MongoClient
+from pymongo import MongoClient,ReturnDocument
 from pydantic import BaseModel,EmailStr,constr, Field
 from bson.objectid import ObjectId
 from fastapi.middleware.cors import CORSMiddleware
@@ -2305,29 +2305,94 @@ class PMSubmitIn(BaseModel):
     measures: dict
     summary: str
     pm_date:str
+    issue_id: Optional[str] = None
+    summaryCheck: Optional[Literal["PASS","FAIL","NA"]] = None
+
+async def _next_issue_id(db, station_id: str, pm_type: str, d, pad: int = 2) -> str:
+    yymm = f"{d.year % 100:02d}{d.month:02d}"
+    seq = await db.pm_sequences.find_one_and_update(
+        {"station_id": station_id, "pm_type": pm_type, "yymm": yymm},
+        {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return f"PM-{pm_type}-{yymm}-{int(seq['n']):0{pad}d}"
 
 @app.post("/pmreport/submit")
 async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_current_user)):
-    print("HIT /pmreport/submit")
     station_id = body.station_id.strip()
     if current.role != "admin" and station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
     coll = get_pmreport_collection_for(station_id)
+    db = coll.database
+
+    # pm_type & pm_date
+    pm_type = str(body.job.get("pm_type") or "CG").upper()
+    body.job["pm_type"] = pm_type
+    try:
+        d = datetime.strptime(body.pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+    # เก็บของที่ FE เสนอมาเป็น metadata
+    client_issue = body.issue_id 
+    # if client_issue:
+    #     body.job["issue_id_client"] = client_issue
+
+    # พยายาม honor เลขจาก FE ถ้า "ถูกต้องและยังว่าง"
+    issue_id = None
+    if client_issue:
+        yymm = f"{d.year % 100:02d}{d.month:02d}"
+        prefix = f"PM-{pm_type}-{yymm}-"
+        valid_fmt = client_issue.startswith(prefix)
+        unique = not await coll.find_one({"station_id": station_id, "issue_id": client_issue})
+        if valid_fmt and unique:
+            issue_id = client_issue
+
+    # ถ้าใช้ของ FE ไม่ได้ → สร้างใหม่แบบอะตอมมิก
+    if not issue_id:
+        issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
+
     doc = {
         "station_id": station_id,
+        "issue_id": issue_id,                 # authoritative
         "job": body.job,
         "rows": body.rows,
         "measures": body.measures,
         "summary": body.summary,
+        "summaryCheck": body.summaryCheck,
         "pm_date": body.pm_date,
-        "photos": {},                   # จะถูกเติมภายหลัง
-        "status": "draft",              # หรือ "submitted" ถ้าต้องการ
+        "photos": {},
+        "status": "draft",
         "timestamp": datetime.now(timezone.utc),
     }
     res = await coll.insert_one(doc)
-    report_id = str(res.inserted_id)
-    return {"ok": True, "report_id": report_id}
+    return {"ok": True, "report_id": str(res.inserted_id), "issue_id": issue_id}
+
+
+# @app.post("/pmreport/submit")
+# async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_current_user)):
+#     print("HIT /pmreport/submit")
+#     station_id = body.station_id.strip()
+#     if current.role != "admin" and station_id not in set(current.station_ids):
+#         raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_pmreport_collection_for(station_id)
+#     doc = {
+#         "station_id": station_id,
+#         "job": body.job,
+#         "rows": body.rows,
+#         "measures": body.measures,
+#         "summary": body.summary,
+#         "pm_date": body.pm_date,
+#         "photos": {},                   # จะถูกเติมภายหลัง
+#         "status": "draft",              # หรือ "submitted" ถ้าต้องการ
+#         "timestamp": datetime.now(timezone.utc),
+#     }
+#     res = await coll.insert_one(doc)
+#     report_id = str(res.inserted_id)
+#     return {"ok": True, "report_id": report_id}
 
 
 # ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
