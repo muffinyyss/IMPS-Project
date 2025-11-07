@@ -138,6 +138,7 @@ const FIELD_GROUPS: Record<
 type MeasureRow<U extends string> = { value: string; unit: U };
 type MeasureState<U extends string> = Record<string, MeasureRow<U>>;
 type PF = "PASS" | "FAIL" | "NA" | "";
+// type YesNo = "YES" | "NO" | "";
 
 
 type CheckListProps = {
@@ -217,6 +218,45 @@ function PassFailRow({
         </div>
     );
 }
+
+// function YesNoRow({
+//     label,
+//     value,
+//     onChange,
+// }: {
+//     label: string;
+//     value: YesNo;
+//     onChange: (v: Exclude<YesNo, "">) => void;
+// }) {
+//     return (
+//         <div className="tw-space-y-3 tw-py-2">
+//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+//                 <Typography className="tw-font-medium">{label}</Typography>
+//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
+//                     <Button
+//                         size="sm"
+//                         color="green"
+//                         variant={value === "YES" ? "filled" : "outlined"}
+//                         className="tw-w-1/2 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                         onClick={() => onChange("YES")}
+//                     >
+//                         Yes
+//                     </Button>
+//                     <Button
+//                         size="sm"
+//                         color="red"
+//                         variant={value === "NO" ? "filled" : "outlined"}
+//                         className="tw-w-1/2 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                         onClick={() => onChange("NO")}
+//                     >
+//                         No
+//                     </Button>
+//                 </div>
+//             </div>
+//         </div>
+//     );
+// }
+
 /* =========================
  *       UI ATOMS
  * ========================= */
@@ -383,6 +423,56 @@ function PhotoMultiInput({
     );
 }
 
+const PM_TYPE_CODE = "CG";
+
+function makePrefix(typeCode: string, dateISO: string) {
+    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+    const yy = String(d.getFullYear()).slice(2);
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `PM-${typeCode}-${yy}${mm}-`; // ตัวอย่าง: PM-CG-2511-
+}
+
+function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
+    const prefix = makePrefix(typeCode, dateISO);
+    const s = String(latestFromDb || "").trim();
+    if (!s || !s.startsWith(prefix)) return `${prefix}01`;     // เริ่มที่ 01 ถ้ายังไม่มีของเดือนนี้
+    const m = s.match(/(\d+)$/);
+    const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
+    const n = (m ? parseInt(m[1], 10) : 0) + 1;
+    return `${prefix}${n.toString().padStart(pad, "0")}`;
+}
+
+async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
+    const u = new URL(`${API_BASE}/pmreport/list`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("page", "1");
+    u.searchParams.set("pageSize", "50");
+    u.searchParams.set("_ts", String(Date.now()));
+
+    const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
+    if (!r.ok) return null;
+
+    const j = await r.json();
+    const items: any[] = Array.isArray(j?.items) ? j.items : [];
+    if (!items.length) return null;
+
+    const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+
+    // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
+    const samePrefix = items
+        .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
+        .filter(iid => iid.startsWith(prefix));
+
+    if (!samePrefix.length) return null;
+
+    // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
+    const toTailNum = (iid: string) => {
+        const m = iid.match(/(\d+)$/);
+        return m ? parseInt(m[1], 10) : -1;
+    };
+    return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
+}
+
 /* =========================
  *        MAIN
  * ========================= */
@@ -402,7 +492,8 @@ export default function CheckList({ onComplete }: CheckListProps) {
 
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
-    const [สรุปผล, setสรุปผล] = useState<PF>("");
+    const [summaryCheck, setSummaryCheck] = useState<PF>("");
+    // const [dustFilterChanged, setDustFilterChanged] = useState<YesNo>("");
     // const key = useMemo(() => draftKey(stationId), [stationId]);
     // ใหม่
     const key = useMemo(
@@ -413,6 +504,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
 
     /* ---------- job info ---------- */
     const [job, setJob] = useState({
+        issue_id: "",
         chargerNo: "",
         sn: "",
         model: "",
@@ -431,6 +523,24 @@ export default function CheckList({ onComplete }: CheckListProps) {
 
     /* ---------- measure group (เฉพาะข้อ 17) ---------- */
     const m17 = useMeasure<UnitVoltage>(VOLTAGE1_FIELDS, "V");
+
+    useEffect(() => {
+        if (!stationId || !job.date || job.issue_id) return; // ถ้ามีใน draft แล้วจะไม่ทับ
+
+        let canceled = false;
+        (async () => {
+            try {
+                const latest = await fetchLatestIssueIdFromList(stationId, job.date);
+                const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
+                if (!canceled) setJob(prev => ({ ...prev, issue_id: next }));
+            } catch {
+                const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
+                if (!canceled) setJob(prev => ({ ...prev, issue_id: fallback }));
+            }
+        })();
+
+        return () => { canceled = true; };
+    }, [stationId, job.date, job.issue_id]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -459,6 +569,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
             cp: typeof cp;
             m17: typeof m17.state;
             summary: string;
+            // dustFilterChanged: YesNo;
         }>(key);
         if (!draft) return;
 
@@ -467,6 +578,8 @@ export default function CheckList({ onComplete }: CheckListProps) {
         setCp(draft.cp);
         m17.setState(draft.m17);
         setSummary(draft.summary);
+        // setDustFilterChanged(draft.dustFilterChanged ?? "");
+
     }, [stationId]); // โหลดครั้งเดียวเมื่อรู้ stationId
 
     useEffect(() => {
@@ -615,6 +728,14 @@ export default function CheckList({ onComplete }: CheckListProps) {
                     onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
                 />
 
+                {/* {q.no === 11 && (
+                    <YesNoRow
+                        label="เปลี่ยน dust filter"
+                        value={dustFilterChanged}
+                        onChange={(v) => setDustFilterChanged(v)}
+                    />
+                )} */}
+
                 {hasMeasure && renderMeasureGrid(q.no)}
 
                 {/* แสดงช่องกรอก CP เฉพาะข้อ 15 */}
@@ -668,6 +789,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
             cp,
             m17: m17.state,
             summary,
+            // dustFilterChanged,
         });
     }, [key, stationId, job, rows, cp, m17.state, summary]);
 
@@ -699,59 +821,6 @@ export default function CheckList({ onComplete }: CheckListProps) {
         alert("บันทึกชั่วคราวไว้ในเครื่องแล้ว (Offline Draft)");
     };
 
-    // const onFinalSave = () => {
-    //     console.log({
-    //         job,
-    //         rows,
-    //         m17: m17.state,
-    //         photos,
-    //         summary
-    //     });
-    //     alert("บันทึกเรียบร้อย (เดโม่) – ดูข้อมูลใน console");
-    // };
-
-    // const onFinalSave = async () => {
-    //     if (!stationId) {
-    //         alert("ยังไม่ทราบ station_id");
-    //         return;
-    //     }
-    //     if (submitting) return;
-    //     setSubmitting(true);
-    //     try {
-    //         // TODO: แทน endpoint จริงของคุณ
-    //         const token =
-    //             typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-    //         const res = await fetch(`${API_BASE}/pmreport/submit`, {
-    //             method: "POST",
-    //             // headers: { "Content-Type": "application/json" },
-    //             headers: {
-    //                 "Content-Type": "application/json",
-    //                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    //             },
-    //             credentials: "include",
-    //             body: JSON.stringify({
-    //                 station_id: stationId,
-    //                 job,
-    //                 rows,
-    //                 measures: { m17: m17.state, cp },
-    //                 summary,
-    //                 // รูปภาพ: แนะนำอัปโหลดแยกเป็น /upload แล้วแนบรหัสไฟล์ใน payload นี้
-    //             }),
-    //         });
-
-    //         if (!res.ok) throw new Error(await res.text());
-
-    //         // สำเร็จ → ล้างดราฟต์ + กลับหน้า list พร้อม flag
-    //         clearDraftLocal(key);
-    //         router.replace(
-    //             `/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`
-    //         );
-    //     } catch (err: any) {
-    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
-    //     } finally {
-    //         setSubmitting(false);
-    //     }
-    // };
     async function uploadGroupPhotos(
         reportId: string,
         stationId: string,
@@ -784,6 +853,19 @@ export default function CheckList({ onComplete }: CheckListProps) {
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
 
+            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+            const payload = {
+                station_id: stationId,
+                issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
+                job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
+                rows,
+                measures: { m17: m17.state, cp },
+                summary,
+                pm_date,
+                ...(summaryCheck ? { summaryCheck } : {}), // จากเคสก่อนหน้า
+                // ...(dustFilterChanged ? { dustFilterChanged } : {}),
+            };
+
             // 1) สร้างรายงาน (submit)
             const res = await fetch(`${API_BASE}/pmreport/submit`, {
                 method: "POST",
@@ -792,14 +874,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
                     ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 },
                 credentials: "include",
-                body: JSON.stringify({
-                    station_id: stationId,
-                    job,
-                    rows,
-                    measures: { m17: m17.state, cp },
-                    summary,
-                    pm_date,
-                }),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json();
@@ -844,7 +919,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
 
                     <Input
                         label="Issue id"
-                        // value={job.issue_id || "-"}
+                        value={job.issue_id || "-"}
                         readOnly
                         // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
                         crossOrigin=""
@@ -955,8 +1030,8 @@ export default function CheckList({ onComplete }: CheckListProps) {
                 <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
                     <PassFailRow
                         label="สรุปผลการตรวจสอบ"
-                        value={สรุปผล}
-                        onChange={(v) => setสรุปผล(v)}
+                        value={summaryCheck}
+                        onChange={(v) => setSummaryCheck(v)}
                         labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
                             PASS: "Pass : ผ่าน",
                             FAIL: "Fail : ไม่ผ่าน",
