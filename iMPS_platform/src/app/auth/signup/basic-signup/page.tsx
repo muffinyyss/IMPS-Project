@@ -22,7 +22,7 @@ export default function BasicSignupPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [phone, setPhone] = useState("");
+  const [tel, setTel] = useState("");
   const [company, setCompany] = useState("");
   const [message, setMessage] = useState("");
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
@@ -35,7 +35,7 @@ export default function BasicSignupPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, email, password, phone ,company}),
+        body: JSON.stringify({ username, email, password, tel ,company}),
       });
 
       if (!res.ok) {
@@ -167,7 +167,7 @@ export default function BasicSignupPage() {
               >
                 Phone number
               </Typography>
-              <Input size="lg" label="Your phone number" type="text" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Input size="lg" label="Your phone number" type="text" value={tel} onChange={(e) => setTel(e.target.value)} />
             </div>
 
             <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-6">

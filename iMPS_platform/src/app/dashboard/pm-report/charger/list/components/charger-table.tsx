@@ -52,14 +52,30 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [filtering, setFiltering] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const sp = useSearchParams();
-  const stationIdFromUrl = sp.get("station_id") ?? "";
+
+  // const sp = useSearchParams();
+  // const stationIdFromUrl = sp.get("station_id") ?? "";
+
+  const searchParams = useSearchParams();
+  const [stationId, setStationId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sidFromUrl = searchParams.get("station_id");
+    if (sidFromUrl) {
+      setStationId(sidFromUrl);
+      localStorage.setItem("selected_station_id", sidFromUrl);
+      return;
+    }
+    const sidLocal = localStorage.getItem("selected_station_id");
+    setStationId(sidLocal);
+  }, [searchParams]);
+
 
   const addHref = useMemo(() => {
-    if (!stationIdFromUrl) return "/dashboard/pm-report/charger/input_PMreport";
-    const p = new URLSearchParams({ station_id: stationIdFromUrl });
+    if (!stationId) return "/dashboard/pm-report/charger/input_PMreport";
+    const p = new URLSearchParams({ station_id: stationId });
     return `/dashboard/pm-report/charger/input_PMreport?${p.toString()}`;
-  }, [stationIdFromUrl]);
+  }, [stationId]);
 
   // Helpers
   const useHttpOnlyCookie = true;
@@ -85,7 +101,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       year: "numeric",
     });
   }
-    function todayLocalISO() {
+  function todayLocalISO() {
     const d = new Date();
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     return d.toISOString().slice(0, 10);
@@ -143,7 +159,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     if (!s) return "";
     try {
       return new URL(s).toString();
-    } catch {}
+    } catch { }
     if (s.startsWith("/")) return `${apiBase}${s}`;
     if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
     return `${apiBase}/${s}`;
@@ -154,7 +170,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     if (!url.searchParams.has(key)) url.searchParams.set(key, val);
     return url.toString();
   }
-  
+
   function buildHtmlLinks(baseUrl?: string) {
     const u = (baseUrl || "").trim();
     if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
@@ -164,7 +180,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
     if (isPdfEndpoint) {
       const finalUrl = u;
-      const withStation = appendParam(finalUrl, "station_id", stationIdFromUrl || "");
+      const withStation = appendParam(finalUrl, "station_id", stationId || "");
       return {
         previewHref: appendParam(withStation, "dl", "0"),
         downloadHref: appendParam(withStation, "dl", "1"),
@@ -175,8 +191,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     // fallback เดิม
     return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
   }
-  
-    function extractDocIdFromAnything(x: any): string {
+
+  function extractDocIdFromAnything(x: any): string {
     if (!x) return "";
     // ลองอ่านจาก field id/_id ก่อน
     const raw = (x._id !== undefined ? x._id : x.id) ?? "";
@@ -193,7 +209,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   // Fetch data (with abort support)
   const fetchRows = async (signal?: AbortSignal) => {
-    if (!stationIdFromUrl) {
+    if (!stationId) {
       setData([]);
       return;
     }
@@ -201,7 +217,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
-        u.searchParams.set("station_id", stationIdFromUrl);
+        u.searchParams.set("station_id", stationId);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
         u.searchParams.set("_ts", String(Date.now()));
@@ -275,7 +291,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       });
 
       if (!allRows.length) {
-        const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}?_ts=${Date.now()}`, {
+        const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationId)}?_ts=${Date.now()}`, {
           ...baseFetchOpts,
           signal,
         });
@@ -305,9 +321,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     fetchRows(ac.signal);
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationIdFromUrl, sp.toString()]);
+  }, [apiBase, stationId, searchParams.toString()]);
 
-// Table columns
+  // Table columns
   const columns: ColumnDef<TData, unknown>[] = [
     {
       id: "no",
@@ -391,7 +407,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     },
   ];
 
- const table = useReactTable({
+  const table = useReactTable({
     data,
     columns,
     state: { globalFilter: filtering, sorting },
@@ -404,7 +420,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     columnResizeMode: "onChange",
   });
 
-// Upload dialog
+  // Upload dialog
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(todayLocalISO());
@@ -426,9 +442,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     setDateOpen(true);
   };
 
-async function uploadPdfs() {
+  async function uploadPdfs() {
     try {
-      if (!stationIdFromUrl) {
+      if (!stationId) {
         alert("กรุณาเลือกสถานีก่อน");
         return;
       }
@@ -442,7 +458,7 @@ async function uploadPdfs() {
       }
 
       const fd = new FormData();
-      fd.append("station_id", stationIdFromUrl);
+      fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
       pendingFiles.forEach((f) => fd.append("files", f));
 
@@ -504,7 +520,7 @@ async function uploadPdfs() {
                 <Button
                   variant="text"
                   size="lg"
-                  disabled={!stationIdFromUrl}
+                  disabled={!stationId}
                   onClick={() => pdfInputRef.current?.click()}
                   className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
                   title="อัปโหลด PDF (demo)">
@@ -513,14 +529,14 @@ async function uploadPdfs() {
                   <span className="tw-text-sm">Upload</span>
                 </Button>
 
-                <Link href={addHref} onClick={(e) => { if (!stationIdFromUrl) e.preventDefault(); }}>
+                <Link href={addHref} onClick={(e) => { if (!stationId) e.preventDefault(); }}>
                   <Button
                     size="lg"
-                    disabled={!stationIdFromUrl}
+                    disabled={!stationId}
                     className={`
                       !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
                       tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                      ${!stationIdFromUrl
+                      ${!stationId
                         ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
                         : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
                       tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
@@ -557,7 +573,7 @@ async function uploadPdfs() {
           </div>
         </CardBody>
 
-      
+
         <CardFooter className="tw-p-0">
           <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
             <table className="tw-w-full tw-text-left tw-min-w-[720px] md:tw-min-w-0 md:tw-table-fixed">
@@ -631,7 +647,7 @@ async function uploadPdfs() {
                 ) : (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!stationIdFromUrl ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
+                      {!stationId ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
                     </td>
                   </tr>
                 )}
