@@ -17,7 +17,7 @@ import {
 import {
   Button, Card, CardBody, CardHeader, Typography, CardFooter, Input,
 } from "@material-tailwind/react";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon , PencilSquareIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon, DocumentArrowDownIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
@@ -43,10 +43,23 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
 
-  const sp = useSearchParams();
-  const stationIdFromUrl = sp.get("station_id") ?? "";
+  const searchParams = useSearchParams();
+  // const stationIdFromUrl = sp.get("station_id") ?? "";
+  const [stationId, setStationId] = useState<string | null>(null);
 
-  const statusFromTab = (sp.get("status") ?? "In Progress").toLowerCase();
+
+  useEffect(() => {
+    const sidFromUrl = searchParams.get("station_id");
+    if (sidFromUrl) {
+      setStationId(sidFromUrl);
+      localStorage.setItem("selected_station_id", sidFromUrl);
+      return;
+    }
+    const sidLocal = localStorage.getItem("selected_station_id");
+    setStationId(sidLocal);
+  }, [searchParams]);
+
+  const statusFromTab = (searchParams.get("status") ?? "In Progress").toLowerCase();
   const statusLabel = statusFromTab
     .split(/[-_ ]+/)
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
@@ -54,9 +67,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   const router = useRouter();
   const pathname = usePathname();
-  const editId = sp.get("edit_id") ?? "";
+  const editId = searchParams.get("edit_id") ?? "";
   const mode: "list" | "form" =
-    (sp.get("view") === "form" || !!editId) ? "form" : "list";
+    (searchParams.get("view") === "form" || !!editId) ? "form" : "list";
   // const mode = (sp.get("view") === "form" ? "form" : "list") as "list" | "form";
 
   // const setView = (view: "list" | "form", { replace = false } = {}) => {
@@ -67,7 +80,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   // };
 
   const setView = (view: "list" | "form", { replace = false } = {}) => {
-    const params = new URLSearchParams(sp.toString());
+    const params = new URLSearchParams(searchParams.toString());
     if (view === "form") {
       params.set("view", "form");
     } else {
@@ -132,12 +145,12 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }
 
   const fetchRows = async () => {
-    if (!stationIdFromUrl) { setData([]); return; }
+    if (!stationId) { setData([]); return; }
     setLoading(true);
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
-        u.searchParams.set("station_id", stationIdFromUrl);
+        u.searchParams.set("station_id", stationId);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
         // u.searchParams.set("status", "in progress"); // ส่งให้ backend กรอง Open
@@ -195,7 +208,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
         const fileUrl = uploadedUrl || generatedUrl;
 
-        return { id,name: thDate(isoDay), position: isoDay, office: fileUrl, status: getStatusText(it) || "-" };
+        return { id, name: thDate(isoDay), position: isoDay, office: fileUrl, status: getStatusText(it) || "-" };
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -232,7 +245,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationIdFromUrl]);
+  }, [apiBase, stationId]);
 
   const columns: ColumnDef<TData, unknown>[] = [
     {
@@ -412,14 +425,14 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [urlText, setUrlText] = useState("");
 
   async function uploadUrls() {
-    if (!stationIdFromUrl) { alert("กรุณาเลือกสถานีก่อน"); return; }
+    if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
 
     const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
     if (!urls.length) { alert("กรุณากรอก URL"); return; }
 
     const fd = new FormData();
-    fd.append("station_id", stationIdFromUrl);
+    fd.append("station_id", stationId);
     fd.append("rows", JSON.stringify({ reportDate, urls }));
 
     const res = await fetch(`${apiBase}/cmurl/upload`, {
@@ -449,7 +462,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   async function uploadPdfs() {
     try {
-      if (!stationIdFromUrl) { alert("กรุณาเลือกสถานีก่อน"); return; }
+      if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
       if (!pendingFiles.length) { setDateOpen(false); return; }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
         alert("รูปแบบวันที่ไม่ถูกต้อง (ควรเป็น YYYY-MM-DD)");
@@ -457,7 +470,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       }
 
       const fd = new FormData();
-      fd.append("station_id", stationIdFromUrl);
+      fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
       fd.append("status", statusFromTab);
       pendingFiles.forEach((f) => fd.append("files", f));
@@ -487,14 +500,14 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const goAdd = () => setView("form");
   // const goList = () => setView("list");
   const goList = () => {
-    const params = new URLSearchParams(sp.toString());
+    const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
     params.delete("edit_id"); // 👈 ลบด้วย
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
   function goEdit(row: TData) {
     if (!row?.id) return;
-    const params = new URLSearchParams(sp.toString());
+    const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
     params.set("edit_id", row.id);       // 👈 ให้ฟอร์มใช้โหลดข้อมูล
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
@@ -546,7 +559,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               <Button
                 variant="text"
                 size="lg"
-                disabled={!stationIdFromUrl}
+                disabled={!stationId}
                 onClick={() => pdfInputRef.current?.click()}
                 className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
                 title="อัปโหลด PDF"
@@ -667,7 +680,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 ) : (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!stationIdFromUrl ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
+                      {!stationId ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
                     </td>
                   </tr>
                 )}

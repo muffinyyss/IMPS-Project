@@ -40,11 +40,23 @@ function StatCardClassic({
 
 
 export default function StatisticsCards() {
-  const sp = useSearchParams();
-  const stationId = sp.get("station_id") ?? "";
+  const searchParams = useSearchParams();
+  // const stationId = sp.get("station_id") ?? "";
+  const [stationId, setStationId] = useState<string | null>(null);
   const [pm, setPm] = useState<PMReportData>(fallback);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+      const sidFromUrl = searchParams.get("station_id");
+      if (sidFromUrl) {
+        setStationId(sidFromUrl);
+        localStorage.setItem("selected_station_id", sidFromUrl);
+        return;
+      }
+      const sidLocal = localStorage.getItem("selected_station_id");
+      setStationId(sidLocal);
+    }, [searchParams]);
 
   useEffect(() => {
     let alive = true;

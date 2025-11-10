@@ -48,15 +48,27 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [filtering, setFiltering] = useState("");
 
   // อ่าน station_id จาก URL (Navbar เป็นคนอัปเดตให้)
-  const sp = useSearchParams();
-  const stationIdFromUrl = sp.get("station_id") ?? "";
+  const searchParams = useSearchParams();
+  // const stationIdFromUrl = sp.get("station_id") ?? "";
+  const [stationId, setStationId] = useState<string | null>(null);
+  
+   useEffect(() => {
+      const sidFromUrl = searchParams.get("station_id");
+      if (sidFromUrl) {
+        setStationId(sidFromUrl);
+        localStorage.setItem("selected_station_id", sidFromUrl);
+        return;
+      }
+      const sidLocal = localStorage.getItem("selected_station_id");
+      setStationId(sidLocal);
+    }, [searchParams]);
 
   const router = useRouter();
   const pathname = usePathname();
-  const mode = (sp.get("view") === "form" ? "form" : "list") as "list" | "form";
+  const mode = (searchParams.get("view") === "form" ? "form" : "list") as "list" | "form";
 
   const setView = (view: "list" | "form", { replace = false } = {}) => {
-    const params = new URLSearchParams(sp.toString());
+    const params = new URLSearchParams(searchParams.toString());
     if (view === "form") params.set("view", "form");
     else params.delete("view");
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
@@ -117,12 +129,12 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }
 
   const fetchRows = async () => {
-    if (!stationIdFromUrl) { setData([]); return; }
+    if (!stationId) { setData([]); return; }
     setLoading(true);
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
-        u.searchParams.set("station_id", stationIdFromUrl);
+        u.searchParams.set("station_id", stationId);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
         return u.toString();
@@ -237,7 +249,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationIdFromUrl]);
+  }, [apiBase, stationId]);
 
   const columns: ColumnDef<TData, unknown>[] = [
     {
@@ -320,14 +332,14 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [urlText, setUrlText] = useState("");
 
   async function uploadUrls() {
-    if (!stationIdFromUrl) { alert("กรุณาเลือกสถานีก่อน"); return; }
+    if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
 
     const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
     if (!urls.length) { alert("กรุณากรอก URL"); return; }
 
     const fd = new FormData();
-    fd.append("station_id", stationIdFromUrl);
+    fd.append("station_id", stationId);
     // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
     fd.append("rows", JSON.stringify({ reportDate, urls }));
 
@@ -363,7 +375,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   async function uploadPdfs() {
     try {
-      if (!stationIdFromUrl) {
+      if (!stationId) {
         alert("กรุณาเลือกสถานีก่อน");
         return;
       }
@@ -378,7 +390,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       }
 
       const fd = new FormData();
-      fd.append("station_id", stationIdFromUrl);
+      fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
       pendingFiles.forEach((f) => fd.append("files", f));
 
@@ -471,7 +483,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               <Button
                 variant="text"
                 size="lg"
-                disabled={!stationIdFromUrl}
+                disabled={!stationId}
                 onClick={() => pdfInputRef.current?.click()}
                 className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
                 title="อัปโหลด PDF (demo)">
@@ -492,17 +504,17 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               <Button
                 size="lg"
                 onClick={goAdd}
-                disabled={!stationIdFromUrl}
+                disabled={!stationId}
                 className={`
                   !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
                   tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                  ${!stationIdFromUrl
+                  ${!stationId
                     ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
                     : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
                   tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
                   focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
                 `}
-                title={stationIdFromUrl ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
+                title={stationId ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
               >
                 <span className="tw-w-full tw-text-center">+add</span>
               </Button>
@@ -603,7 +615,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 ) : (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!stationIdFromUrl ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
+                      {!stationId ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
                     </td>
                   </tr>
                 )}

@@ -24,7 +24,19 @@ type GalleryImage = { src: string; alt?: string };
 
 export default function ChargersPage() {
   const searchParams = useSearchParams();
-  const stationId = searchParams.get("station_id");
+  // const stationId = searchParams.get("station_id");
+  const [stationId, setStationId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sidFromUrl = searchParams.get("station_id");
+    if (sidFromUrl) {
+      setStationId(sidFromUrl);
+      localStorage.setItem("selected_station_id", sidFromUrl);
+      return;
+    }
+    const sidLocal = localStorage.getItem("selected_station_id");
+    setStationId(sidLocal);
+  }, [searchParams]);
 
   const [stationDetail, setStationDetail] = useState({
     station_name: "-",
