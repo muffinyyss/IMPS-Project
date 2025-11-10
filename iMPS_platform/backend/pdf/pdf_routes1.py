@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Response, HTTPException, Query
+from fastapi import APIRouter, Response, HTTPException, Query, Request
 from bson import ObjectId
 from bson.errors import InvalidId
 from main import client1 as pymongo_client
+import os
 
 # import template ทั้งหมด
 from .templates.pdf_charger import generate_pdf as pdf_charger
@@ -23,14 +24,21 @@ TEMPLATE_MAP = {
 
 @router.get("/{template}/{id}/export")
 async def export_pdf(
+    request: Request,
     template: str,                   # เช่น charger, mdb, ccb, cbbox, station
     id: str,
     station_id: str = Query(...),
     dl: bool = Query(False),
+    photos_base_url: str | None = Query(None, description="เช่น https://your-domain.com"),
+    public_dir: str | None = Query(None, description="absolute path ไปยังโฟลเดอร์ public"),
+    photos_headers: str | None = Query(None, description="เช่น 'Authorization: Bearer XXX|Cookie: sid=YYY'"),
 ):
     """
-    ✅ ใช้ path แบบเดียว:
-    /pdf/charger/{id}/export?station_id=Klongluang3&dl=0
+    ใช้แบบเดิมได้:
+      /pdf/charger/{id}/export?station_id=Klongluang3
+    และถ้ารูปไม่ขึ้น ให้ลองอย่างใดอย่างหนึ่ง:
+      /pdf/charger/{id}/export?station_id=Klongluang3&public_dir=/var/www/iMPS_platform/public
+      /pdf/charger/{id}/export?station_id=Klongluang3&photos_base_url=http://localhost:3000
     """
 
     # ตรวจสอบว่า template มีใน mapping ไหม
@@ -55,6 +63,13 @@ async def export_pdf(
 
     # ✅ สร้าง PDF ด้วย template ที่ตรงกัน
     pdf_bytes = db_info["func"](data)
+    # ✅ สร้าง PDF ด้วย template ที่ตรงกัน
+    # pdf_bytes = db_info["func"](
+    #     data,
+    #     photos_base_url=photos_base_url,
+    #     public_dir=public_dir,
+    # )
+
 
     # ✅ ตั้งชื่อไฟล์
     filename = f"PM-{template.capitalize()}-{station_id}.pdf"

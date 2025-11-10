@@ -2,8 +2,15 @@
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
 from datetime import datetime, date
+import os
 import re
 from typing import Optional, Tuple, List, Dict, Any, Union
+from io import BytesIO
+try:
+    import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
+except Exception:
+    requests = None
+
 
 # -------------------- ฟอนต์ไทย --------------------
 FONT_CANDIDATES: Dict[str, List[str]] = {
@@ -21,7 +28,6 @@ def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
       - โฟลเดอร์ฟอนต์ของระบบ (Windows/macOS/Linux)
     คืนค่า True ถ้าโหลด regular ("") ได้สำเร็จ
     """
-    import os
 
     here = Path(__file__).parent
     search_dirs = [
@@ -89,7 +95,7 @@ LINE_W_OUTER = 0.45
 LINE_W_INNER = 0.22
 PADDING_X = 2.0
 PADDING_Y = 1.2
-FONT_MAIN = 14.0
+FONT_MAIN = 13.0
 FONT_SMALL = 13.0
 LINE_H = 6.8
 ROW_MIN_H = 9
@@ -289,6 +295,7 @@ def _r_idx(k: str) -> int:
     m = re.match(r"r(\d+)$", k.lower())
     return int(m.group(1)) if m else 10_000
 
+
 def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
     if not isinstance(rows, dict):
         return []
@@ -308,11 +315,13 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             cp_unit = (measures.get("cp", {}) or {}).get("unit", "")
             remark = f"CP = {cp_value}{cp_unit}"
         items.append({
+            "idx": idx,  # <<<<<<<<<<  เพิ่มบรรทัดนี้
             "text": f"{idx}. {title}",
             "result": _norm_result(data.get("pf", "")),
             "remark": remark,
         })
     return items
+
 
 def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
     header_h = 9.0
@@ -323,7 +332,7 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
     pdf.cell(result_w, header_h, "Result", border=1, align="C")
     pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
     y += header_h
-    pdf.set_fill_color(255, 255, 0)
+    pdf.set_fill_color(255, 230, 100)
     pdf.set_xy(x, y)
     pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
     return y + 8
@@ -375,11 +384,220 @@ def _output_pdf_bytes(pdf: FPDF) -> bytes:
     # fpdf2 เก่าอาจคืน str
     return data.encode("latin1")
 
+def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
+    left = pdf.l_margin
+    right = pdf.r_margin
+    page_w = pdf.w - left - right
+    x0 = left
+    y_top = 10
+
+    col_left, col_mid = 40, 120
+    col_right = page_w - col_left - col_mid
+    h_all = 30
+    h_right_top = 12
+
+    pdf.set_line_width(LINE_W_INNER)
+
+    # โลโก้
+    pdf.rect(x0, y_top, col_left, h_all)
+    logo_path = _resolve_logo_path()
+    if logo_path:
+        IMG_W = 35
+        img_x = x0 + (col_left - IMG_W) / 2
+        img_y = y_top + (h_all - 16) / 2
+        try:
+            pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
+        except Exception:
+            pass
+
+    # กล่องที่อยู่กลาง
+    box_x = x0 + col_left
+    pdf.rect(box_x, y_top, col_mid, h_all)
+    addr_lines = [
+        "Electricity Generating Authority of Thailand (EGAT)",
+        "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",
+        "Call Center Tel. 02-114-3350",
+    ]
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    line_h = 6.2
+    start_y = y_top + (h_all - line_h * len(addr_lines)) / 2
+    for i, line in enumerate(addr_lines):
+        pdf.set_xy(box_x + 3, start_y + i * line_h)
+        pdf.cell(col_mid - 6, line_h, line, align="C")
+
+    # กล่องขวา (Page / Issue)
+    xr = x0 + col_left + col_mid
+    pdf.rect(xr, y_top, col_right, h_right_top)
+    pdf.rect(xr, y_top + h_right_top, col_right, h_all - h_right_top)
+
+    # แสดง Page
+    pdf.set_xy(xr, y_top + 4)
+    pdf.set_font(base_font, "", FONT_MAIN)
+    pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C")
+
+    # แสดง Issue ID (2 บรรทัด)
+    pdf.set_xy(xr, y_top + h_right_top + (h_all - h_right_top) / 2 - 5)
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.multi_cell(col_right, 6, f"Issue ID\n{issue_id}", align="C")
+
+    return y_top + h_all # ค่า y เริ่มต้นถัดจาก header
+
+# -------------------- Photo helpers (ปรับใหม่) --------------------
+def _guess_img_type_from_ext(path_or_url: str) -> str:
+    ext = os.path.splitext(str(path_or_url).lower())[1]
+    if ext in (".png",): return "PNG"
+    if ext in (".jpg", ".jpeg"): return "JPEG"
+    return ""  # ให้ fpdf2 เดาเองได้ในบางเวอร์ชัน แต่เราจะพยายามระบุเสมอ
+
+def _find_public_root() -> Optional[Path]:
+    """หาตำแหน่งโฟลเดอร์ public แบบ robust: PUBLIC_DIR env > ไต่โฟลเดอร์หา 'public'"""
+    env_dir = os.getenv("PUBLIC_DIR")
+    if env_dir:
+        p = Path(env_dir)
+        if p.exists():
+            return p
+    cur = Path(__file__).resolve()
+    for parent in [cur.parent, *cur.parents]:
+        cand = parent / "public"
+        if cand.exists():
+            return cand
+    return None
+
+def _env_photo_headers() -> Optional[dict]:
+    """
+    แปลง PHOTOS_HEADERS="Header1: val|Header2: val" เป็น dict
+    """
+    raw = os.getenv("PHOTOS_HEADERS") or ""
+    hdrs = {}
+    for seg in raw.split("|"):
+        seg = seg.strip()
+        if not seg or ":" not in seg:
+            continue
+        k, v = seg.split(":", 1)
+        hdrs[k.strip()] = v.strip()
+    return hdrs or None
+
+def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+    """
+    รับ '/uploads/.../g1/image.png' → คืน (src, img_type)
+    1) ลองแมปเป็นไฟล์จริง: <PUBLIC_DIR หรือ public ที่หาเจอ>/<url_path>
+    2) ถ้าไม่เจอและมี PHOTOS_BASE_URL → ดาวน์โหลด
+    3) ถ้ายังไม่ได้ → (None, None)
+    """
+    if not url_path:
+        return None, None
+
+    # 1) local file
+    public_root = _find_public_root()
+    if public_root:
+        local_path = public_root / url_path.lstrip("/")
+        if local_path.exists() and local_path.is_file():
+            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+
+    # 2) HTTP(S)
+    base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
+    if base_url:
+        if requests is None:
+            # ไม่มี requests ให้รีเทิร์น None เพื่อให้ขึ้น "-"
+            return None, None
+        full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
+        try:
+            resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
+            resp.raise_for_status()
+            bio = BytesIO(resp.content)
+            return bio, _guess_img_type_from_ext(full_url)
+        except Exception:
+            return None, None
+
+    return None, None
+
+def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
+    """
+    อ่านรูปจาก doc["photos"]["g{idx}"] → list ของ dict ที่มี key 'url'
+    """
+    photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
+    out = []
+    for p in photos:
+        if isinstance(p, dict) and p.get("url"):
+            out.append(p)
+    return out[:PHOTO_MAX_PER_ROW]
+
+
+
+# -------------------------------------
+# 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
+# -------------------------------------
+PHOTO_MAX_PER_ROW = 3
+PHOTO_IMG_MAX_H   = 35
+PHOTO_GAP         = 3
+PHOTO_PAD_X       = 2
+PHOTO_PAD_Y       = 2
+PHOTO_ROW_MIN_H   = 10
+PHOTO_FONT_SMALL  = 10
+PHOTO_LINE_H      = 6
+
+def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float) -> float:
+    header_h = 9.0
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_line_width(LINE_W_INNER)
+    pdf.set_xy(x, y)
+    pdf.cell(q_w, header_h, "ข้อ / คำถาม", border=1, align="C")
+    pdf.cell(g_w, header_h, "รูปภาพประกอบ", border=1, ln=1, align="C")
+    return y + header_h
+
+def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float,
+                     question_text: str, image_items: List[dict]) -> float:
+    """
+    วาด 1 แถว: ซ้ายข้อความ, ขวารูป ≤ PHOTO_MAX_PER_ROW
+    image_items: list ของ dict ที่มี key "url" (ตามรูปแบบใน doc["photos"]["gN"][0]["url"])
+    """
+    # ความสูงฝั่งข้อความ
+    _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
+
+    # ความสูงฝั่งรูป
+    img_h = PHOTO_IMG_MAX_H
+    row_h = max(ROW_MIN_H, text_h, img_h + 2 * PADDING_Y)
+
+    # ซ้าย: คำถาม
+    _cell_text_in_box(pdf, x, y, q_w, row_h, question_text, align="L", lh=LINE_H, valign="top")
+
+    # ขวา: รูป
+    gx = x + q_w
+    pdf.rect(gx, y, g_w, row_h)
+
+    slot_w = (g_w - 2 * PADDING_X - (PHOTO_MAX_PER_ROW - 1) * PHOTO_GAP) / PHOTO_MAX_PER_ROW
+    cx = gx + PADDING_X
+    cy = y + (row_h - img_h) / 2.0
+
+    # เตรียมรายการรูป (สูงสุด PHOTO_MAX_PER_ROW)
+    images = (image_items or [])[:PHOTO_MAX_PER_ROW]
+
+    for i in range(PHOTO_MAX_PER_ROW):
+        if i > 0:
+            pdf.line(cx - (PHOTO_GAP / 2.0), y, cx - (PHOTO_GAP / 2.0), y + row_h)
+
+        if i < len(images):
+            url_path = (images[i] or {}).get("url", "")
+            src, img_type = _load_image_source_from_urlpath(url_path)
+            if src is not None:
+                try:
+                    pdf.image(src, x=cx, y=cy, w=slot_w, h=img_h, type=(img_type or None))
+                except Exception:
+                    pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
+                    pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
+            else:
+                pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
+                pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
+        cx += slot_w + PHOTO_GAP
+
+    pdf.set_xy(x + q_w + g_w, y)
+    return row_h
+
+
 def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf = HTML2PDF(unit="mm", format="A4")
     pdf.set_margins(left=10, top=10, right=10)
     pdf.set_auto_page_break(auto=True, margin=12)
-    pdf.add_page()
 
     # ---- โหลดฟอนต์ไทยให้แน่นอนก่อน set_font ----
     base_font = "THSarabun" if add_all_thsarabun_fonts(pdf) else "Arial"
@@ -391,6 +609,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     model = job.get("model", "-")
     sn = job.get("sn", "-")
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
+    issue_id = str(doc.get("issue_id", "-"))
 
     checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
 
@@ -398,7 +617,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     right = pdf.r_margin
     page_w = pdf.w - left - right
     x0 = left
-    y = 10
     EDGE_ALIGN_FIX = (LINE_W_OUTER - LINE_W_INNER) / 2.0
 
     col_left, col_mid = 40, 120
@@ -407,56 +625,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     h_right_top = 12
     pdf.set_line_width(LINE_W_INNER)
 
-    # โลโก้
-    pdf.rect(x0, y, col_left, h_all)
-    logo_path = _resolve_logo_path()
-    if logo_path:
-        IMG_W = 35
-        img_x = x0 + (col_left - IMG_W) / 2
-        img_y = y + (h_all - 16) / 2
-        pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
-
-    # กล่องที่อยู่/ส่วนกลาง
-    box_x = x0 + col_left
-    box_y = y
-    box_w = col_mid
-    box_h = h_all
-    pad_x = 3
-    line_h = 6.2
-    addr_lines = [
-        "Electricity Generating Authority of Thailand (EGAT)",
-        "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",
-        "Call Center Tel. 02-114-3350",
-    ]
-    pdf.rect(box_x, box_y, box_w, box_h)
-    total_h = line_h * len(addr_lines)
-    start_y = box_y + (box_h - total_h) / 2
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(box_x + pad_x, start_y)
-    pdf.cell(box_w - 2 * pad_x, line_h, addr_lines[0], ln=1, align="C")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    for i in range(1, len(addr_lines)):
-        pdf.set_xy(box_x + pad_x, start_y + i * line_h)
-        pdf.cell(box_w - 2 * pad_x, line_h, addr_lines[i], ln=1, align="C")
-
-    # กล่องขวา (Page / Issue)
-    xr = x0 + col_left + col_mid
-    pdf.rect(xr, y, col_right, h_right_top)
-    pdf.rect(xr, y + h_right_top, col_right, h_all - h_right_top)
-    pdf.set_xy(xr, y + 4)
-    pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C")
-    pdf.set_xy(xr, y + h_right_top + (h_all - h_right_top) / 2 - 3.2)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(col_right, 6, "Issue ID", align="C")
+    # เริ่มหน้าแรกด้วย add_page แล้วเรียก header ทันที (สำคัญ)
+    pdf.add_page()
+    y = _draw_header(pdf, base_font, issue_id)
 
     # ชื่อเอกสาร
-    y += h_all
-    pdf.set_line_width(LINE_W_INNER)
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 16)
     pdf.cell(page_w, 10, "Preventive Maintenance Checklist - เครื่องอัดประจุไฟฟ้า", border=1, ln=1, align="C")
     y += 10
-    
+
     # แสดงข้อมูลงานใต้หัวเรื่อง
     y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date)
 
@@ -470,15 +648,17 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     result_w = 64
     remark_w = page_w - item_w - result_w
 
+    # _ensure_space ต้องถูกนิยามหลังจาก y ถูกประกาศ (เพื่อให้ nonlocal ถูกต้อง)
     def _ensure_space(height_needed: float):
         nonlocal y
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
-            y = 10
-            # (fix) ต้องใช้ x_table ไม่ใช่ x0 เพื่อชดเชย EDGE_ALIGN_FIX ให้เสมอ
+            y = _draw_header(pdf, base_font, issue_id)
+            # หลังขึ้นหน้าใหม่ ให้วาด header แล้ววาดหัวตารางด้วย
             y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
             pdf.set_font(base_font, "", FONT_MAIN)
 
+    # วาดหัวตารางแรก
     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
@@ -544,7 +724,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     pdf.rect(comment_x, comment_y, item_w + result_w + remark_w, h_checklist)
     y = comment_y + h_checklist
-    
+
     # ช่องเซ็นชื่อ
     signer_labels = ["Performed by", "Approved by", "Witnessed by"]
     pdf.set_line_width(LINE_W_INNER)
@@ -560,7 +740,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     _ensure_space(total_sig_h + 5)
 
     pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_fill_color(255, 255, 0)
+    pdf.set_fill_color(255, 230, 100)
 
     # แถวหัวข้อ (Performed by, Approved by, Witnessed by)
     x_pos = x_table
@@ -599,8 +779,78 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         x_pos += col_widths[i]
     y += row_h_date
 
+    # -------------------------------
+    # ขึ้นหน้าใหม่สำหรับรูป (เรียก header ทุกครั้งหลัง add_page)
+    # -------------------------------
+    pdf.add_page()
 
+    # วาด header เหมือนหน้าก่อนหน้า
+    x0 = 10
+    y = _draw_header(pdf, base_font, issue_id)  # วาดหัวกระดาษ
+
+    # ชื่อเอกสาร
+    pdf.set_xy(x0, y)
+    pdf.set_font(base_font, "B", 16)
+    pdf.cell(page_w, 10, "Preventive Maintenance Checklist", border=1, ln=1, align="C")
+    y += 10
+
+    # แสดงข้อมูลงานใต้หัวเรื่อง
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date)
+    
+    # photo
+    pdf.set_xy(x0, y)
+    pdf.set_font(base_font, "B", 14)
+    pdf.set_fill_color(255, 230, 100)
+    pdf.cell(page_w, 10, "Photos", border=1, ln=1, align="C", fill=True)
+    y += 10
+
+    # ========== ตารางรูปแบบ 2 คอลัมน์: r# (ซ้าย) / g# (ขวา) ==========
+    # ตั้งค่าความกว้างคอลัมน์
+    x_table = x0 + EDGE_ALIGN_FIX
+    q_w = 85.0                       # กว้างคอลัมน์ "ข้อ/คำถาม"
+    g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w  # กว้างคอลัมน์รูป
+
+    # ฟังก์ชันตรวจพื้นที่ (ใช้ตัวเดียวกับตารางก่อนหน้า)
+    def _ensure_space_photo(height_needed: float):
+        nonlocal y
+        if y + height_needed > (pdf.h - pdf.b_margin):
+            pdf.add_page()
+            y = _draw_header(pdf, base_font, issue_id)
+            # หัวเรื่องย่อย Photos ซ้ำเมื่อขึ้นหน้าใหม่เพื่อไม่ให้สับสน
+            pdf.set_xy(x0, y)
+            pdf.set_font(base_font, "B", 14)
+            pdf.set_fill_color(255, 230, 100)
+            pdf.cell(page_w, 10, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
+            y += 10
+            y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+
+    # วาดหัวตาราง Photos
+    y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+    pdf.set_font(base_font, "", FONT_MAIN)
+
+    # วาดทีละข้อ โดย map r# -> g# จาก doc["photos"]
+    for it in checks:
+        idx = int(it.get("idx") or 0)
+        question_text = ROW_TITLES.get(f"r{idx}", it.get("text", f"{idx}. -"))
+
+        # ดึงรูป: photos.g{idx}[].url
+        img_items = _get_photo_items_for_idx(doc, idx)
+
+        # ประเมินพื้นที่ก่อนขึ้นหน้าใหม่
+        _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
+        est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
+        _ensure_space_photo(est_row_h)
+
+        # วาดแถว
+        row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, question_text, img_items)
+        y += row_h_used
+
+
+
+
+    
     return _output_pdf_bytes(pdf)
+
 
 # Public API expected by pdf_routes: generate_pdf(data) -> bytes
 def generate_pdf(data: dict) -> bytes:
