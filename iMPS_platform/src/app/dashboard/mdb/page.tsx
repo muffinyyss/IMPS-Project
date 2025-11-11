@@ -81,6 +81,7 @@ async function login(email: string, password: string) {
 
     // เก็บ token ไว้ใช้กับ fetch อื่น (non-SSE) ได้ตามต้องการ
     localStorage.setItem("accessToken", data.access_token);
+    
     localStorage.setItem("user", JSON.stringify(data.user));
 }
 
@@ -253,7 +254,7 @@ export default function MDBPage() {
             es.close();
         };
     }, [stationId]);
-    
+
     const normalizeTs = (s: any) => {
         if (typeof s === "number") {
             const ms = s < 1_000_000_000_000 ? s * 1000 : s;
@@ -290,6 +291,21 @@ export default function MDBPage() {
             .filter(r => inRange(r.timestamp, startISO, endISO))
             .slice(-5000)
             .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    const decimate = (rows: HistoryRow[], ms = 5 * 60 * 1000) => {
+        const seen = new Set<number>();
+        const out: HistoryRow[] = [];
+        for (const r of rows) {
+            const t = new Date(r.timestamp).getTime();
+            const bucket = Math.floor(t / ms);
+            if (!seen.has(bucket)) {
+            seen.add(bucket);
+            out.push(r);
+            }
+        }
+        return out;
+    };
+
     useEffect(() => {
         if (!stationId) return;
 
@@ -297,11 +313,23 @@ export default function MDBPage() {
         setErr2(null);
         setHistory([]); // เคลียร์ก่อนโหลดช่วงใหม่
 
-        // ใช้วันที่แบบ UTC boundary (สอดคล้องกับฝั่ง chart)
-        const startISO = `${startDate}T00:00:00Z`;
-        const endISO = `${endDate}T23:59:59.999Z`;
+        // const startISO = `${startDate}T00:00:00Z`;
+        // const endISO = `${endDate}T23:59:59.999Z`;
 
-        const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+        // ใช้วันที่แบบ UTC boundary (สอดคล้องกับฝั่ง chart)
+        const startISO = `${startDate}T00:00:00+07:00`;
+        let endISO = `${endDate}T23:59:59.999+07:00`;
+        const isTodayTH = (d: string) => {
+            const nowTH = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+            const ddTH = new Date(`${d}T00:00:00+07:00`);
+            return nowTH.getFullYear() === ddTH.getFullYear() &&
+                nowTH.getMonth() === ddTH.getMonth() &&
+                nowTH.getDate() === ddTH.getDate();
+            };
+        if (isTodayTH(endDate)) endISO = new Date().toISOString();
+
+        // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+        const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}&every=5m`;
         // console.log("[SSE history] url =", url);
 
         const es = new EventSource(url, { withCredentials: true });
@@ -315,21 +343,21 @@ export default function MDBPage() {
                 // กรณีส่งมาเป็นอาเรย์ก้อนเดียว
                 if (Array.isArray(payload)) {
                     const rows = payload.map(mapRow).filter(Boolean) as HistoryRow[];
-                    setHistory(prev => pruneSort([...prev, ...rows], startISO, endISO));
+                    setHistory(prev => decimate(pruneSort([...prev, ...rows], startISO, endISO)));
                     return;
                 }
 
                 // กรณีห่อใน { data: [...] }
                 if (Array.isArray(payload?.data)) {
                     const rows = payload.data.map(mapRow).filter(Boolean) as HistoryRow[];
-                    setHistory(prev => pruneSort([...prev, ...rows], startISO, endISO));
+                    setHistory(prev => decimate(pruneSort([...prev, ...rows], startISO, endISO)));
                     return;
                 }
 
                 // กรณีส่งมา “ทีละแถว”
                 const one = mapRow(payload);
                 if (one) {
-                    setHistory(prev => pruneSort([...prev, one], startISO, endISO));
+                    setHistory(prev => decimate(pruneSort([...prev, one], startISO, endISO)));
                 }
             } catch (err) {
                 // เผื่อข้อความ keepalive ที่ไม่ใช่ JSON
@@ -349,7 +377,7 @@ export default function MDBPage() {
         };
     }, [stationId, startDate, endDate]);
 
-   
+
     const station = mdb;
 
     // ✅ CHANGED: คำนวณค่าด้วย helper กัน NaN และ preserve ค่า pf/frequency เป็นทศนิยม
@@ -414,7 +442,8 @@ export default function MDBPage() {
     // const MDB_type = statisticsChartsData(MDB)
     // const charts = data_MDB(MDB)
     // const charts = useMemo(() => buildChartsFromHistory(MDB, history), [MDB, history]);
-    console.log("546", history)
+    console.log("547", history)
+
     const charts = useMemo(() => buildChartsFromHistory(MDB, history, startDate, endDate), [MDB, history, startDate, endDate]);
 
     return (

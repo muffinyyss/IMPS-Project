@@ -804,8 +804,9 @@ def _coerce_date_range(start: str, end: str) -> tuple[str, str]:
 async def stream_history(
     request: Request,
     station_id: str = Query(...),
-    start: str = Query(...),   # "YYYY-MM-DD" (วันไทย)
-    end: str = Query(...),     # "YYYY-MM-DD" (วันไทย)
+    start: str = Query(...),  
+    end: str = Query(...),    
+    every: str = Query("5m"), 
     current: UserClaims = Depends(get_current_user),
 ):
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", start) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", end):
@@ -815,6 +816,29 @@ async def stream_history(
 
     tz_th = ZoneInfo("Asia/Bangkok")
     now_th = datetime.now(tz_th)
+
+    def coerce_day_bound_th(datestr: str, bound: Literal["start", "end"], now_th: datetime) -> datetime:
+        tz_th = ZoneInfo("Asia/Bangkok")
+        # วันที่ล้วน → บังคับขอบวันไทย
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}$", datestr):
+            if bound == "start":
+                dt_th = datetime.fromisoformat(f"{datestr}T00:00:00").replace(tzinfo=tz_th)
+                return dt_th.astimezone(timezone.utc)
+            else:
+                # ถ้า end เป็น "วันนี้" → ใช้เวลาปัจจุบันของไทย (กันกราฟลากไปอนาคต)
+                if datestr == now_th.strftime("%Y-%m-%d"):
+                    return now_th.astimezone(timezone.utc)
+                # มิฉะนั้น ปลายวันไทย
+                dt_th = datetime.fromisoformat(f"{datestr}T23:59:59.999").replace(tzinfo=tz_th)
+                return dt_th.astimezone(timezone.utc)
+
+        # มีโซนเวลาอยู่แล้ว (Z หรือ ±HH:MM) → ใช้ตามนั้น
+        if re.search(r"(Z|[+\-]\d{2}:\d{2})$", datestr):
+            return datetime.fromisoformat(datestr.replace("Z", "+00:00")).astimezone(timezone.utc)
+
+        # เป็น datetime ไม่มีโซน → ตีความเป็นไทย แล้วแปลงเป็น UTC
+        return datetime.fromisoformat(datestr).replace(tzinfo=tz_th).astimezone(timezone.utc)
+
     def ensure_dt_with_current_time_th(datestr: str) -> datetime:
         """
         - 'YYYY-MM-DD'                  -> เติมเวลาเป็นเวลาปัจจุบันของไทย แล้วตีความเป็นเวลาไทย (+07:00)
@@ -837,17 +861,44 @@ async def stream_history(
         dt_th = naive.replace(tzinfo=tz_th)            # ← ตรงนี้คือการ “ผูก +07:00”
         return dt_th.astimezone(timezone.utc)          # ← แปลงเป็น UTC (ผล = ลบ 7 ชม.)
 
-    # start_utc = datetime.fromisoformat(start + "T07:00:00").replace(tzinfo=tz_th).astimezone(timezone.utc)
-    # start_utc = start 
-    # start_utc = ensure_dt_with_current_time_th(start).astimezone(tz_th)
-    start_utc = ensure_dt_with_current_time_th(start)
-    print("565",start_utc)
-    # end_utc   = datetime.fromisoformat(end   + "T23:59:59.999").replace(tzinfo=tz_th).astimezone(timezone.utc)
-    # end_utc   = end
-    # end_utc   = ensure_dt_with_current_time_th(end).astimezone(tz_th)
-    end_utc   = ensure_dt_with_current_time_th(end)
-    print("567",end_utc)
+    def _ensure_iso_with_tz(val: Any, tz: ZoneInfo) -> str | None:
+        """
+        รับค่า datetime (หรือสตริง) แล้วคืนค่า ISO8601 ที่มีโซนเวลาเป้าหมาย (เช่น +07:00)
+        """
+        if val is None:
+            return None
+        if isinstance(val, str):
+            try:
+                # parse ทั้งกรณีมี Z/offset หรือไม่มีโซน
+                dt = datetime.fromisoformat(val.replace("Z", "+00:00")) if re.search(r"(Z|[+\-]\d{2}:\d{2})$", val) \
+                    else datetime.fromisoformat(val).replace(tzinfo=timezone.utc)
+            except Exception:
+                return val  # ถ้า parse ไม่ได้ ก็ส่งกลับเดิม (กันพัง)
+        elif isinstance(val, datetime):
+            dt = val if val.tzinfo else val.replace(tzinfo=timezone.utc)
+        else:
+            return None
+        return dt.astimezone(tz).isoformat(timespec="milliseconds")
+        
+    UNIT_MAP = {"s": "second", "m": "minute", "h": "hour"}
 
+    def parse_every(s: str) -> tuple[str, int]:
+        """
+        แปลงสตริงเช่น '5m', '15m', '1h' → (unit, binSize)
+        ดีฟอลต์ = ('minute', 5)
+        """
+        m = re.fullmatch(r"(\d+)([smh])$", s.strip())
+        if not m:
+            return ("minute", 5)
+        n, u = int(m.group(1)), m.group(2)
+        return (UNIT_MAP[u], max(1, n))
+    # start_utc = ensure_dt_with_current_time_th(start)
+    # print("565",start_utc)
+    # end_utc   = ensure_dt_with_current_time_th(end)
+    # print("567",end_utc)
+
+    start_utc = coerce_day_bound_th(start, "start", now_th)
+    end_utc   = coerce_day_bound_th(end,   "end",   now_th)
 
     coll = get_mdb_collection_for(station_id)
 
@@ -868,8 +919,12 @@ async def stream_history(
             ]
         }
 
-    pipeline = [
-        {   # ✅ สร้าง ts ให้เป็น Date เสมอ จาก timestamp หรือ Datetime (รับได้ทั้ง string/date)
+    # แปลงค่า sampling interval
+    unit, bin_size = parse_every(every)
+
+    # ---------- prefix เดิม: ts/dayTH + match 2 ชั้น ----------
+    prefix = [
+        {   # ✅ ts: แปลง timestamp/Datetime ให้เป็น Date
             "$addFields": {
                 "ts": {
                     "$let": { "vars": { "t": "$timestamp", "d": "$Datetime" }, "in":
@@ -878,14 +933,26 @@ async def stream_history(
                             { "$switch": {
                                 "branches": [
                                     { "case": { "$eq": [ { "$type": "$$t" }, "date"   ] }, "then": "$$t" },
-                                    { "case": { "$eq": [ { "$type": "$$t" }, "string" ] }, "then": _parse_string("t") },
+                                    { "case": { "$eq": [ { "$type": "$$t" }, "string" ] }, "then": {
+                                        "$cond": [
+                                            { "$regexMatch": { "input": "$$t", "regex": r"(Z|[+\-]\d{2}:\d{2})$" } },
+                                            { "$toDate": "$$t" },
+                                            { "$dateFromString": { "dateString": "$$t", "timezone": "+07:00", "onError": None, "onNull": None } }
+                                        ]
+                                    }},
                                 ],
                                 "default": None
                             }},
                             { "$switch": {
                                 "branches": [
                                     { "case": { "$eq": [ { "$type": "$$d" }, "date"   ] }, "then": "$$d" },
-                                    { "case": { "$eq": [ { "$type": "$$d" }, "string" ] }, "then": _parse_string("d") },
+                                    { "case": { "$eq": [ { "$type": "$$d" }, "string" ] }, "then": {
+                                        "$cond": [
+                                            { "$regexMatch": { "input": "$$d", "regex": r"(Z|[+\-]\d{2}:\d{2})$" } },
+                                            { "$toDate": "$$d" },
+                                            { "$dateFromString": { "dateString": "$$d", "timezone": "+07:00", "onError": None, "onNull": None } }
+                                        ]
+                                    }},
                                 ],
                                 "default": None
                             }}
@@ -894,35 +961,53 @@ async def stream_history(
                 }
             }
         },
-        { "$addFields": { "dayTH": {
-            "$dateToString": { "date": "$ts", "format": "%Y-%m-%d", "timezone": "+07:00" }
-        }}},
-        {   # ชั้นที่ 1: วันไทยต้องอยู่ในช่วง
-            "$match": { "dayTH": { "$gte": start, "$lte": end } }
-        },
-        {   # ✅ ชั้นที่ 2: ts (UTC) ต้องอยู่ในกรอบวันไทยที่แปลงเป็น UTC แล้วด้วย
-            "$match": {
-                "$expr": {
-                    "$and": [
-                        { "$gte": ["$ts", start_utc] },   # <-- ใช้ตัวแปร start_utc/end_utc จาก Python ที่คำนวณไว้ด้านบน
-                        { "$lte": ["$ts", end_utc] }
-                    ]
+        { "$addFields": { "dayTH": { "$dateToString": { "date": "$ts", "format": "%Y-%m-%d", "timezone": "+07:00" }}}},
+        { "$match": { "dayTH": { "$gte": start, "$lte": end } }},  # ชั้นที่ 1: วันไทย
+        { "$match": { "$expr": { "$and": [
+            { "$gte": ["$ts", start_utc] },  # ชั้นที่ 2: ts อยู่ในช่วง
+            { "$lte": ["$ts", end_utc] }
+        ]}}}
+    ]
+
+    # ---------- downsample ด้วย $dateTrunc ----------
+    group_stage = {
+        "$group": {
+            "_id": {
+                "bucket": {
+                    "$dateTrunc": {
+                        "date": "$ts",
+                        "unit": unit,         # second / minute / hour
+                        "binSize": bin_size,  # เช่น 5
+                        "timezone": "+07:00"  # อิงเวลาไทย
+                    }
                 }
-            }
-        },
-        { "$sort": { "ts": 1 } },
-        { "$project": {
-            "_id": 1,
-            "timestamp": "$ts",
+            },
+            # ค่าเฉลี่ยเพื่อให้กราฟสมูท (กันกรณีค่ามาเป็น string ด้วย $convert)
+            "VL1N": {"$avg": {"$convert": {"input": "$VL1N", "to": "double", "onError": None, "onNull": None}}},
+            "VL2N": {"$avg": {"$convert": {"input": "$VL2N", "to": "double", "onError": None, "onNull": None}}},
+            "VL3N": {"$avg": {"$convert": {"input": "$VL3N", "to": "double", "onError": None, "onNull": None}}},
+            "I1":   {"$avg": {"$convert": {"input": "$I1",   "to": "double", "onError": None, "onNull": None}}},
+            "I2":   {"$avg": {"$convert": {"input": "$I2",   "to": "double", "onError": None, "onNull": None}}},
+            "I3":   {"$avg": {"$convert": {"input": "$I3",   "to": "double", "onError": None, "onNull": None}}},
+            "PL1N": {"$avg": {"$convert": {"input": "$PL1N", "to": "double", "onError": None, "onNull": None}}},
+            "PL2N": {"$avg": {"$convert": {"input": "$PL2N", "to": "double", "onError": None, "onNull": None}}},
+            "PL3N": {"$avg": {"$convert": {"input": "$PL3N", "to": "double", "onError": None, "onNull": None}}},
+        }
+    }
+    sort_stage = { "$sort": { "_id.bucket": 1 } }
+    project_stage = {
+        "$project": {
+            "_id": 0,
+            "timestamp": "$_id.bucket",  # หรือ "$_id.bucket" ถ้าใช้ dateTrunc
             "VL1N": 1, "VL2N": 1, "VL3N": 1,
             "I1": 1, "I2": 1, "I3": 1,
             "PL1N": 1, "PL2N": 1, "PL3N": 1,
-            # (debug) จะโชว์ dayTH ชั่วคราวก็ได้:
-            # "dayTH": 1,
-        }}
-    ]
+        }
+    }
 
+    pipeline = prefix + [group_stage, sort_stage, project_stage]
     cursor = coll.aggregate(pipeline, allowDiskUse=True)
+
 
     headers = {
         "Content-Type": "text/event-stream",
@@ -933,9 +1018,12 @@ async def stream_history(
 
     async def event_generator():
         try:
-            base = pipeline[:-2]
-            cnt = await coll.aggregate(base + [{"$count": "n"}]).to_list(length=1)
+            # base = pipeline[:-2]
+            # cnt = await coll.aggregate(base + [{"$count": "n"}]).to_list(length=1)
+            # n = cnt[0]["n"] if cnt else 0
+            cnt = await coll.aggregate(prefix + [group_stage, {"$count":"n"}]).to_list(length=1)
             n = cnt[0]["n"] if cnt else 0
+
             yield "retry: 3000\n"
             yield f"event: stats\ndata: {json.dumps({'matched': n})}\n\n"
 
@@ -943,8 +1031,21 @@ async def stream_history(
             async for doc in cursor:
                 if await request.is_disconnected():
                     break
-                doc["_id"] = str(doc["_id"])
-                doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
+
+                # ✅ อย่าแตะ _id ถ้าไม่ได้ใช้งาน (หลีกเลี่ยง KeyError)
+                # ถ้าจำเป็นจริง ๆ ค่อยทำแบบปลอดภัย:
+                # _id_val = doc.get("_id", None)
+                # if _id_val is not None:
+                #     try:
+                #         doc["_id"] = str(_id_val)
+                #     except Exception:
+                #         doc["_id"] = json.dumps(_id_val, default=str, ensure_ascii=False)
+
+                # ✅ ให้แน่ใจว่า timestamp เป็น ISO string (รองรับทั้ง Date/str)
+                ts_val = doc.get("timestamp")
+                if ts_val is not None:
+                    doc["timestamp"] = _ensure_iso_with_tz(ts_val, ZoneInfo("Asia/Bangkok"))
+
                 yield f"data: {json.dumps(doc, ensure_ascii=False)}\n\n"
                 sent += 1
                 await asyncio.sleep(0.001)
@@ -954,7 +1055,7 @@ async def stream_history(
             else:
                 yield ": keep-alive\n\n"
         except Exception as e:
-            yield f"event: error\ndata: {str(e)}\n\n"
+            yield f"event: server-error\ndata: {json.dumps({'message': str(e)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 

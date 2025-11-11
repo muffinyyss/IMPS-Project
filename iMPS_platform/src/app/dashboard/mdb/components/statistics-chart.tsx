@@ -66,10 +66,10 @@ const toDateSafe = (v: any): Date | null => {
 
 const isToday = (d: string) => {
   const now = new Date();
-  const dd  = new Date(`${d}T00:00:00+07:00`);
+  const dd = new Date(`${d}T00:00:00+07:00`);
   return now.getFullYear() === dd.getFullYear() &&
-         now.getMonth() === dd.getMonth() &&
-         now.getDate() === dd.getDate();
+    now.getMonth() === dd.getMonth() &&
+    now.getDate() === dd.getDate();
 };
 
 // ✅ FIXED: ลดความซับซ้อนและใช้ UTC
@@ -80,7 +80,7 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
   // const startD = start ? toDateSafe(`${start}T00:00:00Z`) : null;
   // const endD = end ? toDateSafe(`${end}T23:59:59.999Z`) : null;
   const startD = start ? toDateSafe(`${start}T00:00:00+07:00`) : null;
-  let  endD = end ? toDateSafe(`${end}T23:59:59.999+07:00`) : null;
+  let endD = end ? toDateSafe(`${end}T23:59:59.999+07:00`) : null;
 
   // 👇 ถ้า end เป็น “วันนี้” ให้ใช้เวลาปัจจุบันแทน
   if (end && isToday(end)) endD = new Date();
@@ -137,7 +137,11 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
     });
 
     const hasData = newSeries.some((s) => s.data.length > 0);
-
+    // === STEP 3: SHIFT +7h (เฉพาะถ้าขั้นที่ 2 แล้วยังไม่ +7) ===
+    const toTHms = (x: any) => {
+      const d = toDateSafe(x);
+      return d ? d.getTime() + 7 * 60 * 60 * 1000 : x;
+    };
     return {
       ...chart,
       series: newSeries,
@@ -146,9 +150,34 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
         xaxis: {
           ...xaxis,
           type: "datetime",
+          labels: {
+            ...(xaxis.labels ?? {}),
+            datetimeUTC: false,
+            formatter: (val: number) =>
+              new Date(val).toLocaleString("th-TH", {
+                timeZone: "Asia/Bangkok",
+                hour12: false,
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+          },
           categories: [],
         },
         noData: { text: hasData ? "Loading..." : "No data in selected range" },
+        tooltip: {
+          x: {
+            formatter: (val: number) =>
+              new Date(val).toLocaleString("th-TH", {
+                timeZone: "Asia/Bangkok",
+                year: "numeric",
+                month: "short",
+                day: "2-digit",
+                hour12: false,
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+          },
+        },
       },
     };
   }
@@ -200,8 +229,37 @@ function filterApexChartByDate(chart: any, start?: string, end?: string) {
     series: newSeries,
     options: {
       ...options,
-      xaxis: { ...xaxis, type: "datetime", categories: newCategories },
+      xaxis: {
+        ...xaxis,
+        type: "datetime",
+        categories: newCategories,
+        labels: {
+          ...(xaxis.labels ?? {}),
+          datetimeUTC: false,
+          formatter: (val: number) =>
+            new Date(val).toLocaleString("th-TH", {
+              timeZone: "Asia/Bangkok",
+              hour12: false,
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+        }
+      },
       noData: { text: "Loading..." },
+      tooltip: {
+        x: {
+          formatter: (val: number) =>
+            new Date(val).toLocaleString("th-TH", {
+              timeZone: "Asia/Bangkok",
+              year: "numeric",
+              month: "short",
+              day: "2-digit",
+              hour12: false,
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+        }
+      }
     },
   };
 }
@@ -231,6 +289,7 @@ export default function StatisticChart({ startDate, endDate, charts }: Props) {
       {charts.map((item) => {
         const filteredChart = filterApexChartByDate(item.chart, startDate, endDate);
         // console.log("214",item.chart)
+
 
         // ✅ Debug logging (ใน development เท่านั้น)
         if (process.env.NODE_ENV === 'development') {
