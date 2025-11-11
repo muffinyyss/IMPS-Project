@@ -354,7 +354,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
             </button>
 
             {/* Download */}
-            <a
+            {/* <a
               href={hasUrl ? url : undefined}
               download
               target="_blank"
@@ -367,7 +367,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
             >
               <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
               <span className="tw-sr-only">Download PDF</span>
-            </a>
+            </a> */}
           </div>
         );
       },
