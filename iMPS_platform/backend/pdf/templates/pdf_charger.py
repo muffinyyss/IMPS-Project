@@ -5,6 +5,7 @@ from datetime import datetime, date
 import os
 import re
 from typing import Optional, Tuple, List, Dict, Any, Union
+import base64
 from io import BytesIO
 try:
     import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
@@ -477,38 +478,90 @@ def _env_photo_headers() -> Optional[dict]:
         hdrs[k.strip()] = v.strip()
     return hdrs or None
 
+# def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+#     """
+#     รับ '/uploads/.../g1/image.png' → คืน (src, img_type)
+#     1) ลองแมปเป็นไฟล์จริง: <PUBLIC_DIR หรือ public ที่หาเจอ>/<url_path>
+#     2) ถ้าไม่เจอและมี PHOTOS_BASE_URL → ดาวน์โหลด
+#     3) ถ้ายังไม่ได้ → (None, None)
+#     """
+#     if not url_path:
+#         return None, None
+
+#     # 1) local file
+#     public_root = _find_public_root()
+#     if public_root:
+#         local_path = public_root / url_path.lstrip("/")
+#         if local_path.exists() and local_path.is_file():
+#             return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+
+#     # 2) HTTP(S)
+#     base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
+#     if base_url:
+#         if requests is None:
+#             # ไม่มี requests ให้รีเทิร์น None เพื่อให้ขึ้น "-"
+#             return None, None
+#         full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
+#         try:
+#             resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
+#             resp.raise_for_status()
+#             bio = BytesIO(resp.content)
+#             return bio, _guess_img_type_from_ext(full_url)
+#         except Exception:
+#             return None, None
+
+#     return None, None
+
 def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     """
     รับ '/uploads/.../g1/image.png' → คืน (src, img_type)
-    1) ลองแมปเป็นไฟล์จริง: <PUBLIC_DIR หรือ public ที่หาเจอ>/<url_path>
+    1) ลองแมปเป็นไฟล์จริง: <PUBLIC_DIR>/uploads/...
     2) ถ้าไม่เจอและมี PHOTOS_BASE_URL → ดาวน์โหลด
     3) ถ้ายังไม่ได้ → (None, None)
     """
     if not url_path:
         return None, None
 
+    # 🔍 Debug: แสดง path ที่กำลังหา
+    print(f"[DEBUG] กำลังหารูป: {url_path}")
+
     # 1) local file
     public_root = _find_public_root()
+    print(f"[DEBUG] public_root = {public_root}")
+    
     if public_root:
         local_path = public_root / url_path.lstrip("/")
+        print(f"[DEBUG] ตรวจสอบไฟล์: {local_path}")
+        
         if local_path.exists() and local_path.is_file():
+            print(f"[DEBUG] ✅ เจอไฟล์: {local_path}")
             return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+        else:
+            print(f"[DEBUG] ❌ ไม่เจอไฟล์: {local_path}")
 
     # 2) HTTP(S)
     base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
+    print(f"[DEBUG] PHOTOS_BASE_URL = {base_url}")
+    
     if base_url:
         if requests is None:
-            # ไม่มี requests ให้รีเทิร์น None เพื่อให้ขึ้น "-"
+            print("[DEBUG] ❌ ไม่มี requests library")
             return None, None
+        
         full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
+        print(f"[DEBUG] พยายามดาวน์โหลดจาก: {full_url}")
+        
         try:
             resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
             resp.raise_for_status()
+            print(f"[DEBUG] ✅ ดาวน์โหลดสำเร็จ: {len(resp.content)} bytes")
             bio = BytesIO(resp.content)
             return bio, _guess_img_type_from_ext(full_url)
-        except Exception:
+        except Exception as e:
+            print(f"[DEBUG] ❌ ดาวน์โหลดล้มเหลว: {e}")
             return None, None
 
+    print("[DEBUG] ❌ ไม่มี public_root และไม่มี base_url")
     return None, None
 
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
