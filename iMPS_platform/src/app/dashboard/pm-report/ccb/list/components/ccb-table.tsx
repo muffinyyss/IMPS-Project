@@ -47,7 +47,7 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const REPORT_PREFIX = "ccbpmreport";
 const URL_PREFIX = "ccbpmurl";
 
-const PM_TYPE_CODE = "CB"; // ใช้รหัสเดียวกับ MDB
+const PM_TYPE_CODE = "CC"; // ใช้รหัสเดียวกับ MDB
 
 function makePrefix(typeCode: string, dateISO: string) {
   const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
@@ -151,10 +151,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     cache: "no-store",
   };
 
-  const fetchOpts: RequestInit = {
-    headers: makeHeaders(),
-    ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
-  };
+  // const fetchOpts: RequestInit = {
+  //   headers: makeHeaders(),
+  //   ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
+  // };
 
   function thDate(iso?: string) {
     if (!iso) return "-";
@@ -506,13 +506,19 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
   };
 
-  useEffect(() => {
-    let alive = true;
-    (async () => { await fetchRows(); })();
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId]);
+  // useEffect(() => {
+  //   let alive = true;
+  //   (async () => { await fetchRows(); })();
+  //   return () => { alive = false; };
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [apiBase, stationId]);
 
+  useEffect(() => {
+      const ac = new AbortController();
+      fetchRows(ac.signal);
+      return () => ac.abort();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [apiBase, stationId, searchParams.toString()]);
 
 
 
@@ -608,7 +614,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [urlText, setUrlText] = useState("");
+  // const [urlText, setUrlText] = useState("");
 
   // async function uploadUrls() {
   //   if (!stationIdFromUrl) { alert("กรุณาเลือกสถานีก่อน"); return; }
@@ -703,6 +709,24 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
     }
   }
+
+  useEffect(() => {
+      if (!dateOpen || !stationId || !reportDate) return;
+  
+      let canceled = false;
+      (async () => {
+        try {
+          const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, baseFetchOpts);
+          const next = nextIssueIdFor(PM_TYPE_CODE, reportDate, latest || "");
+          if (!canceled) setIssueId(next);
+        } catch {
+          if (!canceled) setIssueId(nextIssueIdFor(PM_TYPE_CODE, reportDate, ""));
+        }
+      })();
+  
+      return () => { canceled = true; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dateOpen, stationId, reportDate]);
 
   return (
     <>

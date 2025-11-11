@@ -11,7 +11,6 @@ import {
     Typography,
     Textarea,
 } from "@material-tailwind/react";
-
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter } from "next/navigation";
 
