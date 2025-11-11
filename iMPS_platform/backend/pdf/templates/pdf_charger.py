@@ -316,7 +316,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             cp_unit = (measures.get("cp", {}) or {}).get("unit", "")
             remark = f"CP = {cp_value}{cp_unit}"
         items.append({
-            "idx": idx,  # <<<<<<<<<<  เพิ่มบรรทัดนี้
+            "idx": idx,
             "text": f"{idx}. {title}",
             "result": _norm_result(data.get("pf", "")),
             "remark": remark,
