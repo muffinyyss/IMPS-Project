@@ -233,7 +233,7 @@ function InputWithUnit<U extends string>({
 function PassFailRow({
     label, value, onChange, remark, onRemarkChange, labels,
 }: {
-    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void; labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; 
+    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void; labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
 }) {
     return (
         <div className="tw-space-y-3 tw-py-3">
@@ -319,6 +319,56 @@ function PhotoMultiInput({
     );
 }
 
+const PM_TYPE_CODE = "CC";
+
+function makePrefix(typeCode: string, dateISO: string) {
+    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+    const yy = String(d.getFullYear()).slice(2);
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `PM-${typeCode}-${yy}${mm}-`; // ตัวอย่าง: PM-CG-2511-
+}
+
+function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
+    const prefix = makePrefix(typeCode, dateISO);
+    const s = String(latestFromDb || "").trim();
+    if (!s || !s.startsWith(prefix)) return `${prefix}01`;     // เริ่มที่ 01 ถ้ายังไม่มีของเดือนนี้
+    const m = s.match(/(\d+)$/);
+    const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
+    const n = (m ? parseInt(m[1], 10) : 0) + 1;
+    return `${prefix}${n.toString().padStart(pad, "0")}`;
+}
+
+async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
+    const u = new URL(`${API_BASE}/ccbpmreport/list`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("page", "1");
+    u.searchParams.set("pageSize", "50");
+    u.searchParams.set("_ts", String(Date.now()));
+
+    const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
+    if (!r.ok) return null;
+
+    const j = await r.json();
+    const items: any[] = Array.isArray(j?.items) ? j.items : [];
+    if (!items.length) return null;
+
+    const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+
+    // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
+    const samePrefix = items
+        .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
+        .filter(iid => iid.startsWith(prefix));
+
+    if (!samePrefix.length) return null;
+
+    // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
+    const toTailNum = (iid: string) => {
+        const m = iid.match(/(\d+)$/);
+        return m ? parseInt(m[1], 10) : -1;
+    };
+    return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
+}
+
 /* =========================
  *        MAIN
  * ========================= */
@@ -338,7 +388,8 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
 
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
-    const [สรุปผล, setสรุปผล] = useState<PF>("");
+    // const [สรุปผล, setสรุปผล] = useState<PF>("");
+    const [summaryCheck, setSummaryCheck] = useState<PF>("");
 
 
     // const key = useMemo(
@@ -351,7 +402,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
 
 
     /* ---------- job info ---------- */
-    const [job, setJob] = useState({ chargerNo: "", sn: "", model: "", station_name: "", date: "", inspector: "" });
+    const [job, setJob] = useState({ issue_id: "", chargerNo: "", sn: "", model: "", station_name: "", date: "", inspector: "" });
 
     /* ---------- PASS/FAIL + remark ---------- */
     // รวม key ทั้งหัวข้อหลัก + หัวข้อย่อย
@@ -458,6 +509,35 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
         window.addEventListener("station:info", onInfo as EventListener);
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
+
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+        (async () => {
+            try {
+                const latest = await fetchLatestIssueIdFromList(stationId, job.date);
+                const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
+                if (!canceled) {
+                    const prefix = makePrefix(PM_TYPE_CODE, job.date);
+                    setJob(prev => {
+                        // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
+                        if (prev.issue_id?.startsWith(prefix)) return prev;
+                        return { ...prev, issue_id: next };
+                    });
+                }
+            } catch {
+                if (!canceled) {
+                    const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
+                    setJob(prev => ({ ...prev, issue_id: fallback }));
+                }
+            }
+        })();
+
+        return () => { canceled = true; };
+    }, [stationId, job.date]);
+
 
     // ---------- render helpers ----------
     const makePhotoSetter = (
@@ -569,12 +649,6 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || "";
 
-            // รูปร่าง measure สำหรับข้อ 9
-            // const measures9 = M9_LIST.map((m, i) => ({
-            //     index: i,
-            //     data: m.state,
-            // }));
-
             // helper แปลง string → number (หรือ null ถ้าเว้นว่าง/ไม่ใช่ตัวเลข)
             const toNum = (s: string) => {
                 const n = Number(s);
@@ -600,18 +674,31 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
                 "5": normalizeMeasure(m9_5.state),
             };
 
+            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+            const payload = {
+                station_id: stationId,
+                issue_id: issueIdFromJob,
+                job,
+                rows,
+                measures: { r9 },
+                summary,
+                pm_date,
+                ...(summaryCheck ? { summaryCheck } : {}),
+            };
+
+            // รูปร่าง measure สำหรับข้อ 9
+            // const measures9 = M9_LIST.map((m, i) => ({
+            //     index: i,
+            //     data: m.state,
+            // }));
+
+
+
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                 credentials: "include",
-                body: JSON.stringify({
-                    station_id: stationId,
-                    job,
-                    rows,
-                    measures: { r9 },
-                    summary,
-                    pm_date,
-                }),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json();
@@ -722,7 +809,16 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
         <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
             {/* Job Info */}
             <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+                    <Input
+                        label="Issue id"
+                        value={job.issue_id || "-"}
+                        readOnly
+                        // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
+                        crossOrigin=""
+                        containerProps={{ className: "!tw-min-w-0" }}
+                        className="!tw-w-full !tw-bg-blue-gray-50"
+                    />
                     <Input label="Location / สถานที่" value={job.station_name} onChange={(e) => setJob({ ...job, station_name: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
                     <Input label="วันที่ตรวจ" type="date" value={job.date} onChange={(e) => setJob({ ...job, date: e.target.value })} crossOrigin="" />
                 </div>
@@ -759,8 +855,8 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
                 <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
                     <PassFailRow
                         label="สรุปผลการตรวจสอบ"
-                        value={สรุปผล}
-                        onChange={(v) => setสรุปผล(v)}
+                        value={summaryCheck}
+                        onChange={(v) => setSummaryCheck(v)}
                         labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
                             PASS: "Pass : ผ่าน",
                             FAIL: "Fail : ไม่ผ่าน",

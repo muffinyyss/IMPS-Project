@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -31,7 +31,13 @@ import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outl
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 
 // type TData = (typeof AppDataTable)[number];
-type TData = { name: React.ReactNode; position: string; office: string };
+// type TData = { name: React.ReactNode; position: string; office: string };
+type TData = {
+  issue_id?: string; // ทำเป็น optional และเติมค่าจาก id หรือ regex ใน url
+  name: string; // วันที่แบบไทย แสดงผลในตาราง
+  position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
+  office: string; // URL ไฟล์
+};
 
 type Props = {
   token?: string;        // ใช้ได้ ถ้าจะส่ง Bearer แทนคุกกี้
@@ -43,20 +49,76 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const REPORT_PREFIX = "cbboxpmreport";
 const URL_PREFIX = "cbboxpmurl";
 
+
+const PM_TYPE_CODE = "CB"; // ใช้รหัสเดียวกับ MDB
+
+function makePrefix(typeCode: string, dateISO: string) {
+  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `PM-${typeCode}-${yy}${mm}-`; // เช่น PM-MB-2511-
+}
+
+function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
+  const prefix = makePrefix(typeCode, dateISO);
+  const s = String(latestFromDb || "").trim();
+  if (!s || !s.startsWith(prefix)) return `${prefix}01`;
+  const m = s.match(/(\d+)$/);
+  const pad = m ? m[1].length : 2;
+  const n = (m ? parseInt(m[1], 10) : 0) + 1;
+  return `${prefix}${n.toString().padStart(pad, "0")}`;
+}
+
+// หา issue_id ล่าสุดจากทั้ง 2 ลิสต์ (รายงานจริง + URL) แล้วออกเลขถัดไป
+async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string, apiBase: string, fetchOpts: RequestInit) {
+  const build = (path: string) => {
+    const u = new URL(`${apiBase}${path}`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("page", "1");
+    u.searchParams.set("pageSize", "50");
+    u.searchParams.set("_ts", String(Date.now()));
+    return u.toString();
+  };
+
+  const [a, b] = await Promise.allSettled([
+    fetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
+    fetch(build(`/${URL_PREFIX}/list`), fetchOpts),
+  ]);
+
+  let ids: string[] = [];
+  for (const r of [a, b]) {
+    if (r.status === "fulfilled" && r.value.ok) {
+      const j = await r.value.json();
+      const items: any[] = Array.isArray(j?.items) ? j.items : [];
+      ids = ids.concat(items.map((it) => String(it?.issue_id || "")).filter(Boolean));
+    }
+  }
+
+  const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+  const same = ids.filter((x) => x.startsWith(prefix));
+  if (!same.length) return null;
+
+  const toTail = (s: string) => {
+    const m = s.match(/(\d+)$/);
+    return m ? parseInt(m[1], 10) : -1;
+  };
+  return same.reduce((acc, cur) => (toTail(cur) > toTail(acc) ? cur : acc), same[0]);
+}
+
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [issueId, setIssueId] = useState<string>("");
+
   // const pathname = usePathname();
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
 
-
   // อ่าน station_id จาก URL (Navbar เป็นคนอัปเดตให้)
   // const stationIdFromUrl = sp.get("station_id") ?? "";
-
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
     if (sidFromUrl) {
@@ -84,9 +146,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
     return h;
   }
-  const fetchOpts: RequestInit = {
+  // const fetchOpts: RequestInit = {
+  //   headers: makeHeaders(),
+  //   ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
+  // };
+
+  const baseFetchOpts: RequestInit = {
     headers: makeHeaders(),
     ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
+    cache: "no-store",
   };
 
   function thDate(iso?: string) {
@@ -111,6 +179,33 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     } catch {
       return "";
     }
+  }
+
+  function normalizeAnyDate(v: any): string {
+    if (!v) return "";
+    if (typeof v === "object" && v.$date) return toISODateOnly(String(v.$date));
+    if (v instanceof Date) return toISODateOnly(v.toISOString());
+    if (typeof v === "number") return toISODateOnly(new Date(v).toISOString());
+    if (typeof v === "string") return toISODateOnly(v);
+    return "";
+  }
+
+  function pickDateFromItem(it: any): string {
+    const cands = [
+      it?.pm_date,
+      it?.reportDate,
+      it?.job?.date,
+      it?.submittedAt,
+      it?.timestamp,
+      it?.createdAt,
+      it?.updatedAt,
+      it?.date, // เผื่อบาง API ใช้ key นี้
+    ];
+    for (const v of cands) {
+      const d = normalizeAnyDate(v);
+      if (d) return d;
+    }
+    return "";
   }
 
   function resolveFileHref(v: any, apiBase: string) {
@@ -139,8 +234,182 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return `${apiBase}/${s}`;
   }
 
-  const fetchRows = async () => {
-    if (!stationId) { setData([]); return; }
+  function appendParam(u: string, key: string, val: string) {
+    const url = new URL(u, apiBase);
+    if (!url.searchParams.has(key)) url.searchParams.set(key, val);
+    return url.toString();
+  }
+
+  function buildHtmlLinks(baseUrl?: string) {
+    const u = (baseUrl || "").trim();
+    if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
+
+    // ตรวจจับ endpoint ใหม่ เช่น /pdf/charger/<id>/export
+    const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
+
+    if (isPdfEndpoint) {
+      const finalUrl = u;
+      const withStation = appendParam(finalUrl, "station_id", stationId || "");
+      return {
+        previewHref: appendParam(withStation, "dl", "0"),
+        downloadHref: appendParam(withStation, "dl", "1"),
+        isPdfEndpoint: true,
+      };
+    }
+
+    // fallback เดิม
+    return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
+  }
+
+  function extractDocIdFromAnything(x: any): string {
+    if (!x) return "";
+    // ลองอ่านจาก field id/_id ก่อน
+    const raw = (x._id !== undefined ? x._id : x.id) ?? "";
+    let id = "";
+    if (raw && typeof raw === "object") id = raw.$oid || raw.oid || raw.$id || "";
+    else id = String(raw || "");
+    if (/^[a-fA-F0-9]{24}$/.test(id)) return id;
+
+    // สุดท้ายลองดึงจากสตริง URL
+    const s = typeof x === "string" ? x : JSON.stringify(x);
+    const m = s.match(/[A-Fa-f0-9]{24}/);
+    return m ? m[0] : "";
+  }
+
+  // const fetchRows = async () => {
+  //   if (!stationId) { setData([]); return; }
+  //   setLoading(true);
+  //   try {
+  //     const makeURL = (path: string) => {
+  //       const u = new URL(`${apiBase}${path}`);
+  //       u.searchParams.set("station_id", stationId);
+  //       u.searchParams.set("page", "1");
+  //       u.searchParams.set("pageSize", "50");
+  //       return u.toString();
+  //     };
+
+  //     const [pmRes, urlRes] = await Promise.allSettled([
+  //       // fetch(makeURL("/pmreport/list"), fetchOpts),
+  //       // fetch(makeURL("/pmurl/list"), fetchOpts),
+
+  //       fetch(makeURL(`/${REPORT_PREFIX}/list`), fetchOpts),
+  //       fetch(makeURL(`/${URL_PREFIX}/list`), fetchOpts),
+  //     ]);
+
+  //     let pmItems: any[] = [];
+  //     let urlItems: any[] = [];
+
+  //     if (pmRes.status === "fulfilled" && pmRes.value.ok) {
+  //       const j = await pmRes.value.json();
+  //       if (Array.isArray(j?.items)) pmItems = j.items;
+  //     }
+  //     if (urlRes.status === "fulfilled" && urlRes.value.ok) {
+  //       const j = await urlRes.value.json();
+  //       if (Array.isArray(j?.items)) urlItems = j.items;
+  //     }
+
+
+  //     const pmRows: TData[] = pmItems.map((it: any) => {
+  //       const isoDay = toISODateOnly(it.pm_date ?? it.createdAt ?? "");
+
+  //       // ลิงก์ไฟล์ที่อัปโหลด (ถ้ามี)
+  //       const rawUploaded =
+  //         it.file_url
+  //         ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
+  //         ?? it.file
+  //         ?? it.path;
+
+  //       const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
+
+  //       // ⬇️ วางไว้ใกล้ๆ ฟังก์ชันอื่น
+  //       function extractId(it: any): string {
+  //         if (!it) return "";
+  //         // ให้โฟกัส _id ก่อน เพราะเป็นของจริงจาก Mongo
+  //         const raw = (it._id !== undefined ? it._id : it.id) ?? "";
+  //         if (raw && typeof raw === "object") {
+  //           // รองรับรูปแบบที่ซีเรียลไลซ์จาก Mongo: { "$oid": "..." } หรือ { "oid": "..." }
+  //           return raw.$oid || raw.oid || raw.$id || "";
+  //         }
+  //         const s = String(raw || "");
+  //         return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
+  //       }
+
+
+  //       // ⬇️ ใช้ helper ใหม่
+  //       const id = extractId(it);
+  //       // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/download` : "";
+  //       const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
+
+  //       const fileUrl = uploadedUrl || generatedUrl;
+
+  //       return {
+  //         name: thDate(isoDay),
+  //         position: isoDay,
+  //         office: fileUrl,
+  //       } as TData;
+  //     });
+
+
+  //     const urlRows: TData[] = urlItems.map((it: any) => {
+  //       const isoDay = toISODateOnly(it.pm_date ?? it.reportDate ?? it.createdAt ?? "");
+  //       const raw =
+  //         it.file_url
+  //         ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
+  //         ?? it.file
+  //         ?? it.path;
+
+  //       return {
+  //         name: thDate(isoDay),
+  //         position: isoDay,
+  //         office: resolveFileHref(raw, apiBase),
+  //       } as TData;
+  //     });
+
+
+
+  //     // รวมทั้งหมด แล้ว sort ตามวันที่ (ใหม่ → เก่า) แต่ยัง “ไม่ตัดซ้ำ”
+  //     const allRows = [...pmRows, ...urlRows].sort((a, b) => {
+  //       const da = (a.position ?? "") as string;
+  //       const db = (b.position ?? "") as string;
+  //       return da < db ? 1 : da > db ? -1 : 0;
+  //     });
+
+  //     // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
+  //     // if (!allRows.length) {
+  //     //   const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
+  //     //   if (res2.ok) {
+  //     //     const j = await res2.json();
+  //     //     const iso = j?.pm_date ?? "";
+  //     //     const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
+  //     //     setData(rows);
+  //     //     return;
+  //     //   }
+  //     //   setData([...AppDataTable] as TData[]);
+  //     //   return;
+  //     // }
+  //     if (!allRows.length) {
+  //       setData([]);            // ปล่อยว่าง เพื่อให้ tbody แสดง "ไม่มีข้อมูล"
+  //       return;
+  //     }
+
+  //     setData(allRows);
+  //     // } catch (err) {
+  //     //   console.error("fetch both lists error:", err);
+  //     //   setData([...AppDataTable] as TData[]);
+  //     // } finally {
+  //   } catch (err) {
+  //     console.error("fetch both lists error:", err);
+  //     setData([]);            // ว่าง → ให้ UI แสดง "ไม่มีข้อมูล"
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+  const fetchRows = async (signal?: AbortSignal) => {
+    if (!stationId) {
+      setData([]);
+      return;
+    }
     setLoading(true);
     try {
       const makeURL = (path: string) => {
@@ -148,13 +417,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         u.searchParams.set("station_id", stationId);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
+        u.searchParams.set("_ts", String(Date.now()));
         return u.toString();
       };
 
-      const [pmRes, urlRes] = await Promise.allSettled([
-        // fetch(makeURL("/pmreport/list"), fetchOpts),
-        // fetch(makeURL("/pmurl/list"), fetchOpts),
+      const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
 
+      const [pmRes, urlRes] = await Promise.allSettled([
         fetch(makeURL(`/${REPORT_PREFIX}/list`), fetchOpts),
         fetch(makeURL(`/${URL_PREFIX}/list`), fetchOpts),
       ]);
@@ -171,110 +440,94 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
 
-
       const pmRows: TData[] = pmItems.map((it: any) => {
-        const isoDay = toISODateOnly(it.pm_date ?? it.createdAt ?? "");
-
-        // ลิงก์ไฟล์ที่อัปโหลด (ถ้ามี)
+        const isoDay = pickDateFromItem(it);
         const rawUploaded =
-          it.file_url
-          ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
-          ?? it.file
-          ?? it.path;
+          it.file_url ??
+          (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
+          it.file ?? it.path;
 
         const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
 
-        // ⬇️ วางไว้ใกล้ๆ ฟังก์ชันอื่น
-        function extractId(it: any): string {
-          if (!it) return "";
-          // ให้โฟกัส _id ก่อน เพราะเป็นของจริงจาก Mongo
-          const raw = (it._id !== undefined ? it._id : it.id) ?? "";
-          if (raw && typeof raw === "object") {
-            // รองรับรูปแบบที่ซีเรียลไลซ์จาก Mongo: { "$oid": "..." } หรือ { "oid": "..." }
-            return raw.$oid || raw.oid || raw.$id || "";
-          }
+        function extractId(x: any): string {
+          if (!x) return "";
+          const raw = (x._id !== undefined ? x._id : x.id) ?? "";
+          if (raw && typeof raw === "object") return raw.$oid || raw.oid || raw.$id || "";
           const s = String(raw || "");
           return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
         }
-
-
-        // ⬇️ ใช้ helper ใหม่
         const id = extractId(it);
-        // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/download` : "";
-        const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
+        const generatedUrl = id ? `${apiBase}/pdf/cbbox/${encodeURIComponent(id)}/export` : "";
+        // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
+
 
         const fileUrl = uploadedUrl || generatedUrl;
+        // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
+        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
 
-        return {
-          name: thDate(isoDay),
-          position: isoDay,
-          office: fileUrl,
-        } as TData;
+        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
       });
-
 
       const urlRows: TData[] = urlItems.map((it: any) => {
-        const isoDay = toISODateOnly(it.pm_date ?? it.reportDate ?? it.createdAt ?? "");
+        const isoDay = pickDateFromItem(it);
         const raw =
-          it.file_url
-          ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
-          ?? it.file
-          ?? it.path;
-
-        return {
-          name: thDate(isoDay),
-          position: isoDay,
-          office: resolveFileHref(raw, apiBase),
-        } as TData;
+          it.file_url ??
+          (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
+          it.file ?? it.path;
+        const href = resolveFileHref(raw, apiBase);
+        // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
+        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
+        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: href } as TData;
       });
 
-
-
-      // รวมทั้งหมด แล้ว sort ตามวันที่ (ใหม่ → เก่า) แต่ยัง “ไม่ตัดซ้ำ”
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
         const da = (a.position ?? "") as string;
         const db = (b.position ?? "") as string;
-        return da < db ? 1 : da > db ? -1 : 0;
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return da < db ? 1 : da > db ? -1 : 0; // desc
       });
 
-      // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
       // if (!allRows.length) {
-      //   const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
+      //   const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationId)}?_ts=${Date.now()}`, {
+      //     ...baseFetchOpts,
+      //     signal,
+      //   });
       //   if (res2.ok) {
       //     const j = await res2.json();
       //     const iso = j?.pm_date ?? "";
-      //     const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
+      //     const rows: TData[] = iso ? ([{ issue_id: "", name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
       //     setData(rows);
       //     return;
       //   }
-      //   setData([...AppDataTable] as TData[]);
+      //   setData([]);
       //   return;
       // }
-      if (!allRows.length) {
-        setData([]);            // ปล่อยว่าง เพื่อให้ tbody แสดง "ไม่มีข้อมูล"
-        return;
-      }
 
       setData(allRows);
-      // } catch (err) {
-      //   console.error("fetch both lists error:", err);
-      //   setData([...AppDataTable] as TData[]);
-      // } finally {
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === "AbortError") return; // ignore abort
       console.error("fetch both lists error:", err);
-      setData([]);            // ว่าง → ให้ UI แสดง "ไม่มีข้อมูล"
+      setData([]);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    let alive = true;
-    (async () => { await fetchRows(); })();
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId]);
+  // useEffect(() => {
+  //   let alive = true;
+  //   (async () => { await fetchRows(); })();
+  //   return () => { alive = false; };
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [apiBase, stationId]);
 
+  useEffect(() => {
+      const ac = new AbortController();
+      fetchRows(ac.signal);
+      return () => ac.abort();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [apiBase, stationId, searchParams.toString()]);
 
 
 
@@ -292,6 +545,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const { pageIndex, pageSize } = info.table.getState().pagination;
         return pageIndex * pageSize + indexInPage + 1;
       },
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.issue_id || "—",
+      id: "issue_id",
+      header: () => "issue_id",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      size: 120,
+      minSize: 80,
+      maxSize: 160,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
@@ -360,33 +623,33 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [urlText, setUrlText] = useState("");
+  // const [urlText, setUrlText] = useState("");
 
-  async function uploadUrls() {
-    if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
+  // async function uploadUrls() {
+  //   if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
+  //   if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
 
-    const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
-    if (!urls.length) { alert("กรุณากรอก URL"); return; }
+  //   const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
+  //   if (!urls.length) { alert("กรุณากรอก URL"); return; }
 
-    const fd = new FormData();
-    fd.append("station_id", stationId);
-    // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
-    fd.append("rows", JSON.stringify({ reportDate, urls }));
+  //   const fd = new FormData();
+  //   fd.append("station_id", stationId);
+  //   // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
+  //   fd.append("rows", JSON.stringify({ reportDate, urls }));
 
-    const res = await fetch(`${apiBase}/${URL_PREFIX}/upload`, {
-      method: "POST",
-      body: fd,
-      credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
-    });
+  //   const res = await fetch(`${apiBase}/${URL_PREFIX}/upload`, {
+  //     method: "POST",
+  //     body: fd,
+  //     credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
+  //   });
 
-    if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
-    alert("อัปโหลดสำเร็จ");
-    setDateOpen(false);
-    setUrlText("");
+  //   if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
+  //   alert("อัปโหลดสำเร็จ");
+  //   setDateOpen(false);
+  //   setUrlText("");
 
 
-  }
+  // }
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -423,6 +686,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       const fd = new FormData();
       fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
+      fd.append("issue_id", issueId);
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
@@ -455,6 +719,24 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
     }
   }
+
+  useEffect(() => {
+    if (!dateOpen || !stationId || !reportDate) return;
+
+    let canceled = false;
+    (async () => {
+      try {
+        const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, baseFetchOpts);
+        const next = nextIssueIdFor(PM_TYPE_CODE, reportDate, latest || "");
+        if (!canceled) setIssueId(next);
+      } catch {
+        if (!canceled) setIssueId(nextIssueIdFor(PM_TYPE_CODE, reportDate, ""));
+      }
+    })();
+
+    return () => { canceled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateOpen, stationId, reportDate]);
 
   return (
     <>
@@ -672,6 +954,21 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           เลือกวันที่รายงาน (PM Report)
         </DialogHeader>
         <DialogBody className="tw-space-y-4">
+          <div className="tw-space-y-2">
+            <Typography variant="small" className="!tw-text-blue-gray-600">
+              Issue ID
+            </Typography>
+            <Input
+              value={issueId}
+              onChange={(e) => setIssueId(e.target.value)}
+              crossOrigin=""
+              placeholder="เช่น PM-MB-2511-01"
+              readOnly
+            />
+            <Typography variant="small" className="!tw-text-blue-gray-500">
+              ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
+            </Typography>
+          </div>
           <div className="tw-space-y-2">
             <Typography variant="small" className="!tw-text-blue-gray-600">
               วันที่ (รูปแบบ YYYY-MM-DD)

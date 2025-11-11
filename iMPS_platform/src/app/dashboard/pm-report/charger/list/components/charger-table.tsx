@@ -46,6 +46,65 @@ type Props = {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+const REPORT_PREFIX = "pmreport";
+const URL_PREFIX = "pmurl";
+
+const PM_TYPE_CODE = "CG"; // ใช้รหัสเดียวกับ MDB
+
+function makePrefix(typeCode: string, dateISO: string) {
+  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `PM-${typeCode}-${yy}${mm}-`; // เช่น PM-MB-2511-
+}
+
+function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
+  const prefix = makePrefix(typeCode, dateISO);
+  const s = String(latestFromDb || "").trim();
+  if (!s || !s.startsWith(prefix)) return `${prefix}01`;
+  const m = s.match(/(\d+)$/);
+  const pad = m ? m[1].length : 2;
+  const n = (m ? parseInt(m[1], 10) : 0) + 1;
+  return `${prefix}${n.toString().padStart(pad, "0")}`;
+}
+
+// หา issue_id ล่าสุดจากทั้ง 2 ลิสต์ (รายงานจริง + URL) แล้วออกเลขถัดไป
+async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string, apiBase: string, fetchOpts: RequestInit) {
+  const build = (path: string) => {
+    const u = new URL(`${apiBase}${path}`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("page", "1");
+    u.searchParams.set("pageSize", "50");
+    u.searchParams.set("_ts", String(Date.now()));
+    return u.toString();
+  };
+
+  const [a, b] = await Promise.allSettled([
+    fetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
+    fetch(build(`/${URL_PREFIX}/list`), fetchOpts),
+  ]);
+
+  let ids: string[] = [];
+  for (const r of [a, b]) {
+    if (r.status === "fulfilled" && r.value.ok) {
+      const j = await r.value.json();
+      const items: any[] = Array.isArray(j?.items) ? j.items : [];
+      ids = ids.concat(items.map((it) => String(it?.issue_id || "")).filter(Boolean));
+    }
+  }
+
+  const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+  const same = ids.filter((x) => x.startsWith(prefix));
+  if (!same.length) return null;
+
+  const toTail = (s: string) => {
+    const m = s.match(/(\d+)$/);
+    return m ? parseInt(m[1], 10) : -1;
+  };
+  return same.reduce((acc, cur) => (toTail(cur) > toTail(acc) ? cur : acc), same[0]);
+}
+
+
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -53,6 +112,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [loading, setLoading] = useState(false);
 
 
+  const [issueId, setIssueId] = useState<string>("");
   // const sp = useSearchParams();
   // const stationIdFromUrl = sp.get("station_id") ?? "";
 
@@ -290,21 +350,21 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return da < db ? 1 : da > db ? -1 : 0; // desc
       });
 
-      if (!allRows.length) {
-        const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationId)}?_ts=${Date.now()}`, {
-          ...baseFetchOpts,
-          signal,
-        });
-        if (res2.ok) {
-          const j = await res2.json();
-          const iso = j?.pm_date ?? "";
-          const rows: TData[] = iso ? ([{ issue_id: "", name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-          setData(rows);
-          return;
-        }
-        setData([]);
-        return;
-      }
+      // if (!allRows.length) {
+      //   const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationId)}?_ts=${Date.now()}`, {
+      //     ...baseFetchOpts,
+      //     signal,
+      //   });
+      //   if (res2.ok) {
+      //     const j = await res2.json();
+      //     const iso = j?.pm_date ?? "";
+      //     const rows: TData[] = iso ? ([{ issue_id: "", name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
+      //     setData(rows);
+      //     return;
+      //   }
+      //   setData([]);
+      //   return;
+      // }
 
       setData(allRows);
     } catch (err: any) {
@@ -460,6 +520,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       const fd = new FormData();
       fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
+      fd.append("issue_id", issueId);
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await fetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
@@ -484,6 +545,25 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
     }
   }
+
+  useEffect(() => {
+    if (!dateOpen || !stationId || !reportDate) return;
+
+    let canceled = false;
+    (async () => {
+      try {
+        const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, baseFetchOpts);
+        const next = nextIssueIdFor(PM_TYPE_CODE, reportDate, latest || "");
+        if (!canceled) setIssueId(next);
+      } catch {
+        if (!canceled) setIssueId(nextIssueIdFor(PM_TYPE_CODE, reportDate, ""));
+      }
+    })();
+
+    return () => { canceled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateOpen, stationId, reportDate]);
+
   return (
     <>
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8">
@@ -675,6 +755,21 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
         <DialogHeader>เลือกวันที่รายงาน</DialogHeader>
         <DialogBody className="tw-space-y-4">
+          <div className="tw-space-y-2">
+            <Typography variant="small" className="!tw-text-blue-gray-600">
+              Issue ID
+            </Typography>
+            <Input
+              value={issueId}
+              onChange={(e) => setIssueId(e.target.value)}
+              crossOrigin=""
+              placeholder="เช่น PM-MB-2511-01"
+              readOnly
+            />
+            <Typography variant="small" className="!tw-text-blue-gray-500">
+              ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
+            </Typography>
+          </div>
           <Input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} label="วันที่" crossOrigin="" />
           <Typography variant="small" className="tw-text-blue-gray-500">
             ไฟล์ที่เลือก: <strong>{pendingFiles.length}</strong> ไฟล์

@@ -147,7 +147,7 @@ function SectionCard({ title, subtitle, children }: { title?: string; subtitle?:
 function PassFailRow({
     label, value, onChange, remark, onRemarkChange, labels,
 }: {
-    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void; labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; 
+    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void; labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
 }) {
     return (
         <div className="tw-space-y-3 tw-py-3">
@@ -233,10 +233,62 @@ function PhotoMultiInput({
     );
 }
 
+
+const PM_TYPE_CODE = "ST";
+
+function makePrefix(typeCode: string, dateISO: string) {
+    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+    const yy = String(d.getFullYear()).slice(2);
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `PM-${typeCode}-${yy}${mm}-`; // ตัวอย่าง: PM-CG-2511-
+}
+
+function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
+    const prefix = makePrefix(typeCode, dateISO);
+    const s = String(latestFromDb || "").trim();
+    if (!s || !s.startsWith(prefix)) return `${prefix}01`;     // เริ่มที่ 01 ถ้ายังไม่มีของเดือนนี้
+    const m = s.match(/(\d+)$/);
+    const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
+    const n = (m ? parseInt(m[1], 10) : 0) + 1;
+    return `${prefix}${n.toString().padStart(pad, "0")}`;
+}
+
+async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
+    const u = new URL(`${API_BASE}/stationpmreport/list`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("page", "1");
+    u.searchParams.set("pageSize", "50");
+    u.searchParams.set("_ts", String(Date.now()));
+
+    const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
+    if (!r.ok) return null;
+
+    const j = await r.json();
+    const items: any[] = Array.isArray(j?.items) ? j.items : [];
+    if (!items.length) return null;
+
+    const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+
+    // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
+    const samePrefix = items
+        .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
+        .filter(iid => iid.startsWith(prefix));
+
+    if (!samePrefix.length) return null;
+
+    // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
+    const toTailNum = (iid: string) => {
+        const m = iid.match(/(\d+)$/);
+        return m ? parseInt(m[1], 10) : -1;
+    };
+    return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
+}
+
+
 /* =========================
  * MAIN
  * ========================= */
-export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps) {
+export default function CheckList({ onComplete }: CheckListProps) {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
     const PM_PREFIX = "stationpmreport";
@@ -256,8 +308,9 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
     const key = useMemo(() => draftKeyStation(stationId), [stationId]);
 
     /* ---------- job info ---------- */
-    const [job, setJob] = useState({ chargerNo: "", sn: "", model: "", station_name: "", date: "", inspector: "" });
-    const [สรุปผล, setสรุปผล] = useState<PF>("");
+    const [job, setJob] = useState({ issue_id: "", chargerNo: "", sn: "", model: "", station_name: "", date: "", inspector: "" });
+    // const [สรุปผล, setสรุปผล] = useState<PF>("");
+    const [summaryCheck, setSummaryCheck] = useState<PF>("");
     /* ---------- PASS/FAIL + remark ---------- */
     // รวม key ทั้งหัวข้อหลัก (simple) + หัวข้อย่อย (group)
     const ALL_KEYS = useMemo(() => {
@@ -319,6 +372,49 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
         setPhotos(draft.photos ?? initialPhotos);
         setSummary(draft.summary);
     }, [stationId, draftId, key]);
+
+    useEffect(() => {
+        const onInfo = (e: Event) => {
+            const detail = (e as CustomEvent).detail as { info?: StationPublic; station?: StationPublic };
+            const st = detail.info ?? detail.station;
+            if (!st) return;
+            setJob((prev) => ({
+                ...prev,
+                sn: st.SN ?? prev.sn,
+                model: st.model ?? prev.model,
+            }));
+        };
+        window.addEventListener("station:info", onInfo as EventListener);
+        return () => window.removeEventListener("station:info", onInfo as EventListener);
+    }, []);
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+        (async () => {
+            try {
+                const latest = await fetchLatestIssueIdFromList(stationId, job.date);
+                const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
+                if (!canceled) {
+                    const prefix = makePrefix(PM_TYPE_CODE, job.date);
+                    setJob(prev => {
+                        // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
+                        if (prev.issue_id?.startsWith(prefix)) return prev;
+                        return { ...prev, issue_id: next };
+                    });
+                }
+            } catch {
+                if (!canceled) {
+                    const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
+                    setJob(prev => ({ ...prev, issue_id: fallback }));
+                }
+            }
+        })();
+
+        return () => { canceled = true; };
+    }, [stationId, job.date]);
+
 
     // ---------- render helpers (ยังคงเดิม) ----------
     const makePhotoSetter = (
@@ -414,17 +510,21 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || "";
 
+            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+            const payload = {
+                station_id: stationId,
+                issue_id: issueIdFromJob,
+                job,
+                rows,
+                summary,
+                pm_date,
+                ...(summaryCheck ? { summaryCheck } : {}),
+            };
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                 credentials: "include",
-                body: JSON.stringify({
-                    station_id: stationId,
-                    job,
-                    rows,
-                    summary,
-                    pm_date,
-                }),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json();
@@ -516,7 +616,16 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
         <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
             {/* Job Info */}
             <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+                    <Input
+                        label="Issue id"
+                        value={job.issue_id || "-"}
+                        readOnly
+                        // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
+                        crossOrigin=""
+                        containerProps={{ className: "!tw-min-w-0" }}
+                        className="!tw-w-full !tw-bg-blue-gray-50"
+                    />
                     <Input label="Location / สถานที่" value={job.station_name} onChange={(e) => setJob({ ...job, station_name: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
                     <Input label="วันที่ตรวจ" type="date" value={job.date} onChange={(e) => setJob({ ...job, date: e.target.value })} crossOrigin="" />
                 </div>
@@ -534,35 +643,35 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
 
             {/* Summary */}
             <SectionCard title="Comment">
-                            <div className="tw-space-y-2">
-                                <Textarea
-                                    label="Comment"
-                                    value={summary}
-                                    onChange={(e) => setSummary(e.target.value)}
-                                    rows={4}
-                                    required
-                                    autoComplete="off"
-                                    containerProps={{ className: "!tw-min-w-0" }}
-                                    className="!tw-w-full resize-none"
-                                />
-                                <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-                                    {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-                                </Typography>
-                            </div>
-            
-                            <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-                                <PassFailRow
-                                    label="สรุปผลการตรวจสอบ"
-                                    value={สรุปผล}
-                                    onChange={(v) => setสรุปผล(v)}
-                                    labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
-                                        PASS: "Pass : ผ่าน",
-                                        FAIL: "Fail : ไม่ผ่าน",
-                                        NA: "N/A : ไม่พบ",
-                                    }}
-                                />
-                            </div>
-                        </SectionCard>
+                <div className="tw-space-y-2">
+                    <Textarea
+                        label="Comment"
+                        value={summary}
+                        onChange={(e) => setSummary(e.target.value)}
+                        rows={4}
+                        required
+                        autoComplete="off"
+                        containerProps={{ className: "!tw-min-w-0" }}
+                        className="!tw-w-full resize-none"
+                    />
+                    <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
+                        {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
+                    </Typography>
+                </div>
+
+                <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
+                    <PassFailRow
+                        label="สรุปผลการตรวจสอบ"
+                        value={summaryCheck}
+                        onChange={(v) => setSummaryCheck(v)}
+                        labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
+                            PASS: "Pass : ผ่าน",
+                            FAIL: "Fail : ไม่ผ่าน",
+                            NA: "N/A : ไม่พบ",
+                        }}
+                    />
+                </div>
+            </SectionCard>
 
             {/* Footer checks */}
             <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
