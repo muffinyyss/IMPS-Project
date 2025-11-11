@@ -171,6 +171,33 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     return `${apiBase}/${s}`;
   }
 
+  function appendParam(u: string, key: string, val: string) {
+    const url = new URL(u, apiBase);
+    if (!url.searchParams.has(key)) url.searchParams.set(key, val);
+    return url.toString();
+  }
+
+  function buildHtmlLinks(baseUrl?: string) {
+    const u = (baseUrl || "").trim();
+    if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
+
+    // ตรวจจับ endpoint ใหม่ เช่น /pdf/charger/<id>/export
+    const isPdfEndpoint = /\/pdf\/(cm)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
+
+    if (isPdfEndpoint) {
+      const finalUrl = u;
+      const withStation = appendParam(finalUrl, "station_id", stationId || "");
+      return {
+        previewHref: appendParam(withStation, "dl", "0"),
+        downloadHref: appendParam(withStation, "dl", "1"),
+        isPdfEndpoint: true,
+      };
+    }
+
+    // fallback เดิม
+    return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
+  }
+
   function getStatusText(it: any) {
     return String(it?.status ?? it?.job?.status ?? "").trim();
   }
@@ -246,7 +273,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         // ⬇️ ใช้ helper ใหม่
         const id = extractId(it);
         // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/download` : "";
-        const generatedUrl = id ? `${apiBase}/pdf/cm/${encodeURIComponent(id)}/file` : "";
+        const generatedUrl = id ? `${apiBase}/pdf/cm/${encodeURIComponent(id)}/export` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
 
@@ -408,9 +435,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
 
-        const handleNoUrl = (e: React.MouseEvent) => {
-          if (!hasUrl) { e.preventDefault(); e.stopPropagation(); }
-        };
+        // const handleNoUrl = (e: React.MouseEvent) => {
+        //   if (!hasUrl) { e.preventDefault(); e.stopPropagation(); }
+        // };
+
+
 
         const handleEdit = (e: React.MouseEvent) => {
           e.preventDefault();
@@ -418,6 +447,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           if (!row?.id) return;
           goEdit(row);
         };
+
+        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
 
         return (
           <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
@@ -442,7 +473,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               onClick={handleEdit}
               disabled={!row?.id}
               className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-  ${row?.id ? "tw-text-gray-600 hover:tw-text-gray-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+              ${row?.id ? "tw-text-gray-600 hover:tw-text-gray-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
               title={row?.id ? "Edit" : "No id to edit"}
             >
               <EyeIcon className="tw-h-5 tw-w-5" />
@@ -451,14 +482,17 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
             {/* Download */}
             <a
-              href={hasUrl ? url : undefined}
-              download
+              // href={hasUrl ? url : undefined}
+              href={previewHref}
+              aria-label="Preview"
+              // download
               target="_blank"
               rel="noopener noreferrer"
-              onClick={handleNoUrl}
-              className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-            ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-              aria-disabled={!hasUrl}
+              // onClick={handleNoUrl}
+              //   className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
+              // ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+              //   aria-disabled={!hasUrl}
+              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
               title={hasUrl ? "Download PDF" : "No file"}
             >
               <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />

@@ -10,6 +10,7 @@ from .templates.pdf_mdb import generate_pdf as pdf_mdb
 from .templates.pdf_ccb import generate_pdf as pdf_ccb
 from .templates.pdf_cbbox import generate_pdf as pdf_cbbox
 from .templates.pdf_station import generate_pdf as pdf_station
+from .templates.pdf_cm import generate_pdf as pdf_cm
 
 router = APIRouter(prefix="/pdf", tags=["pdf"])
 
@@ -20,6 +21,8 @@ TEMPLATE_MAP = {
     "ccb": {"db": "CCBPMReport", "func": pdf_ccb},
     "cbbox": {"db": "CBBOXPMReport", "func": pdf_cbbox},
     "station": {"db": "stationPMReport", "func": pdf_station},
+
+    "cm": {"db": "CMReport", "func": pdf_cm}
 }
 
 
