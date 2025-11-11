@@ -1,173 +1,100 @@
-# backend/pdf/test_pdf.py
-from fastapi import APIRouter, HTTPException, Response
+# test_pdf_photos.py
 from fpdf import FPDF
-from pathlib import Path
-from urllib.parse import quote
-import re
+from pymongo import MongoClient
+import os
+from io import BytesIO
+import requests
 
-router = APIRouter(prefix="/pdf", tags=["pdf"])  # ใช้ prefix เดิมแทนของเก่า
+# ---------------------------
+# 1️⃣ ตั้งค่า MongoDB
+# ---------------------------
+MONGO_URI = "mongodb://localhost:8000"  # เปลี่ยนให้ตรงกับของคุณ
+DB_NAME = "PMReport"            # ใส่ชื่อ database
+COLLECTION_NAME = "Klongluang3"  # ใส่ชื่อ collection
 
-# ---------- ฟอนต์ ----------
-CANDIDATES = ["THSarabunNew.ttf", "Sarabun-Regular.ttf"]
+client = MongoClient(MONGO_URI)
+db = client[DB_NAME]
+collection = db[COLLECTION_NAME]
 
+# ---------------------------
+# 2️⃣ ดึงข้อมูลจาก MongoDB
+# ---------------------------
+doc = collection.find_one({"_id": {"$oid": "690820865d6713117d9dbdc8"}})
+if not doc:
+    print("❌ ไม่พบข้อมูลใน MongoDB")
+    exit()
 
-def get_font_path() -> str:
-    here = Path(__file__).parent
-    fonts_dir = here / "fonts"
-    for name in CANDIDATES:
-        p = fonts_dir / name
-        if p.exists():
-            return str(p)
-    raise FileNotFoundError("ไม่พบฟอนต์ไทยใน backend/pdf/fonts/")
+print("✅ ดึงข้อมูลสำเร็จ:", doc.get("station_id"))
 
+# ---------------------------
+# 3️⃣ สร้างคลาส PDF
+# ---------------------------
+class PDF(FPDF):
+    def header(self):
+        self.set_font("Helvetica", "B", 16)
+        self.cell(0, 10, "Test Photo PDF", ln=True, align="C")
+        self.ln(5)
 
-ZWSP = "\u200b"
+# ---------------------------
+# 4️⃣ สร้างเอกสาร PDF
+# ---------------------------
+pdf = PDF()
+pdf.add_page()
 
+photos = doc.get("photos", {})
+if photos:
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "Photos from MongoDB", ln=True, align="C")
+    pdf.ln(10)
 
-def soft_wrap(s: str, hard_chunk: int = 40) -> str:
-    if not s:
-        return ""
-    text = str(s)
-    text = re.sub("([\u0e00-\u0e7f])", lambda m: m.group(1) + ZWSP, text)
+    x = 10
+    y = pdf.get_y()
+    w, h = 60, 45
+    col = 0
+    max_cols = 3
 
-    def breaker(m):
-        w = m.group(0)
-        return ZWSP.join(w[i : i + hard_chunk] for i in range(0, len(w), hard_chunk))
+    for group, items in photos.items():
+        for item in items:
+            img_url = item.get("url")
+            remark = item.get("remark", "")
+            # ตัวอย่าง path รูปจริงในเครื่อง (ปรับให้ตรงกับระบบของคุณ)
+            full_path = f"./backend{img_url}"
 
-    return re.sub(r"\S{" + str(hard_chunk) + r",}", breaker, text)
+            if os.path.exists(full_path):
+                pdf.image(full_path, x=x, y=y, w=w, h=h)
+            else:
+                # ถ้าไม่เจอรูปในเครื่อง ลองโหลดจาก URL
+                try:
+                    response = requests.get("http://localhost:8000" + img_url)
+                    if response.status_code == 200:
+                        pdf.image(BytesIO(response.content), x=x, y=y, w=w, h=h)
+                    else:
+                        pdf.set_xy(x, y + 20)
+                        pdf.cell(w, 10, "รูปไม่พบ", border=1, align="C")
+                except Exception as e:
+                    pdf.set_xy(x, y + 20)
+                    pdf.cell(w, 10, "Error", border=1, align="C")
 
+            # แสดง remark ใต้รูป
+            pdf.set_xy(x, y + h + 2)
+            pdf.set_font("Helvetica", "", 10)
+            pdf.multi_cell(w, 8, remark or group, align="C")
 
-def safe_filename(name: str) -> str:
-    bad = '\\/:*?"<>|'
-    for ch in bad:
-        name = name.replace(ch, "_")
-    name = name.strip() or "report"
-    return f"{name}.pdf"
+            # ขยับตำแหน่ง
+            x += w + 10
+            col += 1
+            if col == max_cols:
+                col = 0
+                x = 10
+                y += h + 20
 
+    pdf.ln(10)
+else:
+    pdf.cell(0, 10, "ไม่มีรูปภาพ", ln=True, align="C")
 
-def build_pdf_bytes(payload: dict) -> bytes:
-    station = payload.get("station", "-")
-    model = payload.get("model", "-")
-    serial = payload.get("serial", "-")
-    date = payload.get("date", "-")
-    inspector = payload.get("inspector", "-")
-    summary = payload.get("summary", "-")
-    checklist = payload.get("checklist", [])  # [{item, pf, remark}]
-
-    pdf = FPDF()
-    pdf.set_margins(12, 12, 12)
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-
-    try:
-        font_path = get_font_path()
-        pdf.add_font("THSarabun", "", font_path, uni=True)
-        font = "THSarabun"
-    except Exception:
-        font = "Arial"
-
-    content_w = pdf.w - pdf.l_margin - pdf.r_margin
-
-    # Title
-    pdf.set_font(font, size=18)
-    pdf.cell(0, 10, soft_wrap(f"PM Report (TEST) - {station}"), ln=1)
-
-    # Header K/V
-    pdf.set_font(font, size=12)
-
-    def kv(label, value):
-        h, lw = 7, 40
-        pdf.cell(lw, h, soft_wrap(label), border=0)
-        pdf.multi_cell(content_w - lw, h, soft_wrap(value))
-
-    kv("Station", station)
-    kv("Model", model)
-    kv("Serial", serial)
-    kv("Date", date)
-    kv("Inspector", inspector)
-    pdf.ln(2)
-
-    # Checklist
-    pdf.set_font(font, size=14)
-    pdf.cell(0, 8, "Checklist", ln=1)
-    pdf.set_font(font, size=12)
-    th_h = 8
-    cw = [12, 90, 25, content_w - 12 - 90 - 25]  # No., Item, PF, Remark
-
-    def th(text, w):
-        pdf.set_fill_color(233, 233, 233)
-        pdf.cell(w, th_h, text, border=1, ln=0, align="C", fill=True)
-
-    th("#", cw[0])
-    th("Item", cw[1])
-    th("PF", cw[2])
-    th("Remark", cw[3])
-    pdf.ln(th_h)
-
-    for i, row in enumerate(checklist, start=1):
-        item = str(row.get("item") or "-")
-        pf = str(row.get("pf") or "-").upper()
-        remark = str(row.get("remark") or "")
-        if pf == "PASS":
-            pdf.set_fill_color(220, 255, 220)
-        elif pf == "FAIL":
-            pdf.set_fill_color(255, 220, 220)
-        elif pf == "NA":
-            pdf.set_fill_color(235, 235, 235)
-        else:
-            pdf.set_fill_color(255, 255, 255)
-
-        h = 8
-        pdf.cell(cw[0], h, str(i), border=1, ln=0, align="C")
-        pdf.cell(cw[1], h, soft_wrap(item), border=1, ln=0)
-        pdf.cell(cw[2], h, pf, border=1, ln=0, align="C", fill=True)
-        pdf.multi_cell(cw[3], h, soft_wrap(remark), border=1)
-
-    pdf.ln(2)
-    pdf.set_font(font, size=14)
-    pdf.cell(0, 8, "Summary", ln=1)
-    pdf.set_font(font, size=12)
-    pdf.multi_cell(content_w, 8, soft_wrap(summary))
-
-    out = pdf.output(dest="S")
-    return (
-        out if isinstance(out, (bytes, bytearray)) else out.encode("latin1", "ignore")
-    )
-
-
-@router.post("/form/preview")
-async def preview_from_form(payload: dict):
-    try:
-        pdf_bytes = build_pdf_bytes(payload)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"PDF error: {type(e).__name__}: {e}"
-        )
-    filename = safe_filename(
-        f"PM_TEST_{payload.get('station','-')}_{payload.get('date','')}"
-    )
-    cd = f"inline; filename={quote(filename)}; filename*=UTF-8''{quote(filename)}"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": cd, "Cache-Control": "no-store"},
-    )
-
-
-@router.post("/form/download")
-async def download_from_form(payload: dict):
-    try:
-        pdf_bytes = build_pdf_bytes(payload)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"PDF error: {type(e).__name__}: {e}"
-        )
-    filename = safe_filename(
-        f"PM_TEST_{payload.get('station','-')}_{payload.get('date','')}"
-    )
-    cd = f"attachment; filename={quote(filename)}; filename*=UTF-8''{quote(filename)}"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": cd, "Cache-Control": "no-store"},
-    )
+# ---------------------------
+# 5️⃣ บันทึกเป็น PDF
+# ---------------------------
+output_path = "test_photos_output.pdf"
+pdf.output(output_path)
+print(f"✅ สร้างไฟล์ PDF เรียบร้อย: {output_path}")
