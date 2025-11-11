@@ -46,7 +46,7 @@ type UserRow = {
   email?: string;
   role?: string;
   company?: string;
-  phone?: string;
+  tel?: string;
   station_id?: string[];
 };
 
@@ -55,7 +55,7 @@ export type UserUpdatePayload = {
   email?: string;
   role?: string;
   company?: string;
-  phone?: string;
+  tel?: string;
 };
 
 type JwtClaims = {
@@ -154,7 +154,7 @@ export default function SearchDataTables() {
           role: u.role ?? "-",
           company: u.company ?? "-",
           station_id: u.station_id ?? [],
-          phone: u.phone ?? "-",
+          tel: u.tel ?? "-",
         }));
         setData(rows);
       } catch {
@@ -206,7 +206,7 @@ export default function SearchDataTables() {
           role: created.role,
           company: created.company ?? "-",
           station_id: created.station_id ?? [],
-          phone: created.phone ?? "-",
+          tel: created.tel ?? "-",
         },
         ...prev,
       ]);
@@ -229,7 +229,7 @@ export default function SearchDataTables() {
     if (payload.email !== undefined) body.email = payload.email?.trim();
     if (payload.company !== undefined) body.company = (payload.company || "").trim();
     if (payload.role !== undefined) body.role = payload.role;
-    if (payload.phone !== undefined) body.tel = payload.phone?.trim();
+    if (payload.tel !== undefined) body.tel = payload.tel?.trim();
     if ((payload as any).password) body.password = String((payload as any).password);
 
     const res = await apiFetch(`/user_update/${id}`, {
@@ -259,7 +259,7 @@ export default function SearchDataTables() {
               email: updated.email ?? u.email,
               company: updated.company ?? u.company,
               role: updated.role ?? u.role,
-              phone: updated.tel ?? u.phone,
+              tel: updated.tel ?? u.tel,
             }
           : u
       )
@@ -323,7 +323,7 @@ export default function SearchDataTables() {
     },
     { accessorFn: (r: UserRow) => r.username ?? "-", id: "username", header: () => "username", cell: (i: any) => i.getValue() },
     { accessorFn: (r: UserRow) => r.email ?? "-",    id: "email",    header: () => "email",    cell: (i: any) => i.getValue() },
-    { accessorFn: (r: UserRow) => r.phone ?? "-",    id: "phone",    header: () => "phone",    cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.tel ?? "-",    id: "tel",    header: () => "tel",    cell: (i: any) => i.getValue() },
     { accessorFn: (r: UserRow) => r.company ?? "-",  id: "company",  header: () => "company",  cell: (i: any) => i.getValue() },
     { accessorFn: (r: UserRow) => r.role ?? "-",     id: "role",     header: () => "role",     cell: (i: any) => i.getValue() },
     {
@@ -547,7 +547,7 @@ export default function SearchDataTables() {
               username: HTMLInputElement;
               email: HTMLInputElement;
               company: HTMLInputElement;
-              phone: HTMLInputElement;
+              tel: HTMLInputElement;
               password?: HTMLInputElement;
             };
 
@@ -555,7 +555,7 @@ export default function SearchDataTables() {
               username: form.username?.value?.trim(),
               email: form.email?.value?.trim(),
               company: form.company?.value?.trim(),
-              phone: form.phone?.value?.trim(),
+              tel: form.tel?.value?.trim(),
             };
 
             if (isAdmin) payload.role = roleValue;
@@ -576,7 +576,7 @@ export default function SearchDataTables() {
               <Input name="username" label="Username" defaultValue={editingRow?.username ?? ""} required />
               <Input name="email" label="Email" type="email" defaultValue={editingRow?.email ?? ""} required />
               <Input name="company" label="Company" defaultValue={editingRow?.company ?? ""} />
-              <Input name="phone" label="Phone" defaultValue={editingRow?.phone ?? ""} />
+              <Input name="tel" label="tel" defaultValue={editingRow?.tel ?? ""} />
               {/* <Input name="password" label="New Password (optional)" type="password" /> */}
 
               {isAdmin && (
