@@ -478,78 +478,61 @@ def _env_photo_headers() -> Optional[dict]:
         hdrs[k.strip()] = v.strip()
     return hdrs or None
 
-# def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
-#     """
-#     รับ '/uploads/.../g1/image.png' → คืน (src, img_type)
-#     1) ลองแมปเป็นไฟล์จริง: <PUBLIC_DIR หรือ public ที่หาเจอ>/<url_path>
-#     2) ถ้าไม่เจอและมี PHOTOS_BASE_URL → ดาวน์โหลด
-#     3) ถ้ายังไม่ได้ → (None, None)
-#     """
-#     if not url_path:
-#         return None, None
-
-#     # 1) local file
-#     public_root = _find_public_root()
-#     if public_root:
-#         local_path = public_root / url_path.lstrip("/")
-#         if local_path.exists() and local_path.is_file():
-#             return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
-
-#     # 2) HTTP(S)
-#     base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
-#     if base_url:
-#         if requests is None:
-#             # ไม่มี requests ให้รีเทิร์น None เพื่อให้ขึ้น "-"
-#             return None, None
-#         full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
-#         try:
-#             resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
-#             resp.raise_for_status()
-#             bio = BytesIO(resp.content)
-#             return bio, _guess_img_type_from_ext(full_url)
-#         except Exception:
-#             return None, None
-
-#     return None, None
 
 def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     """
-    รับ '/uploads/.../g1/image.png' → คืน (src, img_type)
-    1) ลองแมปเป็นไฟล์จริง: <PUBLIC_DIR>/uploads/...
+    รับ '/uploads/pm/Klongluang3/68efc.../g1/image.png' → คืน (src, img_type)
+    1) ลองแมปเป็นไฟล์จริง: backend/uploads/pm/...
     2) ถ้าไม่เจอและมี PHOTOS_BASE_URL → ดาวน์โหลด
     3) ถ้ายังไม่ได้ → (None, None)
     """
     if not url_path:
         return None, None
 
-    # 🔍 Debug: แสดง path ที่กำลังหา
-    print(f"[DEBUG] กำลังหารูป: {url_path}")
+    print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
 
-    # 1) local file
-    public_root = _find_public_root()
-    print(f"[DEBUG] public_root = {public_root}")
+    # 1) หา backend/uploads โดยตรง (เพราะ public_root อาจไม่มี uploads)
+    backend_root = Path(__file__).resolve().parents[2]  # จาก templates/ ขึ้น 2 ชั้น = backend/
+    uploads_root = backend_root / "uploads"
     
-    if public_root:
-        local_path = public_root / url_path.lstrip("/")
-        print(f"[DEBUG] ตรวจสอบไฟล์: {local_path}")
+    print(f"[DEBUG] backend_root = {backend_root}")
+    print(f"[DEBUG] uploads_root = {uploads_root}")
+
+    if uploads_root.exists():
+        # url_path เช่น "/uploads/pm/Klongluang3/..." หรือ "uploads/pm/..."
+        # ต้องตัด "uploads/" ออกเพราะเราชี้ไปที่ uploads_root แล้ว
+        clean_path = url_path.lstrip("/")
+        if clean_path.startswith("uploads/"):
+            clean_path = clean_path[8:]  # ตัด "uploads/" ออก
+        
+        local_path = uploads_root / clean_path
+        print(f"[DEBUG] 📂 ตรวจสอบไฟล์: {local_path}")
         
         if local_path.exists() and local_path.is_file():
-            print(f"[DEBUG] ✅ เจอไฟล์: {local_path}")
+            print(f"[DEBUG] ✅ เจอไฟล์แล้ว!")
             return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
         else:
-            print(f"[DEBUG] ❌ ไม่เจอไฟล์: {local_path}")
+            print(f"[DEBUG] ❌ ไม่เจอไฟล์ที่: {local_path}")
+    else:
+        print(f"[DEBUG] ⚠️ ไม่มีโฟลเดอร์ uploads: {uploads_root}")
 
-    # 2) HTTP(S)
+    # 2) ลอง public_root (กรณีรูปอยู่ใน public/)
+    public_root = _find_public_root()
+    if public_root:
+        local_path = public_root / url_path.lstrip("/")
+        print(f"[DEBUG] 📂 ลองหาใน public: {local_path}")
+        
+        if local_path.exists() and local_path.is_file():
+            print(f"[DEBUG] ✅ เจอไฟล์ใน public!")
+            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+
+    # 3) ดาวน์โหลดผ่าน HTTP
     base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
     print(f"[DEBUG] PHOTOS_BASE_URL = {base_url}")
     
-    if base_url:
-        if requests is None:
-            print("[DEBUG] ❌ ไม่มี requests library")
-            return None, None
-        
+    if base_url and requests is not None:
         full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
-        print(f"[DEBUG] พยายามดาวน์โหลดจาก: {full_url}")
+        print(f"[DEBUG] 🌐 พยายามดาวน์โหลดจาก: {full_url}")
         
         try:
             resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
@@ -559,10 +542,10 @@ def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, 
             return bio, _guess_img_type_from_ext(full_url)
         except Exception as e:
             print(f"[DEBUG] ❌ ดาวน์โหลดล้มเหลว: {e}")
-            return None, None
 
-    print("[DEBUG] ❌ ไม่มี public_root และไม่มี base_url")
+    print("[DEBUG] ❌ ไม่พบรูปภาพจากทุกวิธี")
     return None, None
+
 
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     """
@@ -581,11 +564,11 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
 # -------------------------------------
 PHOTO_MAX_PER_ROW = 3
-PHOTO_IMG_MAX_H   = 35
+PHOTO_IMG_MAX_H   = 60
 PHOTO_GAP         = 3
 PHOTO_PAD_X       = 2
-PHOTO_PAD_Y       = 2
-PHOTO_ROW_MIN_H   = 10
+PHOTO_PAD_Y       = 4
+PHOTO_ROW_MIN_H   = 15
 PHOTO_FONT_SMALL  = 10
 PHOTO_LINE_H      = 6
 
@@ -624,6 +607,7 @@ def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, 
 
     # เตรียมรายการรูป (สูงสุด PHOTO_MAX_PER_ROW)
     images = (image_items or [])[:PHOTO_MAX_PER_ROW]
+    pdf.set_font(base_font, "", FONT_MAIN)  # "" = ไม่หนา, "B" = หนา
 
     for i in range(PHOTO_MAX_PER_ROW):
         if i > 0:
@@ -897,9 +881,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         # วาดแถว
         row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, question_text, img_items)
         y += row_h_used
-
-
-
 
     
     return _output_pdf_bytes(pdf)
