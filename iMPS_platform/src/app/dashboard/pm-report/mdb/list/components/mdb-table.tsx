@@ -151,10 +151,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     cache: "no-store",
   };
 
-  const fetchOpts: RequestInit = {
-    headers: makeHeaders(),
-    ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
-  };
+  // const fetchOpts: RequestInit = {
+  //   headers: makeHeaders(),
+  //   ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
+  // };
 
   function thDate(iso?: string) {
     if (!iso) return "-";
@@ -620,36 +620,36 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [urlText, setUrlText] = useState("");
+  // const [urlText, setUrlText] = useState("");
 
-  async function uploadUrls() {
-    if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
+  // async function uploadUrls() {
+  //   if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
+  //   if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
 
-    const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
-    if (!urls.length) { alert("กรุณากรอก URL"); return; }
+  //   const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
+  //   if (!urls.length) { alert("กรุณากรอก URL"); return; }
 
-    const fd = new FormData();
-    fd.append("station_id", stationId);
-    // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
-    fd.append("rows", JSON.stringify({ reportDate, urls }));
-    fd.append("issue_id", issueId);
-    urls.forEach(u => fd.append("urls", u)); 
+  //   const fd = new FormData();
+  //   fd.append("station_id", stationId);
+  //   // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
+  //   fd.append("rows", JSON.stringify({ reportDate, urls }));
+  //   fd.append("issue_id", issueId);
+  //   urls.forEach(u => fd.append("urls", u)); 
 
-    // const res = await fetch(`${apiBase}/pmurl/upload`, {
-    const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
-      method: "POST",
-      body: fd,
-      credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
-    });
+  //   // const res = await fetch(`${apiBase}/pmurl/upload`, {
+  //   const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
+  //     method: "POST",
+  //     body: fd,
+  //     credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
+  //   });
 
-    if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
-    alert("อัปโหลดสำเร็จ");
-    setDateOpen(false);
-    setUrlText("");
+  //   if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
+  //   alert("อัปโหลดสำเร็จ");
+  //   setDateOpen(false);
+  //   setUrlText("");
 
 
-  }
+  // }
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
