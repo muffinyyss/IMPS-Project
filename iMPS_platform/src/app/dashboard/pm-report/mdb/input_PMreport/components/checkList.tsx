@@ -249,7 +249,7 @@ function PassFailRow({
     onChange: (v: Exclude<PF, "">) => void; // PASS | FAIL | NA
     remark?: string;
     onRemarkChange?: (v: string) => void;
-    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; 
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
 }) {
     return (
         <div className="tw-space-y-3 tw-py-3">
@@ -399,6 +399,57 @@ function PhotoMultiInput({
     );
 }
 
+
+const PM_TYPE_CODE = "MB";
+
+function makePrefix(typeCode: string, dateISO: string) {
+    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+    const yy = String(d.getFullYear()).slice(2);
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `PM-${typeCode}-${yy}${mm}-`; // ตัวอย่าง: PM-CG-2511-
+}
+
+function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
+    const prefix = makePrefix(typeCode, dateISO);
+    const s = String(latestFromDb || "").trim();
+    if (!s || !s.startsWith(prefix)) return `${prefix}01`;     // เริ่มที่ 01 ถ้ายังไม่มีของเดือนนี้
+    const m = s.match(/(\d+)$/);
+    const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
+    const n = (m ? parseInt(m[1], 10) : 0) + 1;
+    return `${prefix}${n.toString().padStart(pad, "0")}`;
+}
+
+async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
+    const u = new URL(`${API_BASE}/mdbpmreport/list`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("page", "1");
+    u.searchParams.set("pageSize", "50");
+    u.searchParams.set("_ts", String(Date.now()));
+
+    const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
+    if (!r.ok) return null;
+
+    const j = await r.json();
+    const items: any[] = Array.isArray(j?.items) ? j.items : [];
+    if (!items.length) return null;
+
+    const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+
+    // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
+    const samePrefix = items
+        .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
+        .filter(iid => iid.startsWith(prefix));
+
+    if (!samePrefix.length) return null;
+
+    // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
+    const toTailNum = (iid: string) => {
+        const m = iid.match(/(\d+)$/);
+        return m ? parseInt(m[1], 10) : -1;
+    };
+    return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
+}
+
 /* =========================
  *        MAIN
  * ========================= */
@@ -420,11 +471,13 @@ export default function CheckList({ onComplete }: CheckListProps) {
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
     const key = useMemo(() => draftKey(stationId), [stationId]);
-    const [สรุปผล, setสรุปผล] = useState<PF>("");
+    // const [สรุปผล, setสรุปผล] = useState<PF>("");
+    const [summaryCheck, setSummaryCheck] = useState<PF>("");
 
 
     /* ---------- job info ---------- */
     const [job, setJob] = useState({
+        issue_id: "",
         chargerNo: "",
         sn: "",
         model: "",
@@ -523,6 +576,69 @@ export default function CheckList({ onComplete }: CheckListProps) {
         window.addEventListener("station:info", onInfo as EventListener);
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+        (async () => {
+            try {
+                const latest = await fetchLatestIssueIdFromList(stationId, job.date);
+                const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
+                if (!canceled) {
+                    const prefix = makePrefix(PM_TYPE_CODE, job.date);
+                    setJob(prev => {
+                        // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
+                        if (prev.issue_id?.startsWith(prefix)) return prev;
+                        return { ...prev, issue_id: next };
+                    });
+                }
+            } catch {
+                if (!canceled) {
+                    const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
+                    setJob(prev => ({ ...prev, issue_id: fallback }));
+                }
+            }
+        })();
+
+        return () => { canceled = true; };
+    }, [stationId, job.date]);
+
+    // useEffect(() => {
+    //         if (!stationId || !job.date || job.issue_id) return; // ถ้ามีใน draft แล้วจะไม่ทับ
+
+    //         let canceled = false;
+    //         (async () => {
+    //             try {
+    //                 const latest = await fetchLatestIssueIdFromList(stationId, job.date);
+    //                 const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
+    //                 if (!canceled) setJob(prev => ({ ...prev, issue_id: next }));
+    //             } catch {
+    //                 const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
+    //                 if (!canceled) setJob(prev => ({ ...prev, issue_id: fallback }));
+    //             }
+    //         })();
+
+    //         return () => { canceled = true; };
+    //     }, [stationId, job.date, job.issue_id]);
+
+    // useEffect(() => {
+    //         if (!stationId || !job.date ) return; // ถ้ามีใน draft แล้วจะไม่ทับ
+
+    //         let canceled = false;
+    //         (async () => {
+    //             try {
+    //                 const latest = await fetchLatestIssueIdFromList(stationId, job.date);
+    //                 const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
+    //                 if (!canceled) setJob(prev => ({ ...prev, issue_id: next }));
+    //             } catch {
+    //                 const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
+    //                 if (!canceled) setJob(prev => ({ ...prev, issue_id: fallback }));
+    //             }
+    //         })();
+
+    //         return () => { canceled = true; };
+    //     }, [stationId, job.date, job.issue_id]);
 
     const makePhotoSetter =
         (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> =>
@@ -831,6 +947,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
         if (!res.ok) throw new Error(await res.text());
     }
 
+
     const onFinalSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
         if (submitting) return;
@@ -839,6 +956,17 @@ export default function CheckList({ onComplete }: CheckListProps) {
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
 
+            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+            const payload = {
+                station_id: stationId,
+                issue_id: issueIdFromJob,
+                job,
+                rows,
+                measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
+                summary,
+                pm_date,
+                ...(summaryCheck ? { summaryCheck } : {}),
+            };
             // 1) สร้างรายงาน (submit)
             // const res = await fetch(`${API_BASE}/pmreport/submit`, {
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
@@ -848,14 +976,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
                     ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 },
                 credentials: "include",
-                body: JSON.stringify({
-                    station_id: stationId,
-                    job,
-                    rows,
-                    measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
-                    summary,
-                    pm_date,
-                }),
+                body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
             const { report_id } = await res.json();
@@ -896,7 +1017,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
         <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
             {/* Job Info */}
             <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
 
                     {/* <Input
                         label="เครื่องประจุไฟฟ้าที่"
@@ -906,6 +1027,16 @@ export default function CheckList({ onComplete }: CheckListProps) {
                         readOnly
                         className="!tw-bg-blue-gray-50"
                     /> */}
+                    <Input
+                        label="Issue id"
+                        value={job.issue_id || "-"}
+                        readOnly
+                        // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
+                        crossOrigin=""
+                        containerProps={{ className: "!tw-min-w-0" }}
+                        className="!tw-w-full !tw-bg-blue-gray-50"
+                    />
+
                     <Input
                         label="Location / สถานที่"
                         value={job.station_name}
@@ -982,8 +1113,8 @@ export default function CheckList({ onComplete }: CheckListProps) {
                 <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
                     <PassFailRow
                         label="สรุปผลการตรวจสอบ"
-                        value={สรุปผล}
-                        onChange={(v) => setสรุปผล(v)}
+                        value={summaryCheck}
+                        onChange={(v) => setSummaryCheck(v)}
                         labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
                             PASS: "Pass : ผ่าน",
                             FAIL: "Fail : ไม่ผ่าน",

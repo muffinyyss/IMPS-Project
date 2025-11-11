@@ -524,23 +524,51 @@ export default function CheckList({ onComplete }: CheckListProps) {
     /* ---------- measure group (เฉพาะข้อ 17) ---------- */
     const m17 = useMeasure<UnitVoltage>(VOLTAGE1_FIELDS, "V");
 
+    // useEffect(() => {
+    //     if (!stationId || !job.date ) return; // ถ้ามีใน draft แล้วจะไม่ทับ
+
+    //     let canceled = false;
+    //     (async () => {
+    //         try {
+    //             const latest = await fetchLatestIssueIdFromList(stationId, job.date);
+    //             const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
+    //             if (!canceled) setJob(prev => ({ ...prev }));
+    //         } catch {
+    //             const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
+    //             if (!canceled) setJob(prev => ({ ...prev }));
+    //         }
+    //     })();
+
+    //     return () => { canceled = true; };
+    // }, [stationId, job.date]);
+
     useEffect(() => {
-        if (!stationId || !job.date || job.issue_id) return; // ถ้ามีใน draft แล้วจะไม่ทับ
+        if (!stationId || !job.date) return;
 
         let canceled = false;
         (async () => {
             try {
                 const latest = await fetchLatestIssueIdFromList(stationId, job.date);
                 const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-                if (!canceled) setJob(prev => ({ ...prev, issue_id: next }));
+                if (!canceled) {
+                    const prefix = makePrefix(PM_TYPE_CODE, job.date);
+                    setJob(prev => {
+                        // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
+                        if (prev.issue_id?.startsWith(prefix)) return prev;
+                        return { ...prev, issue_id: next };
+                    });
+                }
             } catch {
-                const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-                if (!canceled) setJob(prev => ({ ...prev, issue_id: fallback }));
+                if (!canceled) {
+                    const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
+                    setJob(prev => ({ ...prev, issue_id: fallback }));
+                }
             }
         })();
 
         return () => { canceled = true; };
-    }, [stationId, job.date, job.issue_id]);
+    }, [stationId, job.date]);
+
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
