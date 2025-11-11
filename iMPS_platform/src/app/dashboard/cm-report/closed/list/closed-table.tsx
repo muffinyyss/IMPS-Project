@@ -246,7 +246,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         // ⬇️ ใช้ helper ใหม่
         const id = extractId(it);
         // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/download` : "";
-        const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
+        const generatedUrl = id ? `${apiBase}/pdf/cm/${encodeURIComponent(id)}/file` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
 

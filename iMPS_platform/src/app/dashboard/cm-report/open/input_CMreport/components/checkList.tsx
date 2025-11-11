@@ -94,9 +94,22 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 export default function CMOpenForm() {
     const router = useRouter();
     const searchParams = useSearchParams();                  // 👈
-    const stationId = searchParams.get("station_id");
+    // const stationId = searchParams.get("station_id");
+    const [stationId, setStationId] = useState<string | null>(null);
+
     const editId = searchParams.get("edit_id") ?? "";
     const isEdit = !!editId;
+
+    useEffect(() => {
+        const sidFromUrl = searchParams.get("station_id");
+        if (sidFromUrl) {
+            setStationId(sidFromUrl);
+            localStorage.setItem("selected_station_id", sidFromUrl);
+            return;
+        }
+        const sidLocal = localStorage.getItem("selected_station_id");
+        setStationId(sidLocal);
+    }, [searchParams]);
 
     const STATUS_OPTIONS = useMemo<Status[]>(
         () => (isEdit ? ["", "Open", "In Progress"] : ["", "Open"]),
