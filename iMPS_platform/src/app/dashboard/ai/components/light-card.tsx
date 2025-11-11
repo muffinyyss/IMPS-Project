@@ -951,6 +951,8 @@ function AiItemCard({
     else setLocalEnabled(next);
   };
 
+  const displayValue = value ? (Number(item.progress) || 0) : 0;
+
   return (
     <Card
       variant="gradient"
@@ -990,7 +992,8 @@ function AiItemCard({
           <div className="tw-mx-auto tw-max-w-[220px] tw-w-full">
             <CircleProgress
               label="Health Index"
-              value={item.progress ?? 0}
+              // value={item.progress ?? 0}
+              value={displayValue}
               valueClassName={value ? "tw-text-white" : "tw-text-blue-gray-900"}
               labelClassName={value ? "tw-text-white/80" : "tw-text-blue-gray-600"}
               colorClass={value ? undefined : "tw-text-blue-gray-400"}
