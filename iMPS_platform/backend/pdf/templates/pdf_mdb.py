@@ -445,7 +445,7 @@ def _load_image_source_from_urlpath(
 # -------------------- data helpers --------------------
 def _r_idx(k: str) -> int:
     m = re.match(r"r(\d+)$", k.lower())
-    return int(m.group(1)) if m else 10_000
+    return int(m.group(1)) if m else ""
 
 
 def _format_voltage_measurement(measures: dict, key: str) -> str:
