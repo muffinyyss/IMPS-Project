@@ -561,35 +561,48 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.office,
       id: "pdf",
-      header: () => "pdf",
+      header: () => "PDF",
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
-        const baseUrl = info.getValue() as string | undefined; // เช่น http://localhost:8000/pdf/<id>/file
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
-        const viewUrl = hasUrl ? `${baseUrl}` : undefined;           // inline (พรีวิว)
+
+        if (!hasUrl) {
+          return <span className="tw-text-blue-gray-300" title="No file">—</span>;
+        }
+
+        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
         return (
-          <a
-            // href={hasUrl ? url : undefined}
-            href={viewUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
-            className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-              ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-            aria-disabled={!hasUrl}
-            title={hasUrl ? "Download PDF" : "No file"}
-          >
-            <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-            <span className="tw-sr-only">Download PDF</span>
-          </a>
+          <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+            <a
+              aria-label="Preview"
+              href={previewHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+              title="Preview"
+            >
+              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+            </a>
+            {/*
+            <a
+              aria-label="Download"
+              href={downloadHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+              title="Download"
+            >
+              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+            </a>
+            */}
+          </div>
         );
       },
-
-      size: 80,
-      minSize: 64,
-      maxSize: 120,
+      size: 150,
+      minSize: 120,
+      maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
 
