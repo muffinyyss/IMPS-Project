@@ -846,7 +846,7 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
                 item_w,
                 result_w,
                 remark_w,
-                group_title=doc.get("groupTitle", "ตู้ MDB"),
+                group_title=doc.get("groupTitle", "Main Distribution Board (MDB)"),
             )
             pdf.set_font(base_font, "", FONT_MAIN)
 
