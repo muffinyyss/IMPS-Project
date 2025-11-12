@@ -1,4 +1,3 @@
-
 # backend/pdf/templates/pdf_charger.py
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
@@ -8,8 +7,6 @@ import re
 from typing import Optional, Tuple, List, Dict, Any, Union
 import base64
 from io import BytesIO
-import math
-
 try:
     import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
 except Exception:
@@ -23,7 +20,6 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
     "I": ["THSarabunNew-Italic.ttf", "THSarabunNew Italic.ttf", "TH Sarabun New Italic.ttf", "THSarabun Italic.ttf"],
     "BI":["THSarabunNew-BoldItalic.ttf", "THSarabunNew BoldItalic.ttf", "TH Sarabun New BoldItalic.ttf", "THSarabun BoldItalic.ttf"],
 }
-
 
 def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
     """
@@ -269,381 +265,29 @@ def _resolve_logo_path() -> Optional[Path]:
                 return p
     return None
 
-def _fmt_devices(device) -> str:
-    if device is None:
-        return "-"
-    if isinstance(device, (list, tuple, set)):
-        vals = [str(v).strip() for v in device if str(v).strip()]
-        return "\n".join(vals) if vals else "-"
-    return str(device)
-
-def _fmt_actions(items) -> str:
-    """
-    รับได้ทั้ง list[dict] หรือ list[str] หรือสตริงเดี่ยว
-    คืนค่าเป็นหลายบรรทัด:
-      1) ข้อความแรก
-      2) ข้อความสอง
-      ...
-    """
-    if items is None:
-        return "-"
-    # ถ้าเป็นสตริงเดี่ยว ก็ใช้เลย
-    if isinstance(items, str):
-        return items.strip() or "-"
-    # ถ้าเป็นลิสต์
-    if isinstance(items, (list, tuple)):
-        lines = []
-        for i, it in enumerate(items, 1):
-            if isinstance(it, dict):
-                t = str((it or {}).get("text") or "").strip()
-            else:
-                t = str(it).strip()
-            lines.append(f"{i}) {t if t else '-'}")
-        return "\n".join(lines) if lines else "-"
-    # อื่น ๆ
-    return str(items) or "-"
-
-def _resolve_action_image_source(img_item: dict, doc: dict):
-    """
-    รับ img_item เช่น {"url": "/uploads/...", ...} หรือ {"name": "image.png"}
-    พยายามสร้างพาธให้ครบแล้วเรียก _load_image_source_from_urlpath()
-    """
-    url = (img_item or {}).get("url") or (img_item or {}).get("path") or ""
-    if not url:
-        # ถ้ามีแต่ name ให้เดา base จาก doc (ปรับได้ตามระบบเก็บไฟล์ของคุณ)
-        name = (img_item or {}).get("name")
-        if name:
-            base = doc.get("actions_base") or doc.get("photos_base") or "/uploads/corrective_actions"
-            url = f"{base.rstrip('/')}/{name}"
-    if not url:
-        return None, None
-    return _load_image_source_from_urlpath(url)
-
-ACT_MAX_COLS = 3
-ACT_IMG_H    = 30
-ACT_IMG_GAP  = 3
-
-def _draw_images_grid(pdf: FPDF, x: float, y: float, w: float, images: list, doc: dict) -> float:
-    if not images:
-        return 0.0
-    # กรอบภายใน
-    inner_x = x + PADDING_X
-    inner_w = w - 2 * PADDING_X
-    slot_w = (inner_w - (ACT_MAX_COLS - 1) * ACT_IMG_GAP) / ACT_MAX_COLS
-
-    row_y = y + PADDING_Y
-    col = 0
-    for i, img in enumerate(images):
-        if col == ACT_MAX_COLS:
-            col = 0
-            row_y += ACT_IMG_H + ACT_IMG_GAP
-        cx = inner_x + col * (slot_w + ACT_IMG_GAP)
-        src, img_type = _resolve_action_image_source(img, doc)
-        try:
-            if src is not None:
-                pdf.image(src, x=cx, y=row_y, w=slot_w, h=ACT_IMG_H, type=(img_type or None))
-            else:
-                pdf.rect(cx, row_y, slot_w, ACT_IMG_H)   # placeholder
-        except Exception:
-            pdf.rect(cx, row_y, slot_w, ACT_IMG_H)
-        col += 1
-
-    # ความสูงที่ใช้จริง (บวก padding ล่าง)
-    rows = math.ceil(len(images) / ACT_MAX_COLS)
-    return 2 * PADDING_Y + rows * ACT_IMG_H + (rows - 1) * ACT_IMG_GAP
-
 def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float,
-                         station_name: str, found_date: str, device_text: str,
-                         cm_date: str, reporter_text: str, severity: str,
-                         problem_type: str, problem_detail: str, cause: str,
-                         preventive_items: list,
-                         corrective_actions,remark: str,
-                         doc=None,
-                         ) -> float:
-    
-
-    pdf.set_line_width(LINE_W_INNER)
-
-    # --- layout ---
-    top_row_h = 8.5
-    col_w  = w / 3.0
-    half_w = w / 2.0
+                         station_name: str, model: str, sn: str, pm_date: str) -> float:
+    row_h = 8.5
+    col_w = w / 2.0
     label_w = 30
-
-    # ค่าแสดงผล
-    dev_value = str(device_text or "-")
-    rep_value = str(reporter_text or "-")
-    severity  = str(severity or "-")
-    problem_type = str(problem_type or "-")
-    problem_detail = str(problem_detail or "-")
-    cause = str(cause or "-")
-    # preventive_text = str(preventive_text or "-")
-    remark = str(remark or "-")
-
-    # ความสูงแถวกลาง (ขึ้นกับบรรทัดจริง)
-    val_w_left  = half_w - 2 * PADDING_X - label_w
-    val_w_right = half_w - 2 * PADDING_X - label_w
-    _, dev_h_val = _split_lines(pdf, val_w_left,  dev_value, LINE_H)
-    _, rep_h_val = _split_lines(pdf, val_w_right, rep_value, LINE_H)
-    middle_row_h = max(ROW_MIN_H, 2 * PADDING_Y + max(dev_h_val, rep_h_val))
-
-    # ===== คำนวณความสูงแถวล่างแบบไดนามิก (ยังไม่วาดกรอบ) =====
-    inner_w_full = w - 2 * PADDING_X
-
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    lab_sev_txt   = "ความรุนแรง : "
-    lab_type_txt  = "ประเภทปัญหา : "
-    lab_det_txt   = "รายละเอียด : "
-    lab_cause_txt = "สาเหตุ : "
-    lab_fix_txt   = "ข้อ : "
-    lab_note_txt  = "หมายเหตุ : "
-
-    lab_sev_w   = pdf.get_string_width(lab_sev_txt)
-    lab_type_w  = pdf.get_string_width(lab_type_txt)
-    lab_det_w   = pdf.get_string_width(lab_det_txt)
-    lab_cause_w = pdf.get_string_width(lab_cause_txt)
-    lab_fix_w   = pdf.get_string_width(lab_fix_txt)
-    lab_note_w  = pdf.get_string_width(lab_note_txt)
-
-    # เตรียมข้อมูลส่วนต่าง ๆ
-    actions = corrective_actions or []
-    doc = doc or {}
-    # prevent_items = doc.get("preventive_action") or []
-    # if isinstance(prevent_items, str):
-    #     prevent_items = [prevent_items]
-    note_text = str(doc.get("remarks") or "-")
-
-    pdf.set_font(base_font, "", FONT_MAIN)
-    _, sev_h   = _split_lines(pdf, inner_w_full - lab_sev_w,   severity,       LINE_H)
-    _, type_h  = _split_lines(pdf, inner_w_full - lab_type_w,  problem_type,   LINE_H)
-    _, det_h   = _split_lines(pdf, inner_w_full - lab_det_w,   problem_detail, LINE_H)
-    _, cause_h = _split_lines(pdf, inner_w_full - lab_cause_w, cause,          LINE_H)
-
-    detail_header_h  = LINE_H  # หัวข้อ "รายละเอียดปัญหา"
-    fix_header_h     = LINE_H  # หัวข้อ "การแก้ไข"
-    prevent_header_h = LINE_H  # หัวข้อ "วิธีการป้องกัน"
-    note_header_h    = LINE_H  # หัวข้อ "หมายเหตุ"
-
-    fix_text_w = inner_w_full - lab_fix_w
-
-    # รวมความสูงทุก action (ข้อความ + รูป)
-    actions_total_h = 0.0
-    for idx, act in enumerate(actions, 1):
-        text = str((act or {}).get("text") or "-")
-        _, t_h = _split_lines(pdf, fix_text_w, f"{idx}) {text}", LINE_H)
-        t_h = max(LINE_H, t_h)
-
-        imgs = (act or {}).get("images") or []
-        rows = math.ceil(len(imgs) / ACT_MAX_COLS) if imgs else 0
-        img_block_h = 0.0
-        if rows > 0:
-            img_block_h = 2 * PADDING_Y + rows * ACT_IMG_H + (rows - 1) * ACT_IMG_GAP
-
-        actions_total_h += t_h + img_block_h
-
-    # ---- ความสูงส่วน "วิธีการป้องกัน"
-    preventive_list = preventive_items or []
-    if isinstance(preventive_list, (str, dict)):
-        preventive_list = [preventive_list]
-    
-    preventive_total_h = 0.0
-    for idx, act in enumerate(preventive_list, 1):
-        if isinstance(act, dict):
-            text = str((act or {}).get("text") or "-")
-        else:
-            text = str(act).strip() or "-"
-        _, t_h = _split_lines(pdf, fix_text_w, f"{idx}) {text}", LINE_H)
-        preventive_total_h += max(LINE_H, t_h)
-    if not preventive_list:
-        preventive_total_h = LINE_H
-
-    # ---- ความสูงส่วน "หมายเหตุ"
-    _, note_h = _split_lines(pdf, inner_w_full - lab_note_w, note_text, LINE_H)
-    note_h = max(LINE_H, note_h)
-
-    bottom_row_h = max(
-        ROW_MIN_H,
-        2 * PADDING_Y
-        + detail_header_h
-        + max(LINE_H, sev_h)
-        + max(LINE_H, type_h)
-        + max(LINE_H, det_h)
-        + max(LINE_H, cause_h)
-        + fix_header_h
-        + actions_total_h
-        + prevent_header_h
-        + preventive_total_h
-        + note_header_h
-        + note_h
-    )
-
-     # ===== ค่อยวาดกรอบ/เส้นคั่น "ครั้งเดียว" หลังคำนวณเสร็จ =====
-    natural_box_h = top_row_h + middle_row_h + bottom_row_h
-    # 👇 เพิ่ม 4 บรรทัดนี้เพื่อยืดกรอบให้เต็มหน้าถึงขอบล่าง (ภายใน margin)
-    page_bottom_y = pdf.h - pdf.b_margin
-    available_h   = max(0.0, page_bottom_y - y)       # ความสูงที่เหลือบนหน้านี้
-    box_h         = max(natural_box_h, available_h)   # ยืดลงจนสุดหน้าถ้าข้อมูลน้อย
-
+    box_h = row_h * 2
+    pdf.set_line_width(LINE_W_INNER)
     pdf.rect(x, y, w, box_h)
-    pdf.line(x, y + top_row_h,                x + w, y + top_row_h)                 # คั่นบน/กลาง
-    pdf.line(x, y + top_row_h + middle_row_h, x + w, y + top_row_h + middle_row_h)  # คั่นกลาง/ล่าง
+    pdf.line(x + col_w, y, x + col_w, y + box_h)   # คอลัมน์
+    pdf.line(x, y + row_h, x + w, y + row_h)       # แถว
 
-
-    # ===== ค่อยวาดกรอบ/เส้นคั่น "ครั้งเดียว" หลังคำนวณเสร็จ =====
-    # box_h = top_row_h + middle_row_h + bottom_row_h
-    # pdf.rect(x, y, w, box_h)
-    # pdf.line(x, y + top_row_h,                x + w, y + top_row_h)                 # คั่นบน/กลาง
-    # pdf.line(x, y + top_row_h + middle_row_h, x + w, y + top_row_h + middle_row_h)  # คั่นกลาง/ล่าง
-
-    # ---- แถวบน (3 ช่อง) ----
-    def _kv(x0, y0, col_width, label, value, row_h):
+    def _item(x0, y0, label, value):
         pdf.set_xy(x0 + 2, y0 + 1.5)
         pdf.set_font(base_font, "B", FONT_MAIN)
         pdf.cell(label_w, row_h - 3, label, border=0, align="L")
         pdf.set_font(base_font, "", FONT_MAIN)
         pdf.set_xy(x0 + 2 + label_w, y0 + 1.5)
-        pdf.cell(col_width - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
+        pdf.cell(col_w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
 
-    pdf.line(x + col_w,   y, x + col_w,   y + top_row_h)
-    pdf.line(x + 2*col_w, y, x + 2*col_w, y + top_row_h)
-    _kv(x,            y, col_w, "สถานที่",       station_name, top_row_h)
-    _kv(x + col_w,    y, col_w, "วันที่เกิดเหตุ", found_date,   top_row_h)
-    _kv(x + 2*col_w,  y, col_w, "วันที่ตรวจสอบ",  cm_date,      top_row_h)
-
-    # ---- แถวกลาง (อุปกรณ์ | ผู้รายงาน) ----
-    ly = y + top_row_h
-    pdf.line(x + half_w, ly, x + half_w, ly + middle_row_h)
-
-    lx = x
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(lx + PADDING_X, ly + PADDING_Y)
-    pdf.cell(label_w, LINE_H, "อุปกรณ์", border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(lx + PADDING_X + label_w, ly + PADDING_Y)
-    pdf.multi_cell(val_w_left, LINE_H, dev_value, border=0, align="L")
-
-    rx = x + half_w
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(rx + PADDING_X, ly + PADDING_Y)
-    pdf.cell(label_w, LINE_H, "ผู้รายงาน", border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(rx + PADDING_X + label_w, ly + PADDING_Y)
-    pdf.multi_cell(val_w_right, LINE_H, rep_value, border=0, align="L")
-
-    # ---- แถวล่าง (หัวข้อ + รายการค่า) ----
-    by = y + top_row_h + middle_row_h
-    inner_x = x + PADDING_X
-    cur_y = by + PADDING_Y
-
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(inner_x, cur_y)
-    pdf.cell(inner_w_full, LINE_H, "รายละเอียดปัญหา", border=0, align="L")
-    cur_y += detail_header_h
-
-    # ความรุนแรง
-    pdf.set_xy(inner_x, cur_y); pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(lab_sev_w, LINE_H, lab_sev_txt, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_sev_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_sev_w, LINE_H, severity, border=0, align="L")
-    cur_y += max(LINE_H, sev_h)
-
-    # ประเภทปัญหา
-    pdf.set_xy(inner_x, cur_y); pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(lab_type_w, LINE_H, lab_type_txt, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_type_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_type_w, LINE_H, problem_type, border=0, align="L")
-    cur_y += max(LINE_H, type_h)
-
-    # รายละเอียด :
-    pdf.set_xy(inner_x, cur_y); pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(lab_det_w, LINE_H, lab_det_txt, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_det_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_det_w, LINE_H, problem_detail, border=0, align="L")
-    cur_y += max(LINE_H, det_h)
-
-    # สาเหตุ :
-    pdf.set_xy(inner_x, cur_y); pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(lab_cause_w, LINE_H, lab_cause_txt, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_cause_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_cause_w, LINE_H, cause, border=0, align="L")
-    cur_y += max(LINE_H, cause_h)
-
-    # --- การแก้ไข ---
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(inner_x, cur_y)
-    pdf.cell(inner_w_full, LINE_H, "การแก้ไข", border=0, align="L")
-    cur_y += fix_header_h
-
-    left_label_x = inner_x
-    value_x = inner_x + lab_fix_w
-
-    for i, act in enumerate(actions, 1):
-        # label "ข้อ : "
-        pdf.set_xy(left_label_x, cur_y)
-        pdf.set_font(base_font, "B", FONT_MAIN)
-        pdf.cell(lab_fix_w, LINE_H, "ข้อ : ", border=0, align="L")
-
-        # ข้อความ
-        text = str((act or {}).get("text") or "-")
-        pdf.set_xy(value_x, cur_y)
-        pdf.set_font(base_font, "", FONT_MAIN)
-        pdf.multi_cell(fix_text_w, LINE_H, f"{i}) {text}", border=0, align="L")
-
-        # อัปเดต y ตามความสูงข้อความ
-        _, t_h = _split_lines(pdf, fix_text_w, f"{i}) {text}", LINE_H)
-        cur_y += max(LINE_H, t_h)
-
-        # รูปของข้อ i (ถ้ามี)
-        imgs = (act or {}).get("images") or []
-        if imgs:
-            used_h = _draw_images_grid(pdf, value_x, cur_y, fix_text_w, imgs, doc)
-            cur_y += used_h
-
-    # --- วิธีการป้องกัน ---
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(inner_x, cur_y)
-    pdf.cell(inner_w_full, LINE_H, "วิธีการป้องกัน", border=0, align="L")
-    cur_y += prevent_header_h
-
-    left_label_x = inner_x
-    value_x = inner_x + lab_fix_w
-
-    for i, act in enumerate(preventive_list, 1):
-        # label "ข้อ : "
-        pdf.set_xy(left_label_x, cur_y)
-        pdf.set_font(base_font, "B", FONT_MAIN)
-        pdf.cell(lab_fix_w, LINE_H, "ข้อ : ", border=0, align="L")
-
-        # ✅ ดึงข้อความ (รองรับทั้ง dict และ string)
-        if isinstance(act, dict):
-            text = str((act or {}).get("text") or "").strip()
-        else:
-            text = str(act).strip()
-        if not text:
-            text = "-"
-
-        # พิมพ์ข้อความ
-        pdf.set_xy(value_x, cur_y)
-        pdf.set_font(base_font, "", FONT_MAIN)
-        pdf.multi_cell(fix_text_w, LINE_H, f"{i}) {text}", border=0, align="L")
-
-        # อัปเดต y ตามความสูงจริงของข้อความ
-        _, t_h = _split_lines(pdf, fix_text_w, f"{i}) {text}", LINE_H)
-        cur_y += max(LINE_H, t_h)
-
-
-    # --- หมายเหตุ ---
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(inner_x, cur_y)
-    pdf.cell(lab_note_w, LINE_H, lab_note_txt, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_note_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_note_w, LINE_H, remark, border=0, align="L")
-    cur_y += note_h
+    _item(x, y, "Station", station_name)
+    _item(x + col_w, y, "Serial No.", sn)
+    _item(x, y + row_h, "Model", model)
+    _item(x + col_w, y + row_h, "PM Date", pm_date)
 
     return y + box_h
 
@@ -672,7 +316,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             cp_unit = (measures.get("cp", {}) or {}).get("unit", "")
             remark = f"CP = {cp_value}{cp_unit}"
         items.append({
-            "idx": idx,  # <<<<<<<<<<  เพิ่มบรรทัดนี้
+            "idx": idx,
             "text": f"{idx}. {title}",
             "result": _norm_result(data.get("pf", "")),
             "remark": remark,
@@ -685,13 +329,13 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_xy(x, y)
-    # pdf.cell(item_w, header_h, "Item", border=1, align="C")
-    # pdf.cell(result_w, header_h, "Result", border=1, align="C")
-    # pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
+    pdf.cell(item_w, header_h, "Item", border=1, align="C")
+    pdf.cell(result_w, header_h, "Result", border=1, align="C")
+    pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
     y += header_h
     pdf.set_fill_color(255, 230, 100)
     pdf.set_xy(x, y)
-    # pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
+    pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
     return y + 8
 
 def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str):
@@ -838,7 +482,7 @@ def _env_photo_headers() -> Optional[dict]:
 def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     """
     รับ '/uploads/pm/Klongluang3/68efc.../g1/image.png' → คืน (src, img_type)
-    1) ลองแมปเป็นไฟล์จริง: backend/uploads/...
+    1) ลองแมปเป็นไฟล์จริง: backend/uploads/pm/...
     2) ถ้าไม่เจอและมี PHOTOS_BASE_URL → ดาวน์โหลด
     3) ถ้ายังไม่ได้ → (None, None)
     """
@@ -998,27 +642,13 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_line_width(LINE_W_INNER)
 
     job = doc.get("job", {}) or {}
-    station_name = job.get("location", "-")
-    found_date = _fmt_date_thai_like_sample(job.get("found_date", "-") )
-    device = job.get("equipment_list")
-    device_text = _fmt_devices(device)
-    cm_date = _fmt_date_thai_like_sample(doc.get("cm_date", job.get("date", "-")))
+    station_name = job.get("station_name", "-")
+    model = job.get("model", "-")
+    sn = job.get("sn", "-")
+    pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
-    reporter = job.get("reported_by")
-    reporter_text = _fmt_devices(reporter)
-    severity = str(job.get("severity") or doc.get("severity") or "-")
-    problem_type = str(job.get("problem_type") or doc.get("problem_type") or "-")
-    problem_detail = str(job.get("problem_details") or doc.get("problem_details") or "-")
-    cause = str(doc.get("initial_cause") or job.get("initial_cause") or "-")
-    # preventive = job.get("preventive_action")  
-    # preventive_text = _fmt_devices(preventive)
-    preventive_items = job.get("preventive_action") or []
-    if isinstance(preventive_items, (str, dict)):
-        preventive_items = [preventive_items]
+
     checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
-    corrective_actions = doc.get("corrective_actions") or job.get("corrective_actions") or []
-    remark = job.get("remarks")
-    
 
     left = pdf.l_margin
     right = pdf.r_margin
@@ -1039,11 +669,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     # ชื่อเอกสาร
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, "Corrective Maintenance Report", border=1, ln=1, align="C")
+    pdf.cell(page_w, 10, "Preventive Maintenance Checklist - เครื่องอัดประจุไฟฟ้า", border=1, ln=1, align="C")
     y += 10
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, found_date, device_text, cm_date, reporter_text, severity, problem_type,problem_detail, cause, preventive_items,corrective_actions,remark,doc)
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date)
 
     # ตารางรายการ
     x_table = x0 + EDGE_ALIGN_FIX
@@ -1062,11 +692,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
             # หลังขึ้นหน้าใหม่ ให้วาด header แล้ววาดหัวตารางด้วย
-            # y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
+            y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
             pdf.set_font(base_font, "", FONT_MAIN)
 
     # วาดหัวตารางแรก
-    # y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
+    y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
     for it in checks:
@@ -1092,7 +722,166 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.set_draw_color(0, 0, 0)
 
+    # ส่วน Comment & Summary
+    comment_x = x_table
+    comment_y = y
+    comment_item_w = item_w
+    comment_result_w = result_w
+    comment_remark_w = remark_w
+
+    h_comment = 16
+    h_summary = 10
+    h_checklist = 12
+    total_h = h_comment + h_summary + h_checklist
+    pdf.rect(comment_x, comment_y, item_w + result_w + remark_w, total_h)
+
+    pdf.set_xy(comment_x, comment_y)
+    pdf.set_font(base_font, "B", 13)
+    pdf.cell(comment_item_w, h_comment, "Comment :", border=1, align="L")
+    pdf.set_font(base_font, "", 13)
+    comment_text = str(doc.get("summary", "") or "-")
+    pdf.multi_cell(comment_result_w + comment_remark_w, h_comment, comment_text, border=1, align="L")
+    comment_y += h_comment
+
+    summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
+
+    pdf.set_xy(comment_x, comment_y)
+    pdf.set_font(base_font, "B", 13)
+    pdf.cell(comment_item_w, h_checklist, "ผลการตรวจสอบ :", border=1, align="L")
+    pdf.set_font(base_font, "", 13)
+    x_check_start = comment_x + comment_item_w + 10
+    y_check = comment_y + (h_checklist - CHECKBOX_SIZE) / 2.0
+    gap = 35
+    options = [("Pass", summary_check == "PASS"), ("Fail", summary_check == "FAIL"), ("N/A", summary_check == "N/A")]
+    for i, (label, checked) in enumerate(options):
+        x_box = x_check_start + i * gap
+        _draw_check(pdf, x_box, y_check, CHECKBOX_SIZE + 0.5, checked)
+        pdf.set_xy(x_box + CHECKBOX_SIZE + 3, y_check - 1)
+        pdf.cell(20, LINE_H + 1, label, ln=0, align="L")
+
+    pdf.rect(comment_x, comment_y, item_w + result_w + remark_w, h_checklist)
+    y = comment_y + h_checklist
+
+    # ช่องเซ็นชื่อ
+    signer_labels = ["Performed by", "Approved by", "Witnessed by"]
+    pdf.set_line_width(LINE_W_INNER)
+
+    # ใช้ความกว้างของแต่ละคอลัมน์จริงแทน col_w
+    col_widths = [item_w, result_w, remark_w]
+    row_h_header = 12
+    row_h_sig = 16
+    row_h_name = 7
+    row_h_date = 7
+    total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
+
+    _ensure_space(total_sig_h + 5)
+
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_fill_color(255, 230, 100)
+
+    # แถวหัวข้อ (Performed by, Approved by, Witnessed by)
+    x_pos = x_table
+    for i, label in enumerate(signer_labels):
+        pdf.set_xy(x_pos, y)
+        pdf.cell(col_widths[i], row_h_header, label, border=1, align="C", fill=True)
+        x_pos += col_widths[i]
+    y += row_h_header
+
+    # แถวลายเซ็น
+    x_pos = x_table
+    for i in range(3):
+        pdf.rect(x_pos, y, col_widths[i], row_h_sig)
+        x_pos += col_widths[i]
+    y += row_h_sig
+
+    # แถวชื่อ
+    pdf.set_font(base_font, "", FONT_MAIN)
+    x_pos = x_table
+    for i in range(3):
+        pdf.rect(x_pos, y, col_widths[i], row_h_name)
+        name_text = f"( {' ' * 40} )"
+        pdf.set_xy(x_pos, y)
+        pdf.cell(col_widths[i], row_h_name, name_text, border=0, align="C")
+        x_pos += col_widths[i]
+    y += row_h_name
+
+    # แถววันที่
+    x_pos = x_table
+    for i in range(3):
+        pdf.rect(x_pos, y, col_widths[i], row_h_date)
+        date_text = "Date : " + " " * 9
+        margin_left = 5
+        pdf.set_xy(x_pos + margin_left, y)
+        pdf.cell(col_widths[i] - margin_left, row_h_date, date_text, border=0, align="L")
+        x_pos += col_widths[i]
+    y += row_h_date
+
+    # -------------------------------
+    # ขึ้นหน้าใหม่สำหรับรูป (เรียก header ทุกครั้งหลัง add_page)
+    # -------------------------------
+    pdf.add_page()
+
+    # วาด header เหมือนหน้าก่อนหน้า
+    x0 = 10
+    y = _draw_header(pdf, base_font, issue_id)  # วาดหัวกระดาษ
+
+    # ชื่อเอกสาร
+    pdf.set_xy(x0, y)
+    pdf.set_font(base_font, "B", 16)
+    pdf.cell(page_w, 10, "Preventive Maintenance Checklist", border=1, ln=1, align="C")
+    y += 10
+
+    # แสดงข้อมูลงานใต้หัวเรื่อง
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date)
     
+    # photo
+    pdf.set_xy(x0, y)
+    pdf.set_font(base_font, "B", 14)
+    pdf.set_fill_color(255, 230, 100)
+    pdf.cell(page_w, 10, "Photos", border=1, ln=1, align="C", fill=True)
+    y += 10
+
+    # ========== ตารางรูปแบบ 2 คอลัมน์: r# (ซ้าย) / g# (ขวา) ==========
+    # ตั้งค่าความกว้างคอลัมน์
+    x_table = x0 + EDGE_ALIGN_FIX
+    q_w = 85.0                       # กว้างคอลัมน์ "ข้อ/คำถาม"
+    g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w  # กว้างคอลัมน์รูป
+
+    # ฟังก์ชันตรวจพื้นที่ (ใช้ตัวเดียวกับตารางก่อนหน้า)
+    def _ensure_space_photo(height_needed: float):
+        nonlocal y
+        if y + height_needed > (pdf.h - pdf.b_margin):
+            pdf.add_page()
+            y = _draw_header(pdf, base_font, issue_id)
+            # หัวเรื่องย่อย Photos ซ้ำเมื่อขึ้นหน้าใหม่เพื่อไม่ให้สับสน
+            pdf.set_xy(x0, y)
+            pdf.set_font(base_font, "B", 14)
+            pdf.set_fill_color(255, 230, 100)
+            pdf.cell(page_w, 10, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
+            y += 10
+            y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+
+    # วาดหัวตาราง Photos
+    y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+    pdf.set_font(base_font, "", FONT_MAIN)
+
+    # วาดทีละข้อ โดย map r# -> g# จาก doc["photos"]
+    for it in checks:
+        idx = int(it.get("idx") or 0)
+        question_text = ROW_TITLES.get(f"r{idx}", it.get("text", f"{idx}. -"))
+
+        # ดึงรูป: photos.g{idx}[].url
+        img_items = _get_photo_items_for_idx(doc, idx)
+
+        # ประเมินพื้นที่ก่อนขึ้นหน้าใหม่
+        _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
+        est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
+        _ensure_space_photo(est_row_h)
+
+        # วาดแถว
+        row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, question_text, img_items)
+        y += row_h_used
+
     
     return _output_pdf_bytes(pdf)
 

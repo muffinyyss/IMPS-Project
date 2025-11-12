@@ -11,7 +11,8 @@ from .templates.pdf_ccb import generate_pdf as pdf_ccb
 from .templates.pdf_cbbox import generate_pdf as pdf_cbbox
 from .templates.pdf_station import generate_pdf as pdf_station
 from .templates.pdf_cm import generate_pdf as pdf_cm
-
+from .templates.pdf_dctest import generate_pdf as pdf_dc
+from .templates.pdf_actest import generate_pdf as pdf_ac
 router = APIRouter(prefix="/pdf", tags=["pdf"])
 
 # ✅ mapping ระหว่าง template กับ database และฟังก์ชัน generate_pdf
@@ -22,7 +23,10 @@ TEMPLATE_MAP = {
     "cbbox": {"db": "CBBOXPMReport", "func": pdf_cbbox},
     "station": {"db": "stationPMReport", "func": pdf_station},
 
-    "cm": {"db": "CMReport", "func": pdf_cm}
+    "cm": {"db": "CMReport", "func": pdf_cm},
+
+    "dc": {"db": "DCTestReport", "func": pdf_dc},
+    "ac": {"db": "ACTestReport", "func": pdf_ac},
 }
 
 

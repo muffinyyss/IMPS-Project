@@ -126,6 +126,35 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     return `${apiBase}/${s}`;
   }
 
+  function appendParam(u: string, key: string, val: string) {
+    const url = new URL(u, apiBase);
+    if (!url.searchParams.has(key)) url.searchParams.set(key, val);
+    return url.toString();
+  }
+
+  function buildHtmlLinks(baseUrl?: string) {
+    const u = (baseUrl || "").trim();
+    if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
+
+    // ตรวจจับ endpoint ใหม่ เช่น /pdf/charger/<id>/export
+    const isPdfEndpoint = /\/pdf\/(dc)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
+
+    if (isPdfEndpoint) {
+      const finalUrl = u;
+      const withStation = appendParam(finalUrl, "station_id", stationId || "");
+      return {
+        previewHref: appendParam(withStation, "dl", "0"),
+        downloadHref: appendParam(withStation, "dl", "1"),
+        isPdfEndpoint: true,
+      };
+    }
+
+    // fallback เดิม
+    return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
+  }
+
+
+
   function getStatusText(it: any) {
     return String(it?.status ?? it?.job?.status ?? "").trim();
   }
@@ -199,7 +228,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         // ⬇️ ใช้ helper ใหม่
         const id = extractId(it);
         // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/download` : "";
-        const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
+        const generatedUrl = id ? `${apiBase}/pdf/dc/${encodeURIComponent(id)}/export` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
 
@@ -296,21 +325,41 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       header: () => "pdf",
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
-        const baseUrl = info.getValue() as string | undefined; // เช่น http://localhost:8000/pdf/<id>/file
+        // const baseUrl = info.getValue() as string | undefined; // เช่น http://localhost:8000/pdf/<id>/file
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
-        const viewUrl = hasUrl ? `${baseUrl}` : undefined;           // inline (พรีวิว)
+        // const viewUrl = hasUrl ? `${baseUrl}` : undefined;           // inline (พรีวิว)
+
+        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
+
         return (
+          // <a
+          //   // href={hasUrl ? url : undefined}
+          //   href={previewHref}
+          //   target="_blank"
+          //   rel="noopener noreferrer"
+          //   onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
+          //   // className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
+          //   //       ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+          //   className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+          //   aria-disabled="Preview"
+          //   title={hasUrl ? "Download PDF" : "No file"}
+          // >
+          //   <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+          //   <span className="tw-sr-only">Download PDF</span>
+          // </a>
           <a
             // href={hasUrl ? url : undefined}
-            href={viewUrl}
+            href={previewHref}
+            aria-label="Preview"
+            // download
             target="_blank"
             rel="noopener noreferrer"
-            download
-            onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
-            className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-                  ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-            aria-disabled={!hasUrl}
+            // onClick={handleNoUrl}
+            //   className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
+            // ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+            //   aria-disabled={!hasUrl}
+            className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
             title={hasUrl ? "Download PDF" : "No file"}
           >
             <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
