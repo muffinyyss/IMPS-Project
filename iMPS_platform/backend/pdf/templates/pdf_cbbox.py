@@ -283,19 +283,23 @@ def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float
 
 def _r_idx(k: str) -> int:
     m = re.match(r"r(\d+)$", k.lower())
-    return int(m.group(1)) if m else ""
+    return int(m.group(1)) if m else 0
 
 
 def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
-    if not isinstance(rows, dict):
-        return []
+    """
+    แปลง rows -> list items สำหรับตาราง Items
+    - ถ้า rows ไม่มี/ว่าง: แสดงทุกข้อจาก ROW_TITLES (result=na) เป็น fallback
+    - คง behavior เดิมสำหรับ r15 (CP) และ r17 (m17)
+    """
     items: List[dict] = []
     measures = measures or {}
-    for key in sorted(rows.keys(), key=_r_idx):
-        idx = _r_idx(key)
-        data = rows.get(key) or {}
+
+    def _build_item(idx: int, data: dict | None) -> dict:
+        key = f"r{idx}"
         title = ROW_TITLES.get(key, f"รายการที่ {idx}")
-        remark = (data.get("remark") or "").strip()
+        remark = (data or {}).get("remark", "").strip()
+        # เงื่อนไข remark พิเศษ
         if key.lower() == "r17":
             mtxt = _format_m17(measures or {})
             if mtxt:
@@ -304,13 +308,41 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             cp_value = (measures.get("cp", {}) or {}).get("value", "-")
             cp_unit = (measures.get("cp", {}) or {}).get("unit", "")
             remark = f"CP = {cp_value}{cp_unit}"
-        items.append({
+
+        result = _norm_result((data or {}).get("pf", ""))
+        return {
             "idx": idx,
             "text": f"{idx}. {title}",
-            "result": _norm_result(data.get("pf", "")),
+            "result": result,
             "remark": remark,
-        })
+        }
+
+    # มี rows → ยึดตาม rows ก่อน
+    if isinstance(rows, dict) and rows:
+        for key in sorted(rows.keys(), key=_r_idx):
+            idx = _r_idx(key)
+            if idx <= 0:
+                continue
+            items.append(_build_item(idx, rows.get(key) or {}))
+
+        # เติมข้อที่มีใน ROW_TITLES แต่ไม่มีใน rows (เป็น N/A)
+        existing = {it["idx"] for it in items}
+        for key in sorted(ROW_TITLES.keys(), key=_r_idx):
+            idx = _r_idx(key)
+            if idx > 0 and idx not in existing:
+                items.append(_build_item(idx, None))
+        # เรียงตามเลขข้อ
+        items.sort(key=lambda x: x["idx"])
+        return items
+
+    # ไม่มี rows → แสดงทุกข้อจาก ROW_TITLES เป็น N/A
+    for key in sorted(ROW_TITLES.keys(), key=_r_idx):
+        idx = _r_idx(key)
+        if idx <= 0:
+            continue
+        items.append(_build_item(idx, None))
     return items
+
 
 
 def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
