@@ -51,17 +51,17 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const searchParams = useSearchParams();
   // const stationIdFromUrl = sp.get("station_id") ?? "";
   const [stationId, setStationId] = useState<string | null>(null);
-  
-   useEffect(() => {
-      const sidFromUrl = searchParams.get("station_id");
-      if (sidFromUrl) {
-        setStationId(sidFromUrl);
-        localStorage.setItem("selected_station_id", sidFromUrl);
-        return;
-      }
-      const sidLocal = localStorage.getItem("selected_station_id");
-      setStationId(sidLocal);
-    }, [searchParams]);
+
+  useEffect(() => {
+    const sidFromUrl = searchParams.get("station_id");
+    if (sidFromUrl) {
+      setStationId(sidFromUrl);
+      localStorage.setItem("selected_station_id", sidFromUrl);
+      return;
+    }
+    const sidLocal = localStorage.getItem("selected_station_id");
+    setStationId(sidLocal);
+  }, [searchParams]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -114,6 +114,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }
 
 
+
   function resolveFileHref(v: any, apiBase: string) {
     if (!v) return "";
     if (typeof v === "object") {
@@ -126,6 +127,33 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     if (s.startsWith("/")) return `${apiBase}${s}`;
     if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
     return `${apiBase}/${s}`;
+  }
+
+  function appendParam(u: string, key: string, val: string) {
+    const url = new URL(u, apiBase);
+    if (!url.searchParams.has(key)) url.searchParams.set(key, val);
+    return url.toString();
+  }
+
+  function buildHtmlLinks(baseUrl?: string) {
+    const u = (baseUrl || "").trim();
+    if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
+
+    // ตรวจจับ endpoint ใหม่ เช่น /pdf/charger/<id>/export
+    const isPdfEndpoint = /\/pdf\/(ac)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
+
+    if (isPdfEndpoint) {
+      const finalUrl = u;
+      const withStation = appendParam(finalUrl, "station_id", stationId || "");
+      return {
+        previewHref: appendParam(withStation, "dl", "0"),
+        downloadHref: appendParam(withStation, "dl", "1"),
+        isPdfEndpoint: true,
+      };
+    }
+
+    // fallback เดิม
+    return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
   }
 
   const fetchRows = async () => {
@@ -157,7 +185,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
 
-       const isAC = (it: any) => {
+      const isAC = (it: any) => {
         const hasStatus = it?.status != null || it?.job?.status != null;
         if (!hasStatus) return true;
         const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
@@ -197,7 +225,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         // ⬇️ ใช้ helper ใหม่
         const id = extractId(it);
         // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/download` : "";
-        const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
+        const generatedUrl = id ? `${apiBase}/pdf/ac/${encodeURIComponent(id)}/export` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
 
@@ -221,7 +249,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           name: thDate(isoDay),
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
-        } ;
+        };
       });
 
 
@@ -285,17 +313,35 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
         const viewUrl = hasUrl ? `${baseUrl}` : undefined;           // inline (พรีวิว)
+        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
         return (
+          // <a
+          //   // href={hasUrl ? url : undefined}
+          //   href={viewUrl}
+          //   target="_blank"
+          //   rel="noopener noreferrer"
+          //   download
+          //   onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
+          //   className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
+          //         ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+          //   aria-disabled={!hasUrl}
+          //   title={hasUrl ? "Download PDF" : "No file"}
+          // >
+          //   <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+          //   <span className="tw-sr-only">Download PDF</span>
+          // </a>
           <a
             // href={hasUrl ? url : undefined}
-            href={viewUrl}
+            href={previewHref}
+            aria-label="Preview"
+            // download
             target="_blank"
             rel="noopener noreferrer"
-            download
-            onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
-            className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-                  ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-            aria-disabled={!hasUrl}
+            // onClick={handleNoUrl}
+            //   className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
+            // ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
+            //   aria-disabled={!hasUrl}
+            className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
             title={hasUrl ? "Download PDF" : "No file"}
           >
             <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
@@ -440,16 +486,16 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     return (
       <div className="tw-mt-6">
         <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
-                  <Button
-                    variant="outlined"
-                    size="sm"
-                    onClick={goList}
-                    className="tw-py-2 tw-px-2"
-                    title="กลับไปหน้า List"
-                  >
-                    <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-                  </Button>
-                </div>
+          <Button
+            variant="outlined"
+            size="sm"
+            onClick={goList}
+            className="tw-py-2 tw-px-2"
+            title="กลับไปหน้า List"
+          >
+            <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
+          </Button>
+        </div>
         <CMForm />
       </div>
     );
