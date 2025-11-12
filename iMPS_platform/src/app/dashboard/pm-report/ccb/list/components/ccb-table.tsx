@@ -261,7 +261,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return { previewHref: finalUrl, isPdfEndpoint: true };
       }
       return { previewHref: u, isPdfEndpoint: false };
-    }
+  }
 
   function extractDocIdFromAnything(x: any): string {
     if (!x) return "";

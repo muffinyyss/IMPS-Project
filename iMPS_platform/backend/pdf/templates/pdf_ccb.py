@@ -374,6 +374,33 @@ def _is_http_url(s: str) -> bool:
 
 _IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".jfif"]
 
+def _get_uploads_root() -> Path:
+    """เลือก root ของ uploads: ENV(PHOTOS_UPLOADS_DIR) > <backend>/uploads"""
+    override = os.getenv("PHOTOS_UPLOADS_DIR")
+    if override:
+        p = Path(override)
+        if p.exists():
+            return p
+    backend_root = Path(__file__).resolve().parents[2]  # .../backend
+    return backend_root / "uploads"
+
+def _split_upload_url_parts(url_path: str):
+    """
+    แยก /uploads/<type>/<station>/<docId>/<gN>/<filename>
+    คืน (type, station, docId, group, filename) หรือ None
+    """
+    clean = url_path.lstrip("/").replace("\\", "/")
+    parts = clean.split("/")
+    if len(parts) >= 5 and parts[0] == "uploads":
+        type_part = parts[1]
+        station = parts[2]
+        doc_id = parts[3]
+        group = parts[4]
+        filename = parts[5] if len(parts) >= 6 else ""
+        return type_part, station, doc_id, group, filename
+    return None
+
+
 def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     """
     รับ Path ที่อาจเป็นไฟล์/โฟลเดอร์/ไฟล์ไร้นามสกุล แล้วคืน (path_str_or_bytesIO, img_type)
@@ -481,30 +508,26 @@ def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[
 #     _log("[IMG] not found via all methods")
 #     return None, None
 
-def _load_image_source_from_urlpath(
-    url_path: str,
-) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     if not url_path:
         return None, None
 
+    # ปรับ \ -> / ให้ทำงานข้าม OS
+    url_path = url_path.replace("\\", "/")
     _log(f"[IMG] lookup: {url_path}")
 
-    # case: data URL
+    # 1) data URL
     if url_path.startswith("data:image/"):
         try:
             head, b64 = url_path.split(",", 1)
             mime = head.split(";")[0].split(":", 1)[1]
             bio = BytesIO(base64.b64decode(b64))
-            img_type = (
-                "PNG"
-                if "png" in mime
-                else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
-            )
+            img_type = "PNG" if "png" in mime else ("JPEG" if ("jpeg" in mime or "jpg" in mime) else "")
             return bio, img_type
         except Exception as e:
             _log(f"[IMG] data-url parse error: {e}")
 
-    # case: absolute http(s)
+    # 2) http(s)
     if _is_http_url(url_path) and requests is not None:
         try:
             resp = requests.get(url_path, headers=_env_photo_headers(), timeout=10)
@@ -514,36 +537,73 @@ def _load_image_source_from_urlpath(
         except Exception as e:
             _log(f"[IMG] absolute URL failed: {e}")
 
-    # case: absolute filesystem path
+    def _try_pick_from(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+        # รองรับทั้ง 'ไฟล์' และ 'โฟลเดอร์' (หยิบไฟล์รูปแรก)
+        src, img_type = _pick_image_from_path(p)
+        if src:
+            _log(f"[IMG] using {src}")
+            return src, img_type
+        return None, None
+
+    # 3) absolute filesystem path (D:/.../g1 หรือ D:/.../file.jpg)
     p_abs = Path(url_path)
     if p_abs.is_absolute() and p_abs.exists():
-        return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
+        src, img_type = _try_pick_from(p_abs)
+        if src:
+            return src, img_type
 
-    # 1) backend/uploads
-    backend_root = Path(__file__).resolve().parents[2]
-    uploads_root = backend_root / "uploads"
-    if uploads_root.exists():
-        clean_path = url_path.lstrip("/")
-        if clean_path.startswith("uploads/"):
-            clean_path = clean_path[8:]
-        local_path = uploads_root / clean_path
-        _log(f"[IMG] try uploads: {local_path}")
-        if local_path.exists() and local_path.is_file():
-            return local_path.as_posix(), _guess_img_type_from_ext(
-                local_path.as_posix()
-            )
+    # เตรียม uploads_root (รองรับ ENV override)
+    uploads_root = _get_uploads_root()
 
-    # 2) public
-    public_root = _find_public_root()
-    if public_root:
-        local_path = public_root / url_path.lstrip("/")
-        _log(f"[IMG] try public: {local_path}")
-        if local_path.exists() and local_path.is_file():
-            return local_path.as_posix(), _guess_img_type_from_ext(
-                local_path.as_posix()
-            )
+    # 4) แมปเป็น <uploads_root>/<relative> ถ้าเริ่มด้วย /uploads/...
+    clean_path = url_path.lstrip("/")
+    if clean_path.startswith("uploads/"):
+        local_path = uploads_root / clean_path[8:]  # ตัด 'uploads/' ทิ้ง
+        _log(f"[IMG] try uploads (direct): {local_path}")
+        src, img_type = _try_pick_from(local_path)
+        if src:
+            return src, img_type
 
-    # 3) base_url download
+    # 5) Fallback อัจฉริยะ: ถ้าเป็นรูปแบบ /uploads/<type>/<station>/<docId>/<gN>/<filename>
+    parts = _split_upload_url_parts(url_path)
+    if parts:
+        type_part, station, doc_id, group, filename = parts
+        # เผื่อกรณี group ไม่มีตัว g นำหน้า
+        if not group.lower().startswith("g"):
+            group = f"g{group}"
+
+        base = uploads_root / type_part / station
+
+        # 5.1 พยายามตาม doc_id ตรงก่อน (โฟลเดอร์ group หรือไฟล์)
+        cand_group_dir = base / doc_id / group
+        if cand_group_dir.exists():
+            if filename:
+                f1 = cand_group_dir / filename
+                _log(f"[IMG] try exact file: {f1}")
+                if f1.exists() and f1.is_file():
+                    return f1.as_posix(), _guess_img_type_from_ext(f1.as_posix())
+            # ถ้าไม่ระบุไฟล์/ไม่พบไฟล์ → หยิบรูปแรกในโฟลเดอร์ group
+            src, img_type = _try_pick_from(cand_group_dir)
+            if src:
+                return src, img_type
+
+        # 5.2 doc_id ไม่ตรง/ไม่มี — ค้นในทุก doc_id ใต้สถานีเดียวกัน
+        if filename:
+            # หาตามชื่อไฟล์ใน group เดียวกันก่อน
+            pattern = base.glob(f"*/{group}/{filename}")
+            for p in pattern:
+                if p.is_file():
+                    _log(f"[IMG] fallback found same filename: {p}")
+                    return p.as_posix(), _guess_img_type_from_ext(p.as_posix())
+
+        # 5.3 ยังไม่เจอไฟล์เดียวกัน → หยิบรูปอะไรก็ได้ใน group เดียวกัน (ตัวแรก)
+        for ext in _IMAGE_EXTS:
+            for p in base.glob(f"*/{group}/*{ext}"):
+                if p.is_file():
+                    _log(f"[IMG] fallback pick first in group: {p}")
+                    return p.as_posix(), _guess_img_type_from_ext(p.as_posix())
+
+    # 6) base_url download (กรณี path เป็น relative ของเว็บ)
     base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
     if base_url and requests is not None:
         full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
@@ -557,6 +617,9 @@ def _load_image_source_from_urlpath(
 
     _log("[IMG] not found via all methods")
     return None, None
+
+
+
 
 
 
@@ -649,15 +712,69 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
 
     return items
 
-
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-    """Return list of photo dicts with 'url' key"""
-    photos = (doc.get("photos") or {}).get(f"g{idx}") or []
-    out = []
-    for p in photos:
-        if isinstance(p, dict) and p.get("url"):
-            out.append({"url": p["url"]})  # ต้องเป็น dict แบบนี้
+    """
+    อ่านรูปจาก doc["photos"]["g{idx}"]
+    - ถ้า 'url' เป็นโฟลเดอร์: แตกเป็นไฟล์รูปย่อย (มากสุด PHOTO_MAX_PER_ROW)
+    - ถ้า 'url' เป็นไฟล์: ใช้ตามนั้น
+    - รองรับทั้ง absolute และ relative (under backend/uploads)
+    """
+    items_in = (doc.get("photos") or {}).get(f"g{idx}") or []
+    out: List[dict] = []
+
+    def _normalize(s: str) -> str:
+        return (s or "").replace("\\", "/").strip()
+
+    backend_root = Path(__file__).resolve().parents[2]
+    uploads_root = backend_root / "uploads"
+
+    for p in items_in:
+        if not isinstance(p, dict):
+            continue
+        raw = _normalize(p.get("url", ""))
+        if not raw:
+            continue
+
+        p_abs = Path(raw)
+        if p_abs.is_absolute():
+            if p_abs.is_dir():
+                files = []
+                for ext in _IMAGE_EXTS:
+                    files += sorted(p_abs.glob(f"*{ext}"))
+                for f in files[:PHOTO_MAX_PER_ROW - len(out)]:
+                    if f.is_file():
+                        out.append({"url": f.as_posix()})
+            elif p_abs.is_file():
+                out.append({"url": p_abs.as_posix()})
+            if len(out) >= PHOTO_MAX_PER_ROW:
+                break
+            continue
+
+        # relative under uploads
+        clean = raw.lstrip("/")
+        if clean.startswith("uploads/"):
+            clean = clean[8:]
+        local = uploads_root / clean
+        if local.exists():
+            if local.is_dir():
+                files = []
+                for ext in _IMAGE_EXTS:
+                    files += sorted(local.glob(f"*{ext}"))
+                for f in files[:PHOTO_MAX_PER_ROW - len(out)]:
+                    if f.is_file():
+                        out.append({"url": f.as_posix()})
+            elif local.is_file():
+                out.append({"url": local.as_posix()})
+        else:
+            # ปล่อยให้ loader ไปลอง http/base_url เอง
+            out.append({"url": raw})
+
+        if len(out) >= PHOTO_MAX_PER_ROW:
+            break
+
     return out[:PHOTO_MAX_PER_ROW]
+
+
 
 
 def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
