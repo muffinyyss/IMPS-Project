@@ -309,7 +309,7 @@ export default function SalesPage() {
           <FansCard
             updatedAt={lastUpdated}
             fans={[
-              { id: "fan1", name: "FAN1", rpm: toDec(data?.fan_RPM1), active: !!data?.fan_status1 },
+              { id: "fan1", name: "FAN1", rpm: toDec(data?.fan_RPM1), active: !!data?.fan_status1, maxRpm: 3500 },
               { id: "fan2", name: "FAN2", rpm: toDec(data?.fan_RPM2), active: !!data?.fan_status2, maxRpm: 3500 },
               { id: "fan3", name: "FAN3", rpm: toDec(data?.fan_RPM3), active: !!data?.fan_status3, maxRpm: 3500 },
               { id: "fan4", name: "FAN4", rpm: toDec(data?.fan_RPM4), active: !!data?.fan_status4, maxRpm: 3500 },
