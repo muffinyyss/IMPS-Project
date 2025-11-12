@@ -1,10 +1,6 @@
 "use client";
 
-type Props = {
-  station_name?: string;
-  model?: string;
-  status?: string;
-};
+
 
 export type StationInfoProps = {
   station_name?: string;

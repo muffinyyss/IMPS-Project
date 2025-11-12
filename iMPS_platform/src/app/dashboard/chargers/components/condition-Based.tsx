@@ -28,16 +28,16 @@ const EVENTS_CARD_DATA = [
         title: "Chat GPT",
         description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
     },
-    {
-        icon: BookOpenIcon,
-        title: "STD Maintenance Procedure",
-        description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
-    },
-    {
-        icon: BookOpenIcon,
-        title: "WI",
-        description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
-    },
+    // {
+    //     icon: BookOpenIcon,
+    //     title: "STD Maintenance Procedure",
+    //     description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
+    // },
+    // {
+    //     icon: BookOpenIcon,
+    //     title: "WI",
+    //     description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
+    // },
 ];
 
 const CBMCard = () => {
