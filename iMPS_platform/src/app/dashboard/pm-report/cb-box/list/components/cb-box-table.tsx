@@ -242,23 +242,26 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   function buildHtmlLinks(baseUrl?: string) {
     const u = (baseUrl || "").trim();
-    if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
+    if (!u) return { previewHref: "", isPdfEndpoint: false };
 
-    // ตรวจจับ endpoint ใหม่ เช่น /pdf/charger/<id>/export
+    // รองรับ /pdf/mdb/<id>/export (รวม template อื่นไว้ด้วยก็ได้)
     const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
 
     if (isPdfEndpoint) {
-      const finalUrl = u;
-      const withStation = appendParam(finalUrl, "station_id", stationId || "");
-      return {
-        previewHref: appendParam(withStation, "dl", "0"),
-        downloadHref: appendParam(withStation, "dl", "1"),
-        isPdfEndpoint: true,
-      };
-    }
+      let finalUrl = u;
+      if (stationId) finalUrl = appendParam(finalUrl, "station_id", stationId);
 
-    // fallback เดิม
-    return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
+      // ใส่ photos_base_url ช่วยให้รูปใน PDF โหลดได้
+      const photosBase =
+        (process.env.NEXT_PUBLIC_PHOTOS_BASE_URL as string) ||
+        (typeof window !== "undefined" ? window.location.origin : "");
+      if (photosBase) finalUrl = appendParam(finalUrl, "photos_base_url", photosBase);
+
+      // พรีวิว ไม่ดาวน์โหลด
+      finalUrl = appendParam(finalUrl, "dl", "0");
+      return { previewHref: finalUrl, isPdfEndpoint: true };
+    }
+    return { previewHref: u, isPdfEndpoint: false };
   }
 
   function extractDocIdFromAnything(x: any): string {
@@ -275,135 +278,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const m = s.match(/[A-Fa-f0-9]{24}/);
     return m ? m[0] : "";
   }
-
-  // const fetchRows = async () => {
-  //   if (!stationId) { setData([]); return; }
-  //   setLoading(true);
-  //   try {
-  //     const makeURL = (path: string) => {
-  //       const u = new URL(`${apiBase}${path}`);
-  //       u.searchParams.set("station_id", stationId);
-  //       u.searchParams.set("page", "1");
-  //       u.searchParams.set("pageSize", "50");
-  //       return u.toString();
-  //     };
-
-  //     const [pmRes, urlRes] = await Promise.allSettled([
-  //       // fetch(makeURL("/pmreport/list"), fetchOpts),
-  //       // fetch(makeURL("/pmurl/list"), fetchOpts),
-
-  //       fetch(makeURL(`/${REPORT_PREFIX}/list`), fetchOpts),
-  //       fetch(makeURL(`/${URL_PREFIX}/list`), fetchOpts),
-  //     ]);
-
-  //     let pmItems: any[] = [];
-  //     let urlItems: any[] = [];
-
-  //     if (pmRes.status === "fulfilled" && pmRes.value.ok) {
-  //       const j = await pmRes.value.json();
-  //       if (Array.isArray(j?.items)) pmItems = j.items;
-  //     }
-  //     if (urlRes.status === "fulfilled" && urlRes.value.ok) {
-  //       const j = await urlRes.value.json();
-  //       if (Array.isArray(j?.items)) urlItems = j.items;
-  //     }
-
-
-  //     const pmRows: TData[] = pmItems.map((it: any) => {
-  //       const isoDay = toISODateOnly(it.pm_date ?? it.createdAt ?? "");
-
-  //       // ลิงก์ไฟล์ที่อัปโหลด (ถ้ามี)
-  //       const rawUploaded =
-  //         it.file_url
-  //         ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
-  //         ?? it.file
-  //         ?? it.path;
-
-  //       const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
-
-  //       // ⬇️ วางไว้ใกล้ๆ ฟังก์ชันอื่น
-  //       function extractId(it: any): string {
-  //         if (!it) return "";
-  //         // ให้โฟกัส _id ก่อน เพราะเป็นของจริงจาก Mongo
-  //         const raw = (it._id !== undefined ? it._id : it.id) ?? "";
-  //         if (raw && typeof raw === "object") {
-  //           // รองรับรูปแบบที่ซีเรียลไลซ์จาก Mongo: { "$oid": "..." } หรือ { "oid": "..." }
-  //           return raw.$oid || raw.oid || raw.$id || "";
-  //         }
-  //         const s = String(raw || "");
-  //         return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
-  //       }
-
-
-  //       // ⬇️ ใช้ helper ใหม่
-  //       const id = extractId(it);
-  //       // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/download` : "";
-  //       const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
-
-  //       const fileUrl = uploadedUrl || generatedUrl;
-
-  //       return {
-  //         name: thDate(isoDay),
-  //         position: isoDay,
-  //         office: fileUrl,
-  //       } as TData;
-  //     });
-
-
-  //     const urlRows: TData[] = urlItems.map((it: any) => {
-  //       const isoDay = toISODateOnly(it.pm_date ?? it.reportDate ?? it.createdAt ?? "");
-  //       const raw =
-  //         it.file_url
-  //         ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
-  //         ?? it.file
-  //         ?? it.path;
-
-  //       return {
-  //         name: thDate(isoDay),
-  //         position: isoDay,
-  //         office: resolveFileHref(raw, apiBase),
-  //       } as TData;
-  //     });
-
-
-
-  //     // รวมทั้งหมด แล้ว sort ตามวันที่ (ใหม่ → เก่า) แต่ยัง “ไม่ตัดซ้ำ”
-  //     const allRows = [...pmRows, ...urlRows].sort((a, b) => {
-  //       const da = (a.position ?? "") as string;
-  //       const db = (b.position ?? "") as string;
-  //       return da < db ? 1 : da > db ? -1 : 0;
-  //     });
-
-  //     // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
-  //     // if (!allRows.length) {
-  //     //   const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
-  //     //   if (res2.ok) {
-  //     //     const j = await res2.json();
-  //     //     const iso = j?.pm_date ?? "";
-  //     //     const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-  //     //     setData(rows);
-  //     //     return;
-  //     //   }
-  //     //   setData([...AppDataTable] as TData[]);
-  //     //   return;
-  //     // }
-  //     if (!allRows.length) {
-  //       setData([]);            // ปล่อยว่าง เพื่อให้ tbody แสดง "ไม่มีข้อมูล"
-  //       return;
-  //     }
-
-  //     setData(allRows);
-  //     // } catch (err) {
-  //     //   console.error("fetch both lists error:", err);
-  //     //   setData([...AppDataTable] as TData[]);
-  //     // } finally {
-  //   } catch (err) {
-  //     console.error("fetch both lists error:", err);
-  //     setData([]);            // ว่าง → ให้ UI แสดง "ไม่มีข้อมูล"
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
 
   const fetchRows = async (signal?: AbortSignal) => {
     if (!stationId) {
@@ -570,35 +444,48 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.office,
       id: "pdf",
-      header: () => "pdf",
+      header: () => "PDF",
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
-        const baseUrl = info.getValue() as string | undefined; // เช่น http://localhost:8000/pdf/<id>/file
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
-        const viewUrl = hasUrl ? `${baseUrl}` : undefined;           // inline (พรีวิว)
+
+        if (!hasUrl) {
+          return <span className="tw-text-blue-gray-300" title="No file">—</span>;
+        }
+
+        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
         return (
-          <a
-            // href={hasUrl ? url : undefined}
-            href={viewUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
-            className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-              ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-            aria-disabled={!hasUrl}
-            title={hasUrl ? "Download PDF" : "No file"}
-          >
-            <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-            <span className="tw-sr-only">Download PDF</span>
-          </a>
+          <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+            <a
+              aria-label="Preview"
+              href={previewHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+              title="Preview"
+            >
+              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+            </a>
+            {/*
+            <a
+              aria-label="Download"
+              href={downloadHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+              title="Download"
+            >
+              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+            </a>
+            */}
+          </div>
         );
       },
-
-      size: 80,
-      minSize: 64,
-      maxSize: 120,
+      size: 150,
+      minSize: 120,
+      maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
 
