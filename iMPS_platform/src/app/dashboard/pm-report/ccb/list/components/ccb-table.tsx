@@ -240,25 +240,28 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   }
 
   function buildHtmlLinks(baseUrl?: string) {
-    const u = (baseUrl || "").trim();
-    if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
+      const u = (baseUrl || "").trim();
+      if (!u) return { previewHref: "", isPdfEndpoint: false };
 
-    // ตรวจจับ endpoint ใหม่ เช่น /pdf/charger/<id>/export
-    const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
+      // รองรับ /pdf/mdb/<id>/export (รวม template อื่นไว้ด้วยก็ได้)
+      const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
 
-    if (isPdfEndpoint) {
-      const finalUrl = u;
-      const withStation = appendParam(finalUrl, "station_id", stationId || "");
-      return {
-        previewHref: appendParam(withStation, "dl", "0"),
-        downloadHref: appendParam(withStation, "dl", "1"),
-        isPdfEndpoint: true,
-      };
+      if (isPdfEndpoint) {
+        let finalUrl = u;
+        if (stationId) finalUrl = appendParam(finalUrl, "station_id", stationId);
+
+        // ใส่ photos_base_url ช่วยให้รูปใน PDF โหลดได้
+        const photosBase =
+          (process.env.NEXT_PUBLIC_PHOTOS_BASE_URL as string) ||
+          (typeof window !== "undefined" ? window.location.origin : "");
+        if (photosBase) finalUrl = appendParam(finalUrl, "photos_base_url", photosBase);
+
+        // พรีวิว ไม่ดาวน์โหลด
+        finalUrl = appendParam(finalUrl, "dl", "0");
+        return { previewHref: finalUrl, isPdfEndpoint: true };
+      }
+      return { previewHref: u, isPdfEndpoint: false };
     }
-
-    // fallback เดิม
-    return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
-  }
 
   function extractDocIdFromAnything(x: any): string {
     if (!x) return "";
