@@ -1227,12 +1227,11 @@ async def error_stream(request: Request, station_id: str, current: UserClaims = 
             user_id = await _resolve_user_id_by_chargebox(chargebox_id)
             email = await _resolve_user_email_by_user_id(user_id)
 
-            # >>> ส่งอีเมลครั้งเดียวต่อเอกสาร
-            # try:
-            #     await send_error_email_once(email, chargebox_id, latest.get("error"), last_id)
-            # except Exception as e:
-            #     # ไม่ให้ตกสตรีม: log แล้วไปต่อ
-            #     print(f"[email] init send failed for {last_id}: {e}")
+            try:
+                await send_error_email_once(email, chargebox_id, latest.get("error"), last_id)
+            except Exception as e:
+                # ไม่ให้ตกสตรีม: log แล้วไปต่อ
+                print(f"[email] init send failed for {last_id}: {e}")
 
             payload = {
                 "Chargebox_ID": chargebox_id,
@@ -1256,12 +1255,11 @@ async def error_stream(request: Request, station_id: str, current: UserClaims = 
                 chargebox_id = doc.get("Chargebox_ID")
                 user_id = await _resolve_user_id_by_chargebox(chargebox_id)
                 email = await _resolve_user_email_by_user_id(user_id)
-
-                # >>> ส่งอีเมลครั้งเดียวต่อเอกสาร
-                # try:
-                #     await send_error_email_once(email, chargebox_id, doc.get("error"), last_id)
-                # except Exception as e:
-                #     print(f"[email] update send failed for {last_id}: {e}")
+                
+                try:
+                    await send_error_email_once(email, chargebox_id, doc.get("error"), last_id)
+                except Exception as e:
+                    print(f"[email] update send failed for {last_id}: {e}")
 
                 payload = {
                     "Chargebox_ID": chargebox_id,
