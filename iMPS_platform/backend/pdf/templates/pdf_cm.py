@@ -1552,8 +1552,9 @@ def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float
                          cm_date: str, reporter: str, severity: str,
                          problem_type: str, problem_detail: str, cause: str,
                          solution: str,
-                         corrective_actions,
-                         doc=None) -> float:
+                         corrective_actions,remark: str,
+                         doc=None,
+                         ) -> float:
     
 
     pdf.set_line_width(LINE_W_INNER)
@@ -1571,6 +1572,7 @@ def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float
     problem_type = str(problem_type or "-")
     problem_detail = str(problem_detail or "-")
     cause = str(cause or "-")
+    remark = str(remark or "-")
 
     # ความสูงแถวกลาง (ขึ้นกับบรรทัดจริง)
     val_w_left  = half_w - 2 * PADDING_X - label_w
@@ -1819,7 +1821,7 @@ def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float
     pdf.cell(lab_note_w, LINE_H, lab_note_txt, border=0, align="L")
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.set_xy(inner_x + lab_note_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_note_w, LINE_H, note_text, border=0, align="L")
+    pdf.multi_cell(inner_w_full - lab_note_w, LINE_H, remark, border=0, align="L")
     cur_y += note_h
 
     return y + box_h
@@ -2189,6 +2191,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     solution = str(doc.get("solution") or job.get("solution")or doc.get("action")  or job.get("action") or "-")  # เผื่อใช้ชื่ออื่น
     checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
     corrective_actions = doc.get("corrective_actions") or job.get("corrective_actions") or []
+    remark = job.get("remarks")
     
 
     left = pdf.l_margin
@@ -2214,7 +2217,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y += 10
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, found_date, device_text, cm_date, reporter, severity, problem_type,problem_detail, cause, solution,corrective_actions,doc)
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, found_date, device_text, cm_date, reporter, severity, problem_type,problem_detail, cause, solution,corrective_actions,remark,doc)
 
     # ตารางรายการ
     x_table = x0 + EDGE_ALIGN_FIX

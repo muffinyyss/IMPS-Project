@@ -6339,7 +6339,7 @@ async def get_all_modules_progress(
     try:
         coll6 = outputModule6.get_collection(str(station_id))
         doc6 = await coll6.find_one({}, sort=[("_id", -1)])
-        result["module6"] = doc6.get("health_index", 0) if doc6 else 0
+        result["module6"] = doc6.get("overall_health").get("average_health_index",0) if doc6 else 0
     except:
         result["module6"] = 0
     
@@ -6347,7 +6347,7 @@ async def get_all_modules_progress(
     try:
         coll7 = outputModule7.get_collection(str(station_id))
         doc7 = await coll7.find_one({}, sort=[("_id", -1)])
-        result["module7"] = doc7.get("health_index", 0) if doc7 else 0
+        result["module7"] = doc7.get("overall_health").get("average_health_index",0) if doc7 else 0
     except:
         result["module7"] = 0
     
