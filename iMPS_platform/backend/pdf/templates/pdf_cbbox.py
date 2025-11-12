@@ -80,6 +80,10 @@ ROW_TITLES = {
     "r8": "ทำความสะอาดตู้ MDB"
 }
 
+# ✅ อนุญาตเฉพาะข้อที่ประกาศไว้ใน ROW_TITLES เท่านั้น
+ALLOWED_IDXS = sorted(i for i in (int(k[1:]) for k in ROW_TITLES.keys()) if i > 0)
+ALLOWED_SET = set(ALLOWED_IDXS)
+
 # -------------------- Helpers / Layout constants --------------------
 LINE_W_OUTER = 0.45
 LINE_W_INNER = 0.22
@@ -289,8 +293,8 @@ def _r_idx(k: str) -> int:
 def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
     """
     แปลง rows -> list items สำหรับตาราง Items
-    - ถ้า rows ไม่มี/ว่าง: แสดงทุกข้อจาก ROW_TITLES (result=na) เป็น fallback
-    - คง behavior เดิมสำหรับ r15 (CP) และ r17 (m17)
+    - รับเฉพาะ idx ที่อยู่ใน ALLOWED_SET (อิงจาก ROW_TITLES)
+    - ถ้า rows ว่าง: แสดงทุกข้อใน ROW_TITLES เป็น N/A
     """
     items: List[dict] = []
     measures = measures or {}
@@ -299,7 +303,8 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         key = f"r{idx}"
         title = ROW_TITLES.get(key, f"รายการที่ {idx}")
         remark = (data or {}).get("remark", "").strip()
-        # เงื่อนไข remark พิเศษ
+
+        # (ยังคง behavior เดิมไว้ แม้โปรเจกต์นี้ใช้ถึง r8)
         if key.lower() == "r17":
             mtxt = _format_m17(measures or {})
             if mtxt:
@@ -310,38 +315,30 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             remark = f"CP = {cp_value}{cp_unit}"
 
         result = _norm_result((data or {}).get("pf", ""))
-        return {
-            "idx": idx,
-            "text": f"{idx}. {title}",
-            "result": result,
-            "remark": remark,
-        }
+        return {"idx": idx, "text": f"{idx}. {title}", "result": result, "remark": remark}
 
-    # มี rows → ยึดตาม rows ก่อน
+    # มี rows → ใช้เฉพาะข้อที่อนุญาต
     if isinstance(rows, dict) and rows:
         for key in sorted(rows.keys(), key=_r_idx):
             idx = _r_idx(key)
-            if idx <= 0:
+            if idx <= 0 or idx not in ALLOWED_SET:
                 continue
             items.append(_build_item(idx, rows.get(key) or {}))
 
-        # เติมข้อที่มีใน ROW_TITLES แต่ไม่มีใน rows (เป็น N/A)
+        # เติมข้อจาก ROW_TITLES ที่ยังไม่มี (เป็น N/A)
         existing = {it["idx"] for it in items}
-        for key in sorted(ROW_TITLES.keys(), key=_r_idx):
-            idx = _r_idx(key)
-            if idx > 0 and idx not in existing:
+        for idx in ALLOWED_IDXS:
+            if idx not in existing:
                 items.append(_build_item(idx, None))
-        # เรียงตามเลขข้อ
+
         items.sort(key=lambda x: x["idx"])
         return items
 
-    # ไม่มี rows → แสดงทุกข้อจาก ROW_TITLES เป็น N/A
-    for key in sorted(ROW_TITLES.keys(), key=_r_idx):
-        idx = _r_idx(key)
-        if idx <= 0:
-            continue
+    # ไม่มี rows → แสดงทุกข้อที่อนุญาตเป็น N/A
+    for idx in ALLOWED_IDXS:
         items.append(_build_item(idx, None))
     return items
+
 
 
 
@@ -690,7 +687,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     # ชื่อเอกสาร
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, "Preventive Maintenance Checklist - เครื่องอัดประจุไฟฟ้า", border=1, ln=1, align="C")
+    pdf.cell(page_w, 10, "Preventive Maintenance Checklist - CB BOX", border=1, ln=1, align="C")
     y += 10
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
@@ -849,7 +846,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     # ชื่อเอกสาร
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, "Preventive Maintenance Checklist", border=1, ln=1, align="C")
+    pdf.cell(page_w, 10, "Preventive Maintenance Checklist - CB BOX", border=1, ln=1, align="C")
     y += 10
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
