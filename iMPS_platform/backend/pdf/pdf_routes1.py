@@ -15,16 +15,17 @@ from .templates.pdf_dctest import generate_pdf as pdf_dc
 from .templates.pdf_actest import generate_pdf as pdf_ac
 router = APIRouter(prefix="/pdf", tags=["pdf"])
 
-# ✅ mapping ระหว่าง template กับ database และฟังก์ชัน generate_pdf
+# mapping ระหว่าง template กับ database และฟังก์ชัน generate_pdf
 TEMPLATE_MAP = {
+    # PM report
     "charger": {"db": "PMReport", "func": pdf_charger},
     "mdb": {"db": "MDBPMReport", "func": pdf_mdb},
     "ccb": {"db": "CCBPMReport", "func": pdf_ccb},
     "cbbox": {"db": "CBBOXPMReport", "func": pdf_cbbox},
     "station": {"db": "stationPMReport", "func": pdf_station},
-
     "cm": {"db": "CMReport", "func": pdf_cm},
-
+    
+    # Test report
     "dc": {"db": "DCTestReport", "func": pdf_dc},
     "ac": {"db": "ACTestReport", "func": pdf_ac},
 }
@@ -61,17 +62,17 @@ async def export_pdf(
     except InvalidId:
         raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
 
-    # ✅ เลือก database และ collection ตามประเภท template
+    # เลือก database และ collection ตามประเภท template
     db_info = TEMPLATE_MAP[template]
     db = pymongo_client[db_info["db"]]
     coll = db[station_id]
 
-    # ✅ ดึงข้อมูลจาก MongoDB
+    # ดึงข้อมูลจาก MongoDB
     data = coll.find_one({"_id": oid})
     if not data:
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
     
-    # ✅ ตั้งค่า environment variables ก่อนเรียก generate_pdf
+    # ตั้งค่า environment variables ก่อนเรียก generate_pdf
     if public_dir:
         os.environ["PUBLIC_DIR"] = public_dir
     if photos_base_url:
@@ -79,107 +80,27 @@ async def export_pdf(
     if photos_headers:
         os.environ["PHOTOS_HEADERS"] = photos_headers
 
-    # ✅ สร้าง PDF
+    # สร้าง PDF
     try:
         pdf_bytes = db_info["func"](data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"เกิดข้อผิดพลาดในการสร้าง PDF: {str(e)}")
 
-    # ✅ ตั้งชื่อไฟล์
-    filename = f"PM-{template.capitalize()}-{station_id}.pdf"
+    # -------------------- ตั้งชื่อไฟล์ --------------------
+    # ถ้าเป็น PM report → ใช้ issue_id จาก MongoDB
+    pm_templates = ["charger", "mdb", "ccb", "cbbox", "station", "cm"]
+    if template in pm_templates:
+        issue_id = data.get("issue_id")
+        if not issue_id:
+            # ถ้าไม่มี issue_id ให้ fallback ไปใช้ _id แทน
+            issue_id = str(data.get("_id"))
+        filename = f"{issue_id}.pdf"
+    else:
+        # ถ้าเป็น test report (AC/DC) ใช้ชื่อแบบเดิม
+        filename = f"{template.upper()}-{station_id}.pdf"
+
     headers = {
         "Content-Disposition": f'{"attachment" if dl else "inline"}; filename="{filename}"'
     }
 
     return Response(pdf_bytes, media_type="application/pdf", headers=headers)
-
-
-
-
-
-
-
-
-
-
-
-# from fastapi import APIRouter, Response, HTTPException, Query, Request
-# from bson import ObjectId
-# from bson.errors import InvalidId
-# from main import client1 as pymongo_client
-# import os
-
-# # import template ทั้งหมด
-# from .templates.pdf_charger import generate_pdf as pdf_charger
-# from .templates.pdf_mdb import generate_pdf as pdf_mdb
-# from .templates.pdf_ccb import generate_pdf as pdf_ccb
-# from .templates.pdf_cbbox import generate_pdf as pdf_cbbox
-# from .templates.pdf_station import generate_pdf as pdf_station
-
-# router = APIRouter(prefix="/pdf", tags=["pdf"])
-
-# # ✅ mapping ระหว่าง template กับ database และฟังก์ชัน generate_pdf
-# TEMPLATE_MAP = {
-#     "charger": {"db": "PMReport", "func": pdf_charger},
-#     "mdb": {"db": "MDBPMReport", "func": pdf_mdb},
-#     "ccb": {"db": "CCBPMReport", "func": pdf_ccb},
-#     "cbbox": {"db": "CBBOXPMReport", "func": pdf_cbbox},
-#     "station": {"db": "stationPMReport", "func": pdf_station},
-# }
-
-# @router.get("/{template}/{id}/export")
-# async def export_pdf(
-#     request: Request,
-#     template: str,                   # เช่น charger, mdb, ccb, cbbox, station
-#     id: str,
-#     station_id: str = Query(...),
-#     dl: bool = Query(False),
-#     photos_base_url: str | None = Query(None, description="เช่น https://your-domain.com"),
-#     public_dir: str | None = Query(None, description="absolute path ไปยังโฟลเดอร์ public"),
-#     photos_headers: str | None = Query(None, description="เช่น 'Authorization: Bearer XXX|Cookie: sid=YYY'"),
-# ):
-#     """
-#     ใช้แบบเดิมได้:
-#       /pdf/charger/{id}/export?station_id=Klongluang3
-#     และถ้ารูปไม่ขึ้น ให้ลองอย่างใดอย่างหนึ่ง:
-#       /pdf/charger/{id}/export?station_id=Klongluang3&public_dir=/var/www/iMPS_platform/public
-#       /pdf/charger/{id}/export?station_id=Klongluang3&photos_base_url=http://localhost:3000
-#     """
-
-#     # ตรวจสอบว่า template มีใน mapping ไหม
-#     if template not in TEMPLATE_MAP:
-#         raise HTTPException(status_code=400, detail=f"ไม่พบ template '{template}'")
-
-#     # ตรวจสอบ ObjectId
-#     try:
-#         oid = ObjectId(id)
-#     except InvalidId:
-#         raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
-
-#     # ✅ เลือก database และ collection ตามประเภท template
-#     db_info = TEMPLATE_MAP[template]
-#     db = pymongo_client[db_info["db"]]
-#     coll = db[station_id]
-
-#     # ✅ ดึงข้อมูลจาก MongoDB
-#     data = coll.find_one({"_id": oid})
-#     if not data:
-#         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
-
-#     # ✅ สร้าง PDF ด้วย template ที่ตรงกัน
-#     pdf_bytes = db_info["func"](data)
-#     # ✅ สร้าง PDF ด้วย template ที่ตรงกัน
-#     # pdf_bytes = db_info["func"](
-#     #     data,
-#     #     photos_base_url=photos_base_url,
-#     #     public_dir=public_dir,
-#     # )
-
-
-#     # ✅ ตั้งชื่อไฟล์
-#     filename = f"PM-{template.capitalize()}-{station_id}.pdf"
-#     headers = {
-#         "Content-Disposition": f'{"attachment" if dl else "inline"}; filename="{filename}"'
-#     }
-
-#     return Response(pdf_bytes, media_type="application/pdf", headers=headers)
