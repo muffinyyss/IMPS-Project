@@ -97,32 +97,13 @@ export default function ChargersPage() {
 
   // station info
   useEffect(() => {
-    // if (!stationId) return;
-    // const token =
-    //   localStorage.getItem("access_token") ||
-    //   localStorage.getItem("accessToken") || "";
-    // // if (!token) return;
-
     const ctrl = new AbortController();
     (async () => {
       if (!stationId) return;
       const token =
         localStorage.getItem("access_token") ||
         localStorage.getItem("accessToken") || "";
-      // if (!token) return;
-
-      // const ctrl = new AbortController();
       try {
-        // const res = await fetch(
-        // `${API_BASE}/station/info?station_id=${encodeURIComponent(stationId)}`,
-        // const res = await apiFetch(
-        //   `${API_BASE}/station/info?station_id=${encodeURIComponent(stationId)}`,
-        //   {
-        //     headers: { Authorization: `Bearer ${token}` },
-        //     credentials: "include",
-        //     signal: ctrl.signal,
-        //   }
-        // );
         const res = await apiFetch(
           `/station/info?station_id=${encodeURIComponent(stationId)}`,
           { signal: ctrl.signal }
