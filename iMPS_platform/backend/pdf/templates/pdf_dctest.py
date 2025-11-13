@@ -344,6 +344,239 @@ def _draw_header(
     return y_top + h_all
 
 
+def _kv_underline(pdf: FPDF, base_font: str, x: float, y: float, w: float,
+                  label: str, value: str = "", row_h: float = 8.0,
+                  label_w: float = 28.0, colon_w: float = 3.0):
+    """Label : ________ (ปรับ label อัตโนมัติถ้าช่องแคบ และกันเส้นใต้ติดลบ)"""
+    # คำนวณ label_w แบบปลอดภัยเมื่อช่อง w แคบ
+    min_gap = 6.0  # เผื่อช่องว่างหลังโคลอนก่อนเริ่มเส้นใต้
+    eff_label_w = min(label_w, max(w - colon_w - min_gap, 12.0))
+
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_xy(x, y)
+    pdf.cell(eff_label_w, row_h, label, border=0, align="L")
+    pdf.cell(colon_w, row_h, ":", border=0, align="C")
+
+    lx1 = x + eff_label_w + colon_w + 1.5
+    lx2 = x + w - 2.0
+    ly  = y + row_h - 2.2
+
+    lw_old = pdf.line_width
+    pdf.set_line_width(0.35)
+
+    # วาดเส้นใต้เฉพาะเมื่อมีระยะพอ
+    if lx2 > lx1 + 1.0:
+        pdf.line(lx1, ly, lx2, ly)
+
+    pdf.set_line_width(lw_old)
+
+    # วาดค่า value โดยไม่ล้นขอบ w
+    if value and str(value).strip() != "-":
+        text_x = x + eff_label_w + colon_w + 2.0
+        text_w = max(2.0, w - (eff_label_w + colon_w + 4.0))
+        pdf.set_font(base_font, "", FONT_MAIN)
+        pdf.set_xy(text_x, y + 0.7)
+        pdf.cell(text_w, row_h - 1.4, str(value), border=0, align="L")
+
+def _draw_ev_header_form(pdf: FPDF, base_font: str, x: float, y: float, w: float,
+                         manufacturer: str = "", model: str = "", power: str = "",
+                         serial_no: str = "", location: str = "",
+                         firmware: str = "", inspection_date: str = "",
+                         power_w_mm: float = 32.0,   # 👈 กำหนดกว้างช่อง Power ที่นี่ (เช่น 28–36)
+                         gap_mm: float = 4.0) -> float:
+
+    row_h = 8.2
+    left_w = w / 2.0
+    right_w = w - left_w
+
+    lx, rx = x, x + left_w
+    y0 = y
+
+    # แถวที่ 1
+    _kv_underline(pdf, base_font, lx, y0, left_w,  "Manufacturer", manufacturer, row_h)
+    _kv_underline(pdf, base_font, rx, y0, right_w, "Location",     location,     row_h)
+    y0 += row_h
+
+    # แถวที่ 2  (Model + Power)
+    model_w = max(left_w - power_w_mm - gap_mm, 40.0)  # เผื่อขั้นต่ำของ Model
+    _kv_underline(pdf, base_font, lx, y0, model_w,          "Model",  model,  row_h)
+    _kv_underline(pdf, base_font, lx + model_w + gap_mm, y0, power_w_mm,
+              "Power", power, row_h, label_w=10.0, colon_w=2.0)
+    _kv_underline(pdf, base_font, rx, y0, right_w, "Firmware Version", firmware, row_h)
+    y0 += row_h
+
+    # แถวที่ 3
+    _kv_underline(pdf, base_font, lx, y0, left_w,  "Serial Number",  serial_no,       row_h)
+    _kv_underline(pdf, base_font, rx, y0, right_w, "Inspection Date", inspection_date, row_h)
+    y0 += row_h
+
+    return y0 + 2
+
+def _kv_inline(pdf: FPDF, base_font: str, x: float, y: float, w: float,
+               label: str, value: str = "", row_h: float = 8.0,
+               label_w: float = 25.0, colon_w: float = 3.0):
+    """เวอร์ชันสั้น ใช้เรียง 3 ช่องในบรรทัดเดียว (Manufacturer / Model / Serial Number)"""
+    _kv_underline(pdf, base_font, x, y, w, label, value, row_h, label_w, colon_w)
+
+
+def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float, w: float,
+                                  items: List[Dict[str, str]] | None = None,
+                                  num_rows: int = 2) -> float:
+    
+    pdf.rect(6, 36, 198, 255)
+    """หัวข้อ Equipment Identification Details + 2 บรรทัด (ตามภาพ)"""
+    pdf.set_font(base_font, "BU", FONT_MAIN)
+    pdf.set_xy(x, y)
+    pdf.cell(w, 5, "Equipment Identification Details", border=0, ln=1, align="L")
+    y = pdf.get_y() + 2.0 
+
+    row_h = 8.0
+    num_w = 6.0
+    # แบ่งความกว้างสามช่วง
+    col1_w = (w - num_w) * 0.34
+    col2_w = (w - num_w) * 0.28
+    col3_w = (w - num_w) * 0.36
+
+    items = items or []
+    total = max(num_rows, len(items))
+
+    for i in range(total):
+        m = items[i].get("manufacturer", "") if i < len(items) else ""
+        mo = items[i].get("model", "")        if i < len(items) else ""
+        sn = items[i].get("serial_no", "")    if i < len(items) else ""
+
+        # ลำดับ
+        pdf.set_font(base_font, "", FONT_MAIN)
+        pdf.set_xy(x, y)
+        pdf.cell(num_w, row_h, str(i + 1), border=0, align="L")
+
+        cx = x + num_w
+        _kv_inline(pdf, base_font, cx, y, col1_w, "Manufacturer", m, row_h)
+        cx += col1_w + 2
+        _kv_inline(pdf, base_font, cx, y, col2_w, "Model", mo, row_h,15)
+        cx += col2_w + 2
+        _kv_inline(pdf, base_font, cx, y, col3_w, "Serial Number", sn, row_h)
+
+        y += row_h
+
+    return y
+
+def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size):
+    """
+    วาดทั้งหัวข้อ
+      'Testing Topics for Safety (Specifically Power Supply/Input Side)'
+    และตารางตามรูป ในฟังก์ชันเดียว
+
+    เริ่มวาดที่ตำแหน่ง (x, y)
+    คืนค่า y ตำแหน่งถัดไปหลังจากตาราง
+    """
+
+    # ----------------- คำนวณความกว้างตาราง -----------------
+    table_width = pdf.w - pdf.l_margin - pdf.r_margin
+
+    col_cat     = 22  # Electrical Safety
+    col_section = 42  # กลุ่ม / หัวข้อ
+    col_item    = 52  # รายการย่อย
+    col_test    = 26  # 1st / 2nd / 3rd TEST
+    col_remark  = table_width - (col_cat + col_section + col_item + 3 * col_test)
+
+    h_header1 = 8
+    h_header2 = 7
+    h_row     = 7
+
+    # ----------------- 1) หัวข้อใหญ่ -----------------
+    pdf.set_xy(x, y)
+    pdf.set_font(base_font, "BU", font_size)  # หนา + ขีดเส้นใต้
+    pdf.cell(
+        table_width, 6,
+        "Testing Topics for Safety (Specifically Power Supply/Input Side)",
+        border=0,
+        ln=1,
+        align="L",
+    )
+
+    # เว้นระยะหน่อยก่อนเริ่มตาราง
+    y = pdf.get_y() + 3
+    pdf.set_font(base_font, "B", font_size)
+
+    # ----------------- 2) Header แถวที่ 1 -----------------
+    pdf.set_xy(x, y)
+
+    pdf.cell(col_cat, h_header1, "", 1, 0, "C")  # ช่องว่าง Electrical Safety
+    pdf.cell(col_section + col_item, h_header1, "Testing Checklist", 1, 0, "C")
+    pdf.cell(
+        col_test * 3,
+        h_header1,
+        "Test Results (Record as Pass/Fail) or Numeric Results",
+        1,
+        0,
+        "C",
+    )
+    pdf.cell(col_remark, h_header1, "Remark", 1, 1, "C")
+
+    # ----------------- 3) Header แถวที่ 2 -----------------
+    pdf.set_x(x)
+
+    pdf.cell(col_cat, h_header2, "", 1, 0, "C")
+    pdf.cell(col_section, h_header2, "", 1, 0, "C")
+    pdf.cell(col_item,    h_header2, "", 1, 0, "C")
+
+    pdf.cell(col_test, h_header2, "1st TEST", 1, 0, "C")
+    pdf.cell(col_test, h_header2, "2nd TEST", 1, 0, "C")
+    pdf.cell(col_test, h_header2, "3rd TEST", 1, 0, "C")
+
+    pdf.cell(col_remark, h_header2, "", 1, 1, "C")
+
+    y_body_start = pdf.get_y()
+
+    # ----------------- 4) เนื้อหาตาราง -----------------
+    pdf.set_font(base_font, "", font_size)
+
+    rows = [
+        ("PE continuity of charger", "Left Cover"),
+        ("", "Right Cover"),
+        ("", "Front Cover"),
+        ("", "Back Cover"),
+        ("", "Charger Stand"),
+        ("", "Charger Case"),
+        ("RCD type A", ""),
+        ("RCD type F", ""),
+        ("RCD type B", ""),
+        ("Power standby", ""),
+    ]
+
+    for section, item in rows:
+        pdf.set_x(x)
+
+        pdf.cell(col_cat, h_row, "", 1, 0, "C")   # Electrical Safety (เว้นไว้ก่อน)
+        pdf.cell(col_section, h_row, section, 1, 0, "L")
+        pdf.cell(col_item,    h_row, item,    1, 0, "L")
+
+        pdf.cell(col_test, h_row, "", 1, 0, "C")  # 1st TEST
+        pdf.cell(col_test, h_row, "", 1, 0, "C")  # 2nd TEST
+        pdf.cell(col_test, h_row, "", 1, 0, "C")  # 3rd TEST
+
+        pdf.cell(col_remark, h_row, "", 1, 1, "L")
+
+    y_body_end = pdf.get_y()
+
+    # ----------------- 5) เขียนคำว่า "Electrical Safety" -----------------
+    text = "Electrical\nSafety"
+    line_h = 4
+    num_lines = text.count("\n") + 1
+    total_text_h = line_h * num_lines
+
+    text_y = y_body_start + ((y_body_end - y_body_start) - total_text_h) / 2.0
+
+    pdf.set_font(base_font, "B", font_size)
+    pdf.set_xy(x, text_y)
+    pdf.multi_cell(col_cat, line_h, text, border=0, align="C")
+
+    pdf.set_font(base_font, "", font_size)
+
+    return pdf.get_y()
+
+
 # -------------------- Photo helpers --------------------
 def _guess_img_type_from_ext(path_or_url: str) -> str:
     ext = os.path.splitext(str(path_or_url).lower())[1]
@@ -894,6 +1127,34 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         firmware,
         inspection,
         power_w_mm=30.0,
+    )
+
+    eq = doc.get("equipment") or {}
+
+    mans = eq.get("manufacturers") or []
+    mods = eq.get("models") or []
+    sns  = eq.get("serialNumbers") or []
+
+    rows = max(len(mans), len(mods), len(sns))
+
+    equip_items = []
+    for i in range(rows):
+        equip_items.append({
+            "manufacturer": mans[i] if i < len(mans) else "",
+            "model":        mods[i] if i < len(mods) else "",
+            "serial_no":    sns[i]  if i < len(sns)  else "",
+        })
+
+    y = _draw_equipment_ident_details(pdf, base_font, x0, y, page_w, equip_items, num_rows=5)
+
+    y += 5
+
+    y = draw_testing_topics_safety_section(
+        pdf,
+        x=pdf.l_margin,
+        y=y,
+        base_font=base_font,
+        font_size=FONT_MAIN,
     )
 
     # เพิ่มหน้ารูปภาพ (PICTURE page)
