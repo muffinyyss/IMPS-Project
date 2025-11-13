@@ -1,7 +1,5 @@
 
-
 "use client";
-
 import React, { useEffect, useRef, useState } from "react";
 import CMOpenForm from "@/app/dashboard/cm-report/open/input_CMreport/components/checkList";
 import {
@@ -49,7 +47,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [filtering, setFiltering] = useState("");
 
   const searchParams = useSearchParams();
-  // const stationIdFromUrl = sp.get("station_id") ?? "";
   const [stationId, setStationId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -74,21 +71,14 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const editId = searchParams.get("edit_id") ?? "";
   const mode: "list" | "form" =
     (searchParams.get("view") === "form" || !!editId) ? "form" : "list";
-  // const mode = (sp.get("view") === "form" ? "form" : "list") as "list" | "form";
 
-  // const setView = (view: "list" | "form", { replace = false } = {}) => {
-  //   const params = new URLSearchParams(sp.toString());
-  //   if (view === "form") params.set("view", "form");
-  //   else params.delete("view");
-  //   router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
-  // };
   const setView = (view: "list" | "form", { replace = false } = {}) => {
     const params = new URLSearchParams(searchParams.toString());
     if (view === "form") {
       params.set("view", "form");
     } else {
       params.delete("view");
-      params.delete("edit_id"); // 👈 ต้องลบอันนี้ด้วย
+      params.delete("edit_id"); 
     }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -150,6 +140,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const fetchRows = async () => {
     if (!stationId) { setData([]); return; }
     setLoading(true);
+    
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
