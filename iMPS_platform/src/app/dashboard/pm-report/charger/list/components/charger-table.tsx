@@ -33,7 +33,8 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwi
 
 type TData = {
   issue_id?: string; // ทำเป็น optional และเติมค่าจาก id หรือ regex ใน url
-  name: string; // วันที่แบบไทย แสดงผลในตาราง
+  pm_date: string; // วันที่แบบไทย แสดงผลในตาราง
+
   position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
   office: string; // URL ไฟล์
 };
@@ -326,7 +327,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
 
-        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
+        return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -338,7 +339,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const href = resolveFileHref(raw, apiBase);
         // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
-        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: href } as TData;
+        return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: href } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
@@ -401,6 +402,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
+      header: () => "name",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      size: 120,
+      minSize: 80,
+      maxSize: 160,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.issue_id || "—",
+      id: "issue_id",
       header: () => "issue_id",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
@@ -409,9 +420,19 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.name,
+      accessorFn: (row) => row.pm_date,
       id: "date",
       header: () => "date",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      size: 100,
+      minSize: 80,
+      maxSize: 140,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.pm_date,
+      id: "date",
+      header: () => "reporter",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,

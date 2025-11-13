@@ -477,7 +477,7 @@ def _draw_ev_header_form(pdf: FPDF, base_font: str, x: float, y: float, w: float
                          power_w_mm: float = 32.0,   # 👈 กำหนดกว้างช่อง Power ที่นี่ (เช่น 28–36)
                          gap_mm: float = 4.0) -> float:
 
-    row_h = 8.2
+    row_h = 6
     left_w = w / 2.0
     right_w = w - left_w
 
@@ -519,11 +519,11 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
     """หัวข้อ Equipment Identification Details + 2 บรรทัด (ตามภาพ)"""
     pdf.set_font(base_font, "BU", FONT_MAIN)
     pdf.set_xy(x, y)
-    pdf.cell(w, 5, "Equipment Identification Details", border=0, ln=1, align="L")
-    y = pdf.get_y() + 2.0 
+    pdf.cell(w, 2, "Equipment Identification Details", border=0, ln=1, align="L")
+    y = pdf.get_y() + 1.0 
 
-    row_h = 8.0
-    num_w = 6.0
+    row_h = 6.0
+    num_w = 5.0
     # แบ่งความกว้างสามช่วง
     col1_w = (w - num_w) * 0.34
     col2_w = (w - num_w) * 0.28
@@ -553,32 +553,47 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
 
     return y
 
-def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size):
+def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
+                                       table_width=None, safety=None):
     """
-    วาดทั้งหัวข้อ
+    วาดหัวข้อ
       'Testing Topics for Safety (Specifically Power Supply/Input Side)'
-    และตารางตามรูป ในฟังก์ชันเดียว
+    + ตารางตามรูป (Electrical Safety table)
 
     เริ่มวาดที่ตำแหน่ง (x, y)
-    คืนค่า y ตำแหน่งถัดไปหลังจากตาราง
+    คืนค่า y ตำแหน่งหลังจบตาราง
     """
+    def _fmt_pe(entry: dict | None) -> str:
+        """
+        ใช้แปลง object เช่น {"h1": "2", "result": "PASS"} → "2 / PASS"
+        ถ้าได้มาไม่ครบจะคืนอย่างใดอย่างหนึ่ง หรือว่างเปล่า
+        """
+        if not isinstance(entry, dict):
+            return ""
+        h1 = str(entry.get("h1") or "").strip()
+        res = str(entry.get("result") or "").strip()
+        if h1 and res:
+            return f"{h1} / {res}"
+        return h1 or res
 
-    # ----------------- คำนวณความกว้างตาราง -----------------
-    table_width = pdf.w - pdf.l_margin - pdf.r_margin
+    if table_width is None:
+        table_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-    col_cat     = 22  # Electrical Safety
-    col_section = 42  # กลุ่ม / หัวข้อ
-    col_item    = 52  # รายการย่อย
-    col_test    = 26  # 1st / 2nd / 3rd TEST
-    col_remark  = table_width - (col_cat + col_section + col_item + 3 * col_test)
+    # ---------- ความกว้างคอลัมน์ ----------
+    col_cat     = 20   # Electrical Safety (แนวตั้ง)
+    col_pe      = 30   # PE.Continuity...
+    col_item    = 25   # Left/Right/Front/Back/...
+    col_test    = 28   # 1st / 2nd / 3rd TEST
+    
+    col_remark  = table_width - (col_cat + col_pe + col_item + 3 * col_test)
 
-    h_header1 = 8
+    h_header1 = 5 
     h_header2 = 7
-    h_row     = 7
+    h_row     = 5
 
-    # ----------------- 1) หัวข้อใหญ่ -----------------
+    # ---------- 1) หัวข้อบรรทัดบน ----------
     pdf.set_xy(x, y)
-    pdf.set_font(base_font, "BU", font_size)  # หนา + ขีดเส้นใต้
+    pdf.set_font(base_font, "BU", font_size)
     pdf.cell(
         table_width, 6,
         "Testing Topics for Safety (Specifically Power Supply/Input Side)",
@@ -587,15 +602,21 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size):
         align="L",
     )
 
-    # เว้นระยะหน่อยก่อนเริ่มตาราง
-    y = pdf.get_y() + 3
+    y = pdf.get_y() + 2
+    table_y0 = y
+    lw_old = pdf.line_width
+    pdf.set_line_width(0.3)
+
+    # ---------- 2) Header แถวที่ 1 ----------
     pdf.set_font(base_font, "B", font_size)
-
-    # ----------------- 2) Header แถวที่ 1 -----------------
-    pdf.set_xy(x, y)
-
-    pdf.cell(col_cat, h_header1, "", 1, 0, "C")  # ช่องว่าง Electrical Safety
-    pdf.cell(col_section + col_item, h_header1, "Testing Checklist", 1, 0, "C")
+    
+    # ไม่วาดคอลัมน์ Electrical Safety ใน header (ตามรูป)
+    pdf.set_xy(x + col_cat, y)
+    
+    # Testing Checklist
+    pdf.cell(col_pe + col_item, h_header1+h_header2, "Testing Checklist", 1, 0, "C")
+    
+    # Test Results
     pdf.cell(
         col_test * 3,
         h_header1,
@@ -604,69 +625,172 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size):
         0,
         "C",
     )
-    pdf.cell(col_remark, h_header1, "Remark", 1, 1, "C")
+    
+    # Remark (merge 2 แถว)
+    pdf.cell(col_remark, h_header1 + h_header2, "Remark", 1, 0, "C")
+    
+    y += h_header1
 
-    # ----------------- 3) Header แถวที่ 2 -----------------
-    pdf.set_x(x)
-
-    pdf.cell(col_cat, h_header2, "", 1, 0, "C")
-    pdf.cell(col_section, h_header2, "", 1, 0, "C")
-    pdf.cell(col_item,    h_header2, "", 1, 0, "C")
-
+    # ---------- 3) Header แถวที่ 2 ----------
+    pdf.set_xy(x + col_cat, y)
+    
+    # ช่องว่างใต้ Testing Checklist
+    # pdf.cell(col_pe, h_header2, "", 1, 0, "C")
+    # pdf.cell(col_item, h_header2, "", 1, 0, "C")
+    # ช่องว่างใต้ Testing Checklist (merge col_pe + col_item)
+    pdf.cell(col_pe + col_item, h_header2, "", 0, 0, "C")
+    
+    # Test columns
     pdf.cell(col_test, h_header2, "1st TEST", 1, 0, "C")
     pdf.cell(col_test, h_header2, "2nd TEST", 1, 0, "C")
     pdf.cell(col_test, h_header2, "3rd TEST", 1, 0, "C")
+    
+    y += h_header2
+    y_body_start = y
 
-    pdf.cell(col_remark, h_header2, "", 1, 1, "C")
-
-    y_body_start = pdf.get_y()
-
-    # ----------------- 4) เนื้อหาตาราง -----------------
     pdf.set_font(base_font, "", font_size)
 
-    rows = [
-        ("PE continuity of charger", "Left Cover"),
-        ("", "Right Cover"),
-        ("", "Front Cover"),
-        ("", "Back Cover"),
-        ("", "Charger Stand"),
-        ("", "Charger Case"),
-        ("RCD type A", ""),
-        ("RCD type F", ""),
-        ("RCD type B", ""),
-        ("Power standby", ""),
+    # ---------- 4) ส่วน PE.Continuity ----------
+    items = [
+        "Left Cover",
+        "Right Cover",
+        "Front Cover",
+        "Back Cover",
+        "Charger Stand",
+        "Charger Case",
     ]
 
-    for section, item in rows:
-        pdf.set_x(x)
+    # วาดกล่องใหญ่ PE.Continuity
+    pe_rows = len(items)
+    pe_h = pe_rows * h_row
+    pdf.rect(x + col_cat, y, col_pe, pe_h)
 
-        pdf.cell(col_cat, h_row, "", 1, 0, "C")   # Electrical Safety (เว้นไว้ก่อน)
-        pdf.cell(col_section, h_row, section, 1, 0, "L")
-        pdf.cell(col_item,    h_row, item,    1, 0, "L")
-
-        pdf.cell(col_test, h_row, "", 1, 0, "C")  # 1st TEST
-        pdf.cell(col_test, h_row, "", 1, 0, "C")  # 2nd TEST
-        pdf.cell(col_test, h_row, "", 1, 0, "C")  # 3rd TEST
-
-        pdf.cell(col_remark, h_row, "", 1, 1, "L")
-
-    y_body_end = pdf.get_y()
-
-    # ----------------- 5) เขียนคำว่า "Electrical Safety" -----------------
-    text = "Electrical\nSafety"
-    line_h = 4
-    num_lines = text.count("\n") + 1
-    total_text_h = line_h * num_lines
-
-    text_y = y_body_start + ((y_body_end - y_body_start) - total_text_h) / 2.0
-
-    pdf.set_font(base_font, "B", font_size)
-    pdf.set_xy(x, text_y)
-    pdf.multi_cell(col_cat, line_h, text, border=0, align="C")
-
+    # ข้อความใน PE.Continuity
+    pe_text_lines = [
+        "PE.Continuity",
+        "protective",
+        "Conductors of",
+        "Charger",
+    ]
+    text_total_h = len(pe_text_lines) * 4.0
+    text_y = y + (pe_h - text_total_h) / 2.0
+    
+    pdf.set_font(base_font, "", font_size - 1)
+    for i, ln in enumerate(pe_text_lines):
+        pdf.set_xy(x + col_cat, text_y + i * 4.0)
+        pdf.cell(col_pe, 4.0, ln, 0, 0, "C")
     pdf.set_font(base_font, "", font_size)
 
-    return pdf.get_y()
+    # วาดแถว Left/Right/Front/Back/Stand/Case
+    for txt in items:
+        row_y = y
+
+        # คอลัมน์ Electrical Safety (ว่างไว้)
+        pdf.set_xy(x, row_y)
+        # pdf.cell(col_cat, h_row, "", 1, 0, "C")
+        pdf.cell(col_cat, h_row, "", 0, 0, "C")  # border=0
+
+        # ข้ามพื้นที่ PE.Continuity
+        pdf.set_xy(x + col_cat + col_pe, row_y)
+
+        # คอลัมน์รายการ
+        pdf.cell(col_item, h_row, txt, 1, 0, "L")
+
+        # Test columns
+        pdf.cell(col_test, h_row, "", 1, 0, "C")
+        pdf.cell(col_test, h_row, "", 1, 0, "C")
+        pdf.cell(col_test, h_row, "", 1, 0, "C")
+
+        # Remark
+        pdf.cell(col_remark, h_row, "", 1, 0, "L")
+
+        y += h_row
+
+    # ---------- 5) RCD type rows ----------
+    rcd_rows = [
+        ("RCD type A", "-", "mA"),
+        ("RCD type F", "-", "mA"),
+        ("RCD type B", "-", "mA"),
+    ]
+
+    for label, val, unit in rcd_rows:
+        pdf.set_xy(x, y)
+        
+        # Electrical Safety (ว่าง)
+        # pdf.cell(col_cat, h_row, "", 1, 0, "C")
+        pdf.cell(col_cat, h_row, "", 0, 0, "C")
+        
+        # RCD type label
+        pdf.cell(col_pe, h_row, label, 1, 0, "L")
+        
+        # แบ่งช่อง item เป็น 2 ส่วน
+        w1 = col_item * 0.35
+        w2 = col_item * 0.65
+        pdf.cell(w1, h_row, val, 1, 0, "C")
+        pdf.cell(w2, h_row, unit, 1, 0, "L")
+        
+        # Test columns
+        pdf.cell(col_test, h_row, "", 1, 0, "C")
+        pdf.cell(col_test, h_row, "", 1, 0, "C")
+        pdf.cell(col_test, h_row, "", 1, 0, "C")
+        
+        # Remark
+        pdf.cell(col_remark, h_row, "", 1, 0, "L")
+        
+        y += h_row
+
+    # ---------- 6) Power standby ----------
+    pdf.set_xy(x, y)
+    # pdf.cell(col_cat, h_row, "", 1, 0, "C")
+    pdf.cell(col_cat, h_row, "", 0, 0, "C")
+    pdf.cell(col_pe, h_row, "Power standby", 1, 0, "L")
+    pdf.cell(col_item, h_row, "", 1, 0, "C")
+    
+    # L1=, L2=, L3= พร้อมหน่วย A
+    pdf.set_font(base_font, "", font_size - 1)
+    pdf.cell(col_test, h_row, "L1=          A", 1, 0, "L")
+    pdf.cell(col_test, h_row, "L2=          A", 1, 0, "L")
+    pdf.cell(col_test, h_row, "L3=          A", 1, 0, "L")
+    pdf.set_font(base_font, "", font_size)
+    
+    pdf.cell(col_remark, h_row, "", 1, 0, "L")
+    
+    y += h_row
+    y_body_end = y
+
+    # ---------- 7) Electrical Safety แนวตั้ง ----------
+    body_height = y_body_end - y_body_start
+    pdf.rect(x, y_body_start, col_cat, body_height)
+    
+    pdf.set_font(base_font, "B", 20)
+    text = "Electrical Safety"
+    text_width = pdf.get_string_width(text)
+    
+    text_x = x + col_cat / 2.0
+    text_y = y_body_start + (body_height + text_width) / 2.0
+    
+    # ถ้า FPDF ไม่รองรับ rotation context manager ให้ใช้วิธีนี้แทน:
+    try:
+        with pdf.rotation(90, text_x, text_y):
+            pdf.set_xy(text_x, text_y)
+            pdf.cell(0, 0, text, 0, 0, "L")
+    except:
+        # สำรอง: เขียนแยกเป็น 2 บรรทัด
+        text_lines = ["Electrical", "Safety"]
+        line_h = 4.5
+        total_h = len(text_lines) * line_h
+        text_y2 = y_body_start + (body_height - total_h) / 2.0
+        for i, ln in enumerate(text_lines):
+            pdf.set_xy(x + 1, text_y2 + i * line_h)
+            pdf.cell(col_cat - 2, line_h, ln, 0, 0, "C")
+
+    # ---------- 8) กรอบนอกเส้นหนา ----------
+    pdf.set_line_width(0.8)
+    pdf.rect(x, table_y0, table_width, y_body_end - table_y0)
+    pdf.set_line_width(lw_old)
+
+    pdf.set_font(base_font, "", font_size)
+    return y
 
 # -------------------- Photo helpers (ปรับใหม่) --------------------
 def _guess_img_type_from_ext(path_or_url: str) -> str:
@@ -938,11 +1062,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y = _draw_equipment_ident_details(pdf, base_font, x0, y, page_w, equip_items, num_rows=5)
 
     # เว้นระยะนิดหน่อยแล้ววาดตาราง
-    y += 5
+    y += 2
 
     y = draw_testing_topics_safety_section(
         pdf,
-        x=pdf.l_margin,
+        x=x0 + EDGE_ALIGN_FIX,
         y=y,
         base_font=base_font,
         font_size=FONT_MAIN,
