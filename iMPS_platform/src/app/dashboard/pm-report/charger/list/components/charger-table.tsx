@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -27,13 +27,15 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpDownIcon,
+  ArrowLeftIcon,
 } from "@heroicons/react/24/solid";
 import { ArrowUpTrayIcon, DocumentArrowDownIcon, EyeIcon } from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
-
+import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/components/checkList";
 type TData = {
+  id?: string;
   issue_id?: string; // ทำเป็น optional และเติมค่าจาก id หรือ regex ใน url
-  name: string; // วันที่แบบไทย แสดงผลในตาราง
+  pm_date: string; // วันที่แบบไทย แสดงผลในตาราง 
   position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
   office: string; // URL ไฟล์
 };
@@ -106,16 +108,11 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
 
 
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
+  const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
-  const [loading, setLoading] = useState(false);
-
-
   const [issueId, setIssueId] = useState<string>("");
-  // const sp = useSearchParams();
-  // const stationIdFromUrl = sp.get("station_id") ?? "";
-
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
 
@@ -130,12 +127,27 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     setStationId(sidLocal);
   }, [searchParams]);
 
+  // const statusFromTab = (searchParams.get("status") ?? "charger").toLowerCase();
+  // const statusLabel = statusFromTab
+  //   .split(/[-_ ]+/)
+  //   .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
+  //   .join(" ");
 
-  const addHref = useMemo(() => {
-    if (!stationId) return "/dashboard/pm-report/charger/input_PMreport";
-    const p = new URLSearchParams({ station_id: stationId });
-    return `/dashboard/pm-report/charger/input_PMreport?${p.toString()}`;
-  }, [stationId]);
+  const router = useRouter();
+  const pathname = usePathname();
+  const editId = searchParams.get("edit_id") ?? "";
+  const mode: "list" | "form" =
+    (searchParams.get("view") === "form" || !!editId) ? "form" : "list";
+  const setView = (view: "list" | "form", { replace = false } = {}) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (view === "form") {
+      params.set("view", "form");
+    } else {
+      params.delete("view");
+      params.delete("edit_id");
+    }
+    router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   // Helpers
   const useHttpOnlyCookie = true;
@@ -147,7 +159,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
     return h;
   }
-  const baseFetchOpts: RequestInit = {
+  const FetchOpts: RequestInit = {
     headers: makeHeaders(),
     ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
     cache: "no-store",
@@ -160,11 +172,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       month: "2-digit",
       year: "numeric",
     });
-  }
-  function todayLocalISO() {
-    const d = new Date();
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().slice(0, 10);
   }
 
   function toISODateOnly(s?: string) {
@@ -181,6 +188,125 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       return "";
     }
   }
+
+  function resolveFileHref(v: any, apiBase: string) {
+    if (!v) return "";
+    if (typeof v === "object") {
+      const c = v.url ?? v.href ?? v.link ?? "";
+      return resolveFileHref(c, apiBase);
+    }
+    const s = String(v).trim();
+    if (!s) return "";
+    try {
+      return new URL(s).toString();
+    } catch { }
+    if (s.startsWith("/")) return `${apiBase}${s}`;
+    if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
+    return `${apiBase}/${s}`;
+  }
+
+  // function getStatusText(it: any) {
+  //   return String(it?.status ?? it?.job?.status ?? "").trim();
+  // }
+
+  // Fetch data (with abort support)
+  // const fetchRows = async (signal?: AbortSignal) => {
+  //   if (!stationId) {
+  //     setData([]);
+  //     return;
+  //   }
+  //   setLoading(true);
+  //   try {
+  //     const makeURL = (path: string) => {
+  //       const u = new URL(`${apiBase}${path}`);
+  //       u.searchParams.set("station_id", stationId);
+  //       u.searchParams.set("page", "1");
+  //       u.searchParams.set("pageSize", "50");
+  //       u.searchParams.set("_ts", String(Date.now()));
+  //       return u.toString();
+  //     };
+
+  //     const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
+
+  //     const [pmRes, urlRes] = await Promise.allSettled([
+  //       fetch(makeURL("/pmreport/list"), fetchOpts),
+  //       fetch(makeURL("/pmurl/list"), fetchOpts),
+  //     ]);
+
+  //     let pmItems: any[] = [];
+  //     let urlItems: any[] = [];
+
+  //     if (pmRes.status === "fulfilled" && pmRes.value.ok) {
+  //       const j = await pmRes.value.json();
+  //       if (Array.isArray(j?.items)) pmItems = j.items;
+  //     }
+  //     if (urlRes.status === "fulfilled" && urlRes.value.ok) {
+  //       const j = await urlRes.value.json();
+  //       if (Array.isArray(j?.items)) urlItems = j.items;
+  //     }
+
+  //     const pmRows: TData[] = pmItems.map((it: any) => {
+  //       const isoDay = pickDateFromItem(it);
+  //       const rawUploaded =
+  //         it.file_url ??
+  //         (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
+  //         it.file ?? it.path;
+
+  //       const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
+
+  //       function extractId(x: any): string {
+  //         if (!x) return "";
+  //         const raw = (x._id !== undefined ? x._id : x.id) ?? "";
+  //         if (raw && typeof raw === "object") return raw.$oid || raw.oid || raw.$id || "";
+  //         const s = String(raw || "");
+  //         return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
+  //       }
+  //       const id = extractId(it);
+  //       const generatedUrl = id ? `${apiBase}/pdf/charger/${encodeURIComponent(id)}/export` : "";
+
+  //       const fileUrl = uploadedUrl || generatedUrl;
+  //       // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
+  //       const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
+
+  //       return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
+  //     });
+
+  //     const urlRows: TData[] = urlItems.map((it: any) => {
+  //       const isoDay = pickDateFromItem(it);
+  //       const raw =
+  //         it.file_url ??
+  //         (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
+  //         it.file ?? it.path;
+  //       const href = resolveFileHref(raw, apiBase);
+  //       // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
+  //       const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
+  //       return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: href } as TData;
+  //     });
+
+  //     const allRows = [...pmRows, ...urlRows].sort((a, b) => {
+  //       const da = (a.position ?? "") as string;
+  //       const db = (b.position ?? "") as string;
+  //       if (!da && !db) return 0;
+  //       if (!da) return 1;
+  //       if (!db) return -1;
+  //       return da < db ? 1 : da > db ? -1 : 0; // desc
+  //     });
+  //     setData(allRows);
+  //   } catch (err: any) {
+  //     if (err?.name === "AbortError") return; // ignore abort
+  //     console.error("fetch both lists error:", err);
+  //     setData([]);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+  const addHref = useMemo(() => {
+    if (!stationId) return "/dashboard/pm-report/charger/input_PMreport";
+    const p = new URLSearchParams({ station_id: stationId });
+    return `/dashboard/pm-report/charger/input_PMreport?${p.toString()}`;
+  }, [stationId]);
+
 
   function normalizeAnyDate(v: any): string {
     if (!v) return "";
@@ -209,21 +335,104 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return "";
   }
 
-  function resolveFileHref(v: any, apiBase: string) {
-    if (!v) return "";
-    if (typeof v === "object") {
-      const c = v.url ?? v.href ?? v.link ?? "";
-      return resolveFileHref(c, apiBase);
-    }
-    const s = String(v).trim();
-    if (!s) return "";
+  // Fetch data (with abort support)
+  const fetchRows = async (signal?: AbortSignal) => {
+    if (!stationId) { setData([]); return; }
+    setLoading(true);
+
     try {
-      return new URL(s).toString();
-    } catch { }
-    if (s.startsWith("/")) return `${apiBase}${s}`;
-    if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
-    return `${apiBase}/${s}`;
-  }
+      const makeURL = (path: string) => {
+        const u = new URL(`${apiBase}${path}`);
+        u.searchParams.set("station_id", stationId);
+        u.searchParams.set("page", "1");
+        u.searchParams.set("pageSize", "50");
+        u.searchParams.set("_ts", String(Date.now()));
+        return u.toString();
+      };
+
+      // const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
+
+      const [pmRes, urlRes] = await Promise.allSettled([
+        fetch(makeURL("/pmreport/list"), FetchOpts),
+        fetch(makeURL("/pmurl/list"), FetchOpts),
+      ]);
+
+      let pmItems: any[] = [];
+      let urlItems: any[] = [];
+
+      if (pmRes.status === "fulfilled" && pmRes.value.ok) {
+        const j = await pmRes.value.json();
+        if (Array.isArray(j?.items)) pmItems = j.items;
+      }
+      if (urlRes.status === "fulfilled" && urlRes.value.ok) {
+        const j = await urlRes.value.json();
+        if (Array.isArray(j?.items)) urlItems = j.items;
+      }
+
+      const pmRows: TData[] = pmItems.map((it: any) => {
+        const isoDay = pickDateFromItem(it);
+        const rawUploaded =
+          it.file_url ??
+          (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
+          it.file ?? it.path;
+
+        const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
+
+        function extractId(x: any): string {
+          if (!x) return "";
+          const raw = (x._id !== undefined ? x._id : x.id) ?? "";
+          if (raw && typeof raw === "object") return raw.$oid || raw.oid || raw.$id || "";
+          const s = String(raw || "");
+          return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
+        }
+        const id = extractId(it);
+        const generatedUrl = id ? `${apiBase}/pdf/charger/${encodeURIComponent(id)}/export` : "";
+
+        const fileUrl = uploadedUrl || generatedUrl;
+        // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
+        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
+
+        return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
+      });
+
+      const urlRows: TData[] = urlItems.map((it: any) => {
+        const isoDay = pickDateFromItem(it);
+        const raw =
+          it.file_url ??
+          (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
+          it.file ?? it.path;
+        const href = resolveFileHref(raw, apiBase);
+        // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
+        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
+        return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: href } as TData;
+      });
+
+      const allRows = [...pmRows, ...urlRows].sort((a, b) => {
+        const da = (a.position ?? "") as string;
+        const db = (b.position ?? "") as string;
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return da < db ? 1 : da > db ? -1 : 0; // desc
+      });
+
+      if (!allRows.length) { setData([]); return; }
+      setData(allRows);
+    } catch (err: any) {
+      if (err?.name === "AbortError") return; // ignore abort
+      console.error("fetch both lists error:", err);
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let alive = true;
+    (async () => { await fetchRows(); })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase, stationId]);
 
   function appendParam(u: string, key: string, val: string) {
     const url = new URL(u, apiBase);
@@ -267,115 +476,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return m ? m[0] : "";
   }
 
-  // Fetch data (with abort support)
-  const fetchRows = async (signal?: AbortSignal) => {
-    if (!stationId) {
-      setData([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const makeURL = (path: string) => {
-        const u = new URL(`${apiBase}${path}`);
-        u.searchParams.set("station_id", stationId);
-        u.searchParams.set("page", "1");
-        u.searchParams.set("pageSize", "50");
-        u.searchParams.set("_ts", String(Date.now()));
-        return u.toString();
-      };
-
-      const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
-
-      const [pmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL("/pmreport/list"), fetchOpts),
-        fetch(makeURL("/pmurl/list"), fetchOpts),
-      ]);
-
-      let pmItems: any[] = [];
-      let urlItems: any[] = [];
-
-      if (pmRes.status === "fulfilled" && pmRes.value.ok) {
-        const j = await pmRes.value.json();
-        if (Array.isArray(j?.items)) pmItems = j.items;
-      }
-      if (urlRes.status === "fulfilled" && urlRes.value.ok) {
-        const j = await urlRes.value.json();
-        if (Array.isArray(j?.items)) urlItems = j.items;
-      }
-
-      const pmRows: TData[] = pmItems.map((it: any) => {
-        const isoDay = pickDateFromItem(it);
-        const rawUploaded =
-          it.file_url ??
-          (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
-          it.file ?? it.path;
-
-        const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
-
-        function extractId(x: any): string {
-          if (!x) return "";
-          const raw = (x._id !== undefined ? x._id : x.id) ?? "";
-          if (raw && typeof raw === "object") return raw.$oid || raw.oid || raw.$id || "";
-          const s = String(raw || "");
-          return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
-        }
-        const id = extractId(it);
-        const generatedUrl = id ? `${apiBase}/pdf/charger/${encodeURIComponent(id)}/export` : "";
-
-        const fileUrl = uploadedUrl || generatedUrl;
-        // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
-        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
-
-        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
-      });
-
-      const urlRows: TData[] = urlItems.map((it: any) => {
-        const isoDay = pickDateFromItem(it);
-        const raw =
-          it.file_url ??
-          (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
-          it.file ?? it.path;
-        const href = resolveFileHref(raw, apiBase);
-        // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
-        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
-        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: href } as TData;
-      });
-
-      const allRows = [...pmRows, ...urlRows].sort((a, b) => {
-        const da = (a.position ?? "") as string;
-        const db = (b.position ?? "") as string;
-        if (!da && !db) return 0;
-        if (!da) return 1;
-        if (!db) return -1;
-        return da < db ? 1 : da > db ? -1 : 0; // desc
-      });
-
-      // if (!allRows.length) {
-      //   const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationId)}?_ts=${Date.now()}`, {
-      //     ...baseFetchOpts,
-      //     signal,
-      //   });
-      //   if (res2.ok) {
-      //     const j = await res2.json();
-      //     const iso = j?.pm_date ?? "";
-      //     const rows: TData[] = iso ? ([{ issue_id: "", name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-      //     setData(rows);
-      //     return;
-      //   }
-      //   setData([]);
-      //   return;
-      // }
-
-      setData(allRows);
-    } catch (err: any) {
-      if (err?.name === "AbortError") return; // ignore abort
-      console.error("fetch both lists error:", err);
-      setData([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     const ac = new AbortController();
     fetchRows(ac.signal);
@@ -401,6 +501,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
+      header: () => "name",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      size: 120,
+      minSize: 80,
+      maxSize: 160,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.issue_id || "—",
+      id: "issue_id",
       header: () => "issue_id",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
@@ -409,9 +519,19 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.name,
+      accessorFn: (row) => row.pm_date,
       id: "date",
       header: () => "date",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      size: 100,
+      minSize: 80,
+      maxSize: 140,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.pm_date,
+      id: "date",
+      header: () => "reporter",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
@@ -483,8 +603,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   // Upload dialog
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [dateOpen, setDateOpen] = useState(false);
-  const [reportDate, setReportDate] = useState<string>(todayLocalISO());
+  const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [urlText, setUrlText] = useState("");
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -552,7 +673,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     let canceled = false;
     (async () => {
       try {
-        const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, baseFetchOpts);
+        const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, FetchOpts);
         const next = nextIssueIdFor(PM_TYPE_CODE, reportDate, latest || "");
         if (!canceled) setIssueId(next);
       } catch {
@@ -563,6 +684,40 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return () => { canceled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateOpen, stationId, reportDate]);
+
+  const goAdd = () => setView("form");
+  const goList = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("view");
+    params.delete("edit_id"); // 👈 ลบด้วย
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+  function goEdit(row: TData) {
+    if (!row?.id) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form");
+    params.set("edit_id", row.id);       // 👈 ให้ฟอร์มใช้โหลดข้อมูล
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  if (mode === "form") {
+    return (
+      <div className="tw-mt-6">
+        <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
+          <Button
+            variant="outlined"
+            size="sm"
+            onClick={goList}
+            className="tw-py-2 tw-px-2"
+            title="กลับไปหน้า List"
+          >
+            <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
+          </Button>
+        </div>
+        <ChargerPMForm />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -609,7 +764,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   <span className="tw-text-sm">Upload</span>
                 </Button>
 
-                <Link href={addHref} onClick={(e) => { if (!stationId) e.preventDefault(); }}>
+                {/* <Link href={addHref} onClick={(e) => { if (!stationId) e.preventDefault(); }}>
                   <Button
                     size="lg"
                     disabled={!stationId}
@@ -625,7 +780,24 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   >
                     +Add
                   </Button>
-                </Link>
+                </Link> */}
+                <Button
+                  size="lg"
+                  onClick={goAdd}
+                  disabled={!stationId}
+                  className={`
+                                  !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
+                                  tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
+                                  ${!stationId
+                      ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+                      : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
+                                  tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                                  focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
+                                `}
+                  title={stationId ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
+                >
+                  <span className="tw-w-full tw-text-center">+Add</span>
+                </Button>
               </div>
             </div>
           </div>

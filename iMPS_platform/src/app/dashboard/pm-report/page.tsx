@@ -50,6 +50,10 @@ export default function DataTablesPage() {
 
   const active: TabId = useMemo(() => slugToTab(searchParams.get("tab")), [searchParams]);
 
+  const editId = searchParams.get("edit_id") ?? "";
+  const mode: "list" | "form" =
+    searchParams.get("view") === "form" || !!editId ? "form" : "list";
+
   useEffect(() => {
     if (!searchParams.get("tab")) {
       const params = new URLSearchParams(searchParams.toString());
@@ -58,8 +62,15 @@ export default function DataTablesPage() {
     }
   }, [active, pathname, router, searchParams]);
 
+  // const go = (next: TabId) => {
+  //   // if (isFormView) return; // 🔒 กันการเปลี่ยนแท็บตอนกรอกฟอร์ม
+  //   const params = new URLSearchParams(searchParams.toString());
+  //   params.set("tab", tabToSlug(next));
+  //   router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  // };
   const go = (next: TabId) => {
-    // if (isFormView) return; // 🔒 กันการเปลี่ยนแท็บตอนกรอกฟอร์ม
+    // ถ้าอยากกันเปลี่ยนแท็บตอนอยู่หน้า form ก็ใช้ mode ร่วมได้
+    // if (mode === "form") return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tabToSlug(next));
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
@@ -101,7 +112,8 @@ export default function DataTablesPage() {
       >
         <TabPanel value="charger" className="tw-p-0">
           <div className="tw-space-y-5">
-            <FirmwareCards />
+            {/* <FirmwareCards /> */}
+            {mode === "list" && <FirmwareCards />}
             <ChargerTables />
           </div>
         </TabPanel>
