@@ -333,13 +333,17 @@ def _draw_header(
     pdf.rect(xr, y_top, col_right, h_right_top)
     pdf.rect(xr, y_top + h_right_top, col_right, h_all - h_right_top)
 
+    # เปลี่ยน: แสดงเลขหน้าปัจจุบัน
     pdf.set_xy(xr, y_top + 4)
     pdf.set_font(base_font, "", FONT_MAIN)
+    # ใช้ pdf.page_no() เพื่อให้เลขหน้าเพิ่มขึ้นอัตโนมัติเมื่อมีการเรียก add_page()
     pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C")
 
+    # เปลี่ยน: แสดง Issue ID
     pdf.set_xy(xr, y_top + h_right_top + (h_all - h_right_top) / 2 - 5)
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.multi_cell(col_right, 6, f"Issue ID\n{issue_id}", align="C")
+    
 
     return y_top + h_all
 
@@ -383,62 +387,103 @@ def _env_photo_headers() -> Optional[dict]:
 def _load_image_source_from_urlpath(
     url_path: str,
 ) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
-    """
-    รับ '/uploads/dctest/Klongluang3/68efc.../charger/image.png' → คืน (src, img_type)
-    1) ลองแมปเป็นไฟล์จริง: backend/uploads/dctest/... หรือ backend/uploads/pm/...
-    2) ถ้าไม่เจอและมี PHOTOS_BASE_URL → ดาวน์โหลด
-    3) ถ้ายังไม่ได้ → (None, None)
-    """
     if not url_path:
         return None, None
 
     print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
 
-    # 1) หา backend/uploads โดยตรง
-    backend_root = Path(__file__).resolve().parents[2]
-    uploads_root = backend_root / "uploads"
+    # Normalize
+    raw = str(url_path).strip()
+    # If it's already an absolute file path
+    p_abs = Path(raw)
+    if p_abs.is_absolute() and p_abs.exists() and p_abs.is_file():
+        print(f"[DEBUG] ✅ พบเป็น absolute path: {p_abs}")
+        return p_abs.as_posix(), _guess_img_type_from_ext(p_abs.as_posix())
 
-    print(f"[DEBUG] backend_root = {backend_root}")
-    print(f"[DEBUG] uploads_root = {uploads_root}")
+    # Strip leading slash for easier joins
+    clean_path = raw.lstrip("/")
 
-    if uploads_root.exists():
-        clean_path = url_path.lstrip("/")
-        if clean_path.startswith("uploads/"):
-            clean_path = clean_path[8:]
-
-        local_path = uploads_root / clean_path
-        print(f"[DEBUG] 📂 ตรวจสอบไฟล์: {local_path}")
-
-        if local_path.exists() and local_path.is_file():
-            print(f"[DEBUG] ✅ เจอไฟล์แล้ว!")
-            return local_path.as_posix(), _guess_img_type_from_ext(
-                local_path.as_posix()
-            )
-        else:
-            print(f"[DEBUG] ❌ ไม่เจอไฟล์ที่: {local_path}")
+    # If raw looks like a relative path containing "uploads/" remove leading "uploads/" when joining
+    if clean_path.startswith("uploads/"):
+        rel_after_uploads = clean_path[len("uploads/") :]
     else:
-        print(f"[DEBUG] ⚠️ ไม่มีโฟลเดอร์ uploads: {uploads_root}")
+        rel_after_uploads = clean_path
 
-    # 2) ลอง public_root
+    # 1) Try to find backend/uploads by searching parents for a folder named "backend"
+    current_file = Path(__file__).resolve()
+    backend_root = None
+    for p in current_file.parents:
+        if p.name.lower() == "backend" and p.exists():
+            backend_root = p
+            break
+    # fallback: try a couple of reasonable parents (two levels up)
+    if backend_root is None:
+        for i in range(1, 4):
+            cand = current_file.parents[i] if i < len(current_file.parents) else None
+            if cand and (cand / "backend").exists():
+                backend_root = cand / "backend"
+                break
+
+    tried_paths = []
+    if backend_root is not None:
+        uploads_root = backend_root / "uploads"
+        if uploads_root.exists():
+            candidate = uploads_root / rel_after_uploads
+            tried_paths.append(candidate)
+            print(f"[DEBUG] 📂 ตรวจสอบ backend/uploads: {candidate}")
+            if candidate.exists() and candidate.is_file():
+                print(f"[DEBUG] ✅ เจอไฟล์ใน backend/uploads: {candidate}")
+                return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
+
+    # 2) Try sibling location: current_file.parents.../uploads (covers case project root/uploads)
+    for i in range(0, min(5, len(current_file.parents))):
+        cand_root = current_file.parents[i] / "uploads"
+        candidate = cand_root / rel_after_uploads
+        tried_paths.append(candidate)
+        print(f"[DEBUG] 📂 ตรวจสอบ (parent-level {i}) : {candidate}")
+        if candidate.exists() and candidate.is_file():
+            print(f"[DEBUG] ✅ เจอไฟล์: {candidate}")
+            return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
+
+    # 3) Try CWD/uploads
+    cwd_uploads = Path.cwd() / "uploads"
+    candidate = cwd_uploads / rel_after_uploads
+    tried_paths.append(candidate)
+    print(f"[DEBUG] 📂 ตรวจสอบไฟล์ที่ CWD: {candidate}")
+    if candidate.exists() and candidate.is_file():
+        print(f"[DEBUG] ✅ เจอไฟล์ที่ CWD: {candidate}")
+        return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
+
+    # 4) Try public root if exists
     public_root = _find_public_root()
     if public_root:
-        local_path = public_root / url_path.lstrip("/")
-        print(f"[DEBUG] 📂 ลองหาใน public: {local_path}")
+        candidate = public_root / clean_path
+        tried_paths.append(candidate)
+        print(f"[DEBUG] 📂 ลองหาใน public: {candidate}")
+        if candidate.exists() and candidate.is_file():
+            print(f"[DEBUG] ✅ เจอไฟล์ใน public: {candidate}")
+            return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
 
-        if local_path.exists() and local_path.is_file():
-            print(f"[DEBUG] ✅ เจอไฟล์ใน public!")
-            return local_path.as_posix(), _guess_img_type_from_ext(
-                local_path.as_posix()
-            )
+    # 5) If url_path itself looks like a relative filename (no folders), try searching inside common subfolders
+    #    (e.g., doc contains only "image.png") — try inside typical category folders
+    filename_only = Path(clean_path).name
+    common_folders = ["charger", "circuit_breaker", "gun1", "gun2", "nameplate", "rcd"]
+    for root_try in (backend_root, Path.cwd(), public_root):
+        if not root_try:
+            continue
+        for cf in common_folders:
+            candidate = root_try / "uploads" / "dctest" / cf / filename_only
+            tried_paths.append(candidate)
+            if candidate.exists() and candidate.is_file():
+                print(f"[DEBUG] ✅ เจอไฟล์โดยค้นหา common folders: {candidate}")
+                return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
 
-    # 3) ดาวน์โหลดผ่าน HTTP
+    # 6) Try HTTP if base url provided
     base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
     print(f"[DEBUG] PHOTOS_BASE_URL = {base_url}")
-
     if base_url and requests is not None:
-        full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
+        full_url = base_url.rstrip("/") + "/" + clean_path.lstrip("/")
         print(f"[DEBUG] 🌐 พยายามดาวน์โหลดจาก: {full_url}")
-
         try:
             resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
             resp.raise_for_status()
@@ -448,8 +493,12 @@ def _load_image_source_from_urlpath(
         except Exception as e:
             print(f"[DEBUG] ❌ ดาวน์โหลดล้มเหลว: {e}")
 
-    print("[DEBUG] ❌ ไม่พบรูปภาพจากทุกวิธี")
+    # Nothing found
+    print("[DEBUG] ❌ ไม่พบรูปภาพจากทุกวิธี — paths tried:")
+    for p in tried_paths:
+        print("  -", p)
     return None, None
+
 
 
 # -------------------------------------
@@ -504,93 +553,33 @@ def _draw_picture_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict):
         except Exception:
             pass
 
-    # กล่องกลาง - แสดง "PICTURE"
+    # กล่องกลาง - แสดง "Photos"
     box_x = x0 + col_left
     pdf.rect(box_x, y_top, col_mid, h_all)
     pdf.set_font(base_font, "B", 28)
     pdf.set_xy(box_x, y_top + (h_all - 8) / 2)
-    pdf.cell(col_mid, 8, "PICTURE", align="C")
+    pdf.cell(col_mid, 8, "Photos", align="C")
+    
+    # pdf.set_font(base_font, "", 18)
+    # pdf.set_xy(box_x, y_top + h_all + 2)  # เลื่อนลงมานิดหน่อยจากกล่อง Photos
+    # pdf.cell(col_mid, 8, "DC Charger Test", align="C")
 
-    # กล่องขวา - แสดง Page 2 / 2
+    # กล่องขวา - แสดง Page / Issue ID
     xr = x0 + col_left + col_mid
     pdf.rect(xr, y_top, col_right, h_right_top)
     pdf.rect(xr, y_top + h_right_top, col_right, h_all - h_right_top)
 
     pdf.set_xy(xr, y_top + 4)
     pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(col_right, 6, "Page", align="C")
+    # แก้ไข: แสดงหมายเลขหน้าปัจจุบัน (pdf.page_no())
+    pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C") 
 
     pdf.set_xy(xr, y_top + h_right_top + (h_all - h_right_top) / 2 - 3)
     pdf.set_font(base_font, "B", 16)
-    pdf.cell(col_right, 8, "2  /  2", align="C")
+    # แก้ไข: แสดง issue_id แทน "2 / 2"
+    pdf.cell(col_right, 8, issue_id, align="C") 
 
-    y = y_top + h_all
-
-    # ข้อมูล head
-    head = doc.get("head", {}) or {}
-    manufacturer = head.get("manufacturer111", "0")
-    model = head.get("model", "0")
-    power = head.get("power", "-")
-    serial_no = head.get("serial_number", "0")
-    location = head.get("location", "0")
-    firmware = head.get("firmware_version", "0")
-    inspection = _fmt_date_thai_like_sample(doc.get("inspection_date", "0-Jan-00"))
-
-    # วาดข้อมูลด้านบน (3 แถว) ตามรูปแบบในภาพ
-    row_h = 7.0
-    left_w = page_w / 2.0
-    right_w = page_w - left_w
-
-    pdf.set_font(base_font, "B", FONT_MAIN)
-
-    # แถวที่ 1: Manufacturer | Location
-    pdf.set_xy(x0, y)
-    pdf.cell(30, row_h, "Manufacturer", border=0)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(3, row_h, ":", border=0)
-    pdf.cell(left_w - 33, row_h, manufacturer, border=0)
-
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(30, row_h, "Location", border=0)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(3, row_h, ":", border=0)
-    pdf.cell(right_w - 33, row_h, location, border=0, ln=1)
-    y += row_h
-
-    # แถวที่ 2: Model + Power | Firmware Version
-    pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(30, row_h, "Model", border=0)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(3, row_h, ":", border=0)
-    pdf.cell(left_w / 2 - 33, row_h, model, border=0)
-
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(20, row_h, "Power :", border=0)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(left_w / 2 - 20, row_h, power, border=0)
-
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(35, row_h, "Firmware Version", border=0)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(3, row_h, ":", border=0)
-    pdf.cell(right_w - 38, row_h, firmware, border=0, ln=1)
-    y += row_h
-
-    # แถวที่ 3: Serial Number | Inspection Date
-    pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(30, row_h, "Serial Number", border=0)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(3, row_h, ":", border=0)
-    pdf.cell(left_w - 33, row_h, serial_no, border=0)
-
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(35, row_h, "Inspection Date", border=0)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(3, row_h, ":", border=0)
-    pdf.cell(right_w - 38, row_h, inspection, border=0, ln=1)
-    y += row_h + 3
+    y = y_top + h_all + 5
 
     # ดึงรูปภาพจาก doc
     photos = doc.get("photos", {}) or {}
@@ -901,7 +890,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_fill_color(255, 230, 100)
-
+    
     return _output_pdf_bytes(pdf)
 
 
