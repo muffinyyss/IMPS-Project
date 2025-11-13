@@ -1,4 +1,3 @@
-
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import CMOpenForm from "@/app/dashboard/cm-report/open/input_CMreport/components/checkList";
