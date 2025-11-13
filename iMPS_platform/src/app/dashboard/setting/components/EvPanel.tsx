@@ -84,7 +84,6 @@ export default function EvPanel() {
             `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
             { withCredentials: true } // สำคัญสำหรับ cookie-auth
         );
-
         const onInit = (e: MessageEvent) => {
             try {
                 setData(JSON.parse(e.data));
@@ -95,29 +94,14 @@ export default function EvPanel() {
                 setLoading(false);
             }
         };
-
-        // es.addEventListener("init", onInit);
         es.addEventListener("init", (e: MessageEvent) => {
-            // console.log("INIT raw:", e.data);
             try {
                 const obj = JSON.parse(e.data);
-                // console.log("INIT parsed:", obj);
                 setData(obj);
                 setLoading(false);
             } catch { }
         });
-
         es.onopen = () => setErr(null);
-
-        // es.onmessage = (e) => {
-        //     try {
-        //         setData(JSON.parse(e.data));
-        //         setErr(null);
-        //     } catch {
-        //         setErr("ผิดรูปแบบข้อมูล message");
-        //     }
-        // };
-
         es.onmessage = (e) => {
             // console.log("MSG raw:", e.data);
             try {
@@ -126,13 +110,11 @@ export default function EvPanel() {
                 setData(obj);
             } catch { }
         };
-
         es.onerror = () => {
             setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
             setLoading(false);
             // ไม่ปิด es เพื่อให้ browser retry ตาม retry: 3000 ที่ server ส่งมา
         };
-
         return () => {
             es.removeEventListener("init", onInit);
             es.close();

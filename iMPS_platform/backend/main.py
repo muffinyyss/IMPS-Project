@@ -501,16 +501,31 @@ def station_info(
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),   # ดึง claims จาก JWT
 ):
-    # เช็คสิทธิ์ก่อน (ข้อ 5)
-    # # if station_id not in set(current.station_ids):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-
     # ดึงข้อมูลจากคอลเลกชัน stations
     doc = station_collection.find_one(
         {"station_id": station_id},
         # เลือก field ที่อยากคืน (ตัด _id ออกเพื่อลด serialize ปัญหา ObjectId)
-        {"_id": 0, "station_id": 1, "station_name": 1, "SN": 1, "WO": 1,"brand":1, "PLCFirmware": 1, "PIFirmware": 1, "RTFirmware": 1, "chargeBoxID": 1, "model": 1, "status": 1, "module1_isActive":1, "module2_isActive":1, "module3_isActive":1, "module4_isActive":1, "module5_isActive":1, "module6_isActive":1, "module7_isActive":1}
+        {
+            "_id": 0, 
+            "station_id": 1, 
+            "station_name": 1, 
+            "SN": 1, 
+            "WO": 1,
+            "brand":1, 
+            "PLCFirmware": 1, 
+            "PIFirmware": 1, 
+            "RTFirmware": 1, 
+            "chargeBoxID": 1, 
+            "model": 1, 
+            "status": 1, 
+            "module1_isActive":1, 
+            "module2_isActive":1, 
+            "module3_isActive":1, 
+            "module4_isActive":1, 
+            "module5_isActive":1, 
+            "module6_isActive":1, 
+            "module7_isActive":1
+        }
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Station not found")
@@ -1384,52 +1399,6 @@ class UserOut(BaseModel):
     company: str
     station_id: List[str] = Field(default_factory=list)
     tel: str
-    # payment: Optional[bool] = None
-
-# @app.post("/add_users/", response_model=UserOut, status_code=201)
-# def insert_users(body: addUsers):
-#     email = body.email.lower()
-#     hashed = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-#     # station_id -> list[str]
-#     station_ids: List[str] = []
-#     if body.station_id is not None and body.station_id != "":
-#         if isinstance(body.station_id, list):
-#             station_ids = [str(x) for x in body.station_id if str(x).strip() != ""]
-#         else:
-#             station_ids = [str(body.station_id)]
-
-#     doc = {
-#         "username": body.username.strip(),
-#         "email": email,
-#         "password": hashed,
-#         "role": body.role,
-#         # "company": (body.company_name or body.company or "").strip() or None,
-#         "company": (body.company_name or "").strip() or None,
-#         "tel": (body.tel or "").strip() or None,
-#         # "payment": (body.payment.lower() == "y"),
-#         "station_id": station_ids,
-#         "refreshTokens": [],
-#         "createdAt": datetime.now(timezone.utc),
-        
-#     }
-
-#     try:
-#         res = users_collection.insert_one(doc)
-#     except DuplicateKeyError:
-#         raise HTTPException(status_code=409, detail="Email already exists")
-
-#     return {
-#         "id": str(res.inserted_id),
-#         "username": doc["username"],
-#         "email": doc["email"],
-#         "role": doc["role"],
-#         "company": doc.get("company"),
-#         "station_id": doc["station_id"],
-#         "tel": doc.get("tel"),
-#         # "payment": doc.get("payment"),
-#         "createdAt": doc["createdAt"],
-#     }
 
 @app.post("/add_users/", response_model=UserOut, status_code=201)
 def insert_users(body: addUsers, current: UserClaims = Depends(get_current_user)):
@@ -5317,7 +5286,6 @@ async def dcreport_submit(body: DCSubmitIn, current: UserClaims = Depends(get_cu
         "station_id": station_id,
         "issue_id": issue_id,
         "inspection_date": dc_date,
-        # "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
         "head": body.head,
         "equipment": body.equipment.dict() if body.equipment else {"manufacturers": [], "models": [], "serialNumbers": []},
         "electrical_safety": electrical_safety,
@@ -5729,7 +5697,6 @@ async def acreport_submit(body: ACSubmitIn, current: UserClaims = Depends(get_cu
         "station_id": station_id,
         "issue_id": issue_id,
         "inspection_date": ac_date,
-        # "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
         "head": body.head,
         "equipment": body.equipment.dict() if body.equipment else {"manufacturers": [], "models": [], "serialNumbers": []},
         "electrical_safety": electrical_safety,
@@ -5808,8 +5775,6 @@ async def utilization_stream(request: Request, station_id: str = Query(...), cur
                 await asyncio.sleep(5)
 
     return StreamingResponse(event_generator(), headers=headers)
-
-
 
 #-------------------------------------------------------------------- setting page
 def get_setting_collection_for(station_id: str):
@@ -5892,7 +5857,6 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
         last_id = None
         latest = await coll.find_one({}, sort=[("_id", -1)])  # ⬅️ ไม่ต้อง filter station_id ภายในแล้ว
         if latest:
-            # latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
             latest["timestamp"] = latest.get("timestamp")
             last_id = latest.get("_id")
             yield "retry: 3000\n"
@@ -5917,12 +5881,6 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
             await asyncio.sleep(5)
 
     return StreamingResponse(event_generator(), headers=headers)
-
-# from pdf.pdf_routes import router as pdf_router
-# app.include_router(pdf_router, prefix="/pdf")
-
-# from pdf.pdf_routes import router as pdf_router
-# app.include_router(pdf_router)
 
 from pdf import pdf_routes1
 app.include_router(pdf_routes1.router)
@@ -6291,19 +6249,6 @@ async def get_all_modules_progress(
         result["module1"] = doc1.get("health").get("health_index", 0) if doc1 else 0
     except:
         result["module1"] = 0
-    # try:
-    #     coll1 = outputModule1.get_collection(str(station_id))
-    #     doc1 = await coll1.find_one({}, sort=[("_id", -1)])
-    #     if doc1:
-    #         doc1["_id"] = str(doc1["_id"])
-    #         result["module1"] = doc1
-    #     else:
-    #         result["module1"] = None
-    # except Exception as e:
-    #     print(f"Error fetching module1: {e}")
-    #     result["module1"] = None
-    
-    # Module 2 - Charger Filters
     try:
         coll2 = outputModule2.get_collection(str(station_id))
         doc2 = await coll2.find_one({}, sort=[("_id", -1)])
