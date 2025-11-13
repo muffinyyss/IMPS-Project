@@ -17,14 +17,6 @@ import { BoltIcon, ServerIcon, CpuChipIcon, CubeIcon, MapPinIcon } from "@heroic
 
 type TabId = "charger" | "mdb" | "ccb" | "cb-box" | "station";
 
-// const TABS: { id: TabId; label: string }[] = [
-//   { id: "charger", label: "Charger" },
-//   { id: "mdb", label: "MDB" },
-//   { id: "ccb", label: "CCB" },
-//   // ใช้ non-breaking hyphen (U+2011) กันตัดบรรทัด
-//   { id: "cb-box", label: "CB\u2011BOX" },
-//   { id: "station", label: "Station" },
-// ];
 
 const TABS: { id: TabId; label: string; slug: "charger" | "mdb" | "ccb" | "cb-box" | "station" }[] = [
   { id: "charger", label: "Charger", slug: "charger" },

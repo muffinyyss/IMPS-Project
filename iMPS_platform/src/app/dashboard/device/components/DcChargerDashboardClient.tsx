@@ -606,7 +606,8 @@ export default function DCChargerDashboard() {
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder="พิมพ์ชื่ออุปกรณ์…"
-                            className="tw-w-full tw-pl-11 tw-pr-3.5 tw-py-3 tw-text-base tw-rounded-2xl tw-border tw-border-gray-200 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-indigo-200"
+                            className="tw-w-full tw-pl-11 tw-pr-3.5 tw-py-3 tw-text-base tw-rounded-2xl tw-border tw-border-gray-200  
+                                       focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-indigo-200"
                         />
                     </div>
                     <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-2">
@@ -617,19 +618,6 @@ export default function DCChargerDashboard() {
                     </div>
                 </div>
             </div>
-
-            {/* โซนบน: ซ้าย/ขวา — ★ ส่ง filter + search เข้าไป */}
-            {/* <div className="tw-mt-6 tw-grid tw-gap-6 xl:tw-gap-8 tw-grid-cols-1 lg:tw-grid-cols-2">
-                <SideList title="อุปกรณ์ (ซ้าย)" items={LEFT_LIST} filter={filter} search={query} />
-                <SideList title="อุปกรณ์ (ขวา)" items={RIGHT_LIST} filter={filter} search={query} />
-            </div> */}
-
-            {/* ส่วนกลาง — ★ ส่ง filter + search เข้าไป */}
-            {/* <div className="tw-mt-6">
-                <SideList title="อุปกรณ์ (ส่วนกลาง)" items={CENTER_LIST} filter={filter} search={query} />
-            </div> */}
-            {/* // ---- ใหม่: ทำเป็นกริด 3 คอลัมน์ แล้วเรียง ซ้าย-กลาง-ขวา ---- */}
-            {/* <div className="tw-mt-6 tw-grid tw-gap-6 xl:tw-gap-8 tw-grid-cols-1 md:tw-grid-cols-2 xl:tw-grid-cols-3"> */}
             <div
                 className="tw-mt-6 tw-grid tw-gap-6 xl:tw-gap-8
              tw-grid-cols-1

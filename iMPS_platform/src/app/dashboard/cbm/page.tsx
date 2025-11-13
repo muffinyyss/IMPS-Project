@@ -219,18 +219,6 @@ export default function SalesPage() {
           />
         </div>
 
-        {/* แถวกลาง: Thermal pair = PLC + Guns */}
-        {/* <div className="lg:tw-col-span-6 tw-col-span-12">
-          <PLCCard
-            updatedAt="10:32"
-            items={[
-              { id: "plc1", name: "PLC 1 Temperature", temp: toDec(data?.PLC_temp1), target: 60 },
-              { id: "plc2", name: "PLC 2 Temperature", temp: toDec(data?.PLC_temp2), target: 60 },
-            ]}
-          />
-        </div> */}
-
-
         {/* แถวถัดไป: สถานะไฟฟ้า + Power Modules แบ่ง 6/6 */}
         <div className="lg:tw-col-span-6 tw-col-span-12">
           <InsuContactorStatusCard
