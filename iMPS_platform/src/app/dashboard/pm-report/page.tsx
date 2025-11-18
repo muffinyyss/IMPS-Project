@@ -13,7 +13,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
-import { BoltIcon, ServerIcon, CpuChipIcon, CubeIcon, MapPinIcon } from "@heroicons/react/24/solid";
 
 type TabId = "charger" | "mdb" | "ccb" | "cb-box" | "station";
 
@@ -42,11 +41,12 @@ function tabToSlug(tab: TabId): "charger" | "mdb" | "ccb" | "cb-box" | "station"
 }
 
 export default function DataTablesPage() {
-  // const [active, setActive] = useState<TabId>("charger");
-  // const handleChange = (v: string) => setActive(v as TabId);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  // 🔒 อยู่โหมดฟอร์มเมื่อ ?view=form
+  const isFormView = useMemo(() => searchParams.get("view") === "form", [searchParams]);
 
   const active: TabId = useMemo(() => slugToTab(searchParams.get("tab")), [searchParams]);
 
@@ -82,7 +82,10 @@ export default function DataTablesPage() {
     <Tabs id="data-tabs" value={active} className="tw-w-full">
       <div className="tw-w-full tw-flex tw-justify-start">
         <TabsHeader
-          className="tw-bg-gray-100 tw-rounded-xl tw-p-1 tw-border tw-border-gray-200 tw-overflow-hidden tw-w-fit tw-gap-1 tw-m-0"
+          // className="tw-bg-gray-100 tw-rounded-xl tw-p-1 tw-border tw-border-gray-200 tw-overflow-hidden tw-w-fit tw-gap-1 tw-m-0"
+          className={`tw-bg-gray-100 tw-rounded-xl tw-p-1 tw-border tw-border-gray-200 tw-overflow-hidden tw-w-fit tw-gap-1 tw-m-0
+            ${isFormView ? "tw-pointer-events-none tw-opacity-60" : ""}
+          `}
           indicatorProps={{ className: "tw-h-full tw-rounded-lg tw-bg-white tw-shadow tw-ring-1 tw-ring-gray-200" }}
         >
           {TABS.map((t) => (
