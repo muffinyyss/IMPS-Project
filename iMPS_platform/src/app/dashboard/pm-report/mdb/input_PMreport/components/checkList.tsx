@@ -11,12 +11,13 @@ import {
     Typography,
     Textarea,
 } from "@material-tailwind/react";
+import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
+const LOGO_SRC = "/img/logo_egat.png";
 type StationPublic = {
     station_id: string;
     station_name: string;
@@ -178,19 +179,49 @@ function SectionCard({
     children: React.ReactNode;
 }) {
     return (
-        <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-            {(title || subtitle) && (
-                <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                    {title && <Typography variant="h6">{title}</Typography>}
-                    {subtitle && (
-                        <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">
+        // <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+        //     {(title || subtitle) && (
+        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+        //             {title && <Typography variant="h6">{title}</Typography>}
+        //             {subtitle && (
+        //                 <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">
+        //                     {subtitle}
+        //                 </Typography>
+        //             )}
+        //         </CardHeader>
+        //     )}
+        //     <CardBody className="tw-space-y-4">{children}</CardBody>
+        // </Card>
+        <>
+            {/* Title นอกกรอบการ์ด */}
+            {title && (
+                <Typography variant="h6" className="tw-mb-1">
+                    {title}
+                </Typography>
+            )}
+
+            {/* การ์ด (มีเฉพาะกรอบ +เนื้อหา+subtitle ด้านใน) */}
+            <Card className="tw-mt-1 tw-shadow-sm tw-border tw-border-blue-gray-100">
+                {subtitle && (
+                    <CardHeader
+                        floated={false}
+                        shadow={false}
+                        className="tw-px-4 tw-pt-4 tw-pb-2"
+                    >
+                        <Typography
+                            variant="small"
+                            className="!tw-text-blue-gray-500 tw-italic tw-mt-1"
+                        >
                             {subtitle}
                         </Typography>
-                    )}
-                </CardHeader>
-            )}
-            <CardBody className="tw-space-y-4">{children}</CardBody>
-        </Card>
+                    </CardHeader>
+                )}
+
+                <CardBody className="tw-space-y-4">
+                    {children}
+                </CardBody>
+            </Card>
+        </>
     );
 }
 
@@ -240,16 +271,97 @@ function InputWithUnit<U extends string>({
     );
 }
 
+// function PassFailRow({
+//     label, value, onChange, remark, onRemarkChange, labels,
+// }: {
+//     label: string;
+//     value: PF;
+//     onChange: (v: Exclude<PF, "">) => void; // PASS | FAIL | NA
+//     remark?: string;
+//     onRemarkChange?: (v: string) => void;
+//     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
+// }) {
+//     return (
+//         <div className="tw-space-y-3 tw-py-3">
+//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+//                 <Typography className="tw-font-medium">{label}</Typography>
+
+//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
+//                     <Button
+//                         size="sm"
+//                         color="green"
+//                         variant={value === "PASS" ? "filled" : "outlined"}
+//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                         onClick={() => onChange("PASS")}
+//                         aria-pressed={value === "PASS"}
+//                     >
+//                         PASS
+//                     </Button>
+
+//                     <Button
+//                         size="sm"
+//                         color="red"
+//                         variant={value === "FAIL" ? "filled" : "outlined"}
+//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                         onClick={() => onChange("FAIL")}
+//                         aria-pressed={value === "FAIL"}
+//                     >
+//                         FAIL
+//                     </Button>
+
+//                     <Button
+//                         size="sm"
+//                         color="blue-gray"
+//                         variant={value === "NA" ? "filled" : "outlined"}
+//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                         onClick={() => onChange("NA")}
+//                         aria-pressed={value === "NA"}
+//                     >
+//                         N/A
+//                     </Button>
+//                 </div>
+//             </div>
+
+//             {onRemarkChange && (
+//                 <div className="tw-w-full tw-min-w-0">
+//                     <div className="tw-w-full tw-min-w-0">
+//                         <Textarea
+//                             label="หมายเหตุ (ถ้ามี)"
+//                             value={remark || ""}
+//                             onChange={(e) => onRemarkChange(e.target.value)}
+//                             containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
+//                             className="!tw-w-full"
+//                         />
+//                     </div>
+//                 </div>
+//             )}
+//         </div>
+//     );
+// }
+
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels,
+    label,
+    value,
+    onChange,
+    remark,
+    onRemarkChange,
+    labels,
+    aboveRemark,              // 👈 เพิ่มตรงนี้
 }: {
     label: string;
     value: PF;
-    onChange: (v: Exclude<PF, "">) => void; // PASS | FAIL | NA
+    onChange: (v: Exclude<PF, "">) => void;
     remark?: string;
     onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
+    aboveRemark?: React.ReactNode;   // 👈 และเพิ่มใน type ตรงนี้
 }) {
+    const text = {
+        PASS: labels?.PASS ?? "PASS",
+        FAIL: labels?.FAIL ?? "FAIL",
+        NA: labels?.NA ?? "N/A",
+    };
+
     return (
         <div className="tw-space-y-3 tw-py-3">
             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
@@ -262,46 +374,42 @@ function PassFailRow({
                         variant={value === "PASS" ? "filled" : "outlined"}
                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
                         onClick={() => onChange("PASS")}
-                        aria-pressed={value === "PASS"}
                     >
-                        PASS
+                        {text.PASS}
                     </Button>
-
                     <Button
                         size="sm"
                         color="red"
                         variant={value === "FAIL" ? "filled" : "outlined"}
                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
                         onClick={() => onChange("FAIL")}
-                        aria-pressed={value === "FAIL"}
                     >
-                        FAIL
+                        {text.FAIL}
                     </Button>
-
                     <Button
                         size="sm"
                         color="blue-gray"
                         variant={value === "NA" ? "filled" : "outlined"}
                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
                         onClick={() => onChange("NA")}
-                        aria-pressed={value === "NA"}
                     >
-                        N/A
+                        {text.NA}
                     </Button>
                 </div>
             </div>
 
             {onRemarkChange && (
-                <div className="tw-w-full tw-min-w-0">
-                    <div className="tw-w-full tw-min-w-0">
-                        <Textarea
-                            label="หมายเหตุ (ถ้ามี)"
-                            value={remark || ""}
-                            onChange={(e) => onRemarkChange(e.target.value)}
-                            containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
-                            className="!tw-w-full"
-                        />
-                    </div>
+                <div className="tw-w-full tw-min-w-0 tw-space-y-2">
+                    {/* 👇 รูปจะมาอยู่ตรงนี้ เหนือช่องหมายเหตุ */}
+                    {aboveRemark}
+
+                    <Textarea
+                        label="หมายเหตุ (ถ้ามี)"
+                        value={remark || ""}
+                        onChange={(e) => onRemarkChange(e.target.value)}
+                        containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
+                        className="!tw-w-full"
+                    />
                 </div>
             )}
         </div>
@@ -312,7 +420,7 @@ function PhotoMultiInput({
     label,
     photos,
     setPhotos,
-    max = 20,
+    max = 3,
 }: {
     label?: string;
     photos: PhotoItem[];
@@ -345,17 +453,83 @@ function PhotoMultiInput({
     };
 
     return (
-        <div className="tw-space-y-3">
-            {label && <Typography className="tw-font-medium">{label}</Typography>}
+        // <div className="tw-space-y-3">
+        //     {label && <Typography className="tw-font-medium">{label}</Typography>}
 
-            <div className="tw-flex tw-flex-wrap tw-gap-2">
-                <Button size="sm" color="blue" variant="outlined" onClick={handlePick}>
+        //     <div className="tw-flex tw-flex-wrap tw-gap-2">
+        //         <Button size="sm" color="blue" variant="outlined" onClick={handlePick}>
+        //             แนบรูป / ถ่ายรูป
+        //         </Button>
+        //         <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
+        //             แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
+        //         </Typography>
+        //     </div>
+
+        //     <input
+        //         ref={fileRef}
+        //         type="file"
+        //         accept="image/*"
+        //         multiple
+        //         capture="environment"
+        //         className="tw-hidden"
+        //         onChange={(e) => handleFiles(e.target.files)}
+        //     />
+
+        //     {photos.length > 0 ? (
+        //         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
+        //             {photos.map((p) => (
+        //                 <div
+        //                     key={p.id}
+        //                     className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"
+        //                 >
+        //                     <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
+        //                         {p.preview && (
+        //                             <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />
+        //                         )}
+        //                     </div>
+        //                     <div className="tw-p-2 tw-space-y-2">
+        //                         <div className="tw-flex tw-justify-end">
+        //                             <Button size="sm" color="red" variant="text" onClick={() => handleRemove(p.id)}>
+        //                                 ลบรูป
+        //                             </Button>
+        //                         </div>
+        //                     </div>
+        //                 </div>
+        //             ))}
+        //         </div>
+        //     ) : (
+        //         <Typography variant="small" className="!tw-text-blue-gray-500">
+        //             ยังไม่มีรูปแนบ
+        //         </Typography>
+        //     )}
+        // </div>
+        <div className="tw-space-y-3">
+            {/* แถวบน: label + ปุ่มแนบรูป */}
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
+                {/* {label && (
+              <Typography className="tw-font-medium">
+                {label}
+              </Typography>
+            )} */}
+
+                <Button
+                    size="sm"
+                    color="blue"
+                    variant="outlined"
+                    onClick={handlePick}
+                    className="tw-shrink-0"
+                >
                     แนบรูป / ถ่ายรูป
                 </Button>
-                <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-                    แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
-                </Typography>
             </div>
+
+            {/* แถวถัดไป: description */}
+            <Typography
+                variant="small"
+                className="!tw-text-blue-gray-500 tw-flex tw-items-center"
+            >
+                แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
+            </Typography>
 
             <input
                 ref={fileRef}
@@ -376,12 +550,21 @@ function PhotoMultiInput({
                         >
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
                                 {p.preview && (
-                                    <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />
+                                    <img
+                                        src={p.preview}
+                                        alt="preview"
+                                        className="tw-w-full tw-h-full tw-object-cover"
+                                    />
                                 )}
                             </div>
                             <div className="tw-p-2 tw-space-y-2">
                                 <div className="tw-flex tw-justify-end">
-                                    <Button size="sm" color="red" variant="text" onClick={() => handleRemove(p.id)}>
+                                    <Button
+                                        size="sm"
+                                        color="red"
+                                        variant="text"
+                                        onClick={() => handleRemove(p.id)}
+                                    >
                                         ลบรูป
                                     </Button>
                                 </div>
@@ -452,9 +635,14 @@ async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): P
 /* =========================
  *        MAIN
  * ========================= */
-export default function CheckList({ onComplete }: CheckListProps) {
+// export default function CheckList({ onComplete }: CheckListProps) {
+export default function MDBPMMForm() {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+
+    const searchParams = useSearchParams();
+    const editId = searchParams.get("edit_id") ?? "";
+
     const PM_PREFIX = "mdbpmreport";
 
     /* ---------- photos per question ---------- */
@@ -737,9 +925,9 @@ export default function CheckList({ onComplete }: CheckListProps) {
         isSummaryFilled;
 
 
-    useEffect(() => {
-        onComplete(allPFAnswered);
-    }, [allPFAnswered, onComplete]);
+    // useEffect(() => {
+    //     onComplete(allPFAnswered);
+    // }, [allPFAnswered, onComplete]);
 
     /* ---------- unit sync ---------- */
     const handleUnitChange = (no: number, key: string, u: UnitVoltage) => {
@@ -773,6 +961,55 @@ export default function CheckList({ onComplete }: CheckListProps) {
         );
     };
 
+    // const renderQuestionBlock = (q: Question) => {
+    //     const hasMeasure = q.kind === "measure" && FIELD_GROUPS[q.no];
+    //     const subtitle = FIELD_GROUPS[q.no]?.note;
+
+    //     return (
+    //         <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+    //             <PassFailRow
+    //                 label="ผลการทดสอบ"
+    //                 value={rows[q.key].pf}
+    //                 onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
+    //                 remark={rows[q.key].remark}
+    //                 onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
+    //             />
+
+    //             {hasMeasure && renderMeasureGrid(q.no)}
+
+    //             {/* แสดงช่องกรอก CP เฉพาะข้อ 15 */}
+    //             {q.no === 15 && (
+    //                 <div className="tw-pt-1 tw-space-y-2">
+    //                     {/* <Typography variant="small" className="!tw-text-blue-gray-600 tw-font-medium">
+    //                         ค่าที่วัด
+    //                     </Typography> */}
+    //                     <div className="tw-max-w-xs">
+    //                         <InputWithUnit<UnitVoltage>
+    //                             label="CP"
+    //                             value={cp.value}
+    //                             unit={cp.unit}
+    //                             units={["V"] as const} // ล็อกให้เลือกได้เฉพาะ V
+    //                             onValueChange={(v) => setCp((s) => ({ ...s, value: v }))}
+    //                             onUnitChange={(u) => setCp((s) => ({ ...s, unit: u }))}
+    //                         />
+    //                     </div>
+    //                 </div>
+    //             )}
+
+    //             {q.hasPhoto && (
+    //                 <div className="tw-pt-2 tw-pb-4 tw-border-t tw-border-blue-gray-50">
+    //                     <PhotoMultiInput
+    //                         label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                         photos={photos[q.no] || []}
+    //                         setPhotos={makePhotoSetter(q.no)}
+    //                         max={3}
+    //                     />
+    //                 </div>
+    //             )}
+
+    //         </SectionCard>
+    //     );
+    // };
     const renderQuestionBlock = (q: Question) => {
         const hasMeasure = q.kind === "measure" && FIELD_GROUPS[q.no];
         const subtitle = FIELD_GROUPS[q.no]?.note;
@@ -782,43 +1019,43 @@ export default function CheckList({ onComplete }: CheckListProps) {
                 <PassFailRow
                     label="ผลการทดสอบ"
                     value={rows[q.key].pf}
-                    onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
+                    onChange={(v) =>
+                        setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
+                    }
                     remark={rows[q.key].remark}
-                    onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
+                    onRemarkChange={(v) =>
+                        setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
+                    }
+                    aboveRemark={
+                        q.hasPhoto && (
+                            <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-8 tw-border-blue-gray-50">
+                                <PhotoMultiInput
+                                    label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                    photos={photos[q.no] || []}
+                                    setPhotos={makePhotoSetter(q.no)}
+                                    max={3}
+                                />
+                            </div>
+                        )
+                    }
                 />
 
                 {hasMeasure && renderMeasureGrid(q.no)}
 
-                {/* แสดงช่องกรอก CP เฉพาะข้อ 15 */}
                 {q.no === 15 && (
                     <div className="tw-pt-1 tw-space-y-2">
-                        {/* <Typography variant="small" className="!tw-text-blue-gray-600 tw-font-medium">
-                            ค่าที่วัด
-                        </Typography> */}
                         <div className="tw-max-w-xs">
                             <InputWithUnit<UnitVoltage>
                                 label="CP"
                                 value={cp.value}
                                 unit={cp.unit}
-                                units={["V"] as const} // ล็อกให้เลือกได้เฉพาะ V
+                                units={["V"] as const}
                                 onValueChange={(v) => setCp((s) => ({ ...s, value: v }))}
                                 onUnitChange={(u) => setCp((s) => ({ ...s, unit: u }))}
                             />
                         </div>
                     </div>
                 )}
-
-                {q.hasPhoto && (
-                    <div className="tw-pt-2 tw-pb-4 tw-border-t tw-border-blue-gray-50">
-                        <PhotoMultiInput
-                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                            photos={photos[q.no] || []}
-                            setPhotos={makePhotoSetter(q.no)}
-                            max={20}
-                        />
-                    </div>
-                )}
-
             </SectionCard>
         );
     };
@@ -1013,221 +1250,481 @@ export default function CheckList({ onComplete }: CheckListProps) {
      *        RENDER
      * ========================= */
     return (
-        <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
-            {/* Job Info */}
-            <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+        <section className="tw-pb-24">
+            <form action="#"
+                noValidate
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    return false;
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") e.preventDefault();
+                }}
+            >
+                <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
 
-                    {/* <Input
-                        label="เครื่องประจุไฟฟ้าที่"
-                        value={job.chargerNo}
-                        onChange={(e) => setJob({ ...job, chargerNo: e.target.value })}
-                        crossOrigin=""
-                        readOnly
-                        className="!tw-bg-blue-gray-50"
-                    /> */}
-                    <Input
-                        label="Issue id"
-                        value={job.issue_id || "-"}
-                        readOnly
-                        // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
-                        crossOrigin=""
-                        containerProps={{ className: "!tw-min-w-0" }}
-                        className="!tw-w-full !tw-bg-blue-gray-50"
-                    />
+                    <div className="tw-flex tw-items-start tw-justify-between tw-gap-4">
+                        {/* ซ้าย: โลโก้ + ข้อความ */}
+                        <div className="tw-flex tw-items-start tw-gap-4 tw-flex-1">
+                            <div
+                                className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md
+                                        tw-h-16 tw-w-[76px]
+                                        md:tw-h-20 md:tw-w-[108px]
+                                        lg:tw-h-24 lg:tw-w-[152px]"
+                            >
+                                <Image
+                                    src={LOGO_SRC}
+                                    alt="Company logo"
+                                    fill
+                                    priority
+                                    className="tw-object-contain tw-p-0"
+                                    sizes="(min-width:1024px) 152px, (min-width:768px) 108px, 76px"
+                                />
+                            </div>
 
-                    <Input
-                        label="Location / สถานที่"
-                        value={job.station_name}
-                        onChange={(e) => setJob({ ...job, station_name: e.target.value })}
-                        crossOrigin=""
-                        className="!tw-bg-blue-gray-50"
-                        readOnly
-                    />
-
-                    {/* <Input
-                        label="SN / หมายเลขเครื่อง"
-                        value={job.sn}
-                        onChange={(e) => setJob({ ...job, sn: e.target.value })}
-                        crossOrigin=""
-                        className="!tw-bg-blue-gray-50"
-                        readOnly
-                    /> */}
-
-                    {/* <Input
-                        label="Model / รุ่น"
-                        value={job.model}
-                        onChange={(e) => setJob({ ...job, model: e.target.value })}
-                        crossOrigin=""
-                        className="!tw-bg-blue-gray-50"
-                        readOnly
-                    /> */}
-
-                    <Input
-                        label="วันที่ตรวจ"
-                        type="date"
-                        value={job.date}
-                        onChange={(e) => setJob({ ...job, date: e.target.value })}
-                        crossOrigin=""
-                    />
-                </div>
-            </SectionCard>
-
-
-
-            {/* จัดช่วงการเรนเดอร์เป็นบล็อก ๆ */}
-            {[
-                [1, 5],
-                [6, 11],
-            ].map(([start, end]) => (
-                <Card key={`${start}-${end}`} className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                    {start === 1 && (
-                        <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                            <Typography variant="h6">Checklist</Typography>
-                        </CardHeader>
-                    )}
-                    <CardBody className="tw-space-y-1">
-                        {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
-                    </CardBody>
-                </Card>
-            ))}
-
-            <SectionCard title="Comment">
-                <div className="tw-space-y-2">
-                    <Textarea
-                        label="Comment"
-                        value={summary}
-                        onChange={(e) => setSummary(e.target.value)}
-                        rows={4}
-                        required
-                        autoComplete="off"
-                        containerProps={{ className: "!tw-min-w-0" }}
-                        className="!tw-w-full resize-none"
-                    />
-                    <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-                        {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-                    </Typography>
-                </div>
-
-                <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-                    <PassFailRow
-                        label="สรุปผลการตรวจสอบ"
-                        value={summaryCheck}
-                        onChange={(v) => setSummaryCheck(v)}
-                        labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
-                            PASS: "Pass : ผ่าน",
-                            FAIL: "Fail : ไม่ผ่าน",
-                            NA: "N/A : ไม่พบ",
-                        }}
-                    />
-                </div>
-            </SectionCard>
-
-            {/* Summary & Actions */}
-            <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-                <div
-                    className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                        }`}
-                >
-                    <Typography className="tw-font-medium">
-                        1) สถานะ PASS / FAIL / N/A (ยกเว้นข้อ 4–7 ซึ่งเป็นชุดวัดค่า)
-                    </Typography>
-
-                    {allPFAnswered ? (
-                        <Typography variant="small" className="!tw-text-green-700">
-                            ครบเรียบร้อย ✅
-                        </Typography>
-                    ) : (
-                        <Typography variant="small" className="!tw-text-amber-700">
-                            ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}
-                        </Typography>
-                    )}
-                </div>
-
-                <div
-                    className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                        }`}
-                >
-                    <Typography className="tw-font-medium">2) อินพุตข้อ 4–7</Typography>
-                    {allRequiredInputsFilled ? (
-                        <Typography variant="small" className="!tw-text-green-700">
-                            ครบเรียบร้อย ✅
-                        </Typography>
-                    ) : (
-                        <div className="tw-space-y-1">
-                            <Typography variant="small" className="!tw-text-amber-700">
-                                ยังขาด:
-                            </Typography>
-                            <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
-                                {missingInputsTextLines.map((line, i) => (
-                                    <li key={i}>{line}</li>
-                                ))}
-                            </ul>
+                            <div>
+                                <div className="tw-font-semibold tw-text-blue-gray-900">
+                                    Preventive Maintanance Checklist - Main Distribution Board (MDB)
+                                </div>
+                                <div className="tw-text-sm tw-text-blue-gray-600">
+                                    Electricity Generating Authority of Thailand (EGAT) <br />
+                                    53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand <br />
+                                    Call Center Tel. 02-114-3350
+                                </div>
+                            </div>
                         </div>
-                    )}
-                </div>
 
-                <div
-                    className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                        }`}
-                >
-                    <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)</Typography>
-                    {allPhotosAttached ? (
-                        <Typography variant="small" className="!tw-text-green-700">
-                            ครบเรียบร้อย ✅
-                        </Typography>
-                    ) : (
-                        <Typography variant="small" className="!tw-text-amber-700">
-                            ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}
-                        </Typography>
-                    )}
-                </div>
+                        {/* ขวา: Issue ID ให้เด่น */}
+                        {/* <div className="tw-flex tw-flex-col tw-items-end">
+                            <div
+                                className="
+                                    tw-inline-flex tw-items-center
+                                    tw-rounded-lg tw-border tw-border-gray-500
+                                    tw-bg-gray-50 tw-px-3 tw-py-1.5
+                                    tw-shadow-[0_1px_3px_rgba(0,0,0,0.12)]
+                                    "
+                            >
+                                <span className="tw-text-[16px] tw-font-semibold tw-tracking-wide tw-text-gray-700">
+                                    Issue ID : <u>{job.issue_id || "-"}</u>
+                                </span>
+                            </div>
+                        </div> */}
+                    </div>
 
-                <div
-                    className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                        }`}
-                >
-                    <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
-                    {isSummaryFilled ? (
-                        <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                    ) : (
-                        <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-                    )}
-                </div>
+                    {/* BODY */}
+                    <div className="tw-mt-8 tw-space-y-8">
+                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
+                            <div className="lg:tw-col-span-1">
+                                <Input
+                                    label="Issue id"
+                                    value={job.issue_id || "-"}
+                                    readOnly
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full !tw-bg-blue-gray-50"
+                                />
+                            </div>
+                            <div className="sm:tw-col-span-2 lg:tw-col-span-3">
+                                <Input
+                                    label="Location / สถานที่"
+                                    value={job.station_name}
+                                    onChange={(e) => setJob({ ...job, station_name: e.target.value })}
+                                    crossOrigin=""
+                                    readOnly
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-bg-blue-gray-50"
+                                />
+                            </div>
+                            <div className="lg:tw-col-span-2">
+                                <Input
+                                    label="วันที่ตรวจ"
+                                    type="date"
+                                    value={job.date}
+                                    onChange={(e) => setJob({ ...job, date: e.target.value })}
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    {[
+                        [1, 5],
+                        [6, 10],
+                        [11, 16],
+                        [17, 17], // มีกริดวัดค่า
+                        [18, 19],
+                    ].map(([start, end]) => (
+                        // <Card key={`${start}-${end}`} className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+                        //     {start === 1 && (
+                        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+                        //             <Typography variant="h6">Checklist</Typography>
+                        //         </CardHeader>
+                        //     )}
+                        //     <CardBody className="tw-space-y-1">
+                        //         {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
+                        //     </CardBody>
+                        // </Card>
 
+                        <CardBody className="tw-space-y-2">
+                            {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
+                        </CardBody>
 
-                {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                    {!canFinalSave ? (
-                        <Button
-                            variant="outlined"
-                            color="blue-gray"
-                            type="button"
-                        // onClick={onSave}
-                        // title={
-                        //     !allPhotosAttached
-                        //         ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
-                        //         : "บันทึกชั่วคราว"
-                        // }
+                    ))}
+                    <SectionCard title="Comment">
+                        <div className="tw-space-y-2">
+                            <Textarea
+                                label="Comment"
+                                value={summary}
+                                onChange={(e) => setSummary(e.target.value)}
+                                rows={4}
+                                required
+                                autoComplete="off"
+                                containerProps={{ className: "!tw-min-w-0" }}
+                                className="!tw-w-full resize-none"
+                            />
+                            <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
+                                {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
+                            </Typography>
+                        </div>
+
+                        <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
+                            <PassFailRow
+                                label="สรุปผลการตรวจสอบ"
+                                value={summaryCheck}
+                                onChange={(v) => setSummaryCheck(v)}
+                                labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
+                                    PASS: "Pass : ผ่าน",
+                                    FAIL: "Fail : ไม่ผ่าน",
+                                    NA: "N/A : ไม่พบ",
+                                }}
+                            />
+                        </div>
+                    </SectionCard>
+                    {/* Summary & Actions */}
+                    <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
+                        <div
+                            className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+                                }`}
                         >
-                            บันทึก
-                        </Button>
-                    ) : (
-                        // <Button color="blue" type="button" onClick={onFinalSave}>
-                        //     บันทึก
-                        // </Button>
+                            <Typography className="tw-font-medium">
+                                1) สถานะ PASS / FAIL / N/A (ยกเว้นข้อ 4–7 ซึ่งเป็นชุดวัดค่า)
+                            </Typography>
+
+                            {allPFAnswered ? (
+                                <Typography variant="small" className="!tw-text-green-700">
+                                    ครบเรียบร้อย ✅
+                                </Typography>
+                            ) : (
+                                <Typography variant="small" className="!tw-text-amber-700">
+                                    ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}
+                                </Typography>
+                            )}
+                        </div>
+
+                        <div
+                            className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+                                }`}
+                        >
+                            <Typography className="tw-font-medium">2) อินพุตข้อ 4–7</Typography>
+                            {allRequiredInputsFilled ? (
+                                <Typography variant="small" className="!tw-text-green-700">
+                                    ครบเรียบร้อย ✅
+                                </Typography>
+                            ) : (
+                                <div className="tw-space-y-1">
+                                    <Typography variant="small" className="!tw-text-amber-700">
+                                        ยังขาด:
+                                    </Typography>
+                                    <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
+                                        {missingInputsTextLines.map((line, i) => (
+                                            <li key={i}>{line}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        <div
+                            className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+                                }`}
+                        >
+                            <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)</Typography>
+                            {allPhotosAttached ? (
+                                <Typography variant="small" className="!tw-text-green-700">
+                                    ครบเรียบร้อย ✅
+                                </Typography>
+                            ) : (
+                                <Typography variant="small" className="!tw-text-amber-700">
+                                    ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}
+                                </Typography>
+                            )}
+                        </div>
+
+                        <div
+                            className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+                                }`}
+                        >
+                            <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
+                            {isSummaryFilled ? (
+                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+                            ) : (
+                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
+                            )}
+                        </div>
+
+
+                        {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+                     {!canFinalSave ? (
+                         <Button
+                             variant="outlined"
+                             color="blue-gray"
+                             type="button"
+                         // onClick={onSave}
+                         // title={
+                         //     !allPhotosAttached
+                         //         ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
+                         //         : "บันทึกชั่วคราว"
+                         // }
+                         >
+                             บันทึก
+                         </Button>
+                     ) : (
+                         // <Button color="blue" type="button" onClick={onFinalSave}>
+                         //     บันทึก
+                         // </Button>
+                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+                      <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
+                                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
+                             </Button>
+                        </div>
+                     )}
+                 </div> */}
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
                             <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
                                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
                             </Button>
                         </div>
-                    )}
-                </div> */}
-                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                    <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
-                        {submitting ? "กำลังบันทึก..." : "บันทึก"}
-                    </Button>
+                    </CardFooter>
+
                 </div>
-            </CardFooter>
+
+            </form>
         </section>
+        // <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
+        //     {/* Job Info */}
+        //     <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
+        //         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+
+        //             {/* <Input
+        //                 label="เครื่องประจุไฟฟ้าที่"
+        //                 value={job.chargerNo}
+        //                 onChange={(e) => setJob({ ...job, chargerNo: e.target.value })}
+        //                 crossOrigin=""
+        //                 readOnly
+        //                 className="!tw-bg-blue-gray-50"
+        //             /> */}
+        //             <Input
+        //                 label="Issue id"
+        //                 value={job.issue_id || "-"}
+        //                 readOnly
+        //                 // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
+        //                 crossOrigin=""
+        //                 containerProps={{ className: "!tw-min-w-0" }}
+        //                 className="!tw-w-full !tw-bg-blue-gray-50"
+        //             />
+
+        //             <Input
+        //                 label="Location / สถานที่"
+        //                 value={job.station_name}
+        //                 onChange={(e) => setJob({ ...job, station_name: e.target.value })}
+        //                 crossOrigin=""
+        //                 className="!tw-bg-blue-gray-50"
+        //                 readOnly
+        //             />
+
+        //             {/* <Input
+        //                 label="SN / หมายเลขเครื่อง"
+        //                 value={job.sn}
+        //                 onChange={(e) => setJob({ ...job, sn: e.target.value })}
+        //                 crossOrigin=""
+        //                 className="!tw-bg-blue-gray-50"
+        //                 readOnly
+        //             /> */}
+
+        //             {/* <Input
+        //                 label="Model / รุ่น"
+        //                 value={job.model}
+        //                 onChange={(e) => setJob({ ...job, model: e.target.value })}
+        //                 crossOrigin=""
+        //                 className="!tw-bg-blue-gray-50"
+        //                 readOnly
+        //             /> */}
+
+        //             <Input
+        //                 label="วันที่ตรวจ"
+        //                 type="date"
+        //                 value={job.date}
+        //                 onChange={(e) => setJob({ ...job, date: e.target.value })}
+        //                 crossOrigin=""
+        //             />
+        //         </div>
+        //     </SectionCard>
+
+
+
+        //     {/* จัดช่วงการเรนเดอร์เป็นบล็อก ๆ */}
+        //     {[
+        //         [1, 5],
+        //         [6, 11],
+        //     ].map(([start, end]) => (
+        //         <Card key={`${start}-${end}`} className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+        //             {start === 1 && (
+        //                 <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+        //                     <Typography variant="h6">Checklist</Typography>
+        //                 </CardHeader>
+        //             )}
+        //             <CardBody className="tw-space-y-1">
+        //                 {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
+        //             </CardBody>
+        //         </Card>
+        //     ))}
+
+        //     <SectionCard title="Comment">
+        //         <div className="tw-space-y-2">
+        //             <Textarea
+        //                 label="Comment"
+        //                 value={summary}
+        //                 onChange={(e) => setSummary(e.target.value)}
+        //                 rows={4}
+        //                 required
+        //                 autoComplete="off"
+        //                 containerProps={{ className: "!tw-min-w-0" }}
+        //                 className="!tw-w-full resize-none"
+        //             />
+        //             <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
+        //                 {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
+        //             </Typography>
+        //         </div>
+
+        //         <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
+        //             <PassFailRow
+        //                 label="สรุปผลการตรวจสอบ"
+        //                 value={summaryCheck}
+        //                 onChange={(v) => setSummaryCheck(v)}
+        //                 labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
+        //                     PASS: "Pass : ผ่าน",
+        //                     FAIL: "Fail : ไม่ผ่าน",
+        //                     NA: "N/A : ไม่พบ",
+        //                 }}
+        //             />
+        //         </div>
+        //     </SectionCard>
+
+        //     {/* Summary & Actions */}
+        //     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
+        //         <div
+        //             className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+        //                 }`}
+        //         >
+        //             <Typography className="tw-font-medium">
+        //                 1) สถานะ PASS / FAIL / N/A (ยกเว้นข้อ 4–7 ซึ่งเป็นชุดวัดค่า)
+        //             </Typography>
+
+        //             {allPFAnswered ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">
+        //                     ครบเรียบร้อย ✅
+        //                 </Typography>
+        //             ) : (
+        //                 <Typography variant="small" className="!tw-text-amber-700">
+        //                     ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}
+        //                 </Typography>
+        //             )}
+        //         </div>
+
+        //         <div
+        //             className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+        //                 }`}
+        //         >
+        //             <Typography className="tw-font-medium">2) อินพุตข้อ 4–7</Typography>
+        //             {allRequiredInputsFilled ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">
+        //                     ครบเรียบร้อย ✅
+        //                 </Typography>
+        //             ) : (
+        //                 <div className="tw-space-y-1">
+        //                     <Typography variant="small" className="!tw-text-amber-700">
+        //                         ยังขาด:
+        //                     </Typography>
+        //                     <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
+        //                         {missingInputsTextLines.map((line, i) => (
+        //                             <li key={i}>{line}</li>
+        //                         ))}
+        //                     </ul>
+        //                 </div>
+        //             )}
+        //         </div>
+
+        //         <div
+        //             className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+        //                 }`}
+        //         >
+        //             <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)</Typography>
+        //             {allPhotosAttached ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">
+        //                     ครบเรียบร้อย ✅
+        //                 </Typography>
+        //             ) : (
+        //                 <Typography variant="small" className="!tw-text-amber-700">
+        //                     ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}
+        //                 </Typography>
+        //             )}
+        //         </div>
+
+        //         <div
+        //             className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+        //                 }`}
+        //         >
+        //             <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
+        //             {isSummaryFilled ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+        //             ) : (
+        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
+        //             )}
+        //         </div>
+
+
+        //         {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+        //             {!canFinalSave ? (
+        //                 <Button
+        //                     variant="outlined"
+        //                     color="blue-gray"
+        //                     type="button"
+        //                 // onClick={onSave}
+        //                 // title={
+        //                 //     !allPhotosAttached
+        //                 //         ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
+        //                 //         : "บันทึกชั่วคราว"
+        //                 // }
+        //                 >
+        //                     บันทึก
+        //                 </Button>
+        //             ) : (
+        //                 // <Button color="blue" type="button" onClick={onFinalSave}>
+        //                 //     บันทึก
+        //                 // </Button>
+        //                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+        //                     <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
+        //                         {submitting ? "กำลังบันทึก..." : "บันทึก"}
+        //                     </Button>
+        //                 </div>
+        //             )}
+        //         </div> */}
+        //         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+        //             <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
+        //                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
+        //             </Button>
+        //         </div>
+        //     </CardFooter>
+        // </section>
     );
 }

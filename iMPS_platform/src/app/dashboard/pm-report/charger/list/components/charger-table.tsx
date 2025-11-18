@@ -106,7 +106,6 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   return same.reduce((acc, cur) => (toTail(cur) > toTail(acc) ? cur : acc), same[0]);
 }
 
-
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -126,12 +125,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const sidLocal = localStorage.getItem("selected_station_id");
     setStationId(sidLocal);
   }, [searchParams]);
-
-  // const statusFromTab = (searchParams.get("status") ?? "charger").toLowerCase();
-  // const statusLabel = statusFromTab
-  //   .split(/[-_ ]+/)
-  //   .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
-  //   .join(" ");
 
   const router = useRouter();
   const pathname = usePathname();
@@ -205,107 +198,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return `${apiBase}/${s}`;
   }
 
-  // function getStatusText(it: any) {
-  //   return String(it?.status ?? it?.job?.status ?? "").trim();
-  // }
-
-  // Fetch data (with abort support)
-  // const fetchRows = async (signal?: AbortSignal) => {
-  //   if (!stationId) {
-  //     setData([]);
-  //     return;
-  //   }
-  //   setLoading(true);
-  //   try {
-  //     const makeURL = (path: string) => {
-  //       const u = new URL(`${apiBase}${path}`);
-  //       u.searchParams.set("station_id", stationId);
-  //       u.searchParams.set("page", "1");
-  //       u.searchParams.set("pageSize", "50");
-  //       u.searchParams.set("_ts", String(Date.now()));
-  //       return u.toString();
-  //     };
-
-  //     const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
-
-  //     const [pmRes, urlRes] = await Promise.allSettled([
-  //       fetch(makeURL("/pmreport/list"), fetchOpts),
-  //       fetch(makeURL("/pmurl/list"), fetchOpts),
-  //     ]);
-
-  //     let pmItems: any[] = [];
-  //     let urlItems: any[] = [];
-
-  //     if (pmRes.status === "fulfilled" && pmRes.value.ok) {
-  //       const j = await pmRes.value.json();
-  //       if (Array.isArray(j?.items)) pmItems = j.items;
-  //     }
-  //     if (urlRes.status === "fulfilled" && urlRes.value.ok) {
-  //       const j = await urlRes.value.json();
-  //       if (Array.isArray(j?.items)) urlItems = j.items;
-  //     }
-
-  //     const pmRows: TData[] = pmItems.map((it: any) => {
-  //       const isoDay = pickDateFromItem(it);
-  //       const rawUploaded =
-  //         it.file_url ??
-  //         (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
-  //         it.file ?? it.path;
-
-  //       const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
-
-  //       function extractId(x: any): string {
-  //         if (!x) return "";
-  //         const raw = (x._id !== undefined ? x._id : x.id) ?? "";
-  //         if (raw && typeof raw === "object") return raw.$oid || raw.oid || raw.$id || "";
-  //         const s = String(raw || "");
-  //         return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
-  //       }
-  //       const id = extractId(it);
-  //       const generatedUrl = id ? `${apiBase}/pdf/charger/${encodeURIComponent(id)}/export` : "";
-
-  //       const fileUrl = uploadedUrl || generatedUrl;
-  //       // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
-  //       const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
-
-  //       return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
-  //     });
-
-  //     const urlRows: TData[] = urlItems.map((it: any) => {
-  //       const isoDay = pickDateFromItem(it);
-  //       const raw =
-  //         it.file_url ??
-  //         (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
-  //         it.file ?? it.path;
-  //       const href = resolveFileHref(raw, apiBase);
-  //       // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
-  //       const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
-  //       return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: href } as TData;
-  //     });
-
-  //     const allRows = [...pmRows, ...urlRows].sort((a, b) => {
-  //       const da = (a.position ?? "") as string;
-  //       const db = (b.position ?? "") as string;
-  //       if (!da && !db) return 0;
-  //       if (!da) return 1;
-  //       if (!db) return -1;
-  //       return da < db ? 1 : da > db ? -1 : 0; // desc
-  //     });
-  //     setData(allRows);
-  //   } catch (err: any) {
-  //     if (err?.name === "AbortError") return; // ignore abort
-  //     console.error("fetch both lists error:", err);
-  //     setData([]);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
-  const addHref = useMemo(() => {
-    if (!stationId) return "/dashboard/pm-report/charger/input_PMreport";
-    const p = new URLSearchParams({ station_id: stationId });
-    return `/dashboard/pm-report/charger/input_PMreport?${p.toString()}`;
-  }, [stationId]);
+  // const addHref = useMemo(() => {
+  //   if (!stationId) return "/dashboard/pm-report/charger/input_PMreport";
+  //   const p = new URLSearchParams({ station_id: stationId });
+  //   return `/dashboard/pm-report/charger/input_PMreport?${p.toString()}`;
+  // }, [stationId]);
 
 
   function normalizeAnyDate(v: any): string {
@@ -605,7 +502,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [urlText, setUrlText] = useState("");
+  // const [urlText, setUrlText] = useState("");
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
