@@ -48,6 +48,11 @@ export function DashboardNavbar() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const view = searchParams.get("view") ?? "";
+  const tab = searchParams.get("tab") ?? "";
+  const isFormView = view === "form";
+  const isChargerTab = tab === "charger" || "mdb";
+
   // ซ่อน topbar บางหน้า
   const HIDE_TOPBAR = ["/pages", "/mainpages"];
   const hideTopbar = HIDE_TOPBAR.some((p) => pathname === p || pathname.startsWith(p + "/"));
@@ -69,8 +74,9 @@ export function DashboardNavbar() {
 
   // ล็อก dropdown
   // const lockStationDropdown = pathname.startsWith("/dashboard/input_PMreport");
-  const lockStationDropdown = pathname.startsWith("/dashboard/pm-report/charger/input_PMreport");
-
+  // const lockStationDropdown = pathname.startsWith("/dashboard/pm-report/mdb/input_PMreport");
+  const lockStationDropdown =
+  pathname.startsWith("/dashboard/pm-report") && isChargerTab && isFormView;
 
   // Dropdown state
   const [query, setQuery] = useState("");
@@ -81,7 +87,6 @@ export function DashboardNavbar() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [searching, setSearching] = useState(false);
   const [stationInfo, setStationInfo] = useState<StationInfo | null>(null);
-
 
   // โหลดสถานีของผู้ใช้ที่ล็อกอิน (JWT only)
   useEffect(() => {
@@ -370,20 +375,20 @@ export function DashboardNavbar() {
               className="tw-w-full tw-min-w-0 tw-flex-1 tw-border tw-p-2 tw-rounded tw-text-black"
               value={query}
               onChange={(e) => {
-                if (lockStationDropdown) return; 
+                if (lockStationDropdown) return;
                 setQuery(e.target.value);
                 setOpen(true);
               }}
               onFocus={() => {
-                if (lockStationDropdown) return; 
+                if (lockStationDropdown) return;
                 setOpen(true)
-              } }
+              }}
               onKeyDown={(e) => {
-                if (lockStationDropdown) return; 
+                if (lockStationDropdown) return;
                 onKeyDown(e);
               }}
               crossOrigin=""
-              disabled={lockStationDropdown} 
+              disabled={lockStationDropdown}
             />
 
             <Button
@@ -398,7 +403,7 @@ export function DashboardNavbar() {
               "
               // onClick={goToCurrentPage}
               onClick={onSearch}
-              disabled={lockStationDropdown}  
+              disabled={lockStationDropdown}
               title={lockStationDropdown ? "ล็อกการเลือกสถานีบนหน้านี้" : ""}
             >
               search

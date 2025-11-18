@@ -184,53 +184,6 @@ type PassFailRowProps = {
 };
 
 
-// function PassFailRow({
-//     label, value, onChange, remark, onRemarkChange, labels,
-// }: {
-//     label: string;
-//     value: PF;
-//     onChange: (v: Exclude<PF, "">) => void;
-//     remark?: string;
-//     onRemarkChange?: (v: string) => void;
-//     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; // ⬅️ เพิ่ม
-// }) {
-//     const text = {
-//         PASS: labels?.PASS ?? "PASS",
-//         FAIL: labels?.FAIL ?? "FAIL",
-//         NA: labels?.NA ?? "N/A",
-//     };
-
-//     return (
-//         <div className="tw-space-y-3 tw-py-3">
-//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-//                 <Typography className="tw-font-medium">{label}</Typography>
-
-//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-//                     <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>
-//                         {text.PASS}
-//                     </Button>
-//                     <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>
-//                         {text.FAIL}
-//                     </Button>
-//                     <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>
-//                         {text.NA}
-//                     </Button>
-//                 </div>
-//             </div>
-
-//             {onRemarkChange && (
-//                 <div className="tw-w-full tw-min-w-0">
-//                     <Textarea label="หมายเหตุ (ถ้ามี)" value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
-//                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
-//                 </div>
-//             )}
-//         </div>
-//     );
-// }
-
 function PassFailRow({
     label,
     value,
@@ -307,44 +260,6 @@ function PassFailRow({
         </div>
     );
 }
-
-// function YesNoRow({
-//     label,
-//     value,
-//     onChange,
-// }: {
-//     label: string;
-//     value: YesNo;
-//     onChange: (v: Exclude<YesNo, "">) => void;
-// }) {
-//     return (
-//         <div className="tw-space-y-3 tw-py-2">
-//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-//                 <Typography className="tw-font-medium">{label}</Typography>
-//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-//                     <Button
-//                         size="sm"
-//                         color="green"
-//                         variant={value === "YES" ? "filled" : "outlined"}
-//                         className="tw-w-1/2 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                         onClick={() => onChange("YES")}
-//                     >
-//                         Yes
-//                     </Button>
-//                     <Button
-//                         size="sm"
-//                         color="red"
-//                         variant={value === "NO" ? "filled" : "outlined"}
-//                         className="tw-w-1/2 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                         onClick={() => onChange("NO")}
-//                     >
-//                         No
-//                     </Button>
-//                 </div>
-//             </div>
-//         </div>
-//     );
-// }
 
 /* =========================
  *       UI ATOMS
@@ -1174,9 +1089,9 @@ export default function ChargerPMForm() {
                                     Preventive Maintenance Checklist - เครื่องอัดประจุไฟฟ้า
                                 </div>
                                 <div className="tw-text-sm tw-text-blue-gray-600">
-                                    การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)<br />
-                                    เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย<br />
-                                    จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416
+                                    Electricity Generating Authority of Thailand (EGAT) <br />
+                                    53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand <br />
+                                    Call Center Tel. 02-114-3350
                                 </div>
                             </div>
                         </div>
@@ -1218,7 +1133,6 @@ export default function ChargerPMForm() {
                                     className="!tw-bg-blue-gray-50"
                                 />
                             </div>
-
                             <div className="lg:tw-col-span-2">
                                 <Input
                                     label="Model / รุ่น"
