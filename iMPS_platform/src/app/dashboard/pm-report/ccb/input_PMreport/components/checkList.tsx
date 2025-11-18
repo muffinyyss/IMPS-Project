@@ -11,14 +11,15 @@ import {
     Typography,
     Textarea,
 } from "@material-tailwind/react";
+import Image from "next/image";
 import { draftKeyCCB, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/ccb/input_PMreport/lib/draft";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 /* =========================
  *        API (เดิม)
  * ========================= */
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
+const LOGO_SRC = "/img/logo_egat.png";
 type StationPublic = {
     station_id: string;
     station_name: string;
@@ -182,15 +183,45 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
  * ========================= */
 function SectionCard({ title, subtitle, children }: { title?: string; subtitle?: string; children: React.ReactNode }) {
     return (
-        <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-            {(title || subtitle) && (
-                <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                    {title && <Typography variant="h6">{title}</Typography>}
-                    {subtitle && <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography>}
-                </CardHeader>
+        // <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+        //     {(title || subtitle) && (
+        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+        //             {title && <Typography variant="h6">{title}</Typography>}
+        //             {subtitle && <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography>}
+        //         </CardHeader>
+        //     )}
+        //     <CardBody className="tw-space-y-4">{children}</CardBody>
+        // </Card>
+        <>
+            {/* Title นอกกรอบการ์ด */}
+            {title && (
+                <Typography variant="h6" className="tw-mb-1">
+                    {title}
+                </Typography>
             )}
-            <CardBody className="tw-space-y-4">{children}</CardBody>
-        </Card>
+
+            {/* การ์ด (มีเฉพาะกรอบ +เนื้อหา+subtitle ด้านใน) */}
+            <Card className="tw-mt-1 tw-shadow-sm tw-border tw-border-blue-gray-100">
+                {subtitle && (
+                    <CardHeader
+                        floated={false}
+                        shadow={false}
+                        className="tw-px-4 tw-pt-4 tw-pb-2"
+                    >
+                        <Typography
+                            variant="small"
+                            className="!tw-text-blue-gray-500 tw-italic tw-mt-1"
+                        >
+                            {subtitle}
+                        </Typography>
+                    </CardHeader>
+                )}
+
+                <CardBody className="tw-space-y-4">
+                    {children}
+                </CardBody>
+            </Card>
+        </>
     );
 }
 
@@ -230,26 +261,103 @@ function InputWithUnit<U extends string>({
     );
 }
 
+// function PassFailRow({
+//     label, value, onChange, remark, onRemarkChange, labels,
+// }: {
+//     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void; labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
+// }) {
+//     return (
+//         <div className="tw-space-y-3 tw-py-3">
+//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+//                 <Typography className="tw-font-medium">{label}</Typography>
+
+//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
+//                     <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>PASS</Button>
+//                     <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>FAIL</Button>
+//                     <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>N/A</Button>
+//                 </div>
+//             </div>
+
+//             {onRemarkChange && (
+//                 <div className="tw-w-full tw-min-w-0">
+//                     <Textarea label="หมายเหตุ (ถ้ามี)" value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
+//                 </div>
+//             )}
+//         </div>
+//     );
+// }
+
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels,
+    label,
+    value,
+    onChange,
+    remark,
+    onRemarkChange,
+    labels,
+    aboveRemark,              // 👈 เพิ่มตรงนี้
 }: {
-    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void; labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
+    label: string;
+    value: PF;
+    onChange: (v: Exclude<PF, "">) => void;
+    remark?: string;
+    onRemarkChange?: (v: string) => void;
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
+    aboveRemark?: React.ReactNode;   // 👈 และเพิ่มใน type ตรงนี้
 }) {
+    const text = {
+        PASS: labels?.PASS ?? "PASS",
+        FAIL: labels?.FAIL ?? "FAIL",
+        NA: labels?.NA ?? "N/A",
+    };
+
     return (
         <div className="tw-space-y-3 tw-py-3">
             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
                 <Typography className="tw-font-medium">{label}</Typography>
 
                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-                    <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>PASS</Button>
-                    <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>FAIL</Button>
-                    <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>N/A</Button>
+                    <Button
+                        size="sm"
+                        color="green"
+                        variant={value === "PASS" ? "filled" : "outlined"}
+                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+                        onClick={() => onChange("PASS")}
+                    >
+                        {text.PASS}
+                    </Button>
+                    <Button
+                        size="sm"
+                        color="red"
+                        variant={value === "FAIL" ? "filled" : "outlined"}
+                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+                        onClick={() => onChange("FAIL")}
+                    >
+                        {text.FAIL}
+                    </Button>
+                    <Button
+                        size="sm"
+                        color="blue-gray"
+                        variant={value === "NA" ? "filled" : "outlined"}
+                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+                        onClick={() => onChange("NA")}
+                    >
+                        {text.NA}
+                    </Button>
                 </div>
             </div>
 
             {onRemarkChange && (
-                <div className="tw-w-full tw-min-w-0">
-                    <Textarea label="หมายเหตุ (ถ้ามี)" value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
+                <div className="tw-w-full tw-min-w-0 tw-space-y-2">
+                    {/* 👇 รูปจะมาอยู่ตรงนี้ เหนือช่องหมายเหตุ */}
+                    {aboveRemark}
+
+                    <Textarea
+                        label="หมายเหตุ (ถ้ามี)"
+                        value={remark || ""}
+                        onChange={(e) => onRemarkChange(e.target.value)}
+                        containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
+                        className="!tw-w-full"
+                    />
                 </div>
             )}
         </div>
@@ -257,7 +365,7 @@ function PassFailRow({
 }
 
 function PhotoMultiInput({
-    label, photos, setPhotos, max = 20,
+    label, photos, setPhotos, max = 3,
 }: {
     label?: string;
     photos: PhotoItem[];
@@ -288,32 +396,107 @@ function PhotoMultiInput({
     };
 
     return (
+        // <div className="tw-space-y-3">
+        //     {label && <Typography className="tw-font-medium">{label}</Typography>}
+        //     <div className="tw-flex tw-flex-wrap tw-gap-2">
+        //         <Button size="sm" color="blue" variant="outlined" onClick={handlePick}>แนบรูป / ถ่ายรูป</Button>
+        //         <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
+        //             แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
+        //         </Typography>
+        //     </div>
+        //     <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => handleFiles(e.target.files)} />
+        //     {photos.length > 0 ? (
+        //         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
+        //             {photos.map((p) => (
+        //                 <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col">
+        //                     <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
+        //                         {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}
+        //                     </div>
+        //                     <div className="tw-p-2 tw-space-y-2">
+        //                         <div className="tw-flex tw-justify-end">
+        //                             <Button size="sm" color="red" variant="text" onClick={() => handleRemove(p.id)}>ลบรูป</Button>
+        //                         </div>
+        //                     </div>
+        //                 </div>
+        //             ))}
+        //         </div>
+        //     ) : (
+        //         <Typography variant="small" className="!tw-text-blue-gray-500">ยังไม่มีรูปแนบ</Typography>
+        //     )}
+        // </div>
         <div className="tw-space-y-3">
-            {label && <Typography className="tw-font-medium">{label}</Typography>}
-            <div className="tw-flex tw-flex-wrap tw-gap-2">
-                <Button size="sm" color="blue" variant="outlined" onClick={handlePick}>แนบรูป / ถ่ายรูป</Button>
-                <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-                    แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
-                </Typography>
+            {/* แถวบน: label + ปุ่มแนบรูป */}
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
+                {/* {label && (
+              <Typography className="tw-font-medium">
+                {label}
+              </Typography>
+            )} */}
+
+                <Button
+                    size="sm"
+                    color="blue"
+                    variant="outlined"
+                    onClick={handlePick}
+                    className="tw-shrink-0"
+                >
+                    แนบรูป / ถ่ายรูป
+                </Button>
             </div>
-            <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => handleFiles(e.target.files)} />
+
+            {/* แถวถัดไป: description */}
+            <Typography
+                variant="small"
+                className="!tw-text-blue-gray-500 tw-flex tw-items-center"
+            >
+                แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
+            </Typography>
+
+            <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                capture="environment"
+                className="tw-hidden"
+                onChange={(e) => handleFiles(e.target.files)}
+            />
+
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
                     {photos.map((p) => (
-                        <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col">
+                        <div
+                            key={p.id}
+                            className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"
+                        >
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
-                                {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}
+                                {p.preview && (
+                                    <img
+                                        src={p.preview}
+                                        alt="preview"
+                                        className="tw-w-full tw-h-full tw-object-cover"
+                                    />
+                                )}
                             </div>
                             <div className="tw-p-2 tw-space-y-2">
                                 <div className="tw-flex tw-justify-end">
-                                    <Button size="sm" color="red" variant="text" onClick={() => handleRemove(p.id)}>ลบรูป</Button>
+                                    <Button
+                                        size="sm"
+                                        color="red"
+                                        variant="text"
+                                        onClick={() => handleRemove(p.id)}
+                                    >
+                                        ลบรูป
+                                    </Button>
                                 </div>
                             </div>
                         </div>
                     ))}
                 </div>
             ) : (
-                <Typography variant="small" className="!tw-text-blue-gray-500">ยังไม่มีรูปแนบ</Typography>
+                <Typography variant="small" className="!tw-text-blue-gray-500">
+                    ยังไม่มีรูปแนบ
+                </Typography>
             )}
         </div>
     );
@@ -372,9 +555,13 @@ async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): P
 /* =========================
  *        MAIN
  * ========================= */
-export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps) {
+// export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps) {
+export default function CCBPMReport() {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+
+    const searchParams = useSearchParams();
+    const editId = searchParams.get("edit_id") ?? "";
     const PM_PREFIX = "ccbpmreport";
 
     /* ---------- photos per question ---------- */
@@ -599,7 +786,7 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
 
     const canFinalSave = allPhotosAttached && allPFAnswered && allRequiredInputsFilled && isSummaryFilled;
 
-    useEffect(() => onComplete(allPFAnswered), [allPFAnswered, onComplete]);
+    // useEffect(() => onComplete(allPFAnswered), [allPFAnswered, onComplete]);
 
     /* ---------- persistence (auto-save) ---------- */
     function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
@@ -751,17 +938,84 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
         );
     };
 
+    // const renderQuestionBlock = (q: Question) => {
+    //     return (
+    //         <SectionCard key={q.key} title={q.label}>
+    //             {/* simple/group header row */}
+    //             {q.kind === "simple" && (
+    //                 <PassFailRow
+    //                     label="ผลการทดสอบ"
+    //                     value={rows[q.key].pf}
+    //                     onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
+    //                     remark={rows[q.key].remark}
+    //                     onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
+    //                 />
+    //             )}
+
+    //             {q.kind === "group" &&
+    //                 q.items.map((it) => (
+    //                     <PassFailRow
+    //                         key={it.key}
+    //                         label={it.label}
+    //                         value={rows[it.key]?.pf ?? ""}
+    //                         onChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
+    //                         remark={rows[it.key]?.remark}
+    //                         onRemarkChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
+    //                     />
+    //                 ))}
+
+    //             {q.kind === "measure9" && (
+    //                 <div className="tw-space-y-3">
+    //                     {renderMeasureGrid9(0, BREAKERS[0], m9_0)}
+    //                     {renderMeasureGrid9(1, BREAKERS[1], m9_1)}
+    //                     {renderMeasureGrid9(2, BREAKERS[2], m9_2)}
+    //                     {renderMeasureGrid9(3, BREAKERS[3], m9_3)}
+    //                     {renderMeasureGrid9(4, BREAKERS[4], m9_4)}
+    //                     {renderMeasureGrid9(5, BREAKERS[5], m9_5)}
+    //                 </div>
+    //             )}
+
+    //             {q.hasPhoto && (
+    //                 <div className="tw-pt-2 tw-pb-4 tw-border-t tw-border-blue-gray-50">
+    //                     <PhotoMultiInput
+    //                         label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                         photos={photos[q.no] || []}
+    //                         setPhotos={makePhotoSetter(q.no)}
+    //                         max={3}
+    //                     />
+    //                 </div>
+    //             )}
+    //         </SectionCard>
+    //     );
+    // };
+
     const renderQuestionBlock = (q: Question) => {
         return (
             <SectionCard key={q.key} title={q.label}>
+                {/* รูป (ถ้ามี) -> อยู่ด้านบนสุดของแต่ละข้อ */}
+                {q.hasPhoto && (
+                    <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                        <PhotoMultiInput
+                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                            photos={photos[q.no] || []}
+                            setPhotos={makePhotoSetter(q.no)}
+                            max={3}
+                        />
+                    </div>
+                )}
+
                 {/* simple/group header row */}
                 {q.kind === "simple" && (
                     <PassFailRow
                         label="ผลการทดสอบ"
                         value={rows[q.key].pf}
-                        onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
+                        onChange={(v) =>
+                            setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
+                        }
                         remark={rows[q.key].remark}
-                        onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
+                        onRemarkChange={(v) =>
+                            setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
+                        }
                     />
                 )}
 
@@ -771,9 +1025,19 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
                             key={it.key}
                             label={it.label}
                             value={rows[it.key]?.pf ?? ""}
-                            onChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
+                            onChange={(v) =>
+                                setRows({
+                                    ...rows,
+                                    [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
+                                })
+                            }
                             remark={rows[it.key]?.remark}
-                            onRemarkChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
+                            onRemarkChange={(v) =>
+                                setRows({
+                                    ...rows,
+                                    [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
+                                })
+                            }
                         />
                     ))}
 
@@ -787,134 +1051,306 @@ export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps
                         {renderMeasureGrid9(5, BREAKERS[5], m9_5)}
                     </div>
                 )}
-
-                {q.hasPhoto && (
-                    <div className="tw-pt-2 tw-pb-4 tw-border-t tw-border-blue-gray-50">
-                        <PhotoMultiInput
-                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                            photos={photos[q.no] || []}
-                            setPhotos={makePhotoSetter(q.no)}
-                            max={20}
-                        />
-                    </div>
-                )}
             </SectionCard>
         );
     };
-
     /* =========================
      *        RENDER
      * ========================= */
     return (
-        <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
-            {/* Job Info */}
-            <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
-                    <Input
-                        label="Issue id"
-                        value={job.issue_id || "-"}
-                        readOnly
-                        // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
-                        crossOrigin=""
-                        containerProps={{ className: "!tw-min-w-0" }}
-                        className="!tw-w-full !tw-bg-blue-gray-50"
-                    />
-                    <Input label="Location / สถานที่" value={job.station_name} onChange={(e) => setJob({ ...job, station_name: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
-                    <Input label="วันที่ตรวจ" type="date" value={job.date} onChange={(e) => setJob({ ...job, date: e.target.value })} crossOrigin="" />
-                </div>
-            </SectionCard>
-
-            {/* Checklist */}
-            <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                    <Typography variant="h6">Checklist</Typography>
-                </CardHeader>
-                <CardBody className="tw-space-y-1">
-                    {QUESTIONS.map(renderQuestionBlock)}
-                </CardBody>
-            </Card>
-
-            {/* Summary */}
-            <SectionCard title="Comment">
-                <div className="tw-space-y-2">
-                    <Textarea
-                        label="Comment"
-                        value={summary}
-                        onChange={(e) => setSummary(e.target.value)}
-                        rows={4}
-                        required
-                        autoComplete="off"
-                        containerProps={{ className: "!tw-min-w-0" }}
-                        className="!tw-w-full resize-none"
-                    />
-                    <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-                        {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-                    </Typography>
-                </div>
-
-                <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-                    <PassFailRow
-                        label="สรุปผลการตรวจสอบ"
-                        value={summaryCheck}
-                        onChange={(v) => setSummaryCheck(v)}
-                        labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
-                            PASS: "Pass : ผ่าน",
-                            FAIL: "Fail : ไม่ผ่าน",
-                            NA: "N/A : ไม่พบ",
-                        }}
-                    />
-                </div>
-            </SectionCard>
-
-            {/* Footer checks */}
-            <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-                <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-                    <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
-                    {allPFAnswered ? (
-                        <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                    ) : (
-                        <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
-                    )}
-                </div>
-
-                <div className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-                    <Typography className="tw-font-medium">2) อินพุตข้อ 9 (ค่าที่วัด)</Typography>
-                    {allRequiredInputsFilled ? (
-                        <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                    ) : (
-                        <div className="tw-space-y-1">
-                            <Typography variant="small" className="!tw-text-amber-700">ยังขาด:</Typography>
-                            <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
-                                {missingInputs.map((line, i) => (<li key={i}>{line}</li>))}
-                            </ul>
+        <section className="tw-pb-24">
+            <form action="#"
+                noValidate
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    return false;
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") e.preventDefault();
+                }}
+            >
+                <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
+                    <div className="tw-flex tw-items-start tw-justify-between tw-gap-6">
+                        <div className="tw-flex tw-items-start tw-gap-4">
+                            <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md
+                                                            tw-h-16 tw-w-[76px]
+                                                            md:tw-h-20 md:tw-w-[108px]
+                                                            lg:tw-h-24 lg:tw-w-[152px]">
+                                <Image
+                                    src={LOGO_SRC}
+                                    alt="Company logo"
+                                    fill
+                                    priority
+                                    className="tw-object-contain tw-p-0"
+                                    sizes="(min-width:1024px) 152px, (min-width:768px) 108px, 76px"
+                                />
+                            </div>
+                            <div>
+                                <div className="tw-font-semibold tw-text-blue-gray-900">
+                                    {/* รายงานการบำรุงรักษา - เครื่องอัดประจุไฟฟ้า – {headerLabel} */}
+                                    Preventive Maintanance Checklist - Communication Conttrol Box (CCB)
+                                </div>
+                                <div className="tw-text-sm tw-text-blue-gray-600">
+                                    Electricity Generating Authority of Thailand (EGAT) <br />
+                                    53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand <br />
+                                    Call Center Tel. 02-114-3350
+                                </div>
+                            </div>
                         </div>
-                    )}
-                </div>
+                    </div>
+                    {/* BODY */}
+                    <div className="tw-mt-8 tw-space-y-8">
+                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
+                            <div className="lg:tw-col-span-1">
+                                <Input
+                                    label="Issue id"
+                                    value={job.issue_id || "-"}
+                                    readOnly
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full !tw-bg-blue-gray-50"
+                                />
+                            </div>
 
-                <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-                    <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกหัวข้อ)</Typography>
-                    {allPhotosAttached ? (
-                        <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                    ) : (
-                        <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}</Typography>
-                    )}
-                </div>
+                            <div className="sm:tw-col-span-2 lg:tw-col-span-3">
+                                <Input
+                                    label="Location / สถานที่"
+                                    value={job.station_name}
+                                    onChange={(e) => setJob({ ...job, station_name: e.target.value })}
+                                    crossOrigin=""
+                                    readOnly
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-bg-blue-gray-50"
+                                />
+                            </div>
 
-                <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-                    <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
-                    {isSummaryFilled ? (
-                        <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                    ) : (
-                        <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-                    )}
-                </div>
+                            <div className="lg:tw-col-span-2">
+                                <Input
+                                    label="วันที่ตรวจ"
+                                    type="date"
+                                    value={job.date}
+                                    onChange={(e) => setJob({ ...job, date: e.target.value })}
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    {[
+                        [1, 5],
+                        [6, 10],
+                        [11, 16],
+                        [17, 17], // มีกริดวัดค่า
+                        [18, 19],
+                    ].map(([start, end]) => (
+                        // <Card key={`${start}-${end}`} className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+                        //     {start === 1 && (
+                        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+                        //             <Typography variant="h6">Checklist</Typography>
+                        //         </CardHeader>
+                        //     )}
+                        //     <CardBody className="tw-space-y-1">
+                        //         {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
+                        //     </CardBody>
+                        // </Card>
 
-                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                    <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
-                        {submitting ? "กำลังบันทึก..." : "บันทึก"}
-                    </Button>
+                        <CardBody className="tw-space-y-2">
+                            {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
+                        </CardBody>
+                    ))}
+                    {/* Summary */}
+                    <SectionCard title="Comment">
+                        <div className="tw-space-y-2">
+                            <Textarea
+                                label="Comment"
+                                value={summary}
+                                onChange={(e) => setSummary(e.target.value)}
+                                rows={4}
+                                required
+                                autoComplete="off"
+                                containerProps={{ className: "!tw-min-w-0" }}
+                                className="!tw-w-full resize-none"
+                            />
+                            <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
+                                {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
+                            </Typography>
+                        </div>
+
+                        <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
+                            <PassFailRow
+                                label="สรุปผลการตรวจสอบ"
+                                value={summaryCheck}
+                                onChange={(v) => setSummaryCheck(v)}
+                                labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
+                                    PASS: "Pass : ผ่าน",
+                                    FAIL: "Fail : ไม่ผ่าน",
+                                    NA: "N/A : ไม่พบ",
+                                }}
+                            />
+                        </div>
+                    </SectionCard>
+                    {/* Footer checks */}
+                    <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
+                        <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+                            <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
+                            {allPFAnswered ? (
+                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+                            ) : (
+                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
+                            )}
+                        </div>
+
+                        <div className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+                            <Typography className="tw-font-medium">2) อินพุตข้อ 9 (ค่าที่วัด)</Typography>
+                            {allRequiredInputsFilled ? (
+                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+                            ) : (
+                                <div className="tw-space-y-1">
+                                    <Typography variant="small" className="!tw-text-amber-700">ยังขาด:</Typography>
+                                    <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
+                                        {missingInputs.map((line, i) => (<li key={i}>{line}</li>))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+                            <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกหัวข้อ)</Typography>
+                            {allPhotosAttached ? (
+                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+                            ) : (
+                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}</Typography>
+                            )}
+                        </div>
+
+                        <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+                            <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
+                            {isSummaryFilled ? (
+                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+                            ) : (
+                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
+                            )}
+                        </div>
+
+                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+                            <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
+                                {submitting ? "กำลังบันทึก..." : "บันทึก"}
+                            </Button>
+                        </div>
+                    </CardFooter>
                 </div>
-            </CardFooter>
+            </form>
         </section>
+
+        // <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
+        //     {/* Job Info */}
+        //     <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
+        //         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+        //             <Input
+        //                 label="Issue id"
+        //                 value={job.issue_id || "-"}
+        //                 readOnly
+        //                 // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
+        //                 crossOrigin=""
+        //                 containerProps={{ className: "!tw-min-w-0" }}
+        //                 className="!tw-w-full !tw-bg-blue-gray-50"
+        //             />
+        //             <Input label="Location / สถานที่" value={job.station_name} onChange={(e) => setJob({ ...job, station_name: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
+        //             <Input label="วันที่ตรวจ" type="date" value={job.date} onChange={(e) => setJob({ ...job, date: e.target.value })} crossOrigin="" />
+        //         </div>
+        //     </SectionCard>
+
+        //     {/* Checklist */}
+        //     <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+        //             <Typography variant="h6">Checklist</Typography>
+        //         </CardHeader>
+        //         <CardBody className="tw-space-y-1">
+        //             {QUESTIONS.map(renderQuestionBlock)}
+        //         </CardBody>
+        //     </Card>
+
+        //     {/* Summary */}
+        //     <SectionCard title="Comment">
+        //         <div className="tw-space-y-2">
+        //             <Textarea
+        //                 label="Comment"
+        //                 value={summary}
+        //                 onChange={(e) => setSummary(e.target.value)}
+        //                 rows={4}
+        //                 required
+        //                 autoComplete="off"
+        //                 containerProps={{ className: "!tw-min-w-0" }}
+        //                 className="!tw-w-full resize-none"
+        //             />
+        //             <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
+        //                 {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
+        //             </Typography>
+        //         </div>
+
+        //         <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
+        //             <PassFailRow
+        //                 label="สรุปผลการตรวจสอบ"
+        //                 value={summaryCheck}
+        //                 onChange={(v) => setSummaryCheck(v)}
+        //                 labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
+        //                     PASS: "Pass : ผ่าน",
+        //                     FAIL: "Fail : ไม่ผ่าน",
+        //                     NA: "N/A : ไม่พบ",
+        //                 }}
+        //             />
+        //         </div>
+        //     </SectionCard>
+
+        //     {/* Footer checks */}
+        //     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
+        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+        //             <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
+        //             {allPFAnswered ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+        //             ) : (
+        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
+        //             )}
+        //         </div>
+
+        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+        //             <Typography className="tw-font-medium">2) อินพุตข้อ 9 (ค่าที่วัด)</Typography>
+        //             {allRequiredInputsFilled ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+        //             ) : (
+        //                 <div className="tw-space-y-1">
+        //                     <Typography variant="small" className="!tw-text-amber-700">ยังขาด:</Typography>
+        //                     <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
+        //                         {missingInputs.map((line, i) => (<li key={i}>{line}</li>))}
+        //                     </ul>
+        //                 </div>
+        //             )}
+        //         </div>
+
+        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+        //             <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกหัวข้อ)</Typography>
+        //             {allPhotosAttached ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+        //             ) : (
+        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}</Typography>
+        //             )}
+        //         </div>
+
+        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+        //             <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
+        //             {isSummaryFilled ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+        //             ) : (
+        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
+        //             )}
+        //         </div>
+
+        //         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+        //             <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
+        //                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
+        //             </Button>
+        //         </div>
+        //     </CardFooter>
+        // </section>
     );
 }

@@ -589,7 +589,6 @@ async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): P
  * ========================= */
 // export default function ChargerPMForm({ onComplete }: CheckListProps) {
 export default function ChargerPMForm() {
-
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
 
@@ -1065,8 +1064,6 @@ export default function ChargerPMForm() {
                 }}
             >
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
-
-
                     <div className="tw-flex tw-items-start tw-justify-between tw-gap-6">
                         {/* ซ้าย: โลโก้ + ข้อความ */}
                         <div className="tw-flex tw-items-start tw-gap-4">
