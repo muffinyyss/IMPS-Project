@@ -45,7 +45,6 @@ type Props = {
   apiBase?: string;
 };
 
-
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 const REPORT_PREFIX = "pmreport";
