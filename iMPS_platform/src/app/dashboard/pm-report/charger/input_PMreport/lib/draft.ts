@@ -5,6 +5,8 @@ type DraftData = {
   cp: any;
   m17: any;
   summary: string;
+  inspector?: string;
+  dustFilterChanged?: boolean;
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
 };

@@ -34,10 +34,12 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwi
 import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/components/checkList";
 type TData = {
   id?: string;
+  doc_name?: string;
   issue_id?: string; // ทำเป็น optional และเติมค่าจาก id หรือ regex ใน url
   pm_date: string; // วันที่แบบไทย แสดงผลในตาราง 
   position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
   office: string; // URL ไฟล์
+  inspector?: string;
 };
 
 type Props = {
@@ -288,7 +290,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
 
-        return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
+        const doc_name = (it.doc_name ? String(it.doc_name) : "")
+        const inspector =
+          (it.inspector ?? it.job?.inspector ?? "") as string;
+
+        return { issue_id: issueId,doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: fileUrl, inspector, } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -300,7 +306,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const href = resolveFileHref(raw, apiBase);
         // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
-        return { issue_id: issueId, pm_date: thDate(isoDay), position: isoDay, office: href } as TData;
+        const doc_name = (it.doc_name ? String(it.doc_name) : "")
+        const inspector =
+          (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
+        return { issue_id: issueId,doc_name:doc_name, pm_date: thDate(isoDay), position: isoDay, office: href, inspector, } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
@@ -395,8 +404,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.issue_id || "—",
-      id: "issue_id",
+      accessorFn: (row) => row.doc_name || "—",
+      id: "name",
       header: () => "name",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
@@ -425,9 +434,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.pm_date,
-      id: "date",
-      header: () => "reporter",
+      accessorFn: (row) => row.inspector,
+      id: "inspector",
+      header: () => "inspector",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
