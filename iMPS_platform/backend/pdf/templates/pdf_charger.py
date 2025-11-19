@@ -350,7 +350,6 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
 
 
 
-
 def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
     header_h = 9.0
     pdf.set_line_width(LINE_W_INNER)
