@@ -28,14 +28,15 @@ type StationPublic = {
     status?: boolean;
 };
 
-// async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
-//     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
-//     const res = await fetch(url); // ❌ ไม่ต้องใส่ Authorization
-//     if (res.status === 404) throw new Error("Station not found");
-//     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-//     const json = await res.json();
-//     return json.station ?? json;
-// }
+type Me = {
+    id: string;
+    username: string;
+    email: string;
+    role: string;
+    company: string;
+    tel: string;
+};
+
 async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
     const res = await fetch(url, { cache: "no-store" }); // ✅ กัน cache
@@ -179,9 +180,202 @@ type PassFailRowProps = {
     onChange: (v: string) => void;
     remark: string;
     onRemarkChange: (v: string) => void;
-    aboveRemark?: React.ReactNode;   // 👈 เพิ่มบรรทัดนี้
+    aboveRemark?: React.ReactNode;
+    
 };
 
+// function PassFailRow({
+//     label,
+//     value,
+//     onChange,
+//     remark,
+//     onRemarkChange,
+//     labels,
+//     aboveRemark,
+//     inlineLeft,     
+// }: {
+//     label: string;
+//     value: PF;
+//     onChange: (v: Exclude<PF, "">) => void;
+//     remark?: string;
+//     onRemarkChange?: (v: string) => void;
+//     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
+//     aboveRemark?: React.ReactNode;
+//     inlineLeft?: React.ReactNode;
+// }) {
+//     const text = {
+//         PASS: labels?.PASS ?? "PASS",
+//         FAIL: labels?.FAIL ?? "FAIL",
+//         NA: labels?.NA ?? "N/A",
+//     };
+
+//     const buttons = (
+//         <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
+//             <Button
+//                 size="sm"
+//                 color="green"
+//                 variant={value === "PASS" ? "filled" : "outlined"}
+//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                 onClick={() => onChange("PASS")}
+//             >
+//                 {text.PASS}
+//             </Button>
+//             <Button
+//                 size="sm"
+//                 color="red"
+//                 variant={value === "FAIL" ? "filled" : "outlined"}
+//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                 onClick={() => onChange("FAIL")}
+//             >
+//                 {text.FAIL}
+//             </Button>
+//             <Button
+//                 size="sm"
+//                 color="blue-gray"
+//                 variant={value === "NA" ? "filled" : "outlined"}
+//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                 onClick={() => onChange("NA")}
+//             >
+//                 {text.NA}
+//             </Button>
+//         </div>
+//     );
+    
+
+//     return (
+//         <div className="tw-space-y-3 tw-py-3">
+//             {/* แสดง label ด้านบนเสมอ */}
+//             <Typography className="tw-font-medium">{label}</Typography>
+
+//             {onRemarkChange ? (
+//                 // กรณีมีหมายเหตุ → รูป / ปุ่ม / หมายเหตุ
+//                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
+//                     {/* รูปอยู่เหนือปุ่ม */}
+//                     {aboveRemark}
+
+//                     {/* ปุ่ม PASS / FAIL / N/A อยู่ "เหนือ" ช่องหมายเหตุ */}
+//                     {buttons}
+
+//                     <Textarea
+//                         label="หมายเหตุ (ถ้ามี)"
+//                         value={remark || ""}
+//                         onChange={(e) => onRemarkChange(e.target.value)}
+//                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
+//                         className="!tw-w-full"
+//                     />
+//                 </div>
+//             ) : (
+//                 // กรณีไม่มีหมายเหตุ (เช่น สรุปผลท้ายฟอร์ม) → layout เดิม
+//                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+//                     {buttons}
+//                 </div>
+//             )}
+//         </div>
+//     );
+// }
+
+// function PassFailRow({
+//     label,
+//     value,
+//     onChange,
+//     remark,
+//     onRemarkChange,
+//     labels,
+//     aboveRemark,
+//     inlineLeft,
+// }: {
+//     label: string;
+//     value: PF;
+//     onChange: (v: Exclude<PF, "">) => void;
+//     remark?: string;
+//     onRemarkChange?: (v: string) => void;
+//     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
+//     aboveRemark?: React.ReactNode;
+//     inlineLeft?: React.ReactNode;
+// }) {
+//     const text = {
+//         PASS: labels?.PASS ?? "PASS",
+//         FAIL: labels?.FAIL ?? "FAIL",
+//         NA: labels?.NA ?? "N/A",
+//     };
+
+//     const buttonGroup = (
+//         <>
+//             <Button
+//                 size="sm"
+//                 color="green"
+//                 variant={value === "PASS" ? "filled" : "outlined"}
+//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                 onClick={() => onChange("PASS")}
+//             >
+//                 {text.PASS}
+//             </Button>
+//             <Button
+//                 size="sm"
+//                 color="red"
+//                 variant={value === "FAIL" ? "filled" : "outlined"}
+//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                 onClick={() => onChange("FAIL")}
+//             >
+//                 {text.FAIL}
+//             </Button>
+//             <Button
+//                 size="sm"
+//                 color="blue-gray"
+//                 variant={value === "NA" ? "filled" : "outlined"}
+//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+//                 onClick={() => onChange("NA")}
+//             >
+//                 {text.NA}
+//             </Button>
+//         </>
+//     );
+
+//     // ⬇️ แถวเดียวกัน: inlineLeft (เช่น checkbox) + ปุ่ม
+//     const buttonsRow = (
+//         <div className="tw-flex tw-items-center tw-gap-3 tw-w-full sm:tw-w-auto">
+//             {inlineLeft && (
+//                 <div className="tw-flex tw-items-center tw-gap-2">
+//                     {inlineLeft}
+//                 </div>
+//             )}
+//             <div className="tw-flex tw-gap-2 tw-flex-1 sm:tw-flex-none">
+//                 {buttonGroup}
+//             </div>
+//         </div>
+//     );
+
+//     return (
+//         <div className="tw-space-y-3 tw-py-3">
+//             {/* แสดง label ด้านบนเสมอ */}
+//             <Typography className="tw-font-medium">{label}</Typography>
+
+//             {onRemarkChange ? (
+//                 // มีหมายเหตุ → รูป / ปุ่ม+checkbox / หมายเหตุ
+//                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
+//                     {/* รูปอยู่เหนือปุ่ม */}
+//                     {aboveRemark}
+
+//                     {/* ปุ่ม PASS/FAIL/NA + checkbox ซ้ายสุด */}
+//                     {buttonsRow}
+
+//                     <Textarea
+//                         label="หมายเหตุ (ถ้ามี)"
+//                         value={remark || ""}
+//                         onChange={(e) => onRemarkChange(e.target.value)}
+//                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
+//                         className="!tw-w-full"
+//                     />
+//                 </div>
+//             ) : (
+//                 // ไม่มีหมายเหตุ → แค่แถวปุ่ม+checkbox
+//                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+//                     {buttonsRow}
+//                 </div>
+//             )}
+//         </div>
+//     );
+// }
 
 function PassFailRow({
     label,
@@ -190,7 +384,8 @@ function PassFailRow({
     remark,
     onRemarkChange,
     labels,
-    aboveRemark,              // 👈 เพิ่มตรงนี้
+    aboveRemark,
+    inlineLeft,
 }: {
     label: string;
     value: PF;
@@ -198,7 +393,8 @@ function PassFailRow({
     remark?: string;
     onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-    aboveRemark?: React.ReactNode;   // 👈 และเพิ่มใน type ตรงนี้
+    aboveRemark?: React.ReactNode;
+    inlineLeft?: React.ReactNode;
 }) {
     const text = {
         PASS: labels?.PASS ?? "PASS",
@@ -206,46 +402,63 @@ function PassFailRow({
         NA: labels?.NA ?? "N/A",
     };
 
+    // ⬇️ ปุ่มเรียง FAIL – NA – PASS แล้วค่อยเอาทั้งกลุ่มไปชิดขวา
+    const buttonGroup = (
+        <div className="tw-flex tw-gap-2 tw-ml-auto">
+            <Button
+                size="sm"
+                color="green"
+                variant={value === "PASS" ? "filled" : "outlined"}
+                className="sm:tw-min-w-[84px]"
+                onClick={() => onChange("PASS")}
+            >
+                {text.PASS}
+            </Button>
+            <Button
+                size="sm"
+                color="red"
+                variant={value === "FAIL" ? "filled" : "outlined"}
+                className="sm:tw-min-w-[84px]"
+                onClick={() => onChange("FAIL")}
+            >
+                {text.FAIL}
+            </Button>
+            <Button
+                size="sm"
+                color="blue-gray"
+                variant={value === "NA" ? "filled" : "outlined"}
+                className="sm:tw-min-w-[84px]"
+                onClick={() => onChange("NA")}
+            >
+                {text.NA}
+            </Button>
+            
+        </div>
+    );
+
+    // แถวเดียว: ซ้าย = checkbox (inlineLeft), ขวา = ปุ่มทั้งกลุ่ม
+    const buttonsRow = (
+        <div className="tw-flex tw-items-center tw-gap-3 tw-w-full">
+            {inlineLeft && (
+                <div className="tw-flex tw-items-center tw-gap-2">
+                    {inlineLeft}
+                </div>
+            )}
+            {buttonGroup}
+        </div>
+    );
+
     return (
         <div className="tw-space-y-3 tw-py-3">
-            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-                <Typography className="tw-font-medium">{label}</Typography>
+            <Typography className="tw-font-medium">{label}</Typography>
 
-                <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-                    <Button
-                        size="sm"
-                        color="green"
-                        variant={value === "PASS" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("PASS")}
-                    >
-                        {text.PASS}
-                    </Button>
-                    <Button
-                        size="sm"
-                        color="red"
-                        variant={value === "FAIL" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("FAIL")}
-                    >
-                        {text.FAIL}
-                    </Button>
-                    <Button
-                        size="sm"
-                        color="blue-gray"
-                        variant={value === "NA" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("NA")}
-                    >
-                        {text.NA}
-                    </Button>
-                </div>
-            </div>
-
-            {onRemarkChange && (
+            {onRemarkChange ? (
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
-                    {/* 👇 รูปจะมาอยู่ตรงนี้ เหนือช่องหมายเหตุ */}
+                    {/* รูปอยู่เหนือปุ่ม */}
                     {aboveRemark}
+
+                    {/* แถว checkbox ซ้าย + ปุ่มขวา */}
+                    {buttonsRow}
 
                     <Textarea
                         label="หมายเหตุ (ถ้ามี)"
@@ -254,6 +467,10 @@ function PassFailRow({
                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
                         className="!tw-w-full"
                     />
+                </div>
+            ) : (
+                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+                    {buttonsRow}
                 </div>
             )}
         </div>
@@ -327,7 +544,7 @@ function InputWithUnit<U extends string>({
     units,
     onValueChange,
     onUnitChange,
-    
+
 }: {
     label: string;
     value: string;
@@ -533,6 +750,7 @@ function PhotoMultiInput({
     );
 }
 
+
 const PM_TYPE_CODE = "CG";
 
 function makePrefix(typeCode: string, dateISO: string) {
@@ -551,6 +769,62 @@ function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string
     const n = (m ? parseInt(m[1], 10) : 0) + 1;
     return `${prefix}${n.toString().padStart(pad, "0")}`;
 }
+
+/* ---------- NEW: helper สำหรับ doc_name ---------- */
+
+function makeDocNameParts(stationId: string, dateISO: string) {
+    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+    const year = d.getFullYear();
+    const prefix = `${stationId}_`;
+    const suffix = `/${year}`;
+    return { year, prefix, suffix };
+}
+
+function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
+    const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
+    const s = String(latestFromDb || "").trim();
+
+    // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
+    if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
+        return `${prefix}1${suffix}`;
+    }
+
+    // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
+    const inside = s.slice(prefix.length, s.length - suffix.length);
+    const cur = parseInt(inside, 10);
+    const nextIndex = isNaN(cur) ? 1 : cur + 1;
+
+    return `${prefix}${nextIndex}${suffix}`;
+}
+
+
+async function fetchPreviewDocName(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/pmreport/preview-docname`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("pm_date", pmDate);
+
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewDocName failed:", r.status);
+        return null;
+    }
+
+    const j = await r.json();
+    return (j && typeof j.doc_name === "string") ? j.doc_name : null;
+}
+
 
 async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
     const u = new URL(`${API_BASE}/pmreport/list`);
@@ -583,13 +857,97 @@ async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): P
     return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
 }
 
+async function fetchLatestDocName(
+    stationId: string,
+    dateISO: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/pmreport/latest-docname`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("pm_date", dateISO);
+    u.searchParams.set("_ts", String(Date.now()));
+
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        cache: "no-store",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchLatestDocName failed:", r.status);
+        return null;
+    }
+
+    const j = await r.json();
+    return (j && typeof j.doc_name === "string") ? j.doc_name : null;
+}
+
+// async function fetchLatestDocNameFromList(
+//     stationId: string,
+//     dateISO: string
+// ): Promise<string | null> {
+//     const u = new URL(`${API_BASE}/pmreport/list`);
+//     u.searchParams.set("station_id", stationId);
+//     u.searchParams.set("page", "1");
+//     u.searchParams.set("pageSize", "200");
+//     u.searchParams.set("_ts", String(Date.now()));
+
+//     const token =
+//         typeof window !== "undefined"
+//             ? localStorage.getItem("access_token") ?? ""
+//             : "";
+
+//     const r = await fetch(u.toString(), {
+//         credentials: "include",
+//         cache: "no-store",
+//         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+//     });
+
+//     if (!r.ok) {
+//         console.error("fetchLatestDocNameFromList failed:", r.status);
+//         return null;
+//     }
+
+//     const j = await r.json();
+//     const items: any[] = Array.isArray(j?.items) ? j.items : [];
+//     if (!items.length) return null;
+
+//     const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
+
+//     const sameYearDocs = items
+//         .map((it) => String(it?.doc_name || ""))   // backend ต้องส่ง doc_name มาด้วย
+//         .filter((name) => name.startsWith(prefix) && name.endsWith(suffix));
+
+//     if (!sameYearDocs.length) return null;
+
+//     const toIndex = (name: string) => {
+//         const inside = name.slice(prefix.length, name.length - suffix.length);
+//         const n = parseInt(inside, 10);
+//         return isNaN(n) ? -1 : n;
+//     };
+
+//     return sameYearDocs.reduce(
+//         (acc, cur) => (toIndex(cur) > toIndex(acc) ? cur : acc),
+//         sameYearDocs[0]
+//     );
+// }
+
+
 /* =========================
  *        MAIN
  * ========================= */
 // export default function ChargerPMForm({ onComplete }: CheckListProps) {
 export default function ChargerPMForm() {
+    // 👇 เพิ่มตรงนี้
+    const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+    const [docNoPreview, setDocNoPreview] = useState<string>("");
+    const [docName, setDocName] = useState<string>("");
 
     const searchParams = useSearchParams();
     const editId = searchParams.get("edit_id") ?? "";
@@ -616,7 +974,9 @@ export default function ChargerPMForm() {
         () => `${draftKey(stationId)}:${draftId ?? "default"}`,
         [stationId, draftId]
     );
-
+    const [inspector, setInspector] = useState<string>("");
+    // checkbox dust filter
+    const [dustFilterChanged, setDustFilterChanged] = useState<boolean>(false);
 
     /* ---------- job info ---------- */
     const [job, setJob] = useState({
@@ -627,7 +987,7 @@ export default function ChargerPMForm() {
         brand: "",
         station_name: "",
         date: "",
-        inspector: "",
+        // inspector: "",
     });
 
     /* ---------- PASS/FAIL + remark ---------- */
@@ -658,6 +1018,101 @@ export default function ChargerPMForm() {
 
     //     return () => { canceled = true; };
     // }, [stationId, job.date]);
+    // useEffect(() => {
+    //     if (!stationId || !job.date) return;
+
+    //     let canceled = false;
+
+    //     (async () => {
+    //         try {
+    //             const d = new Date(job.date);
+    //             const year = !isNaN(d.getTime())
+    //                 ? d.getFullYear()
+    //                 : new Date().getFullYear();
+
+    //             const u = new URL(`${API_BASE}/pmreport/list`);
+    //             u.searchParams.set("station_id", stationId);
+    //             u.searchParams.set("page", "1");
+    //             u.searchParams.set("pageSize", "200");
+    //             u.searchParams.set("_ts", String(Date.now()));
+
+    //             const token =
+    //                 typeof window !== "undefined"
+    //                     ? localStorage.getItem("access_token") ?? ""
+    //                     : "";
+
+    //             const res = await fetch(u.toString(), {
+    //                 credentials: "include",
+    //                 cache: "no-store",
+    //                 headers: token
+    //                     ? { Authorization: `Bearer ${token}` }
+    //                     : undefined,
+    //             });
+
+    //             if (!res.ok) {
+    //                 console.error("pmreport/list failed:", res.status);
+    //                 return; // ❌ อย่าตั้งเป็น ? ถ้า error
+    //             }
+
+    //             const json = await res.json();
+    //             const items: any[] = Array.isArray(json?.items) ? json.items : [];
+
+    //             // นับเฉพาะรายงานที่ pm_date อยู่ในปีเดียวกัน
+    //             const sameYearCount = items.filter((it) => {
+    //                 const pmDate = it?.pm_date;
+    //                 if (!pmDate || typeof pmDate !== "string") return false;
+    //                 // pm_date: "YYYY-MM-DD"
+    //                 const y = parseInt(pmDate.slice(0, 4), 10);
+    //                 return y === year;
+    //             }).length;
+
+    //             const nextIndex = sameYearCount + 1;
+
+    //             if (!canceled) {
+    //                 setDocName(`${stationId}_${nextIndex}/${year}`);
+    //             }
+    //         } catch (err) {
+    //             console.error("compute docNo error:", err);
+    //             // ❌ ไม่เซ็ตเป็น ? แล้ว ปล่อยให้ docNo = "" จะไปโชว์ "-" แทน
+    //         }
+    //     })();
+
+    //     return () => {
+    //         canceled = true;
+    //     };
+    // }, [stationId, job.date]);
+
+    useEffect(() => {
+        const token =
+            typeof window !== "undefined"
+                ? localStorage.getItem("access_token") ?? ""
+                : "";
+
+        if (!token) return;
+
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/me`, {
+                    method: "GET",
+                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: "include",
+                });
+
+                if (!res.ok) {
+                    console.warn("fetch /me failed:", res.status);
+                    return;
+                }
+
+                const data: Me = await res.json();
+                setMe(data);
+
+                // ถ้ายังไม่มี inspector ให้ auto-fill เป็น username
+                setInspector((prev) => prev || data.username || "");
+            } catch (err) {
+                console.error("fetch /me error:", err);
+            }
+        })();
+    }, []);
 
     useEffect(() => {
         if (!stationId || !job.date) return;
@@ -686,6 +1141,116 @@ export default function ChargerPMForm() {
         return () => { canceled = true; };
     }, [stationId, job.date]);
 
+    // useEffect(() => {
+    //     if (!stationId || !job.date) return;
+
+    //     let canceled = false;
+
+    //     (async () => {
+    //         try {
+    //             const latestDocName = await fetchLatestDocNameFromList(stationId, job.date);
+    //             const next = nextDocNameFor(stationId, job.date, latestDocName || "");
+
+    //             if (!canceled) {
+    //                 setDocName(next);
+    //             }
+    //         } catch (err) {
+    //             console.error("compute docName error:", err);
+    //             // fallback ถ้า error → ถือว่าเป็นตัวแรกของปี
+    //             if (!canceled) {
+    //                 const fallback = nextDocNameFor(stationId, job.date, "");
+    //                 setDocName(fallback);
+    //             }
+    //         }
+    //     })();
+
+    //     return () => {
+    //         canceled = true;
+    //     };
+    // }, [stationId, job.date]);
+
+    //     useEffect(() => {
+    //     if (!stationId || !job.date) return;
+
+    //     let canceled = false;
+
+    //     (async () => {
+    //         try {
+    //             // ใช้ฟังก์ชันที่มีอยู่แล้ว
+    //             const latestDocName = await fetchLatestDocNameFromList(stationId, job.date);
+    //             const next = nextDocNameFor(stationId, job.date, latestDocName || "");
+
+    //             if (!canceled) {
+    //                 setDocName(next);
+    //             }
+    //         } catch (err) {
+    //             console.error("compute docName error:", err);
+    //             // fallback: ถ้า error ให้เริ่มที่ 1
+    //             if (!canceled) {
+    //                 const fallback = nextDocNameFor(stationId, job.date, "");
+    //                 setDocName(fallback);
+    //             }
+    //         }
+    //     })();
+
+    //     return () => {
+    //         canceled = true;
+    //     };
+    // }, [stationId, job.date]);
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+
+        (async () => {
+            try {
+                // ดึง doc_name ล่าสุดจาก backend
+                const latest = await fetchLatestDocName(stationId, job.date);
+                const next = nextDocNameFor(stationId, job.date, latest || "");
+
+                if (!canceled) {
+                    setDocName(next);
+                }
+            } catch (err) {
+                console.error("compute docName error:", err);
+                // fallback ถ้า error
+                if (!canceled) {
+                    const fallback = nextDocNameFor(stationId, job.date, "");
+                    setDocName(fallback);
+                }
+            }
+        })();
+
+        return () => {
+            canceled = true;
+        };
+    }, [stationId, job.date]);
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+
+        (async () => {
+            try {
+                const preview = await fetchPreviewDocName(stationId, job.date);
+
+                if (!canceled && preview) {
+                    // ถ้าเป็นหน้า edit แล้วดึง doc_name เดิมจาก DB มาอยู่แล้ว
+                    // จะไม่บังคับทับ ถ้าอยากกันตรงนี้เพิ่มเงื่อนไข isEdit ได้
+                    setDocName(preview);
+                }
+            } catch (err) {
+                console.error("preview docName error:", err);
+                // ถ้า error ปล่อยให้ docName ว่างไว้ → ฝั่ง backend จะ gen เองตอน submit อยู่แล้ว
+            }
+        })();
+
+        return () => {
+            canceled = true;
+        };
+    }, [stationId, job.date]);
+
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -707,15 +1272,37 @@ export default function ChargerPMForm() {
             .catch((err) => console.error("load public station info failed:", err));
     }, []);
 
+    // useEffect(() => {
+    //     if (!stationId) return;
+    //     const draft = loadDraftLocal<{
+    //         job: typeof job;
+    //         rows: typeof rows;
+    //         cp: typeof cp;
+    //         m17: typeof m17.state;
+    //         summary: string;
+    //         // dustFilterChanged: YesNo;
+    //     }>(key);
+    //     if (!draft) return;
+
+    //     setJob((prev) => ({ ...prev, ...draft.job }));
+    //     setRows(draft.rows);
+    //     setCp(draft.cp);
+    //     m17.setState(draft.m17);
+    //     setSummary(draft.summary);
+    //     // setDustFilterChanged(draft.dustFilterChanged ?? "");
+
+    // }, [stationId]); // โหลดครั้งเดียวเมื่อรู้ stationId
+
     useEffect(() => {
         if (!stationId) return;
         const draft = loadDraftLocal<{
-            job: typeof job;
+            job: typeof job & { inspector?: string };
             rows: typeof rows;
             cp: typeof cp;
             m17: typeof m17.state;
             summary: string;
-            // dustFilterChanged: YesNo;
+            inspector?: string;        // สำหรับ draft ใหม่
+            dustFilterChanged?: boolean;
         }>(key);
         if (!draft) return;
 
@@ -724,8 +1311,11 @@ export default function ChargerPMForm() {
         setCp(draft.cp);
         m17.setState(draft.m17);
         setSummary(draft.summary);
-        // setDustFilterChanged(draft.dustFilterChanged ?? "");
 
+        // ถ้าเป็น draft เก่า: ใช้ draft.job.inspector
+        // ถ้าเป็น draft ใหม่: ใช้ draft.inspector
+        setInspector(draft.inspector ?? "");
+        setDustFilterChanged(draft.dustFilterChanged ?? false);
     }, [stationId]); // โหลดครั้งเดียวเมื่อรู้ stationId
 
     useEffect(() => {
@@ -865,6 +1455,18 @@ export default function ChargerPMForm() {
         const hasMeasure = q.kind === "measure" && FIELD_GROUPS[q.no];
         const subtitle = FIELD_GROUPS[q.no]?.note;
 
+        const inlineLeft =
+        q.no === 11 ? (
+            <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
+                <input
+                    type="checkbox"
+                    className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                    checked={dustFilterChanged}
+                    onChange={(e) => setDustFilterChanged(e.target.checked)}
+                />
+                <span>เปลี่ยนแผ่นกรองระบายอากาศ</span>
+            </label>
+        ) : null;
         return (
             <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
                 <PassFailRow
@@ -889,6 +1491,7 @@ export default function ChargerPMForm() {
                             </div>
                         )
                     }
+                    inlineLeft={inlineLeft} 
                 />
 
                 {hasMeasure && renderMeasureGrid(q.no)}
@@ -920,6 +1523,17 @@ export default function ChargerPMForm() {
     }
 
     // เรียกใช้ – เก็บเฉพาะข้อมูลที่ serialize ได้
+    // useDebouncedEffect(() => {
+    //     if (!stationId) return;
+    //     saveDraftLocal(key, {
+    //         job,
+    //         rows,
+    //         cp,
+    //         m17: m17.state,
+    //         summary,
+    //         // dustFilterChanged,
+    //     });
+    // }, [key, stationId, job, rows, cp, m17.state, summary]);
     useDebouncedEffect(() => {
         if (!stationId) return;
         saveDraftLocal(key, {
@@ -928,9 +1542,10 @@ export default function ChargerPMForm() {
             cp,
             m17: m17.state,
             summary,
-            // dustFilterChanged,
+            inspector,         
+            dustFilterChanged, 
         });
-    }, [key, stationId, job, rows, cp, m17.state, summary]);
+    }, [key, stationId, job, rows, cp, m17.state, summary, inspector]);
 
     /* ---------- actions ---------- */
     // const onSave = () => {
@@ -950,12 +1565,21 @@ export default function ChargerPMForm() {
             return;
         }
         // เซฟดราฟต์ (ซ้ำกับ auto-save ก็ได้ เพื่อความชัวร์ตอนกดปุ่ม)
+        // saveDraftLocal(key, {
+        //     job,
+        //     rows,
+        //     cp,
+        //     m17: m17.state,
+        //     summary,
+        // });
         saveDraftLocal(key, {
             job,
             rows,
             cp,
             m17: m17.state,
             summary,
+            inspector,
+            dustFilterChanged, 
         });
         alert("บันทึกชั่วคราวไว้ในเครื่องแล้ว (Offline Draft)");
     };
@@ -997,12 +1621,15 @@ export default function ChargerPMForm() {
                 station_id: stationId,
                 issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
                 job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
+                inspector,
                 rows,
                 measures: { m17: m17.state, cp },
                 summary,
                 pm_date,
+                doc_name: docName,
                 ...(summaryCheck ? { summaryCheck } : {}), // จากเคสก่อนหน้า
                 // ...(dustFilterChanged ? { dustFilterChanged } : {}),
+                dust_filter: dustFilterChanged ? "yes" : "no",
             };
 
             // 1) สร้างรายงาน (submit)
@@ -1016,7 +1643,14 @@ export default function ChargerPMForm() {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            const { report_id } = await res.json();
+            // const { report_id } = await res.json();
+            const { report_id, doc_name } = await res.json() as {
+                report_id: string;
+                doc_name?: string;
+            };
+            if (doc_name) {
+                setDocName(doc_name);
+            }
 
             // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group "g{no}"
             const photoNos = Object.keys(photos).map(n => Number(n));
@@ -1049,6 +1683,7 @@ export default function ChargerPMForm() {
     /* =========================
      *        RENDER
      * ========================= */
+    // const DOC_NAME = "FM-MA-CG-01"; // ชื่อ/เลขที่เอกสารที่อยากโชว์
     return (
         // <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
         <section className="tw-pb-24">
@@ -1066,10 +1701,12 @@ export default function ChargerPMForm() {
                     <div className="tw-flex tw-items-start tw-justify-between tw-gap-6">
                         {/* ซ้าย: โลโก้ + ข้อความ */}
                         <div className="tw-flex tw-items-start tw-gap-4">
-                            <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md
-                                tw-h-16 tw-w-[76px]
-                                md:tw-h-20 md:tw-w-[108px]
-                                lg:tw-h-24 lg:tw-w-[152px]">
+                            <div
+                                className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md
+                 tw-h-16 tw-w-[76px]
+                 md:tw-h-20 md:tw-w-[108px]
+                 lg:tw-h-24 lg:tw-w-[152px]"
+                            >
                                 <Image
                                     src={LOGO_SRC}
                                     alt="Company logo"
@@ -1079,6 +1716,7 @@ export default function ChargerPMForm() {
                                     sizes="(min-width:1024px) 152px, (min-width:768px) 108px, 76px"
                                 />
                             </div>
+
                             <div>
                                 <div className="tw-font-semibold tw-text-blue-gray-900">
                                     {/* รายงานการบำรุงรักษา - เครื่องอัดประจุไฟฟ้า – {headerLabel} */}
@@ -1091,11 +1729,23 @@ export default function ChargerPMForm() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* ขวาสุด: ชื่อเอกสาร / เลขที่เอกสาร */}
+                        <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
+                            <div className="tw-font-semibold">
+                                Document Name.
+                            </div>
+                            <div>
+                                {docName || "-"}
+                            </div>
+
+                        </div>
                     </div>
                     {/* BODY */}
                     <div className="tw-mt-8 tw-space-y-8">
-                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
-                            <div className="lg:tw-col-span-1">
+                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-8 tw-gap-4">
+                            {/* แถวที่ 1 */}
+                            <div className="lg:tw-col-span-2">
                                 <Input
                                     label="Issue id"
                                     value={job.issue_id || "-"}
@@ -1106,7 +1756,7 @@ export default function ChargerPMForm() {
                                 />
                             </div>
 
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-3">
+                            <div className="sm:tw-col-span-2 lg:tw-col-span-4">
                                 <Input
                                     label="Location / สถานที่"
                                     value={job.station_name}
@@ -1115,6 +1765,17 @@ export default function ChargerPMForm() {
                                     readOnly
                                     containerProps={{ className: "!tw-min-w-0" }}
                                     className="!tw-bg-blue-gray-50"
+                                />
+                            </div>
+
+                            <div className="lg:tw-col-span-2">
+                                <Input
+                                    label="วันที่ตรวจ"
+                                    type="date"
+                                    value={job.date}
+                                    onChange={(e) => setJob({ ...job, date: e.target.value })}
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
                                 />
                             </div>
 
@@ -1129,6 +1790,8 @@ export default function ChargerPMForm() {
                                     className="!tw-bg-blue-gray-50"
                                 />
                             </div>
+
+                            {/* แถวที่ 2 – 4 input */}
                             <div className="lg:tw-col-span-2">
                                 <Input
                                     label="Model / รุ่น"
@@ -1153,14 +1816,17 @@ export default function ChargerPMForm() {
                                 />
                             </div>
 
+
+
                             <div className="lg:tw-col-span-2">
                                 <Input
-                                    label="วันที่ตรวจ"
-                                    type="date"
-                                    value={job.date}
-                                    onChange={(e) => setJob({ ...job, date: e.target.value })}
+                                    label="ผู้ตรวจสอบ / Inspector"
+                                    value={inspector}
+                                    onChange={(e) => setInspector(e.target.value)}
                                     crossOrigin=""
+                                    readOnly
                                     containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-bg-blue-gray-50"
                                 />
                             </div>
                         </div>

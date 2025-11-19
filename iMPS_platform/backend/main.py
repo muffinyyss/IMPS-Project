@@ -5,7 +5,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
 from jose import JWTError,jwt
 from jose.exceptions import ExpiredSignatureError
-from datetime import datetime, timedelta, UTC, timezone, time
+from datetime import datetime, timedelta, UTC, timezone, time, date
 from pymongo.errors import OperationFailure, PyMongoError,DuplicateKeyError
 from pymongo import MongoClient,ReturnDocument
 from pydantic import BaseModel,EmailStr,constr, Field
@@ -2194,7 +2194,7 @@ async def pmreport_list(
     coll = get_pmreport_collection_for(station_id)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "issue_id": 1 ,"pm_date": 1, "createdAt": 1}).sort(
+    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector" : 1, "createdAt": 1}).sort(
         [("createdAt", -1), ("_id", -1)]
     ).skip(skip).limit(pageSize)
     items_raw = await cursor.to_list(length=pageSize)
@@ -2217,7 +2217,9 @@ async def pmreport_list(
     items = [{
         "id": str(it["_id"]),
         "issue_id": it.get("issue_id"),
+        "doc_name": it.get("doc_name"),
         "pm_date": it.get("pm_date"),
+        "inspector": it.get("inspector"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("pm_date") or "", ""),
     } for it in items_raw]
@@ -2374,7 +2376,143 @@ class PMSubmitIn(BaseModel):
     summary: str
     pm_date:str
     issue_id: Optional[str] = None
+    doc_name: Optional[str] = None 
     summaryCheck: Optional[Literal["PASS","FAIL","NA"]] = None
+    inspector: Optional[str] = None 
+    dust_filter: Optional[str] = None
+
+
+# async def _next_year_seq(db, station_id: str, pm_type: str, d: date) -> int:
+#     """
+#     ออกเลขลำดับรายปี ต่อ station_id + pm_type + year
+#     เช่น Klongluang3 + CG + 2025  →  1, 2, 3, ...
+#     """
+#     year = d.year
+#     seq = await db.pm_year_sequences.find_one_and_update(
+#         {"station_id": station_id, "pm_type": pm_type, "year": year},
+#         {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
+#         upsert=True,
+#         return_document=ReturnDocument.AFTER,
+#     )
+#     return int(seq["n"])
+
+async def _latest_doc_name_from_pmreport(station_id: str, pm_date: str) -> dict | None:
+    """
+    ดึง doc_name ล่าสุดจาก PMReportDB/<station_id> 
+    ที่เป็นปีเดียวกับ pm_date
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+        year = d.year
+    except ValueError:
+        return None
+    
+    coll = PMReportDB.get_collection(str(station_id))
+    
+    pipeline = [
+        {
+            "$match": {
+                "doc_name": {"$regex": f"^{station_id}_\\d+/{year}$"}
+            }
+        },
+        {"$sort": {"_id": -1}},
+        {"$limit": 1},
+        {"$project": {"_id": 1, "doc_name": 1}}
+    ]
+    
+    cursor = coll.aggregate(pipeline)
+    docs = await cursor.to_list(length=1)
+    return docs[0] if docs else None
+
+@app.get("/pmreport/latest-docname")
+async def pmreport_latest_docname(
+    station_id: str = Query(...),
+    pm_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดึง doc_name ล่าสุดของสถานี (ปีเดียวกับ pm_date)
+    เพื่อใช้คำนวณเลขถัดไปที่ frontend
+    """
+    # auth ถ้าต้องการ
+    # if current.role != "admin" and station_id not in set(current.station_ids):
+    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+    
+    latest = await _latest_doc_name_from_pmreport(station_id, pm_date)
+    
+    return {
+        "doc_name": latest.get("doc_name") if latest else None,
+        "station_id": station_id,
+        "pm_date": pm_date
+    }
+
+async def _next_year_seq(db, station_id: str, pm_type: str, d: date) -> str:
+    """
+    ออกเลขลำดับรายปี ต่อ station_id + pm_type + year
+    เช่น Klongluang3 + CG + 2025  →  1, 2, 3, ...
+    """
+    year = d.year
+    seq = await db.pm_year_sequences.find_one_and_update(
+        {"station_id": station_id, "pm_type": pm_type, "year": year},
+        {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return  f"{station_id}_{int(seq['n'])}/{year}"
+
+@app.get("/pmreport/preview-docname")
+async def preview_docname(
+    station_id: str = Query(...),
+    pm_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดูเลข doc_name ถัดไป โดยไม่ออกเลขจริง
+    """
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+    pm_type = "CG"
+    
+    # ดึง doc_name ล่าสุดจาก DB
+    coll = get_pmreport_collection_for(station_id)
+    year = d.year
+    
+    pipeline = [
+        {"$match": {
+            "station_id": station_id,
+            "doc_name": {"$regex": f"^{station_id}_\\d+/{year}$"}
+        }},
+        {"$sort": {"_id": -1}},
+        {"$limit": 1},
+        {"$project": {"doc_name": 1}}
+    ]
+    
+    cursor = coll.aggregate(pipeline)
+    docs = await cursor.to_list(length=1)
+    
+    latest = docs[0]["doc_name"] if docs else None
+    
+    # คำนวณเลขถัดไป
+    if not latest:
+        next_doc = f"{station_id}_1/{year}"
+    else:
+        # แยกเลขออกมา เช่น "Klongluang3_5/2025" → 5
+        import re
+        match = re.search(r"_(\d+)/\d{4}$", latest)
+        if match:
+            current_num = int(match.group(1))
+            next_doc = f"{station_id}_{current_num + 1}/{year}"
+        else:
+            next_doc = f"{station_id}_1/{year}"
+    
+    return {"doc_name": next_doc}
+
 
 async def _next_issue_id(db, station_id: str, pm_type: str, d, pad: int = 2) -> str:
     yymm = f"{d.year % 100:02d}{d.month:02d}"
@@ -2386,16 +2524,67 @@ async def _next_issue_id(db, station_id: str, pm_type: str, d, pad: int = 2) -> 
     )
     return f"PM-{pm_type}-{yymm}-{int(seq['n']):0{pad}d}"
 
+# @app.post("/pmreport/submit")
+# async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_current_user)):
+#     station_id = body.station_id.strip()
+#     # if current.role != "admin" and station_id not in set(current.station_ids):
+#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_pmreport_collection_for(station_id)
+#     db = coll.database
+
+#     # pm_type & pm_date
+#     pm_type = str(body.job.get("pm_type") or "CG").upper()
+#     body.job["pm_type"] = pm_type
+#     try:
+#         d = datetime.strptime(body.pm_date, "%Y-%m-%d").date()
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+#     # เก็บของที่ FE เสนอมาเป็น metadata
+#     client_issue = body.issue_id 
+#     # if client_issue:
+#     #     body.job["issue_id_client"] = client_issue
+
+#     # พยายาม honor เลขจาก FE ถ้า "ถูกต้องและยังว่าง"
+#     issue_id = None
+#     if client_issue:
+#         yymm = f"{d.year % 100:02d}{d.month:02d}"
+#         prefix = f"PM-{pm_type}-{yymm}-"
+#         valid_fmt = client_issue.startswith(prefix)
+#         unique = not await coll.find_one({"station_id": station_id, "issue_id": client_issue})
+#         if valid_fmt and unique:
+#             issue_id = client_issue
+
+#     # ถ้าใช้ของ FE ไม่ได้ → สร้างใหม่แบบอะตอมมิก
+#     if not issue_id:
+#         issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
+#     inspector = body.inspector 
+#     doc = {
+#         "station_id": station_id,
+#         "issue_id": issue_id,                 # authoritative
+#         "job": body.job,
+#         "rows": body.rows,
+#         "measures": body.measures,
+#         "summary": body.summary,
+#         "summaryCheck": body.summaryCheck,
+#         "pm_date": body.pm_date,
+#         "inspector": inspector,               # 👈 เก็บแยก field
+#         "photos": {},
+#         "status": "draft",
+#         "timestamp": datetime.now(timezone.utc),
+#     }
+#     res = await coll.insert_one(doc)
+#     return {"ok": True, "report_id": str(res.inserted_id), "issue_id": issue_id}
+
+from datetime import datetime, timezone
+
 @app.post("/pmreport/submit")
 async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_current_user)):
     station_id = body.station_id.strip()
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-
     coll = get_pmreport_collection_for(station_id)
     db = coll.database
 
-    # pm_type & pm_date
     pm_type = str(body.job.get("pm_type") or "CG").upper()
     body.job["pm_type"] = pm_type
     try:
@@ -2403,12 +2592,7 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
     except ValueError:
         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
 
-    # เก็บของที่ FE เสนอมาเป็น metadata
-    client_issue = body.issue_id 
-    # if client_issue:
-    #     body.job["issue_id_client"] = client_issue
-
-    # พยายาม honor เลขจาก FE ถ้า "ถูกต้องและยังว่าง"
+    client_issue = body.issue_id
     issue_id = None
     if client_issue:
         yymm = f"{d.year % 100:02d}{d.month:02d}"
@@ -2418,49 +2602,55 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
         if valid_fmt and unique:
             issue_id = client_issue
 
-    # ถ้าใช้ของ FE ไม่ได้ → สร้างใหม่แบบอะตอมมิก
     if not issue_id:
         issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
 
+    client_docName = body.doc_name
+    doc_name = None
+    if client_docName:
+        year = f"{d.year}"
+        prefix = f"{station_id}_"
+        valid_fmt = client_docName.startswith(prefix)
+        unique = not await coll.find_one({"station_id": station_id, "doc_name": client_docName})
+        if valid_fmt and unique:
+            doc_name = client_docName
+
+    if not doc_name:
+        doc_name = await _next_year_seq(db, station_id, pm_type, d)
+
+    # 👇 ใหม่: เลขวิ่งรายปี (ไม่ยุ่งกับ issue_id)
+    # year_seq = await _next_year_seq(db, station_id, pm_type, d)
+    # year = d.year
+    # doc_name = f"{station_id}_{year_seq}/{year}"
+
+    inspector = body.inspector
     doc = {
         "station_id": station_id,
-        "issue_id": issue_id,                 # authoritative
+        "issue_id": issue_id,          # เดิม
         "job": body.job,
         "rows": body.rows,
         "measures": body.measures,
         "summary": body.summary,
         "summaryCheck": body.summaryCheck,
         "pm_date": body.pm_date,
+        "inspector": inspector,
+        "dust_filter": body.dust_filter,
+        # "year": year,                  # 👈 เพิ่ม
+        # "year_seq": year_seq,          # 👈 เพิ่ม
+        "doc_name": doc_name,              # 👈 เพิ่ม ไว้โชว์บนฟอร์ม/ปกเอกสาร
         "photos": {},
         "status": "draft",
         "timestamp": datetime.now(timezone.utc),
     }
     res = await coll.insert_one(doc)
-    return {"ok": True, "report_id": str(res.inserted_id), "issue_id": issue_id}
+    return {
+        "ok": True,
+        "report_id": str(res.inserted_id),
+        "issue_id": issue_id,
+        # "year_seq": year_seq,
+        "doc_name": doc_name,
+    }
 
-
-# @app.post("/pmreport/submit")
-# async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_current_user)):
-#     print("HIT /pmreport/submit")
-#     station_id = body.station_id.strip()
-#     if current.role != "admin" and station_id not in set(current.station_ids):
-#         raise HTTPException(status_code=403, detail="Forbidden station_id")
-
-#     coll = get_pmreport_collection_for(station_id)
-#     doc = {
-#         "station_id": station_id,
-#         "job": body.job,
-#         "rows": body.rows,
-#         "measures": body.measures,
-#         "summary": body.summary,
-#         "pm_date": body.pm_date,
-#         "photos": {},                   # จะถูกเติมภายหลัง
-#         "status": "draft",              # หรือ "submitted" ถ้าต้องการ
-#         "timestamp": datetime.now(timezone.utc),
-#     }
-#     res = await coll.insert_one(doc)
-#     report_id = str(res.inserted_id)
-#     return {"ok": True, "report_id": report_id}
 
 
 # ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
@@ -2620,6 +2810,94 @@ def normalize_pm_date(s: str) -> str:
         dt = datetime.fromisoformat(s).replace(tzinfo=th_tz)
     return dt.astimezone(th_tz).date().isoformat()
 
+# @app.post("/pmurl/upload-files", status_code=201)
+# async def pmurl_upload_files(
+#     station_id: str = Form(...),
+#     reportDate: str = Form(...),                 # "YYYY-MM-DD" หรือ ISO
+#     files: list[UploadFile] = File(...),
+#     # current: UserClaims = Depends(get_current_user),
+#     issue_id: Optional[str] = Form(None),
+# ):
+#     # auth
+#     # if current.role != "admin" and station_id not in set(current.station_ids):
+#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     # ตรวจ/เตรียมคอลเลกชัน
+#     coll = get_pmurl_coll_upload(station_id)
+
+#     # parse วันที่เป็น UTC datetime (มีฟังก์ชันอยู่แล้ว)
+#     pm_date = normalize_pm_date(reportDate)
+
+#     # โฟลเดอร์ปลายทาง: /uploads/pmurl/<station_id>/<YYYY-MM-DD>/
+#     # subdir = report_dt_utc.astimezone(th_tz).date().isoformat()
+#     subdir = pm_date
+#     dest_dir = pathlib.Path(UPLOADS_ROOT) / "pmurl" / station_id / subdir
+#     dest_dir.mkdir(parents=True, exist_ok=True)
+
+#     pm_type = "CG"
+#     try:
+#         d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="reportDate/pm_date must be YYYY-MM-DD")
+
+#     final_issue_id = None
+#     client_issue = (issue_id or "").strip()
+
+#     if client_issue:
+#         yymm = f"{d.year % 100:02d}{d.month:02d}"
+#         prefix = f"PM-{pm_type}-{yymm}-"
+#         valid_fmt = client_issue.startswith(prefix)
+
+#         # ตรวจ uniqueness ในทั้ง 2 คอลเลกชัน
+#         url_exists = await coll.find_one({"issue_id": client_issue})
+#         rep_exists = await get_mdbpmreport_collection_for(station_id).find_one({"issue_id": client_issue})
+#         unique = not (url_exists or rep_exists)
+
+#         if valid_fmt and unique:
+#             final_issue_id = client_issue
+
+#     if not final_issue_id:
+#         # ออกเลขถัดไปแบบ atomic จาก pm_sequences
+#         final_issue_id = await _next_issue_id(coll.database, station_id, pm_type, d, pad=2)
+
+
+#     urls = []
+#     metas = []
+#     total_size = 0
+
+#     for f in files:
+#         ext = (f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else "")
+#         if ext not in ALLOWED_EXTS or ext != "pdf":
+#             raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
+
+#         data = await f.read()
+#         total_size += len(data)
+#         if len(data) > MAX_FILE_MB * 1024 * 1024:
+#             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+#         safe = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
+#         dest = dest_dir / safe
+#         with open(dest, "wb") as out:
+#             out.write(data)
+
+#         url = f"/uploads/pmurl/{station_id}/{subdir}/{safe}"   # ← จะเสิร์ฟได้จาก StaticFiles ที่ mount ไว้แล้ว
+#         urls.append(url)
+#         metas.append({"name": f.filename, "size": len(data)})
+
+#     now = datetime.now(timezone.utc)
+#     doc = {
+#         "station": station_id,
+#         "pm_date": pm_date,
+#         "issue_id": final_issue_id,    
+#         "urls": urls,
+#         "meta": {"files": metas},
+#         "source": "upload-files",
+#         "createdAt": now,
+#         "updatedAt": now,
+#     }
+#     res = await coll.insert_one(doc)
+
+#     return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls,"issue_id": final_issue_id}
 @app.post("/pmurl/upload-files", status_code=201)
 async def pmurl_upload_files(
     station_id: str = Form(...),
@@ -2628,77 +2906,118 @@ async def pmurl_upload_files(
     # current: UserClaims = Depends(get_current_user),
     issue_id: Optional[str] = Form(None),
 ):
-    # auth
+    # auth (ถ้าจะเปิดใช้ก็เอา comment ออก)
     # if current.role != "admin" and station_id not in set(current.station_ids):
     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
 
     # ตรวจ/เตรียมคอลเลกชัน
     coll = get_pmurl_coll_upload(station_id)
 
-    # parse วันที่เป็น UTC datetime (มีฟังก์ชันอยู่แล้ว)
+    # แปลงวันที่จาก form ให้เป็น 'YYYY-MM-DD' (ไทย) ด้วย helper เดิม
     pm_date = normalize_pm_date(reportDate)
 
-    # โฟลเดอร์ปลายทาง: /uploads/pmurl/<station_id>/<YYYY-MM-DD>/
-    # subdir = report_dt_utc.astimezone(th_tz).date().isoformat()
-    subdir = pm_date
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "pmurl" / station_id / subdir
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    pm_type = "CG"
+    # parse เป็น date object เพื่อใช้หา seq
     try:
         d = datetime.strptime(pm_date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="reportDate/pm_date must be YYYY-MM-DD")
 
-    final_issue_id = None
+    # ชนิด PM (ตอนนี้ fix เป็น CG)
+    pm_type = "CG"
+
+    # -------------------------
+    # 1) ตัดสินใจเลือก issue_id
+    # -------------------------
+    final_issue_id: str | None = None
     client_issue = (issue_id or "").strip()
 
     if client_issue:
+        # ตรวจ format ว่าเป็น PM-CG-YYMM-XX ของเดือนนั้น
         yymm = f"{d.year % 100:02d}{d.month:02d}"
         prefix = f"PM-{pm_type}-{yymm}-"
         valid_fmt = client_issue.startswith(prefix)
 
-        # ตรวจ uniqueness ในทั้ง 2 คอลเลกชัน
+        # ตรวจ uniqueness ในทั้ง 2 คอลเลกชัน (pmurl + pmreport)
         url_exists = await coll.find_one({"issue_id": client_issue})
-        rep_exists = await get_mdbpmreport_collection_for(station_id).find_one({"issue_id": client_issue})
+        rep_exists = await get_pmreport_collection_for(station_id).find_one(
+            {"issue_id": client_issue}
+        )
         unique = not (url_exists or rep_exists)
 
         if valid_fmt and unique:
             final_issue_id = client_issue
 
+    # ถ้าใช้ของ client ไม่ได้ → ออก issue_id ใหม่แบบ atomic ด้วย _next_issue_id เดิม
     if not final_issue_id:
-        # ออกเลขถัดไปแบบ atomic จาก pm_sequences
         final_issue_id = await _next_issue_id(coll.database, station_id, pm_type, d, pad=2)
 
+    # -------------------------
+    # 2) หา year_seq & doc_name
+    #    รูปแบบ: station_id_PMType_seq/year
+    #    เช่น:  Klongluang3_CG_1/2025
+    # -------------------------
+    year_seq: int | None = None
 
-    urls = []
-    metas = []
+    # พยายาม reuse year_seq จาก PMReportDB ถ้ามีอยู่แล้ว (issue_id เดียวกัน)
+    rep = await get_pmreport_collection_for(station_id).find_one(
+        {"issue_id": final_issue_id},
+        {"year_seq": 1, "pm_date": 1},
+    )
+    if rep and rep.get("year_seq") is not None:
+        year_seq = int(rep["year_seq"])
+
+    # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
+    if year_seq is None:
+        year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
+
+    year = d.year
+    doc_name = f"{station_id}_{year_seq}/{year}"
+
+    # -------------------------
+    # 3) เซฟไฟล์ PDF ลงดิสก์
+    # -------------------------
+    subdir = pm_date  # ใช้ YYYY-MM-DD เป็นโฟลเดอร์ย่อย
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "pmurl" / station_id / subdir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    urls: list[str] = []
+    metas: list[dict] = []
     total_size = 0
 
     for f in files:
-        ext = (f.filename.rsplit(".",1)[-1].lower() if "." in f.filename else "")
+        # ตรวจว่าเป็น PDF เท่านั้น
+        ext = (f.filename.rsplit(".", 1)[-1].lower() if f.filename and "." in f.filename else "")
         if ext not in ALLOWED_EXTS or ext != "pdf":
             raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
 
         data = await f.read()
         total_size += len(data)
         if len(data) > MAX_FILE_MB * 1024 * 1024:
-            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large (> {MAX_FILE_MB} MB)"
+            )
 
         safe = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
         dest = dest_dir / safe
         with open(dest, "wb") as out:
             out.write(data)
 
-        url = f"/uploads/pmurl/{station_id}/{subdir}/{safe}"   # ← จะเสิร์ฟได้จาก StaticFiles ที่ mount ไว้แล้ว
+        url = f"/uploads/pmurl/{station_id}/{subdir}/{safe}"
         urls.append(url)
         metas.append({"name": f.filename, "size": len(data)})
 
+    # -------------------------
+    # 4) บันทึกลง Mongo
+    # -------------------------
     now = datetime.now(timezone.utc)
     doc = {
         "station": station_id,
-        "pm_date": pm_date,
-        "issue_id": final_issue_id,    
+        "pm_date": pm_date,          # 'YYYY-MM-DD'
+        "issue_id": final_issue_id,  # PM-CG-YYMM-XX
+        "year": year,                # 2025
+        "year_seq": year_seq,        # 1, 2, 3, ...
+        "doc_name": doc_name,            # Klongluang3_CG_1/2025
         "urls": urls,
         "meta": {"files": metas},
         "source": "upload-files",
@@ -2707,7 +3026,15 @@ async def pmurl_upload_files(
     }
     res = await coll.insert_one(doc)
 
-    return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls,"issue_id": final_issue_id}
+    return {
+        "ok": True,
+        "inserted_id": str(res.inserted_id),
+        "count": len(urls),
+        "urls": urls,
+        "issue_id": final_issue_id,
+        "year_seq": year_seq,
+        "doc_name": doc_name,
+    }
 
 @app.get("/pmurl/list")
 async def pmurl_list(
@@ -2727,7 +3054,7 @@ async def pmurl_list(
     # ดึงเฉพาะฟิลด์ที่จำเป็น
     cursor = coll.find(
         {},
-        {"_id": 1, "issue_id": 1, "pm_date": 1, "reportDate": 1, "urls": 1, "createdAt": 1}
+        {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "reportDate": 1, "urls": 1, "createdAt": 1}
     ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
 
     items_raw = await cursor.to_list(length=pageSize)
@@ -2775,6 +3102,7 @@ async def pmurl_list(
         items.append({
             "id": str(it["_id"]),
             "pm_date": pm_date_str,  
+            "doc_name": it.get("doc_name"),
             "issue_id": it.get("issue_id"),                       # 'YYYY-MM-DD' | None
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "file_url": first_url,                          # ไฟล์แรก (ไว้ให้ปุ่มดาวน์โหลด)
