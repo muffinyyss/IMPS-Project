@@ -306,26 +306,49 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         return []
     items: List[dict] = []
     measures = measures or {}
+
     for key in sorted(rows.keys(), key=_r_idx):
         idx = _r_idx(key)
         data = rows.get(key) or {}
         title = ROW_TITLES.get(key, f"รายการที่ {idx}")
-        remark = (data.get("remark") or "").strip()
-        if key.lower() == "r17":
-            mtxt = _format_m17(measures or {})
-            if mtxt:
-                remark = mtxt
+
+        # remark ที่ผู้ใช้กรอกจริง
+        remark_user = (data.get("remark") or "").strip()
+
+        # --------------------------
+        # 🔶 r15: เพิ่มค่ามาตรวัดเข้า Item แต่ remark ใช้ค่าผู้ใช้
+        # --------------------------
         if key.lower() == "r15":
             cp_value = (measures.get("cp", {}) or {}).get("value", "-")
             cp_unit = (measures.get("cp", {}) or {}).get("unit", "")
-            remark = f"CP = {cp_value}{cp_unit}"
+            cp_text = f"CP = {cp_value}{cp_unit}".strip()
+
+            # ต่อค่าคำนวณเข้า Item
+            title = f"{title} ({cp_text})"
+            # remark_user ไม่ถูกแก้
+
+        # --------------------------
+        # 🔶 r17: เพิ่มค่ามาตรวัดเข้า Item แต่ remark ใช้ผู้ใช้
+        # --------------------------
+        if key.lower() == "r17":
+            mtxt = _format_m17(measures or {})
+            if mtxt:
+                title = f"{title}\n({mtxt})"
+                # remark_user ไม่ถูกแก้
+
+        # --------------------------
+        # สร้าง item
+        # --------------------------
         items.append({
             "idx": idx,
             "text": f"{idx}. {title}",
             "result": _norm_result(data.get("pf", "")),
-            "remark": remark,
+            "remark": remark_user,   # ใส่ remark ของผู้ใช้เสมอ
         })
+
     return items
+
+
 
 
 def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
@@ -597,8 +620,12 @@ def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, 
                      question_text: str, image_items: List[dict]) -> float:
     """
     วาด 1 แถว: ซ้ายข้อความ, ขวารูป ≤ PHOTO_MAX_PER_ROW
-    image_items: list ของ dict ที่มี key "url" (ตามรูปแบบใน doc["photos"]["gN"][0]["url"])
+    image_items: list ของ dict ที่มี key "url"
     """
+
+    # ---- ปรับฟอนต์ให้ไม่หนาเสมอ ----
+    pdf.set_font(base_font, "", FONT_MAIN)
+
     # ความสูงฝั่งข้อความ
     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
 
@@ -606,10 +633,12 @@ def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, 
     img_h = PHOTO_IMG_MAX_H
     row_h = max(ROW_MIN_H, text_h, img_h + 2 * PADDING_Y)
 
-    # ซ้าย: คำถาม
-    _cell_text_in_box(pdf, x, y, q_w, row_h, question_text, align="L", lh=LINE_H, valign="top")
+    # ---- ซ้าย: คำถาม (ไม่หนา) ----
+    pdf.set_font(base_font, "", FONT_MAIN)  # ย้ำอีกครั้ง
+    _cell_text_in_box(pdf, x, y, q_w, row_h, question_text,
+                      align="L", lh=LINE_H, valign="top")
 
-    # ขวา: รูป
+    # ---- ขวา: กล่องรูป ----
     gx = x + q_w
     pdf.rect(gx, y, g_w, row_h)
 
@@ -617,9 +646,9 @@ def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, 
     cx = gx + PADDING_X
     cy = y + (row_h - img_h) / 2.0
 
-    # เตรียมรายการรูป (สูงสุด PHOTO_MAX_PER_ROW)
     images = (image_items or [])[:PHOTO_MAX_PER_ROW]
-    pdf.set_font(base_font, "", FONT_MAIN)  # "" = ไม่หนา, "B" = หนา
+
+    pdf.set_font(base_font, "", FONT_MAIN)  # ฟอนต์ปกติ
 
     for i in range(PHOTO_MAX_PER_ROW):
         if i > 0:
@@ -632,15 +661,17 @@ def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, 
                 try:
                     pdf.image(src, x=cx, y=cy, w=slot_w, h=img_h, type=(img_type or None))
                 except Exception:
-                    pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
+                    pdf.set_xy(cx, cy + (img_h - LINE_H) / 2)
                     pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
             else:
-                pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
+                pdf.set_xy(cx, cy + (img_h - LINE_H) / 2)
                 pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
+
         cx += slot_w + PHOTO_GAP
 
     pdf.set_xy(x + q_w + g_w, y)
     return row_h
+
 
 
 def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
@@ -710,29 +741,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     # วาดหัวตารางแรก
     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
     pdf.set_font(base_font, "", FONT_MAIN)
-
-    # for it in checks:
-    #     text = str(it.get("text", ""))
-    #     result = it.get("result", "na")
-    #     remark = str(it.get("remark", "") or "")
-
-    #     _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
-    #     _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
-    #     # ✅ เพิ่มส่วนนี้เข้าไป
-    #     if "17." in text:  # ข้อ 17. วัดแรงดันไฟฟ้าด้านเข้า
-    #         remark_h = max(remark_h, LINE_H * 11)  # บังคับให้สูงพอสำหรับ 10 บรรทัด
-    #     row_h_eff = max(ROW_MIN_H, item_h, remark_h)
-
-    #     _ensure_space(row_h_eff)
-
-    #     x = x_table
-    #     _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H, valign="top")
-    #     x += item_w
-    #     _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result)
-    #     x += result_w
-    #     _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
-
-    #     y += row_h_eff
     
     for it in checks:
         text = str(it.get("text", ""))
