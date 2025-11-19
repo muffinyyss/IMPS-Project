@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Response, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 from bson import ObjectId
 from bson.errors import InvalidId
 from main import client1 as pymongo_client
@@ -32,10 +33,70 @@ TEMPLATE_MAP = {
 
 
 @router.get("/{template}/{id}/export")
+async def export_pdf_redirect(
+    request: Request,
+    template: str,
+    id: str,
+    station_id: str = Query(...),
+    dl: bool = Query(False),
+    photos_base_url: str | None = Query(None),
+    public_dir: str | None = Query(None),
+    photos_headers: str | None = Query(None),
+):
+    """
+    Redirect to proper filename URL
+    """
+    # ตรวจสอบว่า template มีใน mapping ไหม
+    if template not in TEMPLATE_MAP:
+        raise HTTPException(status_code=400, detail=f"ไม่พบ template '{template}'")
+
+    # ตรวจสอบ ObjectId
+    try:
+        oid = ObjectId(id)
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
+
+    # เลือก database และ collection ตามประเภท template
+    db_info = TEMPLATE_MAP[template]
+    db = pymongo_client[db_info["db"]]
+    coll = db[station_id]
+
+    # ดึงข้อมูลจาก MongoDB
+    data = coll.find_one({"_id": oid})
+    if not data:
+        raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
+
+    # ตั้งชื่อไฟล์
+    pm_templates = ["charger", "mdb", "ccb", "cbbox", "station", "cm"]
+    if template in pm_templates:
+        issue_id = data.get("issue_id")
+        if not issue_id:
+            issue_id = str(data.get("_id"))
+        filename = f"{issue_id}.pdf"
+    else:
+        filename = f"{template.upper()}-{station_id}.pdf"
+
+    # สร้าง URL ใหม่พร้อม query parameters
+    query_params = f"?station_id={station_id}"
+    if dl:
+        query_params += "&dl=true"
+    if photos_base_url:
+        query_params += f"&photos_base_url={photos_base_url}"
+    if public_dir:
+        query_params += f"&public_dir={public_dir}"
+    if photos_headers:
+        query_params += f"&photos_headers={photos_headers}"
+
+    redirect_url = f"/pdf/{template}/{id}/{filename}{query_params}"
+    return RedirectResponse(url=redirect_url, status_code=307)
+
+
+@router.get("/{template}/{id}/{filename}")
 async def export_pdf(
     request: Request,
     template: str,
     id: str,
+    filename: str,
     station_id: str = Query(...),
     dl: bool = Query(False),
     photos_base_url: str | None = Query(None, description="เช่น http://localhost:3000"),
@@ -44,12 +105,7 @@ async def export_pdf(
 ):
     """
     Export PDF with photo support:
-      /pdf/charger/{id}/export?station_id=Klongluang3
-    
-    ถ้ารูปไม่ขึ้น ลองเพิ่ม:
-      &public_dir=/path/to/iMPS_platform/public
-      หรือ
-      &photos_base_url=http://localhost:3000
+      /pdf/charger/{id}/PM-CG-2407-01.pdf?station_id=Klongluang3
     """
 
     # ตรวจสอบว่า template มีใน mapping ไหม
@@ -86,21 +142,10 @@ async def export_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"เกิดข้อผิดพลาดในการสร้าง PDF: {str(e)}")
 
-    # -------------------- ตั้งชื่อไฟล์ --------------------
-    # ถ้าเป็น PM report → ใช้ issue_id จาก MongoDB
-    pm_templates = ["charger", "mdb", "ccb", "cbbox", "station", "cm"]
-    if template in pm_templates:
-        issue_id = data.get("issue_id")
-        if not issue_id:
-            # ถ้าไม่มี issue_id ให้ fallback ไปใช้ _id แทน
-            issue_id = str(data.get("_id"))
-        filename = f"{issue_id}.pdf"
-    else:
-        # ถ้าเป็น test report (AC/DC) ใช้ชื่อแบบเดิม
-        filename = f"{template.upper()}-{station_id}.pdf"
-
+    # สร้าง headers สำหรับ response
     headers = {
-        "Content-Disposition": f'{"attachment" if dl else "inline"}; filename="{filename}"'
+        "Content-Disposition": f'{"attachment" if dl else "inline"}; filename="{filename}"',
+        "Content-Type": "application/pdf"
     }
 
     return Response(pdf_bytes, media_type="application/pdf", headers=headers)
