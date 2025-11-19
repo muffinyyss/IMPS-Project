@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -25,14 +25,15 @@ import {
   Input,
   Typography,
 } from "@material-tailwind/react";
-import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 // import { AppDataTable } from "@/data";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
-
+import CBBOXPMForm from "@/app/dashboard/pm-report/cb-box/input_PMreport/components/checkList";
 // type TData = (typeof AppDataTable)[number];
 // type TData = { name: React.ReactNode; position: string; office: string };
 type TData = {
+  id?: string;
   issue_id?: string; // ทำเป็น optional และเติมค่าจาก id หรือ regex ใน url
   name: string; // วันที่แบบไทย แสดงผลในตาราง
   position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
@@ -106,19 +107,14 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
 }
 
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
+  const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
-  const [loading, setLoading] = useState(false);
-
   const [issueId, setIssueId] = useState<string>("");
-
-  // const pathname = usePathname();
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
 
-  // อ่าน station_id จาก URL (Navbar เป็นคนอัปเดตให้)
-  // const stationIdFromUrl = sp.get("station_id") ?? "";
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
     if (sidFromUrl) {
@@ -129,6 +125,22 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const sidLocal = localStorage.getItem("selected_station_id");
     setStationId(sidLocal);
   }, [searchParams]);
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const editId = searchParams.get("edit_id") ?? "";
+  const mode: "list" | "form" =
+    (searchParams.get("view") === "form" || !!editId) ? "form" : "list";
+  const setView = (view: "list" | "form", { replace = false } = {}) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (view === "form") {
+      params.set("view", "form");
+    } else {
+      params.delete("view");
+      params.delete("edit_id");
+    }
+    router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   const addHref = useMemo(() => {
     if (!stationId) return "/dashboard/pm-report/cb-box/input_PMreport";
@@ -151,7 +163,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   //   ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
   // };
 
-  const baseFetchOpts: RequestInit = {
+  const FetchOpts: RequestInit = {
     headers: makeHeaders(),
     ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
     cache: "no-store",
@@ -181,6 +193,33 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
   }
 
+  function resolveFileHref(v: any, apiBase: string) {
+    if (!v) return "";
+    // ถ้าเป็น object เช่น { url: "..." }
+    if (typeof v === "object") {
+      const c = v.url ?? v.href ?? v.link ?? "";
+      return resolveFileHref(c, apiBase);
+    }
+    const s = String(v).trim();
+    if (!s) return "";
+
+    // ถ้าเป็น absolute URL อยู่แล้ว ก็ใช้ได้เลย
+    try {
+      const u = new URL(s);
+      return u.toString();
+    } catch { /* not absolute */ }
+
+    // ถ้าเป็น path เช่น /files/<id> → เติม apiBase
+    if (s.startsWith("/")) return `${apiBase}${s}`;
+
+    // ถ้าเป็นแค่ id (เช่น GridFS id) → สร้างเป็น /files/<id>
+    if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
+
+    // อื่น ๆ: ลองเติม apiBase เผื่อเป็น path แบบไม่ขึ้นต้นด้วย /
+    return `${apiBase}/${s}`;
+  }
+
+
   function normalizeAnyDate(v: any): string {
     if (!v) return "";
     if (typeof v === "object" && v.$date) return toISODateOnly(String(v.$date));
@@ -208,77 +247,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return "";
   }
 
-  function resolveFileHref(v: any, apiBase: string) {
-    if (!v) return "";
-    // ถ้าเป็น object เช่น { url: "..." }
-    if (typeof v === "object") {
-      const c = v.url ?? v.href ?? v.link ?? "";
-      return resolveFileHref(c, apiBase);
-    }
-    const s = String(v).trim();
-    if (!s) return "";
-
-    // ถ้าเป็น absolute URL อยู่แล้ว ก็ใช้ได้เลย
-    try {
-      const u = new URL(s);
-      return u.toString();
-    } catch { /* not absolute */ }
-
-    // ถ้าเป็น path เช่น /files/<id> → เติม apiBase
-    if (s.startsWith("/")) return `${apiBase}${s}`;
-
-    // ถ้าเป็นแค่ id (เช่น GridFS id) → สร้างเป็น /files/<id>
-    if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
-
-    // อื่น ๆ: ลองเติม apiBase เผื่อเป็น path แบบไม่ขึ้นต้นด้วย /
-    return `${apiBase}/${s}`;
-  }
-
-  function appendParam(u: string, key: string, val: string) {
-    const url = new URL(u, apiBase);
-    if (!url.searchParams.has(key)) url.searchParams.set(key, val);
-    return url.toString();
-  }
-
-  function buildHtmlLinks(baseUrl?: string) {
-    const u = (baseUrl || "").trim();
-    if (!u) return { previewHref: "", isPdfEndpoint: false };
-
-    // รองรับ /pdf/mdb/<id>/export (รวม template อื่นไว้ด้วยก็ได้)
-    const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
-
-    if (isPdfEndpoint) {
-      let finalUrl = u;
-      if (stationId) finalUrl = appendParam(finalUrl, "station_id", stationId);
-
-      // ใส่ photos_base_url ช่วยให้รูปใน PDF โหลดได้
-      const photosBase =
-        (process.env.NEXT_PUBLIC_PHOTOS_BASE_URL as string) ||
-        (typeof window !== "undefined" ? window.location.origin : "");
-      if (photosBase) finalUrl = appendParam(finalUrl, "photos_base_url", photosBase);
-
-      // พรีวิว ไม่ดาวน์โหลด
-      finalUrl = appendParam(finalUrl, "dl", "0");
-      return { previewHref: finalUrl, isPdfEndpoint: true };
-    }
-    return { previewHref: u, isPdfEndpoint: false };
-  }
-
-  function extractDocIdFromAnything(x: any): string {
-    if (!x) return "";
-    // ลองอ่านจาก field id/_id ก่อน
-    const raw = (x._id !== undefined ? x._id : x.id) ?? "";
-    let id = "";
-    if (raw && typeof raw === "object") id = raw.$oid || raw.oid || raw.$id || "";
-    else id = String(raw || "");
-    if (/^[a-fA-F0-9]{24}$/.test(id)) return id;
-
-    // สุดท้ายลองดึงจากสตริง URL
-    const s = typeof x === "string" ? x : JSON.stringify(x);
-    const m = s.match(/[A-Fa-f0-9]{24}/);
-    return m ? m[0] : "";
-  }
-
   const fetchRows = async (signal?: AbortSignal) => {
     if (!stationId) {
       setData([]);
@@ -295,11 +263,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return u.toString();
       };
 
-      const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
+      // const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
 
       const [pmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL(`/${REPORT_PREFIX}/list`), fetchOpts),
-        fetch(makeURL(`/${URL_PREFIX}/list`), fetchOpts),
+        fetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
+        fetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
       ]);
 
       let pmItems: any[] = [];
@@ -363,22 +331,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return da < db ? 1 : da > db ? -1 : 0; // desc
       });
 
-      // if (!allRows.length) {
-      //   const res2 = await fetch(`${apiBase}/pmreport/latest/${encodeURIComponent(stationId)}?_ts=${Date.now()}`, {
-      //     ...baseFetchOpts,
-      //     signal,
-      //   });
-      //   if (res2.ok) {
-      //     const j = await res2.json();
-      //     const iso = j?.pm_date ?? "";
-      //     const rows: TData[] = iso ? ([{ issue_id: "", name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-      //     setData(rows);
-      //     return;
-      //   }
-      //   setData([]);
-      //   return;
-      // }
-
+      if (!allRows.length) { setData([]); return; }
       setData(allRows);
     } catch (err: any) {
       if (err?.name === "AbortError") return; // ignore abort
@@ -389,19 +342,69 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
   };
 
-  // useEffect(() => {
-  //   let alive = true;
-  //   (async () => { await fetchRows(); })();
-  //   return () => { alive = false; };
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [apiBase, stationId]);
+  useEffect(() => {
+    let alive = true;
+    (async () => { await fetchRows(); })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase, stationId]);
+
+
+
+  function appendParam(u: string, key: string, val: string) {
+    const url = new URL(u, apiBase);
+    if (!url.searchParams.has(key)) url.searchParams.set(key, val);
+    return url.toString();
+  }
+
+
+  function buildHtmlLinks(baseUrl?: string) {
+    const u = (baseUrl || "").trim();
+    if (!u) return { previewHref: "", isPdfEndpoint: false };
+
+    // รองรับ /pdf/mdb/<id>/export (รวม template อื่นไว้ด้วยก็ได้)
+    const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
+
+    if (isPdfEndpoint) {
+      let finalUrl = u;
+      if (stationId) finalUrl = appendParam(finalUrl, "station_id", stationId);
+
+      // ใส่ photos_base_url ช่วยให้รูปใน PDF โหลดได้
+      const photosBase =
+        (process.env.NEXT_PUBLIC_PHOTOS_BASE_URL as string) ||
+        (typeof window !== "undefined" ? window.location.origin : "");
+      if (photosBase) finalUrl = appendParam(finalUrl, "photos_base_url", photosBase);
+
+      // พรีวิว ไม่ดาวน์โหลด
+      finalUrl = appendParam(finalUrl, "dl", "0");
+      return { previewHref: finalUrl, isPdfEndpoint: true };
+    }
+    return { previewHref: u, isPdfEndpoint: false };
+  }
+
+  function extractDocIdFromAnything(x: any): string {
+    if (!x) return "";
+    // ลองอ่านจาก field id/_id ก่อน
+    const raw = (x._id !== undefined ? x._id : x.id) ?? "";
+    let id = "";
+    if (raw && typeof raw === "object") id = raw.$oid || raw.oid || raw.$id || "";
+    else id = String(raw || "");
+    if (/^[a-fA-F0-9]{24}$/.test(id)) return id;
+
+    // สุดท้ายลองดึงจากสตริง URL
+    const s = typeof x === "string" ? x : JSON.stringify(x);
+    const m = s.match(/[A-Fa-f0-9]{24}/);
+    return m ? m[0] : "";
+  }
 
   useEffect(() => {
-      const ac = new AbortController();
-      fetchRows(ac.signal);
-      return () => ac.abort();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [apiBase, stationId, searchParams.toString()]);
+    const ac = new AbortController();
+    fetchRows(ac.signal);
+    return () => ac.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase, stationId, searchParams.toString()]);
+
+
 
 
 
@@ -613,7 +616,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     let canceled = false;
     (async () => {
       try {
-        const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, baseFetchOpts);
+        const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, FetchOpts);
         const next = nextIssueIdFor(PM_TYPE_CODE, reportDate, latest || "");
         if (!canceled) setIssueId(next);
       } catch {
@@ -624,6 +627,42 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return () => { canceled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateOpen, stationId, reportDate]);
+
+
+  const goAdd = () => setView("form");
+  const goList = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("view");
+    params.delete("edit_id"); // 👈 ลบด้วย
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+  function goEdit(row: TData) {
+    if (!row?.id) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form");
+    params.set("edit_id", row.id);       // 👈 ให้ฟอร์มใช้โหลดข้อมูล
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  if (mode === "form") {
+    return (
+      <div className="tw-mt-6">
+        <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
+          <Button
+            variant="outlined"
+            size="sm"
+            onClick={goList}
+            className="tw-py-2 tw-px-2"
+            title="กลับไปหน้า List"
+          >
+            <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
+          </Button>
+        </div>
+        <CBBOXPMForm />
+      </div>
+    );
+  }
+
 
   return (
     <>
@@ -662,7 +701,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 <span className="tw-text-sm">Upload</span>
               </Button>
 
-              <Link
+              {/* <Link
                 href={addHref}
                 className="tw-inline-block"
                 aria-disabled={!stationId}
@@ -684,7 +723,25 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 >
                   <span className="tw-w-full tw-text-center">+add</span>
                 </Button>
-              </Link>
+              </Link> */}
+
+              <Button
+                size="lg"
+                onClick={goAdd}
+                disabled={!stationId}
+                className={`
+                                               !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
+                                               tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
+                                               ${!stationId
+                    ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+                    : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
+                                               tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                                               focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
+                                             `}
+                title={stationId ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
+              >
+                <span className="tw-w-full tw-text-center">+Add</span>
+              </Button>
             </div>
           </div>
         </CardHeader>
