@@ -342,6 +342,7 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
     pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
     return y + 8
 
+
 def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str, is_top_align: bool = False):
     pdf.rect(x, y, w, h)
     col_w = w / 3.0
@@ -365,6 +366,7 @@ def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h
         pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, start_y - 1)
         pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
     pdf.set_xy(x + w, y)
+
 
 def _draw_summary_checklist(pdf: FPDF, base_font: str, x: float, y: float, summary_check: str):
     pass_checked = summary_check == "PASS"
