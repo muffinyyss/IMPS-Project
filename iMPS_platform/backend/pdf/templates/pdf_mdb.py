@@ -1,23 +1,4 @@
 # backend/pdf/templates/pdf_mdb.py
-"""
-PDF Template: MDB PM Report (ปรับปรุง)
-- คง signature: generate_pdf(data) -> bytes
-- เปลี่ยนหัวเรื่อง/ป้ายให้สอดคล้องกับ "MDB"
-- รองรับรูปภาพจาก:
-  1) เส้นทางไฟล์ในเครื่อง (absolute/relative)
-  2) เส้นทางภายใต้ backend/uploads
-  3) public/...
-  4) URL http(s) + header (ผ่าน env PHOTOS_HEADERS)
-  5) data URL: data:image/png;base64,...
-- ตัวแปรแวดล้อมสำคัญ:
-  PUBLIC_DIR       : โฟลเดอร์ public (ถ้ามี)
-  PHOTOS_BASE_URL  : base url สำหรับดาวน์โหลดรูปหากหาไฟล์ไม่เจอ
-  PHOTOS_HEADERS   : "Authorization: Bearer XXX|Cookie: sid=YYY" (optional)
-  LOGO_PATH        : เส้นทางไฟล์โลโก้เฉพาะกิจ (optional)
-  PDF_DEBUG        : "1" เพื่อพิมพ์ log ช่วยดีบัก
-
-หมายเหตุ: ใช้ฟอนต์ TH Sarabun ถ้าหาเจออัตโนมัติ ไม่งั้น fallback เป็น Arial
-"""
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
 from datetime import datetime, date
@@ -504,34 +485,37 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
     for key in sorted(rows.keys(), key=_r_idx):
         idx = _r_idx(key)
         data = rows.get(key) or {}
+
         title = ROW_TITLES.get(key, f"รายการที่ {idx}")
         remark = (data.get("remark") or "").strip()
 
-        # 🔸 ข้อ 4-8: ตรวจสอบแรงดันไฟฟ้า (ดึงจาก measures.m4 - m8)
+        # ข้อความ Item ตั้งต้น
+        item_text = f"{idx}. {title}"
+
+        # 🔸 เฉพาะข้อ r4 - r8: เพิ่มค่าแรงดันไฟฟ้าไปต่อท้าย "Item"
         if key.lower() in ["r4", "r5", "r6", "r7", "r8"]:
             measure_key = f"m{idx}"
             voltage_text = _format_voltage_measurement(measures, measure_key)
 
-            # ถ้ามีข้อมูลแรงดัน ให้แทนที่ remark
-            # ถ้ายังมี remark เดิมอยู่ ให้เชื่อมต่อกัน
             if voltage_text:
-                if remark:  # มี remark เดิม เช่น "very good na"
-                    remark = f"{voltage_text}\n\n{remark}"
-                else:
-                    remark = voltage_text
+                # เพิ่มลงใน item (column Item)
+                item_text = f"{item_text}\n{voltage_text}"
 
-        # (เก็บเงื่อนไขเดิมไว้ถ้ามี r15, r17 ในอนาคต)
+            # ❗ ส่วน remark ให้คง remark เดิม ไม่เอา voltage ไปรวมแล้ว
+            # remark = remark  # unchanged
 
+        # เพิ่มข้อมูลลงรายการ
         items.append(
             {
                 "idx": idx,
-                "text": f"{idx}. {title}",
+                "text": item_text,          # ✔ ค่าแรงดันมาอยู่ที่นี่แล้ว
                 "result": _norm_result(data.get("pf", "")),
-                "remark": remark,
+                "remark": remark,           # ✔ remark เดิมของข้อ 4–8
             }
         )
 
     return items
+
 
 
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
@@ -645,16 +629,10 @@ def _draw_items_table_header(
     return y + 8
 
 
-def _draw_result_cell(
-    pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str
-):
+def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str, is_top_align: bool = False):
     pdf.rect(x, y, w, h)
     col_w = w / 3.0
-    labels = [
-        ("Pass", result == "pass"),
-        ("Fail", result == "fail"),
-        ("N/A", result == "na"),
-    ]
+    labels = [("Pass", result == "pass"), ("Fail", result == "fail"), ("N/A", result == "na")]
     pdf.set_font(base_font, "", FONT_SMALL)
     for i, (lab, chk) in enumerate(labels):
         sx = x + i * col_w
@@ -663,9 +641,15 @@ def _draw_result_cell(
         text_w = pdf.get_string_width(lab)
         content_w = CHECKBOX_SIZE + 1.6 + text_w
         start_x = sx + (col_w - content_w) / 2.0
-        start_y = y + (h - CHECKBOX_SIZE) / 2.0
+        
+        # ✅ ถ้า is_top_align=True ให้ชิดบน, ไม่งั้นให้อยู่ตรงกลาง
+        if is_top_align:
+            start_y = y + PADDING_Y
+        else:
+            start_y = y + (h - CHECKBOX_SIZE) / 2.0
+        
         _draw_check(pdf, start_x, start_y, CHECKBOX_SIZE, chk)
-        pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, y + (h - LINE_H) / 2.0)
+        pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, start_y - 1)
         pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
     pdf.set_xy(x + w, y)
 
