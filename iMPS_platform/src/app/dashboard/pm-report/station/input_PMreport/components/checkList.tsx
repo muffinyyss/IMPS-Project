@@ -14,12 +14,13 @@ import {
 } from "@material-tailwind/react";
 import { draftKeyStation, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/station/input_PMreport/lib/draft";
 import { useRouter } from "next/navigation";
-
+import { Section } from "lucide-react";
+import Image from "next/image";
 /* =========================
  * API (เดิม)
  * ========================= */
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
+const LOGO_SRC = "/img/logo_egat.png";
 type StationPublic = {
     station_id: string;
     station_name: string;
@@ -288,7 +289,7 @@ async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): P
 /* =========================
  * MAIN
  * ========================= */
-export default function CheckList({ onComplete }: CheckListProps) {
+export default function StationPMReport() {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
     const PM_PREFIX = "stationpmreport";
@@ -466,7 +467,7 @@ export default function CheckList({ onComplete }: CheckListProps) {
 
     const canFinalSave = allPhotosAttached && allPFAnswered && allRequiredInputsFilled && isSummaryFilled;
 
-    useEffect(() => onComplete(allPFAnswered), [allPFAnswered, onComplete]);
+    // useEffect(() => onComplete(allPFAnswered), [allPFAnswered, onComplete]);
 
     /* ---------- persistence (auto-save) (ยังคงเดิม) ---------- */
     function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
@@ -613,113 +614,279 @@ export default function CheckList({ onComplete }: CheckListProps) {
      * RENDER
      * ========================= */
     return (
-        <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
-            {/* Job Info */}
-            <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
-                    <Input
-                        label="Issue id"
-                        value={job.issue_id || "-"}
-                        readOnly
-                        // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
-                        crossOrigin=""
-                        containerProps={{ className: "!tw-min-w-0" }}
-                        className="!tw-w-full !tw-bg-blue-gray-50"
-                    />
-                    <Input label="Location / สถานที่" value={job.station_name} onChange={(e) => setJob({ ...job, station_name: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
-                    <Input label="วันที่ตรวจ" type="date" value={job.date} onChange={(e) => setJob({ ...job, date: e.target.value })} crossOrigin="" />
+        <section>
+            <form action="#"
+                noValidate
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    return false;
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") e.preventDefault();
+                }}
+            >
+                <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
+                    <div className="tw-flex tw-items-start tw-justify-between tw-gap-6">
+                        {/* ซ้าย: โลโก้ + ข้อความ */}
+                        <div className="tw-flex tw-items-start tw-gap-4">
+                            <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md
+                                                                                tw-h-16 tw-w-[76px]
+                                                                                md:tw-h-20 md:tw-w-[108px]
+                                                                                lg:tw-h-24 lg:tw-w-[152px]">
+                                <Image
+                                    src={LOGO_SRC}
+                                    alt="Company logo"
+                                    fill
+                                    priority
+                                    className="tw-object-contain tw-p-0"
+                                    sizes="(min-width:1024px) 152px, (min-width:768px) 108px, 76px"
+                                />
+                            </div>
+                            <div>
+                                <div className="tw-font-semibold tw-text-blue-gray-900">
+                                    {/* รายงานการบำรุงรักษา - เครื่องอัดประจุไฟฟ้า – {headerLabel} */}
+                                    Preventive Maintanance Checklist - Safety Switch / Circuit Breaker - Box
+                                </div>
+                                <div className="tw-text-sm tw-text-blue-gray-600">
+                                    Electricity Generating Authority of Thailand (EGAT) <br />
+                                    53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand <br />
+                                    Call Center Tel. 02-114-3350
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {/* BODY */}
+                    <div className="tw-mt-8 tw-space-y-8">
+                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
+                            <div className="lg:tw-col-span-1">
+                                <Input
+                                    label="Issue id"
+                                    value={job.issue_id || "-"}
+                                    readOnly
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full !tw-bg-blue-gray-50"
+                                />
+                            </div>
+
+                            <div className="sm:tw-col-span-2 lg:tw-col-span-3">
+                                <Input
+                                    label="Location / สถานที่"
+                                    value={job.station_name}
+                                    onChange={(e) => setJob({ ...job, station_name: e.target.value })}
+                                    crossOrigin=""
+                                    readOnly
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-bg-blue-gray-50"
+                                />
+                            </div>
+
+                            <div className="lg:tw-col-span-2">
+                                <Input
+                                    label="วันที่ตรวจ"
+                                    type="date"
+                                    value={job.date}
+                                    onChange={(e) => setJob({ ...job, date: e.target.value })}
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <CardBody className="tw-space-y-1">
+                        {QUESTIONS.map(renderQuestionBlock)}
+                    </CardBody>
+
+                    {/* Summary */}
+                    <SectionCard title="Comment">
+                        <div className="tw-space-y-2">
+                            <Textarea
+                                label="Comment"
+                                value={summary}
+                                onChange={(e) => setSummary(e.target.value)}
+                                rows={4}
+                                required
+                                autoComplete="off"
+                                containerProps={{ className: "!tw-min-w-0" }}
+                                className="!tw-w-full resize-none"
+                            />
+                            <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
+                                {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
+                            </Typography>
+                        </div>
+
+                        <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
+                            <PassFailRow
+                                label="สรุปผลการตรวจสอบ"
+                                value={summaryCheck}
+                                onChange={(v) => setSummaryCheck(v)}
+                                labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
+                                    PASS: "Pass : ผ่าน",
+                                    FAIL: "Fail : ไม่ผ่าน",
+                                    NA: "N/A : ไม่พบ",
+                                }}
+                            />
+                        </div>
+                    </SectionCard>
+                    
+                    {/* Footer checks */}
+                    <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
+                        <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+                            <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
+                            {allPFAnswered ? (
+                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+                            ) : (
+                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
+                            )}
+                        </div>
+
+                        <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+                            <Typography className="tw-font-medium">2) ตรวจสอบการแนบรูปภาพ (ทุกหัวข้อที่กำหนด)</Typography>
+                            {allPhotosAttached ? (
+                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+                            ) : (
+                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")} (ต้องมีรูปสำหรับข้อ 7, 8, 9)</Typography>
+                            )}
+                        </div>
+
+                        <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+                            <Typography className="tw-font-medium">3) สรุปผลการตรวจสอบ</Typography>
+                            {isSummaryFilled ? (
+                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+                            ) : (
+                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
+                            )}
+                        </div>
+
+                        <div className="tw-mt-4 tw-flex tw-gap-4 tw-justify-end">
+                            <Button
+                                size="lg"
+                                variant="gradient"
+                                color="blue"
+                                onClick={onFinalSave}
+                                disabled={!canFinalSave || submitting}
+                            >
+                                {submitting ? "กำลังบันทึก..." : "บันทึกและส่งรายงาน"}
+                            </Button>
+                        </div>
+
+                        {!canFinalSave && (
+                            <Typography variant="small" className="tw-text-red-500 tw-text-center">
+                                กรุณากรอกข้อมูลและแนบรูปภาพให้ครบถ้วนตามรายการด้านบนก่อนบันทึก
+                            </Typography>
+                        )}
+                    </CardFooter>
+
                 </div>
-            </SectionCard>
-
-            {/* Checklist */}
-            <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                    <Typography variant="h6">Checklist</Typography>
-                </CardHeader>
-                <CardBody className="tw-space-y-1">
-                    {QUESTIONS.map(renderQuestionBlock)}
-                </CardBody>
-            </Card>
-
-            {/* Summary */}
-            <SectionCard title="Comment">
-                <div className="tw-space-y-2">
-                    <Textarea
-                        label="Comment"
-                        value={summary}
-                        onChange={(e) => setSummary(e.target.value)}
-                        rows={4}
-                        required
-                        autoComplete="off"
-                        containerProps={{ className: "!tw-min-w-0" }}
-                        className="!tw-w-full resize-none"
-                    />
-                    <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-                        {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-                    </Typography>
-                </div>
-
-                <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-                    <PassFailRow
-                        label="สรุปผลการตรวจสอบ"
-                        value={summaryCheck}
-                        onChange={(v) => setSummaryCheck(v)}
-                        labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
-                            PASS: "Pass : ผ่าน",
-                            FAIL: "Fail : ไม่ผ่าน",
-                            NA: "N/A : ไม่พบ",
-                        }}
-                    />
-                </div>
-            </SectionCard>
-
-            {/* Footer checks */}
-            <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-                <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-                    <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
-                    {allPFAnswered ? (
-                        <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                    ) : (
-                        <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
-                    )}
-                </div>
-
-                <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-                    <Typography className="tw-font-medium">2) ตรวจสอบการแนบรูปภาพ (ทุกหัวข้อที่กำหนด)</Typography>
-                    {allPhotosAttached ? (
-                        <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                    ) : (
-                        <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")} (ต้องมีรูปสำหรับข้อ 7, 8, 9)</Typography>
-                    )}
-                </div>
-
-                <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-                    <Typography className="tw-font-medium">3) สรุปผลการตรวจสอบ</Typography>
-                    {isSummaryFilled ? (
-                        <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                    ) : (
-                        <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-                    )}
-                </div>
-
-                <div className="tw-mt-4 tw-flex tw-gap-4 tw-justify-end">
-                    <Button
-                        size="lg"
-                        variant="gradient"
-                        color="blue"
-                        onClick={onFinalSave}
-                        disabled={!canFinalSave || submitting}
-                    >
-                        {submitting ? "กำลังบันทึก..." : "บันทึกและส่งรายงาน"}
-                    </Button>
-                </div>
-
-                {!canFinalSave && (
-                    <Typography variant="small" className="tw-text-red-500 tw-text-center">
-                        กรุณากรอกข้อมูลและแนบรูปภาพให้ครบถ้วนตามรายการด้านบนก่อนบันทึก
-                    </Typography>
-                )}
-            </CardFooter>
+            </form>
         </section>
+        // <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
+        //     {/* Job Info */}
+        //     <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
+        //         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+        //             <Input
+        //                 label="Issue id"
+        //                 value={job.issue_id || "-"}
+        //                 readOnly
+        //                 // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
+        //                 crossOrigin=""
+        //                 containerProps={{ className: "!tw-min-w-0" }}
+        //                 className="!tw-w-full !tw-bg-blue-gray-50"
+        //             />
+        //             <Input label="Location / สถานที่" value={job.station_name} onChange={(e) => setJob({ ...job, station_name: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
+        //             <Input label="วันที่ตรวจ" type="date" value={job.date} onChange={(e) => setJob({ ...job, date: e.target.value })} crossOrigin="" />
+        //         </div>
+        //     </SectionCard>
+
+        //     {/* Checklist */}
+        //     <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+        //             <Typography variant="h6">Checklist</Typography>
+        //         </CardHeader>
+        //         <CardBody className="tw-space-y-1">
+        //             {QUESTIONS.map(renderQuestionBlock)}
+        //         </CardBody>
+        //     </Card>
+
+        //     {/* Summary */}
+        //     <SectionCard title="Comment">
+        //         <div className="tw-space-y-2">
+        //             <Textarea
+        //                 label="Comment"
+        //                 value={summary}
+        //                 onChange={(e) => setSummary(e.target.value)}
+        //                 rows={4}
+        //                 required
+        //                 autoComplete="off"
+        //                 containerProps={{ className: "!tw-min-w-0" }}
+        //                 className="!tw-w-full resize-none"
+        //             />
+        //             <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
+        //                 {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
+        //             </Typography>
+        //         </div>
+
+        //         <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
+        //             <PassFailRow
+        //                 label="สรุปผลการตรวจสอบ"
+        //                 value={summaryCheck}
+        //                 onChange={(v) => setSummaryCheck(v)}
+        //                 labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
+        //                     PASS: "Pass : ผ่าน",
+        //                     FAIL: "Fail : ไม่ผ่าน",
+        //                     NA: "N/A : ไม่พบ",
+        //                 }}
+        //             />
+        //         </div>
+        //     </SectionCard>
+
+        //     {/* Footer checks */}
+        //     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
+        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+        //             <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
+        //             {allPFAnswered ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+        //             ) : (
+        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
+        //             )}
+        //         </div>
+
+        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+        //             <Typography className="tw-font-medium">2) ตรวจสอบการแนบรูปภาพ (ทุกหัวข้อที่กำหนด)</Typography>
+        //             {allPhotosAttached ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+        //             ) : (
+        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")} (ต้องมีรูปสำหรับข้อ 7, 8, 9)</Typography>
+        //             )}
+        //         </div>
+
+        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+        //             <Typography className="tw-font-medium">3) สรุปผลการตรวจสอบ</Typography>
+        //             {isSummaryFilled ? (
+        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
+        //             ) : (
+        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
+        //             )}
+        //         </div>
+
+        //         <div className="tw-mt-4 tw-flex tw-gap-4 tw-justify-end">
+        //             <Button
+        //                 size="lg"
+        //                 variant="gradient"
+        //                 color="blue"
+        //                 onClick={onFinalSave}
+        //                 disabled={!canFinalSave || submitting}
+        //             >
+        //                 {submitting ? "กำลังบันทึก..." : "บันทึกและส่งรายงาน"}
+        //             </Button>
+        //         </div>
+
+        //         {!canFinalSave && (
+        //             <Typography variant="small" className="tw-text-red-500 tw-text-center">
+        //                 กรุณากรอกข้อมูลและแนบรูปภาพให้ครบถ้วนตามรายการด้านบนก่อนบันทึก
+        //             </Typography>
+        //         )}
+        //     </CardFooter>
+        // </section>
     );
 }
