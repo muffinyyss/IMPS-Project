@@ -1,4 +1,4 @@
-# backend/pdf/templates/pdf_charger.py
+# backend/pdf/templates/pdf_actest.py
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
 from datetime import datetime, date
@@ -65,31 +65,6 @@ def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
             pass
 
     return loaded_regular
-
-
-
-# -------------------- ชื่อหัวข้อแถวจากโค้ด --------------------
-ROW_TITLES = {
-    "r1": "ตรวจสอบสภาพทั่วไป",
-    "r2": "ตรวจสอบดักซีล, ซิลิโคนกันซึม",
-    "r3": "ตรวจสอบสายอัดประจุ",
-    "r4": "ตรวจสอบหัวจ่ายอัดประจุ",
-    "r5": "ตรวจสอบปุ่มหยุดฉุกเฉิน",
-    "r6": "ตรวจสอบ QR CODE",
-    "r7": "ป้ายเตือนระวังไฟฟ้าช็อก",
-    "r8": "ป้ายเตือนต้องการระบายอากาศ",
-    "r9": "ป้ายเตือนปุ่มฉุกเฉิน",
-    "r10": "วัดแรงดันวงจรควบคุมการอัดประจุ",
-    "r11": "ตรวจสอบแผ่นกรองระบายอากาศ",
-    "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
-    "r13": "ตรวจสอบคอนแทคเตอร์",
-    "r14": "ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก",
-    "r15": "ตรวจสอบแรงดันไฟฟ้าที่พิน CP",
-    "r16": "ตรวจสอบลำดับเฟส",
-    "r17": "วัดแรงดันไฟฟ้าด้านเข้า",
-    "r18": "ทดสอบการอัดประจุ",
-    "r19": "ทำความสะอาด",
-}
 
 # -------------------- Helpers / Layout constants --------------------
 LINE_W_OUTER = 0.45
@@ -196,23 +171,6 @@ def _cell_text_in_box(pdf: FPDF, x: float, y: float, w: float, h: float, text: s
         cur_y += lh
     pdf.set_xy(x + w, y)
 
-
-def _format_m17(measures: dict) -> str:
-    ms = (measures or {}).get("m17") or {}
-    order = [
-        "L1-L2", "L2-L3", "L3-L1",
-        "L1-N", "L2-N", "L3-N",
-        "L1-G", "L2-G", "L3-G",
-        "N-G"
-    ]
-    def fmt(k: str) -> str:
-        d = ms.get(k) or {}
-        val = (d.get("value") or "").strip()
-        unit = (d.get("unit") or "").strip()
-        return f"{k} = {val}{unit}" if val else f"{k} = -"
-    lines = [fmt(k) for k in order]
-    return "\n".join(lines)
-
 def _parse_date_flex(s: str) -> Optional[datetime]:
     if not s:
         return None
@@ -242,9 +200,6 @@ def _fmt_date_thai_like_sample(val) -> str:
     return d.strftime(f"%d-%b-{year_be_2:02d}")
 
 def _resolve_logo_path() -> Optional[Path]:
-    # ตำแหน่งไฟล์ตามรูปของคุณ: .../iMPS_platform/public/img
-    # โครงสร้างไฟล์นี้อยู่ที่ .../iMPS_platform/backend/pdf/templates/pdf_charger.py
-    # ต้องไต่ขึ้น 3 ชั้นไปที่ iMPS_platform แล้วค่อยลง public/img
     names = [
         "logo_egat.png", "logo_egatev.png", "logo_egat_ev.png",
         "egat_logo.png", "logo-ct.png", "logo_ct.png",
@@ -324,19 +279,19 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
     return items
 
 
-def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
-    header_h = 9.0
-    pdf.set_line_width(LINE_W_INNER)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(x, y)
-    pdf.cell(item_w, header_h, "Item", border=1, align="C")
-    pdf.cell(result_w, header_h, "Result", border=1, align="C")
-    pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
-    y += header_h
-    pdf.set_fill_color(255, 230, 100)
-    pdf.set_xy(x, y)
-    pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
-    return y + 8
+# def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
+#     header_h = 9.0
+#     pdf.set_line_width(LINE_W_INNER)
+#     pdf.set_font(base_font, "B", FONT_MAIN)
+#     pdf.set_xy(x, y)
+#     pdf.cell(item_w, header_h, "Item", border=1, align="C")
+#     pdf.cell(result_w, header_h, "Result", border=1, align="C")
+#     pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
+#     y += header_h
+#     pdf.set_fill_color(255, 230, 100)
+#     pdf.set_xy(x, y)
+#     pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
+#     return y + 8
 
 def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str):
     pdf.rect(x, y, w, h)
@@ -394,8 +349,8 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", inset_mm: float
 
     col_left, col_mid = 40, 120
     col_right = page_w - col_left - col_mid
-    h_all = 30
-    h_right_top = 12
+    h_all = 22
+    h_right_top = 8
 
     pdf.set_line_width(LINE_W_INNER)
 
@@ -425,11 +380,11 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", inset_mm: float
     pdf.rect(xr, y_top, col_right, h_right_top)
     pdf.rect(xr, y_top + h_right_top, col_right, h_all - h_right_top)
 
-    pdf.set_xy(xr, y_top + 4)
+    pdf.set_xy(xr, y_top + 1)
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C")
 
-    pdf.set_xy(xr, y_top + h_right_top + (h_all - h_right_top) / 2 - 5)
+    pdf.set_xy(xr, y_top + h_right_top + 1)
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.multi_cell(col_right, 6, f"Issue ID\n{issue_id}", align="C")
 
@@ -467,7 +422,7 @@ def _kv_underline(pdf: FPDF, base_font: str, x: float, y: float, w: float,
         text_x = x + eff_label_w + colon_w + 2.0
         text_w = max(2.0, w - (eff_label_w + colon_w + 4.0))
         pdf.set_font(base_font, "", FONT_MAIN)
-        pdf.set_xy(text_x, y + 0.7)
+        pdf.set_xy(text_x, y - 0.4)
         pdf.cell(text_w, row_h - 1.4, str(value), border=0, align="L")
 
 def _draw_ev_header_form(pdf: FPDF, base_font: str, x: float, y: float, w: float,
@@ -515,7 +470,7 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
                                   items: List[Dict[str, str]] | None = None,
                                   num_rows: int = 2) -> float:
     
-    pdf.rect(6, 36, 198, 255)
+    pdf.rect(6, 28, 198, 255)
     """หัวข้อ Equipment Identification Details + 2 บรรทัด (ตามภาพ)"""
     pdf.set_font(base_font, "BU", FONT_MAIN)
     pdf.set_xy(x, y)
@@ -605,7 +560,8 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     y = pdf.get_y() + 2
     table_y0 = y
     lw_old = pdf.line_width
-    pdf.set_line_width(0.3)
+    pdf.set_line_width(lw_old)
+
 
     # ---------- 2) Header แถวที่ 1 ----------
     pdf.set_font(base_font, "B", font_size)
@@ -1202,14 +1158,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_font(base_font, size=FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
 
-    # job = doc.get("job", {}) or {}
-    # station_name = job.get("station_name", "-")
-    # model = job.get("model", "-")
-    # sn = job.get("sn", "-")
-    # pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
-
-    # checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
 
     left = pdf.l_margin
     right = pdf.r_margin
@@ -1221,6 +1170,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     col_right = page_w - col_left - col_mid
     h_all = 30
     h_right_top = 12
+    
     pdf.set_line_width(LINE_W_INNER)
 
     # เริ่มหน้าแรกด้วย add_page แล้วเรียก header ทันที (สำคัญ)
@@ -1242,10 +1192,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
                          manufacturer, model, power, serial_no,
                          location, firmware, inspection,
                          power_w_mm=30.0) 
-
-    # หัวข้อ Equipment Identification Details (รองรับข้อมูลถ้ามี ไม่มีก็วาดช่องเปล่า 2 บรรทัด)
-    # equip_items = (doc.get("equipments") or [])  # [{manufacturer, model, serial_no}, ...]
-    # y = _draw_equipment_ident_details(pdf, base_font, x0, y, page_w, equip_items, num_rows=5)
 
     eq = doc.get("equipment") or {}
 
@@ -1275,11 +1221,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         base_font=base_font,
         font_size=FONT_MAIN,
     )
-    # ตารางรายการ
-    # x_table = x0 + EDGE_ALIGN_FIX
-    # table_total_w = page_w - 2 * EDGE_ALIGN_FIX
-    # pdf.set_line_width(LINE_W_INNER)
-    # pdf.set_font(base_font, "", FONT_MAIN)
 
     item_w = 65
     result_w = 64
@@ -1291,8 +1232,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
-            # หลังขึ้นหน้าใหม่ ให้วาด header แล้ววาดหัวตารางด้วย
-            # y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
             pdf.set_font(base_font, "", FONT_MAIN)
 
     pdf.set_font(base_font, "", FONT_MAIN)
@@ -1314,73 +1253,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     _ensure_space(total_sig_h + 5)
 
-    # -------------------------------
-    # ขึ้นหน้าใหม่สำหรับรูป (เรียก header ทุกครั้งหลัง add_page)
-    # -------------------------------
-    # pdf.add_page()
-    # # _draw_page_frame(pdf, inset_mm=6)   # 👈 ปรับเป็น 5–8 ได้ตามต้องการ (ขอบกระดาษ)
-
-    # # วาด header เหมือนหน้าก่อนหน้า
-    # x0 = 10
-    # y = _draw_header(pdf, base_font, issue_id)  # วาดหัวกระดาษ
-
-    # # ชื่อเอกสาร
-    # pdf.set_xy(x0, y)
-    # pdf.set_font(base_font, "B", 16)
-    # pdf.cell(page_w, 10, "Manufacturer", border=1, ln=1, align="C")
-    # y += 10
-
-    # # แสดงข้อมูลงานใต้หัวเรื่อง
-    # # y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date)
-    
-    # # photo
-    # pdf.set_xy(x0, y)
-    # pdf.set_font(base_font, "B", 14)
-    # pdf.set_fill_color(255, 230, 100)
-    # pdf.cell(page_w, 10, "Photos", border=1, ln=1, align="C", fill=True)
-    # y += 10
-
-    # # ========== ตารางรูปแบบ 2 คอลัมน์: r# (ซ้าย) / g# (ขวา) ==========
-    # # ตั้งค่าความกว้างคอลัมน์
-    # x_table = x0 + EDGE_ALIGN_FIX
-    # q_w = 85.0                       # กว้างคอลัมน์ "ข้อ/คำถาม"
-    # g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w  # กว้างคอลัมน์รูป
-
-    # # ฟังก์ชันตรวจพื้นที่ (ใช้ตัวเดียวกับตารางก่อนหน้า)
-    # def _ensure_space_photo(height_needed: float):
-    #     nonlocal y
-    #     if y + height_needed > (pdf.h - pdf.b_margin):
-    #         pdf.add_page()
-    #         y = _draw_header(pdf, base_font, issue_id)
-    #         # หัวเรื่องย่อย Photos ซ้ำเมื่อขึ้นหน้าใหม่เพื่อไม่ให้สับสน
-    #         pdf.set_xy(x0, y)
-    #         pdf.set_font(base_font, "B", 14)
-    #         pdf.set_fill_color(255, 230, 100)
-    #         pdf.cell(page_w, 10, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
-    #         y += 10
-    #         y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-
-    # # วาดหัวตาราง Photos
-    # y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-    # pdf.set_font(base_font, "", FONT_MAIN)
-
-    # วาดทีละข้อ โดย map r# -> g# จาก doc["photos"]
-    # for it in checks:
-    #     idx = int(it.get("idx") or 0)
-    #     question_text = ROW_TITLES.get(f"r{idx}", it.get("text", f"{idx}. -"))
-
-    #     # ดึงรูป: photos.g{idx}[].url
-    #     img_items = _get_photo_items_for_idx(doc, idx)
-
-    #     # ประเมินพื้นที่ก่อนขึ้นหน้าใหม่
-    #     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
-    #     est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
-    #     _ensure_space_photo(est_row_h)
-
-    #     # วาดแถว
-    #     row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, question_text, img_items)
-    #     y += row_h_used
-    # เพิ่มหน้ารูปภาพ (PICTURE page)
     _draw_picture_page(pdf, base_font, issue_id, doc)
 
     pdf.set_font(base_font, "B", FONT_MAIN)

@@ -211,7 +211,11 @@ def _format_m17(measures: dict) -> str:
         unit = (d.get("unit") or "").strip()
         return f"{k} = {val}{unit}" if val else f"{k} = -"
     lines = [fmt(k) for k in order]
+    print(measures.get("m17"))
+    
     return "\n".join(lines)
+
+    
 
 def _parse_date_flex(s: str) -> Optional[datetime]:
     if not s:
@@ -338,7 +342,7 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
     pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
     return y + 8
 
-def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str):
+def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str, is_top_align: bool = False):
     pdf.rect(x, y, w, h)
     col_w = w / 3.0
     labels = [("Pass", result == "pass"), ("Fail", result == "fail"), ("N/A", result == "na")]
@@ -350,9 +354,15 @@ def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h
         text_w = pdf.get_string_width(lab)
         content_w = CHECKBOX_SIZE + 1.6 + text_w
         start_x = sx + (col_w - content_w) / 2.0
-        start_y = y + (h - CHECKBOX_SIZE) / 2.0
+        
+        # ✅ ถ้า is_top_align=True ให้ชิดบน, ไม่งั้นให้อยู่ตรงกลาง
+        if is_top_align:
+            start_y = y + PADDING_Y
+        else:
+            start_y = y + (h - CHECKBOX_SIZE) / 2.0
+        
         _draw_check(pdf, start_x, start_y, CHECKBOX_SIZE, chk)
-        pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, y + (h - LINE_H) / 2.0)
+        pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, start_y - 1)
         pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
     pdf.set_xy(x + w, y)
 
@@ -699,6 +709,29 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
+    # for it in checks:
+    #     text = str(it.get("text", ""))
+    #     result = it.get("result", "na")
+    #     remark = str(it.get("remark", "") or "")
+
+    #     _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
+    #     _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
+    #     # ✅ เพิ่มส่วนนี้เข้าไป
+    #     if "17." in text:  # ข้อ 17. วัดแรงดันไฟฟ้าด้านเข้า
+    #         remark_h = max(remark_h, LINE_H * 11)  # บังคับให้สูงพอสำหรับ 10 บรรทัด
+    #     row_h_eff = max(ROW_MIN_H, item_h, remark_h)
+
+    #     _ensure_space(row_h_eff)
+
+    #     x = x_table
+    #     _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H, valign="top")
+    #     x += item_w
+    #     _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result)
+    #     x += result_w
+    #     _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
+
+    #     y += row_h_eff
+    
     for it in checks:
         text = str(it.get("text", ""))
         result = it.get("result", "na")
@@ -706,15 +739,28 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
         _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
         _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
+        
+        # ✅ ตรวจสอบว่าเป็นข้อ 17 หรือไม่
+        is_row_17 = "17." in text
+        
+        if is_row_17:
+            remark_h = max(remark_h, LINE_H * 11)
+        
         row_h_eff = max(ROW_MIN_H, item_h, remark_h)
 
         _ensure_space(row_h_eff)
 
         x = x_table
-        _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H)
+        # ✅ ข้อ 17 ใช้ valign="top", ข้ออื่นใช้ "middle" (default)
+        _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H, 
+                         valign="top" if is_row_17 else "middle")
         x += item_w
-        _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result)
+        
+        # ✅ ส่งค่า is_row_17 ไปให้ _draw_result_cell
+        _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result, is_row_17)
         x += result_w
+        
+        # ✅ Remark ชิดบนอยู่แล้ว (valign="top")
         _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
 
         y += row_h_eff
