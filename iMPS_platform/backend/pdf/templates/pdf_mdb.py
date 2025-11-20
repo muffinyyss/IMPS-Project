@@ -753,7 +753,7 @@ def _output_pdf_bytes(pdf: FPDF) -> bytes:
     return data.encode("latin1")
 
 
-def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
+def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf = ReportPDF(unit="mm", format="A4")
     pdf.alias_nb_pages()  # ให้รองรับ {nb} ใน footer
 
@@ -789,7 +789,7 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
     pdf.set_xy(x0, y)
     pdf.set_fill_color(255, 230, 100)
     pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, DOCUMENT_TITLE_MAIN, border=1, ln=1, align="C")
+    pdf.cell(page_w, 10, DOCUMENT_TITLE_MAIN, border=1, ln=1, align="C", fill=True)
     y += 10
 
     # ข้อมูลงาน
@@ -839,6 +839,20 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
 
         _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
         _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
+        
+        is_row_4 = "4." in text
+        is_row_5 = "5." in text
+        is_row_6 = "6." in text
+        is_row_7 = "7." in text
+        is_row_8 = "8." in text
+        
+        
+        if is_row_4 or is_row_5 or is_row_6 or  is_row_7:
+            remark_h = max(remark_h, LINE_H * 12)
+            
+        if is_row_8:
+            remark_h = max(remark_h, LINE_H * 6)
+        
         row_h_eff = max(ROW_MIN_H, item_h, remark_h)
 
         _ensure_space(row_h_eff)
@@ -985,11 +999,38 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
     q_w = 85.0
     g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
 
+    # def _ensure_space_photo(height_needed: float):
+    #     nonlocal y
+    #     if y + height_needed > (pdf.h - pdf.b_margin):
+    #         pdf.add_page()
+    #         y = _draw_header(pdf, base_font, issue_id)
+    #         pdf.set_xy(x0, y)
+    #         pdf.set_font(base_font, "B", 14)
+    #         pdf.set_fill_color(255, 230, 100)
+    #         pdf.cell(
+    #             page_w,
+    #             10,
+    #             DOCUMENT_TITLE_PHOTO_CONT,
+    #             border=1,
+    #             ln=1,
+    #             align="C",
+    #             fill=True,
+    #         )
+    #         y += 10
+    #         y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+    
     def _ensure_space_photo(height_needed: float):
         nonlocal y
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
+            
+            # เพิ่ม Job Info block
+            y = _draw_job_info_block(
+                pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date
+            )
+            
+            # Title "Photos (ต่อ)"
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 14)
             pdf.set_fill_color(255, 230, 100)
@@ -1003,6 +1044,8 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
                 fill=True,
             )
             y += 10
+            
+            # หัวตาราง
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
 
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
@@ -1027,4 +1070,4 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
 
 # -------------------- Public API --------------------
 def generate_pdf(data: dict) -> bytes:
-    return make_mdb_pm_pdf_bytes(data)
+    return make_pm_report_html_pdf_bytes(data)
