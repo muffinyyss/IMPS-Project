@@ -599,8 +599,7 @@ def _draw_items_table_header(
     y: float,
     item_w: float,
     result_w: float,
-    remark_w: float,
-    group_title: str = "Main Distribution Board (MDB)",  # 👈 เพิ่มบรรทัดนี้
+    remark_w: float
 ):
     header_h = 9.0
     pdf.set_line_width(LINE_W_INNER)
@@ -613,20 +612,7 @@ def _draw_items_table_header(
     pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
     y += header_h
 
-    # แถบชื่อกลุ่ม
-    pdf.set_fill_color(255, 230, 100)
-    pdf.set_xy(x, y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(
-        item_w + result_w + remark_w,
-        8,
-        group_title,
-        border=1,
-        ln=1,
-        align="C",
-        fill=True,
-    )
-    return y + 8
+    return y
 
 
 def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str, is_top_align: bool = False):
@@ -801,6 +787,7 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
 
     # ชื่อเอกสาร
     pdf.set_xy(x0, y)
+    pdf.set_fill_color(255, 230, 100)
     pdf.set_font(base_font, "B", 16)
     pdf.cell(page_w, 10, DOCUMENT_TITLE_MAIN, border=1, ln=1, align="C")
     y += 10
@@ -830,7 +817,6 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
                 item_w,
                 result_w,
                 remark_w,
-                group_title=doc.get("groupTitle", "Main Distribution Board (MDB)"),
             )
             pdf.set_font(base_font, "", FONT_MAIN)
 
@@ -843,7 +829,6 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
         item_w,
         result_w,
         remark_w,
-        group_title=doc.get("groupTitle", "Main Distribution Board (MDB)"),
     )
     pdf.set_font(base_font, "", FONT_MAIN)
 
