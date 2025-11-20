@@ -107,6 +107,98 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   return same.reduce((acc, cur) => (toTail(cur) > toTail(acc) ? cur : acc), same[0]);
 }
 
+/* ---------- NEW: helper สำหรับ doc_name ---------- */
+
+function makeDocNameParts(stationId: string, dateISO: string) {
+  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+  const year = d.getFullYear();
+  const prefix = `${stationId}_`;
+  const suffix = `/${year}`;
+  return { year, prefix, suffix };
+}
+
+function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
+  const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
+  const s = String(latestFromDb || "").trim();
+
+  // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
+  if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
+    return `${prefix}1${suffix}`;
+  }
+
+  // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
+  const inside = s.slice(prefix.length, s.length - suffix.length);
+  const cur = parseInt(inside, 10);
+  const nextIndex = isNaN(cur) ? 1 : cur + 1;
+
+  return `${prefix}${nextIndex}${suffix}`;
+}
+
+
+async function fetchPreviewDocName(
+  stationId: string,
+  pmDate: string
+): Promise<string | null> {
+  const u = new URL(`${BASE}/pmreport/preview-docname`);
+  u.searchParams.set("station_id", stationId);
+  u.searchParams.set("pm_date", pmDate);
+
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("access_token") ?? ""
+      : "";
+
+  const r = await fetch(u.toString(), {
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (!r.ok) {
+    console.error("fetchPreviewDocName failed:", r.status);
+    return null;
+  }
+
+  const j = await r.json();
+  return (j && typeof j.doc_name === "string") ? j.doc_name : null;
+}
+async function fetchLatestDocName(
+  stationId: string,
+  dateISO: string
+): Promise<string | null> {
+  const u = new URL(`${BASE}/pmreport/latest-docname`);
+  u.searchParams.set("station_id", stationId);
+  u.searchParams.set("pm_date", dateISO);
+  u.searchParams.set("_ts", String(Date.now()));
+
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("access_token") ?? ""
+      : "";
+
+  const r = await fetch(u.toString(), {
+    credentials: "include",
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (!r.ok) {
+    console.error("fetchLatestDocName failed:", r.status);
+    return null;
+  }
+
+  const j = await r.json();
+  return (j && typeof j.doc_name === "string") ? j.doc_name : null;
+}
+
+type Me = {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  company: string;
+  tel: string;
+};
+
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -115,6 +207,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [issueId, setIssueId] = useState<string>("");
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
+  const [docName, setDocName] = useState<string>("");
+  const [me, setMe] = useState<Me | null>(null);
+  const [inspector, setInspector] = useState<string>("");
 
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
@@ -126,6 +221,42 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const sidLocal = localStorage.getItem("selected_station_id");
     setStationId(sidLocal);
   }, [searchParams]);
+
+  useEffect(() => {
+  // ถ้าใช้ httpOnly cookie เป็นหลัก ก็ไม่ต้องพึ่ง localStorage มาก
+  const useHttpOnlyCookie = true;
+
+  (async () => {
+    try {
+      const headers: Record<string, string> = {};
+      if (!useHttpOnlyCookie) {
+        const t = typeof window !== "undefined"
+          ? localStorage.getItem("access_token") ?? ""
+          : "";
+        if (t) headers.Authorization = `Bearer ${t}`;
+      }
+
+      const res = await fetch(`${apiBase}/me`, {
+        method: "GET",
+        headers,
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        console.warn("/me failed:", res.status);
+        return;
+      }
+
+      const data: Me = await res.json();
+      setMe(data);
+
+      // ให้ inspector default เป็น username ถ้ายังว่างอยู่
+      setInspector((prev) => prev || data.username || "");
+    } catch (err) {
+      console.error("fetch /me error:", err);
+    }
+  })();
+}, [apiBase]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -168,22 +299,22 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   //   });
   // }
   function thDate(iso?: string) {
-  if (!iso) return "-";
+    if (!iso) return "-";
 
-  // บังคับให้ตีความเป็นเวลา UTC
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
-    ? new Date(iso + "T00:00:00Z")
-    : new Date(iso);
+    // บังคับให้ตีความเป็นเวลา UTC
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+      ? new Date(iso + "T00:00:00Z")
+      : new Date(iso);
 
-  if (isNaN(d.getTime())) return "-";
+    if (isNaN(d.getTime())) return "-";
 
-  return d.toLocaleDateString("th-TH-u-ca-gregory", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
+    return d.toLocaleDateString("th-TH-u-ca-gregory", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  }
 
   function toISODateOnly(s?: string) {
     if (!s) return "";
@@ -311,7 +442,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const inspector =
           (it.inspector ?? it.job?.inspector ?? "") as string;
 
-        return { issue_id: issueId,doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: fileUrl, inspector, } as TData;
+        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: fileUrl, inspector, } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -326,7 +457,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
         const inspector =
           (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
-        return { issue_id: issueId,doc_name:doc_name, pm_date: thDate(isoDay), position: isoDay, office: href, inspector, } as TData;
+        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: href, inspector, } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
@@ -348,6 +479,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     let alive = true;
@@ -564,6 +696,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
       fd.append("issue_id", issueId);
+      fd.append("doc_name", docName || "");
+      fd.append("inspector", inspector || "");
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await fetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
@@ -588,6 +722,41 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
     }
   }
+
+  useEffect(() => {
+    if (!dateOpen || !stationId || !reportDate) return;
+
+    let canceled = false;
+
+    (async () => {
+      try {
+        // 1) ลองขอชื่อจาก preview endpoint ก่อน
+        const preview = await fetchPreviewDocName(stationId, reportDate);
+        if (!canceled && preview) {
+          setDocName(preview);
+          return;
+        }
+
+        // 2) ถ้าไม่มี preview → ดึง latest แล้วคำนวณชื่อถัดไป
+        const latest = await fetchLatestDocName(stationId, reportDate);
+        if (!canceled) {
+          const next = nextDocNameFor(stationId, reportDate, latest || undefined);
+          setDocName(next);
+        }
+      } catch (e) {
+        console.error("auto doc_name error:", e);
+        if (!canceled) {
+          // 3) กรณี error → fallback เป็นชื่อแรกของปีนั้น ๆ
+          const fallback = nextDocNameFor(stationId, reportDate);
+          setDocName(fallback);
+        }
+      }
+    })();
+
+    return () => {
+      canceled = true;
+    };
+  }, [dateOpen, stationId, reportDate]);
 
   useEffect(() => {
     if (!dateOpen || !stationId || !reportDate) return;
@@ -850,19 +1019,49 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         <DialogHeader>เลือกวันที่รายงาน</DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
-            <Typography variant="small" className="!tw-text-blue-gray-600">
+            {/* <Typography variant="small" className="!tw-text-blue-gray-600">
               Issue ID
-            </Typography>
+            </Typography> */}
             <Input
+              label="Document Name"
+              value={docName}
+              onChange={(e) => setDocName(e.target.value)}
+              crossOrigin=""
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-w-full !tw-bg-blue-gray-50"
+              readOnly
+            />
+            {/* <Typography variant="small" className="!tw-text-blue-gray-500">
+              ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
+            </Typography> */}
+          </div>
+          <div className="tw-space-y-2">
+            {/* <Typography variant="small" className="!tw-text-blue-gray-600">
+              Issue ID
+            </Typography> */}
+            <Input
+              label="Issue id"
               value={issueId}
               onChange={(e) => setIssueId(e.target.value)}
               crossOrigin=""
-              placeholder="เช่น PM-MB-2511-01"
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-w-full !tw-bg-blue-gray-50"
               readOnly
             />
-            <Typography variant="small" className="!tw-text-blue-gray-500">
+            {/* <Typography variant="small" className="!tw-text-blue-gray-500">
               ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
-            </Typography>
+            </Typography> */}
+          </div>
+          <div className="tw-space-y-2">
+            <Input
+              label="Inspector / ผู้ตรวจสอบ"
+              value={inspector}
+              onChange={(e) => setInspector(e.target.value)}
+              crossOrigin=""
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-w-full !tw-bg-blue-gray-50"
+              readOnly
+            />
           </div>
           <Input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} label="วันที่" crossOrigin="" />
           <Typography variant="small" className="tw-text-blue-gray-500">

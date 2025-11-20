@@ -66,6 +66,7 @@ export type PMReportData = {
   pm: {
     latest: string;
     next: string;
+    next_day: string;
   };
   icons?: {
     firmware?: ElementType;
@@ -82,6 +83,7 @@ export const data_pmReport: PMReportData = {
   pm: {
     latest: "-",
     next: "-",
+    next_day: "-",
   },
   icons: {
     firmware: WrenchScrewdriverIcon,
@@ -97,6 +99,62 @@ function thDate(iso?: string) {
 }
 function addDaysISO(iso: string, days: number) {
   const d = new Date(iso); d.setDate(d.getDate() + days); return d.toISOString();
+}
+// ใหม่: ฟังก์ชันบวกเดือน
+function addMonthsISO(iso: string, months: number) {
+  const d = new Date(iso);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString();
+}
+
+function parseAsDateLocal(dateStr?: string | null, tzOffsetMinutes = 7 * 60) {
+  if (!dateStr) return null;
+  try {
+    // รับทั้ง 'YYYY-MM-DD' และ ISO
+    if (dateStr.length === 10) {
+      // สร้างเป็นเวลา 00:00:00 ในโซนเวลาไทย (UTC+7)
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+      // ชดเชยให้กลายเป็น "พื้นฐานไทย" โดยลบ offset ออกเพื่อให้เที่ยงคืนไทย
+      dt.setUTCMinutes(dt.getUTCMinutes() - tzOffsetMinutes);
+      return dt;
+    }
+    return new Date(dateStr);
+  } catch {
+    return null;
+  }
+}
+
+function daysUntil(dateStr?: string | null) {
+  const target = parseAsDateLocal(dateStr);
+  if (!target) return null;
+
+  // วันนี้ (โซนเวลาไทย) ที่เวลา 00:00
+  const now = new Date();
+  const nowTH = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+  // ขยับให้เป็นเที่ยงคืนไทยโดยลบ 7 ชั่วโมงออก
+  nowTH.setUTCHours(nowTH.getUTCHours() - 7, 0, 0, 0);
+
+  // ปัดเวลาเป้าหมายให้เป็นเที่ยงคืนไทยด้วย (แค่เอาวันเปล่า ๆ มาเทียบ)
+  const tgtTH = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate())
+  );
+  tgtTH.setUTCHours(tgtTH.getUTCHours() - 7, 0, 0, 0);
+
+  const diffMs = tgtTH.getTime() - nowTH.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  return diffDays; // อาจเป็นลบถ้าเลยกำหนด
+}
+
+function renderDaysLeft(nextDate?: string | null) {
+  const d = daysUntil(nextDate);
+  if (d === null) return "-";
+  if (d > 0) return `in ${d} day${d === 1 ? "" : "s"}`;
+  if (d === 0) return "today";
+  const overdue = Math.abs(d);
+  return `overdue by ${overdue} day${overdue === 1 ? "" : "s"}`;
 }
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -121,7 +179,7 @@ export async function loadPmReport(stationId: string, token?: string): Promise<P
   };
 
   const latestISO = api.timestamp_th ?? api.timestamp_utc ?? api.timestamp ?? "";
-  const nextISO = latestISO ? addDaysISO(latestISO, 30) : undefined;
+  const nextISO = latestISO ? addMonthsISO(latestISO, 6) : undefined;
 
   return {
     firmware: {
@@ -129,7 +187,7 @@ export async function loadPmReport(stationId: string, token?: string): Promise<P
       rpi: api.pi_firmware ?? "-",
       router: api.rt_firmware ?? "-",
     },
-    pm: { latest: thDate(latestISO), next: thDate(nextISO) },
+    pm: { latest: thDate(latestISO), next: thDate(nextISO), next_day:  renderDaysLeft(nextISO)},
     icons: { firmware: WrenchScrewdriverIcon, date: CalendarDaysIcon },
   };
 }

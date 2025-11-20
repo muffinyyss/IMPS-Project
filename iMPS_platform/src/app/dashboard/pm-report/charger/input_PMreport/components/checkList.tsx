@@ -181,7 +181,7 @@ type PassFailRowProps = {
     remark: string;
     onRemarkChange: (v: string) => void;
     aboveRemark?: React.ReactNode;
-    
+
 };
 
 // function PassFailRow({
@@ -240,7 +240,7 @@ type PassFailRowProps = {
 //             </Button>
 //         </div>
 //     );
-    
+
 
 //     return (
 //         <div className="tw-space-y-3 tw-py-3">
@@ -432,7 +432,7 @@ function PassFailRow({
             >
                 {text.NA}
             </Button>
-            
+
         </div>
     );
 
@@ -622,64 +622,11 @@ function PhotoMultiInput({
     };
 
     return (
-        // <div className="tw-space-y-3">
-        //     {label && <Typography className="tw-font-medium">{label}</Typography>}
 
-        //     <div className="tw-flex tw-flex-wrap tw-gap-2">
-        //         <Button size="sm" color="blue" variant="outlined" onClick={handlePick}>
-        //             แนบรูป / ถ่ายรูป
-        //         </Button>
-        //         <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-        //             แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
-        //         </Typography>
-        //     </div>
-
-        //     <input
-        //         ref={fileRef}
-        //         type="file"
-        //         accept="image/*"
-        //         multiple
-        //         capture="environment"
-        //         className="tw-hidden"
-        //         onChange={(e) => handleFiles(e.target.files)}
-        //     />
-
-        //     {photos.length > 0 ? (
-        //         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-        //             {photos.map((p) => (
-        //                 <div
-        //                     key={p.id}
-        //                     className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"
-        //                 >
-        //                     <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
-        //                         {p.preview && (
-        //                             <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />
-        //                         )}
-        //                     </div>
-        //                     <div className="tw-p-2 tw-space-y-2">
-        //                         <div className="tw-flex tw-justify-end">
-        //                             <Button size="sm" color="red" variant="text" onClick={() => handleRemove(p.id)}>
-        //                                 ลบรูป
-        //                             </Button>
-        //                         </div>
-        //                     </div>
-        //                 </div>
-        //             ))}
-        //         </div>
-        //     ) : (
-        //         <Typography variant="small" className="!tw-text-blue-gray-500">
-        //             ยังไม่มีรูปแนบ
-        //         </Typography>
-        //     )}
-        // </div>
         <div className="tw-space-y-3">
             {/* แถวบน: label + ปุ่มแนบรูป */}
             <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
-                {/* {label && (
-      <Typography className="tw-font-medium">
-        {label}
-      </Typography>
-    )} */}
+
 
                 <Button
                     size="sm"
@@ -797,6 +744,32 @@ function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: strin
     return `${prefix}${nextIndex}${suffix}`;
 }
 
+async function fetchPreviewIssueId(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/pmreport/preview-issueid`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("pm_date", pmDate);
+
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewIssueId failed:", r.status);
+        return null;
+    }
+
+    const j = await r.json();
+    return (j && typeof j.issue_id === "string") ? j.issue_id : null;
+}
 
 async function fetchPreviewDocName(
     stationId: string,
@@ -826,35 +799,84 @@ async function fetchPreviewDocName(
 }
 
 
-async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/pmreport/list`);
-    u.searchParams.set("station_id", stationId);
-    u.searchParams.set("page", "1");
-    u.searchParams.set("pageSize", "50");
-    u.searchParams.set("_ts", String(Date.now()));
+// async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
+//     const u = new URL(`${API_BASE}/pmreport/list`);
+//     u.searchParams.set("station_id", stationId);
+//     u.searchParams.set("page", "1");
+//     u.searchParams.set("pageSize", "50");
+//     u.searchParams.set("_ts", String(Date.now()));
 
-    const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
-    if (!r.ok) return null;
+//     const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
+//     if (!r.ok) return null;
 
-    const j = await r.json();
-    const items: any[] = Array.isArray(j?.items) ? j.items : [];
-    if (!items.length) return null;
+//     const j = await r.json();
+//     const items: any[] = Array.isArray(j?.items) ? j.items : [];
+//     if (!items.length) return null;
 
+//     const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+
+//     // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
+//     const samePrefix = items
+//         .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
+//         .filter(iid => iid.startsWith(prefix));
+
+//     if (!samePrefix.length) return null;
+
+//     // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
+//     const toTailNum = (iid: string) => {
+//         const m = iid.match(/(\d+)$/);
+//         return m ? parseInt(m[1], 10) : -1;
+//     };
+//     return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
+// }
+
+async function fetchLatestIssueIdFromList(
+    stationId: string,
+    dateISO: string
+): Promise<string | null> {
     const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
 
-    // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
-    const samePrefix = items
-        .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
-        .filter(iid => iid.startsWith(prefix));
+    async function fetchList(path: string) {
+        const u = new URL(`${API_BASE}${path}`);
+        u.searchParams.set("station_id", stationId);
+        u.searchParams.set("page", "1");
+        u.searchParams.set("pageSize", "200");
+        u.searchParams.set("_ts", String(Date.now()));
 
-    if (!samePrefix.length) return null;
+        const r = await fetch(u.toString(), {
+            credentials: "include",
+            cache: "no-store",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        if (!r.ok) return [];
+        const j = await r.json();
+        return Array.isArray(j?.items) ? j.items : [];
+    }
 
-    // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
+    const [repItems, urlItems] = await Promise.all([
+        fetchList("/pmreport/list"),
+        fetchList("/pmurl/list"),
+    ]);
+
+    const allIssueIds = [...repItems, ...urlItems]
+        .map((it) => String(it?.issue_id || ""))
+        .filter((iid) => iid.startsWith(prefix));
+
+    if (!allIssueIds.length) return null;
+
     const toTailNum = (iid: string) => {
         const m = iid.match(/(\d+)$/);
         return m ? parseInt(m[1], 10) : -1;
     };
-    return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
+
+    return allIssueIds.reduce(
+        (acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc),
+        allIssueIds[0]
+    );
 }
 
 async function fetchLatestDocName(
@@ -1114,32 +1136,32 @@ export default function ChargerPMForm() {
         })();
     }, []);
 
-    useEffect(() => {
-        if (!stationId || !job.date) return;
+    // useEffect(() => {
+    //     if (!stationId || !job.date) return;
 
-        let canceled = false;
-        (async () => {
-            try {
-                const latest = await fetchLatestIssueIdFromList(stationId, job.date);
-                const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-                if (!canceled) {
-                    const prefix = makePrefix(PM_TYPE_CODE, job.date);
-                    setJob(prev => {
-                        // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
-                        if (prev.issue_id?.startsWith(prefix)) return prev;
-                        return { ...prev, issue_id: next };
-                    });
-                }
-            } catch {
-                if (!canceled) {
-                    const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-                    setJob(prev => ({ ...prev, issue_id: fallback }));
-                }
-            }
-        })();
+    //     let canceled = false;
+    //     (async () => {
+    //         try {
+    //             const latest = await fetchLatestIssueIdFromList(stationId, job.date);
+    //             const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
+    //             if (!canceled) {
+    //                 const prefix = makePrefix(PM_TYPE_CODE, job.date);
+    //                 setJob(prev => {
+    //                     // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
+    //                     if (prev.issue_id?.startsWith(prefix)) return prev;
+    //                     return { ...prev, issue_id: next };
+    //                 });
+    //             }
+    //         } catch {
+    //             if (!canceled) {
+    //                 const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
+    //                 setJob(prev => ({ ...prev, issue_id: fallback }));
+    //             }
+    //         }
+    //     })();
 
-        return () => { canceled = true; };
-    }, [stationId, job.date]);
+    //     return () => { canceled = true; };
+    // }, [stationId, job.date]);
 
     // useEffect(() => {
     //     if (!stationId || !job.date) return;
@@ -1198,6 +1220,35 @@ export default function ChargerPMForm() {
     //     };
     // }, [stationId, job.date]);
 
+    // useEffect(() => {
+    //     if (!stationId || !job.date) return;
+
+    //     let canceled = false;
+
+    //     (async () => {
+    //         try {
+    //             // ดึง doc_name ล่าสุดจาก backend
+    //             const latest = await fetchLatestDocName(stationId, job.date);
+    //             const next = nextDocNameFor(stationId, job.date, latest || "");
+
+    //             if (!canceled) {
+    //                 setDocName(next);
+    //             }
+    //         } catch (err) {
+    //             console.error("compute docName error:", err);
+    //             // fallback ถ้า error
+    //             if (!canceled) {
+    //                 const fallback = nextDocNameFor(stationId, job.date, "");
+    //                 setDocName(fallback);
+    //             }
+    //         }
+    //     })();
+
+    //     return () => {
+    //         canceled = true;
+    //     };
+    // }, [stationId, job.date]);
+
     useEffect(() => {
         if (!stationId || !job.date) return;
 
@@ -1205,27 +1256,20 @@ export default function ChargerPMForm() {
 
         (async () => {
             try {
-                // ดึง doc_name ล่าสุดจาก backend
-                const latest = await fetchLatestDocName(stationId, job.date);
-                const next = nextDocNameFor(stationId, job.date, latest || "");
-
-                if (!canceled) {
-                    setDocName(next);
+                const preview = await fetchPreviewIssueId(stationId, job.date);
+                if (!canceled && preview) {
+                    setJob(prev => ({ ...prev, issue_id: preview }));
                 }
             } catch (err) {
-                console.error("compute docName error:", err);
-                // fallback ถ้า error
-                if (!canceled) {
-                    const fallback = nextDocNameFor(stationId, job.date, "");
-                    setDocName(fallback);
-                }
+                console.error("preview issue_id error:", err);
+                // ถ้า error ปล่อยให้ว่างไว้ → backend จะ gen เองตอน submit
             }
         })();
 
-        return () => {
-            canceled = true;
-        };
+        return () => { canceled = true; };
     }, [stationId, job.date]);
+
+
     useEffect(() => {
         if (!stationId || !job.date) return;
 
@@ -1306,7 +1350,11 @@ export default function ChargerPMForm() {
         }>(key);
         if (!draft) return;
 
-        setJob((prev) => ({ ...prev, ...draft.job }));
+        // ตัด issue_id ทิ้ง ไม่ให้มาทับของที่ gen ใหม่
+        const { issue_id, ...draftJobWithoutIssue } = draft.job;
+
+        // setJob((prev) => ({ ...prev, ...draft.job }));
+        setJob((prev) => ({ ...prev, ...draftJobWithoutIssue }));
         setRows(draft.rows);
         setCp(draft.cp);
         m17.setState(draft.m17);
@@ -1456,17 +1504,17 @@ export default function ChargerPMForm() {
         const subtitle = FIELD_GROUPS[q.no]?.note;
 
         const inlineLeft =
-        q.no === 11 ? (
-            <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
-                <input
-                    type="checkbox"
-                    className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                    checked={dustFilterChanged}
-                    onChange={(e) => setDustFilterChanged(e.target.checked)}
-                />
-                <span>เปลี่ยนแผ่นกรองระบายอากาศ</span>
-            </label>
-        ) : null;
+            q.no === 11 ? (
+                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
+                    <input
+                        type="checkbox"
+                        className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                        checked={dustFilterChanged}
+                        onChange={(e) => setDustFilterChanged(e.target.checked)}
+                    />
+                    <span>เปลี่ยนแผ่นกรองระบายอากาศ</span>
+                </label>
+            ) : null;
         return (
             <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
                 <PassFailRow
@@ -1491,7 +1539,7 @@ export default function ChargerPMForm() {
                             </div>
                         )
                     }
-                    inlineLeft={inlineLeft} 
+                    inlineLeft={inlineLeft}
                 />
 
                 {hasMeasure && renderMeasureGrid(q.no)}
@@ -1537,13 +1585,14 @@ export default function ChargerPMForm() {
     useDebouncedEffect(() => {
         if (!stationId) return;
         saveDraftLocal(key, {
-            job,
+            // job,
+            job: { ...job, issue_id: "" },
             rows,
             cp,
             m17: m17.state,
             summary,
-            inspector,         
-            dustFilterChanged, 
+            inspector,
+            dustFilterChanged,
         });
     }, [key, stationId, job, rows, cp, m17.state, summary, inspector]);
 
@@ -1573,13 +1622,14 @@ export default function ChargerPMForm() {
         //     summary,
         // });
         saveDraftLocal(key, {
-            job,
+            // job,
+            job: { ...job, issue_id: "" },
             rows,
             cp,
             m17: m17.state,
             summary,
             inspector,
-            dustFilterChanged, 
+            dustFilterChanged,
         });
         alert("บันทึกชั่วคราวไว้ในเครื่องแล้ว (Offline Draft)");
     };
