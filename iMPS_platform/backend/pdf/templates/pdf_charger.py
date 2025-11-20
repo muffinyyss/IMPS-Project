@@ -1150,22 +1150,31 @@ def _cell_text_in_box(pdf: FPDF, x: float, y: float, w: float, h: float, text: s
 
 
 def _format_m17(measures: dict) -> str:
-    ms = (measures or {}).get("m17") or {}
+    if not measures:
+        return "-"
+
+    # ถ้ามี m17 ให้ใช้ก่อน
+    if "m17" in measures and isinstance(measures["m17"], dict):
+        ms = measures["m17"]
+    else:
+        # ถ้าไม่มี m17 → ให้ใช้ root dict แทน
+        ms = measures
+
     order = [
         "L1-L2", "L2-L3", "L3-L1",
         "L1-N", "L2-N", "L3-N",
         "L1-G", "L2-G", "L3-G",
         "N-G"
     ]
+
     def fmt(k: str) -> str:
-        d = ms.get(k) or {}
-        val = (d.get("value") or "").strip()
-        unit = (d.get("unit") or "").strip()
+        d = ms.get(k, {})
+        val = str(d.get("value", "")).strip()
+        unit = str(d.get("unit", "")).strip()
         return f"{k} = {val}{unit}" if val else f"{k} = -"
-    lines = [fmt(k) for k in order]
-    print(measures.get("m17"))
-    
-    return "\n".join(lines)
+
+    return "\n".join(fmt(k) for k in order)
+
 
     
 
@@ -1299,6 +1308,9 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         })
 
     return items
+
+
+
 
 
 
@@ -1550,7 +1562,7 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
 # -------------------------------------
 PHOTO_MAX_PER_ROW = 3
-PHOTO_IMG_MAX_H   = 60
+PHOTO_IMG_MAX_H   = 48
 PHOTO_GAP         = 3
 PHOTO_PAD_X       = 2
 PHOTO_PAD_Y       = 4
@@ -1701,11 +1713,15 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
         _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
         
-        # ✅ ตรวจสอบว่าเป็นข้อ 17 หรือไม่
+        # ตรวจสอบว่าเป็นข้อ 15 หรือข้อ 17
+        is_row_15 = "15." in text
         is_row_17 = "17." in text
         
         if is_row_17:
-            remark_h = max(remark_h, LINE_H * 11)
+            remark_h = max(remark_h, LINE_H * 12)
+            
+        if is_row_15:
+            remark_h = max(remark_h, LINE_H * 3)
         
         row_h_eff = max(ROW_MIN_H, item_h, remark_h)
 
