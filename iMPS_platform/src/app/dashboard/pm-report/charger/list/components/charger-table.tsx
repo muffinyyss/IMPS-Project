@@ -159,14 +159,31 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     cache: "no-store",
   };
 
+  // function thDate(iso?: string) {
+  //   if (!iso) return "-";
+  //   return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
+  //     day: "2-digit",
+  //     month: "2-digit",
+  //     year: "numeric",
+  //   });
+  // }
   function thDate(iso?: string) {
-    if (!iso) return "-";
-    return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  }
+  if (!iso) return "-";
+
+  // บังคับให้ตีความเป็นเวลา UTC
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+    ? new Date(iso + "T00:00:00Z")
+    : new Date(iso);
+
+  if (isNaN(d.getTime())) return "-";
+
+  return d.toLocaleDateString("th-TH-u-ca-gregory", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
 
   function toISODateOnly(s?: string) {
     if (!s) return "";
