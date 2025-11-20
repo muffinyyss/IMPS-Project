@@ -216,6 +216,14 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [me, setMe] = useState<Me | null>(null);
   const [inspector, setInspector] = useState<string>("");
 
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;   // YYYY-MM-DD ตามวันที่เครื่องผู้ใช้
+  }, []);
+
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
     if (sidFromUrl) {
@@ -228,41 +236,41 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   }, [searchParams]);
 
   useEffect(() => {
-  // ถ้าใช้ httpOnly cookie เป็นหลัก ก็ไม่ต้องพึ่ง localStorage มาก
-  const useHttpOnlyCookie = true;
+    // ถ้าใช้ httpOnly cookie เป็นหลัก ก็ไม่ต้องพึ่ง localStorage มาก
+    const useHttpOnlyCookie = true;
 
-  (async () => {
-    try {
-      const headers: Record<string, string> = {};
-      if (!useHttpOnlyCookie) {
-        const t = typeof window !== "undefined"
-          ? localStorage.getItem("access_token") ?? ""
-          : "";
-        if (t) headers.Authorization = `Bearer ${t}`;
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (!useHttpOnlyCookie) {
+          const t = typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+          if (t) headers.Authorization = `Bearer ${t}`;
+        }
+
+        const res = await apiFetch(`${apiBase}/me`, {
+          // const res = await fetch(`${apiBase}/me`, {
+          method: "GET",
+          headers,
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          console.warn("/me failed:", res.status);
+          return;
+        }
+
+        const data: Me = await res.json();
+        setMe(data);
+
+        // ให้ inspector default เป็น username ถ้ายังว่างอยู่
+        setInspector((prev) => prev || data.username || "");
+      } catch (err) {
+        console.error("fetch /me error:", err);
       }
-
-      const res = await apiFetch(`${apiBase}/me`, {
-        // const res = await fetch(`${apiBase}/me`, {
-        method: "GET",
-        headers,
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        console.warn("/me failed:", res.status);
-        return;
-      }
-
-      const data: Me = await res.json();
-      setMe(data);
-
-      // ให้ inspector default เป็น username ถ้ายังว่างอยู่
-      setInspector((prev) => prev || data.username || "");
-    } catch (err) {
-      console.error("fetch /me error:", err);
-    }
-  })();
-}, [apiBase]);
+    })();
+  }, [apiBase]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -563,7 +571,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.doc_name || "—",
       id: "name",
-      header: () => "name",
+      header: () => "document name",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
       minSize: 80,
@@ -573,7 +581,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
-      header: () => "issue_id",
+      header: () => "issue id",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
       minSize: 80,
@@ -583,7 +591,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.pm_date,
       id: "date",
-      header: () => "date",
+      header: () => "pm date",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
@@ -709,7 +717,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await apiFetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
-      // const res = await fetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
+        // const res = await fetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
         method: "POST",
         body: fd,
         credentials: "include",
@@ -1032,7 +1040,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               Issue ID
             </Typography> */}
             <Input
-              label="Document Name"
+              label="Document Name / ชื่อเอกสาร"
               value={docName}
               onChange={(e) => setDocName(e.target.value)}
               crossOrigin=""
@@ -1049,7 +1057,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               Issue ID
             </Typography> */}
             <Input
-              label="Issue id"
+              label="Issue id / รหัสเอกสาร"
               value={issueId}
               onChange={(e) => setIssueId(e.target.value)}
               crossOrigin=""
@@ -1072,7 +1080,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               readOnly
             />
           </div>
-          <Input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} label="วันที่" crossOrigin="" />
+          {/* <Input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} label="วันที่" crossOrigin="" /> */}
+          <Input
+            type="date"
+            value={reportDate}
+            max={todayStr}  // ⬅️ จำกัดไม่ให้เลือกเกินวันนี้
+            onChange={(e) => setReportDate(e.target.value)}
+            label="PM Date / วันที่ตรวจสอบ"
+            crossOrigin=""
+          />
           <Typography variant="small" className="tw-text-blue-gray-500">
             ไฟล์ที่เลือก: <strong>{pendingFiles.length}</strong> ไฟล์
           </Typography>

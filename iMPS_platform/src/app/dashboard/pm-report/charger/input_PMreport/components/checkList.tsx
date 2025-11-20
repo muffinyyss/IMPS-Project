@@ -1012,6 +1012,14 @@ export default function ChargerPMForm() {
         // inspector: "",
     });
 
+    const todayStr = useMemo(() => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;       // YYYY-MM-DD (ตามเวลาท้องถิ่น browser)
+    }, []);
+
     /* ---------- PASS/FAIL + remark ---------- */
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
         Object.fromEntries(QUESTIONS.map((q) => [q.key, { pf: "", remark: "" }])) as Record<
@@ -1023,86 +1031,6 @@ export default function ChargerPMForm() {
     /* ---------- measure group (เฉพาะข้อ 17) ---------- */
     const m17 = useMeasure<UnitVoltage>(VOLTAGE1_FIELDS, "V");
 
-    // useEffect(() => {
-    //     if (!stationId || !job.date ) return; // ถ้ามีใน draft แล้วจะไม่ทับ
-
-    //     let canceled = false;
-    //     (async () => {
-    //         try {
-    //             const latest = await fetchLatestIssueIdFromList(stationId, job.date);
-    //             const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-    //             if (!canceled) setJob(prev => ({ ...prev }));
-    //         } catch {
-    //             const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-    //             if (!canceled) setJob(prev => ({ ...prev }));
-    //         }
-    //     })();
-
-    //     return () => { canceled = true; };
-    // }, [stationId, job.date]);
-    // useEffect(() => {
-    //     if (!stationId || !job.date) return;
-
-    //     let canceled = false;
-
-    //     (async () => {
-    //         try {
-    //             const d = new Date(job.date);
-    //             const year = !isNaN(d.getTime())
-    //                 ? d.getFullYear()
-    //                 : new Date().getFullYear();
-
-    //             const u = new URL(`${API_BASE}/pmreport/list`);
-    //             u.searchParams.set("station_id", stationId);
-    //             u.searchParams.set("page", "1");
-    //             u.searchParams.set("pageSize", "200");
-    //             u.searchParams.set("_ts", String(Date.now()));
-
-    //             const token =
-    //                 typeof window !== "undefined"
-    //                     ? localStorage.getItem("access_token") ?? ""
-    //                     : "";
-
-    //             const res = await fetch(u.toString(), {
-    //                 credentials: "include",
-    //                 cache: "no-store",
-    //                 headers: token
-    //                     ? { Authorization: `Bearer ${token}` }
-    //                     : undefined,
-    //             });
-
-    //             if (!res.ok) {
-    //                 console.error("pmreport/list failed:", res.status);
-    //                 return; // ❌ อย่าตั้งเป็น ? ถ้า error
-    //             }
-
-    //             const json = await res.json();
-    //             const items: any[] = Array.isArray(json?.items) ? json.items : [];
-
-    //             // นับเฉพาะรายงานที่ pm_date อยู่ในปีเดียวกัน
-    //             const sameYearCount = items.filter((it) => {
-    //                 const pmDate = it?.pm_date;
-    //                 if (!pmDate || typeof pmDate !== "string") return false;
-    //                 // pm_date: "YYYY-MM-DD"
-    //                 const y = parseInt(pmDate.slice(0, 4), 10);
-    //                 return y === year;
-    //             }).length;
-
-    //             const nextIndex = sameYearCount + 1;
-
-    //             if (!canceled) {
-    //                 setDocName(`${stationId}_${nextIndex}/${year}`);
-    //             }
-    //         } catch (err) {
-    //             console.error("compute docNo error:", err);
-    //             // ❌ ไม่เซ็ตเป็น ? แล้ว ปล่อยให้ docNo = "" จะไปโชว์ "-" แทน
-    //         }
-    //     })();
-
-    //     return () => {
-    //         canceled = true;
-    //     };
-    // }, [stationId, job.date]);
 
     useEffect(() => {
         const token =
@@ -1797,7 +1725,7 @@ export default function ChargerPMForm() {
                             {/* แถวที่ 1 */}
                             <div className="lg:tw-col-span-2">
                                 <Input
-                                    label="Issue id"
+                                    label="Issue Id / รหัสเอกสาร"
                                     value={job.issue_id || "-"}
                                     readOnly
                                     crossOrigin=""
@@ -1819,10 +1747,19 @@ export default function ChargerPMForm() {
                             </div>
 
                             <div className="lg:tw-col-span-2">
-                                <Input
+                                {/* <Input
                                     label="วันที่ตรวจ"
                                     type="date"
                                     value={job.date}
+                                    onChange={(e) => setJob({ ...job, date: e.target.value })}
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                /> */}
+                                <Input
+                                    label="PM Date / วันที่ตรวจสอบ"
+                                    type="date"
+                                    value={job.date}
+                                    max={todayStr}  // ⬅️ จำกัดไม่ให้เลือกเกินวันนี้
                                     onChange={(e) => setJob({ ...job, date: e.target.value })}
                                     crossOrigin=""
                                     containerProps={{ className: "!tw-min-w-0" }}
