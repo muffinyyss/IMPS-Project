@@ -32,6 +32,7 @@ import {
 import { ArrowUpTrayIcon, DocumentArrowDownIcon, EyeIcon } from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/components/checkList";
+import { apiFetch } from "@/utils/api";
 type TData = {
   id?: string;
   doc_name?: string;
@@ -83,8 +84,10 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   };
 
   const [a, b] = await Promise.allSettled([
-    fetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
-    fetch(build(`/${URL_PREFIX}/list`), fetchOpts),
+    apiFetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
+    apiFetch(build(`/${URL_PREFIX}/list`), fetchOpts),
+    // fetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
+    // fetch(build(`/${URL_PREFIX}/list`), fetchOpts),
   ]);
 
   let ids: string[] = [];
@@ -148,7 +151,8 @@ async function fetchPreviewDocName(
       ? localStorage.getItem("access_token") ?? ""
       : "";
 
-  const r = await fetch(u.toString(), {
+  const r = await apiFetch(u.toString(), {
+    // const r = await fetch(u.toString(), {
     credentials: "include",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
@@ -175,7 +179,8 @@ async function fetchLatestDocName(
       ? localStorage.getItem("access_token") ?? ""
       : "";
 
-  const r = await fetch(u.toString(), {
+  // const r = await fetch(u.toString(), {
+  const r = await apiFetch(u.toString(), {
     credentials: "include",
     cache: "no-store",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -236,7 +241,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         if (t) headers.Authorization = `Bearer ${t}`;
       }
 
-      const res = await fetch(`${apiBase}/me`, {
+      const res = await apiFetch(`${apiBase}/me`, {
+        // const res = await fetch(`${apiBase}/me`, {
         method: "GET",
         headers,
         credentials: "include",
@@ -399,8 +405,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       // const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
 
       const [pmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL("/pmreport/list"), FetchOpts),
-        fetch(makeURL("/pmurl/list"), FetchOpts),
+        // fetch(makeURL("/pmreport/list"), FetchOpts),
+        // fetch(makeURL("/pmurl/list"), FetchOpts),
+        apiFetch(makeURL("/pmreport/list"), FetchOpts),
+        apiFetch(makeURL("/pmurl/list"), FetchOpts),
       ]);
 
       let pmItems: any[] = [];
@@ -700,7 +708,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       fd.append("inspector", inspector || "");
       pendingFiles.forEach((f) => fd.append("files", f));
 
-      const res = await fetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
+      const res = await apiFetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
+      // const res = await fetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
         method: "POST",
         body: fd,
         credentials: "include",
