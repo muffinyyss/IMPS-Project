@@ -10,7 +10,7 @@ const baseRoutes = [
     name: "admin",                       // ← จะถูกเปลี่ยนเป็นชื่อคนที่ล็อกอิน
     icon: <i className="fa fa-user" />,
     divider: true,
-    allow: ["admin", "owner"],
+    allow: ["admin", "owner","Technician"],
     pages: [
       {
         layout: "dashboard",
@@ -28,7 +28,7 @@ const baseRoutes = [
       },
     ],
   },
-  { name: "My Charger", icon: <i className="fa fa-bolt" />, path: "/dashboard/chargers", allow: ["admin","owner","Technician","user"] },
+  { name: "My Charger", icon: <i className="fa fa-bolt" />, path: "/dashboard/chargers", allow: ["admin","owner"] },
   { name: "Device",     icon: <i className="fa fa-microchip" />, path: "/dashboard/device",  allow: ["admin","owner"] },
   { name: "Setting",    icon: <i className="fa fa-cog" />,      path: "/dashboard/setting",  allow: ["admin","owner"] },
   { name: "Monitor(CBM)", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm",                   allow: ["admin","owner"] },

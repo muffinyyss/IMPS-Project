@@ -121,6 +121,18 @@ export default function SiteNavbar() {
     `tw-font-medium hover:tw-text-black ${isActive(href) ? "tw-text-black tw-font-semibold" : "tw-text-gray-700"
     }`;
 
+  // เลือก href ของแต่ละเมนูตาม role
+  const resolveHref = (item: NavItem) => {
+    if (item.label === "Dashboard" && user) {
+      const role = user.role?.toLowerCase() ?? "";
+      // รองรับทั้ง technician และ tecnician
+      if (role === "technician" || role === "tecnician") {
+        return "/dashboard/pm-report";
+      }
+    }
+    return item.href;
+  };
+
   const handleLogout = async () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
@@ -149,7 +161,7 @@ export default function SiteNavbar() {
 
         {/* Center nav — แสดงเฉพาะจอใหญ่ */}
         <ul className="tw-hidden md:tw-flex tw-items-center tw-space-x-10">
-          {navItems.map((item) => (
+          {/* {navItems.map((item) => (
             <li key={item.href}>
               {!item.requireAuth || user ? (
                 <Link href={item.href} className={linkClass(item.href)} prefetch={false}>
@@ -166,7 +178,28 @@ export default function SiteNavbar() {
                 </span>
               )}
             </li>
-          ))}
+          ))} */}
+          {navItems.map((item) => {
+            const href = resolveHref(item);
+            return (
+              <li key={item.href}>
+                {!item.requireAuth || user ? (
+                  <Link href={href} className={linkClass(href)} prefetch={false}>
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span
+                    role="link"
+                    aria-disabled="true"
+                    className="tw-text-gray-400 tw-cursor-not-allowed tw-select-none tw-pointer-events-none"
+                    title="Please login first"
+                  >
+                    {item.label}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
 
         {/* Right actions — แสดงเฉพาะจอใหญ่ */}
@@ -239,7 +272,7 @@ export default function SiteNavbar() {
       >
         <div className="tw-px-4 tw-pt-3 tw-pb-4">
           <ul className="tw-space-y-2">
-            {navItems.map((item) => (
+            {/* {navItems.map((item) => (
               <li key={item.href}>
                 {!item.requireAuth || user ? (
                   <Link
@@ -260,7 +293,33 @@ export default function SiteNavbar() {
                   </span>
                 )}
               </li>
-            ))}
+            ))} */}
+            {navItems.map((item) => {
+              const href = resolveHref(item);
+              return (
+                <li key={item.href}>
+                  {!item.requireAuth || user ? (
+                    <Link
+                      href={href}
+                      className={`tw-block tw-py-2 ${linkClass(href)}`}
+                      prefetch={false}
+                    >
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <span
+                      role="link"
+                      aria-disabled="true"
+                      className="tw-block tw-py-2 tw-text-gray-400 tw-cursor-not-allowed tw-select-none tw-pointer-events-none"
+                      title="Please login first"
+                    >
+                      {item.label}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+
           </ul>
 
           <div className="tw-mt-3 tw-border-t tw-border-gray-100 tw-pt-3 tw-flex tw-items-center tw-justify-between">
