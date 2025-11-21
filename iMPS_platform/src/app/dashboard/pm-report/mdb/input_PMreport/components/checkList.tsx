@@ -15,7 +15,6 @@ import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams } from "next/navigation";
 
-
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
 type StationPublic = {
@@ -28,14 +27,15 @@ type StationPublic = {
     status?: boolean;
 };
 
-// async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
-//     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
-//     const res = await fetch(url); // ❌ ไม่ต้องใส่ Authorization
-//     if (res.status === 404) throw new Error("Station not found");
-//     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-//     const json = await res.json();
-//     return json.station ?? json;
-// }
+type Me = {
+    id: string;
+    username: string;
+    email: string;
+    role: string;
+    company: string;
+    tel: string;
+};
+
 async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
     const res = await fetch(url, { cache: "no-store" }); // ✅ กัน cache
@@ -65,7 +65,6 @@ type PhotoItem = {
 
 type Question =
     | { no: number; key: `r${number}`; label: string; kind: "simple"; hasPhoto?: boolean }
-    // | { no: 4; key: "r4"; label: string; kind: "measure"; hasPhoto?: boolean };
     | { no: number; key: `r${number}`; label: string; kind: "measure"; hasPhoto?: boolean };
 
 const VOLTAGE_FIELDS = [
@@ -271,74 +270,6 @@ function InputWithUnit<U extends string>({
     );
 }
 
-// function PassFailRow({
-//     label, value, onChange, remark, onRemarkChange, labels,
-// }: {
-//     label: string;
-//     value: PF;
-//     onChange: (v: Exclude<PF, "">) => void; // PASS | FAIL | NA
-//     remark?: string;
-//     onRemarkChange?: (v: string) => void;
-//     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-// }) {
-//     return (
-//         <div className="tw-space-y-3 tw-py-3">
-//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-//                 <Typography className="tw-font-medium">{label}</Typography>
-
-//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-//                     <Button
-//                         size="sm"
-//                         color="green"
-//                         variant={value === "PASS" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                         onClick={() => onChange("PASS")}
-//                         aria-pressed={value === "PASS"}
-//                     >
-//                         PASS
-//                     </Button>
-
-//                     <Button
-//                         size="sm"
-//                         color="red"
-//                         variant={value === "FAIL" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                         onClick={() => onChange("FAIL")}
-//                         aria-pressed={value === "FAIL"}
-//                     >
-//                         FAIL
-//                     </Button>
-
-//                     <Button
-//                         size="sm"
-//                         color="blue-gray"
-//                         variant={value === "NA" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                         onClick={() => onChange("NA")}
-//                         aria-pressed={value === "NA"}
-//                     >
-//                         N/A
-//                     </Button>
-//                 </div>
-//             </div>
-
-//             {onRemarkChange && (
-//                 <div className="tw-w-full tw-min-w-0">
-//                     <div className="tw-w-full tw-min-w-0">
-//                         <Textarea
-//                             label="หมายเหตุ (ถ้ามี)"
-//                             value={remark || ""}
-//                             onChange={(e) => onRemarkChange(e.target.value)}
-//                             containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
-//                             className="!tw-w-full"
-//                         />
-//                     </div>
-//                 </div>
-//             )}
-//         </div>
-//     );
-// }
-
 function PassFailRow({
     label,
     value,
@@ -347,6 +278,7 @@ function PassFailRow({
     onRemarkChange,
     labels,
     aboveRemark,              // 👈 เพิ่มตรงนี้
+    inlineLeft,
 }: {
     label: string;
     value: PF;
@@ -355,6 +287,7 @@ function PassFailRow({
     onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
     aboveRemark?: React.ReactNode;   // 👈 และเพิ่มใน type ตรงนี้
+    inlineLeft?: React.ReactNode;
 }) {
     const text = {
         PASS: labels?.PASS ?? "PASS",
@@ -362,46 +295,112 @@ function PassFailRow({
         NA: labels?.NA ?? "N/A",
     };
 
-    return (
-        <div className="tw-space-y-3 tw-py-3">
-            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-                <Typography className="tw-font-medium">{label}</Typography>
+    const buttonGroup = (
+        <div className="tw-flex tw-gap-2 tw-ml-auto">
+            <Button
+                size="sm"
+                color="green"
+                variant={value === "PASS" ? "filled" : "outlined"}
+                className="sm:tw-min-w-[84px]"
+                onClick={() => onChange("PASS")}
+            >
+                {text.PASS}
+            </Button>
+            <Button
+                size="sm"
+                color="red"
+                variant={value === "FAIL" ? "filled" : "outlined"}
+                className="sm:tw-min-w-[84px]"
+                onClick={() => onChange("FAIL")}
+            >
+                {text.FAIL}
+            </Button>
+            <Button
+                size="sm"
+                color="blue-gray"
+                variant={value === "NA" ? "filled" : "outlined"}
+                className="sm:tw-min-w-[84px]"
+                onClick={() => onChange("NA")}
+            >
+                {text.NA}
+            </Button>
 
-                <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-                    <Button
-                        size="sm"
-                        color="green"
-                        variant={value === "PASS" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("PASS")}
-                    >
-                        {text.PASS}
-                    </Button>
-                    <Button
-                        size="sm"
-                        color="red"
-                        variant={value === "FAIL" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("FAIL")}
-                    >
-                        {text.FAIL}
-                    </Button>
-                    <Button
-                        size="sm"
-                        color="blue-gray"
-                        variant={value === "NA" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("NA")}
-                    >
-                        {text.NA}
-                    </Button>
+        </div>
+    );
+
+    const buttonsRow = (
+        <div className="tw-flex tw-items-center tw-gap-3 tw-w-full">
+            {inlineLeft && (
+                <div className="tw-flex tw-items-center tw-gap-2">
+                    {inlineLeft}
                 </div>
-            </div>
+            )}
+            {buttonGroup}
+        </div>
+    );
 
-            {onRemarkChange && (
+    return (
+        // <div className="tw-space-y-3 tw-py-3">
+        //     <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+        //         <Typography className="tw-font-medium">{label}</Typography>
+
+        //         <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
+        //             <Button
+        //                 size="sm"
+        //                 color="green"
+        //                 variant={value === "PASS" ? "filled" : "outlined"}
+        //                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+        //                 onClick={() => onChange("PASS")}
+        //             >
+        //                 {text.PASS}
+        //             </Button>
+        //             <Button
+        //                 size="sm"
+        //                 color="red"
+        //                 variant={value === "FAIL" ? "filled" : "outlined"}
+        //                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+        //                 onClick={() => onChange("FAIL")}
+        //             >
+        //                 {text.FAIL}
+        //             </Button>
+        //             <Button
+        //                 size="sm"
+        //                 color="blue-gray"
+        //                 variant={value === "NA" ? "filled" : "outlined"}
+        //                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+        //                 onClick={() => onChange("NA")}
+        //             >
+        //                 {text.NA}
+        //             </Button>
+        //         </div>
+        //     </div>
+
+        //     {onRemarkChange && (
+        //         <div className="tw-w-full tw-min-w-0 tw-space-y-2">
+        //             {/* 👇 รูปจะมาอยู่ตรงนี้ เหนือช่องหมายเหตุ */}
+        //             {aboveRemark}
+
+        //             <Textarea
+        //                 label="หมายเหตุ (ถ้ามี)"
+        //                 value={remark || ""}
+        //                 onChange={(e) => onRemarkChange(e.target.value)}
+        //                 containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
+        //                 className="!tw-w-full"
+        //             />
+        //         </div>
+        //     )}
+        // </div>
+
+        <div className="tw-space-y-3 tw-py-3">
+            <Typography className="tw-font-medium">{label}</Typography>
+
+            {onRemarkChange ? (
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
-                    {/* 👇 รูปจะมาอยู่ตรงนี้ เหนือช่องหมายเหตุ */}
+                    {/* รูปอยู่เหนือปุ่ม */}
                     {aboveRemark}
+
+                    {/* แถว checkbox ซ้าย + ปุ่มขวา */}
+                    {buttonsRow}
 
                     <Textarea
                         label="หมายเหตุ (ถ้ามี)"
@@ -410,6 +409,10 @@ function PassFailRow({
                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
                         className="!tw-w-full"
                     />
+                </div>
+            ) : (
+                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+                    {buttonsRow}
                 </div>
             )}
         </div>
@@ -581,7 +584,6 @@ function PhotoMultiInput({
     );
 }
 
-
 const PM_TYPE_CODE = "MB";
 
 function makePrefix(typeCode: string, dateISO: string) {
@@ -599,6 +601,68 @@ function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string
     const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
     const n = (m ? parseInt(m[1], 10) : 0) + 1;
     return `${prefix}${n.toString().padStart(pad, "0")}`;
+}
+
+function makeDocNameParts(stationId: string, dateISO: string) {
+    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+    const year = d.getFullYear();
+    const prefix = `${stationId}_`;
+    const suffix = `/${year}`;
+    return { year, prefix, suffix };
+}
+
+async function fetchPreviewIssueId(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/mdbpmreport/preview-issueid`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("pm_date", pmDate);
+
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewIssueId failed:", r.status);
+        return null;
+    }
+
+    const j = await r.json();
+    return (j && typeof j.issue_id === "string") ? j.issue_id : null;
+}
+
+async function fetchPreviewDocName(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/mdbpmreport/preview-docname`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("pm_date", pmDate);
+
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewDocName failed:", r.status);
+        return null;
+    }
+
+    const j = await r.json();
+    return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
 
 async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
@@ -637,8 +701,10 @@ async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): P
  * ========================= */
 // export default function CheckList({ onComplete }: CheckListProps) {
 export default function MDBPMMForm() {
+    const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+    const [docName, setDocName] = useState<string>("");
 
     const searchParams = useSearchParams();
     const editId = searchParams.get("edit_id") ?? "";
@@ -660,7 +726,8 @@ export default function MDBPMMForm() {
     const key = useMemo(() => draftKey(stationId), [stationId]);
     // const [สรุปผล, setสรุปผล] = useState<PF>("");
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
-
+    const [inspector, setInspector] = useState<string>("");
+    const [dustFilterChanged, setDustFilterChanged] = useState<boolean>(false);
 
     /* ---------- job info ---------- */
     const [job, setJob] = useState({
@@ -672,6 +739,14 @@ export default function MDBPMMForm() {
         date: "",
         inspector: "",
     });
+
+    const todayStr = useMemo(() => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;       // YYYY-MM-DD (ตามเวลาท้องถิ่น browser)
+    }, []);
 
     /* ---------- PASS/FAIL + remark ---------- */
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
@@ -687,6 +762,38 @@ export default function MDBPMMForm() {
     const m6 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS, "V");
     const m7 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS, "V");
     const m8 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS_CCB, "V");
+
+    useEffect(() => {
+        const token =
+            typeof window !== "undefined"
+                ? localStorage.getItem("access_token") ?? ""
+                : "";
+
+        if (!token) return;
+
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/me`, {
+                    method: "GET",
+                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: "include",
+                });
+
+                if (!res.ok) {
+                    console.warn("fetch /me failed:", res.status);
+                    return;
+                }
+
+                const data: Me = await res.json();
+                setMe(data);
+
+                // ถ้ายังไม่มี inspector ให้ auto-fill เป็น username
+                setInspector((prev) => prev || data.username || "");
+            } catch (err) {
+                console.error("fetch /me error:", err);
+            }
+        })();
+    }, []);
 
 
     useEffect(() => {
@@ -791,41 +898,30 @@ export default function MDBPMMForm() {
         return () => { canceled = true; };
     }, [stationId, job.date]);
 
-    // useEffect(() => {
-    //         if (!stationId || !job.date || job.issue_id) return; // ถ้ามีใน draft แล้วจะไม่ทับ
+    useEffect(() => {
+        if (!stationId || !job.date) return;
 
-    //         let canceled = false;
-    //         (async () => {
-    //             try {
-    //                 const latest = await fetchLatestIssueIdFromList(stationId, job.date);
-    //                 const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-    //                 if (!canceled) setJob(prev => ({ ...prev, issue_id: next }));
-    //             } catch {
-    //                 const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-    //                 if (!canceled) setJob(prev => ({ ...prev, issue_id: fallback }));
-    //             }
-    //         })();
+        let canceled = false;
 
-    //         return () => { canceled = true; };
-    //     }, [stationId, job.date, job.issue_id]);
+        (async () => {
+            try {
+                const preview = await fetchPreviewDocName(stationId, job.date);
 
-    // useEffect(() => {
-    //         if (!stationId || !job.date ) return; // ถ้ามีใน draft แล้วจะไม่ทับ
+                if (!canceled && preview) {
+                    // ถ้าเป็นหน้า edit แล้วดึง doc_name เดิมจาก DB มาอยู่แล้ว
+                    // จะไม่บังคับทับ ถ้าอยากกันตรงนี้เพิ่มเงื่อนไข isEdit ได้
+                    setDocName(preview);
+                }
+            } catch (err) {
+                console.error("preview docName error:", err);
+                // ถ้า error ปล่อยให้ docName ว่างไว้ → ฝั่ง backend จะ gen เองตอน submit อยู่แล้ว
+            }
+        })();
 
-    //         let canceled = false;
-    //         (async () => {
-    //             try {
-    //                 const latest = await fetchLatestIssueIdFromList(stationId, job.date);
-    //                 const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-    //                 if (!canceled) setJob(prev => ({ ...prev, issue_id: next }));
-    //             } catch {
-    //                 const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-    //                 if (!canceled) setJob(prev => ({ ...prev, issue_id: fallback }));
-    //             }
-    //         })();
-
-    //         return () => { canceled = true; };
-    //     }, [stationId, job.date, job.issue_id]);
+        return () => {
+            canceled = true;
+        };
+    }, [stationId, job.date]);
 
     const makePhotoSetter =
         (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> =>
@@ -878,15 +974,6 @@ export default function MDBPMMForm() {
         [rows, PF_REQUIRED_KEYS]
     );
 
-    // อินพุตที่บังคับ: เฉพาะข้อ 4
-    // const missingInputs = useMemo(() => {
-    //     const r: Record<number, string[]> = {};
-    //     r[4] = VOLTAGE_FIELDS.filter((k) => {
-    //         const v = m4.state?.[k]?.value;
-    //         return !String(v ?? "").trim();
-    //     });
-    //     return r;
-    // }, [m4.state]);
     const missingInputs = useMemo(() => {
         const r: Record<number, string[]> = {};
         const check = (s: typeof m4.state, keys: readonly string[]) =>
@@ -924,11 +1011,6 @@ export default function MDBPMMForm() {
         allRequiredInputsFilled &&
         isSummaryFilled;
 
-
-    // useEffect(() => {
-    //     onComplete(allPFAnswered);
-    // }, [allPFAnswered, onComplete]);
-
     /* ---------- unit sync ---------- */
     const handleUnitChange = (no: number, key: string, u: UnitVoltage) => {
         const m = MEASURE_BY_NO[no];
@@ -961,58 +1043,22 @@ export default function MDBPMMForm() {
         );
     };
 
-    // const renderQuestionBlock = (q: Question) => {
-    //     const hasMeasure = q.kind === "measure" && FIELD_GROUPS[q.no];
-    //     const subtitle = FIELD_GROUPS[q.no]?.note;
-
-    //     return (
-    //         <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
-    //             <PassFailRow
-    //                 label="ผลการทดสอบ"
-    //                 value={rows[q.key].pf}
-    //                 onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
-    //                 remark={rows[q.key].remark}
-    //                 onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-    //             />
-
-    //             {hasMeasure && renderMeasureGrid(q.no)}
-
-    //             {/* แสดงช่องกรอก CP เฉพาะข้อ 15 */}
-    //             {q.no === 15 && (
-    //                 <div className="tw-pt-1 tw-space-y-2">
-    //                     {/* <Typography variant="small" className="!tw-text-blue-gray-600 tw-font-medium">
-    //                         ค่าที่วัด
-    //                     </Typography> */}
-    //                     <div className="tw-max-w-xs">
-    //                         <InputWithUnit<UnitVoltage>
-    //                             label="CP"
-    //                             value={cp.value}
-    //                             unit={cp.unit}
-    //                             units={["V"] as const} // ล็อกให้เลือกได้เฉพาะ V
-    //                             onValueChange={(v) => setCp((s) => ({ ...s, value: v }))}
-    //                             onUnitChange={(u) => setCp((s) => ({ ...s, unit: u }))}
-    //                         />
-    //                     </div>
-    //                 </div>
-    //             )}
-
-    //             {q.hasPhoto && (
-    //                 <div className="tw-pt-2 tw-pb-4 tw-border-t tw-border-blue-gray-50">
-    //                     <PhotoMultiInput
-    //                         label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-    //                         photos={photos[q.no] || []}
-    //                         setPhotos={makePhotoSetter(q.no)}
-    //                         max={3}
-    //                     />
-    //                 </div>
-    //             )}
-
-    //         </SectionCard>
-    //     );
-    // };
     const renderQuestionBlock = (q: Question) => {
         const hasMeasure = q.kind === "measure" && FIELD_GROUPS[q.no];
         const subtitle = FIELD_GROUPS[q.no]?.note;
+
+        const inlineLeft =
+            q.no === 11 ? (
+                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
+                    <input
+                        type="checkbox"
+                        className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                        checked={dustFilterChanged}
+                        onChange={(e) => setDustFilterChanged(e.target.checked)}
+                    />
+                    <span>เปลี่ยนแผ่นกรองระบายอากาศ</span>
+                </label>
+            ) : null;
 
         return (
             <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
@@ -1038,24 +1084,10 @@ export default function MDBPMMForm() {
                             </div>
                         )
                     }
+                    inlineLeft={inlineLeft}
                 />
 
                 {hasMeasure && renderMeasureGrid(q.no)}
-
-                {q.no === 15 && (
-                    <div className="tw-pt-1 tw-space-y-2">
-                        <div className="tw-max-w-xs">
-                            <InputWithUnit<UnitVoltage>
-                                label="CP"
-                                value={cp.value}
-                                unit={cp.unit}
-                                units={["V"] as const}
-                                onValueChange={(v) => setCp((s) => ({ ...s, value: v }))}
-                                onUnitChange={(u) => setCp((s) => ({ ...s, unit: u }))}
-                            />
-                        </div>
-                    </div>
-                )}
             </SectionCard>
         );
     };
@@ -1072,7 +1104,7 @@ export default function MDBPMMForm() {
     useDebouncedEffect(() => {
         if (!stationId || !draftId) return;
         saveDraftLocal(key, {
-            job,
+            job: { ...job, issue_id: "" },
             rows,
             cp,
             m4: m4.state,
@@ -1105,59 +1137,6 @@ export default function MDBPMMForm() {
         alert("บันทึกชั่วคราวไว้ในเครื่องแล้ว (Offline Draft)");
     };
 
-    // const onFinalSave = () => {
-    //     console.log({
-    //         job,
-    //         rows,
-    //         m17: m17.state,
-    //         photos,
-    //         summary
-    //     });
-    //     alert("บันทึกเรียบร้อย (เดโม่) – ดูข้อมูลใน console");
-    // };
-
-    // const onFinalSave = async () => {
-    //     if (!stationId) {
-    //         alert("ยังไม่ทราบ station_id");
-    //         return;
-    //     }
-    //     if (submitting) return;
-    //     setSubmitting(true);
-    //     try {
-    //         // TODO: แทน endpoint จริงของคุณ
-    //         const token =
-    //             typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
-    //         const res = await fetch(`${API_BASE}/pmreport/submit`, {
-    //             method: "POST",
-    //             // headers: { "Content-Type": "application/json" },
-    //             headers: {
-    //                 "Content-Type": "application/json",
-    //                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    //             },
-    //             credentials: "include",
-    //             body: JSON.stringify({
-    //                 station_id: stationId,
-    //                 job,
-    //                 rows,
-    //                 measures: { m17: m17.state, cp },
-    //                 summary,
-    //                 // รูปภาพ: แนะนำอัปโหลดแยกเป็น /upload แล้วแนบรหัสไฟล์ใน payload นี้
-    //             }),
-    //         });
-
-    //         if (!res.ok) throw new Error(await res.text());
-
-    //         // สำเร็จ → ล้างดราฟต์ + กลับหน้า list พร้อม flag
-    //         clearDraftLocal(key);
-    //         router.replace(
-    //             `/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`
-    //         );
-    //     } catch (err: any) {
-    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
-    //     } finally {
-    //         setSubmitting(false);
-    //     }
-    // };
     async function uploadGroupPhotos(
         reportId: string,
         stationId: string,
@@ -1196,12 +1175,15 @@ export default function MDBPMMForm() {
             const payload = {
                 station_id: stationId,
                 issue_id: issueIdFromJob,
-                job,
+                job: jobWithoutIssueId,
+                inspector,
                 rows,
                 measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
                 summary,
                 pm_date,
+                doc_name: docName,
                 ...(summaryCheck ? { summaryCheck } : {}),
+                dust_filter: dustFilterChanged ? "yes" : "no",
             };
             // 1) สร้างรายงาน (submit)
             // const res = await fetch(`${API_BASE}/pmreport/submit`, {
@@ -1215,7 +1197,14 @@ export default function MDBPMMForm() {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            const { report_id } = await res.json();
+            // const { report_id } = await res.json();
+            const { report_id, doc_name } = await res.json() as {
+                report_id: string;
+                doc_name?: string;
+            };
+            if (doc_name) {
+                setDocName(doc_name);
+            }
 
             // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group "g{no}"
             const photoNos = Object.keys(photos).map(n => Number(n));
@@ -1294,21 +1283,16 @@ export default function MDBPMMForm() {
                             </div>
                         </div>
 
-                        {/* ขวา: Issue ID ให้เด่น */}
-                        {/* <div className="tw-flex tw-flex-col tw-items-end">
-                            <div
-                                className="
-                                    tw-inline-flex tw-items-center
-                                    tw-rounded-lg tw-border tw-border-gray-500
-                                    tw-bg-gray-50 tw-px-3 tw-py-1.5
-                                    tw-shadow-[0_1px_3px_rgba(0,0,0,0.12)]
-                                    "
-                            >
-                                <span className="tw-text-[16px] tw-font-semibold tw-tracking-wide tw-text-gray-700">
-                                    Issue ID : <u>{job.issue_id || "-"}</u>
-                                </span>
+                        {/* ขวาสุด: ชื่อเอกสาร / เลขที่เอกสาร */}
+                        <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
+                            <div className="tw-font-semibold">
+                                Document Name.
                             </div>
-                        </div> */}
+                            <div>
+                                {docName || "-"}
+                            </div>
+
+                        </div>
                     </div>
 
                     {/* BODY */}
@@ -1337,9 +1321,10 @@ export default function MDBPMMForm() {
                             </div>
                             <div className="lg:tw-col-span-2">
                                 <Input
-                                    label="วันที่ตรวจ"
+                                    label="PM Date / วันที่ตรวจสอบ"
                                     type="date"
                                     value={job.date}
+                                    max={todayStr}
                                     onChange={(e) => setJob({ ...job, date: e.target.value })}
                                     crossOrigin=""
                                     containerProps={{ className: "!tw-min-w-0" }}
@@ -1354,17 +1339,6 @@ export default function MDBPMMForm() {
                         [17, 17], // มีกริดวัดค่า
                         [18, 19],
                     ].map(([start, end]) => (
-                        // <Card key={`${start}-${end}`} className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                        //     {start === 1 && (
-                        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                        //             <Typography variant="h6">Checklist</Typography>
-                        //         </CardHeader>
-                        //     )}
-                        //     <CardBody className="tw-space-y-1">
-                        //         {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
-                        //     </CardBody>
-                        // </Card>
-
                         <CardBody className="tw-space-y-2">
                             {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
                         </CardBody>
@@ -1472,33 +1446,6 @@ export default function MDBPMMForm() {
                             )}
                         </div>
 
-
-                        {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                     {!canFinalSave ? (
-                         <Button
-                             variant="outlined"
-                             color="blue-gray"
-                             type="button"
-                         // onClick={onSave}
-                         // title={
-                         //     !allPhotosAttached
-                         //         ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
-                         //         : "บันทึกชั่วคราว"
-                         // }
-                         >
-                             บันทึก
-                         </Button>
-                     ) : (
-                         // <Button color="blue" type="button" onClick={onFinalSave}>
-                         //     บันทึก
-                         // </Button>
-                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                      <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
-                                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
-                             </Button>
-                        </div>
-                     )}
-                 </div> */}
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
                             <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
                                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
@@ -1510,221 +1457,5 @@ export default function MDBPMMForm() {
 
             </form>
         </section>
-        // <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
-        //     {/* Job Info */}
-        //     <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-        //         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
-
-        //             {/* <Input
-        //                 label="เครื่องประจุไฟฟ้าที่"
-        //                 value={job.chargerNo}
-        //                 onChange={(e) => setJob({ ...job, chargerNo: e.target.value })}
-        //                 crossOrigin=""
-        //                 readOnly
-        //                 className="!tw-bg-blue-gray-50"
-        //             /> */}
-        //             <Input
-        //                 label="Issue id"
-        //                 value={job.issue_id || "-"}
-        //                 readOnly
-        //                 // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
-        //                 crossOrigin=""
-        //                 containerProps={{ className: "!tw-min-w-0" }}
-        //                 className="!tw-w-full !tw-bg-blue-gray-50"
-        //             />
-
-        //             <Input
-        //                 label="Location / สถานที่"
-        //                 value={job.station_name}
-        //                 onChange={(e) => setJob({ ...job, station_name: e.target.value })}
-        //                 crossOrigin=""
-        //                 className="!tw-bg-blue-gray-50"
-        //                 readOnly
-        //             />
-
-        //             {/* <Input
-        //                 label="SN / หมายเลขเครื่อง"
-        //                 value={job.sn}
-        //                 onChange={(e) => setJob({ ...job, sn: e.target.value })}
-        //                 crossOrigin=""
-        //                 className="!tw-bg-blue-gray-50"
-        //                 readOnly
-        //             /> */}
-
-        //             {/* <Input
-        //                 label="Model / รุ่น"
-        //                 value={job.model}
-        //                 onChange={(e) => setJob({ ...job, model: e.target.value })}
-        //                 crossOrigin=""
-        //                 className="!tw-bg-blue-gray-50"
-        //                 readOnly
-        //             /> */}
-
-        //             <Input
-        //                 label="วันที่ตรวจ"
-        //                 type="date"
-        //                 value={job.date}
-        //                 onChange={(e) => setJob({ ...job, date: e.target.value })}
-        //                 crossOrigin=""
-        //             />
-        //         </div>
-        //     </SectionCard>
-
-
-
-        //     {/* จัดช่วงการเรนเดอร์เป็นบล็อก ๆ */}
-        //     {[
-        //         [1, 5],
-        //         [6, 11],
-        //     ].map(([start, end]) => (
-        //         <Card key={`${start}-${end}`} className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-        //             {start === 1 && (
-        //                 <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-        //                     <Typography variant="h6">Checklist</Typography>
-        //                 </CardHeader>
-        //             )}
-        //             <CardBody className="tw-space-y-1">
-        //                 {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
-        //             </CardBody>
-        //         </Card>
-        //     ))}
-
-        //     <SectionCard title="Comment">
-        //         <div className="tw-space-y-2">
-        //             <Textarea
-        //                 label="Comment"
-        //                 value={summary}
-        //                 onChange={(e) => setSummary(e.target.value)}
-        //                 rows={4}
-        //                 required
-        //                 autoComplete="off"
-        //                 containerProps={{ className: "!tw-min-w-0" }}
-        //                 className="!tw-w-full resize-none"
-        //             />
-        //             <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-        //                 {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-        //             </Typography>
-        //         </div>
-
-        //         <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-        //             <PassFailRow
-        //                 label="สรุปผลการตรวจสอบ"
-        //                 value={summaryCheck}
-        //                 onChange={(v) => setSummaryCheck(v)}
-        //                 labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
-        //                     PASS: "Pass : ผ่าน",
-        //                     FAIL: "Fail : ไม่ผ่าน",
-        //                     NA: "N/A : ไม่พบ",
-        //                 }}
-        //             />
-        //         </div>
-        //     </SectionCard>
-
-        //     {/* Summary & Actions */}
-        //     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-        //         <div
-        //             className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-        //                 }`}
-        //         >
-        //             <Typography className="tw-font-medium">
-        //                 1) สถานะ PASS / FAIL / N/A (ยกเว้นข้อ 4–7 ซึ่งเป็นชุดวัดค่า)
-        //             </Typography>
-
-        //             {allPFAnswered ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">
-        //                     ครบเรียบร้อย ✅
-        //                 </Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">
-        //                     ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}
-        //                 </Typography>
-        //             )}
-        //         </div>
-
-        //         <div
-        //             className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-        //                 }`}
-        //         >
-        //             <Typography className="tw-font-medium">2) อินพุตข้อ 4–7</Typography>
-        //             {allRequiredInputsFilled ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">
-        //                     ครบเรียบร้อย ✅
-        //                 </Typography>
-        //             ) : (
-        //                 <div className="tw-space-y-1">
-        //                     <Typography variant="small" className="!tw-text-amber-700">
-        //                         ยังขาด:
-        //                     </Typography>
-        //                     <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
-        //                         {missingInputsTextLines.map((line, i) => (
-        //                             <li key={i}>{line}</li>
-        //                         ))}
-        //                     </ul>
-        //                 </div>
-        //             )}
-        //         </div>
-
-        //         <div
-        //             className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-        //                 }`}
-        //         >
-        //             <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)</Typography>
-        //             {allPhotosAttached ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">
-        //                     ครบเรียบร้อย ✅
-        //                 </Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">
-        //                     ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}
-        //                 </Typography>
-        //             )}
-        //         </div>
-
-        //         <div
-        //             className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-        //                 }`}
-        //         >
-        //             <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
-        //             {isSummaryFilled ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-        //             )}
-        //         </div>
-
-
-        //         {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-        //             {!canFinalSave ? (
-        //                 <Button
-        //                     variant="outlined"
-        //                     color="blue-gray"
-        //                     type="button"
-        //                 // onClick={onSave}
-        //                 // title={
-        //                 //     !allPhotosAttached
-        //                 //         ? `ต้องแนบรูปให้ครบก่อน → ข้อที่ยังขาด: ${missingPhotoItems.join(", ")}`
-        //                 //         : "บันทึกชั่วคราว"
-        //                 // }
-        //                 >
-        //                     บันทึก
-        //                 </Button>
-        //             ) : (
-        //                 // <Button color="blue" type="button" onClick={onFinalSave}>
-        //                 //     บันทึก
-        //                 // </Button>
-        //                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-        //                     <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
-        //                         {submitting ? "กำลังบันทึก..." : "บันทึก"}
-        //                     </Button>
-        //                 </div>
-        //             )}
-        //         </div> */}
-        //         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-        //             <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
-        //                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
-        //             </Button>
-        //         </div>
-        //     </CardFooter>
-        // </section>
     );
 }

@@ -111,7 +111,6 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
 }
 
 /* ---------- NEW: helper สำหรับ doc_name ---------- */
-
 function makeDocNameParts(stationId: string, dateISO: string) {
   const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
   const year = d.getFullYear();
@@ -136,7 +135,6 @@ function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: strin
 
   return `${prefix}${nextIndex}${suffix}`;
 }
-
 
 async function fetchPreviewDocName(
   stationId: string,
@@ -304,14 +302,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     cache: "no-store",
   };
 
-  // function thDate(iso?: string) {
-  //   if (!iso) return "-";
-  //   return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
-  //     day: "2-digit",
-  //     month: "2-digit",
-  //     year: "numeric",
-  //   });
-  // }
   function thDate(iso?: string) {
     if (!iso) return "-";
 
@@ -360,13 +350,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
     return `${apiBase}/${s}`;
   }
-
-  // const addHref = useMemo(() => {
-  //   if (!stationId) return "/dashboard/pm-report/charger/input_PMreport";
-  //   const p = new URLSearchParams({ station_id: stationId });
-  //   return `/dashboard/pm-report/charger/input_PMreport?${p.toString()}`;
-  // }, [stationId]);
-
 
   function normalizeAnyDate(v: any): string {
     if (!v) return "";
