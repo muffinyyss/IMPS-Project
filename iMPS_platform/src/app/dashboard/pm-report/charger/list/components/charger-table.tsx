@@ -582,9 +582,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.inspector,
+      accessorFn: (row) => row.inspector || "-",
       id: "inspector",
-      header: () => "inspector",
+      header: () => "inspector" ,
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
@@ -617,19 +617,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
             >
               <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
             </a>
-            {/*
-            <a
-              aria-label="Download"
-              href={downloadHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-              title="Download"
-            >
-              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-            </a>
-            */}
           </div>
         );
       },
@@ -854,24 +841,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
                   <span className="tw-text-sm">Upload</span>
                 </Button>
-
-                {/* <Link href={addHref} onClick={(e) => { if (!stationId) e.preventDefault(); }}>
-                  <Button
-                    size="lg"
-                    disabled={!stationId}
-                    className={`
-                      !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
-                      tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                      ${!stationId
-                        ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                        : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
-                      tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                      focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                    `}
-                  >
-                    +Add
-                  </Button>
-                </Link> */}
                 <Button
                   size="lg"
                   onClick={goAdd}
