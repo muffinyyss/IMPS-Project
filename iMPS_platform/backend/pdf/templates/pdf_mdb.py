@@ -795,18 +795,16 @@ def _draw_job_info_block(
     y: float,
     w: float,
     station_name: str,
-    model: str,
-    sn: str,
     pm_date: str,
 ) -> float:
     row_h = 8.5
     col_w = w / 2.0
     label_w = 30
-    box_h = row_h * 2
+    box_h = row_h
     pdf.set_line_width(LINE_W_INNER)
     pdf.rect(x, y, w, box_h)
     pdf.line(x + col_w, y, x + col_w, y + box_h)
-    pdf.line(x, y + row_h, x + w, y + row_h)
+    # pdf.line(x, y + row_h, x + w, y + row_h)
 
     def _item(x0, y0, label, value):
         pdf.set_xy(x0 + 2, y0 + 1.5)
@@ -817,11 +815,10 @@ def _draw_job_info_block(
         pdf.cell(col_w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
 
     _item(x, y, "Station", station_name)
-    _item(x + col_w, y, "Serial No.", sn)
-    _item(x, y + row_h, "Model", model)
-    _item(x + col_w, y + row_h, "PM Date", pm_date)
+    _item(x + col_w, y, "PM Date", pm_date)
 
     return y + box_h
+
 
 
 # -------------------- สร้างเอกสาร --------------------
@@ -875,7 +872,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y += 10
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date)
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
 
     # ตารางรายการ
     x_table = x0 + EDGE_ALIGN_FIX
@@ -1082,7 +1079,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y += 10
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date)
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
     
     # photo
     pdf.set_xy(x0, y)
