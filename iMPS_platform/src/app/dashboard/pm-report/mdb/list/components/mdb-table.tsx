@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+// import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   getCoreRowModel,
@@ -32,7 +32,7 @@ type TData = {
   doc_name?: string;
   issue_id?: string;
   pm_date: string;
-  name: string;      // วันที่ (TH) สำหรับแสดงผล
+  // name: string;      // วันที่ (TH) สำหรับแสดงผล
   position: string;  // YYYY-MM-DD สำหรับ sort
   office: string;    // URL ไฟล์หรือ endpoint /pdf/mdb/{id}/export
   inspector?: string;
@@ -559,7 +559,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
-      header: () => "issue_id",
+      header: () => "issue id",
       cell: (info) => info.getValue() as React.ReactNode,
       size: 140,
       minSize: 100,
@@ -612,19 +612,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
             >
               <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
             </a>
-            {/*
-            <a
-              aria-label="Download"
-              href={downloadHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-              title="Download"
-            >
-              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-            </a>
-            */}
           </div>
         );
       },

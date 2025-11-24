@@ -20,21 +20,26 @@ import { useRouter, useSearchParams } from "next/navigation";
  * ========================= */
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
+
 type StationPublic = {
     station_id: string;
     station_name: string;
-    SN?: string;
-    WO?: string;
-    chargeBoxID?: string;
-    model?: string;
+    // SN?: string;
+    // WO?: string;
+    // chargeBoxID?: string;
+    // model?: string;
     status?: boolean;
 };
 
-type CheckListProps = {
-    onComplete: (status: boolean) => void;
-    onNext?: () => void;
-    onPrev?: () => void;
+type Me = {
+    id: string;
+    username: string;
+    email: string;
+    role: string;
+    company: string;
+    tel: string;
 };
+
 async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
     const res = await fetch(url, { cache: "no-store" });
@@ -183,15 +188,6 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
  * ========================= */
 function SectionCard({ title, subtitle, children }: { title?: string; subtitle?: string; children: React.ReactNode }) {
     return (
-        // <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-        //     {(title || subtitle) && (
-        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-        //             {title && <Typography variant="h6">{title}</Typography>}
-        //             {subtitle && <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography>}
-        //         </CardHeader>
-        //     )}
-        //     <CardBody className="tw-space-y-4">{children}</CardBody>
-        // </Card>
         <>
             {/* Title นอกกรอบการ์ด */}
             {title && (
@@ -261,32 +257,6 @@ function InputWithUnit<U extends string>({
     );
 }
 
-// function PassFailRow({
-//     label, value, onChange, remark, onRemarkChange, labels,
-// }: {
-//     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void; labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-// }) {
-//     return (
-//         <div className="tw-space-y-3 tw-py-3">
-//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-//                 <Typography className="tw-font-medium">{label}</Typography>
-
-//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-//                     <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>PASS</Button>
-//                     <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>FAIL</Button>
-//                     <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>N/A</Button>
-//                 </div>
-//             </div>
-
-//             {onRemarkChange && (
-//                 <div className="tw-w-full tw-min-w-0">
-//                     <Textarea label="หมายเหตุ (ถ้ามี)" value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
-//                 </div>
-//             )}
-//         </div>
-//     );
-// }
-
 function PassFailRow({
     label,
     value,
@@ -295,6 +265,7 @@ function PassFailRow({
     onRemarkChange,
     labels,
     aboveRemark,              // 👈 เพิ่มตรงนี้
+    inlineLeft,
 }: {
     label: string;
     value: PF;
@@ -303,6 +274,7 @@ function PassFailRow({
     onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
     aboveRemark?: React.ReactNode;   // 👈 และเพิ่มใน type ตรงนี้
+    inlineLeft?: React.ReactNode;
 }) {
     const text = {
         PASS: labels?.PASS ?? "PASS",
@@ -310,46 +282,112 @@ function PassFailRow({
         NA: labels?.NA ?? "N/A",
     };
 
-    return (
-        <div className="tw-space-y-3 tw-py-3">
-            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-                <Typography className="tw-font-medium">{label}</Typography>
+    const buttonGroup = (
+        <div className="tw-flex tw-gap-2 tw-ml-auto">
+            <Button
+                size="sm"
+                color="green"
+                variant={value === "PASS" ? "filled" : "outlined"}
+                className="sm:tw-min-w-[84px]"
+                onClick={() => onChange("PASS")}
+            >
+                {text.PASS}
+            </Button>
+            <Button
+                size="sm"
+                color="red"
+                variant={value === "FAIL" ? "filled" : "outlined"}
+                className="sm:tw-min-w-[84px]"
+                onClick={() => onChange("FAIL")}
+            >
+                {text.FAIL}
+            </Button>
+            <Button
+                size="sm"
+                color="blue-gray"
+                variant={value === "NA" ? "filled" : "outlined"}
+                className="sm:tw-min-w-[84px]"
+                onClick={() => onChange("NA")}
+            >
+                {text.NA}
+            </Button>
 
-                <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-                    <Button
-                        size="sm"
-                        color="green"
-                        variant={value === "PASS" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("PASS")}
-                    >
-                        {text.PASS}
-                    </Button>
-                    <Button
-                        size="sm"
-                        color="red"
-                        variant={value === "FAIL" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("FAIL")}
-                    >
-                        {text.FAIL}
-                    </Button>
-                    <Button
-                        size="sm"
-                        color="blue-gray"
-                        variant={value === "NA" ? "filled" : "outlined"}
-                        className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-                        onClick={() => onChange("NA")}
-                    >
-                        {text.NA}
-                    </Button>
+        </div>
+    );
+
+    const buttonsRow = (
+        <div className="tw-flex tw-items-center tw-gap-3 tw-w-full">
+            {inlineLeft && (
+                <div className="tw-flex tw-items-center tw-gap-2">
+                    {inlineLeft}
                 </div>
-            </div>
+            )}
+            {buttonGroup}
+        </div>
+    );
 
-            {onRemarkChange && (
+    return (
+        // <div className="tw-space-y-3 tw-py-3">
+        //     <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+        //         <Typography className="tw-font-medium">{label}</Typography>
+
+        //         <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
+        //             <Button
+        //                 size="sm"
+        //                 color="green"
+        //                 variant={value === "PASS" ? "filled" : "outlined"}
+        //                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+        //                 onClick={() => onChange("PASS")}
+        //             >
+        //                 {text.PASS}
+        //             </Button>
+        //             <Button
+        //                 size="sm"
+        //                 color="red"
+        //                 variant={value === "FAIL" ? "filled" : "outlined"}
+        //                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+        //                 onClick={() => onChange("FAIL")}
+        //             >
+        //                 {text.FAIL}
+        //             </Button>
+        //             <Button
+        //                 size="sm"
+        //                 color="blue-gray"
+        //                 variant={value === "NA" ? "filled" : "outlined"}
+        //                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
+        //                 onClick={() => onChange("NA")}
+        //             >
+        //                 {text.NA}
+        //             </Button>
+        //         </div>
+        //     </div>
+
+        //     {onRemarkChange && (
+        //         <div className="tw-w-full tw-min-w-0 tw-space-y-2">
+        //             {/* 👇 รูปจะมาอยู่ตรงนี้ เหนือช่องหมายเหตุ */}
+        //             {aboveRemark}
+
+        //             <Textarea
+        //                 label="หมายเหตุ (ถ้ามี)"
+        //                 value={remark || ""}
+        //                 onChange={(e) => onRemarkChange(e.target.value)}
+        //                 containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
+        //                 className="!tw-w-full"
+        //             />
+        //         </div>
+        //     )}
+        // </div>
+
+        <div className="tw-space-y-3 tw-py-3">
+            <Typography className="tw-font-medium">{label}</Typography>
+
+            {onRemarkChange ? (
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
-                    {/* 👇 รูปจะมาอยู่ตรงนี้ เหนือช่องหมายเหตุ */}
+                    {/* รูปอยู่เหนือปุ่ม */}
                     {aboveRemark}
+
+                    {/* แถว checkbox ซ้าย + ปุ่มขวา */}
+                    {buttonsRow}
 
                     <Textarea
                         label="หมายเหตุ (ถ้ามี)"
@@ -358,6 +396,10 @@ function PassFailRow({
                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
                         className="!tw-w-full"
                     />
+                </div>
+            ) : (
+                <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
+                    {buttonsRow}
                 </div>
             )}
         </div>
@@ -396,34 +438,6 @@ function PhotoMultiInput({
     };
 
     return (
-        // <div className="tw-space-y-3">
-        //     {label && <Typography className="tw-font-medium">{label}</Typography>}
-        //     <div className="tw-flex tw-flex-wrap tw-gap-2">
-        //         <Button size="sm" color="blue" variant="outlined" onClick={handlePick}>แนบรูป / ถ่ายรูป</Button>
-        //         <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-        //             แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
-        //         </Typography>
-        //     </div>
-        //     <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => handleFiles(e.target.files)} />
-        //     {photos.length > 0 ? (
-        //         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-        //             {photos.map((p) => (
-        //                 <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col">
-        //                     <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
-        //                         {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}
-        //                     </div>
-        //                     <div className="tw-p-2 tw-space-y-2">
-        //                         <div className="tw-flex tw-justify-end">
-        //                             <Button size="sm" color="red" variant="text" onClick={() => handleRemove(p.id)}>ลบรูป</Button>
-        //                         </div>
-        //                     </div>
-        //                 </div>
-        //             ))}
-        //         </div>
-        //     ) : (
-        //         <Typography variant="small" className="!tw-text-blue-gray-500">ยังไม่มีรูปแนบ</Typography>
-        //     )}
-        // </div>
         <div className="tw-space-y-3">
             {/* แถวบน: label + ปุ่มแนบรูป */}
             <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
@@ -504,52 +518,61 @@ function PhotoMultiInput({
 
 const PM_TYPE_CODE = "CC";
 
-function makePrefix(typeCode: string, dateISO: string) {
-    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-    const yy = String(d.getFullYear()).slice(2);
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    return `PM-${typeCode}-${yy}${mm}-`; // ตัวอย่าง: PM-CG-2511-
-}
 
-function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
-    const prefix = makePrefix(typeCode, dateISO);
-    const s = String(latestFromDb || "").trim();
-    if (!s || !s.startsWith(prefix)) return `${prefix}01`;     // เริ่มที่ 01 ถ้ายังไม่มีของเดือนนี้
-    const m = s.match(/(\d+)$/);
-    const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
-    const n = (m ? parseInt(m[1], 10) : 0) + 1;
-    return `${prefix}${n.toString().padStart(pad, "0")}`;
-}
 
-async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/ccbpmreport/list`);
+async function fetchPreviewIssueId(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/ccbpmreport/preview-issueid`);
     u.searchParams.set("station_id", stationId);
-    u.searchParams.set("page", "1");
-    u.searchParams.set("pageSize", "50");
-    u.searchParams.set("_ts", String(Date.now()));
+    u.searchParams.set("pm_date", pmDate);
 
-    const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
-    if (!r.ok) return null;
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewIssueId failed:", r.status);
+        return null;
+    }
 
     const j = await r.json();
-    const items: any[] = Array.isArray(j?.items) ? j.items : [];
-    if (!items.length) return null;
+    return (j && typeof j.issue_id === "string") ? j.issue_id : null;
+}
 
-    const prefix = makePrefix(PM_TYPE_CODE, dateISO);
 
-    // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
-    const samePrefix = items
-        .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
-        .filter(iid => iid.startsWith(prefix));
+async function fetchPreviewDocName(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/ccbpmreport/preview-docname`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("pm_date", pmDate);
 
-    if (!samePrefix.length) return null;
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
 
-    // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
-    const toTailNum = (iid: string) => {
-        const m = iid.match(/(\d+)$/);
-        return m ? parseInt(m[1], 10) : -1;
-    };
-    return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewDocName failed:", r.status);
+        return null;
+    }
+
+    const j = await r.json();
+    return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
 
 /* =========================
@@ -557,11 +580,14 @@ async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): P
  * ========================= */
 // export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps) {
 export default function CCBPMReport() {
+    const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+    const [docName, setDocName] = useState<string>("");
 
     const searchParams = useSearchParams();
     const editId = searchParams.get("edit_id") ?? "";
+
     const PM_PREFIX = "ccbpmreport";
 
     /* ---------- photos per question ---------- */
@@ -577,25 +603,36 @@ export default function CCBPMReport() {
     const [draftId, setDraftId] = useState<string | null>(null);
     // const [สรุปผล, setสรุปผล] = useState<PF>("");
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
-
-
-    // const key = useMemo(
-    //     () => draftKeyCCB(stationId, draftId ?? "default"),
-    //     [stationId, draftId]
-    // );
+    const [inspector, setInspector] = useState<string>("");
 
     const key = useMemo(() => draftKeyCCB(stationId), [stationId]);
 
 
 
     /* ---------- job info ---------- */
-    const [job, setJob] = useState({ issue_id: "", chargerNo: "", sn: "", model: "", station_name: "", date: "", inspector: "" });
+    const [job, setJob] = useState({
+        issue_id: "",
+        //  chargerNo: "", 
+        //  sn: "", 
+        //  model: "", 
+        station_name: "",
+        date: "",
+        //  inspector: "" 
+    });
 
     /* ---------- PASS/FAIL + remark ---------- */
     // รวม key ทั้งหัวข้อหลัก + หัวข้อย่อย
     const ALL_KEYS = useMemo(() => {
         const base = QUESTIONS.flatMap((q) => (q.kind === "group" ? [q.key, ...q.items.map((i) => i.key as string)] : [q.key]));
         return base;
+    }, []);
+
+    const todayStr = useMemo(() => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;       // YYYY-MM-DD (ตามเวลาท้องถิ่น browser)
     }, []);
 
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
@@ -620,6 +657,84 @@ export default function CCBPMReport() {
     const m9_5 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS_CCB, "V");
     const M9_LIST = [m9_0, m9_1, m9_2, m9_3, m9_4, m9_5];
 
+    useEffect(() => {
+        const token =
+            typeof window !== "undefined"
+                ? localStorage.getItem("access_token") ?? ""
+                : "";
+
+        if (!token) return;
+
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/me`, {
+                    method: "GET",
+                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: "include",
+                });
+
+                if (!res.ok) {
+                    console.warn("fetch /me failed:", res.status);
+                    return;
+                }
+
+                const data: Me = await res.json();
+                setMe(data);
+
+                // ถ้ายังไม่มี inspector ให้ auto-fill เป็น username
+                setInspector((prev) => prev || data.username || "");
+            } catch (err) {
+                console.error("fetch /me error:", err);
+            }
+        })();
+    }, []);
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+
+        (async () => {
+            try {
+                const preview = await fetchPreviewIssueId(stationId, job.date);
+                if (!canceled && preview) {
+                    setJob(prev => ({ ...prev, issue_id: preview }));
+                }
+            } catch (err) {
+                console.error("preview issue_id error:", err);
+                // ถ้า error ปล่อยให้ว่างไว้ → backend จะ gen เองตอน submit
+            }
+        })();
+
+        return () => { canceled = true; };
+    }, [stationId, job.date]);
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+
+        (async () => {
+            try {
+                const preview = await fetchPreviewDocName(stationId, job.date);
+
+                if (!canceled && preview) {
+                    // ถ้าเป็นหน้า edit แล้วดึง doc_name เดิมจาก DB มาอยู่แล้ว
+                    // จะไม่บังคับทับ ถ้าอยากกันตรงนี้เพิ่มเงื่อนไข isEdit ได้
+                    setDocName(preview);
+                }
+            } catch (err) {
+                console.error("preview docName error:", err);
+                // ถ้า error ปล่อยให้ docName ว่างไว้ → ฝั่ง backend จะ gen เองตอน submit อยู่แล้ว
+            }
+        })();
+
+        return () => {
+            canceled = true;
+        };
+    }, [stationId, job.date]);
+
+
     /* ---------- load station ---------- */
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -631,8 +746,8 @@ export default function CCBPMReport() {
             .then((st) => {
                 setJob((prev) => ({
                     ...prev,
-                    sn: st.SN ?? prev.sn,
-                    model: st.model ?? prev.model,
+                    // sn: st.SN ?? prev.sn,
+                    // model: st.model ?? prev.model,
                     station_name: st.station_name ?? prev.station_name,
                     date: prev.date || new Date().toISOString().slice(0, 10),
                 }));
@@ -657,7 +772,7 @@ export default function CCBPMReport() {
     useEffect(() => {
         if (!stationId || !draftId) return;
         const draft = loadDraftLocal<{
-            job: typeof job;
+            job: typeof job & { inspector?: string };
             rows: typeof rows;
             m9_0: typeof m9_0.state;
             m9_1: typeof m9_1.state;
@@ -670,7 +785,10 @@ export default function CCBPMReport() {
         }>(key);
         if (!draft) return;
 
-        setJob((prev) => ({ ...prev, ...draft.job }));
+        const { issue_id, ...draftJobWithoutIssue } = draft.job;
+
+        // setJob((prev) => ({ ...prev, ...draft.job }));
+        setJob((prev) => ({ ...prev, ...draftJobWithoutIssue }));
         setRows(draft.rows);
         m9_0.setState(draft.m9_0 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         m9_1.setState(draft.m9_1 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
@@ -689,41 +807,13 @@ export default function CCBPMReport() {
             if (!st) return;
             setJob((prev) => ({
                 ...prev,
-                sn: st.SN ?? prev.sn,
-                model: st.model ?? prev.model,
+                // sn: st.SN ?? prev.sn,
+                // model: st.model ?? prev.model,
             }));
         };
         window.addEventListener("station:info", onInfo as EventListener);
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
-
-
-    useEffect(() => {
-        if (!stationId || !job.date) return;
-
-        let canceled = false;
-        (async () => {
-            try {
-                const latest = await fetchLatestIssueIdFromList(stationId, job.date);
-                const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-                if (!canceled) {
-                    const prefix = makePrefix(PM_TYPE_CODE, job.date);
-                    setJob(prev => {
-                        // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
-                        if (prev.issue_id?.startsWith(prefix)) return prev;
-                        return { ...prev, issue_id: next };
-                    });
-                }
-            } catch {
-                if (!canceled) {
-                    const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-                    setJob(prev => ({ ...prev, issue_id: fallback }));
-                }
-            }
-        })();
-
-        return () => { canceled = true; };
-    }, [stationId, job.date]);
 
 
     // ---------- render helpers ----------
@@ -799,7 +889,7 @@ export default function CCBPMReport() {
     useDebouncedEffect(() => {
         if (!stationId || !draftId) return;
         saveDraftLocal(key, {
-            job,
+            job: { ...job, issue_id: "" },
             rows,
             m9_0: m9_0.state,
             m9_1: m9_1.state,
@@ -811,6 +901,35 @@ export default function CCBPMReport() {
             summary,
         });
     }, [key, stationId, draftId, job, rows, m9_0.state, m9_1.state, m9_2.state, m9_3.state, m9_4.state, m9_5.state, photos, summary]);
+
+    const onSave = () => {
+        if (!stationId) {
+            alert("ยังไม่ทราบ station_id — บันทึกชั่วคราวไม่สำเร็จ");
+            return;
+        }
+        // เซฟดราฟต์ (ซ้ำกับ auto-save ก็ได้ เพื่อความชัวร์ตอนกดปุ่ม)
+        // saveDraftLocal(key, {
+        //     job,
+        //     rows,
+        //     cp,
+        //     m17: m17.state,
+        //     summary,
+        // });
+        saveDraftLocal(key, {
+            // job,
+            job: { ...job, issue_id: "" },
+            rows,
+            m9_0: m9_0.state,
+            m9_1: m9_1.state,
+            m9_2: m9_2.state,
+            m9_3: m9_3.state,
+            m9_4: m9_4.state,
+            m9_5: m9_5.state,
+            photos,
+            summary,
+        });
+        alert("บันทึกชั่วคราวไว้ในเครื่องแล้ว (Offline Draft)");
+    };
 
     /* ---------- actions (submit เหมือนเดิม) ---------- */
     async function uploadGroupPhotos(reportId: string, stationId: string, group: string, files: File[]) {
@@ -827,6 +946,7 @@ export default function CCBPMReport() {
         });
         if (!res.ok) throw new Error(await res.text());
     }
+
 
     const onFinalSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
@@ -865,21 +985,15 @@ export default function CCBPMReport() {
             const payload = {
                 station_id: stationId,
                 issue_id: issueIdFromJob,
-                job,
+                doc_name: docName,
+                job: jobWithoutIssueId,
                 rows,
                 measures: { r9 },
                 summary,
                 pm_date,
                 ...(summaryCheck ? { summaryCheck } : {}),
+                inspector,
             };
-
-            // รูปร่าง measure สำหรับข้อ 9
-            // const measures9 = M9_LIST.map((m, i) => ({
-            //     index: i,
-            //     data: m.state,
-            // }));
-
-
 
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                 method: "POST",
@@ -888,8 +1002,14 @@ export default function CCBPMReport() {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            const { report_id } = await res.json();
-
+            // const { report_id } = await res.json();
+            const { report_id, doc_name } = await res.json() as {
+                report_id: string;
+                doc_name?: string;
+            };
+            if (doc_name) {
+                setDocName(doc_name);
+            }
             // อัปโหลดรูปแยกกลุ่ม g1..g9
             const photoNos = Object.keys(photos).map(Number);
             for (const no of photoNos) {
@@ -937,57 +1057,6 @@ export default function CCBPMReport() {
             </div>
         );
     };
-
-    // const renderQuestionBlock = (q: Question) => {
-    //     return (
-    //         <SectionCard key={q.key} title={q.label}>
-    //             {/* simple/group header row */}
-    //             {q.kind === "simple" && (
-    //                 <PassFailRow
-    //                     label="ผลการทดสอบ"
-    //                     value={rows[q.key].pf}
-    //                     onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
-    //                     remark={rows[q.key].remark}
-    //                     onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-    //                 />
-    //             )}
-
-    //             {q.kind === "group" &&
-    //                 q.items.map((it) => (
-    //                     <PassFailRow
-    //                         key={it.key}
-    //                         label={it.label}
-    //                         value={rows[it.key]?.pf ?? ""}
-    //                         onChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
-    //                         remark={rows[it.key]?.remark}
-    //                         onRemarkChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
-    //                     />
-    //                 ))}
-
-    //             {q.kind === "measure9" && (
-    //                 <div className="tw-space-y-3">
-    //                     {renderMeasureGrid9(0, BREAKERS[0], m9_0)}
-    //                     {renderMeasureGrid9(1, BREAKERS[1], m9_1)}
-    //                     {renderMeasureGrid9(2, BREAKERS[2], m9_2)}
-    //                     {renderMeasureGrid9(3, BREAKERS[3], m9_3)}
-    //                     {renderMeasureGrid9(4, BREAKERS[4], m9_4)}
-    //                     {renderMeasureGrid9(5, BREAKERS[5], m9_5)}
-    //                 </div>
-    //             )}
-
-    //             {q.hasPhoto && (
-    //                 <div className="tw-pt-2 tw-pb-4 tw-border-t tw-border-blue-gray-50">
-    //                     <PhotoMultiInput
-    //                         label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-    //                         photos={photos[q.no] || []}
-    //                         setPhotos={makePhotoSetter(q.no)}
-    //                         max={3}
-    //                     />
-    //                 </div>
-    //             )}
-    //         </SectionCard>
-    //     );
-    // };
 
     const renderQuestionBlock = (q: Question) => {
         return (
@@ -1097,13 +1166,23 @@ export default function CCBPMReport() {
                                 </div>
                             </div>
                         </div>
+                        {/* ขวาสุด: ชื่อเอกสาร / เลขที่เอกสาร */}
+                        <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
+                            <div className="tw-font-semibold">
+                                Document Name.
+                            </div>
+                            <div>
+                                {docName || "-"}
+                            </div>
+
+                        </div>
                     </div>
                     {/* BODY */}
                     <div className="tw-mt-8 tw-space-y-8">
                         <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
                             <div className="lg:tw-col-span-1">
                                 <Input
-                                    label="Issue id"
+                                    label="Issue id / รหัสเอกสาร"
                                     value={job.issue_id || "-"}
                                     readOnly
                                     crossOrigin=""
@@ -1126,9 +1205,10 @@ export default function CCBPMReport() {
 
                             <div className="lg:tw-col-span-2">
                                 <Input
-                                    label="วันที่ตรวจ"
+                                    label="PM Date / วันที่ตรวจ"
                                     type="date"
                                     value={job.date}
+                                    max={todayStr}
                                     onChange={(e) => setJob({ ...job, date: e.target.value })}
                                     crossOrigin=""
                                     containerProps={{ className: "!tw-min-w-0" }}
@@ -1137,24 +1217,13 @@ export default function CCBPMReport() {
                         </div>
                     </div>
                     {[
-                        [1, 5],
-                        [6, 10],
-                        [11, 16],
-                        [17, 17], // มีกริดวัดค่า
-                        [18, 19],
+                        [1, 3],
+                        [4, 6],
+                        [7, 9],
+                        // [17, 17], // มีกริดวัดค่า
+                        // [18, 19],
                     ].map(([start, end]) => (
-                        // <Card key={`${start}-${end}`} className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                        //     {start === 1 && (
-                        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                        //             <Typography variant="h6">Checklist</Typography>
-                        //         </CardHeader>
-                        //     )}
-                        //     <CardBody className="tw-space-y-1">
-                        //         {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
-                        //     </CardBody>
-                        // </Card>
-
-                        <CardBody className="tw-space-y-2">
+                        <CardBody key={`${start}-${end}`} className="tw-space-y-2">
                             {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
                         </CardBody>
                     ))}
@@ -1241,116 +1310,5 @@ export default function CCBPMReport() {
                 </div>
             </form>
         </section>
-
-        // <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
-        //     {/* Job Info */}
-        //     <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-        //         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
-        //             <Input
-        //                 label="Issue id"
-        //                 value={job.issue_id || "-"}
-        //                 readOnly
-        //                 // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
-        //                 crossOrigin=""
-        //                 containerProps={{ className: "!tw-min-w-0" }}
-        //                 className="!tw-w-full !tw-bg-blue-gray-50"
-        //             />
-        //             <Input label="Location / สถานที่" value={job.station_name} onChange={(e) => setJob({ ...job, station_name: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
-        //             <Input label="วันที่ตรวจ" type="date" value={job.date} onChange={(e) => setJob({ ...job, date: e.target.value })} crossOrigin="" />
-        //         </div>
-        //     </SectionCard>
-
-        //     {/* Checklist */}
-        //     <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-        //             <Typography variant="h6">Checklist</Typography>
-        //         </CardHeader>
-        //         <CardBody className="tw-space-y-1">
-        //             {QUESTIONS.map(renderQuestionBlock)}
-        //         </CardBody>
-        //     </Card>
-
-        //     {/* Summary */}
-        //     <SectionCard title="Comment">
-        //         <div className="tw-space-y-2">
-        //             <Textarea
-        //                 label="Comment"
-        //                 value={summary}
-        //                 onChange={(e) => setSummary(e.target.value)}
-        //                 rows={4}
-        //                 required
-        //                 autoComplete="off"
-        //                 containerProps={{ className: "!tw-min-w-0" }}
-        //                 className="!tw-w-full resize-none"
-        //             />
-        //             <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-        //                 {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-        //             </Typography>
-        //         </div>
-
-        //         <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-        //             <PassFailRow
-        //                 label="สรุปผลการตรวจสอบ"
-        //                 value={summaryCheck}
-        //                 onChange={(v) => setSummaryCheck(v)}
-        //                 labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
-        //                     PASS: "Pass : ผ่าน",
-        //                     FAIL: "Fail : ไม่ผ่าน",
-        //                     NA: "N/A : ไม่พบ",
-        //                 }}
-        //             />
-        //         </div>
-        //     </SectionCard>
-
-        //     {/* Footer checks */}
-        //     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
-        //             {allPFAnswered ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
-        //             )}
-        //         </div>
-
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">2) อินพุตข้อ 9 (ค่าที่วัด)</Typography>
-        //             {allRequiredInputsFilled ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <div className="tw-space-y-1">
-        //                     <Typography variant="small" className="!tw-text-amber-700">ยังขาด:</Typography>
-        //                     <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
-        //                         {missingInputs.map((line, i) => (<li key={i}>{line}</li>))}
-        //                     </ul>
-        //                 </div>
-        //             )}
-        //         </div>
-
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกหัวข้อ)</Typography>
-        //             {allPhotosAttached ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}</Typography>
-        //             )}
-        //         </div>
-
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
-        //             {isSummaryFilled ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-        //             )}
-        //         </div>
-
-        //         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-        //             <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
-        //                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
-        //             </Button>
-        //         </div>
-        //     </CardFooter>
-        // </section>
     );
 }

@@ -140,13 +140,6 @@ type MeasureState<U extends string> = Record<string, MeasureRow<U>>;
 type PF = "PASS" | "FAIL" | "NA" | "";
 // type YesNo = "YES" | "NO" | "";
 
-
-type CheckListProps = {
-    onComplete: (status: boolean) => void;
-    onNext: () => void;
-    onPrev?: () => void;
-};
-
 /* =========================
  *        UTIL HOOKS
  * ========================= */
@@ -172,16 +165,6 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
 
     return { state, setState, patch, syncUnits };
 }
-
-type PassFailRowProps = {
-    label: string;
-    value: string;
-    onChange: (v: string) => void;
-    remark: string;
-    onRemarkChange: (v: string) => void;
-    aboveRemark?: React.ReactNode;
-
-};
 
 function PassFailRow({
     label,
@@ -504,32 +487,6 @@ function PhotoMultiInput({
 
 const PM_TYPE_CODE = "CG";
 
-function makePrefix(typeCode: string, dateISO: string) {
-    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-    const yy = String(d.getFullYear()).slice(2);
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    return `PM-${typeCode}-${yy}${mm}-`; // ตัวอย่าง: PM-CG-2511-
-}
-
-function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
-    const prefix = makePrefix(typeCode, dateISO);
-    const s = String(latestFromDb || "").trim();
-    if (!s || !s.startsWith(prefix)) return `${prefix}01`;     // เริ่มที่ 01 ถ้ายังไม่มีของเดือนนี้
-    const m = s.match(/(\d+)$/);
-    const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
-    const n = (m ? parseInt(m[1], 10) : 0) + 1;
-    return `${prefix}${n.toString().padStart(pad, "0")}`;
-}
-
-/* ---------- NEW: helper สำหรับ doc_name ---------- */
-
-function makeDocNameParts(stationId: string, dateISO: string) {
-    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-    const year = d.getFullYear();
-    const prefix = `${stationId}_`;
-    const suffix = `/${year}`;
-    return { year, prefix, suffix };
-}
 
 async function fetchPreviewIssueId(
     stationId: string,
@@ -558,23 +515,7 @@ async function fetchPreviewIssueId(
     return (j && typeof j.issue_id === "string") ? j.issue_id : null;
 }
 
-
-function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
-    const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
-    const s = String(latestFromDb || "").trim();
-
-    // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
-    if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
-        return `${prefix}1${suffix}`;
-    }
-
-    // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
-    const inside = s.slice(prefix.length, s.length - suffix.length);
-    const cur = parseInt(inside, 10);
-    const nextIndex = isNaN(cur) ? 1 : cur + 1;
-
-    return `${prefix}${nextIndex}${suffix}`;
-}
+/* ---------- NEW: helper สำหรับ doc_name ---------- */
 
 async function fetchPreviewDocName(
     stationId: string,
@@ -596,84 +537,6 @@ async function fetchPreviewDocName(
 
     if (!r.ok) {
         console.error("fetchPreviewDocName failed:", r.status);
-        return null;
-    }
-
-    const j = await r.json();
-    return (j && typeof j.doc_name === "string") ? j.doc_name : null;
-}
-
-async function fetchLatestIssueIdFromList(
-    stationId: string,
-    dateISO: string
-): Promise<string | null> {
-    const prefix = makePrefix(PM_TYPE_CODE, dateISO);
-    const token =
-        typeof window !== "undefined"
-            ? localStorage.getItem("access_token") ?? ""
-            : "";
-
-    async function fetchList(path: string) {
-        const u = new URL(`${API_BASE}${path}`);
-        u.searchParams.set("station_id", stationId);
-        u.searchParams.set("page", "1");
-        u.searchParams.set("pageSize", "200");
-        u.searchParams.set("_ts", String(Date.now()));
-
-        const r = await fetch(u.toString(), {
-            credentials: "include",
-            cache: "no-store",
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        });
-        if (!r.ok) return [];
-        const j = await r.json();
-        return Array.isArray(j?.items) ? j.items : [];
-    }
-
-    const [repItems, urlItems] = await Promise.all([
-        fetchList("/pmreport/list"),
-        fetchList("/pmurl/list"),
-    ]);
-
-    const allIssueIds = [...repItems, ...urlItems]
-        .map((it) => String(it?.issue_id || ""))
-        .filter((iid) => iid.startsWith(prefix));
-
-    if (!allIssueIds.length) return null;
-
-    const toTailNum = (iid: string) => {
-        const m = iid.match(/(\d+)$/);
-        return m ? parseInt(m[1], 10) : -1;
-    };
-
-    return allIssueIds.reduce(
-        (acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc),
-        allIssueIds[0]
-    );
-}
-
-async function fetchLatestDocName(
-    stationId: string,
-    dateISO: string
-): Promise<string | null> {
-    const u = new URL(`${API_BASE}/pmreport/latest-docname`);
-    u.searchParams.set("station_id", stationId);
-    u.searchParams.set("pm_date", dateISO);
-    u.searchParams.set("_ts", String(Date.now()));
-
-    const token =
-        typeof window !== "undefined"
-            ? localStorage.getItem("access_token") ?? ""
-            : "";
-
-    const r = await fetch(u.toString(), {
-        credentials: "include",
-        cache: "no-store",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
-
-    if (!r.ok) {
-        console.error("fetchLatestDocName failed:", r.status);
         return null;
     }
 

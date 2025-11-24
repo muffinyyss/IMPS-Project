@@ -17,13 +17,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
+
 type StationPublic = {
     station_id: string;
     station_name: string;
-    SN?: string;
-    WO?: string;
-    chargeBoxID?: string;
-    model?: string;
+    // SN?: string;
+    // WO?: string;
+    // chargeBoxID?: string;
+    // model?: string;
     status?: boolean;
 };
 
@@ -133,12 +134,6 @@ type MeasureState<U extends string> = Record<string, MeasureRow<U>>;
 type PF = "PASS" | "FAIL" | "NA" | "";
 
 
-type CheckListProps = {
-    onComplete: (status: boolean) => void;
-    onNext: () => void;
-    onPrev?: () => void;
-};
-
 /* =========================
  *        UTIL HOOKS
  * ========================= */
@@ -178,19 +173,6 @@ function SectionCard({
     children: React.ReactNode;
 }) {
     return (
-        // <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-        //     {(title || subtitle) && (
-        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-        //             {title && <Typography variant="h6">{title}</Typography>}
-        //             {subtitle && (
-        //                 <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">
-        //                     {subtitle}
-        //                 </Typography>
-        //             )}
-        //         </CardHeader>
-        //     )}
-        //     <CardBody className="tw-space-y-4">{children}</CardBody>
-        // </Card>
         <>
             {/* Title นอกกรอบการ์ด */}
             {title && (
@@ -432,7 +414,6 @@ function PhotoMultiInput({
 }) {
     const fileRef = useRef<HTMLInputElement>(null);
     const handlePick = () => fileRef.current?.click();
-
     const handleFiles = (list: FileList | null) => {
         if (!list) return;
         const remain = Math.max(0, max - photos.length);
@@ -456,56 +437,7 @@ function PhotoMultiInput({
     };
 
     return (
-        // <div className="tw-space-y-3">
-        //     {label && <Typography className="tw-font-medium">{label}</Typography>}
 
-        //     <div className="tw-flex tw-flex-wrap tw-gap-2">
-        //         <Button size="sm" color="blue" variant="outlined" onClick={handlePick}>
-        //             แนบรูป / ถ่ายรูป
-        //         </Button>
-        //         <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-        //             แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
-        //         </Typography>
-        //     </div>
-
-        //     <input
-        //         ref={fileRef}
-        //         type="file"
-        //         accept="image/*"
-        //         multiple
-        //         capture="environment"
-        //         className="tw-hidden"
-        //         onChange={(e) => handleFiles(e.target.files)}
-        //     />
-
-        //     {photos.length > 0 ? (
-        //         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-        //             {photos.map((p) => (
-        //                 <div
-        //                     key={p.id}
-        //                     className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"
-        //                 >
-        //                     <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
-        //                         {p.preview && (
-        //                             <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />
-        //                         )}
-        //                     </div>
-        //                     <div className="tw-p-2 tw-space-y-2">
-        //                         <div className="tw-flex tw-justify-end">
-        //                             <Button size="sm" color="red" variant="text" onClick={() => handleRemove(p.id)}>
-        //                                 ลบรูป
-        //                             </Button>
-        //                         </div>
-        //                     </div>
-        //                 </div>
-        //             ))}
-        //         </div>
-        //     ) : (
-        //         <Typography variant="small" className="!tw-text-blue-gray-500">
-        //             ยังไม่มีรูปแนบ
-        //         </Typography>
-        //     )}
-        // </div>
         <div className="tw-space-y-3">
             {/* แถวบน: label + ปุ่มแนบรูป */}
             <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
@@ -586,30 +518,6 @@ function PhotoMultiInput({
 
 const PM_TYPE_CODE = "MB";
 
-function makePrefix(typeCode: string, dateISO: string) {
-    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-    const yy = String(d.getFullYear()).slice(2);
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    return `PM-${typeCode}-${yy}${mm}-`; // ตัวอย่าง: PM-CG-2511-
-}
-
-function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
-    const prefix = makePrefix(typeCode, dateISO);
-    const s = String(latestFromDb || "").trim();
-    if (!s || !s.startsWith(prefix)) return `${prefix}01`;     // เริ่มที่ 01 ถ้ายังไม่มีของเดือนนี้
-    const m = s.match(/(\d+)$/);
-    const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
-    const n = (m ? parseInt(m[1], 10) : 0) + 1;
-    return `${prefix}${n.toString().padStart(pad, "0")}`;
-}
-
-function makeDocNameParts(stationId: string, dateISO: string) {
-    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-    const year = d.getFullYear();
-    const prefix = `${stationId}_`;
-    const suffix = `/${year}`;
-    return { year, prefix, suffix };
-}
 
 async function fetchPreviewIssueId(
     stationId: string,
@@ -638,6 +546,7 @@ async function fetchPreviewIssueId(
     return (j && typeof j.issue_id === "string") ? j.issue_id : null;
 }
 
+
 async function fetchPreviewDocName(
     stationId: string,
     pmDate: string
@@ -665,36 +574,6 @@ async function fetchPreviewDocName(
     return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
 
-async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/mdbpmreport/list`);
-    u.searchParams.set("station_id", stationId);
-    u.searchParams.set("page", "1");
-    u.searchParams.set("pageSize", "50");
-    u.searchParams.set("_ts", String(Date.now()));
-
-    const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
-    if (!r.ok) return null;
-
-    const j = await r.json();
-    const items: any[] = Array.isArray(j?.items) ? j.items : [];
-    if (!items.length) return null;
-
-    const prefix = makePrefix(PM_TYPE_CODE, dateISO);
-
-    // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
-    const samePrefix = items
-        .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
-        .filter(iid => iid.startsWith(prefix));
-
-    if (!samePrefix.length) return null;
-
-    // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
-    const toTailNum = (iid: string) => {
-        const m = iid.match(/(\d+)$/);
-        return m ? parseInt(m[1], 10) : -1;
-    };
-    return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
-}
 
 /* =========================
  *        MAIN
@@ -732,12 +611,12 @@ export default function MDBPMMForm() {
     /* ---------- job info ---------- */
     const [job, setJob] = useState({
         issue_id: "",
-        chargerNo: "",
-        sn: "",
-        model: "",
+        // chargerNo: "",
+        // sn: "",
+        // model: "",
         station_name: "",
         date: "",
-        inspector: "",
+        // inspector: "",
     });
 
     const todayStr = useMemo(() => {
@@ -795,6 +674,25 @@ export default function MDBPMMForm() {
         })();
     }, []);
 
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+
+        (async () => {
+            try {
+                const preview = await fetchPreviewIssueId(stationId, job.date);
+                if (!canceled && preview) {
+                    setJob(prev => ({ ...prev, issue_id: preview }));
+                }
+            } catch (err) {
+                console.error("preview issue_id error:", err);
+                // ถ้า error ปล่อยให้ว่างไว้ → backend จะ gen เองตอน submit
+            }
+        })();
+
+        return () => { canceled = true; };
+    }, [stationId, job.date]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -806,8 +704,8 @@ export default function MDBPMMForm() {
             .then((st) => {
                 setJob((prev) => ({
                     ...prev,
-                    sn: st.SN ?? prev.sn,
-                    model: st.model ?? prev.model,
+                    // sn: st.SN ?? prev.sn,
+                    // model: st.model ?? prev.model,
                     station_name: st.station_name ?? prev.station_name,
                     date: prev.date || new Date().toISOString().slice(0, 10),
                 }));
@@ -863,40 +761,14 @@ export default function MDBPMMForm() {
             if (!st) return;
             setJob((prev) => ({
                 ...prev,
-                sn: st.SN ?? prev.sn,
-                model: st.model ?? prev.model,
+                // sn: st.SN ?? prev.sn,
+                // model: st.model ?? prev.model,
             }));
         };
         window.addEventListener("station:info", onInfo as EventListener);
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
 
-    useEffect(() => {
-        if (!stationId || !job.date) return;
-
-        let canceled = false;
-        (async () => {
-            try {
-                const latest = await fetchLatestIssueIdFromList(stationId, job.date);
-                const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-                if (!canceled) {
-                    const prefix = makePrefix(PM_TYPE_CODE, job.date);
-                    setJob(prev => {
-                        // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
-                        if (prev.issue_id?.startsWith(prefix)) return prev;
-                        return { ...prev, issue_id: next };
-                    });
-                }
-            } catch {
-                if (!canceled) {
-                    const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-                    setJob(prev => ({ ...prev, issue_id: fallback }));
-                }
-            }
-        })();
-
-        return () => { canceled = true; };
-    }, [stationId, job.date]);
 
     useEffect(() => {
         if (!stationId || !job.date) return;
