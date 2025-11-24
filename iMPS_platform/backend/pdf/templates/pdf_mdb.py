@@ -1075,7 +1075,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     # ชื่อเอกสาร
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, "Preventive Maintenance Checklist", border=1, ln=1, align="C")
+    pdf.cell(page_w, 10, "Preventive Maintenance Checklist - MDB", border=1, ln=1, align="C")
     y += 10
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
