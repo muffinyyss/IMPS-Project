@@ -3951,21 +3951,12 @@ async def ccbpmurl_upload_files(
         prefix = f"PM-{pm_type}-{yymm}-"
         valid_fmt = client_issue.startswith(prefix)
 
-        # ตรวจ uniqueness ในทั้ง 2 คอลเลกชัน
-        # url_exists = await coll.find_one({"issue_id": client_issue})
-        # rep_exists = await get_ccbpmreport_collection_for(station_id).find_one({"issue_id": client_issue})
-        # unique = not (url_exists or rep_exists)
-
         url_exists = await coll.find_one({"issue_id": client_issue})
         rep_exists = await rep_coll.find_one({"issue_id": client_issue})
         unique = not (url_exists or rep_exists)
 
         if valid_fmt and unique:
             final_issue_id = client_issue
-
-    # if not final_issue_id:
-    #     # ออกเลขถัดไปแบบ atomic จาก pm_sequences
-    #     final_issue_id = await _next_issue_id(coll.database, station_id, pm_type, d, pad=2)
 
     if not final_issue_id:
         while True:
@@ -4103,29 +4094,108 @@ class CBBOXPMSubmitIn(BaseModel):
     summary: str
     pm_date: str                # "YYYY-MM-DD"
     issue_id: Optional[str] = None
+    doc_name: Optional[str] = None 
     summaryCheck: Optional[Literal["PASS","FAIL","NA"]] = None
+    inspector: Optional[str] = None
 
-async def _next_issue_id(db, station_id: str, pm_type: str, d, pad: int = 2) -> str:
+# async def _next_issue_id(db, station_id: str, pm_type: str, d, pad: int = 2) -> str:
+#     yymm = f"{d.year % 100:02d}{d.month:02d}"
+#     seq = await db.pm_sequences.find_one_and_update(
+#         {"station_id": station_id, "pm_type": pm_type, "yymm": yymm},
+#         {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
+#         upsert=True,
+#         return_document=ReturnDocument.AFTER,
+#     )
+#     return f"PM-{pm_type}-{yymm}-{int(seq['n']):0{pad}d}"
+
+@app.get("/cbboxpmreport/preview-issueid")
+async def cbboxpmreport_preview_issueid(
+    station_id: str = Query(...),
+    pm_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดู issue_id ถัดไป (PM-CG-YYMM-XX) โดยไม่ออกเลขจริง
+    ใช้หาเลขไปโชว์บนฟอร์มเฉย ๆ
+    """
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+    pm_type = "CB"
+
+    latest = await _latest_issue_id_anywhere(station_id, pm_type, d,source="cbbox")
+
     yymm = f"{d.year % 100:02d}{d.month:02d}"
-    seq = await db.pm_sequences.find_one_and_update(
-        {"station_id": station_id, "pm_type": pm_type, "yymm": yymm},
-        {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
-        upsert=True,
-        return_document=ReturnDocument.AFTER,
-    )
-    return f"PM-{pm_type}-{yymm}-{int(seq['n']):0{pad}d}"
+    prefix = f"PM-{pm_type}-{yymm}-"
+
+    if not latest:
+        next_issue = f"{prefix}01"
+    else:
+        m = re.search(r"(\d+)$", latest)
+        cur = int(m.group(1)) if m else 0
+        next_issue = f"{prefix}{cur+1:02d}"
+
+    return {"issue_id": next_issue}
+
+@app.get("/cbboxpmreport/latest-docname")
+async def cbboxpmreport_latest_docname(
+    station_id: str = Query(...),
+    pm_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดึง doc_name ล่าสุดของสถานี (ปีเดียวกับ pm_date)
+    เพื่อใช้คำนวณเลขถัดไปที่ frontend
+    """
+    # auth ถ้าต้องการ
+    # if current.role != "admin" and station_id not in set(current.station_ids):
+    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+    
+    latest = await _latest_doc_name_from_pmreport(station_id, pm_date, source="cbbox")
+    
+    return {
+        "doc_name": latest.get("doc_name") if latest else None,
+        "station_id": station_id,
+        "pm_date": pm_date
+    }
+
+@app.get("/cbboxpmreport/preview-docname")
+async def preview_docname(
+    station_id: str = Query(...),
+    pm_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+    year = d.year
+
+    latest = await _latest_doc_name_anywhere(station_id, year,source="cbbox")
+
+    if not latest:
+        next_doc = f"{station_id}_1/{year}"
+    else:
+        import re
+        m = re.search(r"_(\d+)/\d{4}$", latest)
+        current_num = int(m.group(1)) if m else 0
+        next_doc = f"{station_id}_{current_num + 1}/{year}"
+
+    return {"doc_name": next_doc}
 
 @app.post("/cbboxpmreport/submit")
 async def cbboxpmreport_submit(body: CBBOXPMSubmitIn, current: UserClaims = Depends(get_current_user)):
     station_id = body.station_id.strip()
-    if current.role != "admin" and station_id not in set(current.station_ids):
-        raise HTTPException(status_code=403, detail="Forbidden station_id")
-
     coll = get_cbboxpmreport_collection_for(station_id)
     db = coll.database
 
     pm_type = str(body.job.get("pm_type") or "CB").upper()
     body.job["pm_type"] = pm_type
+
+    url_coll = get_cbboxpmurl_coll_upload(station_id)
 
     try:
         d = datetime.strptime(body.pm_date, "%Y-%m-%d").date()
@@ -4133,23 +4203,54 @@ async def cbboxpmreport_submit(body: CBBOXPMSubmitIn, current: UserClaims = Depe
         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
 
     client_issue = body.issue_id 
+    issue_id: str | None = None
 
-    issue_id = None
     if client_issue:
         yymm = f"{d.year % 100:02d}{d.month:02d}"
         prefix = f"PM-{pm_type}-{yymm}-"
         valid_fmt = client_issue.startswith(prefix)
+
+        rep_exists = await coll.find_one({"station_id": station_id, "issue_id": client_issue})
+        url_exists = await url_coll.find_one({"issue_id": client_issue})
         unique = not await coll.find_one({"station_id": station_id, "issue_id": client_issue})
         if valid_fmt and unique:
             issue_id = client_issue
 
-    if not issue_id:
-        issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
+    # if not issue_id:
+    #     issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
         
+    if not issue_id:
+        while True:
+            candidate = await _next_issue_id(db, station_id, pm_type, d, pad=2)
+            rep_exists = await coll.find_one({"issue_id": candidate})
+            url_exists = await url_coll.find_one({"issue_id": candidate})
+            if not rep_exists and not url_exists:
+                issue_id = candidate
+                break
 
+    client_docName = body.doc_name
+    doc_name = None
+    if client_docName:
+        year = f"{d.year}"
+        prefix = f"{station_id}_"
+        valid_fmt = client_docName.startswith(prefix)
+
+        url_coll = get_cbboxpmurl_coll_upload(station_id)
+        rep_exists = await coll.find_one({"station_id": station_id, "doc_name": client_docName})
+        url_exists = await url_coll.find_one({"doc_name": client_docName})
+        unique = not (rep_exists or url_exists)
+
+        if valid_fmt and unique:
+            doc_name = client_docName
+ 
+    if not doc_name:
+        year_seq = await _next_year_seq(db, station_id, pm_type, d)
+        year = d.year
+        doc_name = f"{station_id}_{year_seq}/{year}"
     # เก็บเอกสารเป็น draft ก่อน
     doc = {
         "station_id": station_id,
+        "doc_name": doc_name,
         "issue_id": issue_id,
         "job": body.job,
         "rows": body.rows,
@@ -4159,6 +4260,7 @@ async def cbboxpmreport_submit(body: CBBOXPMSubmitIn, current: UserClaims = Depe
         "pm_date": body.pm_date,           # string YYYY-MM-DD (ตามฟรอนต์)
         "status": "draft",
         "photos": {},                      # จะถูกเติมใน /photos
+        "inspector": body.inspector,
         "createdAt": datetime.now(timezone.utc),
         "updatedAt": datetime.now(timezone.utc),
     }
@@ -4173,13 +4275,10 @@ async def cbboxpmreport_list(
     pageSize: int = Query(20, ge=1, le=100),
     # current: UserClaims = Depends(get_current_user),
 ):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-
     coll = get_cbboxpmreport_collection_for(station_id)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "pm_date": 1, "createdAt": 1}).sort(
+    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector" : 1, "createdAt": 1}).sort(
         [("createdAt", -1), ("_id", -1)]
     ).skip(skip).limit(pageSize)
 
@@ -4202,7 +4301,9 @@ async def cbboxpmreport_list(
     items = [{
         "id": str(it["_id"]),
         "issue_id": it.get("issue_id"),
+        "doc_name": it.get("doc_name"),
         "pm_date": it.get("pm_date"),
+        "inspector": it.get("inspector"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("pm_date") or "", ""),
     } for it in items_raw]
@@ -4303,10 +4404,9 @@ async def cbboxpmurl_upload_files(
     files: List[UploadFile] = File(...),    # อนุญาตเฉพาะ .pdf
     # current: UserClaims = Depends(get_current_user),
     issue_id: Optional[str] = Form(None),
+    doc_name: Optional[str] = Form(None),
+    inspector: Optional[str] = Form(None),
 ):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-
     coll = get_cbboxpmurl_coll_upload(station_id)
     pm_date = normalize_pm_date(reportDate)  # คืน YYYY-MM-DD
 
@@ -4316,6 +4416,7 @@ async def cbboxpmurl_upload_files(
     except ValueError:
         raise HTTPException(status_code=400, detail="reportDate/pm_date must be YYYY-MM-DD")
 
+    rep_coll = get_cbboxpmreport_collection_for(station_id)
     final_issue_id = None
     client_issue = (issue_id or "").strip()
 
@@ -4326,20 +4427,62 @@ async def cbboxpmurl_upload_files(
 
         # ตรวจ uniqueness ในทั้ง 2 คอลเลกชัน
         url_exists = await coll.find_one({"issue_id": client_issue})
-        rep_exists = await get_mdbpmreport_collection_for(station_id).find_one({"issue_id": client_issue})
+        rep_exists = await rep_coll.find_one({"issue_id": client_issue})
         unique = not (url_exists or rep_exists)
 
         if valid_fmt and unique:
             final_issue_id = client_issue
 
+    # if not final_issue_id:
+    #     # ออกเลขถัดไปแบบ atomic จาก pm_sequences
+    #     final_issue_id = await _next_issue_id(coll.database, station_id, pm_type, d, pad=2)
     if not final_issue_id:
-        # ออกเลขถัดไปแบบ atomic จาก pm_sequences
-        final_issue_id = await _next_issue_id(coll.database, station_id, pm_type, d, pad=2)
+        while True:
+            candidate = await _next_issue_id(coll.database, station_id, pm_type, d, pad=2)
+            url_exists = await coll.find_one({"issue_id": candidate})
+            rep_exists = await rep_coll.find_one({"issue_id": candidate})
+            if not url_exists and not rep_exists:
+                final_issue_id = candidate
+                break
 
+    year_seq: int | None = None
+    # พยายาม reuse year_seq จาก PMReportDB ถ้ามีอยู่แล้ว (issue_id เดียวกัน)
+    rep = await get_cbboxpmreport_collection_for(station_id).find_one(
+        {"issue_id": final_issue_id},
+        {"year_seq": 1, "pm_date": 1},
+    )
+    if rep and rep.get("year_seq") is not None:
+        year_seq = int(rep["year_seq"])
+
+    # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
+    if year_seq is None:
+        year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
+
+    year = d.year
+    final_doc_name: str | None = None
+
+    if doc_name:
+        candidate = doc_name.strip()
+
+        ok_format = candidate.startswith(f"{station_id}_")
+
+        rep_coll = get_cbboxpmreport_collection_for(station_id)
+        rep_exists = await rep_coll.find_one({"doc_name": candidate})
+        url_exists = await coll.find_one({"doc_name": candidate})
+        unique = not (rep_exists or url_exists)
+
+        if ok_format and unique:
+            final_doc_name = candidate
+
+    if not final_doc_name:
+        final_doc_name = f"{station_id}_{year_seq}/{year}"
+
+    doc_name = final_doc_name
 
     # เก็บไว้ที่ /uploads/mdbpmurl/<station_id>/<YYYY-MM-DD>/
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "cbboxpmurl" / station_id / pm_date
     dest_dir.mkdir(parents=True, exist_ok=True)
+
 
     urls, metas = [], []
     for f in files:
@@ -4359,11 +4502,14 @@ async def cbboxpmurl_upload_files(
         url = f"/uploads/cbboxpmurl/{station_id}/{pm_date}/{fname}"
         urls.append(url)
         metas.append({"name": f.filename, "size": len(data)})
-
+    
+    inspector_clean = (inspector or "").strip() or None
     now = datetime.now(timezone.utc)
     res = await coll.insert_one({
         "station": station_id,
         "issue_id": final_issue_id, 
+        "inspector": inspector_clean,
+        "doc_name": doc_name,
         "pm_date": pm_date,
         "urls": urls,
         "meta": {"files": metas},
@@ -4371,7 +4517,7 @@ async def cbboxpmurl_upload_files(
         "createdAt": now,
         "updatedAt": now,
     })
-    return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls,"issue_id": final_issue_id}
+    return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls,"issue_id": final_issue_id,"doc_name": doc_name,"inspector": inspector_clean}
 
 @app.get("/cbboxpmurl/list")
 async def cbboxpmurl_list(
@@ -4380,15 +4526,12 @@ async def cbboxpmurl_list(
     pageSize: int = Query(20, ge=1, le=100),
     # current: UserClaims = Depends(get_current_user),
 ):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-
     coll = get_cbboxpmurl_coll_upload(station_id)
     skip = (page - 1) * pageSize
 
     cursor = coll.find(
         {},
-        {"_id": 1, "issue_id": 1, "pm_date": 1, "urls": 1, "createdAt": 1}
+        {"_id": 1, "issue_id": 1,"doc_name": 1,"inspector":1, "pm_date": 1, "urls": 1, "createdAt": 1}
     ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
 
     items_raw = await cursor.to_list(length=pageSize)
@@ -4402,6 +4545,8 @@ async def cbboxpmurl_list(
             "id": str(it["_id"]),
             "pm_date": it.get("pm_date"),
             "issue_id": it.get("issue_id"),
+            "inspector": it.get(("inspector")), 
+            "doc_name": it.get("doc_name"),
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "file_url": first_url,
             "urls": urls,

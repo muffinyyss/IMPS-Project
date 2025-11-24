@@ -22,18 +22,22 @@ const LOGO_SRC = "/img/logo_egat.png";
 type StationPublic = {
     station_id: string;
     station_name: string;
-    SN?: string;
-    WO?: string;
-    chargeBoxID?: string;
-    model?: string;
+    // SN?: string;
+    // WO?: string;
+    // chargeBoxID?: string;
+    // model?: string;
     status?: boolean;
 };
 
-type CheckListProps = {
-    onComplete: (status: boolean) => void;
-    onNext?: () => void;
-    onPrev?: () => void;
+type Me = {
+    id: string;
+    username: string;
+    email: string;
+    role: string;
+    company: string;
+    tel: string;
 };
+
 async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
     const res = await fetch(url, { cache: "no-store" });
@@ -124,19 +128,6 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
 /* =========================
  *       UI ATOMS
  * ========================= */
-// function SectionCard({ title, subtitle, children }: { title?: string; subtitle?: string; children: React.ReactNode }) {
-//     return (
-//         <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-//             {(title || subtitle) && (
-//                 <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-//                     {title && <Typography variant="h6">{title}</Typography>}
-//                     {subtitle && <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography>}
-//                 </CardHeader>
-//             )}
-//             <CardBody className="tw-space-y-4">{children}</CardBody>
-//         </Card>
-//     );
-// }
 
 function SectionCard({
     title,
@@ -217,158 +208,6 @@ function InputWithUnit<U extends string>({
     );
 }
 
-// function PassFailRow({
-//     label, value, onChange, remark, onRemarkChange,
-// }: {
-//     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
-// }) {
-//     return (
-//         <div className="tw-space-y-3 tw-py-3">
-//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-//                 <Typography className="tw-font-medium">{label}</Typography>
-
-//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-//                     <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>PASS</Button>
-//                     <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>FAIL</Button>
-//                     <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>N/A</Button>
-//                 </div>
-//             </div>
-
-//             {onRemarkChange && (
-//                 <div className="tw-w-full tw-min-w-0">
-//                     <Textarea label="หมายเหตุ (ถ้ามี)" value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
-//                 </div>
-//             )}
-//         </div>
-//     );
-// }
-// function PassFailRow({
-//     label, value, onChange, remark, onRemarkChange, labels,
-// }: {
-//     label: string;
-//     value: PF;
-//     onChange: (v: Exclude<PF, "">) => void;
-//     remark?: string;
-//     onRemarkChange?: (v: string) => void;
-//     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; // ⬅️ เพิ่ม
-// }) {
-//     const text = {
-//         PASS: labels?.PASS ?? "PASS",
-//         FAIL: labels?.FAIL ?? "FAIL",
-//         NA: labels?.NA ?? "N/A",
-//     };
-
-//     return (
-//         <div className="tw-space-y-3 tw-py-3">
-//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-//                 <Typography className="tw-font-medium">{label}</Typography>
-
-//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-//                     <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>
-//                         {text.PASS}
-//                     </Button>
-//                     <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>
-//                         {text.FAIL}
-//                     </Button>
-//                     <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>
-//                         {text.NA}
-//                     </Button>
-//                 </div>
-//             </div>
-
-//             {onRemarkChange && (
-//                 <div className="tw-w-full tw-min-w-0">
-//                     <Textarea label="หมายเหตุ (ถ้ามี)" value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
-//                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
-//                 </div>
-//             )}
-//         </div>
-//     );
-// }
-
-// function PassFailRow({
-//     label,
-//     value,
-//     onChange,
-//     remark,
-//     onRemarkChange,
-//     labels,
-//     aboveRemark,           // 👈 เพิ่มตรงนี้
-// }: {
-//     label: string;
-//     value: PF;
-//     onChange: (v: Exclude<PF, "">) => void;
-//     remark?: string;
-//     onRemarkChange?: (v: string) => void;
-//     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-//     aboveRemark?: React.ReactNode;    // 👈 แล้วก็ตรง type ตรงนี้
-// }) {
-//     const text = {
-//         PASS: labels?.PASS ?? "PASS",
-//         FAIL: labels?.FAIL ?? "FAIL",
-//         NA: labels?.NA ?? "N/A",
-//     };
-
-//     return (
-//         <div className="tw-space-y-3 tw-py-3">
-//             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-//                 <Typography className="tw-font-medium">{label}</Typography>
-
-//                 <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-//                     <Button
-//                         size="sm"
-//                         color="green"
-//                         variant={value === "PASS" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                         onClick={() => onChange("PASS")}
-//                     >
-//                         {text.PASS}
-//                     </Button>
-//                     <Button
-//                         size="sm"
-//                         color="red"
-//                         variant={value === "FAIL" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                         onClick={() => onChange("FAIL")}
-//                     >
-//                         {text.FAIL}
-//                     </Button>
-//                     <Button
-//                         size="sm"
-//                         color="blue-gray"
-//                         variant={value === "NA" ? "filled" : "outlined"}
-//                         className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                         onClick={() => onChange("NA")}
-//                     >
-//                         {text.NA}
-//                     </Button>
-//                 </div>
-//             </div>
-
-//             {/* 👇 เอา aboveRemark มาคั่นก่อนช่องหมายเหตุ */}
-//             {aboveRemark && (
-//                 <div className="tw-w-full tw-min-w-0 tw-pt-2">
-//                     {aboveRemark}
-//                 </div>
-//             )}
-
-//             {onRemarkChange && (
-//                 <div className="tw-w-full tw-min-w-0">
-//                     <Textarea
-//                         label="หมายเหตุ (ถ้ามี)"
-//                         value={remark || ""}
-//                         onChange={(e) => onRemarkChange(e.target.value)}
-//                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
-//                         className="!tw-w-full"
-//                     />
-//                 </div>
-//             )}
-//         </div>
-//     );
-// }
 function PassFailRow({
     label,
     value,
@@ -594,60 +433,70 @@ function PhotoMultiInput({
 
 const PM_TYPE_CODE = "CB";
 
-function makePrefix(typeCode: string, dateISO: string) {
-    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-    const yy = String(d.getFullYear()).slice(2);
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    return `PM-${typeCode}-${yy}${mm}-`; // ตัวอย่าง: PM-CG-2511-
-}
-
-function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
-    const prefix = makePrefix(typeCode, dateISO);
-    const s = String(latestFromDb || "").trim();
-    if (!s || !s.startsWith(prefix)) return `${prefix}01`;     // เริ่มที่ 01 ถ้ายังไม่มีของเดือนนี้
-    const m = s.match(/(\d+)$/);
-    const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
-    const n = (m ? parseInt(m[1], 10) : 0) + 1;
-    return `${prefix}${n.toString().padStart(pad, "0")}`;
-}
-
-async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/mdbpmreport/list`);
+async function fetchPreviewIssueId(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/cbboxpmreport/preview-issueid`);
     u.searchParams.set("station_id", stationId);
-    u.searchParams.set("page", "1");
-    u.searchParams.set("pageSize", "50");
-    u.searchParams.set("_ts", String(Date.now()));
+    u.searchParams.set("pm_date", pmDate);
 
-    const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
-    if (!r.ok) return null;
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewIssueId failed:", r.status);
+        return null;
+    }
 
     const j = await r.json();
-    const items: any[] = Array.isArray(j?.items) ? j.items : [];
-    if (!items.length) return null;
+    return (j && typeof j.issue_id === "string") ? j.issue_id : null;
+}
 
-    const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+/* ---------- NEW: helper สำหรับ doc_name ---------- */
 
-    // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
-    const samePrefix = items
-        .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
-        .filter(iid => iid.startsWith(prefix));
+async function fetchPreviewDocName(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/cbboxpmreport/preview-docname`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("pm_date", pmDate);
 
-    if (!samePrefix.length) return null;
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
 
-    // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
-    const toTailNum = (iid: string) => {
-        const m = iid.match(/(\d+)$/);
-        return m ? parseInt(m[1], 10) : -1;
-    };
-    return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewDocName failed:", r.status);
+        return null;
+    }
+
+    const j = await r.json();
+    return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
 
 /* =========================
  *        MAIN
  * ========================= */
 export default function CBBOXPMForm() {
+    const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+    const [docName, setDocName] = useState<string>("");
 
     const searchParams = useSearchParams();
     const editId = searchParams.get("edit_id") ?? "";
@@ -669,9 +518,28 @@ export default function CBBOXPMForm() {
     // const [สรุปผล, setสรุปผล] = useState<PF>("");
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
 
+    const [inspector, setInspector] = useState<string>("");
+
 
     /* ---------- job info ---------- */
-    const [job, setJob] = useState({ issue_id: "", chargerNo: "", sn: "", model: "", station_name: "", date: "", inspector: "" });
+    const [job, setJob] = useState({
+        issue_id: "",
+        // chargerNo: "", 
+        // sn: "", 
+        // model: "", 
+        station_name: "",
+        date: "",
+        inspector: ""
+    });
+
+
+    const todayStr = useMemo(() => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;       // YYYY-MM-DD (ตามเวลาท้องถิ่น browser)
+    }, []);
 
     /* ---------- PASS/FAIL + remark ---------- */
     // รวม key ทั้งหัวข้อหลัก + หัวข้อย่อย
@@ -687,6 +555,83 @@ export default function CBBOXPMForm() {
     /* ---------- ข้อ 5: วัดค่าแรงดัน ---------- */
     const m5 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS, "V");
 
+    useEffect(() => {
+        const token =
+            typeof window !== "undefined"
+                ? localStorage.getItem("access_token") ?? ""
+                : "";
+
+        if (!token) return;
+
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/me`, {
+                    method: "GET",
+                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: "include",
+                });
+
+                if (!res.ok) {
+                    console.warn("fetch /me failed:", res.status);
+                    return;
+                }
+
+                const data: Me = await res.json();
+                setMe(data);
+
+                // ถ้ายังไม่มี inspector ให้ auto-fill เป็น username
+                setInspector((prev) => prev || data.username || "");
+            } catch (err) {
+                console.error("fetch /me error:", err);
+            }
+        })();
+    }, []);
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+
+        (async () => {
+            try {
+                const preview = await fetchPreviewIssueId(stationId, job.date);
+                if (!canceled && preview) {
+                    setJob(prev => ({ ...prev, issue_id: preview }));
+                }
+            } catch (err) {
+                console.error("preview issue_id error:", err);
+                // ถ้า error ปล่อยให้ว่างไว้ → backend จะ gen เองตอน submit
+            }
+        })();
+
+        return () => { canceled = true; };
+    }, [stationId, job.date]);
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+
+        (async () => {
+            try {
+                const preview = await fetchPreviewDocName(stationId, job.date);
+
+                if (!canceled && preview) {
+                    // ถ้าเป็นหน้า edit แล้วดึง doc_name เดิมจาก DB มาอยู่แล้ว
+                    // จะไม่บังคับทับ ถ้าอยากกันตรงนี้เพิ่มเงื่อนไข isEdit ได้
+                    setDocName(preview);
+                }
+            } catch (err) {
+                console.error("preview docName error:", err);
+                // ถ้า error ปล่อยให้ docName ว่างไว้ → ฝั่ง backend จะ gen เองตอน submit อยู่แล้ว
+            }
+        })();
+
+        return () => {
+            canceled = true;
+        };
+    }, [stationId, job.date]);
+
     /* ---------- load station ---------- */
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -698,8 +643,8 @@ export default function CBBOXPMForm() {
             .then((st) => {
                 setJob((prev) => ({
                     ...prev,
-                    sn: st.SN ?? prev.sn,
-                    model: st.model ?? prev.model,
+                    // sn: st.SN ?? prev.sn,
+                    // model: st.model ?? prev.model,
                     station_name: st.station_name ?? prev.station_name,
                     date: prev.date || new Date().toISOString().slice(0, 10),
                 }));
@@ -724,12 +669,13 @@ export default function CBBOXPMForm() {
     useEffect(() => {
         if (!stationId || !draftId) return;
         const draft = loadDraftLocal<{
-            job: typeof job;
+            job: typeof job & { inspector?: string };
             rows: typeof rows;
             m5: typeof m5.state;
             photos: typeof photos;
             summary: string;
             summary_pf?: PF;
+            inspector?: string;
         }>(key);
         if (!draft) return;
 
@@ -739,34 +685,25 @@ export default function CBBOXPMForm() {
         setPhotos(draft.photos ?? initialPhotos);
         setSummary(draft.summary);
         setSummaryCheck(draft.summary_pf ?? "");
+        setInspector(draft.inspector ?? "");
     }, [stationId, draftId, key]);
 
+
     useEffect(() => {
-        if (!stationId || !job.date) return;
-
-        let canceled = false;
-        (async () => {
-            try {
-                const latest = await fetchLatestIssueIdFromList(stationId, job.date);
-                const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-                if (!canceled) {
-                    const prefix = makePrefix(PM_TYPE_CODE, job.date);
-                    setJob(prev => {
-                        // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
-                        if (prev.issue_id?.startsWith(prefix)) return prev;
-                        return { ...prev, issue_id: next };
-                    });
-                }
-            } catch {
-                if (!canceled) {
-                    const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-                    setJob(prev => ({ ...prev, issue_id: fallback }));
-                }
-            }
-        })();
-
-        return () => { canceled = true; };
-    }, [stationId, job.date]);
+        const onInfo = (e: Event) => {
+            const detail = (e as CustomEvent).detail as { info?: StationPublic; station?: StationPublic };
+            const st = detail.info ?? detail.station;
+            if (!st) return;
+            setJob((prev) => ({
+                ...prev,
+                // sn: st.SN ?? prev.sn,
+                // model: st.model ?? prev.model,
+                // brand: st.brand ?? prev.brand,
+            }));
+        };
+        window.addEventListener("station:info", onInfo as EventListener);
+        return () => window.removeEventListener("station:info", onInfo as EventListener);
+    }, []);
 
     // ---------- render helpers ----------
     const makePhotoSetter = (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
@@ -874,11 +811,13 @@ export default function CBBOXPMForm() {
             const payload = {
                 station_id: stationId,
                 issue_id: issueIdFromJob,
-                job,
+                job: jobWithoutIssueId,
+                inspector,
                 rows,
                 measures: { m5: m5.state }, // ลบ r9 ออกแล้ว
                 summary,
                 pm_date,
+                doc_name: docName,
                 ...(summaryCheck ? { summaryCheck } : {}),
             };
             const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, {
@@ -888,7 +827,15 @@ export default function CBBOXPMForm() {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            const { report_id } = await res.json();
+            // const { report_id } = await res.json();
+
+            const { report_id, doc_name } = await res.json() as {
+                report_id: string;
+                doc_name?: string;
+            };
+            if (doc_name) {
+                setDocName(doc_name);
+            }
 
             // อัปโหลดรูปแยกกลุ่ม g1..g8 (map ตาม photos ที่มีจาก QUESTIONS)
             const photoNos = Object.keys(photos).map(Number);
@@ -948,59 +895,6 @@ export default function CBBOXPMForm() {
             </div>
         );
     };
-
-    // const renderQuestionBlock = (q: Question) => {
-    //     return (
-    //         <SectionCard key={q.key} title={q.label}>
-    //             {/* simple/group header row */}
-    //             {q.kind === "simple" && (
-    //                 <PassFailRow
-    //                     label="ผลการทดสอบ"
-    //                     value={rows[q.key].pf}
-    //                     onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
-    //                     remark={rows[q.key].remark}
-    //                     onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-    //                 />
-    //             )}
-
-    //             {q.kind === "group" &&
-    //                 q.items.map((it) => (
-    //                     <PassFailRow
-    //                         key={it.key}
-    //                         label={it.label}
-    //                         value={rows[it.key]?.pf ?? ""}
-    //                         onChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
-    //                         remark={rows[it.key]?.remark}
-    //                         onRemarkChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
-    //                     />
-    //                 ))}
-
-    //             {q.kind === "measure" && (
-    //                 <>
-    //                     <PassFailRow
-    //                         label="ผลการทดสอบ"
-    //                         value={rows[q.key].pf}
-    //                         onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
-    //                         remark={rows[q.key].remark}
-    //                         onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-    //                     />
-    //                     {renderMeasureGrid(q.no)}
-    //                 </>
-    //             )}
-
-    //             {q.hasPhoto && (
-    //                 <div className="tw-pt-2 tw-pb-4 tw-border-t tw-border-blue-gray-50">
-    //                     <PhotoMultiInput
-    //                         label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-    //                         photos={photos[q.no] || []}
-    //                         setPhotos={makePhotoSetter(q.no)}
-    //                         max={20}
-    //                     />
-    //                 </div>
-    //             )}
-    //         </SectionCard>
-    //     );
-    // };
 
     const renderQuestionBlock = (q: Question) => {
         return (
@@ -1145,6 +1039,16 @@ export default function CBBOXPMForm() {
                                 </div>
                             </div>
                         </div>
+                        {/* ขวาสุด: ชื่อเอกสาร / เลขที่เอกสาร */}
+                        <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
+                            <div className="tw-font-semibold">
+                                Document Name.
+                            </div>
+                            <div>
+                                {docName || "-"}
+                            </div>
+
+                        </div>
                     </div>
                     {/* BODY */}
                     <div className="tw-mt-8 tw-space-y-8">
@@ -1226,6 +1130,12 @@ export default function CBBOXPMForm() {
                         </div>
                     </SectionCard>
 
+                    <div className="tw-text-right tw-text-sm tw-text-blue-gray-700 tw-mt-4">
+                        <div className="tw-font-semi">
+                            <u><b>ผู้ตรวจสอบ</b> : {inspector || "-"}</u>
+                        </div>
+                    </div>
+
 
                     {/* Footer checks */}
                     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
@@ -1279,137 +1189,6 @@ export default function CBBOXPMForm() {
                 </div>
             </form>
         </section >
-
-        // <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
-        //     {/* Job Info */}
-        //     <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-        //         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
-        //             <Input label="Issue ID" value={job.issue_id} onChange={(e) => setJob({ ...job, issue_id: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
-        //             <Input label="Location / สถานที่" value={job.station_name} onChange={(e) => setJob({ ...job, station_name: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
-        //             <Input label="วันที่ตรวจ" type="date" value={job.date} onChange={(e) => setJob({ ...job, date: e.target.value })} crossOrigin="" />
-        //         </div>
-        //     </SectionCard>
-
-        //     {/* Checklist */}
-        //     <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-        //             <Typography variant="h6">Checklist</Typography>
-        //         </CardHeader>
-        //         <CardBody className="tw-space-y-1">
-        //             {QUESTIONS.map(renderQuestionBlock)}
-        //         </CardBody>
-        //     </Card>
-
-        //     {/* Summary */}
-        //     {/* <SectionCard title="Comment">
-        //         <div className="tw-space-y-2">
-        //             <Textarea
-        //                 label="Comment"
-        //                 value={summary}
-        //                 onChange={(e) => setSummary(e.target.value)}
-        //                 rows={4}
-        //                 required
-        //                 autoComplete="off"
-        //                 // error={!isSummaryFilled}
-        //                 containerProps={{ className: "!tw-min-w-0" }}
-        //                 className="!tw-w-full resize-none"
-        //             />
-        //             <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-        //                 {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-        //             </Typography>
-        //         </div>
-
-        //         <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-        //             <PassFailRow
-        //                 label="สรุปผลการตรวจสอบ"
-        //                 value={audio}
-        //                 onChange={(v) => setAudio(v)}   // เลือกได้ทีละค่าเดียว
-        //             />
-        //         </div>
-
-        //     </SectionCard> */}
-        //     <SectionCard title="Comment">
-        //         <div className="tw-space-y-2">
-        //             <Textarea
-        //                 label="Comment"
-        //                 value={summary}
-        //                 onChange={(e) => setSummary(e.target.value)}
-        //                 rows={4}
-        //                 required
-        //                 autoComplete="off"
-        //                 containerProps={{ className: "!tw-min-w-0" }}
-        //                 className="!tw-w-full resize-none"
-        //             />
-        //             <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-        //                 {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-        //             </Typography>
-        //         </div>
-
-        //         <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-        //             <PassFailRow
-        //                 label="สรุปผลการตรวจสอบ"
-        //                 value={summaryCheck}
-        //                 onChange={(v) => setSummaryCheck(v)}
-        //                 labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
-        //                     PASS: "Pass : ผ่าน",
-        //                     FAIL: "Fail : ไม่ผ่าน",
-        //                     NA: "N/A : ไม่พบ",
-        //                 }}
-        //             />
-        //         </div>
-        //     </SectionCard>
-
-
-        //     {/* Footer checks */}
-        //     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
-        //             {allPFAnswered ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
-        //             )}
-        //         </div>
-
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">2) อินพุตค่าที่วัด (ข้อ 5)</Typography>
-        //             {allRequiredInputsFilled ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <div className="tw-space-y-1">
-        //                     <Typography variant="small" className="!tw-text-amber-700">ยังขาด:</Typography>
-        //                     <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
-        //                         {missingInputs.map((line, i) => (<li key={i}>{line}</li>))}
-        //                     </ul>
-        //                 </div>
-        //             )}
-        //         </div>
-
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกหัวข้อ)</Typography>
-        //             {allPhotosAttached ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}</Typography>
-        //             )}
-        //         </div>
-
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
-        //             {isSummaryFilled ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-        //             )}
-        //         </div>
-
-        //         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-        //             <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
-        //                 {submitting ? "กำลังบันทึก..." : "บันทึก"}
-        //             </Button>
-        //         </div>
-        //     </CardFooter>
-        // </section>
 
     );
 }

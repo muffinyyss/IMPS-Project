@@ -821,15 +821,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   className="tw-hidden"
                   onChange={handlePdfChange}
                 />
-                {/* <Button
-                  size="lg"
-                  variant="outlined"
-                  onClick={() => pdfInputRef.current?.click()}
-                  className="tw-flex tw-items-center tw-gap-2"
-                >
-                  <ArrowUpTrayIcon className="tw-h-4 tw-w-4" />
-                  Upload
-                </Button> */}
                 <Button
                   variant="text"
                   size="lg"
@@ -988,9 +979,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         <DialogHeader>เลือกวันที่รายงาน</DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
-            {/* <Typography variant="small" className="!tw-text-blue-gray-600">
-              Issue ID
-            </Typography> */}
             <Input
               label="Document Name / ชื่อเอกสาร"
               value={docName}
@@ -1000,14 +988,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               className="!tw-w-full !tw-bg-blue-gray-50"
               readOnly
             />
-            {/* <Typography variant="small" className="!tw-text-blue-gray-500">
-              ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
-            </Typography> */}
           </div>
           <div className="tw-space-y-2">
-            {/* <Typography variant="small" className="!tw-text-blue-gray-600">
-              Issue ID
-            </Typography> */}
             <Input
               label="Issue id / รหัสเอกสาร"
               value={issueId}
@@ -1017,9 +999,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               className="!tw-w-full !tw-bg-blue-gray-50"
               readOnly
             />
-            {/* <Typography variant="small" className="!tw-text-blue-gray-500">
-              ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
-            </Typography> */}
           </div>
           <div className="tw-space-y-2">
             <Input
