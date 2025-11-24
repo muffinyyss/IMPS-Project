@@ -14,7 +14,6 @@ import Image from "next/image";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import { useRouter, useSearchParams } from "next/navigation";
 
-
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
 type StationPublic = {
@@ -183,199 +182,6 @@ type PassFailRowProps = {
     aboveRemark?: React.ReactNode;
 
 };
-
-// function PassFailRow({
-//     label,
-//     value,
-//     onChange,
-//     remark,
-//     onRemarkChange,
-//     labels,
-//     aboveRemark,
-//     inlineLeft,     
-// }: {
-//     label: string;
-//     value: PF;
-//     onChange: (v: Exclude<PF, "">) => void;
-//     remark?: string;
-//     onRemarkChange?: (v: string) => void;
-//     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-//     aboveRemark?: React.ReactNode;
-//     inlineLeft?: React.ReactNode;
-// }) {
-//     const text = {
-//         PASS: labels?.PASS ?? "PASS",
-//         FAIL: labels?.FAIL ?? "FAIL",
-//         NA: labels?.NA ?? "N/A",
-//     };
-
-//     const buttons = (
-//         <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-//             <Button
-//                 size="sm"
-//                 color="green"
-//                 variant={value === "PASS" ? "filled" : "outlined"}
-//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                 onClick={() => onChange("PASS")}
-//             >
-//                 {text.PASS}
-//             </Button>
-//             <Button
-//                 size="sm"
-//                 color="red"
-//                 variant={value === "FAIL" ? "filled" : "outlined"}
-//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                 onClick={() => onChange("FAIL")}
-//             >
-//                 {text.FAIL}
-//             </Button>
-//             <Button
-//                 size="sm"
-//                 color="blue-gray"
-//                 variant={value === "NA" ? "filled" : "outlined"}
-//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                 onClick={() => onChange("NA")}
-//             >
-//                 {text.NA}
-//             </Button>
-//         </div>
-//     );
-
-
-//     return (
-//         <div className="tw-space-y-3 tw-py-3">
-//             {/* แสดง label ด้านบนเสมอ */}
-//             <Typography className="tw-font-medium">{label}</Typography>
-
-//             {onRemarkChange ? (
-//                 // กรณีมีหมายเหตุ → รูป / ปุ่ม / หมายเหตุ
-//                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
-//                     {/* รูปอยู่เหนือปุ่ม */}
-//                     {aboveRemark}
-
-//                     {/* ปุ่ม PASS / FAIL / N/A อยู่ "เหนือ" ช่องหมายเหตุ */}
-//                     {buttons}
-
-//                     <Textarea
-//                         label="หมายเหตุ (ถ้ามี)"
-//                         value={remark || ""}
-//                         onChange={(e) => onRemarkChange(e.target.value)}
-//                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
-//                         className="!tw-w-full"
-//                     />
-//                 </div>
-//             ) : (
-//                 // กรณีไม่มีหมายเหตุ (เช่น สรุปผลท้ายฟอร์ม) → layout เดิม
-//                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-//                     {buttons}
-//                 </div>
-//             )}
-//         </div>
-//     );
-// }
-
-// function PassFailRow({
-//     label,
-//     value,
-//     onChange,
-//     remark,
-//     onRemarkChange,
-//     labels,
-//     aboveRemark,
-//     inlineLeft,
-// }: {
-//     label: string;
-//     value: PF;
-//     onChange: (v: Exclude<PF, "">) => void;
-//     remark?: string;
-//     onRemarkChange?: (v: string) => void;
-//     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-//     aboveRemark?: React.ReactNode;
-//     inlineLeft?: React.ReactNode;
-// }) {
-//     const text = {
-//         PASS: labels?.PASS ?? "PASS",
-//         FAIL: labels?.FAIL ?? "FAIL",
-//         NA: labels?.NA ?? "N/A",
-//     };
-
-//     const buttonGroup = (
-//         <>
-//             <Button
-//                 size="sm"
-//                 color="green"
-//                 variant={value === "PASS" ? "filled" : "outlined"}
-//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                 onClick={() => onChange("PASS")}
-//             >
-//                 {text.PASS}
-//             </Button>
-//             <Button
-//                 size="sm"
-//                 color="red"
-//                 variant={value === "FAIL" ? "filled" : "outlined"}
-//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                 onClick={() => onChange("FAIL")}
-//             >
-//                 {text.FAIL}
-//             </Button>
-//             <Button
-//                 size="sm"
-//                 color="blue-gray"
-//                 variant={value === "NA" ? "filled" : "outlined"}
-//                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-//                 onClick={() => onChange("NA")}
-//             >
-//                 {text.NA}
-//             </Button>
-//         </>
-//     );
-
-//     // ⬇️ แถวเดียวกัน: inlineLeft (เช่น checkbox) + ปุ่ม
-//     const buttonsRow = (
-//         <div className="tw-flex tw-items-center tw-gap-3 tw-w-full sm:tw-w-auto">
-//             {inlineLeft && (
-//                 <div className="tw-flex tw-items-center tw-gap-2">
-//                     {inlineLeft}
-//                 </div>
-//             )}
-//             <div className="tw-flex tw-gap-2 tw-flex-1 sm:tw-flex-none">
-//                 {buttonGroup}
-//             </div>
-//         </div>
-//     );
-
-//     return (
-//         <div className="tw-space-y-3 tw-py-3">
-//             {/* แสดง label ด้านบนเสมอ */}
-//             <Typography className="tw-font-medium">{label}</Typography>
-
-//             {onRemarkChange ? (
-//                 // มีหมายเหตุ → รูป / ปุ่ม+checkbox / หมายเหตุ
-//                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
-//                     {/* รูปอยู่เหนือปุ่ม */}
-//                     {aboveRemark}
-
-//                     {/* ปุ่ม PASS/FAIL/NA + checkbox ซ้ายสุด */}
-//                     {buttonsRow}
-
-//                     <Textarea
-//                         label="หมายเหตุ (ถ้ามี)"
-//                         value={remark || ""}
-//                         onChange={(e) => onRemarkChange(e.target.value)}
-//                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
-//                         className="!tw-w-full"
-//                     />
-//                 </div>
-//             ) : (
-//                 // ไม่มีหมายเหตุ → แค่แถวปุ่ม+checkbox
-//                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-//                     {buttonsRow}
-//                 </div>
-//             )}
-//         </div>
-//     );
-// }
 
 function PassFailRow({
     label,
@@ -584,7 +390,6 @@ function InputWithUnit<U extends string>({
     );
 }
 
-
 function PhotoMultiInput({
     label,
     photos,
@@ -697,7 +502,6 @@ function PhotoMultiInput({
     );
 }
 
-
 const PM_TYPE_CODE = "CG";
 
 function makePrefix(typeCode: string, dateISO: string) {
@@ -727,23 +531,6 @@ function makeDocNameParts(stationId: string, dateISO: string) {
     return { year, prefix, suffix };
 }
 
-function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
-    const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
-    const s = String(latestFromDb || "").trim();
-
-    // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
-    if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
-        return `${prefix}1${suffix}`;
-    }
-
-    // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
-    const inside = s.slice(prefix.length, s.length - suffix.length);
-    const cur = parseInt(inside, 10);
-    const nextIndex = isNaN(cur) ? 1 : cur + 1;
-
-    return `${prefix}${nextIndex}${suffix}`;
-}
-
 async function fetchPreviewIssueId(
     stationId: string,
     pmDate: string
@@ -769,6 +556,24 @@ async function fetchPreviewIssueId(
 
     const j = await r.json();
     return (j && typeof j.issue_id === "string") ? j.issue_id : null;
+}
+
+
+function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
+    const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
+    const s = String(latestFromDb || "").trim();
+
+    // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
+    if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
+        return `${prefix}1${suffix}`;
+    }
+
+    // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
+    const inside = s.slice(prefix.length, s.length - suffix.length);
+    const cur = parseInt(inside, 10);
+    const nextIndex = isNaN(cur) ? 1 : cur + 1;
+
+    return `${prefix}${nextIndex}${suffix}`;
 }
 
 async function fetchPreviewDocName(
@@ -797,38 +602,6 @@ async function fetchPreviewDocName(
     const j = await r.json();
     return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
-
-
-// async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
-//     const u = new URL(`${API_BASE}/pmreport/list`);
-//     u.searchParams.set("station_id", stationId);
-//     u.searchParams.set("page", "1");
-//     u.searchParams.set("pageSize", "50");
-//     u.searchParams.set("_ts", String(Date.now()));
-
-//     const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
-//     if (!r.ok) return null;
-
-//     const j = await r.json();
-//     const items: any[] = Array.isArray(j?.items) ? j.items : [];
-//     if (!items.length) return null;
-
-//     const prefix = makePrefix(PM_TYPE_CODE, dateISO);
-
-//     // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
-//     const samePrefix = items
-//         .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
-//         .filter(iid => iid.startsWith(prefix));
-
-//     if (!samePrefix.length) return null;
-
-//     // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
-//     const toTailNum = (iid: string) => {
-//         const m = iid.match(/(\d+)$/);
-//         return m ? parseInt(m[1], 10) : -1;
-//     };
-//     return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
-// }
 
 async function fetchLatestIssueIdFromList(
     stationId: string,
@@ -908,57 +681,6 @@ async function fetchLatestDocName(
     return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
 
-// async function fetchLatestDocNameFromList(
-//     stationId: string,
-//     dateISO: string
-// ): Promise<string | null> {
-//     const u = new URL(`${API_BASE}/pmreport/list`);
-//     u.searchParams.set("station_id", stationId);
-//     u.searchParams.set("page", "1");
-//     u.searchParams.set("pageSize", "200");
-//     u.searchParams.set("_ts", String(Date.now()));
-
-//     const token =
-//         typeof window !== "undefined"
-//             ? localStorage.getItem("access_token") ?? ""
-//             : "";
-
-//     const r = await fetch(u.toString(), {
-//         credentials: "include",
-//         cache: "no-store",
-//         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-//     });
-
-//     if (!r.ok) {
-//         console.error("fetchLatestDocNameFromList failed:", r.status);
-//         return null;
-//     }
-
-//     const j = await r.json();
-//     const items: any[] = Array.isArray(j?.items) ? j.items : [];
-//     if (!items.length) return null;
-
-//     const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
-
-//     const sameYearDocs = items
-//         .map((it) => String(it?.doc_name || ""))   // backend ต้องส่ง doc_name มาด้วย
-//         .filter((name) => name.startsWith(prefix) && name.endsWith(suffix));
-
-//     if (!sameYearDocs.length) return null;
-
-//     const toIndex = (name: string) => {
-//         const inside = name.slice(prefix.length, name.length - suffix.length);
-//         const n = parseInt(inside, 10);
-//         return isNaN(n) ? -1 : n;
-//     };
-
-//     return sameYearDocs.reduce(
-//         (acc, cur) => (toIndex(cur) > toIndex(acc) ? cur : acc),
-//         sameYearDocs[0]
-//     );
-// }
-
-
 /* =========================
  *        MAIN
  * ========================= */
@@ -968,7 +690,6 @@ export default function ChargerPMForm() {
     const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
-    const [docNoPreview, setDocNoPreview] = useState<string>("");
     const [docName, setDocName] = useState<string>("");
 
     const searchParams = useSearchParams();
@@ -1009,7 +730,6 @@ export default function ChargerPMForm() {
         brand: "",
         station_name: "",
         date: "",
-        // inspector: "",
     });
 
     const todayStr = useMemo(() => {
@@ -1063,119 +783,6 @@ export default function ChargerPMForm() {
             }
         })();
     }, []);
-
-    // useEffect(() => {
-    //     if (!stationId || !job.date) return;
-
-    //     let canceled = false;
-    //     (async () => {
-    //         try {
-    //             const latest = await fetchLatestIssueIdFromList(stationId, job.date);
-    //             const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-    //             if (!canceled) {
-    //                 const prefix = makePrefix(PM_TYPE_CODE, job.date);
-    //                 setJob(prev => {
-    //                     // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
-    //                     if (prev.issue_id?.startsWith(prefix)) return prev;
-    //                     return { ...prev, issue_id: next };
-    //                 });
-    //             }
-    //         } catch {
-    //             if (!canceled) {
-    //                 const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-    //                 setJob(prev => ({ ...prev, issue_id: fallback }));
-    //             }
-    //         }
-    //     })();
-
-    //     return () => { canceled = true; };
-    // }, [stationId, job.date]);
-
-    // useEffect(() => {
-    //     if (!stationId || !job.date) return;
-
-    //     let canceled = false;
-
-    //     (async () => {
-    //         try {
-    //             const latestDocName = await fetchLatestDocNameFromList(stationId, job.date);
-    //             const next = nextDocNameFor(stationId, job.date, latestDocName || "");
-
-    //             if (!canceled) {
-    //                 setDocName(next);
-    //             }
-    //         } catch (err) {
-    //             console.error("compute docName error:", err);
-    //             // fallback ถ้า error → ถือว่าเป็นตัวแรกของปี
-    //             if (!canceled) {
-    //                 const fallback = nextDocNameFor(stationId, job.date, "");
-    //                 setDocName(fallback);
-    //             }
-    //         }
-    //     })();
-
-    //     return () => {
-    //         canceled = true;
-    //     };
-    // }, [stationId, job.date]);
-
-    //     useEffect(() => {
-    //     if (!stationId || !job.date) return;
-
-    //     let canceled = false;
-
-    //     (async () => {
-    //         try {
-    //             // ใช้ฟังก์ชันที่มีอยู่แล้ว
-    //             const latestDocName = await fetchLatestDocNameFromList(stationId, job.date);
-    //             const next = nextDocNameFor(stationId, job.date, latestDocName || "");
-
-    //             if (!canceled) {
-    //                 setDocName(next);
-    //             }
-    //         } catch (err) {
-    //             console.error("compute docName error:", err);
-    //             // fallback: ถ้า error ให้เริ่มที่ 1
-    //             if (!canceled) {
-    //                 const fallback = nextDocNameFor(stationId, job.date, "");
-    //                 setDocName(fallback);
-    //             }
-    //         }
-    //     })();
-
-    //     return () => {
-    //         canceled = true;
-    //     };
-    // }, [stationId, job.date]);
-
-    // useEffect(() => {
-    //     if (!stationId || !job.date) return;
-
-    //     let canceled = false;
-
-    //     (async () => {
-    //         try {
-    //             // ดึง doc_name ล่าสุดจาก backend
-    //             const latest = await fetchLatestDocName(stationId, job.date);
-    //             const next = nextDocNameFor(stationId, job.date, latest || "");
-
-    //             if (!canceled) {
-    //                 setDocName(next);
-    //             }
-    //         } catch (err) {
-    //             console.error("compute docName error:", err);
-    //             // fallback ถ้า error
-    //             if (!canceled) {
-    //                 const fallback = nextDocNameFor(stationId, job.date, "");
-    //                 setDocName(fallback);
-    //             }
-    //         }
-    //     })();
-
-    //     return () => {
-    //         canceled = true;
-    //     };
-    // }, [stationId, job.date]);
 
     useEffect(() => {
         if (!stationId || !job.date) return;
@@ -1310,9 +917,6 @@ export default function ChargerPMForm() {
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
 
-
-
-
     const makePhotoSetter =
         (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> =>
             (action) => {
@@ -1332,9 +936,6 @@ export default function ChargerPMForm() {
         [REQUIRED_PHOTO_ITEMS, photos]
     );
     const allPhotosAttached = missingPhotoItems.length === 0;
-
-
-
 
     const MEASURE_BY_NO: Record<number, ReturnType<typeof useMeasure<UnitVoltage>> | undefined> = {
         17: m17,
@@ -1389,11 +990,6 @@ export default function ChargerPMForm() {
         allPFAnswered &&
         allRequiredInputsFilled &&
         isSummaryFilled;
-
-
-    // useEffect(() => {
-    //     onComplete(allPFAnswered);
-    // }, [allPFAnswered, onComplete]);
 
     /* ---------- unit sync ---------- */
     const handleUnitChange = (no: number, key: string, u: UnitVoltage) => {
@@ -1498,18 +1094,6 @@ export default function ChargerPMForm() {
         }, deps); // eslint-disable-line react-hooks/exhaustive-deps
     }
 
-    // เรียกใช้ – เก็บเฉพาะข้อมูลที่ serialize ได้
-    // useDebouncedEffect(() => {
-    //     if (!stationId) return;
-    //     saveDraftLocal(key, {
-    //         job,
-    //         rows,
-    //         cp,
-    //         m17: m17.state,
-    //         summary,
-    //         // dustFilterChanged,
-    //     });
-    // }, [key, stationId, job, rows, cp, m17.state, summary]);
     useDebouncedEffect(() => {
         if (!stationId) return;
         saveDraftLocal(key, {
@@ -1681,9 +1265,9 @@ export default function ChargerPMForm() {
                         <div className="tw-flex tw-items-start tw-gap-4">
                             <div
                                 className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md
-                 tw-h-16 tw-w-[76px]
-                 md:tw-h-20 md:tw-w-[108px]
-                 lg:tw-h-24 lg:tw-w-[152px]"
+                                    tw-h-16 tw-w-[76px]
+                                    md:tw-h-20 md:tw-w-[108px]
+                                    lg:tw-h-24 lg:tw-w-[152px]"
                             >
                                 <Image
                                     src={LOGO_SRC}
@@ -1834,8 +1418,6 @@ export default function ChargerPMForm() {
                             </div>
                         </div>
                     </div>
-
-
                     {[
                         [1, 5],
                         [6, 10],

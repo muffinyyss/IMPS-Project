@@ -1,4 +1,3 @@
-
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -24,15 +23,19 @@ import {
   Typography,
 } from "@material-tailwind/react";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
-import {ArrowLeftIcon, ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import MDBPMForm from "@/app/dashboard/pm-report/mdb/input_PMreport/components/checkList";
+import { apiFetch } from "@/utils/api";
 type TData = {
   id?: string;
+  doc_name?: string;
   issue_id?: string;
+  pm_date: string;
   name: string;      // วันที่ (TH) สำหรับแสดงผล
   position: string;  // YYYY-MM-DD สำหรับ sort
   office: string;    // URL ไฟล์หรือ endpoint /pdf/mdb/{id}/export
+  inspector?: string;
 };
 
 type Props = {
@@ -76,8 +79,10 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   };
 
   const [a, b] = await Promise.allSettled([
-    fetch(build(`/${REPORT_PREFIX}/list`), FetchOpts),
-    fetch(build(`/${URL_PREFIX}/list`), FetchOpts),
+    apiFetch(build(`/${REPORT_PREFIX}/list`), FetchOpts),
+    apiFetch(build(`/${URL_PREFIX}/list`), FetchOpts),
+    // fetch(build(`/${REPORT_PREFIX}/list`), FetchOpts),
+    // fetch(build(`/${URL_PREFIX}/list`), FetchOpts),
   ]);
 
   let ids: string[] = [];
@@ -100,6 +105,98 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   return same.reduce((acc, cur) => (toTail(cur) > toTail(acc) ? cur : acc), same[0]);
 }
 
+/* ---------- NEW: helper สำหรับ doc_name ---------- */
+function makeDocNameParts(stationId: string, dateISO: string) {
+  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+  const year = d.getFullYear();
+  const prefix = `${stationId}_`;
+  const suffix = `/${year}`;
+  return { year, prefix, suffix };
+}
+
+function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
+  const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
+  const s = String(latestFromDb || "").trim();
+
+  // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
+  if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
+    return `${prefix}1${suffix}`;
+  }
+
+  // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
+  const inside = s.slice(prefix.length, s.length - suffix.length);
+  const cur = parseInt(inside, 10);
+  const nextIndex = isNaN(cur) ? 1 : cur + 1;
+
+  return `${prefix}${nextIndex}${suffix}`;
+}
+
+async function fetchPreviewDocName(
+  stationId: string,
+  pmDate: string
+): Promise<string | null> {
+  const u = new URL(`${BASE}/mdbpmreport/preview-docname`);
+  u.searchParams.set("station_id", stationId);
+  u.searchParams.set("pm_date", pmDate);
+
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("access_token") ?? ""
+      : "";
+
+  const r = await apiFetch(u.toString(), {
+    // const r = await fetch(u.toString(), {
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (!r.ok) {
+    console.error("fetchPreviewDocName failed:", r.status);
+    return null;
+  }
+
+  const j = await r.json();
+  return (j && typeof j.doc_name === "string") ? j.doc_name : null;
+}
+async function fetchLatestDocName(
+  stationId: string,
+  dateISO: string
+): Promise<string | null> {
+  const u = new URL(`${BASE}/mdbpmreport/latest-docname`);
+  u.searchParams.set("station_id", stationId);
+  u.searchParams.set("pm_date", dateISO);
+  u.searchParams.set("_ts", String(Date.now()));
+
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("access_token") ?? ""
+      : "";
+
+  // const r = await fetch(u.toString(), {
+  const r = await apiFetch(u.toString(), {
+    credentials: "include",
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (!r.ok) {
+    console.error("fetchLatestDocName failed:", r.status);
+    return null;
+  }
+
+  const j = await r.json();
+  return (j && typeof j.doc_name === "string") ? j.doc_name : null;
+}
+
+type Me = {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  company: string;
+  tel: string;
+};
+
 export default function MDBTable({ token, apiBase = BASE }: Props) {
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -108,6 +205,17 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   const [issueId, setIssueId] = useState<string>("");
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
+  const [docName, setDocName] = useState<string>("");
+  const [me, setMe] = useState<Me | null>(null);
+  const [inspector, setInspector] = useState<string>("");
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;   // YYYY-MM-DD ตามวันที่เครื่องผู้ใช้
+  }, []);
 
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
@@ -119,6 +227,43 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     const sidLocal = localStorage.getItem("selected_station_id");
     setStationId(sidLocal);
   }, [searchParams]);
+
+  useEffect(() => {
+    // ถ้าใช้ httpOnly cookie เป็นหลัก ก็ไม่ต้องพึ่ง localStorage มาก
+    const useHttpOnlyCookie = true;
+
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (!useHttpOnlyCookie) {
+          const t = typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+          if (t) headers.Authorization = `Bearer ${t}`;
+        }
+
+        const res = await apiFetch(`${apiBase}/me`, {
+          // const res = await fetch(`${apiBase}/me`, {
+          method: "GET",
+          headers,
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          console.warn("/me failed:", res.status);
+          return;
+        }
+
+        const data: Me = await res.json();
+        setMe(data);
+
+        // ให้ inspector default เป็น username ถ้ายังว่างอยู่
+        setInspector((prev) => prev || data.username || "");
+      } catch (err) {
+        console.error("fetch /me error:", err);
+      }
+    })();
+  }, [apiBase]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -135,14 +280,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
-
-
-
-  // const addHref = useMemo(() => {
-  //   if (!stationId) return "/dashboard/pm-report/mdb/input_PMreport";
-  //   const p = new URLSearchParams({ station_id: stationId });
-  //   return `/dashboard/pm-report/mdb/input_PMreport?${p.toString()}`;
-  // }, [stationId]);
 
   // ---- Helpers ----
   const useHttpOnlyCookie = true;
@@ -162,12 +299,22 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
 
   function thDate(iso?: string) {
     if (!iso) return "-";
-    return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
+
+    // บังคับให้ตีความเป็นเวลา UTC
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+      ? new Date(iso + "T00:00:00Z")
+      : new Date(iso);
+
+    if (isNaN(d.getTime())) return "-";
+
+    return d.toLocaleDateString("th-TH-u-ca-gregory", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+      timeZone: "UTC",
     });
   }
+
   function toISODateOnly(s?: string) {
     if (!s) return "";
     try {
@@ -236,8 +383,10 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       // const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
 
       const [pmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
-        fetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
+        // fetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
+        // fetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
+        apiFetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
+        apiFetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
       ]);
 
       let pmItems: any[] = [];
@@ -273,8 +422,15 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/mdb/${encodeURIComponent(id)}/export` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
-        const issueId = (it.issue_id ? String(it.issue_id) : "") || id || "";
-        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
+        // const issueId = (it.issue_id ? String(it.issue_id) : "") || id || "";
+        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
+
+        const doc_name = (it.doc_name ? String(it.doc_name) : "")
+        const inspector =
+          (it.inspector ?? it.job?.inspector ?? "") as string;
+
+
+        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: fileUrl, inspector, } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -285,8 +441,13 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
           it.file ??
           it.path;
         const href = resolveFileHref(raw, apiBase);
-        const issueId = (it.issue_id ? String(it.issue_id) : "") || "";
-        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: href } as TData;
+        // const issueId = (it.issue_id ? String(it.issue_id) : "") || "";
+        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
+
+        const doc_name = (it.doc_name ? String(it.doc_name) : "")
+        const inspector =
+          (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
+        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: href, inspector, } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
@@ -386,6 +547,16 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
+      accessorFn: (row) => row.doc_name || "—",
+      id: "name",
+      header: () => "document name",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      size: 120,
+      minSize: 80,
+      maxSize: 160,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
       header: () => "issue_id",
@@ -396,10 +567,20 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.name,
+      accessorFn: (row) => row.pm_date,
       id: "date",
-      header: () => "date",
+      header: () => "pm date",
       cell: (info) => info.getValue() as React.ReactNode,
+      size: 100,
+      minSize: 80,
+      maxSize: 140,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.inspector,
+      id: "inspector",
+      header: () => "inspector",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
       maxSize: 140,
@@ -502,6 +683,9 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       const fd = new FormData();
       fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
+      fd.append("issue_id", issueId);
+      fd.append("doc_name", docName || "");
+      fd.append("inspector", inspector || "");
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files?_ts=${Date.now()}`, {
@@ -524,6 +708,41 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
     }
   }
+
+  useEffect(() => {
+    if (!dateOpen || !stationId || !reportDate) return;
+
+    let canceled = false;
+
+    (async () => {
+      try {
+        // 1) ลองขอชื่อจาก preview endpoint ก่อน
+        const preview = await fetchPreviewDocName(stationId, reportDate);
+        if (!canceled && preview) {
+          setDocName(preview);
+          return;
+        }
+
+        // 2) ถ้าไม่มี preview → ดึง latest แล้วคำนวณชื่อถัดไป
+        const latest = await fetchLatestDocName(stationId, reportDate);
+        if (!canceled) {
+          const next = nextDocNameFor(stationId, reportDate, latest || undefined);
+          setDocName(next);
+        }
+      } catch (e) {
+        console.error("auto doc_name error:", e);
+        if (!canceled) {
+          // 3) กรณี error → fallback เป็นชื่อแรกของปีนั้น ๆ
+          const fallback = nextDocNameFor(stationId, reportDate);
+          setDocName(fallback);
+        }
+      }
+    })();
+
+    return () => {
+      canceled = true;
+    };
+  }, [dateOpen, stationId, reportDate]);
 
   useEffect(() => {
     if (!dateOpen || !stationId || !reportDate) return;
@@ -614,22 +833,22 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                 </Button>
 
                 {/* <Link href={addHref} onClick={(e) => { if (!stationId) e.preventDefault(); }}> */}
-                  <Button
-                    size="lg"
-                    onClick={goAdd}
-                    disabled={!stationId}
-                    className={`
+                <Button
+                  size="lg"
+                  onClick={goAdd}
+                  disabled={!stationId}
+                  className={`
                       !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
                       tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
                       ${!stationId
-                        ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                        : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
+                      ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+                      : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
                       tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
                       focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
                     `}
-                  >
-                    +Add
-                  </Button>
+                >
+                  +Add
+                </Button>
                 {/* </Link> */}
               </div>
             </div>
@@ -757,11 +976,57 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
         <DialogHeader>เลือกวันที่รายงาน</DialogHeader>
         <DialogBody className="tw-space-y-4">
+          <div className="tw-space-y-2">
+            {/* <Typography variant="small" className="!tw-text-blue-gray-600">
+                        Issue ID
+                      </Typography> */}
+            <Input
+              label="Document Name / ชื่อเอกสาร"
+              value={docName}
+              onChange={(e) => setDocName(e.target.value)}
+              crossOrigin=""
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-w-full !tw-bg-blue-gray-50"
+              readOnly
+            />
+            {/* <Typography variant="small" className="!tw-text-blue-gray-500">
+                        ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
+                      </Typography> */}
+          </div>
+          <div className="tw-space-y-2">
+            {/* <Typography variant="small" className="!tw-text-blue-gray-600">
+                        Issue ID
+                      </Typography> */}
+            <Input
+              label="Issue id / รหัสเอกสาร"
+              value={issueId}
+              onChange={(e) => setIssueId(e.target.value)}
+              crossOrigin=""
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-w-full !tw-bg-blue-gray-50"
+              readOnly
+            />
+            {/* <Typography variant="small" className="!tw-text-blue-gray-500">
+                        ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
+                      </Typography> */}
+          </div>
+          <div className="tw-space-y-2">
+            <Input
+              label="Inspector / ผู้ตรวจสอบ"
+              value={inspector}
+              onChange={(e) => setInspector(e.target.value)}
+              crossOrigin=""
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-w-full !tw-bg-blue-gray-50"
+              readOnly
+            />
+          </div>
           <Input
             type="date"
             value={reportDate}
+            max={todayStr}
             onChange={(e) => setReportDate(e.target.value)}
-            label="วันที่"
+            label="PM Date / วันที่ตรวจสอบ"
             crossOrigin=""
           />
           <Typography variant="small" className="tw-text-blue-gray-500">
