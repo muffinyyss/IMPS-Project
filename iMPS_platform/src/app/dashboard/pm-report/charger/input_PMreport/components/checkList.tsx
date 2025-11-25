@@ -1194,14 +1194,6 @@ export default function ChargerPMForm() {
                             </div>
 
                             <div className="lg:tw-col-span-2">
-                                {/* <Input
-                                    label="วันที่ตรวจ"
-                                    type="date"
-                                    value={job.date}
-                                    onChange={(e) => setJob({ ...job, date: e.target.value })}
-                                    crossOrigin=""
-                                    containerProps={{ className: "!tw-min-w-0" }}
-                                /> */}
                                 <Input
                                     label="PM Date / วันที่ตรวจสอบ"
                                     type="date"
