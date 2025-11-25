@@ -1064,7 +1064,7 @@ export default function CBBOXPMForm() {
                                 />
                             </div>
 
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-3">
+                            <div className="sm:tw-col-span-2 lg:tw-col-span-2">
                                 <Input
                                     label="Location / สถานที่"
                                     value={job.station_name}
@@ -1075,8 +1075,19 @@ export default function CBBOXPMForm() {
                                     className="!tw-bg-blue-gray-50"
                                 />
                             </div>
+                            <div className="sm:tw-col-span-2 lg:tw-col-span-2">
+                                <Input
+                                    label="Inspector / ผู้ตรวจสอบ"
+                                    value={inspector}
+                                    onChange={(e) => setInspector(e.target.value)}
+                                    crossOrigin=""
+                                    readOnly
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-bg-blue-gray-50"
+                                />
+                            </div>
 
-                            <div className="lg:tw-col-span-2">
+                            <div className="lg:tw-col-span-1">
                                 <Input
                                     label="วันที่ตรวจ"
                                     type="date"
@@ -1129,12 +1140,6 @@ export default function CBBOXPMForm() {
                             />
                         </div>
                     </SectionCard>
-
-                    <div className="tw-text-right tw-text-sm tw-text-blue-gray-700 tw-mt-4">
-                        <div className="tw-font-semi">
-                            <u><b>ผู้ตรวจสอบ</b> : {inspector || "-"}</u>
-                        </div>
-                    </div>
 
 
                     {/* Footer checks */}
