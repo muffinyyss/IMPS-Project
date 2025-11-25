@@ -595,7 +595,6 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
     return items
 
 
-
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     photos = (doc.get("photos") or {}).get(f"g{idx}") or []
     out = []
