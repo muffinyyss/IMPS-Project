@@ -2353,38 +2353,111 @@ class PMSubmitIn(BaseModel):
     dust_filter: Optional[str] = None
 
 
+# async def _latest_issue_id_anywhere(
+#     station_id: str,
+#     pm_type: str,
+#     d: date,
+#     source: Literal["charger", "mdb", "ccb", "cbbox", "station"] = "charger",
+# ) -> str | None:
+#     """
+#     source = "pm"    -> ใช้ get_pmreport_collection_for + get_pmurl_coll_upload
+#     source = "mdbpm" -> ใช้ get_mdbpmreport_collection_for + get_mdbpmurl_coll_upload
+#     """
+#     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+#         raise HTTPException(status_code=400, detail="Bad station_id")
+
+#     yymm = f"{d.year % 100:02d}{d.month:02d}"
+#     prefix = f"PM-{pm_type}-{yymm}-"
+
+#     if source == "charger":
+#         rep_coll = get_pmreport_collection_for(station_id)
+#         url_coll = get_pmurl_coll_upload(station_id)
+#     elif source == "mdb": 
+#         rep_coll = get_mdbpmreport_collection_for(station_id)
+#         url_coll = get_mdbpmurl_coll_upload(station_id)
+#     elif source == "ccb": 
+#         rep_coll = get_ccbpmreport_collection_for(station_id)
+#         url_coll = get_ccbpmurl_coll_upload(station_id)
+#     elif source == "cbbox": 
+#         rep_coll = get_cbboxpmreport_collection_for(station_id)
+#         url_coll = get_cbboxpmurl_coll_upload(station_id)
+#     elif source == "station": 
+#         rep_coll = get_stationpmreport_collection_for(station_id)
+#         url_coll = get_stationpmurl_coll_upload(station_id)
+
+#     pipeline = [
+#         {"$match": {"issue_id": {"$regex": f"^{prefix}\\d+$"}}},
+#         {"$project": {"issue_id": 1}},
+#     ]
+
+#     rep_docs = await rep_coll.aggregate(pipeline).to_list(length=1000)
+#     url_docs = await url_coll.aggregate(pipeline).to_list(length=1000)
+
+#     best = None
+#     best_n = 0
+
+#     for ddoc in rep_docs + url_docs:
+#         s = ddoc.get("issue_id") or ""
+#         m = re.search(r"(\d+)$", s)
+#         if not m:
+#             continue
+#         n = int(m.group(1))
+#         if n > best_n:
+#             best_n = n
+#             best = s
+
+#     return best
 
 async def _latest_issue_id_anywhere(
     station_id: str,
-    pm_type: str,
     d: date,
-    source: Literal["charger", "mdb", "ccb", "cbbox", "station"] = "charger",
+    kind: Literal["pm", "cm"] = "pm",
+    pm_type: str | None = None,
+    source: Literal["charger", "mdb", "ccb", "cbbox", "station","cm"] = "charger",
 ) -> str | None:
     """
+    kind = "pm" -> issue_id: PM-{pm_type}-{yymm}-NNNN
+    kind = "cm" -> issue_id: CM-{yymm}-NNNN   (ไม่มี pm_type)
+
     source = "pm"    -> ใช้ get_pmreport_collection_for + get_pmurl_coll_upload
-    source = "mdbpm" -> ใช้ get_mdbpmreport_collection_for + get_mdbpmurl_coll_upload
+    source = "mdb"   -> ใช้ get_mdbpmreport_collection_for + get_mdbpmurl_coll_upload
+    ...
     """
+
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
 
     yymm = f"{d.year % 100:02d}{d.month:02d}"
-    prefix = f"PM-{pm_type}-{yymm}-"
 
+    # สร้าง prefix ตาม kind
+    if kind == "pm":
+        if not pm_type:
+            raise HTTPException(status_code=400, detail="pm_type required for PM")
+        prefix = f"PM-{pm_type}-{yymm}-"
+    else:  # kind == "cm"
+        prefix = f"CM-{yymm}-"
+
+    # เลือก collection ตาม source (ตัวอย่าง: ถ้า CM มีคนละ collection ก็แยกที่นี่)
     if source == "charger":
         rep_coll = get_pmreport_collection_for(station_id)
         url_coll = get_pmurl_coll_upload(station_id)
-    elif source == "mdb": 
+    elif source == "mdb":
         rep_coll = get_mdbpmreport_collection_for(station_id)
         url_coll = get_mdbpmurl_coll_upload(station_id)
-    elif source == "ccb": 
+    elif source == "ccb":
         rep_coll = get_ccbpmreport_collection_for(station_id)
         url_coll = get_ccbpmurl_coll_upload(station_id)
-    elif source == "cbbox": 
+    elif source == "cbbox":
         rep_coll = get_cbboxpmreport_collection_for(station_id)
         url_coll = get_cbboxpmurl_coll_upload(station_id)
-    elif source == "station": 
+    elif source == "station":
         rep_coll = get_stationpmreport_collection_for(station_id)
         url_coll = get_stationpmurl_coll_upload(station_id)
+    elif source == "cm":
+        rep_coll = get_cmreport_collection_for(station_id)
+        url_coll = get_cmurl_coll_upload(station_id)
+    else:
+        raise HTTPException(status_code=400, detail="Bad source")
 
     pipeline = [
         {"$match": {"issue_id": {"$regex": f"^{prefix}\\d+$"}}},
@@ -2394,7 +2467,7 @@ async def _latest_issue_id_anywhere(
     rep_docs = await rep_coll.aggregate(pipeline).to_list(length=1000)
     url_docs = await url_coll.aggregate(pipeline).to_list(length=1000)
 
-    best = None
+    best: str | None = None
     best_n = 0
 
     for ddoc in rep_docs + url_docs:
@@ -2436,7 +2509,7 @@ async def pmreport_preview_issueid(
 
     pm_type = "CG"
 
-    latest = await _latest_issue_id_anywhere(station_id, pm_type, d)
+    latest = await _latest_issue_id_anywhere(station_id, d,"pm", pm_type )
 
     yymm = f"{d.year % 100:02d}{d.month:02d}"
     prefix = f"PM-{pm_type}-{yymm}-"
@@ -2452,8 +2525,8 @@ async def pmreport_preview_issueid(
 
 async def _latest_doc_name_from_pmreport(
     station_id: str,
-    pm_date: str,
-    source: Literal["charger", "mdb", "ccb", "cbbox", "station"] = "charger",
+    date: str,
+    source: Literal["charger", "mdb", "ccb", "cbbox", "station","cm"] = "charger",
 ) -> dict | None:
     """
     ดึง doc_name ล่าสุดจาก PMReportDB/<station_id> หรือ MDBPMReportDB/<station_id>
@@ -2466,7 +2539,7 @@ async def _latest_doc_name_from_pmreport(
         raise HTTPException(status_code=400, detail="Bad station_id")
     
     try:
-        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+        d = datetime.strptime(date, "%Y-%m-%d").date()
         year = d.year
     except ValueError:
         return None
@@ -2482,7 +2555,11 @@ async def _latest_doc_name_from_pmreport(
         coll = CBBOXPMReportDB.get_collection(str(station_id))
     elif source == "station": 
         coll = stationPMReportDB.get_collection(str(station_id))
-    
+    elif source == "cm":
+        coll = CMReportDB.get_collection(str(station_id))
+    else:
+        raise HTTPException(status_code=400, detail="Bad source")
+
     pipeline = [
         {
             "$match": {
@@ -2501,7 +2578,7 @@ async def _latest_doc_name_from_pmreport(
 async def _latest_doc_name_anywhere(
     station_id: str,
     year: int,
-    source: Literal["charger", "mdb", "ccb", "cbbox", "station"] = "charger",
+    source: Literal["charger", "mdb", "ccb", "cbbox", "station","cm"] = "charger",
 ) -> str | None:
     pattern = f"^{station_id}_\\d+/{year}$"
 
@@ -2521,6 +2598,11 @@ async def _latest_doc_name_anywhere(
     elif source == "station": 
         rep_coll = get_stationpmreport_collection_for(station_id)
         url_coll = get_stationpmurl_coll_upload(station_id)
+    elif source == "cm": 
+        rep_coll = get_cmreport_collection_for(station_id)
+        url_coll = get_cmurl_coll_upload(station_id)
+    else:
+        raise HTTPException(status_code=400, detail="Bad source")
 
     pipeline = [
         {"$match": {"doc_name": {"$regex": pattern}}},
@@ -2567,15 +2649,55 @@ async def pmreport_latest_docname(
         "pm_date": pm_date
     }
 
-async def _next_year_seq(db, station_id: str, pm_type: str, d: date) -> int:
+# async def _next_year_seq(db, station_id: str, pm_type: str, d: date) -> int:
+#     """
+#     ออกเลขลำดับรายปี ต่อ station_id + pm_type + year
+#     เช่น Klongluang3 + CG + 2025  →  1, 2, 3, ...
+#     """
+#     year = d.year
+#     seq = await db.pm_year_sequences.find_one_and_update(
+#         {"station_id": station_id, "pm_type": pm_type, "year": year},
+#         {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
+#         upsert=True,
+#         return_document=ReturnDocument.AFTER,
+#     )
+#     return int(seq["n"])
+
+async def _next_year_seq(
+    db,
+    station_id: str,
+    d: date,
+    kind: Literal["pm", "cm"] = "pm",
+    pm_type: str | None = None,
+) -> int:
     """
-    ออกเลขลำดับรายปี ต่อ station_id + pm_type + year
-    เช่น Klongluang3 + CG + 2025  →  1, 2, 3, ...
+    ออกเลขลำดับรายปี ต่อ station_id + (pm_type) + year
+
+    PM: แยกตาม station_id + pm_type + year
+        เช่น Klongluang3 + CG + 2025 → 1, 2, 3, ...
+
+    CM: แยกตาม station_id + year อย่างเดียว
+        เช่น Klongluang3 + 2025 → 1, 2, 3, ...
     """
     year = d.year
+
+    query: dict = {
+        "station_id": station_id,
+        "year": year,
+        "kind": kind,
+    }
+
+    if kind == "pm":
+        if not pm_type:
+            raise HTTPException(status_code=400, detail="pm_type required for PM")
+        query["pm_type"] = pm_type   # PM แยกตาม pm_type ด้วย
+
     seq = await db.pm_year_sequences.find_one_and_update(
-        {"station_id": station_id, "pm_type": pm_type, "year": year},
-        {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
+        query,
+        {
+            "$inc": {"n": 1},
+            "$setOnInsert": {"createdAt": datetime.now(timezone.utc)},
+        },
         upsert=True,
         return_document=ReturnDocument.AFTER,
     )
@@ -2669,7 +2791,7 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
             doc_name = client_docName
  
     if not doc_name:
-        year_seq = await _next_year_seq(db, station_id, pm_type, d)
+        year_seq = await _next_year_seq(db, station_id,d,"pm", pm_type)
         year = d.year
         doc_name = f"{station_id}_{year_seq}/{year}"
 
@@ -2926,7 +3048,7 @@ async def pmurl_upload_files(
 
     # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
     if year_seq is None:
-        year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
+        year_seq = await _next_year_seq(coll.database, station_id, d, "pm", pm_type)
 
     year = d.year
     final_doc_name: str | None = None
@@ -3136,7 +3258,7 @@ async def mdbpmreport_preview_issueid(
 
     pm_type = "MB"
 
-    latest = await _latest_issue_id_anywhere(station_id, pm_type, d,source="mdb")
+    latest = await _latest_issue_id_anywhere(station_id, d,"pm", pm_type,source="mdb")
 
     yymm = f"{d.year % 100:02d}{d.month:02d}"
     prefix = f"PM-{pm_type}-{yymm}-"
@@ -3220,7 +3342,6 @@ async def mdbpmreport_submit(body: MDBPMSubmitIn, current: UserClaims = Depends(
         yymm = f"{d.year % 100:02d}{d.month:02d}"
         prefix = f"PM-{pm_type}-{yymm}-"
         valid_fmt = client_issue.startswith(prefix)
-        # unique = not await coll.find_one({"station_id": station_id, "issue_id": client_issue})
         rep_exists = await coll.find_one({"station_id": station_id, "issue_id": client_issue})
         url_exists = await url_coll.find_one({"issue_id": client_issue})
         unique = not (rep_exists or url_exists)
@@ -3257,7 +3378,7 @@ async def mdbpmreport_submit(body: MDBPMSubmitIn, current: UserClaims = Depends(
             doc_name = client_docName
  
     if not doc_name:
-        year_seq = await _next_year_seq(db, station_id, pm_type, d)
+        year_seq = await _next_year_seq(db, station_id,d,"pm", pm_type)
         year = d.year
         doc_name = f"{station_id}_{year_seq}/{year}"
 
@@ -3476,7 +3597,7 @@ async def mdbpmurl_upload_files(
 
     # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
     if year_seq is None:
-        year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
+        year_seq = await _next_year_seq(coll.database, station_id, d,"pm", pm_type)
 
     year = d.year
     final_doc_name: str | None = None
@@ -3611,7 +3732,7 @@ async def ccbpmreport_preview_issueid(
 
     pm_type = "CC"
 
-    latest = await _latest_issue_id_anywhere(station_id, pm_type, d,source="ccb")
+    latest = await _latest_issue_id_anywhere(station_id, d,"pm", pm_type,source="ccb")
 
     yymm = f"{d.year % 100:02d}{d.month:02d}"
     prefix = f"PM-{pm_type}-{yymm}-"
@@ -3732,7 +3853,7 @@ async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(
             doc_name = client_docName
  
     if not doc_name:
-        year_seq = await _next_year_seq(db, station_id, pm_type, d)
+        year_seq = await _next_year_seq(db, station_id, d,"pm", pm_type)
         year = d.year
         doc_name = f"{station_id}_{year_seq}/{year}"
 
@@ -3942,7 +4063,7 @@ async def ccbpmurl_upload_files(
 
     # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
     if year_seq is None:
-        year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
+        year_seq = await _next_year_seq(coll.database, station_id, d,"pm", pm_type)
 
     year = d.year
     final_doc_name: str | None = None
@@ -4078,7 +4199,7 @@ async def cbboxpmreport_preview_issueid(
 
     pm_type = "CB"
 
-    latest = await _latest_issue_id_anywhere(station_id, pm_type, d,source="cbbox")
+    latest = await _latest_issue_id_anywhere(station_id, d,"pm", pm_type,source="cbbox")
 
     yymm = f"{d.year % 100:02d}{d.month:02d}"
     prefix = f"PM-{pm_type}-{yymm}-"
@@ -4197,7 +4318,7 @@ async def cbboxpmreport_submit(body: CBBOXPMSubmitIn, current: UserClaims = Depe
             doc_name = client_docName
  
     if not doc_name:
-        year_seq = await _next_year_seq(db, station_id, pm_type, d)
+        year_seq = await _next_year_seq(db, station_id, d,"pm", pm_type)
         year = d.year
         doc_name = f"{station_id}_{year_seq}/{year}"
     # เก็บเอกสารเป็น draft ก่อน
@@ -4409,7 +4530,7 @@ async def cbboxpmurl_upload_files(
 
     # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
     if year_seq is None:
-        year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
+        year_seq = await _next_year_seq(coll.database, station_id, d,"pm", pm_type)
 
     year = d.year
     final_doc_name: str | None = None
@@ -4545,7 +4666,7 @@ async def stationpmreport_preview_issueid(
 
     pm_type = "ST"
 
-    latest = await _latest_issue_id_anywhere(station_id, pm_type, d,source="station")
+    latest = await _latest_issue_id_anywhere(station_id,d,"pm", pm_type, source="station")
 
     yymm = f"{d.year % 100:02d}{d.month:02d}"
     prefix = f"PM-{pm_type}-{yymm}-"
@@ -4658,7 +4779,7 @@ async def stationpmreport_submit(body: stationPMSubmitIn, current: UserClaims = 
             doc_name = client_docName
  
     if not doc_name:
-        year_seq = await _next_year_seq(db, station_id, pm_type, d)
+        year_seq = await _next_year_seq(db, station_id, d,"pm", pm_type)
         year = d.year
         doc_name = f"{station_id}_{year_seq}/{year}"
 
@@ -4868,7 +4989,7 @@ async def stationmurl_upload_files(
 
     # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
     if year_seq is None:
-        year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
+        year_seq = await _next_year_seq(coll.database, station_id, d,"pm", pm_type)
 
     year = d.year
     final_doc_name: str | None = None
@@ -4977,6 +5098,184 @@ def get_cmurl_coll_upload(station_id: str):
     coll = CMUrlDB.get_collection(str(station_id))
     return coll
 
+class CMSubmitIn(BaseModel):
+    station_id: str
+    issue_id: Optional[str] = None
+    doc_name: Optional[str] = None 
+    inspector: Optional[str] = None
+    job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
+    summary: str = ""            # สรุป/หมายเหตุแบบยาว (แล้วแต่จะใช้)
+    cm_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO; ถ้าไม่ส่งมาจะ fallback เป็น job.found_date
+
+async def _next_cm_issue_id(db, station_id: str, d, pad: int = 2) -> str:
+    yymm = f"{d.year % 100:02d}{d.month:02d}"
+    seq = await db.cm_sequences.find_one_and_update(
+        {"station_id": station_id, "yymm": yymm},
+        {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return f"CM-{yymm}-{int(seq['n']):0{pad}d}"
+
+@app.get("/cmreport/preview-issueid")
+async def cmreport_preview_issueid(
+    station_id: str = Query(...),
+    found_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดู issue_id ถัดไป (PM-CG-YYMM-XX) โดยไม่ออกเลขจริง
+    ใช้หาเลขไปโชว์บนฟอร์มเฉย ๆ
+    """
+    try:
+        d = datetime.strptime(found_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+
+    latest = await _latest_issue_id_anywhere(station_id,d,"cm", source="cm")
+
+    yymm = f"{d.year % 100:02d}{d.month:02d}"
+    prefix = f"CM-{yymm}-"
+
+    if not latest:
+        next_issue = f"{prefix}01"
+    else:
+        m = re.search(r"(\d+)$", latest)
+        cur = int(m.group(1)) if m else 0
+        next_issue = f"{prefix}{cur+1:02d}"
+
+    return {"issue_id": next_issue}
+
+@app.get("/cmreport/latest-docname")
+async def cmreport_latest_docname(
+    station_id: str = Query(...),
+    found_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดึง doc_name ล่าสุดของสถานี (ปีเดียวกับ pm_date)
+    เพื่อใช้คำนวณเลขถัดไปที่ frontend
+    """
+    latest = await _latest_doc_name_from_pmreport(station_id, found_date, source="cm")
+    
+    return {
+        "doc_name": latest.get("doc_name") if latest else None,
+        "station_id": station_id,
+        "cm_date": found_date
+    }
+
+@app.get("/cmreport/preview-docname")
+async def preview_docname(
+    station_id: str = Query(...),
+    found_date: str = Query(...),
+):
+    try:
+        d = datetime.strptime(found_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="cm_date must be YYYY-MM-DD")
+
+    year = d.year
+
+    latest = await _latest_doc_name_anywhere(station_id, year,source="cm")
+
+    if not latest:
+        next_doc = f"{station_id}_1/{year}"
+    else:
+        import re
+        m = re.search(r"_(\d+)/\d{4}$", latest)
+        current_num = int(m.group(1)) if m else 0
+        next_doc = f"{station_id}_{current_num + 1}/{year}"
+
+    return {"doc_name": next_doc}
+
+async def _ensure_cm_indexes(coll):
+    try:
+        await coll.create_index([("createdAt", -1), ("_id", -1)])
+        # ถ้าอยากกันซ้ำเลขใบงานในแต่ละสถานี: เปิด unique issue_id ก็ได้ (ถ้าแน่ใจว่า unique)
+        # await coll.create_index("issue_id", unique=True, sparse=True)
+    except Exception:
+        pass
+
+@app.post("/cmreport/submit")
+async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_current_user)):
+    station_id = body.station_id.strip()
+    coll = get_cmreport_collection_for(station_id)
+    await _ensure_cm_indexes(coll)
+
+    # cm_date_src = body.cm_date or body.job.get("found_date")
+    # if cm_date_src:
+    #     cm_date = normalize_pm_date(cm_date_src)   # คืน "YYYY-MM-DD"
+    # else:
+    #     cm_date = datetime.now(th_tz).date().isoformat()
+
+    url_coll = get_cmurl_coll_upload(station_id)
+
+    try:
+        d = datetime.strptime(body.cm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+    
+    client_issue = body.issue_id 
+    issue_id: str | None = None    
+
+    if client_issue:
+        yymm = f"{d.year % 100:02d}{d.month:02d}"
+        prefix = f"CM-{yymm}-"
+        valid_fmt = client_issue.startswith(prefix)
+        rep_exists = await coll.find_one({"station_id": station_id, "issue_id": client_issue})
+        url_exists = await url_coll.find_one({"issue_id": client_issue})
+        unique = not (rep_exists or url_exists)
+
+        if valid_fmt and unique:
+            issue_id = client_issue
+    
+    if not issue_id:
+        while True:
+            candidate = await _next_cm_issue_id(db, station_id, d, pad=2)
+            rep_exists = await coll.find_one({"issue_id": candidate})
+            url_exists = await url_coll.find_one({"issue_id": candidate})
+            if not rep_exists and not url_exists:
+                issue_id = candidate
+                break
+
+    client_docName = body.doc_name
+    doc_name = None
+    if client_docName:
+        year = f"{d.year}"
+        prefix = f"{station_id}_"
+        valid_fmt = client_docName.startswith(prefix)
+
+        url_coll = get_cmurl_coll_upload(station_id)
+        rep_exists = await coll.find_one({"station_id": station_id, "doc_name": client_docName})
+        url_exists = await url_coll.find_one({"doc_name": client_docName})
+        unique = not (rep_exists or url_exists)
+
+        if valid_fmt and unique:
+            doc_name = client_docName
+ 
+    if not doc_name:
+        year_seq = await _next_year_seq(db, station_id, d,"cm")
+        year = d.year
+        doc_name = f"{station_id}_{year_seq}/{year}"
+
+    doc = {
+        "station_id": station_id,
+        "issue_id": body.job.get("issue_id"),
+        "doc_name": doc_name,
+        "cm_date": body.cm_date,
+        "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
+        "summary": body.summary,
+        "status": body.job.get("status", "Open"),      # เผื่ออยาก query
+        "inspector": body.inspector,
+        "createdAt": datetime.now(timezone.utc),
+        "updatedAt": datetime.now(timezone.utc),
+        "photos": {},                 # รูปจะถูกเติมภายหลังที่ /cmreport/{report_id}/photos
+    }
+
+    res = await coll.insert_one(doc)
+    return {"ok": True, "report_id": str(res.inserted_id)}
+
 @app.get("/cmreport/list")
 async def cmreport_list(
     station_id: str = Query(...),
@@ -4986,9 +5285,10 @@ async def cmreport_list(
     coll = get_cmreport_collection_for(station_id)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "cm_date": 1, "status": 1, "createdAt": 1}).sort(
+    cursor = coll.find({}, {"_id": 1, "cm_date": 1, "issue_id": 1, "doc_name": 1, "status": 1, "inspector" : 1, "createdAt": 1}).sort(
         [("createdAt", -1), ("_id", -1)]
     ).skip(skip).limit(pageSize)
+
     items_raw = await cursor.to_list(length=pageSize)
     total = await coll.count_documents({})
 
@@ -5008,8 +5308,10 @@ async def cmreport_list(
 
     items = [{
         "id": str(it["_id"]),
+        "issue_id": it.get("issue_id"),
         "cm_date": it.get("cm_date"),
         "status": it.get("status"),
+        "inspector": it.get("inspector"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("cm_date") or "", ""),
     } for it in items_raw]
@@ -5129,22 +5431,80 @@ async def cmurl_upload_files(
     reportDate: str = Form(...),                 # "YYYY-MM-DD" หรือ ISO
     files: list[UploadFile] = File(...),
     status: str = Form(...),  
-    current: UserClaims = Depends(get_current_user),
+    issue_id: Optional[str] = Form(None),
+    doc_name: Optional[str] = Form(None),
+    inspector: Optional[str] = Form(None),
 ):
-    # auth
-    if current.role != "admin" and station_id not in set(current.station_ids):
-        raise HTTPException(status_code=403, detail="Forbidden station_id")
-
     # ตรวจ/เตรียมคอลเลกชัน
     coll = get_cmurl_coll_upload(station_id)
-
-    # parse วันที่เป็น UTC datetime (มีฟังก์ชันอยู่แล้ว)
     cm_date = normalize_pm_date(reportDate)
 
-    # โฟลเดอร์ปลายทาง: /uploads/pmurl/<station_id>/<YYYY-MM-DD>/
-    # subdir = report_dt_utc.astimezone(th_tz).date().isoformat()
-    subdir = cm_date
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "cmurl" / station_id / subdir
+    try:
+        d = datetime.strptime(cm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="reportDate/pm_date must be YYYY-MM-DD")
+    
+    rep_coll = get_cmreport_collection_for(station_id)
+    final_issue_id = None
+    client_issue = (issue_id or "").strip()
+
+    if client_issue:
+        yymm = f"{d.year % 100:02d}{d.month:02d}"
+        prefix = f"CM-{yymm}-"
+        valid_fmt = client_issue.startswith(prefix)
+
+        # ตรวจ uniqueness ในทั้ง 2 คอลเลกชัน
+        url_exists = await coll.find_one({"issue_id": client_issue})
+        rep_exists = await rep_coll.find_one({"issue_id": client_issue})
+        unique = not (url_exists or rep_exists)
+
+        if valid_fmt and unique:
+            final_issue_id = client_issue
+
+    if not final_issue_id:
+        while True:
+            candidate = await _next_cm_issue_id(db, station_id, d, pad=2)
+            url_exists = await coll.find_one({"issue_id": candidate})
+            rep_exists = await rep_coll.find_one({"issue_id": candidate})
+            if not url_exists and not rep_exists:
+                final_issue_id = candidate
+                break
+    
+    year_seq: int | None = None
+    # พยายาม reuse year_seq จาก PMReportDB ถ้ามีอยู่แล้ว (issue_id เดียวกัน)
+    rep = await get_cmreport_collection_for(station_id).find_one(
+        {"issue_id": final_issue_id},
+        {"year_seq": 1, "cm_date": 1},
+    )
+    if rep and rep.get("year_seq") is not None:
+        year_seq = int(rep["year_seq"])
+
+    # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
+    if year_seq is None:
+        year_seq = await _next_year_seq(db, station_id, d,"cm")
+
+    year = d.year
+    final_doc_name: str | None = None
+
+    if doc_name:
+        candidate = doc_name.strip()
+
+        ok_format = candidate.startswith(f"{station_id}_")
+
+        rep_coll = get_cmreport_collection_for(station_id)
+        rep_exists = await rep_coll.find_one({"doc_name": candidate})
+        url_exists = await coll.find_one({"doc_name": candidate})
+        unique = not (rep_exists or url_exists)
+
+        if ok_format and unique:
+            final_doc_name = candidate
+
+    if not final_doc_name:
+        final_doc_name = f"{station_id}_{year_seq}/{year}"
+
+    doc_name = final_doc_name
+
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "cmurl" / station_id / cm_date
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     urls = []
@@ -5166,14 +5526,18 @@ async def cmurl_upload_files(
         with open(dest, "wb") as out:
             out.write(data)
 
-        url = f"/uploads/cmurl/{station_id}/{subdir}/{safe}"   # ← จะเสิร์ฟได้จาก StaticFiles ที่ mount ไว้แล้ว
+        url = f"/uploads/cmurl/{station_id}/{cm_date}/{safe}"   # ← จะเสิร์ฟได้จาก StaticFiles ที่ mount ไว้แล้ว
         urls.append(url)
         metas.append({"name": f.filename, "size": len(data)})
 
+    inspector_clean = (inspector or "").strip() or None
     now = datetime.now(timezone.utc)
 
     doc = {
         "station": station_id,
+        "issue_id": final_issue_id, 
+        "doc_name": doc_name,
+        "inspector": inspector_clean,
         "cm_date": cm_date,
         "status": (status or "").strip(), 
         "urls": urls,
@@ -5207,7 +5571,7 @@ async def cmurl_list(
 
     # --- ขอฟิลด์ status มาด้วย ---
     projection = {
-        "_id": 1, "cm_date": 1, "reportDate": 1,
+        "_id": 1, "cm_date": 1, "reportDate": 1,"inspector": 1,"doc_name":1,
         "urls": 1, "createdAt": 1,
         "status": 1, "job": 1,   # 👈 เพิ่ม
     }
@@ -5253,7 +5617,10 @@ async def cmurl_list(
 
         items.append({
             "id": str(it["_id"]),
+            "issue_id": it.get("issue_id"),
+            "doc_name": it.get("doc_name"),
             "cm_date": cm_date_str,
+            "inspector": it.get(("inspector")), 
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "status": (it.get("status") or (it.get("job") or {}).get("status") or ""),  # 👈 ดึงตรงๆ
             "file_url": first_url,
@@ -5269,54 +5636,6 @@ async def cmurl_list(
         "pageSize": pageSize,
         "total": total,
     }
-
-
-class CMSubmitIn(BaseModel):
-    station_id: str
-    job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
-    summary: str = ""            # สรุป/หมายเหตุแบบยาว (แล้วแต่จะใช้)
-    cm_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO; ถ้าไม่ส่งมาจะ fallback เป็น job.found_date
-
-async def _ensure_cm_indexes(coll):
-    try:
-        await coll.create_index([("createdAt", -1), ("_id", -1)])
-        # ถ้าอยากกันซ้ำเลขใบงานในแต่ละสถานี: เปิด unique issue_id ก็ได้ (ถ้าแน่ใจว่า unique)
-        # await coll.create_index("issue_id", unique=True, sparse=True)
-    except Exception:
-        pass
-
-@app.post("/cmreport/submit")
-async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_current_user)):
-    station_id = body.station_id.strip()
-    # Auth: admin ผ่านหมด, คนทั่วไปต้องมีสิทธิ์ใน station นี้
-    if current.role != "admin" and station_id not in set(current.station_ids):
-        raise HTTPException(status_code=403, detail="Forbidden station_id")
-
-    coll = get_cmreport_collection_for(station_id)
-    await _ensure_cm_indexes(coll)
-
-    # กำหนด cm_date (string 'YYYY-MM-DD') ให้สอดคล้อง /cmreport/list
-    # ถ้าไม่ส่งมา → ใช้ job.found_date → ถ้าไม่มีอีก → ใช้วันนี้ (เวลาไทย)
-    cm_date_src = body.cm_date or body.job.get("found_date")
-    if cm_date_src:
-        cm_date = normalize_pm_date(cm_date_src)   # คืน "YYYY-MM-DD"
-    else:
-        cm_date = datetime.now(th_tz).date().isoformat()
-
-    doc = {
-        "station_id": station_id,
-        "cm_date": cm_date,
-        "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
-        "summary": body.summary,
-        "issue_id": body.job.get("issue_id"),
-        "status": body.job.get("status", "Open"),      # เผื่ออยาก query
-        "createdAt": datetime.now(timezone.utc),
-        "updatedAt": datetime.now(timezone.utc),
-        "photos": {},                 # รูปจะถูกเติมภายหลังที่ /cmreport/{report_id}/photos
-    }
-
-    res = await coll.insert_one(doc)
-    return {"ok": True, "report_id": str(res.inserted_id)}
 
 
 @app.get("/cmreport/{report_id}")
