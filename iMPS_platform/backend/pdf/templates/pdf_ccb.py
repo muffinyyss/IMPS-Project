@@ -1130,7 +1130,6 @@ def _draw_job_info_block(
         pdf.set_xy(x0 + 2 + label_w, y0 + 1.5)
         pdf.cell(col_w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
 
-    # ใส่ Station และ PM Date อยู่แถวเดียวกัน คนละคอลัมน์
     _item(x, y, "Station", station_name)
     _item(x + col_w, y, "PM Date", pm_date)
 
@@ -1168,7 +1167,7 @@ def _build_photo_questions(row_titles: dict) -> List[dict]:
     return out
 
 
-def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
+def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf = ReportPDF(unit="mm", format="A4")
     pdf.alias_nb_pages()  # ให้รองรับ {nb} ใน footer
 
@@ -1246,60 +1245,7 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
         group_title=doc.get("groupTitle", "Communication Control Box (CCB)"),
     )
     pdf.set_font(base_font, "", FONT_MAIN)
-    
-    # for it in checks:
-    #     text = str(it.get("text", ""))
 
-    #     # list ของผลต่อบรรทัดในคอลัมน์ Result
-    #     result_lines = it.get("results") or []
-    #     if not result_lines:
-    #         result_lines = [it.get("result", "na")]
-
-    #     remark = str(it.get("remark", "") or "")
-    #     result_offset = int(it.get("result_offset", 0))  # <-- ดึง offset
-    #     result_step = int(it.get("result_step", 1)) 
-
-    #     # คำนวนความสูงแต่ละส่วน
-    #     item_lines, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
-    #     _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
-
-    #     is_row_3 = "3." in text
-    #     is_row_4 = "4." in text
-    #     is_row_5 = "5." in text
-    #     is_row_6 = "6." in text
-    #     is_row_7 = "7." in text
-    #     is_row_8 = "8." in text
-    #     is_row_9 = "9." in text
-
-    #     if is_row_3 or is_row_4 or is_row_5 or is_row_7 or is_row_8:
-    #         remark_h = max(remark_h, LINE_H * 4)
-    #     elif is_row_6:
-    #         remark_h = max(remark_h, LINE_H * 6)
-    #     elif is_row_9:
-    #         remark_h = max(remark_h, LINE_H * 15)
-
-    #     result_block_h = max(ROW_MIN_H, len(result_lines) * LINE_H)
-    #     row_h_eff = max(ROW_MIN_H, item_h, remark_h, result_block_h)
-
-    #     _ensure_space(row_h_eff)
-
-    #     x = x_table
-    #     #  ให้ Item ชิดบน ไม่จัดกลาง เพื่อให้บรรทัดเท่ากัน
-    #     _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text,
-    #                       align="L", lh=LINE_H, valign="top")
-    #     x += item_w
-
-    #     #  ส่ง offset เข้าไปให้ช่อง Result
-    #     _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff,
-    #                       result_lines, offset_lines=result_offset, line_step=result_step)
-    #     x += result_w
-
-    #     _cell_text_in_box(
-    #         pdf, x, y, remark_w, row_h_eff, remark,
-    #         align="L", lh=LINE_H, valign="top"
-    #     )
-
-    #     y += row_h_eff
     
     for it in checks:
         text = str(it.get("text", ""))
@@ -1552,4 +1498,4 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
 
 # -------------------- Public API --------------------
 def generate_pdf(data: dict) -> bytes:
-    return make_mdb_pm_pdf_bytes(data)
+    return make_pm_report_html_pdf_bytes(data)
