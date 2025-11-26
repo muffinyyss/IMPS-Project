@@ -278,24 +278,16 @@ def _resolve_logo_path() -> Optional[Path]:
                 return p
     return None
 
-def _draw_job_info_block(
-    pdf: FPDF,
-    base_font: str,
-    x: float,
-    y: float,
-    w: float,
-    station_name: str,
-    pm_date: str,
-) -> float:
-    row_h = 8.5
+def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float,
+                         station_name: str, pm_date: str) -> float:
+    row_h = 6.5
     col_w = w / 2.0
     label_w = 30
-
     box_h = row_h
-
     pdf.set_line_width(LINE_W_INNER)
-    pdf.rect(x, y, w, box_h)                 # กรอบนอก
-    pdf.line(x + col_w, y, x + col_w, y + box_h)  # เส้นแบ่งซ้าย/ขวา
+    pdf.rect(x, y, w, box_h)
+    pdf.line(x + col_w, y, x + col_w, y + box_h)
+    # pdf.line(x, y + row_h, x + w, y + row_h)       # แถว
 
     def _item(x0, y0, label, value):
         pdf.set_xy(x0 + 2, y0 + 1.5)
@@ -367,7 +359,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
 
 
 def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
-    header_h = 9.0
+    header_h = 6.0
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_xy(x, y)
@@ -375,9 +367,7 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
     pdf.cell(result_w, header_h, "Result", border=1, align="C")
     pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
     y += header_h
-    # pdf.set_fill_color(255, 230, 100)
-    # pdf.set_xy(x, y)
-    # pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
+
     return y
 
 def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str):
@@ -436,8 +426,10 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
 
     col_left, col_mid = 40, 120
     col_right = page_w - col_left - col_mid
-    h_all = 30
-    h_right_top = 12
+
+    # --- ความสูงใหม่ที่เตี้ยลง ---
+    h_all = 22          # เดิม 30
+    h_right_top = 8     # เดิม 12
 
     pdf.set_line_width(LINE_W_INNER)
 
@@ -445,45 +437,51 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
     pdf.rect(x0, y_top, col_left, h_all)
     logo_path = _resolve_logo_path()
     if logo_path:
-        IMG_W = 35
+        IMG_W = 28  # ลดขนาดรูปให้พอดีกับความสูงใหม่
         img_x = x0 + (col_left - IMG_W) / 2
-        img_y = y_top + (h_all - 16) / 2
+        img_y = y_top + (h_all - 12) / 2
         try:
             pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
         except Exception:
             pass
 
-    # กล่องที่อยู่กลาง
+    # กล่องกลาง (ที่อยู่)
     box_x = x0 + col_left
     pdf.rect(box_x, y_top, col_mid, h_all)
+
     addr_lines = [
         "Electricity Generating Authority of Thailand (EGAT)",
         "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",
         "Call Center Tel. 02-114-3350",
     ]
+
     pdf.set_font(base_font, "B", FONT_MAIN)
-    line_h = 6.2
+    line_h = 5.2   # ลดจาก 6.2 เพื่อให้พอดีกับความสูงใหม่
+
+    # จัดให้อยู่กึ่งกลางแนวตั้งในกล่อง
     start_y = y_top + (h_all - line_h * len(addr_lines)) / 2
+
     for i, line in enumerate(addr_lines):
         pdf.set_xy(box_x + 3, start_y + i * line_h)
         pdf.cell(col_mid - 6, line_h, line, align="C")
 
-    # กล่องขวา (Page / Issue)
+    # กล่องขวา
     xr = x0 + col_left + col_mid
     pdf.rect(xr, y_top, col_right, h_right_top)
     pdf.rect(xr, y_top + h_right_top, col_right, h_all - h_right_top)
 
-    # แสดง Page
-    pdf.set_xy(xr, y_top + 4)
+    # Page number
+    pdf.set_xy(xr, y_top + (h_right_top - 6) / 2)
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C")
 
-    # แสดง Issue ID (2 บรรทัด)
-    pdf.set_xy(xr, y_top + h_right_top + (h_all - h_right_top) / 2 - 5)
+    # Issue ID (2 บรรทัด)
+    bottom_box_h = h_all - h_right_top
+    pdf.set_xy(xr, y_top + h_right_top + (bottom_box_h - 12) / 2)
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.multi_cell(col_right, 6, f"Issue ID\n{issue_id}", align="C")
 
-    return y_top + h_all # ค่า y เริ่มต้นถัดจาก header
+    return y_top + h_all
 
 # -------------------- Photo helpers (ปรับใหม่) --------------------
 def _guess_img_type_from_ext(path_or_url: str) -> str:
@@ -697,11 +695,17 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.add_page()
     y = _draw_header(pdf, base_font, issue_id)
 
-    # ชื่อเอกสาร
+    # ชื่อเอกสาร   
+    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+
     pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, "Preventive Maintenance Checklist - CB BOX", border=1, ln=1, align="C")
-    y += 10
+    pdf.set_font(base_font, "B", 13)
+    pdf.set_fill_color(255, 230, 100)
+    pdf.cell(page_w, TITLE_H,
+            "Preventive Maintenance Checklist - CB BOX",
+            border=1, ln=1, align="C", fill=True)
+
+    y += TITLE_H
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
     y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
@@ -771,28 +775,49 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     comment_result_w = result_w
     comment_remark_w = remark_w
 
-    h_comment = 12
-    h_summary = 10
-    h_checklist = 12
-    total_h = h_comment + h_summary + h_checklist
-    pdf.rect(comment_x, comment_y, item_w + result_w + remark_w, total_h)
-
-    pdf.set_xy(comment_x, comment_y)
-    pdf.set_font(base_font, "B", 13)
-    pdf.cell(comment_item_w, h_comment, "Comment :", border=1, align="L")
-    pdf.set_font(base_font, "", 13)
+    h_comment = 7
+    h_checklist = 7
+    total_h = h_comment + h_checklist
+    
+    # ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
+    _ensure_space(total_h + 5)
+    
+    # วาดกรอบนอกทั้งหมด
+    pdf.rect(comment_x, y, item_w + result_w + remark_w, total_h)
+    
+    # แถว Comment (ใช้ _cell_text_in_box แทน multi_cell)
+    pdf.set_font(base_font, "B", 11)
+    pdf.set_xy(comment_x, y)
+    pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
+    
+    # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ
+    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
+    
+    # ใช้ _cell_text_in_box สำหรับ comment text
+    pdf.set_font(base_font, "", 11)
     comment_text = str(doc.get("summary", "") or "-")
-    pdf.multi_cell(comment_result_w + comment_remark_w, h_comment, comment_text, border=1, align="L")
-    comment_y += h_comment
+    comment_text_x = comment_x + comment_item_w
+    _cell_text_in_box(pdf, comment_text_x, y, comment_result_w + comment_remark_w, h_comment, comment_text, align="L", lh=LINE_H, valign="middle")
+    
+    y += h_comment
+    
+    # เส้นคั่นระหว่าง Comment และ ผลการตรวจสอบ
+    pdf.line(comment_x, y, comment_x + item_w + result_w + remark_w, y)
 
+    # แถวผลการตรวจสอบ
     summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
-
-    pdf.set_xy(comment_x, comment_y)
-    pdf.set_font(base_font, "B", 13)
-    pdf.cell(comment_item_w, h_checklist, "ผลการตรวจสอบ :", border=1, align="L")
-    pdf.set_font(base_font, "", 13)
+    
+    pdf.set_xy(comment_x, y)
+    pdf.set_font(base_font, "B", 11)
+    pdf.cell(comment_item_w, h_checklist, "ผลการตรวจสอบ :", border=0, align="L")
+    
+    # วาดเส้นคั่น
+    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
+    
+    # วาด checkbox
+    pdf.set_font(base_font, "", 11)
     x_check_start = comment_x + comment_item_w + 10
-    y_check = comment_y + (h_checklist - CHECKBOX_SIZE) / 2.0
+    y_check = y + (h_checklist - CHECKBOX_SIZE) / 2.0
     gap = 35
     options = [("Pass", summary_check == "PASS"), ("Fail", summary_check == "FAIL"), ("N/A", summary_check == "N/A")]
     for i, (label, checked) in enumerate(options):
@@ -801,8 +826,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         pdf.set_xy(x_box + CHECKBOX_SIZE + 3, y_check - 1)
         pdf.cell(20, LINE_H + 1, label, ln=0, align="L")
 
-    pdf.rect(comment_x, comment_y, item_w + result_w + remark_w, h_checklist)
-    y = comment_y + h_checklist
+    y += h_checklist
 
     # ช่องเซ็นชื่อ
     signer_labels = ["Performed by", "Approved by", "Witnessed by"]
@@ -810,10 +834,10 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     # ใช้ความกว้างของแต่ละคอลัมน์จริงแทน col_w
     col_widths = [item_w, result_w, remark_w]
-    row_h_header = 12
-    row_h_sig = 16
-    row_h_name = 7
-    row_h_date = 7
+    row_h_header = 7
+    row_h_sig = 15
+    row_h_name = 5
+    row_h_date = 5
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
 
     _ensure_space(total_sig_h + 5)
@@ -867,21 +891,31 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     x0 = 10
     y = _draw_header(pdf, base_font, issue_id)  # วาดหัวกระดาษ
 
-    # ชื่อเอกสาร
+    # ชื่อเอกสาร   
+    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+
     pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, "Preventive Maintenance Checklist - CB BOX", border=1, ln=1, align="C")
-    y += 10
+    pdf.set_font(base_font, "B", 13)
+    pdf.cell(page_w, TITLE_H,
+            "Preventive Maintenance Checklist - CB BOX",
+            border=1, ln=1, align="C")
+
+    y += TITLE_H
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
     y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
     
     # photo
+    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+
     pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 14)
+    pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
-    pdf.cell(page_w, 10, "Photos", border=1, ln=1, align="C", fill=True)
-    y += 10
+    pdf.cell(page_w, TITLE_H,
+            "Photos",
+            border=1, ln=1, align="C", fill=True)
+
+    y += TITLE_H
 
     # ========== ตารางรูปแบบ 2 คอลัมน์: r# (ซ้าย) / g# (ขวา) ==========
     # ตั้งค่าความกว้างคอลัมน์
@@ -897,12 +931,14 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             y = _draw_header(pdf, base_font, issue_id)
             # หัวเรื่องย่อย Photos ซ้ำเมื่อขึ้นหน้าใหม่เพื่อไม่ให้สับสน
             pdf.set_xy(x0, y)
-            pdf.set_font(base_font, "B", 14)
+            pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
-            pdf.cell(page_w, 10, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
-            y += 10
+            photo_continue_h = 6  # ← กำหนดความสูงแถว Photos (ต่อ)
+
+            pdf.cell(page_w, photo_continue_h, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
+            y += photo_continue_h
+
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-            pdf.set_font(base_font, "", 11)
 
     # วาดหัวตาราง Photos
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
