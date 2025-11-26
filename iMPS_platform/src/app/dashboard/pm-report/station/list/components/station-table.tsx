@@ -25,17 +25,20 @@ import {
   Input,
   Typography,
 } from "@material-tailwind/react";
-import {ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import StationPMForm from "@/app/dashboard/pm-report/station/input_PMreport/components/checkList";
-// type TData = (typeof AppDataTable)[number];
+import { apiFetch } from "@/utils/api";
+
 type TData = {
   id?: string;
+  doc_name?: string;
   issue_id?: string; // ทำเป็น optional และเติมค่าจาก id หรือ regex ใน url
-  name: string; // วันที่แบบไทย แสดงผลในตาราง
+  pm_date: string; // วันที่แบบไทย แสดงผลในตาราง
   position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
   office: string; // URL ไฟล์
+  inspector?: string;
 };
 
 type Props = {
@@ -78,9 +81,12 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   };
 
   const [a, b] = await Promise.allSettled([
-    fetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
-    fetch(build(`/${URL_PREFIX}/list`), fetchOpts),
+    // fetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
+    // fetch(build(`/${URL_PREFIX}/list`), fetchOpts),
+    apiFetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
+    apiFetch(build(`/${URL_PREFIX}/list`), fetchOpts),
   ]);
+
 
   let ids: string[] = [];
   for (const r of [a, b]) {
@@ -101,6 +107,100 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   };
   return same.reduce((acc, cur) => (toTail(cur) > toTail(acc) ? cur : acc), same[0]);
 }
+
+
+/* ---------- NEW: helper สำหรับ doc_name ---------- */
+function makeDocNameParts(stationId: string, dateISO: string) {
+  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+  const year = d.getFullYear();
+  const prefix = `${stationId}_`;
+  const suffix = `/${year}`;
+  return { year, prefix, suffix };
+}
+
+function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
+  const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
+  const s = String(latestFromDb || "").trim();
+
+  // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
+  if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
+    return `${prefix}1${suffix}`;
+  }
+
+  // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
+  const inside = s.slice(prefix.length, s.length - suffix.length);
+  const cur = parseInt(inside, 10);
+  const nextIndex = isNaN(cur) ? 1 : cur + 1;
+
+  return `${prefix}${nextIndex}${suffix}`;
+}
+
+async function fetchPreviewDocName(
+  stationId: string,
+  pmDate: string
+): Promise<string | null> {
+  const u = new URL(`${BASE}/stationpmreport/preview-docname`);
+  u.searchParams.set("station_id", stationId);
+  u.searchParams.set("pm_date", pmDate);
+
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("access_token") ?? ""
+      : "";
+
+  const r = await apiFetch(u.toString(), {
+    // const r = await fetch(u.toString(), {
+    credentials: "include",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (!r.ok) {
+    console.error("fetchPreviewDocName failed:", r.status);
+    return null;
+  }
+
+  const j = await r.json();
+  return (j && typeof j.doc_name === "string") ? j.doc_name : null;
+}
+async function fetchLatestDocName(
+  stationId: string,
+  dateISO: string
+): Promise<string | null> {
+  const u = new URL(`${BASE}/stationpmreport/latest-docname`);
+  u.searchParams.set("station_id", stationId);
+  u.searchParams.set("pm_date", dateISO);
+  u.searchParams.set("_ts", String(Date.now()));
+
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("access_token") ?? ""
+      : "";
+
+  // const r = await fetch(u.toString(), {
+  const r = await apiFetch(u.toString(), {
+    credentials: "include",
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+
+  if (!r.ok) {
+    console.error("fetchLatestDocName failed:", r.status);
+    return null;
+  }
+
+  const j = await r.json();
+  return (j && typeof j.doc_name === "string") ? j.doc_name : null;
+}
+
+type Me = {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  company: string;
+  tel: string;
+};
+
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -109,6 +209,17 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [issueId, setIssueId] = useState<string>("");
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
+  const [docName, setDocName] = useState<string>("");
+  const [me, setMe] = useState<Me | null>(null);
+  const [inspector, setInspector] = useState<string>("");
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;   // YYYY-MM-DD ตามวันที่เครื่องผู้ใช้
+  }, []);
 
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
@@ -120,14 +231,43 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const sidLocal = localStorage.getItem("selected_station_id");
     setStationId(sidLocal);
   }, [searchParams]);
-  // อ่าน station_id จาก URL (Navbar เป็นคนอัปเดตให้)
-  // const stationIdFromUrl = sp.get("station_id") ?? "";
 
-  // const addHref = useMemo(() => {
-  //   if (!stationId) return "/dashboard/pm-report/station/input_PMreport";
-  //   const p = new URLSearchParams({ station_id: stationId });
-  //   return `/dashboard/pm-report/station/input_PMreport?${p.toString()}`;
-  // }, [stationId]);
+  useEffect(() => {
+    // ถ้าใช้ httpOnly cookie เป็นหลัก ก็ไม่ต้องพึ่ง localStorage มาก
+    const useHttpOnlyCookie = true;
+
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (!useHttpOnlyCookie) {
+          const t = typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+          if (t) headers.Authorization = `Bearer ${t}`;
+        }
+
+        const res = await apiFetch(`${apiBase}/me`, {
+          // const res = await fetch(`${apiBase}/me`, {
+          method: "GET",
+          headers,
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          console.warn("/me failed:", res.status);
+          return;
+        }
+
+        const data: Me = await res.json();
+        setMe(data);
+
+        // ให้ inspector default เป็น username ถ้ายังว่างอยู่
+        setInspector((prev) => prev || data.username || "");
+      } catch (err) {
+        console.error("fetch /me error:", err);
+      }
+    })();
+  }, [apiBase]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -155,15 +295,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
     return h;
   }
-  // const fetchOpts: RequestInit = {
-  //   headers: makeHeaders(),
-  //   ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
-  // };
-  // const baseFetchOpts: RequestInit = {
-  //   headers: makeHeaders(),
-  //   ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
-  //   cache: "no-store",
-  // };
 
   const FetchOpts: RequestInit = {
     headers: makeHeaders(),
@@ -267,8 +398,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       // const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
 
       const [pmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
-        fetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
+        // fetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
+        // fetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
+        apiFetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
+        apiFetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
       ]);
 
       let pmItems: any[] = [];
@@ -307,8 +440,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const fileUrl = uploadedUrl || generatedUrl;
         // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
-
-        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: fileUrl } as TData;
+        const doc_name = (it.doc_name ? String(it.doc_name) : "")
+        const inspector =
+          (it.inspector ?? it.job?.inspector ?? "") as string;
+        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: fileUrl, inspector, } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -320,7 +455,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const href = resolveFileHref(raw, apiBase);
         // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
-        return { issue_id: issueId, name: thDate(isoDay), position: isoDay, office: href } as TData;
+        const doc_name = (it.doc_name ? String(it.doc_name) : "")
+        const inspector =
+          (it.inspector ?? it.job?.inspector ?? "") as string;
+        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: href, inspector, } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
@@ -418,6 +556,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
+      accessorFn: (row) => row.doc_name || "—",
+      id: "name",
+      header: () => "document name",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      size: 120,
+      minSize: 80,
+      maxSize: 160,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
       header: () => "issue_id",
@@ -428,13 +576,23 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.name,
+      accessorFn: (row) => row.pm_date,
       id: "date",
       header: () => "date",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 80,
       minSize: 60,
       maxSize: 120,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.inspector || "-",
+      id: "inspector",
+      header: () => "inspector",
+      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      size: 100,
+      minSize: 80,
+      maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
@@ -493,33 +651,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  // const [urlText, setUrlText] = useState("");
-
-  // async function uploadUrls() {
-  //   if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
-  //   if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
-
-  //   const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
-  //   if (!urls.length) { alert("กรุณากรอก URL"); return; }
-
-  //   const fd = new FormData();
-  //   fd.append("station_id", stationId);
-  //   // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
-  //   fd.append("rows", JSON.stringify({ reportDate, urls }));
-
-  //   const res = await fetch(`${apiBase}/${URL_PREFIX}/upload`, {
-  //     method: "POST",
-  //     body: fd,
-  //     credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
-  //   });
-
-  //   if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
-  //   alert("อัปโหลดสำเร็จ");
-  //   setDateOpen(false);
-  //   setUrlText("");
-
-
-  // }
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -556,6 +687,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       const fd = new FormData();
       fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
+      fd.append("issue_id", issueId);
+      fd.append("doc_name", docName || "");
+      fd.append("inspector", inspector || "");
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
@@ -588,6 +722,41 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
     }
   }
+
+  useEffect(() => {
+    if (!dateOpen || !stationId || !reportDate) return;
+
+    let canceled = false;
+
+    (async () => {
+      try {
+        // 1) ลองขอชื่อจาก preview endpoint ก่อน
+        const preview = await fetchPreviewDocName(stationId, reportDate);
+        if (!canceled && preview) {
+          setDocName(preview);
+          return;
+        }
+
+        // 2) ถ้าไม่มี preview → ดึง latest แล้วคำนวณชื่อถัดไป
+        const latest = await fetchLatestDocName(stationId, reportDate);
+        if (!canceled) {
+          const next = nextDocNameFor(stationId, reportDate, latest || undefined);
+          setDocName(next);
+        }
+      } catch (e) {
+        console.error("auto doc_name error:", e);
+        if (!canceled) {
+          // 3) กรณี error → fallback เป็นชื่อแรกของปีนั้น ๆ
+          const fallback = nextDocNameFor(stationId, reportDate);
+          setDocName(fallback);
+        }
+      }
+    })();
+
+    return () => {
+      canceled = true;
+    };
+  }, [dateOpen, stationId, reportDate]);
 
   useEffect(() => {
     if (!dateOpen || !stationId || !reportDate) return;
@@ -677,31 +846,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 <ArrowUpTrayIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-200 group-hover:-tw-translate-y-0.5" />
                 <span className="tw-text-sm">Upload</span>
               </Button>
-
-              {/* <Link
-                href={addHref}
-                className="tw-inline-block"
-                aria-disabled={!stationId}
-                onClick={(e) => { if (!stationId) e.preventDefault(); }}
-              >
-                <Button
-                  size="lg"
-                  disabled={!stationId}
-                  className={`
-                  !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
-                  tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                  ${!stationId
-                      ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                      : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
-                  tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                  focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                `}
-                  title={stationId ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
-                >
-                  <span className="tw-w-full tw-text-center">+add</span>
-                </Button>
-              </Link> */}
-
               <Button
                 size="lg"
                 onClick={goAdd}
@@ -753,11 +897,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         <CardFooter className="tw-p-0">
           <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
             <table className="tw-w-full tw-text-left tw-min-w-[720px] md:tw-min-w-0 md:tw-table-fixed">
-              <colgroup>
-                {table.getFlatHeaders().map((header) => (
-                  <col key={header.id} style={{ width: header.getSize() }} />
-                ))}
-              </colgroup>
+           
 
               <thead className="tw-bg-gray-50 tw-sticky tw-top-0">
                 {table.getHeaderGroups().map((hg) => (
@@ -768,7 +908,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                       return (
                         <th
                           key={header.id}
-                          style={{ width: header.getSize() }}
+                          // style={{ width: header.getSize() }}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                           className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap
                           ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
@@ -876,31 +1016,46 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         </DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
-            <Typography variant="small" className="!tw-text-blue-gray-600">
-              Issue ID
-            </Typography>
             <Input
+              label="Document Name / ชื่อเอกสาร"
+              value={docName}
+              onChange={(e) => setDocName(e.target.value)}
+              crossOrigin=""
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-w-full !tw-bg-blue-gray-50"
+              readOnly
+            />
+          </div>
+          <div className="tw-space-y-2">
+            <Input
+              label="Issue id / รหัสเอกสาร"
               value={issueId}
               onChange={(e) => setIssueId(e.target.value)}
               crossOrigin=""
-              placeholder="เช่น PM-MB-2511-01"
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-w-full !tw-bg-blue-gray-50"
               readOnly
             />
-            <Typography variant="small" className="!tw-text-blue-gray-500">
-              ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
-            </Typography>
           </div>
           <div className="tw-space-y-2">
-            <Typography variant="small" className="!tw-text-blue-gray-600">
-              วันที่ (รูปแบบ YYYY-MM-DD)
-            </Typography>
             <Input
-              type="date"
-              value={reportDate}
-              onChange={(e) => setReportDate(e.target.value)}
+              label="Inspector / ผู้ตรวจสอบ"
+              value={inspector}
+              onChange={(e) => setInspector(e.target.value)}
               crossOrigin=""
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-w-full !tw-bg-blue-gray-50"
+              readOnly
             />
           </div>
+          <Input
+            type="date"
+            value={reportDate}
+            max={todayStr}  // ⬅️ จำกัดไม่ให้เลือกเกินวันนี้
+            onChange={(e) => setReportDate(e.target.value)}
+            label="PM Date / วันที่ตรวจสอบ"
+            crossOrigin=""
+          />
 
           <div className="tw-text-sm tw-text-blue-gray-500">
             ไฟล์ที่เลือก: <strong>{pendingFiles.length}</strong> ไฟล์

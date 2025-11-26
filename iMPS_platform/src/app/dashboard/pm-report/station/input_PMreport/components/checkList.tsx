@@ -1,6 +1,4 @@
-
 "use client";
-
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import {
     Button,
@@ -13,8 +11,7 @@ import {
     Textarea,
 } from "@material-tailwind/react";
 import { draftKeyStation, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/station/input_PMreport/lib/draft";
-import { useRouter } from "next/navigation";
-import { Section } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 /* =========================
  * API (เดิม)
@@ -24,18 +21,22 @@ const LOGO_SRC = "/img/logo_egat.png";
 type StationPublic = {
     station_id: string;
     station_name: string;
-    SN?: string;
-    WO?: string;
-    chargeBoxID?: string;
-    model?: string;
+    // SN?: string;
+    // WO?: string;
+    // chargeBoxID?: string;
+    // model?: string;
     status?: boolean;
 };
 
-type CheckListProps = {
-    onComplete: (status: boolean) => void;
-    onNext?: () => void;
-    onPrev?: () => void;
+type Me = {
+    id: string;
+    username: string;
+    email: string;
+    role: string;
+    company: string;
+    tel: string;
 };
+
 async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
     const res = await fetch(url, { cache: "no-store" });
@@ -67,12 +68,12 @@ type Question =
 
 const QUESTIONS_RAW = [
     // ข้อ 1-6 เป็น kind: "simple" และไม่มีรูปภาพ (hasPhoto: false)
-    { no: 1, key: "r1", label: "1. ตรวจสอบโครงสร้างสถานี", kind: "simple", hasPhoto: false },
-    { no: 2, key: "r2", label: "2. ตรวจสอบสีโครงสร้างสถานี", kind: "simple", hasPhoto: false },
-    { no: 3, key: "r3", label: "3. ตรวจสอบพื้นผิวสถานี", kind: "simple", hasPhoto: false },
-    { no: 4, key: "r4", label: "4. ตรวจสอบสีพื้นผิวสถานี", kind: "simple", hasPhoto: false },
-    { no: 5, key: "r5", label: "5. ตรวจสอบตัวกั้นห้ามล้อ", kind: "simple", hasPhoto: false },
-    { no: 6, key: "r6", label: "6. ตรวจสอบเสากันชนเครื่องอัดประจุไฟฟ้า", kind: "simple", hasPhoto: false },
+    { no: 1, key: "r1", label: "1. ตรวจสอบโครงสร้างสถานี", kind: "simple", hasPhoto: true },
+    { no: 2, key: "r2", label: "2. ตรวจสอบสีโครงสร้างสถานี", kind: "simple", hasPhoto: true },
+    { no: 3, key: "r3", label: "3. ตรวจสอบพื้นผิวสถานี", kind: "simple", hasPhoto: true },
+    { no: 4, key: "r4", label: "4. ตรวจสอบสีพื้นผิวสถานี", kind: "simple", hasPhoto: true },
+    { no: 5, key: "r5", label: "5. ตรวจสอบตัวกั้นห้ามล้อ", kind: "simple", hasPhoto: true },
+    { no: 6, key: "r6", label: "6. ตรวจสอบเสากันชนเครื่องอัดประจุไฟฟ้า", kind: "simple", hasPhoto: true },
 
     // ข้อ 7 เป็น kind: "group" (ไฟส่องสว่าง) - มีรูปภาพ
     {
@@ -114,7 +115,7 @@ const QUESTIONS_RAW = [
     },
 
     // ข้อ 10 เป็น kind: "simple" (ทำความสะอาด) - ไม่มีรูปภาพ
-    { no: 10, key: "r10", label: "10. ทำความสะอาด", kind: "simple", hasPhoto: false },
+    { no: 10, key: "r10", label: "10. ทำความสะอาด", kind: "simple", hasPhoto: true },
 ];
 
 /**
@@ -131,40 +132,137 @@ const QUESTIONS: Question[] = QUESTIONS_RAW.filter(
 
 // ... (UI ATOMS ยังคงเดิม)
 
-function SectionCard({ title, subtitle, children }: { title?: string; subtitle?: string; children: React.ReactNode }) {
+function SectionCard({
+    title,
+    subtitle,
+    children
+}: {
+    title?: string;
+    subtitle?: string;
+    children: React.ReactNode
+}) {
     return (
-        <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-            {(title || subtitle) && (
-                <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                    {title && <Typography variant="h6">{title}</Typography>}
-                    {subtitle && <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography>}
-                </CardHeader>
+        //     <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+        //         {(title || subtitle) && (
+        //             <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+        //                 {title && <Typography variant="h6">{title}</Typography>}
+        //                 {subtitle && <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography>}
+        //             </CardHeader>
+        //         )}
+        //         <CardBody className="tw-space-y-4">{children}</CardBody>
+        //     </Card>
+        // );
+        <>
+            {/* Title นอกกรอบการ์ด */}
+            {title && (
+                <Typography variant="h6" className="tw-mb-1">
+                    {title}
+                </Typography>
             )}
-            <CardBody className="tw-space-y-4">{children}</CardBody>
-        </Card>
+
+            {/* การ์ด (มีเฉพาะกรอบ +เนื้อหา+subtitle ด้านใน) */}
+            <Card className="tw-mt-1 tw-shadow-sm tw-border tw-border-blue-gray-100">
+                {subtitle && (
+                    <CardHeader
+                        floated={false}
+                        shadow={false}
+                        className="tw-px-4 tw-pt-4 tw-pb-2"
+                    >
+                        <Typography
+                            variant="small"
+                            className="!tw-text-blue-gray-500 tw-italic tw-mt-1"
+                        >
+                            {subtitle}
+                        </Typography>
+                    </CardHeader>
+                )}
+
+                <CardBody className="tw-space-y-4">
+                    {children}
+                </CardBody>
+            </Card>
+        </>
     );
 }
 
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels,
+    label,
+    value,
+    onChange,
+    remark,
+    onRemarkChange,
+    labels,
+    aboveRemark,
 }: {
-    label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void; labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
+    label: string;
+    value: PF;
+    onChange: (v: Exclude<PF, "">) => void;
+    remark?: string;
+    onRemarkChange?: (v: string) => void;
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
+    aboveRemark?: React.ReactNode;
 }) {
+
+    const text = {
+        PASS: labels?.PASS ?? "PASS",
+        FAIL: labels?.FAIL ?? "FAIL",
+        NA: labels?.NA ?? "N/A",
+    };
     return (
         <div className="tw-space-y-3 tw-py-3">
-            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-                <Typography className="tw-font-medium">{label}</Typography>
+            {/* 1) หัวข้อ */}
+            <Typography className="tw-font-medium">{label}</Typography>
 
-                <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-                    <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>PASS</Button>
-                    <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>FAIL</Button>
-                    <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>N/A</Button>
+            {/* 2) บล็อกแนบรูป หรือ content อื่น ๆ ที่ส่งมาผ่าน aboveRemark */}
+            {aboveRemark && (
+                <div className="tw-w-full tw-min-w-0">
+                    {aboveRemark}
+                </div>
+            )}
+
+            {/* 3) ปุ่ม PASS / FAIL / N/A — ชิดขวา */}
+            <div className="tw-flex tw-w-full tw-justify-end">
+                <div className="tw-flex tw-gap-2">
+                    <Button
+                        size="sm"
+                        color="green"
+                        variant={value === "PASS" ? "filled" : "outlined"}
+                        className="sm:tw-min-w-[84px]"
+                        onClick={() => onChange("PASS")}
+                    >
+                        {text.PASS}
+                    </Button>
+                    <Button
+                        size="sm"
+                        color="red"
+                        variant={value === "FAIL" ? "filled" : "outlined"}
+                        className="sm:tw-min-w-[84px]"
+                        onClick={() => onChange("FAIL")}
+                    >
+                        {text.FAIL}
+                    </Button>
+                    <Button
+                        size="sm"
+                        color="blue-gray"
+                        variant={value === "NA" ? "filled" : "outlined"}
+                        className="sm:tw-min-w-[84px]"
+                        onClick={() => onChange("NA")}
+                    >
+                        {text.NA}
+                    </Button>
                 </div>
             </div>
 
+            {/* 4) หมายเหตุ ด้านล่างสุด */}
             {onRemarkChange && (
                 <div className="tw-w-full tw-min-w-0">
-                    <Textarea label="หมายเหตุ (ถ้ามี)" value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
+                    <Textarea
+                        label="หมายเหตุ (ถ้ามี)"
+                        value={remark || ""}
+                        onChange={(e) => onRemarkChange(e.target.value)}
+                        containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
+                        className="!tw-w-full"
+                    />
                 </div>
             )}
         </div>
@@ -172,7 +270,7 @@ function PassFailRow({
 }
 
 function PhotoMultiInput({
-    label, photos, setPhotos, max = 20,
+    label, photos, setPhotos, max = 3,
 }: {
     label?: string;
     photos: PhotoItem[];
@@ -204,31 +302,78 @@ function PhotoMultiInput({
 
     return (
         <div className="tw-space-y-3">
-            {label && <Typography className="tw-font-medium">{label}</Typography>}
-            <div className="tw-flex tw-flex-wrap tw-gap-2">
-                <Button size="sm" color="blue" variant="outlined" onClick={handlePick}>แนบรูป / ถ่ายรูป</Button>
-                <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-                    แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
-                </Typography>
+            {/* แถวบน: label + ปุ่มแนบรูป */}
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
+                {/* {label && (
+                      <Typography className="tw-font-medium">
+                        {label}
+                      </Typography>
+                    )} */}
+
+                <Button
+                    size="sm"
+                    color="blue"
+                    variant="outlined"
+                    onClick={handlePick}
+                    className="tw-shrink-0"
+                >
+                    แนบรูป / ถ่ายรูป
+                </Button>
             </div>
-            <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => handleFiles(e.target.files)} />
+
+            {/* แถวถัดไป: description */}
+            <Typography
+                variant="small"
+                className="!tw-text-blue-gray-500 tw-flex tw-items-center"
+            >
+                แนบได้สูงสุด {max} รูป • รองรับการถ่ายจากกล้องบนมือถือ
+            </Typography>
+
+            <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                capture="environment"
+                className="tw-hidden"
+                onChange={(e) => handleFiles(e.target.files)}
+            />
+
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
                     {photos.map((p) => (
-                        <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col">
+                        <div
+                            key={p.id}
+                            className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"
+                        >
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
-                                {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}
+                                {p.preview && (
+                                    <img
+                                        src={p.preview}
+                                        alt="preview"
+                                        className="tw-w-full tw-h-full tw-object-cover"
+                                    />
+                                )}
                             </div>
                             <div className="tw-p-2 tw-space-y-2">
                                 <div className="tw-flex tw-justify-end">
-                                    <Button size="sm" color="red" variant="text" onClick={() => handleRemove(p.id)}>ลบรูป</Button>
+                                    <Button
+                                        size="sm"
+                                        color="red"
+                                        variant="text"
+                                        onClick={() => handleRemove(p.id)}
+                                    >
+                                        ลบรูป
+                                    </Button>
                                 </div>
                             </div>
                         </div>
                     ))}
                 </div>
             ) : (
-                <Typography variant="small" className="!tw-text-blue-gray-500">ยังไม่มีรูปแนบ</Typography>
+                <Typography variant="small" className="!tw-text-blue-gray-500">
+                    ยังไม่มีรูปแนบ
+                </Typography>
             )}
         </div>
     );
@@ -237,62 +382,74 @@ function PhotoMultiInput({
 
 const PM_TYPE_CODE = "ST";
 
-function makePrefix(typeCode: string, dateISO: string) {
-    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-    const yy = String(d.getFullYear()).slice(2);
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    return `PM-${typeCode}-${yy}${mm}-`; // ตัวอย่าง: PM-CG-2511-
-}
-
-function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
-    const prefix = makePrefix(typeCode, dateISO);
-    const s = String(latestFromDb || "").trim();
-    if (!s || !s.startsWith(prefix)) return `${prefix}01`;     // เริ่มที่ 01 ถ้ายังไม่มีของเดือนนี้
-    const m = s.match(/(\d+)$/);
-    const pad = m ? m[1].length : 2;                           // รักษาความยาวเลขท้าย
-    const n = (m ? parseInt(m[1], 10) : 0) + 1;
-    return `${prefix}${n.toString().padStart(pad, "0")}`;
-}
-
-async function fetchLatestIssueIdFromList(stationId: string, dateISO: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/stationpmreport/list`);
+async function fetchPreviewIssueId(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/stationpmreport/preview-issueid`);
     u.searchParams.set("station_id", stationId);
-    u.searchParams.set("page", "1");
-    u.searchParams.set("pageSize", "50");
-    u.searchParams.set("_ts", String(Date.now()));
+    u.searchParams.set("pm_date", pmDate);
 
-    const r = await fetch(u.toString(), { credentials: "include", cache: "no-store" });
-    if (!r.ok) return null;
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewIssueId failed:", r.status);
+        return null;
+    }
 
     const j = await r.json();
-    const items: any[] = Array.isArray(j?.items) ? j.items : [];
-    if (!items.length) return null;
-
-    const prefix = makePrefix(PM_TYPE_CODE, dateISO);
-
-    // เลือกเฉพาะของเดือน/ประเภทเดียวกัน
-    const samePrefix = items
-        .map(it => String(it?.issue_id || ""))         // <- ดึง issue_id จาก list
-        .filter(iid => iid.startsWith(prefix));
-
-    if (!samePrefix.length) return null;
-
-    // หาตัวที่เลขท้ายมากสุด (ปลอดภัยกว่า sort string)
-    const toTailNum = (iid: string) => {
-        const m = iid.match(/(\d+)$/);
-        return m ? parseInt(m[1], 10) : -1;
-    };
-    return samePrefix.reduce((acc, cur) => (toTailNum(cur) > toTailNum(acc) ? cur : acc), samePrefix[0]);
+    return (j && typeof j.issue_id === "string") ? j.issue_id : null;
 }
 
+/* ---------- NEW: helper สำหรับ doc_name ---------- */
+
+async function fetchPreviewDocName(
+    stationId: string,
+    pmDate: string
+): Promise<string | null> {
+    const u = new URL(`${API_BASE}/stationpmreport/preview-docname`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("pm_date", pmDate);
+
+    const token =
+        typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+
+    const r = await fetch(u.toString(), {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!r.ok) {
+        console.error("fetchPreviewDocName failed:", r.status);
+        return null;
+    }
+
+    const j = await r.json();
+    return (j && typeof j.doc_name === "string") ? j.doc_name : null;
+}
 
 /* =========================
  * MAIN
  * ========================= */
 export default function StationPMReport() {
+    const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+    const [docName, setDocName] = useState<string>("");
+
+
     const PM_PREFIX = "stationpmreport";
+    const searchParams = useSearchParams();
 
     /* ---------- photos per question ---------- */
     // กรองเหลือเฉพาะข้อที่มี hasPhoto
@@ -307,9 +464,27 @@ export default function StationPMReport() {
     const [draftId, setDraftId] = useState<string | null>(null);
 
     const key = useMemo(() => draftKeyStation(stationId), [stationId]);
+    const [inspector, setInspector] = useState<string>("");
 
     /* ---------- job info ---------- */
-    const [job, setJob] = useState({ issue_id: "", chargerNo: "", sn: "", model: "", station_name: "", date: "", inspector: "" });
+    const [job, setJob] = useState({
+        issue_id: "",
+        // chargerNo: "", 
+        // sn: "", 
+        // model: "", 
+        station_name: "",
+        date: "",
+        inspector: ""
+    });
+
+    const todayStr = useMemo(() => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;       // YYYY-MM-DD (ตามเวลาท้องถิ่น browser)
+    }, []);
+
     // const [สรุปผล, setสรุปผล] = useState<PF>("");
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
     /* ---------- PASS/FAIL + remark ---------- */
@@ -324,6 +499,83 @@ export default function StationPMReport() {
         Object.fromEntries(ALL_KEYS.map((k) => [k, { pf: "", remark: "" }])) as Record<string, { pf: PF; remark: string }>
     );
 
+    useEffect(() => {
+        const token =
+            typeof window !== "undefined"
+                ? localStorage.getItem("access_token") ?? ""
+                : "";
+
+        if (!token) return;
+
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/me`, {
+                    method: "GET",
+                    headers: { Authorization: `Bearer ${token}` },
+                    credentials: "include",
+                });
+
+                if (!res.ok) {
+                    console.warn("fetch /me failed:", res.status);
+                    return;
+                }
+
+                const data: Me = await res.json();
+                setMe(data);
+
+                // ถ้ายังไม่มี inspector ให้ auto-fill เป็น username
+                setInspector((prev) => prev || data.username || "");
+            } catch (err) {
+                console.error("fetch /me error:", err);
+            }
+        })();
+    }, []);
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+
+        (async () => {
+            try {
+                const preview = await fetchPreviewIssueId(stationId, job.date);
+                if (!canceled && preview) {
+                    setJob(prev => ({ ...prev, issue_id: preview }));
+                }
+            } catch (err) {
+                console.error("preview issue_id error:", err);
+                // ถ้า error ปล่อยให้ว่างไว้ → backend จะ gen เองตอน submit
+            }
+        })();
+
+        return () => { canceled = true; };
+    }, [stationId, job.date]);
+
+    useEffect(() => {
+        if (!stationId || !job.date) return;
+
+        let canceled = false;
+
+        (async () => {
+            try {
+                const preview = await fetchPreviewDocName(stationId, job.date);
+
+                if (!canceled && preview) {
+                    // ถ้าเป็นหน้า edit แล้วดึง doc_name เดิมจาก DB มาอยู่แล้ว
+                    // จะไม่บังคับทับ ถ้าอยากกันตรงนี้เพิ่มเงื่อนไข isEdit ได้
+                    setDocName(preview);
+                }
+            } catch (err) {
+                console.error("preview docName error:", err);
+                // ถ้า error ปล่อยให้ docName ว่างไว้ → ฝั่ง backend จะ gen เองตอน submit อยู่แล้ว
+            }
+        })();
+
+        return () => {
+            canceled = true;
+        };
+    }, [stationId, job.date]);
+
     /* ---------- load station (ยังคงเดิม) ---------- */
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -335,8 +587,8 @@ export default function StationPMReport() {
             .then((st) => {
                 setJob((prev) => ({
                     ...prev,
-                    sn: st.SN ?? prev.sn,
-                    model: st.model ?? prev.model,
+                    // sn: st.SN ?? prev.sn,
+                    // model: st.model ?? prev.model,
                     station_name: st.station_name ?? prev.station_name,
                     date: prev.date || new Date().toISOString().slice(0, 10),
                 }));
@@ -361,10 +613,11 @@ export default function StationPMReport() {
     useEffect(() => {
         if (!stationId || !draftId) return;
         const draft = loadDraftLocal<{
-            job: typeof job;
+            job: typeof job & { inspector?: string };
             rows: typeof rows;
             photos: typeof photos;
             summary: string;
+            inspector?: string;
         }>(key);
         if (!draft) return;
 
@@ -372,6 +625,7 @@ export default function StationPMReport() {
         setRows(draft.rows);
         setPhotos(draft.photos ?? initialPhotos);
         setSummary(draft.summary);
+        setInspector(draft.inspector ?? "");
     }, [stationId, draftId, key]);
 
     useEffect(() => {
@@ -381,41 +635,13 @@ export default function StationPMReport() {
             if (!st) return;
             setJob((prev) => ({
                 ...prev,
-                sn: st.SN ?? prev.sn,
-                model: st.model ?? prev.model,
+                // sn: st.SN ?? prev.sn,
+                // model: st.model ?? prev.model,
             }));
         };
         window.addEventListener("station:info", onInfo as EventListener);
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
-
-    useEffect(() => {
-        if (!stationId || !job.date) return;
-
-        let canceled = false;
-        (async () => {
-            try {
-                const latest = await fetchLatestIssueIdFromList(stationId, job.date);
-                const next = nextIssueIdFor(PM_TYPE_CODE, job.date, latest || "");
-                if (!canceled) {
-                    const prefix = makePrefix(PM_TYPE_CODE, job.date);
-                    setJob(prev => {
-                        // ถ้า issue_id เดิมยังอยู่เดือนเดียวกัน ก็ไม่ต้องเปลี่ยน
-                        if (prev.issue_id?.startsWith(prefix)) return prev;
-                        return { ...prev, issue_id: next };
-                    });
-                }
-            } catch {
-                if (!canceled) {
-                    const fallback = nextIssueIdFor(PM_TYPE_CODE, job.date, "");
-                    setJob(prev => ({ ...prev, issue_id: fallback }));
-                }
-            }
-        })();
-
-        return () => { canceled = true; };
-    }, [stationId, job.date]);
-
 
     // ---------- render helpers (ยังคงเดิม) ----------
     const makePhotoSetter = (
@@ -515,10 +741,12 @@ export default function StationPMReport() {
             const payload = {
                 station_id: stationId,
                 issue_id: issueIdFromJob,
-                job,
+                job: jobWithoutIssueId,
                 rows,
                 summary,
                 pm_date,
+                inspector,
+                doc_name: docName,
                 ...(summaryCheck ? { summaryCheck } : {}),
             };
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
@@ -528,7 +756,14 @@ export default function StationPMReport() {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            const { report_id } = await res.json();
+            // const { report_id } = await res.json();
+            const { report_id, doc_name } = await res.json() as {
+                report_id: string;
+                doc_name?: string;
+            };
+            if (doc_name) {
+                setDocName(doc_name);
+            }
 
             // อัปโหลดรูปแยกกลุ่ม g1..g10 (ตามข้อที่มีรูป: ข้อ 7, 8, 9)
             const photoNos = Object.keys(photos).map(Number);
@@ -559,53 +794,108 @@ export default function StationPMReport() {
 
     const renderQuestionBlock = (q: Question) => {
         return (
+            // <SectionCard key={q.key} title={q.label}>
+
+            //     {q.kind === "simple" && (
+            //         <PassFailRow
+            //             label="ผลการตรวจสอบ"
+            //             value={rows[q.key]?.pf ?? ""}
+            //             onChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })}
+            //             remark={rows[q.key]?.remark ?? ""}
+            //             onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })}
+            //         />
+            //     )}
+
+            //     {/* Render สำหรับ kind: "group" */}
+            //     {q.kind === "group" &&
+            //         q.items.map((it) => (
+            //             <PassFailRow
+            //                 key={it.key}
+            //                 label={it.label}
+            //                 value={rows[it.key]?.pf ?? ""}
+            //                 onChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
+            //                 remark={rows[it.key]?.remark}
+            //                 onRemarkChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
+            //             />
+            //         ))}
+
+            //     {/* ส่วนรูปภาพ ยังคงอยู่สำหรับข้อที่มี hasPhoto: true (ข้อ 7, 8, 9) */}
+            //     {q.hasPhoto && (
+            //         <div className="tw-pt-2 tw-pb-4 tw-border-t tw-border-blue-gray-50">
+            //             <PhotoMultiInput
+            //                 label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+            //                 photos={photos[q.no] || []}
+            //                 setPhotos={makePhotoSetter(q.no)}
+            //                 max={20}
+            //             />
+            //         </div>
+            //     )}
+            // </SectionCard>
             <SectionCard key={q.key} title={q.label}>
-                {/* Render สำหรับ kind: "simple" */}
-                {/* {q.kind === "simple" && (
-                    <PassFailRow
-                        label="ผลการตรวจสอบ"
-                        value={rows[q.key].pf}
-                        onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
-                        remark={rows[q.key].remark}
-                        onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-                    />
-                )} */}
+                {/* simple */}
                 {q.kind === "simple" && (
                     <PassFailRow
-                        label="ผลการตรวจสอบ"
-                        // ใช้ Optional Chaining (?.) หรือ Default Value (??) เพื่อป้องกัน undefined
-                        // ในกรณีนี้ เนื่องจากเรารู้ว่า rows[q.key] ควรมีอยู่เสมอ จึงอาจใช้ Default Value เพื่อ Cast
-                        value={rows[q.key]?.pf ?? ""}
-                        onChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })}
-                        remark={rows[q.key]?.remark ?? ""}
-                        onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })}
+                        label="ผลการทดสอบ"
+                        value={rows[q.key].pf}
+                        onChange={(v) =>
+                            setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
+                        }
+                        remark={rows[q.key].remark}
+                        onRemarkChange={(v) =>
+                            setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
+                        }
+                        aboveRemark={
+                            q.hasPhoto && (
+                                <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                    <PhotoMultiInput
+                                        label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                        photos={photos[q.no] || []}
+                                        setPhotos={makePhotoSetter(q.no)}
+                                        max={3}
+                                    />
+                                </div>
+                            )
+                        }
                     />
                 )}
 
-                {/* Render สำหรับ kind: "group" */}
+                {/* group */}
                 {q.kind === "group" &&
-                    q.items.map((it) => (
+                    q.items.map((it, idx) => (
                         <PassFailRow
                             key={it.key}
                             label={it.label}
                             value={rows[it.key]?.pf ?? ""}
-                            onChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
+                            onChange={(v) =>
+                                setRows({
+                                    ...rows,
+                                    [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
+                                })
+                            }
                             remark={rows[it.key]?.remark}
-                            onRemarkChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
+                            onRemarkChange={(v) =>
+                                setRows({
+                                    ...rows,
+                                    [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
+                                })
+                            }
+                            // แนบรูปแค่ก่อน item แรกของ group
+                            aboveRemark={
+                                q.hasPhoto && idx === 0 && (
+                                    <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                        <PhotoMultiInput
+                                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                            photos={photos[q.no] || []}
+                                            setPhotos={makePhotoSetter(q.no)}
+                                            max={3}
+                                        />
+                                    </div>
+                                )
+                            }
                         />
                     ))}
 
-                {/* ส่วนรูปภาพ ยังคงอยู่สำหรับข้อที่มี hasPhoto: true (ข้อ 7, 8, 9) */}
-                {q.hasPhoto && (
-                    <div className="tw-pt-2 tw-pb-4 tw-border-t tw-border-blue-gray-50">
-                        <PhotoMultiInput
-                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                            photos={photos[q.no] || []}
-                            setPhotos={makePhotoSetter(q.no)}
-                            max={20}
-                        />
-                    </div>
-                )}
+                
             </SectionCard>
         );
     };
@@ -654,6 +944,16 @@ export default function StationPMReport() {
                                 </div>
                             </div>
                         </div>
+                        {/* ขวาสุด: ชื่อเอกสาร / เลขที่เอกสาร */}
+                        <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
+                            <div className="tw-font-semibold">
+                                Document Name.
+                            </div>
+                            <div>
+                                {docName || "-"}
+                            </div>
+
+                        </div>
                     </div>
                     {/* BODY */}
                     <div className="tw-mt-8 tw-space-y-8">
@@ -669,7 +969,7 @@ export default function StationPMReport() {
                                 />
                             </div>
 
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-3">
+                            <div className="sm:tw-col-span-2 lg:tw-col-span-2">
                                 <Input
                                     label="Location / สถานที่"
                                     value={job.station_name}
@@ -680,8 +980,19 @@ export default function StationPMReport() {
                                     className="!tw-bg-blue-gray-50"
                                 />
                             </div>
+                            <div className="sm:tw-col-span-2 lg:tw-col-span-2">
+                                <Input
+                                    label="Inspector / ผู้ตรวจสอบ"
+                                    value={inspector}
+                                    onChange={(e) => setInspector(e.target.value)}
+                                    crossOrigin=""
+                                    readOnly
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-bg-blue-gray-50"
+                                />
+                            </div>
 
-                            <div className="lg:tw-col-span-2">
+                            <div className="lg:tw-col-span-1">
                                 <Input
                                     label="วันที่ตรวจ"
                                     type="date"
@@ -728,7 +1039,7 @@ export default function StationPMReport() {
                             />
                         </div>
                     </SectionCard>
-                    
+
                     {/* Footer checks */}
                     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
                         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
@@ -780,113 +1091,6 @@ export default function StationPMReport() {
                 </div>
             </form>
         </section>
-        // <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
-        //     {/* Job Info */}
-        //     <SectionCard title="ข้อมูลงาน" subtitle="กรุณากรอกทุกช่องให้ครบ เพื่อความสมบูรณ์ของรายงาน PM">
-        //         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
-        //             <Input
-        //                 label="Issue id"
-        //                 value={job.issue_id || "-"}
-        //                 readOnly
-        //                 // key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
-        //                 crossOrigin=""
-        //                 containerProps={{ className: "!tw-min-w-0" }}
-        //                 className="!tw-w-full !tw-bg-blue-gray-50"
-        //             />
-        //             <Input label="Location / สถานที่" value={job.station_name} onChange={(e) => setJob({ ...job, station_name: e.target.value })} crossOrigin="" className="!tw-bg-blue-gray-50" readOnly />
-        //             <Input label="วันที่ตรวจ" type="date" value={job.date} onChange={(e) => setJob({ ...job, date: e.target.value })} crossOrigin="" />
-        //         </div>
-        //     </SectionCard>
 
-        //     {/* Checklist */}
-        //     <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-        //             <Typography variant="h6">Checklist</Typography>
-        //         </CardHeader>
-        //         <CardBody className="tw-space-y-1">
-        //             {QUESTIONS.map(renderQuestionBlock)}
-        //         </CardBody>
-        //     </Card>
-
-        //     {/* Summary */}
-        //     <SectionCard title="Comment">
-        //         <div className="tw-space-y-2">
-        //             <Textarea
-        //                 label="Comment"
-        //                 value={summary}
-        //                 onChange={(e) => setSummary(e.target.value)}
-        //                 rows={4}
-        //                 required
-        //                 autoComplete="off"
-        //                 containerProps={{ className: "!tw-min-w-0" }}
-        //                 className="!tw-w-full resize-none"
-        //             />
-        //             <Typography variant="small" className={`tw-text-xs ${!isSummaryFilled ? "!tw-text-red-600" : "!tw-text-blue-gray-500"}`}>
-        //                 {isSummaryFilled ? "กรุณาตรวจทานถ้อยคำและความครบถ้วนก่อนบันทึก" : "จำเป็นต้องกรอกสรุปผลการตรวจสอบ"}
-        //             </Typography>
-        //         </div>
-
-        //         <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-        //             <PassFailRow
-        //                 label="สรุปผลการตรวจสอบ"
-        //                 value={summaryCheck}
-        //                 onChange={(v) => setSummaryCheck(v)}
-        //                 labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
-        //                     PASS: "Pass : ผ่าน",
-        //                     FAIL: "Fail : ไม่ผ่าน",
-        //                     NA: "N/A : ไม่พบ",
-        //                 }}
-        //             />
-        //         </div>
-        //     </SectionCard>
-
-        //     {/* Footer checks */}
-        //     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
-        //             {allPFAnswered ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
-        //             )}
-        //         </div>
-
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">2) ตรวจสอบการแนบรูปภาพ (ทุกหัวข้อที่กำหนด)</Typography>
-        //             {allPhotosAttached ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")} (ต้องมีรูปสำหรับข้อ 7, 8, 9)</Typography>
-        //             )}
-        //         </div>
-
-        //         <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-        //             <Typography className="tw-font-medium">3) สรุปผลการตรวจสอบ</Typography>
-        //             {isSummaryFilled ? (
-        //                 <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-        //             ) : (
-        //                 <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-        //             )}
-        //         </div>
-
-        //         <div className="tw-mt-4 tw-flex tw-gap-4 tw-justify-end">
-        //             <Button
-        //                 size="lg"
-        //                 variant="gradient"
-        //                 color="blue"
-        //                 onClick={onFinalSave}
-        //                 disabled={!canFinalSave || submitting}
-        //             >
-        //                 {submitting ? "กำลังบันทึก..." : "บันทึกและส่งรายงาน"}
-        //             </Button>
-        //         </div>
-
-        //         {!canFinalSave && (
-        //             <Typography variant="small" className="tw-text-red-500 tw-text-center">
-        //                 กรุณากรอกข้อมูลและแนบรูปภาพให้ครบถ้วนตามรายการด้านบนก่อนบันทึก
-        //             </Typography>
-        //         )}
-        //     </CardFooter>
-        // </section>
     );
 }

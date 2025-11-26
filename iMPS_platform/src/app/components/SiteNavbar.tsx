@@ -32,45 +32,6 @@ export default function SiteNavbar() {
     }
   };
 
-  // useEffect(() => {
-  //   loadUserFromStorage();
-  //   const onStorage = () => loadUserFromStorage();
-  //   const onAuth = () => loadUserFromStorage();
-  //   const onFocus = () => loadUserFromStorage();
-
-  //   window.addEventListener("storage", onStorage); // ข้ามแท็บ
-  //   window.addEventListener("auth", onAuth);       // แท็บเดียวกัน
-  //   window.addEventListener("focus", onFocus);     // กลับมาโฟกัส
-
-  //   return () => {
-  //     window.removeEventListener("storage", onStorage);
-  //     window.removeEventListener("auth", onAuth);
-  //     window.removeEventListener("focus", onFocus);
-  //   };
-  // }, []);
-
-  //  useEffect(() => {
-  //   setMobileOpen(false);
-  //   loadUserFromStorage();
-  // }, [pathname]);
-
-
-  // โหลดสถานะจาก localStorage + sync เมื่อมีการเปลี่ยนแปลงจากแท็บอื่น
-  // useEffect(() => {
-  //   const load = () => {
-  //     try {
-  //       const token = localStorage.getItem("access_token");
-  //       const rawUser = localStorage.getItem("user");
-  //       console.log("rawUser",rawUser)
-  //       setUser(token && rawUser ? JSON.parse(rawUser) : null);
-  //     } catch {
-  //       setUser(null);
-  //     }
-  //   };
-  //   load();
-  //   window.addEventListener("storage", load);
-  //   return () => window.removeEventListener("storage", load);
-  // }, []);
   useEffect(() => {
     const load = () => {
       try {
@@ -272,28 +233,7 @@ export default function SiteNavbar() {
       >
         <div className="tw-px-4 tw-pt-3 tw-pb-4">
           <ul className="tw-space-y-2">
-            {/* {navItems.map((item) => (
-              <li key={item.href}>
-                {!item.requireAuth || user ? (
-                  <Link
-                    href={item.href}
-                    className={`tw-block tw-py-2 ${linkClass(item.href)}`}
-                    prefetch={false}
-                  >
-                    {item.label}
-                  </Link>
-                ) : (
-                  <span
-                    role="link"
-                    aria-disabled="true"
-                    className="tw-block tw-py-2 tw-text-gray-400 tw-cursor-not-allowed tw-select-none tw-pointer-events-none"
-                    title="Please login first"
-                  >
-                    {item.label}
-                  </span>
-                )}
-              </li>
-            ))} */}
+           
             {navItems.map((item) => {
               const href = resolveHref(item);
               return (
