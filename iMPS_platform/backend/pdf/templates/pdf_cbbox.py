@@ -88,12 +88,12 @@ ALLOWED_SET = set(ALLOWED_IDXS)
 LINE_W_OUTER = 0.45
 LINE_W_INNER = 0.22
 PADDING_X = 2.0
-PADDING_Y = 1.2
-FONT_MAIN = 13.0
-FONT_SMALL = 13.0
-LINE_H = 6.8
-ROW_MIN_H = 9
-CHECKBOX_SIZE = 4.0
+PADDING_Y = 0.5
+FONT_MAIN = 11.0
+FONT_SMALL = 11.0
+LINE_H = 5.0
+ROW_MIN_H = 7
+CHECKBOX_SIZE = 3.5
 
 class HTML2PDF(FPDF, HTMLMixin):
     pass
@@ -190,19 +190,39 @@ def _cell_text_in_box(pdf: FPDF, x: float, y: float, w: float, h: float, text: s
     pdf.set_xy(x + w, y)
 
 
-def _format_m17(measures: dict) -> str:
-    ms = (measures or {}).get("m17") or {}
+def _format_m5(measures: dict) -> str:
+    """
+    ฟอร์แมตข้อมูลแรงดันไฟฟ้าสำหรับข้อ 5
+    อ่านจาก measures["m5"] (หรือ key ที่เหมาะสม)
+    """
+    # ✅ เปลี่ยน key ให้ตรงกับโครงสร้างข้อมูลจริง
+    ms = (measures or {}).get("m5") or {}  # ถ้าเก็บใน m5
+    # หรือ ms = (measures or {}).get("r5") or {}  # ถ้าเก็บใน r5
+    
+    if not ms:
+        return ""
+
+    # normalize key ภายใน
+    norm_ms = {}
+    for k, v in ms.items():
+        nk = str(k).strip().replace("–", "-").replace("−", "-").replace(" ", "")
+        norm_ms[nk.upper()] = v
+
     order = [
-        "L1-L2", "L2-L3", "L3-L1",
         "L1-N", "L2-N", "L3-N",
         "L1-G", "L2-G", "L3-G",
+        "L1-L2", "L2-L3", "L3-L1",
         "N-G"
     ]
+
     def fmt(k: str) -> str:
-        d = ms.get(k) or {}
-        val = (d.get("value") or "").strip()
-        unit = (d.get("unit") or "").strip()
-        return f"{k} = {val}{unit}" if val else f"{k} = -"
+        d = norm_ms.get(k.upper()) or {}
+        val = str(d.get("value") or "").strip()
+        unit = str(d.get("unit") or "").strip()
+        if not val or val.lower() == "none":
+            val = "-"
+        return f"{k} = {val}{unit}"
+
     lines = [fmt(k) for k in order]
     return "\n".join(lines)
 
@@ -258,16 +278,24 @@ def _resolve_logo_path() -> Optional[Path]:
                 return p
     return None
 
-def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float,
-                         station_name: str, model: str, sn: str, pm_date: str) -> float:
+def _draw_job_info_block(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    w: float,
+    station_name: str,
+    pm_date: str,
+) -> float:
     row_h = 8.5
     col_w = w / 2.0
     label_w = 30
-    box_h = row_h * 2
+
+    box_h = row_h
+
     pdf.set_line_width(LINE_W_INNER)
-    pdf.rect(x, y, w, box_h)
-    pdf.line(x + col_w, y, x + col_w, y + box_h)   # คอลัมน์
-    pdf.line(x, y + row_h, x + w, y + row_h)       # แถว
+    pdf.rect(x, y, w, box_h)                 # กรอบนอก
+    pdf.line(x + col_w, y, x + col_w, y + box_h)  # เส้นแบ่งซ้าย/ขวา
 
     def _item(x0, y0, label, value):
         pdf.set_xy(x0 + 2, y0 + 1.5)
@@ -278,9 +306,7 @@ def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float
         pdf.cell(col_w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
 
     _item(x, y, "Station", station_name)
-    _item(x + col_w, y, "Serial No.", sn)
-    _item(x, y + row_h, "Model", model)
-    _item(x + col_w, y + row_h, "PM Date", pm_date)
+    _item(x + col_w, y, "PM Date", pm_date)
 
     return y + box_h
 
@@ -291,11 +317,7 @@ def _r_idx(k: str) -> int:
 
 
 def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
-    """
-    แปลง rows -> list items สำหรับตาราง Items
-    - รับเฉพาะ idx ที่อยู่ใน ALLOWED_SET (อิงจาก ROW_TITLES)
-    - ถ้า rows ว่าง: แสดงทุกข้อใน ROW_TITLES เป็น N/A
-    """
+
     items: List[dict] = []
     measures = measures or {}
 
@@ -304,18 +326,20 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         title = ROW_TITLES.get(key, f"รายการที่ {idx}")
         remark = (data or {}).get("remark", "").strip()
 
-        # (ยังคง behavior เดิมไว้ แม้โปรเจกต์นี้ใช้ถึง r8)
-        if key.lower() == "r17":
-            mtxt = _format_m17(measures or {})
-            if mtxt:
-                remark = mtxt
-        if key.lower() == "r15":
-            cp_value = (measures.get("cp", {}) or {}).get("value", "-")
-            cp_unit = (measures.get("cp", {}) or {}).get("unit", "")
-            remark = f"CP = {cp_value}{cp_unit}"
+        # กรณีพิเศษ: ข้อ 5 ให้แสดงข้อมูลแรงดันในคอลัมน์ Item
+        if idx == 5:
+            voltage_text = _format_m5(measures)
+            if voltage_text:
+                # รวมหัวข้อกับข้อมูลแรงดัน
+                title = f"{idx}. {title}\n{voltage_text}"
+            else:
+                title = f"{idx}. {title}"
+        else:
+            title = f"{idx}. {title}"
+
 
         result = _norm_result((data or {}).get("pf", ""))
-        return {"idx": idx, "text": f"{idx}. {title}", "result": result, "remark": remark}
+        return {"idx": idx, "text": title, "result": result, "remark": remark}
 
     # มี rows → ใช้เฉพาะข้อที่อนุญาต
     if isinstance(rows, dict) and rows:
@@ -351,10 +375,10 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
     pdf.cell(result_w, header_h, "Result", border=1, align="C")
     pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
     y += header_h
-    pdf.set_fill_color(255, 230, 100)
-    pdf.set_xy(x, y)
-    pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
-    return y + 8
+    # pdf.set_fill_color(255, 230, 100)
+    # pdf.set_xy(x, y)
+    # pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
+    return y
 
 def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str):
     pdf.rect(x, y, w, h)
@@ -483,9 +507,7 @@ def _find_public_root() -> Optional[Path]:
     return None
 
 def _env_photo_headers() -> Optional[dict]:
-    """
-    แปลง PHOTOS_HEADERS="Header1: val|Header2: val" เป็น dict
-    """
+
     raw = os.getenv("PHOTOS_HEADERS") or ""
     hdrs = {}
     for seg in raw.split("|"):
@@ -498,12 +520,7 @@ def _env_photo_headers() -> Optional[dict]:
 
 
 def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
-    """
-    รับ '/uploads/pm/Klongluang3/68efc.../g1/image.png' → คืน (src, img_type)
-    1) ลองแมปเป็นไฟล์จริง: backend/uploads/pm/...
-    2) ถ้าไม่เจอและมี PHOTOS_BASE_URL → ดาวน์โหลด
-    3) ถ้ายังไม่ได้ → (None, None)
-    """
+
     if not url_path:
         return None, None
 
@@ -582,13 +599,13 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
 # -------------------------------------
 PHOTO_MAX_PER_ROW = 3
-PHOTO_IMG_MAX_H   = 60
-PHOTO_GAP         = 3
-PHOTO_PAD_X       = 2
-PHOTO_PAD_Y       = 4
-PHOTO_ROW_MIN_H   = 15
-PHOTO_FONT_SMALL  = 10
-PHOTO_LINE_H      = 6
+PHOTO_IMG_MAX_H = 48
+PHOTO_GAP = 3
+PHOTO_PAD_X = 2
+PHOTO_PAD_Y = 4
+PHOTO_ROW_MIN_H = 15
+PHOTO_FONT_SMALL = 10
+PHOTO_LINE_H = 6
 
 def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float) -> float:
     header_h = 9.0
@@ -601,10 +618,7 @@ def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w
 
 def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float,
                      question_text: str, image_items: List[dict]) -> float:
-    """
-    วาด 1 แถว: ซ้ายข้อความ, ขวารูป ≤ PHOTO_MAX_PER_ROW
-    image_items: list ของ dict ที่มี key "url" (ตามรูปแบบใน doc["photos"]["gN"][0]["url"])
-    """
+    
     # ความสูงฝั่งข้อความ
     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
 
@@ -625,7 +639,7 @@ def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, 
 
     # เตรียมรายการรูป (สูงสุด PHOTO_MAX_PER_ROW)
     images = (image_items or [])[:PHOTO_MAX_PER_ROW]
-    pdf.set_font(base_font, "", FONT_MAIN)  # "" = ไม่หนา, "B" = หนา
+    pdf.set_font(base_font, "", FONT_MAIN)
 
     for i in range(PHOTO_MAX_PER_ROW):
         if i > 0:
@@ -661,9 +675,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     job = doc.get("job", {}) or {}
     station_name = job.get("station_name", "-")
-    model = job.get("model", "-")
-    sn = job.get("sn", "-")
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
+    issue_id = str(doc.get("issue_id", "-"))
     issue_id = str(doc.get("issue_id", "-"))
 
     checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
@@ -691,7 +704,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y += 10
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date)
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
 
     # ตารางรายการ
     x_table = x0 + EDGE_ALIGN_FIX
@@ -724,7 +737,18 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
         _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
         _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
-        row_h_eff = max(ROW_MIN_H, item_h, remark_h)
+        
+        # ใช้ regex เพื่อหาหมายเลขข้อที่แท้จริง
+        match_row = re.match(r"^(\d+)\.", text.strip())
+        row_num = int(match_row.group(1)) if match_row else 0
+        
+        # กำหนดความสูงขั้นต่ำสำหรับข้อ 5
+        if row_num == 5:
+            # กำหนดความสูงที่ต้องการ (ปรับตัวเลขได้ตามต้องการ)
+            min_row_5_height = LINE_H * 13  
+            row_h_eff = max(ROW_MIN_H, item_h, remark_h, min_row_5_height)
+        else:
+            row_h_eff = max(ROW_MIN_H, item_h, remark_h)
 
         _ensure_space(row_h_eff)
 
@@ -747,7 +771,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     comment_result_w = result_w
     comment_remark_w = remark_w
 
-    h_comment = 16
+    h_comment = 12
     h_summary = 10
     h_checklist = 12
     total_h = h_comment + h_summary + h_checklist
@@ -850,7 +874,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y += 10
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date)
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
     
     # photo
     pdf.set_xy(x0, y)
@@ -878,15 +902,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             pdf.cell(page_w, 10, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
             y += 10
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+            pdf.set_font(base_font, "", 11)
 
     # วาดหัวตาราง Photos
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-    pdf.set_font(base_font, "", FONT_MAIN)
 
     # วาดทีละข้อ โดย map r# -> g# จาก doc["photos"]
     for it in checks:
         idx = int(it.get("idx") or 0)
         question_text = ROW_TITLES.get(f"r{idx}", it.get("text", f"{idx}. -"))
+        pdf.set_font(base_font, "", 11)
 
         # ดึงรูป: photos.g{idx}[].url
         img_items = _get_photo_items_for_idx(doc, idx)
@@ -906,10 +931,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
 # Public API expected by pdf_routes: generate_pdf(data) -> bytes
 def generate_pdf(data: dict) -> bytes:
-    """
-    Adapter for existing pdf_routes which expects each template to expose
-    generate_pdf(data) returning PDF bytes.
-    `data` is the Mongo document / dict for that PM report.
-    """
+ 
     return make_pm_report_html_pdf_bytes(data)
 
