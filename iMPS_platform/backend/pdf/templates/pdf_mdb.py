@@ -17,11 +17,6 @@ except Exception:
 DOCUMENT_TITLE_MAIN = "Preventive Maintenance Checklist - MDB"
 DOCUMENT_TITLE_PHOTO = "Preventive Maintenance Checklist"
 DOCUMENT_TITLE_PHOTO_CONT = "Photos - MDB (ต่อ)"
-ORG_ADDRESS_LINES = [
-    "Electricity Generating Authority of Thailand (EGAT)",
-    "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",
-    "Call Center Tel. 02-114-3350",
-]
 
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
@@ -341,6 +336,9 @@ def _find_public_root() -> Optional[Path]:
 
 
 def _env_photo_headers() -> Optional[dict]:
+    """
+    แปลง PHOTOS_HEADERS="Header1: val|Header2: val" เป็น dict
+    """
     raw = os.getenv("PHOTOS_HEADERS") or ""
     hdrs = {}
     for seg in raw.split("|"):
@@ -356,15 +354,13 @@ def _is_http_url(s: str) -> bool:
     return s.startswith("http://") or s.startswith("https://")
 
 
-def _load_image_source_from_urlpath(
-    url_path: str,
-) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     if not url_path:
         return None, None
 
     _log(f"[IMG] lookup: {url_path}")
 
-    # case: data URL
+    # case: data URL (base64)
     if url_path.startswith("data:image/"):
         try:
             head, b64 = url_path.split(",", 1)
@@ -379,7 +375,7 @@ def _load_image_source_from_urlpath(
         except Exception as e:
             _log(f"[IMG] data-url parse error: {e}")
 
-    # case: absolute http(s)
+    # case: absolute http(s) URL
     if _is_http_url(url_path) and requests is not None:
         try:
             resp = requests.get(url_path, headers=_env_photo_headers(), timeout=10)
@@ -397,6 +393,9 @@ def _load_image_source_from_urlpath(
     # 1) backend/uploads
     backend_root = Path(__file__).resolve().parents[2]
     uploads_root = backend_root / "uploads"
+    _log(f"[IMG] backend_root: {backend_root}")
+    _log(f"[IMG] uploads_root: {uploads_root}")
+    
     if uploads_root.exists():
         clean_path = url_path.lstrip("/")
         if clean_path.startswith("uploads/"):
@@ -404,9 +403,8 @@ def _load_image_source_from_urlpath(
         local_path = uploads_root / clean_path
         _log(f"[IMG] try uploads: {local_path}")
         if local_path.exists() and local_path.is_file():
-            return local_path.as_posix(), _guess_img_type_from_ext(
-                local_path.as_posix()
-            )
+            _log(f"[IMG] ✅ found in uploads!")
+            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
 
     # 2) public
     public_root = _find_public_root()
@@ -414,9 +412,8 @@ def _load_image_source_from_urlpath(
         local_path = public_root / url_path.lstrip("/")
         _log(f"[IMG] try public: {local_path}")
         if local_path.exists() and local_path.is_file():
-            return local_path.as_posix(), _guess_img_type_from_ext(
-                local_path.as_posix()
-            )
+            _log(f"[IMG] ✅ found in public!")
+            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
 
     # 3) base_url download
     base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
@@ -426,11 +423,12 @@ def _load_image_source_from_urlpath(
         try:
             resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
             resp.raise_for_status()
+            _log(f"[IMG] ✅ downloaded from base_url!")
             return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
         except Exception as e:
             _log(f"[IMG] base_url failed: {e}")
 
-    _log("[IMG] not found via all methods")
+    _log("[IMG] ❌ not found via all methods")
     return None, None
 
 
@@ -442,49 +440,57 @@ def _r_idx(k: str) -> int:
 
 def _format_voltage_measurement(measures: dict, key: str) -> str:
     """
-    แปลงข้อมูลแรงดันไฟฟ้าให้เป็นรูปแบบหลายบรรทัด
-    key เช่น "m4", "m5", "m6", "m7", "m8"
-    รองรับทั้ง 10 คู่ (m4-m7) และ 3 คู่ (m8)
+    จัดรูปแบบแรงดันไฟฟ้าแบบจัดกลุ่มทีละ 3 ค่า (เหมือน _format_m17)
+    กรณี 3 ค่า (m8) → รวมเป็น 1 บรรทัด
     """
     ms = (measures or {}).get(key) or {}
     if not ms:
-        return ""
+        return "-"
 
-    # normalize key ภายใน เช่น เปลี่ยน L1-N → L1-N
+    # normalize key
     norm_ms = {}
     for k, v in ms.items():
-        nk = str(k).strip().replace("–", "-").replace("-", "-").replace(" ", "")
+        nk = str(k).strip().replace("–", "-").replace(" ", "")
         norm_ms[nk.upper()] = v
 
-    # ลำดับมาตรฐาน 10 คู่
+    # 10 ค่า
     order_full = [
+        "L1-L2", "L2-L3", "L3-L1",
         "L1-N", "L2-N", "L3-N",
         "L1-G", "L2-G", "L3-G",
-        "L1-L2", "L2-L3", "L3-L1",
         "N-G"
     ]
 
-    # ลำดับย่อ (บางกรณี เช่น m8)
+    # 3 ค่า (m8)
     order_short = ["L1-N", "L1-G", "N-G"]
 
-    order = order_short if len(norm_ms) <= 3 else order_full
+    # เลือก order
+    use_order = order_short if len(norm_ms) <= 3 else order_full
 
     def fmt(k: str) -> str:
         d = norm_ms.get(k.upper()) or {}
-        val = str(d.get("value") or "").strip()
-        unit = str(d.get("unit") or "").strip()
-        if not val or val.lower() == "none":
-            val = "-"
-        return f"{k} = {val}{unit}"
+        val = str(d.get("value", "")).strip()
+        unit = str(d.get("unit", "")).strip()
+        return f"{k} = {val}{unit}" if val else f"{k} = -"
 
-    lines = [fmt(k) for k in order]
+    # ---------- กรณี 3 ค่า (m8) → 1 บรรทัด ----------
+    if use_order is order_short:
+        return ", ".join(fmt(k) for k in use_order)
 
-    # ✅ ถ้ายังไม่มีค่า N-G ในข้อมูล ให้เพิ่มบรรทัด N-G = -
-    if not any("N-G" in k for k in norm_ms.keys()):
-        lines.append("N-G = -")
+    # ---------- กรณีมากกว่า 3 ค่า → 3 ค่า/บรรทัด ----------
+    lines = []
+    group = []
+    for k in use_order:
+        group.append(fmt(k))
+        if len(group) == 3:
+            lines.append(", ".join(group))
+            group = []
+
+    if group:
+        lines.append(", ".join(group))
 
     return "\n".join(lines)
-
+ 
 
 def _draw_result_cell_with_subitems(
     pdf: FPDF, 
@@ -624,8 +630,10 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
 
     col_left, col_mid = 40, 120
     col_right = page_w - col_left - col_mid
-    h_all = 30
-    h_right_top = 12
+
+    # --- ความสูงใหม่ที่เตี้ยลง ---
+    h_all = 22          # เดิม 30
+    h_right_top = 8     # เดิม 12
 
     pdf.set_line_width(LINE_W_INNER)
 
@@ -633,56 +641,56 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
     pdf.rect(x0, y_top, col_left, h_all)
     logo_path = _resolve_logo_path()
     if logo_path:
-        IMG_W = 35
+        IMG_W = 28  # ลดขนาดรูปให้พอดีกับความสูงใหม่
         img_x = x0 + (col_left - IMG_W) / 2
-        img_y = y_top + (h_all - 16) / 2
+        img_y = y_top + (h_all - 12) / 2
         try:
             pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
-        except Exception as e:
-            _log(f"[LOGO] place error: {e}")
+        except Exception:
+            pass
 
-    # กล่องกลาง: ที่อยู่
+    # กล่องกลาง (ที่อยู่)
     box_x = x0 + col_left
     pdf.rect(box_x, y_top, col_mid, h_all)
+
+    addr_lines = [
+        "Electricity Generating Authority of Thailand (EGAT)",
+        "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",
+        "Call Center Tel. 02-114-3350",
+    ]
+
     pdf.set_font(base_font, "B", FONT_MAIN)
-    line_h = 6.2
-    start_y = y_top + (h_all - line_h * len(ORG_ADDRESS_LINES)) / 2
-    for i, line in enumerate(ORG_ADDRESS_LINES):
+    line_h = 5.2   # ลดจาก 6.2 เพื่อให้พอดีกับความสูงใหม่
+
+    # จัดให้อยู่กึ่งกลางแนวตั้งในกล่อง
+    start_y = y_top + (h_all - line_h * len(addr_lines)) / 2
+
+    for i, line in enumerate(addr_lines):
         pdf.set_xy(box_x + 3, start_y + i * line_h)
         pdf.cell(col_mid - 6, line_h, line, align="C")
 
-    # กล่องขวา (Page / Issue)
+    # กล่องขวา
     xr = x0 + col_left + col_mid
     pdf.rect(xr, y_top, col_right, h_right_top)
     pdf.rect(xr, y_top + h_right_top, col_right, h_all - h_right_top)
 
-    # Page (บนขวา)
-    pdf.set_xy(xr, y_top + 4)
+    # Page number
+    pdf.set_xy(xr, y_top + (h_right_top - 6) / 2)
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C")
 
-    # Issue ID
-    pdf.set_xy(xr, y_top + h_right_top + (h_all - h_right_top) / 2 - 5)
+    # Issue ID (2 บรรทัด)
+    bottom_box_h = h_all - h_right_top
+    pdf.set_xy(xr, y_top + h_right_top + (bottom_box_h - 12) / 2)
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.multi_cell(col_right, 6, f"Issue ID\n{issue_id}", align="C")
 
     return y_top + h_all
 
-
-def _draw_items_table_header(
-    pdf: FPDF,
-    base_font: str,
-    x: float,
-    y: float,
-    item_w: float,
-    result_w: float,
-    remark_w: float
-):
-    header_h = 9.0
+def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
+    header_h = 6.0
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_font(base_font, "B", FONT_MAIN)
-
-    # แถวหัวตาราง
     pdf.set_xy(x, y)
     pdf.cell(item_w, header_h, "Item", border=1, align="C")
     pdf.cell(result_w, header_h, "Result", border=1, align="C")
@@ -787,23 +795,16 @@ def _draw_photos_row(
 
 
 # -------------------- ส่วนบล็อคข้อมูลงาน/สรุป/ลายเซ็น --------------------
-def _draw_job_info_block(
-    pdf: FPDF,
-    base_font: str,
-    x: float,
-    y: float,
-    w: float,
-    station_name: str,
-    pm_date: str,
-) -> float:
-    row_h = 8.5
+def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float,
+                         station_name: str, pm_date: str) -> float:
+    row_h = 6.5
     col_w = w / 2.0
     label_w = 30
     box_h = row_h
     pdf.set_line_width(LINE_W_INNER)
     pdf.rect(x, y, w, box_h)
     pdf.line(x + col_w, y, x + col_w, y + box_h)
-    # pdf.line(x, y + row_h, x + w, y + row_h)
+    # pdf.line(x, y + row_h, x + w, y + row_h)       # แถว
 
     def _item(x0, y0, label, value):
         pdf.set_xy(x0 + 2, y0 + 1.5)
@@ -817,7 +818,6 @@ def _draw_job_info_block(
     _item(x + col_w, y, "PM Date", pm_date)
 
     return y + box_h
-
 
 
 # -------------------- สร้างเอกสาร --------------------
@@ -864,11 +864,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y = _draw_header(pdf, base_font, issue_id)
 
     # ชื่อเอกสาร
+    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+
     pdf.set_xy(x0, y)
+    pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
-    pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, DOCUMENT_TITLE_MAIN, border=1, ln=1, align="C", fill=True)
-    y += 10
+    pdf.cell(page_w, TITLE_H,
+            "Preventive Maintenance Checklist - MDB",
+            border=1, ln=1, align="C", fill=True)
+
+    y += TITLE_H
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
     y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
@@ -915,10 +920,10 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         is_row_9 = "9." in text
         
         if is_row_4 or is_row_5 or is_row_6 or is_row_7:
-            remark_h = max(remark_h, LINE_H * 12)
+            remark_h = max(remark_h, LINE_H * 6)
 
         elif is_row_8:
-            remark_h = max(remark_h, LINE_H * 6)
+            remark_h = max(remark_h, LINE_H * 4)
 
         elif is_row_9:
             remark_h = max(remark_h, LINE_H * 6)
@@ -955,8 +960,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     comment_result_w = result_w
     comment_remark_w = remark_w
 
-    h_comment = 16
-    h_checklist = 12
+    h_comment = 7
+    h_checklist = 7
     total_h = h_comment + h_checklist
     
     # ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
@@ -966,7 +971,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.rect(comment_x, y, item_w + result_w + remark_w, total_h)
     
     # แถว Comment (ใช้ _cell_text_in_box แทน multi_cell)
-    pdf.set_font(base_font, "B", 13)
+    pdf.set_font(base_font, "B", 11)
     pdf.set_xy(comment_x, y)
     pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
     
@@ -974,10 +979,10 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
     
     # ใช้ _cell_text_in_box สำหรับ comment text
-    pdf.set_font(base_font, "", 13)
+    pdf.set_font(base_font, "", 11)
     comment_text = str(doc.get("summary", "") or "-")
     comment_text_x = comment_x + comment_item_w
-    _cell_text_in_box(pdf, comment_text_x, y, comment_result_w + comment_remark_w, h_comment, comment_text, align="L", lh=LINE_H, valign="top")
+    _cell_text_in_box(pdf, comment_text_x, y, comment_result_w + comment_remark_w, h_comment, comment_text, align="L", lh=LINE_H, valign="middle")
     
     y += h_comment
     
@@ -988,14 +993,14 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
     
     pdf.set_xy(comment_x, y)
-    pdf.set_font(base_font, "B", 13)
+    pdf.set_font(base_font, "B", 11)
     pdf.cell(comment_item_w, h_checklist, "ผลการตรวจสอบ :", border=0, align="L")
     
     # วาดเส้นคั่น
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
     
     # วาด checkbox
-    pdf.set_font(base_font, "", 13)
+    pdf.set_font(base_font, "", 11)
     x_check_start = comment_x + comment_item_w + 10
     y_check = y + (h_checklist - CHECKBOX_SIZE) / 2.0
     gap = 35
@@ -1014,10 +1019,10 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     # ใช้ความกว้างของแต่ละคอลัมน์จริงแทน col_w
     col_widths = [item_w, result_w, remark_w]
-    row_h_header = 12
-    row_h_sig = 16
-    row_h_name = 7
-    row_h_date = 7
+    row_h_header = 7
+    row_h_sig = 15
+    row_h_name = 5
+    row_h_date = 5
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
 
     _ensure_space(total_sig_h + 5)
@@ -1072,20 +1077,30 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y = _draw_header(pdf, base_font, issue_id)  # วาดหัวกระดาษ
 
     # ชื่อเอกสาร
+    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+
     pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, "Preventive Maintenance Checklist - MDB", border=1, ln=1, align="C")
-    y += 10
+    pdf.set_font(base_font, "B", 13)
+    pdf.cell(page_w, TITLE_H,
+            "Preventive Maintenance Checklist - MDB",
+            border=1, ln=1, align="C")
+
+    y += TITLE_H
 
     # แสดงข้อมูลงานใต้หัวเรื่อง
     y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
     
     # photo
+    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+
     pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 14)
+    pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
-    pdf.cell(page_w, 10, "Photos", border=1, ln=1, align="C", fill=True)
-    y += 10
+    pdf.cell(page_w, TITLE_H,
+            "Photos",
+            border=1, ln=1, align="C", fill=True)
+
+    y += TITLE_H
 
     # ========== ตารางรูปแบบ 2 คอลัมน์: r# (ซ้าย) / g# (ขวา) ==========
     # ตั้งค่าความกว้างคอลัมน์
@@ -1101,10 +1116,13 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             y = _draw_header(pdf, base_font, issue_id)
             # หัวเรื่องย่อย Photos ซ้ำเมื่อขึ้นหน้าใหม่เพื่อไม่ให้สับสน
             pdf.set_xy(x0, y)
-            pdf.set_font(base_font, "B", 14)
+            pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
-            pdf.cell(page_w, 10, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
-            y += 10
+            photo_continue_h = 6  # ← กำหนดความสูงแถว Photos (ต่อ)
+
+            pdf.cell(page_w, photo_continue_h, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
+            y += photo_continue_h
+
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
 
     # วาดหัวตาราง Photos
