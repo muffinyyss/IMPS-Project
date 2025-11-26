@@ -932,7 +932,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H)
         x += item_w
         
-        # ✅ ถ้ามีข้อย่อย ใช้ฟังก์ชันพิเศษ
+        # ถ้ามีข้อย่อย ใช้ฟังก์ชันพิเศษ
         if has_subitems and subitems:
             _draw_result_cell_with_subitems(pdf, base_font, x, y, result_w, row_h_eff, subitems)
         else:
@@ -959,7 +959,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     h_checklist = 12
     total_h = h_comment + h_checklist
     
-    # ✅ ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
+    # ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
     _ensure_space(total_h + 5)
     
     # วาดกรอบนอกทั้งหมด
