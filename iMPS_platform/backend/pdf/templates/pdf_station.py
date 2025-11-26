@@ -57,15 +57,15 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
 LINE_W_OUTER = 0.45
 LINE_W_INNER = 0.22
 PADDING_X = 2.0
-PADDING_Y = 1.2
-FONT_MAIN = 13.0
-FONT_SMALL = 13.0
-LINE_H = 6.8
-ROW_MIN_H = 9
-CHECKBOX_SIZE = 4.0
+PADDING_Y = 0.5
+FONT_MAIN = 11.0
+FONT_SMALL = 11.0
+LINE_H = 5.0
+ROW_MIN_H = 7
+CHECKBOX_SIZE = 3.5
 
 PHOTO_MAX_PER_ROW = 3
-PHOTO_IMG_MAX_H = 60
+PHOTO_IMG_MAX_H = 48
 PHOTO_GAP = 3
 PHOTO_PAD_X = 2
 PHOTO_PAD_Y = 4
@@ -248,6 +248,37 @@ def _norm_result(val: str) -> str:
     return "na"
 
 
+def _extract_row_result(row: dict) -> str:
+
+    if not isinstance(row, dict):
+        return ""
+
+    # 1) กรณีเก็บเป็น string field เดียว
+    for key in ("pf", "result", "Result", "status", "Status", "value", "check", "checked"):
+        if key in row and row[key] not in (None, ""):
+            return row[key]
+
+    # 2) กรณีเก็บเป็น flag แยกกัน เช่น pass/fail/na เป็น boolean
+    def _is_true(v):
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return v != 0
+        if isinstance(v, str):
+            return v.strip().lower() in ("true", "1", "yes", "y", "on")
+        return False
+
+    # ถ้าใช้ field แบบ boolean แยกช่อง
+    if _is_true(row.get("pass")) or _is_true(row.get("is_pass")) or _is_true(row.get("isPass")):
+        return "pass"
+    if _is_true(row.get("fail")) or _is_true(row.get("is_fail")) or _is_true(row.get("isFail")):
+        return "fail"
+    if _is_true(row.get("na")) or _is_true(row.get("is_na")) or _is_true(row.get("isNa")):
+        return "na"
+
+    return ""
+
+
 def _parse_date_flex(s: str) -> Optional[datetime]:
     if not s:
         return None
@@ -322,8 +353,6 @@ def _guess_img_type_from_ext(path_or_url: str) -> str:
     return ""
 
 
-
-
 def _find_public_root() -> Optional[Path]:
     env_dir = os.getenv("PUBLIC_DIR")
     if env_dir:
@@ -383,84 +412,6 @@ def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[
 
     return None, None
 
-
-
-# def _load_image_source_from_urlpath(
-#     url_path: str,
-# ) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
-#     if not url_path:
-#         return None, None
-
-#     _log(f"[IMG] lookup: {url_path}")
-
-#     # case: data URL
-#     if url_path.startswith("data:image/"):
-#         try:
-#             head, b64 = url_path.split(",", 1)
-#             mime = head.split(";")[0].split(":", 1)[1]
-#             bio = BytesIO(base64.b64decode(b64))
-#             img_type = (
-#                 "PNG"
-#                 if "png" in mime
-#                 else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
-#             )
-#             return bio, img_type
-#         except Exception as e:
-#             _log(f"[IMG] data-url parse error: {e}")
-
-#     # case: absolute http(s)
-#     if _is_http_url(url_path) and requests is not None:
-#         try:
-#             resp = requests.get(url_path, headers=_env_photo_headers(), timeout=10)
-#             resp.raise_for_status()
-#             _log(f"[IMG] downloaded {len(resp.content)} bytes from absolute URL")
-#             return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
-#         except Exception as e:
-#             _log(f"[IMG] absolute URL failed: {e}")
-
-#     # case: absolute filesystem path
-#     p_abs = Path(url_path)
-#     if p_abs.is_absolute() and p_abs.exists():
-#         return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
-
-#     # 1) backend/uploads
-#     backend_root = Path(__file__).resolve().parents[2]
-#     uploads_root = backend_root / "uploads"
-#     if uploads_root.exists():
-#         clean_path = url_path.lstrip("/")
-#         if clean_path.startswith("uploads/"):
-#             clean_path = clean_path[8:]
-#         local_path = uploads_root / clean_path
-#         _log(f"[IMG] try uploads: {local_path}")
-#         if local_path.exists() and local_path.is_file():
-#             return local_path.as_posix(), _guess_img_type_from_ext(
-#                 local_path.as_posix()
-#             )
-
-#     # 2) public
-#     public_root = _find_public_root()
-#     if public_root:
-#         local_path = public_root / url_path.lstrip("/")
-#         _log(f"[IMG] try public: {local_path}")
-#         if local_path.exists() and local_path.is_file():
-#             return local_path.as_posix(), _guess_img_type_from_ext(
-#                 local_path.as_posix()
-#             )
-
-#     # 3) base_url download
-#     base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
-#     if base_url and requests is not None:
-#         full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
-#         _log(f"[IMG] try base_url: {full_url}")
-#         try:
-#             resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
-#             resp.raise_for_status()
-#             return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
-#         except Exception as e:
-#             _log(f"[IMG] base_url failed: {e}")
-
-#     _log("[IMG] not found via all methods")
-#     return None, None
 
 def _load_image_source_from_urlpath(
     url_path: str,
@@ -541,90 +492,135 @@ def _load_image_source_from_urlpath(
 
 
 
-
 # -------------------- data helpers --------------------
 def _r_idx(k: str) -> int:
     m = re.match(r"r(\d+)$", k.lower())
     return int(m.group(1)) if m else ""
 
 
-def _format_voltage_measurement(measures: dict, key: str) -> str:
-    """
-    แปลงข้อมูลแรงดันไฟฟ้าให้เป็นรูปแบบหลายบรรทัด
-    key เช่น "m4", "m5", "m6", "m7", "m8"
-    รองรับทั้ง 10 คู่ (m4-m7) และ 3 คู่ (m8)
-    """
-    ms = (measures or {}).get(key) or {}
-    if not ms:
-        return ""
-
-    # normalize key ภายใน เช่น เปลี่ยน L1-N → L1-N
-    norm_ms = {}
-    for k, v in ms.items():
-        nk = str(k).strip().replace("–", "-").replace("-", "-").replace(" ", "")
-        norm_ms[nk.upper()] = v
-
-    # ลำดับมาตรฐาน 10 คู่
-    order_full = [
-        "L1-N", "L2-N", "L3-N",
-        "L1-G", "L2-G", "L3-G",
-        "L1-L2", "L2-L3", "L3-L1",
-        "N-G"
-    ]
-
-    # ลำดับย่อ (บางกรณี เช่น m8)
-    order_short = ["L1-N", "L1-G", "N-G"]
-
-    order = order_short if len(norm_ms) <= 3 else order_full
-
-    def fmt(k: str) -> str:
-        d = norm_ms.get(k.upper()) or {}
-        val = str(d.get("value") or "").strip()
-        unit = str(d.get("unit") or "").strip()
-        if not val or val.lower() == "none":
-            val = "-"
-        return f"{k} = {val}{unit}"
-
-    lines = [fmt(k) for k in order]
-
-    # ✅ ถ้ายังไม่มีค่า N-G ในข้อมูล ให้เพิ่มบรรทัด N-G = -
-    if not any("N-G" in k for k in norm_ms.keys()):
-        lines.append("N-G = -")
-
-    return "\n".join(lines)
-
-
 
 def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
+  
     if not isinstance(rows, dict):
         return []
-    items: List[dict] = []
+
+    rows = rows or {}
     measures = measures or {}
+    items: List[dict] = []
 
-    # วนลูปตามลำดับของ ROW_TITLES (แทนที่จะวนเฉพาะ rows)
-    for key in ROW_TITLES.keys():
-        idx = _r_idx(key)
-        data = rows.get(key) or {}
-        title = ROW_TITLES.get(key, f"รายการที่ {idx}")
-        remark = (data.get("remark") or "").strip()
+    SUB_INDENT = "\u00A0" * 4
 
-        # 🔸 ข้อ 4-9: ตรวจสอบแรงดันไฟฟ้า (ดึงจาก measures.m4 - m9)
-        if key.lower() in ["r4", "r5", "r6", "r7", "r8", "r9"]:
-            measure_key = f"m{idx}"
-            voltage_text = _format_voltage_measurement(measures, measure_key)
+    for main_key, main_title in ROW_TITLES.items():
+        m = re.match(r"^r(\d+)$", main_key)
+        if not m:
+            continue
+        idx = int(m.group(1))
 
-            if voltage_text:
-                if remark:
-                    remark = f"{voltage_text}\n\n{remark}"
+        # รวม sub ของข้อ idx
+        subs: List[Tuple[int, str, str]] = []
+        for k, stitle in ROW_TITLES.items():
+            m_sub = re.match(rf"^r{idx}_sub(\d+)$", k)
+            if m_sub:
+                subs.append((int(m_sub.group(1)), k, stitle))
+        subs.sort(key=lambda x: x[0])
+        
+        # ---------- ข้อความในคอลัมน์ Item ----------
+        lines: List[str] = [f"{idx}. {main_title}"]
+
+        for sub_index, sub_key, stitle in subs:
+            if main_key == "r7":
+                # ใช้ measures["r9"]["0".."5"] ต่อท้ายหัวข้อย่อยแต่ละบรรทัด
+                short_text = _format_r9_short(measures, sub_index - 1)
+                if short_text:
+                    lines.append(f"{SUB_INDENT}{stitle}\n{SUB_INDENT}{short_text}")
                 else:
-                    remark = voltage_text
+                    lines.append(f"{SUB_INDENT}{stitle}")
+            else:
+                # หัวข้ออื่นใช้แบบเดิม
+                lines.append(f"{SUB_INDENT}{stitle}")
+
+
+        text = "\n".join(lines)
+
+
+        # ---------- ผลลัพธ์ในคอลัมน์ Result ----------
+        result_lines: List[str] = []
+        remark_lines: List[str] = []
+        
+        if subs:
+            # ใช้ผลของหัวข้อย่อยทีละบรรทัด
+            for order_num, sub_key, stitle in subs:
+                # ใช้ alt_key เป็นหลักเสมอ
+                alt_key = f"r{idx}_{order_num}"
+                data_sub = rows.get(alt_key) or rows.get(sub_key) or {}
+
+                raw_res = _extract_row_result(data_sub)
+                rmk = (data_sub.get("remark") or "").strip()
+
+                result_lines.append(_norm_result(raw_res))
+                remark_lines.append(rmk)
+
+            # เริ่มต้นค่า default
+            result_offset = 1      # ข้ามบรรทัดหัวข้อหลัก ("9. ตรวจสอบ...")
+            result_step = 1        # ปกติ 1 row ของ Result ต่อ 1 บรรทัดข้อความ
+
+            if idx == 9:
+                result_step = 2
+        else:
+            # ไม่มี sub → ใช้ pf ของหัวข้อหลัก rN ตามเดิม
+            data_main = rows.get(main_key) or {}
+            raw_res = _extract_row_result(data_main)
+            result_lines.append(_norm_result(raw_res))
+            remark_lines.append((data_main.get("remark") or "").strip())
+            result_offset = 0
+            result_step = 1
+
+
+        # ---------- Remark (รวม voltage + remark แยกบรรทัด) ----------
+        remark_parts: List[str] = []
+
+
+        # เพิ่ม remark ของหัวข้อหลัก (ถ้ามี)
+        data_main = rows.get(main_key) or {}
+        main_rmk = (data_main.get("remark") or "").strip()
+        if main_rmk:
+            remark_parts.append(main_rmk)
+
+        # เพิ่ม remark ของหัวข้อย่อยทีละบรรทัด พร้อม comma
+        if subs and result_offset == 1:
+            # เพิ่ม comma ต่อท้ายทุกบรรทัด ยกเว้นบรรทัดสุดท้าย
+            formatted_remarks = []
+            for i, rmk in enumerate(remark_lines):
+                if rmk:  # ถ้ามี remark
+                    # เพิ่ม comma ถ้าไม่ใช่บรรทัดสุดท้าย
+                    if i < len(remark_lines) - 1:
+                        formatted_remarks.append(f"{rmk},")
+                    else:
+                        formatted_remarks.append(rmk)
+                else:
+                    formatted_remarks.append("")  # บรรทัดว่าง
+            
+            # เพิ่มบรรทัดว่าง 1 บรรทัดเพื่อให้ตรงกับหัวข้อหลัก
+            remark_with_offset = [""] + formatted_remarks
+        else:
+            remark_with_offset = remark_lines
+
+        # รวม remark ทั้งหมด
+        if remark_with_offset:
+            remark_text = "\n".join(remark_with_offset)
+            if remark_text.strip():
+                remark_parts.append(remark_text)
+
+        remark = "\n\n".join(remark_parts) if remark_parts else ""
 
         items.append(
             {
                 "idx": idx,
-                "text": f"{idx}. {title}",
-                "result": _norm_result(data.get("pf", "")),
+                "text": text,
+                "results": result_lines,
                 "remark": remark,
+                "result_offset": result_offset,
+                "result_step": result_step,
             }
         )
 
@@ -642,12 +638,6 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
 
 
 def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
-    """
-    สร้างรายการคำถามสำหรับหน้า Photos โดย:
-      - ใช้เฉพาะหัวข้อหลัก r{n}
-      - รวมหัวข้อย่อย r{n}_sub* ต่อท้ายในข้อความเดียวกัน (ขึ้นบรรทัดใหม่)
-    คืนค่าเป็น list ของ dict: { "idx": n, "text": "...หลายบรรทัด..." }
-    """
     grouped: List[dict] = []
 
     # เดินตามลำดับการประกาศใน ROW_TITLES เพื่อคงลำดับหัวข้อ
@@ -669,12 +659,12 @@ def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
         subs.sort(key=lambda x: x[0])
 
         for _, stitle in subs:
-            lines.append(f" {stitle}")
+            clean_stitle = re.sub(r"^\s*\.\s*", "", str(stitle))
+            lines.append(f" {clean_stitle}")
 
         grouped.append({"idx": idx, "text": "\n".join(lines)})
 
     return grouped
-
 
 
 # -------------------- วาดชิ้นส่วนเอกสาร --------------------
@@ -750,7 +740,7 @@ def _draw_items_table_header(
     item_w: float,
     result_w: float,
     remark_w: float,
-    group_title: str = "Staion",  # <— เปลี่ยนค่าเริ่มต้น
+    group_title: str = "Station",
 ):
     header_h = 9.0
     pdf.set_line_width(LINE_W_INNER)
@@ -767,16 +757,8 @@ def _draw_items_table_header(
     pdf.set_fill_color(255, 230, 100)
     pdf.set_xy(x, y)
     pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(
-        item_w + result_w + remark_w,
-        8,
-        group_title,
-        border=1,
-        ln=1,
-        align="C",
-        fill=True,
-    )
-    return y + 8
+
+    return y
 
 
 def _draw_result_cell(
@@ -816,46 +798,46 @@ def _draw_photos_table_header(
     return y + header_h
 
 
-def _draw_photos_row(
-    pdf: FPDF,
-    base_font: str,
-    x: float,
-    y: float,
-    q_w: float,
-    g_w: float,
-    question_text: str,
-    image_items: List[dict],
-) -> float:
+def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float,
+                     question_text: str, image_items: List[dict]) -> float:
+    
+    # ความสูงฝั่งข้อความ
     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
+
+    # ความสูงฝั่งรูป
     img_h = PHOTO_IMG_MAX_H
     row_h = max(ROW_MIN_H, text_h, img_h + 2 * PADDING_Y)
 
-    # ข้อ/คำถาม
+    # ซ้าย: คำถาม
     _cell_text_in_box(pdf, x, y, q_w, row_h, question_text, align="L", lh=LINE_H, valign="top")
 
-    # รูป
+    # ขวา: รูป
     gx = x + q_w
     pdf.rect(gx, y, g_w, row_h)
+
     slot_w = (g_w - 2 * PADDING_X - (PHOTO_MAX_PER_ROW - 1) * PHOTO_GAP) / PHOTO_MAX_PER_ROW
     cx = gx + PADDING_X
     cy = y + (row_h - img_h) / 2.0
 
+    # เตรียมรายการรูป (สูงสุด PHOTO_MAX_PER_ROW)
+    images = (image_items or [])[:PHOTO_MAX_PER_ROW]
+    pdf.set_font(base_font, "", FONT_MAIN)
+
     for i in range(PHOTO_MAX_PER_ROW):
         if i > 0:
-            pdf.line(cx - PHOTO_GAP/2, y, cx - PHOTO_GAP/2, y + row_h)
-        if i < len(image_items):
-            url_path = image_items[i].get("url", "")
+            pdf.line(cx - (PHOTO_GAP / 2.0), y, cx - (PHOTO_GAP / 2.0), y + row_h)
+
+        if i < len(images):
+            url_path = (images[i] or {}).get("url", "")
             src, img_type = _load_image_source_from_urlpath(url_path)
-            if src:
+            if src is not None:
                 try:
-                    pdf.image(src, x=cx, y=cy, w=slot_w, h=img_h, type=img_type or None)
-                except Exception as e:
-                    _log(f"[IMG] place error: {e}")
-                    pdf.set_xy(cx, cy + (img_h - LINE_H)/2)
+                    pdf.image(src, x=cx, y=cy, w=slot_w, h=img_h, type=(img_type or None))
+                except Exception:
+                    pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
                     pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
             else:
-                _log(f"[IMG] not found: {url_path}")
-                pdf.set_xy(cx, cy + (img_h - LINE_H)/2)
+                pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
                 pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
         cx += slot_w + PHOTO_GAP
 
@@ -871,18 +853,17 @@ def _draw_job_info_block(
     y: float,
     w: float,
     station_name: str,
-    model: str,
-    sn: str,
     pm_date: str,
 ) -> float:
     row_h = 8.5
     col_w = w / 2.0
     label_w = 30
-    box_h = row_h * 2
+
+    box_h = row_h
+
     pdf.set_line_width(LINE_W_INNER)
-    pdf.rect(x, y, w, box_h)
-    pdf.line(x + col_w, y, x + col_w, y + box_h)
-    pdf.line(x, y + row_h, x + w, y + row_h)
+    pdf.rect(x, y, w, box_h)                 # กรอบนอก
+    pdf.line(x + col_w, y, x + col_w, y + box_h)  # เส้นแบ่งซ้าย/ขวา
 
     def _item(x0, y0, label, value):
         pdf.set_xy(x0 + 2, y0 + 1.5)
@@ -893,9 +874,7 @@ def _draw_job_info_block(
         pdf.cell(col_w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
 
     _item(x, y, "Station", station_name)
-    _item(x + col_w, y, "Serial No.", sn)
-    _item(x, y + row_h, "Model", model)
-    _item(x + col_w, y + row_h, "PM Date", pm_date)
+    _item(x + col_w, y, "PM Date", pm_date)
 
     return y + box_h
 
@@ -908,11 +887,7 @@ def _output_pdf_bytes(pdf: FPDF) -> bytes:
     return data.encode("latin1")
 
 def _build_photo_questions(row_titles: dict) -> List[dict]:
-    """
-    สร้างรายการคำถามสำหรับหน้า Photos โดย
-    - แสดงเฉพาะหัวข้อหลัก r{n}
-    - รวมหัวข้อย่อย r{n}_sub* ต่อท้ายในช่องเดียวกัน (คนละบรรทัด)
-    """
+
     out: List[dict] = []
     # ใช้ลำดับตามการประกาศใน ROW_TITLES
     for key, title in row_titles.items():
@@ -929,7 +904,7 @@ def _build_photo_questions(row_titles: dict) -> List[dict]:
         out.append({"idx": idx, "text": "\n".join(lines)})
     return out
 
-def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
+def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf = ReportPDF(unit="mm", format="A4")
     pdf.alias_nb_pages()  # ให้รองรับ {nb} ใน footer
 
@@ -944,8 +919,6 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
 
     job = doc.get("job", {}) or {}
     station_name = job.get("station_name", "-")
-    model = job.get("model", "-")
-    sn = job.get("sn", "-")
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
 
@@ -969,7 +942,7 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
 
     # ข้อมูลงาน
     y = _draw_job_info_block(
-        pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date
+        pdf, base_font, x0, y, page_w, station_name, pm_date
     )
 
     # ตารางรายการตรวจสอบ
@@ -978,22 +951,16 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
     item_w = 65
     result_w = 64
     remark_w = page_w - item_w - result_w
+    pdf.set_font(base_font, "", FONT_MAIN)
+    
 
     def _ensure_space(height_needed: float):
         nonlocal y
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
-            y = _draw_items_table_header(
-                pdf,
-                base_font,
-                x_table,
-                y,
-                item_w,
-                result_w,
-                remark_w,
-                group_title=doc.get("groupTitle", "Station"),
-            )
+            # หลังขึ้นหน้าใหม่ ให้วาด header แล้ววาดหัวตารางด้วย
+            y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
             pdf.set_font(base_font, "", FONT_MAIN)
 
     # หัวตาราง
@@ -1016,7 +983,18 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
 
         _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
         _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
-        row_h_eff = max(ROW_MIN_H, item_h, remark_h)
+        
+        # ใช้ regex เพื่อหาหมายเลขข้อที่แท้จริง
+        match_row = re.match(r"^(\d+)\.", text.strip())
+        row_num = int(match_row.group(1)) if match_row else 0
+        
+        # กำหนดความสูงขั้นต่ำสำหรับข้อ 5
+        if row_num == 7:
+            # กำหนดความสูงที่ต้องการ (ปรับตัวเลขได้ตามต้องการ)
+            min_row_5_height = LINE_H * 10 
+            row_h_eff = max(ROW_MIN_H, item_h, remark_h, min_row_5_height)
+        else:
+            row_h_eff = max(ROW_MIN_H, item_h, remark_h)
 
         _ensure_space(row_h_eff)
 
@@ -1025,9 +1003,7 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
         x += item_w
         _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result)
         x += result_w
-        _cell_text_in_box(
-            pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top"
-        )
+        _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
 
         y += row_h_eff
 
@@ -1041,7 +1017,7 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
     comment_result_w = result_w
     comment_remark_w = remark_w
 
-    h_comment = 16
+    h_comment = 12
     h_summary = 10
     h_checklist = 12
     total_h = h_comment + h_summary + h_checklist
@@ -1149,7 +1125,7 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
     y += 10
 
     y = _draw_job_info_block(
-        pdf, base_font, x0, y, page_w, station_name, model, sn, pm_date
+        pdf, base_font, x0, y, page_w, station_name, pm_date
     )
 
     pdf.set_xy(x0, y)
@@ -1181,11 +1157,13 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
             )
             y += 10
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+            pdf.set_font(base_font, "", FONT_MAIN)
+            
 
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
-    # ✅ ใช้รายการที่รวม sub ภายใต้หัวข้อหลักแล้ว
+    # ใช้รายการที่รวม sub ภายใต้หัวข้อหลักแล้ว
     photo_rows = _build_photo_rows_grouped(ROW_TITLES)
 
     for pr in photo_rows:
@@ -1208,5 +1186,5 @@ def make_mdb_pm_pdf_bytes(doc: dict) -> bytes:
 
 # -------------------- Public API --------------------
 def generate_pdf(data: dict) -> bytes:
-    return make_mdb_pm_pdf_bytes(data)
+    return make_pm_report_html_pdf_bytes(data)
 
