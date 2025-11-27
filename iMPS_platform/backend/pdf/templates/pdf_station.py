@@ -15,7 +15,6 @@ except Exception:
 
 # -------------------- ตั้งค่าทั่วไป --------------------
 DOCUMENT_TITLE_MAIN = "Preventive Maintenance Checklist - Station"
-DOCUMENT_TITLE_PHOTO = "Preventive Maintenance Checklist - Station"
 DOCUMENT_TITLE_PHOTO_CONT = "Photos - Station (ต่อ)"
 
 ORG_ADDRESS_LINES = [
@@ -94,7 +93,6 @@ ROW_TITLES = {
 }
 
 
-
 # -------------------- PDF base class --------------------
 class HTML2PDF(FPDF, HTMLMixin):
     pass
@@ -102,13 +100,7 @@ class HTML2PDF(FPDF, HTMLMixin):
 
 class ReportPDF(HTML2PDF):
     def footer(self):
-        # เพจนัมเบอร์ด้านล่างขวา: Page X/{nb}
-        self.set_y(-12)
-        try:
-            self.set_font(self._base_font_name, "", 11)  # type: ignore[attr-defined]
-        except Exception:
-            self.set_font("Arial", "", 11)
-        self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", 0, 0, "R")
+        pass
 
 
 # -------------------- Utilities --------------------
@@ -385,12 +377,7 @@ def _is_http_url(s: str) -> bool:
 _IMAGE_EXTS = [".jpg", ".jpeg", ".png", ".jfif"]
 
 def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
-    """
-    รับ Path ที่อาจเป็นไฟล์/โฟลเดอร์/ไฟล์ไร้นามสกุล แล้วคืน (path_str_or_bytesIO, img_type)
-    - ถ้าเป็นไฟล์: ใช้เลย
-    - ถ้าไม่มีนามสกุล: ลองเติม _IMAGE_EXTS
-    - ถ้าเป็นโฟลเดอร์: หารูปไฟล์แรกตามชื่อเรียง a→z
-    """
+   
     # 1) ถ้าเป็นไฟล์อยู่แล้ว
     if p.is_file():
         return p.as_posix(), _guess_img_type_from_ext(p.as_posix())
@@ -498,7 +485,6 @@ def _r_idx(k: str) -> int:
     return int(m.group(1)) if m else ""
 
 
-
 def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
   
     if not isinstance(rows, dict):
@@ -511,15 +497,17 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
     SUB_INDENT = "\u00A0" * 4
 
     for main_key, main_title in ROW_TITLES.items():
+        # หาเฉพาะ key หลัก เช่น r1, r2, r7, r8, r9
         m = re.match(r"^r(\d+)$", main_key)
         if not m:
             continue
         idx = int(m.group(1))
 
-        # รวม sub ของข้อ idx
+        # รวม sub ของข้อ idx (รูปแบบ r7_1, r7_2, r8_1, etc.)
         subs: List[Tuple[int, str, str]] = []
         for k, stitle in ROW_TITLES.items():
-            m_sub = re.match(rf"^r{idx}_sub(\d+)$", k)
+            # ใช้ pattern r{idx}_{sub_num} เช่น r7_1, r7_2
+            m_sub = re.match(rf"^r{idx}_(\d+)$", k)
             if m_sub:
                 subs.append((int(m_sub.group(1)), k, stitle))
         subs.sort(key=lambda x: x[0])
@@ -527,58 +515,30 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         # ---------- ข้อความในคอลัมน์ Item ----------
         lines: List[str] = [f"{idx}. {main_title}"]
 
-        for sub_index, sub_key, stitle in subs:
-            if main_key == "r7":
-                # ใช้ measures["r9"]["0".."5"] ต่อท้ายหัวข้อย่อยแต่ละบรรทัด
-                short_text = _format_r9_short(measures, sub_index - 1)
-                if short_text:
-                    lines.append(f"{SUB_INDENT}{stitle}\n{SUB_INDENT}{short_text}")
-                else:
-                    lines.append(f"{SUB_INDENT}{stitle}")
-            else:
-                # หัวข้ออื่นใช้แบบเดิม
-                lines.append(f"{SUB_INDENT}{stitle}")
-
+        # เพิ่มหัวข้อย่อยให้แสดง
+        for order_num, sub_key, stitle in subs:
+            lines.append(f"{SUB_INDENT}{stitle}")
 
         text = "\n".join(lines)
 
-
-        # ---------- ผลลัพธ์ในคอลัมน์ Result ----------
-        result_lines: List[str] = []
-        remark_lines: List[str] = []
+        # ---------- สร้าง subitems สำหรับข้อ 7, 8, 9 ----------
+        has_subitems = False
+        subitems = []
         
-        if subs:
-            # ใช้ผลของหัวข้อย่อยทีละบรรทัด
+        if idx in [7, 8, 9] and subs:
+            has_subitems = True
             for order_num, sub_key, stitle in subs:
-                # ใช้ alt_key เป็นหลักเสมอ
-                alt_key = f"r{idx}_{order_num}"
-                data_sub = rows.get(alt_key) or rows.get(sub_key) or {}
+                # ใช้ sub_key ตรง ๆ เช่น r7_1, r7_2
+                data_sub = rows.get(sub_key) or {}
+                raw_res = data_sub.get("pf", "na")
+                
+                subitems.append({
+                    "label": stitle,
+                    "result": _norm_result(raw_res)
+                })
 
-                raw_res = _extract_row_result(data_sub)
-                rmk = (data_sub.get("remark") or "").strip()
-
-                result_lines.append(_norm_result(raw_res))
-                remark_lines.append(rmk)
-
-            # เริ่มต้นค่า default
-            result_offset = 1      # ข้ามบรรทัดหัวข้อหลัก ("9. ตรวจสอบ...")
-            result_step = 1        # ปกติ 1 row ของ Result ต่อ 1 บรรทัดข้อความ
-
-            if idx == 9:
-                result_step = 2
-        else:
-            # ไม่มี sub → ใช้ pf ของหัวข้อหลัก rN ตามเดิม
-            data_main = rows.get(main_key) or {}
-            raw_res = _extract_row_result(data_main)
-            result_lines.append(_norm_result(raw_res))
-            remark_lines.append((data_main.get("remark") or "").strip())
-            result_offset = 0
-            result_step = 1
-
-
-        # ---------- Remark (รวม voltage + remark แยกบรรทัด) ----------
+        # ---------- Remark ----------
         remark_parts: List[str] = []
-
 
         # เพิ่ม remark ของหัวข้อหลัก (ถ้ามี)
         data_main = rows.get(main_key) or {}
@@ -586,43 +546,52 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         if main_rmk:
             remark_parts.append(main_rmk)
 
-        # เพิ่ม remark ของหัวข้อย่อยทีละบรรทัด พร้อม comma
-        if subs and result_offset == 1:
-            # เพิ่ม comma ต่อท้ายทุกบรรทัด ยกเว้นบรรทัดสุดท้าย
+        # เพิ่ม remark ของหัวข้อย่อย
+        if subs:
             formatted_remarks = []
-            for i, rmk in enumerate(remark_lines):
-                if rmk:  # ถ้ามี remark
+            for i, (order_num, sub_key, stitle) in enumerate(subs):
+                data_sub = rows.get(sub_key) or {}
+                rmk = (data_sub.get("remark") or "").strip()
+                
+                if rmk:
                     # เพิ่ม comma ถ้าไม่ใช่บรรทัดสุดท้าย
-                    if i < len(remark_lines) - 1:
+                    if i < len(subs) - 1:
                         formatted_remarks.append(f"{rmk},")
                     else:
                         formatted_remarks.append(rmk)
                 else:
-                    formatted_remarks.append("")  # บรรทัดว่าง
+                    formatted_remarks.append("")
             
             # เพิ่มบรรทัดว่าง 1 บรรทัดเพื่อให้ตรงกับหัวข้อหลัก
-            remark_with_offset = [""] + formatted_remarks
-        else:
-            remark_with_offset = remark_lines
-
-        # รวม remark ทั้งหมด
-        if remark_with_offset:
-            remark_text = "\n".join(remark_with_offset)
-            if remark_text.strip():
-                remark_parts.append(remark_text)
+            if formatted_remarks:
+                remark_with_offset = [""] + formatted_remarks
+                remark_text = "\n".join(remark_with_offset)
+                if remark_text.strip():
+                    remark_parts.append(remark_text)
 
         remark = "\n\n".join(remark_parts) if remark_parts else ""
 
-        items.append(
-            {
+        # ---------- สร้าง item ----------
+        if has_subitems:
+            # ข้อที่มี subitems (7, 8, 9)
+            items.append({
                 "idx": idx,
                 "text": text,
-                "results": result_lines,
+                "result": "na",  # ไม่ใช้ result หลัก
                 "remark": remark,
-                "result_offset": result_offset,
-                "result_step": result_step,
-            }
-        )
+                "has_subitems": True,
+                "subitems": subitems,
+            })
+        else:
+            # ข้อปกติ (1-6, 10)
+            raw_res = data_main.get("pf", "na")
+            items.append({
+                "idx": idx,
+                "text": text,
+                "result": _norm_result(raw_res),
+                "remark": remark,
+                "has_subitems": False,
+            })
 
     return items
 
@@ -640,7 +609,6 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
 def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
     grouped: List[dict] = []
 
-    # เดินตามลำดับการประกาศใน ROW_TITLES เพื่อคงลำดับหัวข้อ
     main_keys: List[Tuple[int, str, str]] = []  # (idx, key, title)
     for k, title in row_titles.items():
         m = re.fullmatch(r"r(\d+)", k)
@@ -648,9 +616,11 @@ def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
             main_keys.append((int(m.group(1)), k, title))
 
     for idx, main_key, main_title in main_keys:
-        lines = [f"{idx}. {main_title}"]
+        # ❌ เดิม: lines = [f"{idx}. {main_title}"]
+        # ✅ ใหม่: ไม่มีเลขข้อ
+        lines = [f"{main_title}"]
 
-        # รวม sub ทั้งหมดของหัวข้อนี้ ตามลำดับชื่อคีย์ (r{idx}_sub1, r{idx}_sub2, ...)
+        # รวม sub ตามลำดับ
         subs: List[Tuple[int, str]] = []
         for k, stitle in row_titles.items():
             m = re.fullmatch(rf"r{idx}_sub(\d+)", k)
@@ -662,9 +632,11 @@ def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
             clean_stitle = re.sub(r"^\s*\.\s*", "", str(stitle))
             lines.append(f" {clean_stitle}")
 
+        # ยังเก็บ idx ไว้เพื่อใช้ sorting ภายนอก
         grouped.append({"idx": idx, "text": "\n".join(lines)})
 
     return grouped
+
 
 
 # -------------------- วาดชิ้นส่วนเอกสาร --------------------
@@ -687,8 +659,10 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
 
     col_left, col_mid = 40, 120
     col_right = page_w - col_left - col_mid
-    h_all = 30
-    h_right_top = 12
+
+    # --- ความสูงใหม่ที่เตี้ยลง ---
+    h_all = 22          # เดิม 30
+    h_right_top = 8     # เดิม 12
 
     pdf.set_line_width(LINE_W_INNER)
 
@@ -696,36 +670,47 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
     pdf.rect(x0, y_top, col_left, h_all)
     logo_path = _resolve_logo_path()
     if logo_path:
-        IMG_W = 35
+        IMG_W = 28  # ลดขนาดรูปให้พอดีกับความสูงใหม่
         img_x = x0 + (col_left - IMG_W) / 2
-        img_y = y_top + (h_all - 16) / 2
+        img_y = y_top + (h_all - 12) / 2
         try:
             pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
-        except Exception as e:
-            _log(f"[LOGO] place error: {e}")
+        except Exception:
+            pass
 
-    # กล่องกลาง: ที่อยู่
+    # กล่องกลาง (ที่อยู่)
     box_x = x0 + col_left
     pdf.rect(box_x, y_top, col_mid, h_all)
+
+    addr_lines = [
+        "Electricity Generating Authority of Thailand (EGAT)",
+        "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",
+        "Call Center Tel. 02-114-3350",
+    ]
+
     pdf.set_font(base_font, "B", FONT_MAIN)
-    line_h = 6.2
-    start_y = y_top + (h_all - line_h * len(ORG_ADDRESS_LINES)) / 2
-    for i, line in enumerate(ORG_ADDRESS_LINES):
+    line_h = 5.2   # ลดจาก 6.2 เพื่อให้พอดีกับความสูงใหม่
+
+    # จัดให้อยู่กึ่งกลางแนวตั้งในกล่อง
+    start_y = y_top + (h_all - line_h * len(addr_lines)) / 2
+
+    for i, line in enumerate(addr_lines):
         pdf.set_xy(box_x + 3, start_y + i * line_h)
         pdf.cell(col_mid - 6, line_h, line, align="C")
 
-    # กล่องขวา (Page / Issue)
+    # กล่องขวา
     xr = x0 + col_left + col_mid
     pdf.rect(xr, y_top, col_right, h_right_top)
     pdf.rect(xr, y_top + h_right_top, col_right, h_all - h_right_top)
 
-    # Page (บนขวา)
-    pdf.set_xy(xr, y_top + 4)
+    # Page number
+    pdf.set_xy(xr, y_top + (h_right_top - 6) / 2)
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C")
 
-    # Issue ID
-    pdf.set_xy(xr, y_top + h_right_top + (h_all - h_right_top) / 2 - 5)
+    # Issue ID (2 บรรทัด)
+    bottom_box_h = h_all - h_right_top
+    pdf.set_xy(xr, y_top + h_right_top + (bottom_box_h - 12) / 2)
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.multi_cell(col_right, 6, f"Issue ID\n{issue_id}", align="C")
 
@@ -742,7 +727,7 @@ def _draw_items_table_header(
     remark_w: float,
     group_title: str = "Station",
 ):
-    header_h = 9.0
+    header_h = 6.0
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_font(base_font, "B", FONT_MAIN)
 
@@ -753,43 +738,77 @@ def _draw_items_table_header(
     pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
     y += header_h
 
-    # แถบชื่อกลุ่ม
-    pdf.set_fill_color(255, 230, 100)
-    pdf.set_xy(x, y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-
     return y
 
 
 def _draw_result_cell(
-    pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    result: Union[str, List[str]],
+    offset_lines: int = 0,   # บรรทัดที่ต้องข้ามก่อนเริ่มวาด
+    line_step: int = 1,      # จำนวนบรรทัดข้อความต่อ 1 row ของ Result
 ):
+   
     pdf.rect(x, y, w, h)
+
+    # ให้ result เป็น list เสมอ
+    if isinstance(result, (list, tuple)):
+        results = list(result)
+    else:
+        results = [result]
+
+    # normalize ผลแต่ละบรรทัด
+    results = [_norm_result(r) for r in results]
+    n_lines = max(1, len(results))
+
     col_w = w / 3.0
-    labels = [
-        ("Pass", result == "pass"),
-        ("Fail", result == "fail"),
-        ("N/A", result == "na"),
-    ]
+    labels = ["pass", "fail", "na"]
+    label_text = {"pass": "Pass", "fail": "Fail", "na": "N/A"}
+
     pdf.set_font(base_font, "", FONT_SMALL)
-    for i, (lab, chk) in enumerate(labels):
+
+    # วาดเส้นแบ่งคอลัมน์แนวตั้งเต็ม cell
+    for i in range(1, 3):
         sx = x + i * col_w
-        if i > 0:
-            pdf.line(sx, y, sx, y + h)
-        text_w = pdf.get_string_width(lab)
-        content_w = CHECKBOX_SIZE + 1.6 + text_w
-        start_x = sx + (col_w - content_w) / 2.0
-        start_y = y + (h - CHECKBOX_SIZE) / 2.0
-        _draw_check(pdf, start_x, start_y, CHECKBOX_SIZE, chk)
-        pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, y + (h - LINE_H) / 2.0)
-        pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
+        pdf.line(sx, y, sx, y + h)
+
+    # base_y = จุดเริ่มต้นของบรรทัดแรก (ชิดบน + ข้ามหัวข้อหลัก offset_lines บรรทัด)
+    base_y = y + PADDING_Y + offset_lines * LINE_H
+
+    for row_idx, res in enumerate(results):
+        line_y = base_y + row_idx * line_step * LINE_H
+
+        # ถ้าลงล่างเกิน cell แล้วให้หยุด
+        if line_y + CHECKBOX_SIZE > y + h - PADDING_Y:
+            break
+
+        for col_idx, key in enumerate(labels):
+            lab = label_text[key]
+            sx = x + col_idx * col_w
+
+            text_w = pdf.get_string_width(lab)
+            content_w = CHECKBOX_SIZE + 1.6 + text_w
+
+            start_x = sx + (col_w - content_w) / 2.0
+            start_y = line_y + (LINE_H - CHECKBOX_SIZE) / 2.0
+
+            checked = (res == key)
+
+            _draw_check(pdf, start_x, start_y, CHECKBOX_SIZE, checked)
+            pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, start_y - 0.3)
+            pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
+
     pdf.set_xy(x + w, y)
 
 
 def _draw_photos_table_header(
     pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float
 ) -> float:
-    header_h = 9.0
+    header_h = 6.0
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_xy(x, y)
@@ -846,24 +865,16 @@ def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, 
 
 
 # -------------------- ส่วนบล็อคข้อมูลงาน/สรุป/ลายเซ็น --------------------
-def _draw_job_info_block(
-    pdf: FPDF,
-    base_font: str,
-    x: float,
-    y: float,
-    w: float,
-    station_name: str,
-    pm_date: str,
-) -> float:
-    row_h = 8.5
+def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float,
+                         station_name: str, pm_date: str) -> float:
+    row_h = 6.5
     col_w = w / 2.0
     label_w = 30
-
     box_h = row_h
-
     pdf.set_line_width(LINE_W_INNER)
-    pdf.rect(x, y, w, box_h)                 # กรอบนอก
-    pdf.line(x + col_w, y, x + col_w, y + box_h)  # เส้นแบ่งซ้าย/ขวา
+    pdf.rect(x, y, w, box_h)
+    pdf.line(x + col_w, y, x + col_w, y + box_h)
+    # pdf.line(x, y + row_h, x + w, y + row_h)       # แถว
 
     def _item(x0, y0, label, value):
         pdf.set_xy(x0 + 2, y0 + 1.5)
@@ -906,7 +917,7 @@ def _build_photo_questions(row_titles: dict) -> List[dict]:
 
 def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf = ReportPDF(unit="mm", format="A4")
-    pdf.alias_nb_pages()  # ให้รองรับ {nb} ใน footer
+    # pdf.alias_nb_pages()  # ให้รองรับ {nb} ใน footer
 
     # margins / font
     pdf.set_margins(left=10, top=10, right=10)
@@ -935,10 +946,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y = _draw_header(pdf, base_font, issue_id)
 
     # ชื่อเอกสาร
+    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+
     pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, DOCUMENT_TITLE_MAIN, border=1, ln=1, align="C")
-    y += 10
+    pdf.set_font(base_font, "B", 13)
+    pdf.set_fill_color(255, 230, 100)
+    pdf.cell(page_w, TITLE_H,
+            DOCUMENT_TITLE_MAIN,
+            border=1, ln=1, align="C", fill=True)
+
+    y += TITLE_H
 
     # ข้อมูลงาน
     y = _draw_job_info_block(
@@ -976,110 +993,132 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     )
     pdf.set_font(base_font, "", FONT_MAIN)
 
+    
     for it in checks:
         text = str(it.get("text", ""))
-        result = it.get("result", "na")
-        remark = str(it.get("remark", "") or "")
 
-        _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
+        # list ของผลต่อบรรทัดในคอลัมน์ Result
+        result_lines = it.get("results") or []
+        if not result_lines:
+            result_lines = [it.get("result", "na")]
+
+        remark = str(it.get("remark", "") or "")
+        result_offset = int(it.get("result_offset", 0))  # <-- ดึง offset
+        result_step = int(it.get("result_step", 1)) 
+
+        # คำนวนความสูงแต่ละส่วน
+        item_lines, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
         _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
-        
-        # ใช้ regex เพื่อหาหมายเลขข้อที่แท้จริง
+
+        # ใช้ regex เพื่อหาหมายเลขข้อที่แท้จริง (ตัวเลขที่ขึ้นต้นบรรทัด)
         match_row = re.match(r"^(\d+)\.", text.strip())
         row_num = int(match_row.group(1)) if match_row else 0
-        
-        # กำหนดความสูงขั้นต่ำสำหรับข้อ 5
-        if row_num == 7:
-            # กำหนดความสูงที่ต้องการ (ปรับตัวเลขได้ตามต้องการ)
-            min_row_5_height = LINE_H * 10 
-            row_h_eff = max(ROW_MIN_H, item_h, remark_h, min_row_5_height)
-        else:
-            row_h_eff = max(ROW_MIN_H, item_h, remark_h)
+
+        # กำหนดความสูงขั้นต่ำของ remark ตามหมายเลขข้อที่แท้จริงเท่านั้น
+        if row_num in [7, 8, 9]:
+            remark_h = max(remark_h, LINE_H * 4)
+
+        result_block_h = max(ROW_MIN_H, len(result_lines) * LINE_H)
+        row_h_eff = max(ROW_MIN_H, item_h, remark_h, result_block_h)
 
         _ensure_space(row_h_eff)
 
         x = x_table
-        _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H)
+        #  ให้ Item ชิดบน ไม่จัดกลาง เพื่อให้บรรทัดเท่ากัน
+        _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text,
+                        align="L", lh=LINE_H, valign="top")
         x += item_w
-        _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result)
+
+        #  ส่ง offset เข้าไปให้ช่อง Result
+        _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff,
+                        result_lines, offset_lines=result_offset, line_step=result_step)
         x += result_w
-        _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
+
+        _cell_text_in_box(
+            pdf, x, y, remark_w, row_h_eff, remark,
+            align="L", lh=LINE_H, valign="top"
+        )
 
         y += row_h_eff
 
-    # Comment & Summary + เซ็นชื่อ
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_draw_color(0, 0, 0)
-
+    # ส่วน Comment & Summary
     comment_x = x_table
     comment_y = y
     comment_item_w = item_w
     comment_result_w = result_w
     comment_remark_w = remark_w
 
-    h_comment = 12
-    h_summary = 10
-    h_checklist = 12
-    total_h = h_comment + h_summary + h_checklist
-    pdf.rect(comment_x, comment_y, item_w + result_w + remark_w, total_h)
-
-    pdf.set_xy(comment_x, comment_y)
-    pdf.set_font(base_font, "B", 13)
-    pdf.cell(comment_item_w, h_comment, "Comment :", border=1, align="L")
-    pdf.set_font(base_font, "", 13)
+    h_comment = 7
+    h_checklist = 7
+    total_h = h_comment + h_checklist
+    
+    # ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
+    _ensure_space(total_h + 5)
+    
+    # วาดกรอบนอกทั้งหมด
+    pdf.rect(comment_x, y, item_w + result_w + remark_w, total_h)
+    
+    # แถว Comment (ใช้ _cell_text_in_box แทน multi_cell)
+    pdf.set_font(base_font, "B", 11)
+    pdf.set_xy(comment_x, y)
+    pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
+    
+    # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ
+    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
+    
+    # ใช้ _cell_text_in_box สำหรับ comment text
+    pdf.set_font(base_font, "", 11)
     comment_text = str(doc.get("summary", "") or "-")
-    pdf.multi_cell(
-        comment_result_w + comment_remark_w,
-        h_comment,
-        comment_text,
-        border=1,
-        align="L",
-    )
-    comment_y += h_comment
+    comment_text_x = comment_x + comment_item_w
+    _cell_text_in_box(pdf, comment_text_x, y, comment_result_w + comment_remark_w, h_comment, comment_text, align="L", lh=LINE_H, valign="middle")
+    
+    y += h_comment
+    
+    # เส้นคั่นระหว่าง Comment และ ผลการตรวจสอบ
+    pdf.line(comment_x, y, comment_x + item_w + result_w + remark_w, y)
 
+    # แถวผลการตรวจสอบ
     summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
-
-    pdf.set_xy(comment_x, comment_y)
-    pdf.set_font(base_font, "B", 13)
-    pdf.cell(comment_item_w, h_checklist, "ผลการตรวจสอบ :", border=1, align="L")
-    pdf.set_font(base_font, "", 13)
+    
+    pdf.set_xy(comment_x, y)
+    pdf.set_font(base_font, "B", 11)
+    pdf.cell(comment_item_w, h_checklist, "ผลการตรวจสอบ :", border=0, align="L")
+    
+    # วาดเส้นคั่น
+    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
+    
+    # วาด checkbox
+    pdf.set_font(base_font, "", 11)
     x_check_start = comment_x + comment_item_w + 10
-    y_check = comment_y + (h_checklist - CHECKBOX_SIZE) / 2.0
+    y_check = y + (h_checklist - CHECKBOX_SIZE) / 2.0
     gap = 35
-    options = [
-        ("Pass", summary_check == "PASS"),
-        ("Fail", summary_check == "FAIL"),
-        ("N/A", summary_check == "N/A"),
-    ]
+    options = [("Pass", summary_check == "PASS"), ("Fail", summary_check == "FAIL"), ("N/A", summary_check == "N/A")]
     for i, (label, checked) in enumerate(options):
         x_box = x_check_start + i * gap
         _draw_check(pdf, x_box, y_check, CHECKBOX_SIZE + 0.5, checked)
         pdf.set_xy(x_box + CHECKBOX_SIZE + 3, y_check - 1)
         pdf.cell(20, LINE_H + 1, label, ln=0, align="L")
 
-    pdf.rect(comment_x, comment_y, item_w + result_w + remark_w, h_checklist)
-    y = comment_y + h_checklist
+    y += h_checklist
 
-    # พื้นที่ลายเซ็น
+    # ช่องเซ็นชื่อ
     signer_labels = ["Performed by", "Approved by", "Witnessed by"]
+    pdf.set_line_width(LINE_W_INNER)
+
+    # ใช้ความกว้างของแต่ละคอลัมน์จริงแทน col_w
     col_widths = [item_w, result_w, remark_w]
-    row_h_header = 12
-    row_h_sig = 16
-    row_h_name = 7
-    row_h_date = 7
+    row_h_header = 7
+    row_h_sig = 15
+    row_h_name = 5
+    row_h_date = 5
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
 
-    def _ensure_space_sign(height_needed: float):
-        nonlocal y
-        if y + height_needed > (pdf.h - pdf.b_margin):
-            pdf.add_page()
-            y = _draw_header(pdf, base_font, issue_id)
-
-    _ensure_space_sign(total_sig_h + 5)
+    _ensure_space(total_sig_h + 5)
 
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_fill_color(255, 230, 100)
 
+    # แถวหัวข้อ (Performed by, Approved by, Witnessed by)
     x_pos = x_table
     for i, label in enumerate(signer_labels):
         pdf.set_xy(x_pos, y)
@@ -1087,12 +1126,14 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         x_pos += col_widths[i]
     y += row_h_header
 
+    # แถวลายเซ็น
     x_pos = x_table
     for i in range(3):
         pdf.rect(x_pos, y, col_widths[i], row_h_sig)
         x_pos += col_widths[i]
     y += row_h_sig
 
+    # แถวชื่อ
     pdf.set_font(base_font, "", FONT_MAIN)
     x_pos = x_table
     for i in range(3):
@@ -1103,15 +1144,14 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         x_pos += col_widths[i]
     y += row_h_name
 
+    # แถววันที่
     x_pos = x_table
     for i in range(3):
         pdf.rect(x_pos, y, col_widths[i], row_h_date)
         date_text = "Date : " + " " * 9
         margin_left = 5
         pdf.set_xy(x_pos + margin_left, y)
-        pdf.cell(
-            col_widths[i] - margin_left, row_h_date, date_text, border=0, align="L"
-        )
+        pdf.cell(col_widths[i] - margin_left, row_h_date, date_text, border=0, align="L")
         x_pos += col_widths[i]
     y += row_h_date
 
@@ -1119,20 +1159,21 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.add_page()
     y = _draw_header(pdf, base_font, issue_id)
 
-    pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, DOCUMENT_TITLE_PHOTO, border=1, ln=1, align="C")
-    y += 10
-
     y = _draw_job_info_block(
         pdf, base_font, x0, y, page_w, station_name, pm_date
     )
 
+    # photo
+    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+
     pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 14)
+    pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
-    pdf.cell(page_w, 10, "Photos", border=1, ln=1, align="C", fill=True)
-    y += 10
+    pdf.cell(page_w, TITLE_H,
+            "Photos",
+            border=1, ln=1, align="C", fill=True)
+
+    y += TITLE_H
 
     x_table = x0 + EDGE_ALIGN_FIX
     q_w = 85.0
@@ -1143,19 +1184,15 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
+            # หัวเรื่องย่อย Photos ซ้ำเมื่อขึ้นหน้าใหม่เพื่อไม่ให้สับสน
             pdf.set_xy(x0, y)
-            pdf.set_font(base_font, "B", 14)
+            pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
-            pdf.cell(
-                page_w,
-                10,
-                DOCUMENT_TITLE_PHOTO_CONT,
-                border=1,
-                ln=1,
-                align="C",
-                fill=True,
-            )
-            y += 10
+            photo_continue_h = 6  # ← กำหนดความสูงแถว Photos (ต่อ)
+
+            pdf.cell(page_w, photo_continue_h, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
+            y += photo_continue_h
+
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
             pdf.set_font(base_font, "", FONT_MAIN)
             
