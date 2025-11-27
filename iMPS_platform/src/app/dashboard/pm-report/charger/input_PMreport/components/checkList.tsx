@@ -280,19 +280,6 @@ function SectionCard({
 }) {
     return (
 
-        // <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-        //     {(title || subtitle) && (
-        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-        //             {title && <Typography variant="h6">{title}</Typography>}
-        //             {subtitle && (
-        //                 <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">
-        //                     {subtitle}
-        //                 </Typography>
-        //             )}
-        //         </CardHeader>
-        //     )}
-        //     <CardBody className="tw-space-y-4">{children}</CardBody>
-        // </Card>
         <>
             {/* Title นอกกรอบการ์ด */}
             {title && (
@@ -1261,7 +1248,7 @@ export default function ChargerPMForm() {
                             <div className="sm:tw-col-span-2 lg:tw-col-span-3">
                                 <div className="lg:tw-col-span-2">
                                     <Input
-                                        label="เครื่องประจุไฟฟ้าที่"
+                                        label="เครื่องอัดประจุไฟฟ้าที่"
                                         value={job.chargerNo}
                                         onChange={(e) => setJob({ ...job, chargerNo: e.target.value })}
                                         crossOrigin=""
