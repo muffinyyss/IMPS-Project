@@ -970,8 +970,6 @@ def _draw_result_cell(
     offset_lines: int = 0,   # บรรทัดที่ต้องข้ามก่อนเริ่มวาด
     line_step: int = 1,      # จำนวนบรรทัดข้อความต่อ 1 row ของ Result
 ):
-
-
    
     pdf.rect(x, y, w, h)
 
@@ -1029,7 +1027,7 @@ def _draw_result_cell(
 def _draw_photos_table_header(
     pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float
 ) -> float:
-    header_h = 9.0
+    header_h = 6.0
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_xy(x, y)

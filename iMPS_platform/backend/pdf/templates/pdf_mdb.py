@@ -687,7 +687,15 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
 
     return y_top + h_all
 
-def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
+def _draw_items_table_header(
+    pdf: FPDF, 
+    base_font: str, 
+    x: float, 
+    y: float, 
+    item_w: float, 
+    result_w: float, 
+    remark_w: float):
+    
     header_h = 6.0
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_font(base_font, "B", FONT_MAIN)
@@ -728,7 +736,7 @@ def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h
 def _draw_photos_table_header(
     pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float
 ) -> float:
-    header_h = 9.0
+    header_h = 6.0
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_xy(x, y)
@@ -747,7 +755,6 @@ def _draw_photos_row(
     question_text: str,
     image_items: List[dict],
 ) -> float:
-    pdf.set_font(base_font, "", FONT_MAIN)
     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
     img_h = PHOTO_IMG_MAX_H
     row_h = max(ROW_MIN_H, text_h, img_h + 2 * PADDING_Y)
@@ -1124,6 +1131,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             y += photo_continue_h
 
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+            pdf.set_font(base_font, "", FONT_MAIN)
+            
 
     # วาดหัวตาราง Photos
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)

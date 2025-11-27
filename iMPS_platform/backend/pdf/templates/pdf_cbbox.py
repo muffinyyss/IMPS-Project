@@ -22,14 +22,7 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
 }
 
 def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
-    """
-    โหลดฟอนต์ TH Sarabun โดยค้นทั้ง:
-      - <this file>/fonts            (เช่น backend/pdf/templates/fonts)
-      - <this file>/../fonts         (เช่น backend/pdf/fonts)
-      - โฟลเดอร์ฟอนต์ของระบบ (Windows/macOS/Linux)
-    คืนค่า True ถ้าโหลด regular ("") ได้สำเร็จ
-    """
-
+  
     here = Path(__file__).parent
     search_dirs = [
         here / "fonts",               # backend/pdf/templates/fonts
@@ -80,7 +73,7 @@ ROW_TITLES = {
     "r8": "ทำความสะอาดตู้ MDB"
 }
 
-# ✅ อนุญาตเฉพาะข้อที่ประกาศไว้ใน ROW_TITLES เท่านั้น
+# อนุญาตเฉพาะข้อที่ประกาศไว้ใน ROW_TITLES เท่านั้น
 ALLOWED_IDXS = sorted(i for i in (int(k[1:]) for k in ROW_TITLES.keys()) if i > 0)
 ALLOWED_SET = set(ALLOWED_IDXS)
 
@@ -191,27 +184,21 @@ def _cell_text_in_box(pdf: FPDF, x: float, y: float, w: float, h: float, text: s
 
 
 def _format_m5(measures: dict) -> str:
-    """
-    ฟอร์แมตข้อมูลแรงดันไฟฟ้าสำหรับข้อ 5
-    อ่านจาก measures["m5"] (หรือ key ที่เหมาะสม)
-    """
-    # ✅ เปลี่ยน key ให้ตรงกับโครงสร้างข้อมูลจริง
-    ms = (measures or {}).get("m5") or {}  # ถ้าเก็บใน m5
-    # หรือ ms = (measures or {}).get("r5") or {}  # ถ้าเก็บใน r5
-    
+
+    ms = (measures or {}).get("m5") or {}
     if not ms:
         return ""
 
-    # normalize key ภายใน
+    # normalize key
     norm_ms = {}
     for k, v in ms.items():
         nk = str(k).strip().replace("–", "-").replace("−", "-").replace(" ", "")
         norm_ms[nk.upper()] = v
 
     order = [
+        "L1-L2", "L2-L3", "L3-L1",
         "L1-N", "L2-N", "L3-N",
         "L1-G", "L2-G", "L3-G",
-        "L1-L2", "L2-L3", "L3-L1",
         "N-G"
     ]
 
@@ -223,8 +210,20 @@ def _format_m5(measures: dict) -> str:
             val = "-"
         return f"{k} = {val}{unit}"
 
-    lines = [fmt(k) for k in order]
+    # format values in the desired order
+    formatted = [fmt(k) for k in order]
+
+    # group into chunks of 3 (ยกเว้นบรรทัดสุดท้าย N-G ซึ่งมี 1 ค่า)
+    lines = []
+    for i in range(0, len(formatted), 3):
+        chunk = formatted[i:i+3]
+        line = ", ".join(chunk)
+        lines.append(line)
+
     return "\n".join(lines)
+
+
+
 
 def _parse_date_flex(s: str) -> Optional[datetime]:
     if not s:
@@ -255,9 +254,6 @@ def _fmt_date_thai_like_sample(val) -> str:
     return d.strftime(f"%d-%b-{year_be_2:02d}")
 
 def _resolve_logo_path() -> Optional[Path]:
-    # ตำแหน่งไฟล์ตามรูปของคุณ: .../iMPS_platform/public/img
-    # โครงสร้างไฟล์นี้อยู่ที่ .../iMPS_platform/backend/pdf/templates/pdf_charger.py
-    # ต้องไต่ขึ้น 3 ชั้นไปที่ iMPS_platform แล้วค่อยลง public/img
     names = [
         "logo_egat.png", "logo_egatev.png", "logo_egat_ev.png",
         "egat_logo.png", "logo-ct.png", "logo_ct.png",
@@ -592,7 +588,6 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     return out[:PHOTO_MAX_PER_ROW]
 
 
-
 # -------------------------------------
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
 # -------------------------------------
@@ -606,7 +601,7 @@ PHOTO_FONT_SMALL = 10
 PHOTO_LINE_H = 6
 
 def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float) -> float:
-    header_h = 9.0
+    header_h = 6.0
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_xy(x, y)
@@ -738,32 +733,38 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         text = str(it.get("text", ""))
         result = it.get("result", "na")
         remark = str(it.get("remark", "") or "")
+        has_subitems = it.get("has_subitems", False)
+        subitems = it.get("subitems", [])
+        remark = str(it.get("remark", "") or "")
 
         _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
         _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
         
-        # ใช้ regex เพื่อหาหมายเลขข้อที่แท้จริง
-        match_row = re.match(r"^(\d+)\.", text.strip())
-        row_num = int(match_row.group(1)) if match_row else 0
         
-        # กำหนดความสูงขั้นต่ำสำหรับข้อ 5
-        if row_num == 5:
-            # กำหนดความสูงที่ต้องการ (ปรับตัวเลขได้ตามต้องการ)
-            min_row_5_height = LINE_H * 13  
-            row_h_eff = max(ROW_MIN_H, item_h, remark_h, min_row_5_height)
-        else:
-            row_h_eff = max(ROW_MIN_H, item_h, remark_h)
-
+        is_row_5 = "5." in text
+        if is_row_5:
+            remark_h = max(remark_h, LINE_H * 6)
+        
+        row_h_eff = max(ROW_MIN_H, item_h, remark_h)
         _ensure_space(row_h_eff)
-
+        
         x = x_table
         _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H)
         x += item_w
-        _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result)
+        
+        # ถ้ามีข้อย่อย ใช้ฟังก์ชันพิเศษ
+        if has_subitems and subitems:
+            _draw_result_cell_with_subitems(pdf, base_font, x, y, result_w, row_h_eff, subitems)
+        else:
+            _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result)
+        
         x += result_w
-        _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
+        _cell_text_in_box(
+            pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top"
+        )
 
         y += row_h_eff
+    
 
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.set_draw_color(0, 0, 0)
@@ -939,9 +940,13 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             y += photo_continue_h
 
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+            pdf.set_font(base_font, "", FONT_MAIN)
+            
 
     # วาดหัวตาราง Photos
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+    pdf.set_font(base_font, "", FONT_MAIN)
+    
 
     # วาดทีละข้อ โดย map r# -> g# จาก doc["photos"]
     for it in checks:

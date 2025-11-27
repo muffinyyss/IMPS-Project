@@ -368,7 +368,9 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
 
 
 
-def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
+def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float,
+                             item_w: float, result_w: float, remark_w: float, charger_no: str):
+
     header_h = 6.0
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_font(base_font, "B", FONT_MAIN)
@@ -376,11 +378,19 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
     pdf.cell(item_w, header_h, "Item", border=1, align="C")
     pdf.cell(result_w, header_h, "Result", border=1, align="C")
     pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
+
     y += header_h
     pdf.set_fill_color(255, 230, 100)
     pdf.set_xy(x, y)
-    pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
-    return y + 8
+
+    TITLE_H = 6  # <<< ลดความสูงตรงนี้
+    title_text = f"เครื่องอัดประจุไฟฟ้า เครื่องที่ {charger_no}"
+
+    pdf.cell(item_w + result_w + remark_w, TITLE_H, title_text,
+             border=1, ln=1, align="L", fill=True)
+
+    return y + TITLE_H
+
 
 
 def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str, is_top_align: bool = False):
@@ -626,7 +636,7 @@ PHOTO_FONT_SMALL  = 10
 PHOTO_LINE_H      = 6
 
 def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float) -> float:
-    header_h = 9.0
+    header_h = 6.0
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_xy(x, y)
@@ -708,6 +718,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     sn = job.get("sn", "-")
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
+    charger_no = doc.get("job", {}).get("chargerNo", "-")
 
     checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
 
@@ -758,11 +769,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
             # หลังขึ้นหน้าใหม่ ให้วาด header แล้ววาดหัวตารางด้วย
-            y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
+            y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
             pdf.set_font(base_font, "", FONT_MAIN)
 
     # วาดหัวตารางแรก
-    y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
+    y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
     pdf.set_font(base_font, "", FONT_MAIN)
     
     for it in checks:
@@ -788,16 +799,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         _ensure_space(row_h_eff)
 
         x = x_table
-        # ✅ ข้อ 17 ใช้ valign="top", ข้ออื่นใช้ "middle" (default)
+        # ข้อ 17 ใช้ valign="top", ข้ออื่นใช้ "middle" (default)
         _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H, 
                          valign="middle" if is_row_17 else "middle")
         x += item_w
         
-        # ✅ ส่งค่า is_row_17 ไปให้ _draw_result_cell
+        # ส่งค่า is_row_17 ไปให้ _draw_result_cell
         _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result)
         x += result_w
         
-        # ✅ Remark ชิดบนอยู่แล้ว (valign="top")
+        # Remark ชิดบนอยู่แล้ว (valign="top")
         _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
 
         y += row_h_eff
@@ -963,11 +974,15 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             y = _draw_header(pdf, base_font, issue_id)
             # หัวเรื่องย่อย Photos ซ้ำเมื่อขึ้นหน้าใหม่เพื่อไม่ให้สับสน
             pdf.set_xy(x0, y)
-            pdf.set_font(base_font, "B", 14)
+            pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
-            pdf.cell(page_w, 10, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
-            y += 10
+            photo_continue_h = 6  # ← กำหนดความสูงแถว Photos (ต่อ)
+
+            pdf.cell(page_w, photo_continue_h, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
+            y += photo_continue_h
+
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+            pdf.set_font(base_font, "", FONT_MAIN)
 
     # วาดหัวตาราง Photos
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
