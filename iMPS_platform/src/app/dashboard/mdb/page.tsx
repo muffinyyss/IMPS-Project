@@ -23,6 +23,7 @@ import { data_MDB } from "@/data/statistics-charts-data";
 import { buildChartsFromHistory } from "@/data/statistics-charts-data";
 
 import { useSearchParams } from "next/navigation";
+import { timeStamp } from "console";
 
 type HistoryRow = {
     timestamp: string; // ISO time
@@ -39,6 +40,40 @@ function fmt(d: Date) {
     const dd = String(d.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
 }
+
+// ✅ helper แปลง ISO timestamp -> เวลาไทย
+// ✅ แก้ฟังก์ชันนี้ - บังคับแปลงเป็นเวลาไทยเสมอ
+function formatThaiDateTime(iso?: string | null) {
+    if (!iso) return "-";
+    
+    let d: Date;
+    
+    // ถ้าเป็นรูปแบบ "YYYY-MM-DD HH:mm:ss.ffffff" (ไม่มี Z หรือ timezone)
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(iso)) {
+        // บังคับให้เป็น UTC โดยเติม Z ท้าย
+        const utcString = iso.replace(' ', 'T') + 'Z';
+        d = new Date(utcString);
+    } else {
+        // กรณีอื่นๆ
+        d = new Date(iso);
+    }
+    
+    // ถ้า parse ไม่ได้
+    if (isNaN(d.getTime())) return String(iso);
+
+    // แสดงผลเป็นเวลาไทย (บวก 7 ชม.อัตโนมัติ)
+    return d.toLocaleString("th-TH", {
+        timeZone: "Asia/Bangkok",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+    });
+}
+
 type Me = {
     username: string;
     role?: string;
@@ -425,9 +460,15 @@ export default function MDBPage() {
         thdvL2: num0(station?.THDU_L2N),
         thdvL3: num0(station?.THDU_L3N),
 
+        // I1 : num0(station?.I1),
+        // I2 : num0(station?.I2),
+        // I3 : num0(station?.I3),
+
         thdiL1: num0(station?.THDI_L1),
         thdiL2: num0(station?.THDI_L2),
         thdiL3: num0(station?.THDI_L3),
+
+        timeStamp : (station?.timestamp),
 
         mainBreakerStatus: Boolean(station?.mainBreakerStatus),
         breakChargerStatus: Boolean(station?.breakChargerStatus),
@@ -453,7 +494,9 @@ export default function MDBPage() {
                 <p className="tw-text-gray-500 tw-mb-2">กำลังเชื่อมต่อข้อมูลเรียลไทม์…</p>
             )}
             {err && <p className="tw-text-red-600 tw-mb-2">{err}</p>}
-
+            
+            Timestamp : {formatThaiDateTime(MDB?.timeStamp as string)}
+            
 
             <StatisticsCards {...MDB} />
 
