@@ -248,6 +248,18 @@ export default function MDBInfo({
                 {/* THDV */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        Current per Phase (A)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="I1" value={I1} />
+                        <Row label="I2" value={I2} />
+                        <Row label="I3" value={I3} />
+                    </div>
+                </div>
+
+                {/* THDV */}
+                {/* <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         THDV (%)
                     </Typography>
                     <div className="tw-space-y-1">
@@ -255,7 +267,7 @@ export default function MDBInfo({
                         <Row label="L2" value={thdvL2} />
                         <Row label="L3" value={thdvL3} />
                     </div>
-                </div>
+                </div> */}
 
                 {/* THDI */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">

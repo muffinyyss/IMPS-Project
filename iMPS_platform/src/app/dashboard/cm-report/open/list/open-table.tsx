@@ -26,7 +26,7 @@ type TData = {
   id?: string;
   doc_name?: string;
   issue_id?: string;
-  cm_date: string;     // วันที่ (แสดงผล)
+  found_date: string;     // วันที่ (แสดงผล)
   position: string; // YYYY-MM-DD ใช้ sort/filter
   office: string;   // ลิงก์ไฟล์
   status: string;
@@ -130,7 +130,7 @@ async function fetchPreviewDocName(
 ): Promise<string | null> {
   const u = new URL(`${BASE}/cmreport/preview-docname`);
   u.searchParams.set("station_id", stationId);
-  u.searchParams.set("cm_date", cmDate);
+  u.searchParams.set("found_date", cmDate);
 
   const token =
     typeof window !== "undefined"
@@ -157,7 +157,7 @@ async function fetchLatestDocName(
 ): Promise<string | null> {
   const u = new URL(`${BASE}/cmreport/latest-docname`);
   u.searchParams.set("station_id", stationId);
-  u.searchParams.set("cm_date", dateISO);
+  u.searchParams.set("found_date", dateISO);
   u.searchParams.set("_ts", String(Date.now()));
 
   const token =
@@ -407,7 +407,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
 
       const cmRows: TData[] = cmItems.map((it: any) => {
-        const isoDay = toISODateOnly(it.cm_date ?? it.createdAt ?? "");
+        const isoDay = toISODateOnly(it.found_date ?? it.createdAt ?? "");
         const rawUploaded =
           it.file_url
           ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
@@ -436,7 +436,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const inspector =
           (it.inspector ?? it.job?.inspector ?? "") as string;
 
-        return { id, issue_id: issueId, doc_name: doc_name, cm_date: thDate(isoDay), position: isoDay, office: fileUrl, status: getStatusText(it) || "-", inspector };
+        return { id, issue_id: issueId, doc_name: doc_name, found_date: thDate(isoDay), position: isoDay, office: fileUrl, status: getStatusText(it) || "-", inspector };
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -454,7 +454,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const inspector =
           (it.inspector ?? it.job?.inspector ?? "") as string;
 
-        return { id: it.id || it._id || "", issue_id: issueId, doc_name: doc_name, cm_date: thDate(isoDay), position: isoDay, office: resolveFileHref(raw, apiBase), status: getStatusText(it) || "-", inspector };
+        return { id: it.id || it._id || "", issue_id: issueId, doc_name: doc_name, found_date: thDate(isoDay), position: isoDay, office: resolveFileHref(raw, apiBase), status: getStatusText(it) || "-", inspector };
       });
 
       const allRows = [...cmRows, ...urlRows].sort((a, b) => {
@@ -517,7 +517,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.cm_date,
+      accessorFn: (row) => row.found_date,
       id: "date",
       header: () => "cm date",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
