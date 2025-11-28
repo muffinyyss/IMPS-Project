@@ -519,7 +519,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   return (
     <>
-      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
+      <Card className="tw-border tw-border--gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
         <CardHeader floated={false} shadow={false}
           className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-3 md:tw-!px-4 tw-!py-3 md:tw-!py-4 tw-mb-6">
           <div className="tw-ml-3">

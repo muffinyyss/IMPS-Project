@@ -695,202 +695,309 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
   onRemarkChange,
 }) => {
   return (
-    <div className="tw-border tw-border-gray-800 tw-bg-white">
-      {/* Header */}
-      <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-[2fr_3fr_1fr] tw-bg-gray-100">
-        <div className="tw-border-r tw-border-gray-800 tw-p-3 tw-text-center tw-font-semibold">
-          <div>Testing Checklist</div>
-          <div className="tw-text-xs tw-font-medium tw-mt-1">CCS2</div>
-        </div>
-        <div className="tw-border-r tw-border-gray-800 tw-p-3 tw-text-center tw-font-semibold md:tw-block tw-hidden">
-          {title}
-        </div>
-        <div className="tw-p-3 tw-text-center tw-font-semibold md:tw-block tw-hidden">
-          Remark
-        </div>
-        {/* Mobile header */}
-        <div className="tw-border-t tw-border-gray-800 tw-p-3 tw-text-center tw-font-semibold md:tw-hidden">
-          <div>Testing Checklist</div>
-          <div className="tw-text-xs tw-font-medium tw-mt-1">CCS2</div>
-        </div>
-        <div className="tw-border-t tw-border-gray-800 tw-p-3 tw-text-center tw-font-semibold md:tw-hidden">
-          {title}
-        </div>
-        <div className="tw-border-t tw-border-gray-800 tw-p-3 tw-text-center tw-font-semibold md:tw-hidden">
-          Remark
-        </div>
-      </div>
-
-      {/* Sub Header */}
-      <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-[2fr_3fr_1fr] tw-bg-gray-50">
-        <div className="tw-border-r tw-border-gray-800"></div>
-        <div className="tw-border-r tw-border-gray-800 tw-grid tw-grid-cols-1 md:tw-grid-cols-3">
-          {/* 1st TEST */}
-          <div className="tw-border-r md:tw-border-r tw-border-b md:tw-border-b-0 tw-border-gray-800">
-            <div className="tw-p-2 tw-text-center tw-font-medium tw-border-b tw-border-gray-800">
-              1st TEST
+    <div className="tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-shadow-sm">
+      {/* ================= DESKTOP / LARGE SCREEN (TABLE VIEW) ================= */}
+      <div className="tw-hidden lg:tw-block tw-overflow-x-auto">
+        <div className="tw-min-w-[960px]">
+          {/* Header */}
+          <div className="tw-grid tw-grid-cols-[2fr_3fr_1.2fr] tw-bg-gray-100">
+            <div className="tw-border-r tw-border-gray-300 tw-p-3 tw-text-center tw-font-semibold tw-text-gray-800">
+              <div>Testing Checklist</div>
+              <div className="tw-text-xs tw-font-medium tw-mt-1">CCS2</div>
             </div>
-            <div className="tw-grid tw-grid-cols-2">
-              <div className="tw-border-r tw-border-gray-800 tw-p-1 tw-text-center tw-text-xs">
-                H1
-              </div>
-              <div className="tw-p-1 tw-text-center tw-text-xs">H2</div>
+            <div className="tw-border-r tw-border-gray-300 tw-p-3 tw-text-center tw-font-semibold tw-text-gray-800">
+              {title}
+            </div>
+            <div className="tw-p-3 tw-text-center tw-font-semibold tw-text-gray-800">
+              Remark
             </div>
           </div>
-          {/* 2nd TEST */}
-          <div className="tw-border-r md:tw-border-r tw-border-b md:tw-border-b-0 tw-border-gray-800">
-            <div className="tw-p-2 tw-text-center tw-font-medium tw-border-b tw-border-gray-800">
-              2nd TEST
-            </div>
-            <div className="tw-grid tw-grid-cols-2">
-              <div className="tw-border-r tw-border-gray-800 tw-p-1 tw-text-center tw-text-xs">
-                H1
-              </div>
-              <div className="tw-p-1 tw-text-center tw-text-xs">H2</div>
-            </div>
-          </div>
-          {/* 3rd TEST */}
-          <div>
-            <div className="tw-p-2 tw-text-center tw-font-medium tw-border-b tw-border-gray-800">
-              3rd TEST
-            </div>
-            <div className="tw-grid tw-grid-cols-2">
-              <div className="tw-border-r tw-border-gray-800 tw-p-1 tw-text-center tw-text-xs">
-                H1
-              </div>
-              <div className="tw-p-1 tw-text-center tw-text-xs">H2</div>
-            </div>
-          </div>
-        </div>
-        <div className="md:tw-block tw-hidden"></div>
-      </div>
 
-      {/* Test Items */}
-      {testItems.map((item, index) => {
-        const isPEContinuity = item.subCategory?.includes("PE.Continuity");
-        const isFirstPEItem = index === 0;
+          {/* Sub Header */}
+          <div className="tw-grid tw-grid-cols-[2fr_3fr_1.2fr] tw-bg-gray-50">
+            <div className="tw-border-r tw-border-gray-300" />
+            <div className="tw-border-r tw-border-gray-300 tw-grid tw-grid-cols-3">
+              {/* 1st TEST */}
+              <div className="tw-border-r tw-border-gray-300">
+                <div className="tw-p-2 tw-text-center tw-text-xs tw-font-medium tw-tracking-wide tw-text-gray-700 tw-border-b tw-border-gray-300">
+                  1st TEST
+                </div>
+                <div className="tw-grid tw-grid-cols-2">
+                  <div className="tw-border-r tw-border-gray-300 tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">
+                    H1
+                  </div>
+                  <div className="tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">H2</div>
+                </div>
+              </div>
+              {/* 2nd TEST */}
+              <div className="tw-border-r tw-border-gray-300">
+                <div className="tw-p-2 tw-text-center tw-text-xs tw-font-medium tw-tracking-wide tw-text-gray-700 tw-border-b tw-border-gray-300">
+                  2nd TEST
+                </div>
+                <div className="tw-grid tw-grid-cols-2">
+                  <div className="tw-border-r tw-border-gray-300 tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">
+                    H1
+                  </div>
+                  <div className="tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">H2</div>
+                </div>
+              </div>
+              {/* 3rd TEST */}
+              <div>
+                <div className="tw-p-2 tw-text-center tw-text-xs tw-font-medium tw-tracking-wide tw-text-gray-700 tw-border-b tw-border-gray-300">
+                  3rd TEST
+                </div>
+                <div className="tw-grid tw-grid-cols-2">
+                  <div className="tw-border-r tw-border-gray-300 tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">
+                    H1
+                  </div>
+                  <div className="tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">H2</div>
+                </div>
+              </div>
+            </div>
+            <div />
+          </div>
 
-        return (
-          <div
-            key={index}
-            className={`tw-grid tw-grid-cols-1 md:tw-grid-cols-[2fr_3fr_1fr] tw-border-t tw-border-gray-800 ${isPEContinuity ? "tw-min-h-[50px]" : "tw-min-h-[60px]"
-              }`}
-          >
-            {/* Test Name Column */}
-            <div className="tw-border-r tw-border-gray-800 tw-relative tw-bg-white">
-              {/* Charger Safety band */}
-              {isFirstPEItem && (
-                <div className="tw-absolute tw-left-0 tw-top-0 tw-w-16 tw-h-[580px] tw-bg-gray-50 tw-border-r tw-border-gray-300 tw-items-center tw-justify-center tw-z-10 tw-hidden md:tw-flex">
-                  <div className="tw-transform tw--rotate-90 tw-text-sm tw-font-bold tw-text-gray-800 tw-whitespace-nowrap">
-                    Charger Safety
+          {/* Rows */}
+          {testItems.map((item, index) => {
+            const isPEContinuity = item.subCategory?.includes("PE.Continuity");
+            const isFirstPEItem = index === 0;
+
+            return (
+              <div
+                key={index}
+                className={`tw-grid tw-grid-cols-[2fr_3fr_1.2fr] tw-border-t tw-border-gray-200 ${
+                  isPEContinuity ? "tw-min-h-[50px]" : "tw-min-h-[60px]"
+                }`}
+              >
+                {/* Test Name Column */}
+                <div className="tw-border-r tw-border-gray-200 tw-relative tw-bg-white">
+                  {/* Charger Safety band */}
+                  {isFirstPEItem && (
+                    <div className="tw-absolute tw-left-0 tw-top-0 tw-w-16 tw-h-[580px] tw-bg-gray-50 tw-border-r tw-border-b tw-border-gray-200 tw-items-center tw-justify-center tw-z-10 tw-pointer-events-none tw-flex">
+                      <div className="tw-transform tw--rotate-90 tw-text-xs tw-font-bold tw-text-gray-800 tw-whitespace-nowrap">
+                        Charger Safety
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Test details */}
+                  <div className="tw-p-3 tw-flex tw-items-center tw-h-full tw-ml-16">
+                    <div className="tw-w-full">
+                      <div className="tw-flex tw-items-center tw-justify-start tw-h-full">
+                        <span className="tw-text-sm tw-text-gray-800">
+                          {item.testName}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
 
-              {/* Mobile labels */}
-              <div className="tw-block md:tw-hidden tw-bg-gray-100 tw-px-3 tw-py-2 tw-text-xs tw-font-medium tw-text-gray-700">
-                {item.category}
-                {item.subCategory && ` - ${item.subCategory}`}
+                {/* Test Results Columns */}
+                <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-3 tw-bg-white">
+                  {/* 1st Test */}
+                  <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-2">
+                    <div className="tw-border-r tw-border-gray-200 tw-p-2 tw-flex tw-justify-center">
+                      <PassFailButtons
+                        value={(results.test1[index]?.h1 as "" | "✓" | "✗") || ""}
+                        onChange={(v) => onResultChange(0, index, "h1", v)}
+                      />
+                    </div>
+                    <div className="tw-p-2 tw-flex tw-justify-center">
+                      <PassFailButtons
+                        value={(results.test1[index]?.h2 as "" | "✓" | "✗") || ""}
+                        onChange={(v) => onResultChange(0, index, "h2", v)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2nd Test */}
+                  <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-2">
+                    <div className="tw-border-r tw-border-gray-200 tw-p-2 tw-flex tw-justify-center">
+                      <PassFailButtons
+                        value={(results.test2[index]?.h1 as "" | "✓" | "✗") || ""}
+                        onChange={(v) => onResultChange(1, index, "h1", v)}
+                      />
+                    </div>
+                    <div className="tw-p-2 tw-flex tw-justify-center">
+                      <PassFailButtons
+                        value={(results.test2[index]?.h2 as "" | "✓" | "✗") || ""}
+                        onChange={(v) => onResultChange(1, index, "h2", v)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3rd Test */}
+                  <div className="tw-grid tw-grid-cols-2">
+                    <div className="tw-border-r tw-border-gray-200 tw-p-2 tw-flex tw-justify-center">
+                      <PassFailButtons
+                        value={(results.test3[index]?.h1 as "" | "✓" | "✗") || ""}
+                        onChange={(v) => onResultChange(2, index, "h1", v)}
+                      />
+                    </div>
+                    <div className="tw-p-2 tw-flex tw-justify-center">
+                      <PassFailButtons
+                        value={(results.test3[index]?.h2 as "" | "✓" | "✗") || ""}
+                        onChange={(v) => onResultChange(2, index, "h2", v)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Remark Column */}
+                <div className="tw-p-2 tw-bg-white">
+                  <Input
+                    value={results.remarks[index] || ""}
+                    onChange={(e) => onRemarkChange(index, e.target.value)}
+                    crossOrigin=""
+                    className="!tw-border-gray-300"
+                    containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
+                  />
+                </div>
               </div>
+            );
+          })}
+        </div>
+      </div>
 
-              {/* Test details */}
-              <div className="tw-p-3 tw-flex tw-items-center tw-h-full md:tw-ml-16 tw-ml-0">
-                <div className="tw-w-full">
-                  <div className="tw-flex tw-items-center tw-justify-start tw-h-full tw-pl-0">
-                    <span className="tw-text-sm tw-text-gray-800">
-                      {item.testName}
+      {/* ================= MOBILE / TABLET (TEST-GROUPED VIEW) ================= */}
+      <div className="lg:tw-hidden tw-p-3 tw-space-y-6">
+        {/* Global header (mobile) */}
+        <div className="tw-mb-2">
+          <div className="tw-text-[11px] tw-font-semibold tw-tracking-wide tw-text-gray-500 tw-uppercase">
+            Testing Checklist - CCS2
+          </div>
+          <div className="tw-text-sm tw-font-semibold tw-text-gray-800">
+            {title}
+          </div>
+        </div>
+
+        {[
+          { label: "1st TEST", testIndex: 0, short: "Test 1" },
+          { label: "2nd TEST", testIndex: 1, short: "Test 2" },
+          { label: "3rd TEST", testIndex: 2, short: "Test 3" },
+        ].map(({ label, testIndex, short }) => {
+          const roundNumber = testIndex + 1;
+          const isFirstRound = testIndex === 0;
+
+          return (
+            <section key={label} className="tw-space-y-3">
+              {/* Section header */}
+              <div className="tw-flex tw-items-center tw-gap-3 tw-mb-1">
+                <div className="tw-flex tw-items-center tw-gap-2">
+                  <div className="tw-w-7 tw-h-7 tw-rounded-full tw-border tw-border-gray-400 tw-flex tw-items-center tw-justify-center tw-text-xs tw-font-semibold tw-text-gray-800">
+                    {roundNumber}
+                  </div>
+                  <div className="tw-flex tw-flex-col tw-leading-tight">
+                    <span className="tw-text-xs tw-font-semibold tw-text-gray-800">
+                      {label}
+                    </span>
+                    <span className="tw-text-[11px] tw-text-gray-500">
+                      Round {roundNumber} of 3
                     </span>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Test Results Columns */}
-            <div className="tw-border-r tw-border-gray-800 tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-bg-white">
-              {/* 1st Test */}
-              <div className="tw-border-r md:tw-border-r tw-border-b md:tw-border-b-0 tw-border-gray-800 tw-grid tw-grid-cols-2">
-                <div className="tw-text-xs tw-font-medium tw-text-center md:tw-hidden tw-mb-2 tw-col-span-2">
-                  1st TEST
-                </div>
-                {/* H1 */}
-                <div className="tw-border-r tw-border-gray-800 tw-p-2 tw-flex tw-justify-center">
-                  <PassFailButtons
-                    value={(results.test1[index]?.h1 as "" | "✓" | "✗") || ""}
-                    onChange={(v) => onResultChange(0, index, "h1", v)}
-                  />
-                </div>
-                {/* H2 */}
-                <div className="tw-p-2 tw-flex tw-justify-center">
-                  <PassFailButtons
-                    value={(results.test1[index]?.h2 as "" | "✓" | "✗") || ""}
-                    onChange={(v) => onResultChange(0, index, "h2", v)}
-                  />
-                </div>
+                <span className="tw-flex-1 tw-h-px tw-bg-gray-200" />
               </div>
 
-              {/* 2nd Test */}
-              <div className="tw-border-r md:tw-border-r tw-border-b md:tw-border-b-0 tw-border-gray-800 tw-grid tw-grid-cols-2">
-                <div className="tw-text-xs tw-font-medium tw-text-center md:tw-hidden tw-mb-2 tw-col-span-2">
-                  2nd TEST
-                </div>
-                {/* H1 */}
-                <div className="tw-border-r tw-border-gray-800 tw-p-2 tw-flex tw-justify-center">
-                  <PassFailButtons
-                    value={(results.test2[index]?.h1 as "" | "✓" | "✗") || ""}
-                    onChange={(v) => onResultChange(1, index, "h1", v)}
-                  />
-                </div>
-                {/* H2 */}
-                <div className="tw-p-2 tw-flex tw-justify-center">
-                  <PassFailButtons
-                    value={(results.test2[index]?.h2 as "" | "✓" | "✗") || ""}
-                    onChange={(v) => onResultChange(1, index, "h2", v)}
-                  />
-                </div>
-              </div>
+              {testItems.map((item, index) => {
+                const currentResult =
+                  testIndex === 0
+                    ? results.test1[index]
+                    : testIndex === 1
+                    ? results.test2[index]
+                    : results.test3[index];
 
-              {/* 3rd Test */}
-              <div className="tw-grid tw-grid-cols-2">
-                <div className="tw-text-xs tw-font-medium tw-text-center md:tw-hidden tw-mb-2 tw-col-span-2">
-                  3rd TEST
-                </div>
-                {/* H1 */}
-                <div className="tw-border-r tw-border-gray-800 tw-p-2 tw-flex tw-justify-center">
-                  <PassFailButtons
-                    value={(results.test3[index]?.h1 as "" | "✓" | "✗") || ""}
-                    onChange={(v) => onResultChange(2, index, "h1", v)}
-                  />
-                </div>
-                {/* H2 */}
-                <div className="tw-p-2 tw-flex tw-justify-center">
-                  <PassFailButtons
-                    value={(results.test3[index]?.h2 as "" | "✓" | "✗") || ""}
-                    onChange={(v) => onResultChange(2, index, "h2", v)}
-                  />
-                </div>
-              </div>
-            </div>
+                return (
+                  <div
+                    key={`${label}-${index}`}
+                    className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-gray-50 tw-p-3 tw-space-y-3 tw-shadow-sm"
+                  >
+                    {/* Top: Category + Test name + Test badge */}
+                    <div className="tw-space-y-2">
+                      <div className="tw-flex tw-items-start tw-justify-between tw-gap-2">
+                        {/* ซ้าย: category + test name */}
+                        <div className="tw-flex-1 tw-space-y-1">
+                          <div className="tw-flex tw-flex-wrap tw-gap-1">
+                            {item.category && (
+                              <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-white tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-gray-700 tw-border tw-border-gray-200">
+                                {item.category}
+                              </span>
+                            )}
+                            {item.subCategory && (
+                              <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-white tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-gray-500 tw-border tw-border-gray-200">
+                                {item.subCategory}
+                              </span>
+                            )}
+                          </div>
 
-            {/* Remark Column */}
-            <div className="tw-p-2 tw-bg-white">
-              <div className="tw-text-xs tw-font-medium tw-text-center md:tw-hidden tw-mb-2">
-                Remark
-              </div>
-              <Input
-                value={results.remarks[index] || ""}
-                onChange={(e) => onRemarkChange(index, e.target.value)}
-                crossOrigin=""
-                className="!tw-border-gray-300"
-                containerProps={{ className: "!tw-min-w-0 !tw-h-10" }}
-                placeholder=""
-              />
-            </div>
-          </div>
-        );
-      })}
+                          <div className="tw-text-sm tw-font-medium tw-text-gray-800">
+                            {item.testName}
+                          </div>
+                        </div>
+
+                        {/* ขวา: Badge บอก Test รอบนี้ */}
+                        <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-uppercase tw-text-gray-700">
+                          {short}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Results section for H1 & H2 */}
+                    <div className="tw-space-y-2">
+                      <div className="tw-rounded-md tw-bg-white tw-border tw-border-gray-200 tw-p-2">
+                        <div className="tw-space-y-2">
+                          {/* H1 */}
+                          <div className="tw-flex tw-items-center tw-gap-2">
+                            <span className="tw-text-[11px] tw-font-medium tw-text-gray-600 tw-w-8">
+                              H1:
+                            </span>
+                            <PassFailButtons
+                              value={(currentResult?.h1 as "" | "✓" | "✗") || ""}
+                              onChange={(v) => onResultChange(testIndex, index, "h1", v)}
+                            />
+                          </div>
+                          {/* H2 */}
+                          <div className="tw-flex tw-items-center tw-gap-2">
+                            <span className="tw-text-[11px] tw-font-medium tw-text-gray-600 tw-w-8">
+                              H2:
+                            </span>
+                            <PassFailButtons
+                              value={(currentResult?.h2 as "" | "✓" | "✗") || ""}
+                              onChange={(v) => onResultChange(testIndex, index, "h2", v)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Remark: แสดงเฉพาะรอบแรก */}
+                    {isFirstRound && (
+                      <div className="tw-pt-1">
+                        <div className="tw-text-[11px] tw-font-medium tw-text-gray-600 tw-mb-1">
+                          Remark (used for Test 1–3)
+                        </div>
+                        <Input
+                          value={results.remarks[index] || ""}
+                          onChange={(e) => onRemarkChange(index, e.target.value)}
+                          crossOrigin=""
+                          className="!tw-border-gray-300 !tw-text-sm"
+                          containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
+                          placeholder="Remark for this item"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 };
+
+
 
 export const AC_TEST_DATA: DCTestItem[] = [
   // PE.Continuity protective Conductors of Charger

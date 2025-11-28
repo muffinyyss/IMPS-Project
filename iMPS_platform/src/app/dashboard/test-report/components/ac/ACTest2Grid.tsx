@@ -54,6 +54,38 @@ export type ChargerSafetyPayload = {
   };
 };
 
+export const PassFailButtons: React.FC<{
+  value: string;                 // "", "✓", "✗"
+  onChange: (v: string) => void; // set "", "✓", "✗"
+}> = ({ value, onChange }) => {
+  return (
+    <div className="tw-inline-flex tw-items-center tw-gap-1 tw-border tw-rounded tw-border-gray-300 tw-bg-white tw-p-0.5 tw-shrink-0">
+      <Button
+        size="sm"
+        color="green"
+        variant={value === "✓" ? "filled" : "text"}
+        className="tw-min-w-0 tw-h-6 tw-w-6 tw-p-0 tw-rounded tw-flex tw-items-center tw-justify-center tw-text-xs tw-shadow-none tw-border-0 tw-shrink-0"
+        onClick={() => onChange(value === "✓" ? "" : "✓")}
+        aria-label="Pass"
+        title="Pass"
+      >
+        ✓
+      </Button>
+      <Button
+        size="sm"
+        color="red"
+        variant={value === "✗" ? "filled" : "text"}
+        className="tw-min-w-0 tw-h-6 tw-w-6 tw-p-0 tw-rounded tw-flex tw-items-center tw-justify-center tw-text-xs tw-shadow-none tw-border-0 tw-shrink-0"
+        onClick={() => onChange(value === "✗" ? "" : "✗")}
+        aria-label="Fail"
+        title="Fail"
+      >
+        ✕
+      </Button>
+    </div>
+  );
+};
+
 const TestResultsGrid: React.FC<TestResultsGridProps> = ({
   title = "Test Results (Record as Pass/Fail) or Numeric Results",
   testItems,
@@ -63,233 +95,362 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
   onRemarkChange,
 }) => {
   return (
-    <div className="tw-border tw-border-gray-800 tw-bg-white">
-      {/* Header */}
-      <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-[2fr_3fr_1fr] tw-bg-gray-100">
-        <div className="tw-border-r tw-border-gray-800 tw-p-3 tw-text-center tw-font-semibold">
-          Testing Checklist
-          <div className="tw-text-xs tw-font-medium tw-mt-1">Type2</div>
-        </div>
-        <div className="tw-border-r tw-border-gray-800 tw-p-3 tw-text-center tw-font-semibold md:tw-block tw-hidden">
-          {title}
-        </div>
-        <div className="tw-p-3 tw-text-center tw-font-semibold md:tw-block tw-hidden">
-          Remark
-        </div>
-        {/* Mobile header */}
-        <div className="tw-border-t tw-border-gray-800 tw-p-3 tw-text-center tw-font-semibold md:tw-hidden">
-          {title}
-
-        </div>
-        <div className="tw-border-t tw-border-gray-800 tw-p-3 tw-text-center tw-font-semibold md:tw-hidden">
-          Remark
-        </div>
-      </div>
-
-      {/* Sub Header */}
-      <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-[2fr_3fr_1fr] tw-bg-gray-50">
-        <div className="tw-border-r tw-border-gray-800"></div>
-        <div className="tw-border-r tw-border-gray-800 tw-grid tw-grid-cols-1 md:tw-grid-cols-3">
-          {/* 1st TEST */}
-          <div className="tw-border-r md:tw-border-r tw-border-b md:tw-border-b-0 tw-border-gray-800">
-            <div className="tw-p-2 tw-text-center tw-font-medium tw-border-b tw-border-gray-800">
-              1st TEST
+    <div className="tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-shadow-sm">
+      {/* ================= DESKTOP / LARGE SCREEN (TABLE VIEW) ================= */}
+      <div className="tw-hidden lg:tw-block tw-overflow-x-auto">
+        <div className="tw-min-w-[960px]">
+          {/* Header */}
+          <div className="tw-grid tw-grid-cols-[2fr_3fr_1.2fr] tw-bg-gray-100">
+            <div className="tw-border-r tw-border-gray-300 tw-p-3 tw-text-center tw-font-semibold tw-text-gray-800">
+              <div>Testing Checklist</div>
+              <div className="tw-text-xs tw-font-medium tw-mt-1">Type 2</div>
             </div>
-            <div className="tw-grid tw-grid-cols-2">
-              <div className="tw-border-r tw-border-gray-800 tw-p-1 tw-text-center tw-text-xs">
-                H.1
-              </div>
-              <div className="tw-p-1 tw-text-center tw-text-xs">
-                Result
-              </div>
+            <div className="tw-border-r tw-border-gray-300 tw-p-3 tw-text-center tw-font-semibold tw-text-gray-800">
+              {title}
+            </div>
+            <div className="tw-p-3 tw-text-center tw-font-semibold tw-text-gray-800">
+              Remark
             </div>
           </div>
-          {/* 2nd TEST */}
-          <div className="tw-border-r md:tw-border-r tw-border-b md:tw-border-b-0 tw-border-gray-800">
-            <div className="tw-p-2 tw-text-center tw-font-medium tw-border-b tw-border-gray-800">
-              2nd TEST
-            </div>
-            <div className="tw-grid tw-grid-cols-2">
-              <div className="tw-border-r tw-border-gray-800 tw-p-1 tw-text-center tw-text-xs">
-                H.1
-              </div>
-              <div className="tw-p-1 tw-text-center tw-text-xs">
-                Result
-              </div>
-            </div>
-          </div>
-          {/* 3rd TEST */}
-          <div>
-            <div className="tw-p-2 tw-text-center tw-font-medium tw-border-b tw-border-gray-800">
-              3rd TEST
-            </div>
-            <div className="tw-grid tw-grid-cols-2">
-              <div className="tw-border-r tw-border-gray-800 tw-p-1 tw-text-center tw-text-xs">
-                H.1
-              </div>
-              <div className="tw-p-1 tw-text-center tw-text-xs">
-                Result
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="md:tw-block tw-hidden"></div>
-      </div>
 
-      {/* Test Items */}
-      {testItems.map((item, index) => {
-        const isPEContinuity = item.subCategory?.includes("PE.Continuity");
-        const isFirstPEItem = index === 0;
-        // const isRDCItem = item.testName.includes("RDC-DD") || item.testName.includes("RDC-DD");
-
-        const isRDCItem =
-          /^RCD type\s*(A|F|B)$/i.test(item.testName) || /^RD[CD][-\s]?DD$/i.test(item.testName);
-
-        return (
-          <div key={index} className={`tw-grid tw-grid-cols-1 md:tw-grid-cols-[2fr_3fr_1fr] tw-border-t tw-border-gray-800 tw-min-h-[70px]`}>
-            {/* Test Name Column */}
-            <div className="tw-border-r tw-border-gray-800 tw-relative tw-bg-white">
-              {/* Charger Safety - show from first item to last item */}
-              {isFirstPEItem && (
-                <div className="tw-absolute tw-left-0 tw-top-0 tw-w-16 tw-h-[770px] tw-bg-gray-50 tw-border-r tw-border-gray-300 tw-items-center tw-justify-center tw-z-10 tw-hidden md:tw-flex">
-                  <div className="tw-transform tw--rotate-90 tw-text-sm tw-font-bold tw-text-gray-800 tw-whitespace-nowrap">
-                    Charger Safety
+          {/* Sub Header */}
+          <div className="tw-grid tw-grid-cols-[2fr_3fr_1.2fr] tw-bg-gray-50">
+            <div className="tw-border-r tw-border-gray-300" />
+            <div className="tw-border-r tw-border-gray-300 tw-grid tw-grid-cols-3">
+              {/* 1st TEST */}
+              <div className="tw-border-r tw-border-gray-300">
+                <div className="tw-p-2 tw-text-center tw-text-xs tw-font-medium tw-tracking-wide tw-text-gray-700 tw-border-b tw-border-gray-300">
+                  1st TEST
+                </div>
+                <div className="tw-grid tw-grid-cols-2">
+                  <div className="tw-border-r tw-border-gray-300 tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">
+                    H.1
+                  </div>
+                  <div className="tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">
+                    Result
                   </div>
                 </div>
-              )}
+              </div>
+              {/* 2nd TEST */}
+              <div className="tw-border-r tw-border-gray-300">
+                <div className="tw-p-2 tw-text-center tw-text-xs tw-font-medium tw-tracking-wide tw-text-gray-700 tw-border-b tw-border-gray-300">
+                  2nd TEST
+                </div>
+                <div className="tw-grid tw-grid-cols-2">
+                  <div className="tw-border-r tw-border-gray-300 tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">
+                    H.1
+                  </div>
+                  <div className="tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">
+                    Result
+                  </div>
+                </div>
+              </div>
+              {/* 3rd TEST */}
+              <div>
+                <div className="tw-p-2 tw-text-center tw-text-xs tw-font-medium tw-tracking-wide tw-text-gray-700 tw-border-b tw-border-gray-300">
+                  3rd TEST
+                </div>
+                <div className="tw-grid tw-grid-cols-2">
+                  <div className="tw-border-r tw-border-gray-300 tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">
+                    H.1
+                  </div>
+                  <div className="tw-p-1 tw-text-center tw-text-xs tw-text-gray-600">
+                    Result
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div />
+          </div>
 
-              {/* Test details */}
-              <div className={`tw-p-3 tw-flex tw-items-center tw-h-full ${isPEContinuity ? 'md:tw-ml-16 tw-ml-0' : 'md:tw-ml-16 tw-ml-0'
-                }`}>
-                <div className="tw-w-full">
-                  {/* Special layout for RCD items with input field between name and unit */}
-                  {isRDCItem ? (
-                    <div className="tw-flex tw-items-center tw-justify-center tw-gap-3 tw-h-full tw-text-center">
-                      <span className="tw-text-sm tw-text-gray-800">{item.testName}</span>
-                      <Input
-                        value={results.type2Values[index] || ""}
-                        onChange={(e) => onType2Change(index, e.target.value)}
-                        crossOrigin=""
-                        className="!tw-text-center !tw-border-gray-300"
-                        containerProps={{ className: "!tw-min-w-0 !tw-w-20 !tw-h-8" }}
-                        placeholder=""
-                      />
-                      <span className="tw-text-sm tw-font-medium tw-text-gray-600 tw-border tw-border-gray-300 tw-px-2 tw-py-1 tw-rounded">
-                        mA
-                      </span>
-                    </div>
-                  ) : (
-                    /* Normal layout for non-RCD items - only show test name */
-                    <div className="tw-flex tw-items-center tw-justify-center tw-h-full">
-                      <span className="tw-text-sm tw-text-gray-800">{item.testName}</span>
+          {/* Rows */}
+          {testItems.map((item, index) => {
+            const isPEContinuity = item.subCategory?.includes("PE.Continuity");
+            const isFirstPEItem = index === 0;
+            const isRDCItem =
+              /^RCD type\s*(A|F|B)$/i.test(item.testName) ||
+              /^RD[CD][-\s]?DD$/i.test(item.testName);
+
+            return (
+              <div
+                key={index}
+                className="tw-grid tw-grid-cols-[2fr_3fr_1.2fr] tw-border-t tw-border-gray-200 tw-min-h-[70px]"
+              >
+                {/* Test Name Column */}
+                <div className="tw-border-r tw-border-gray-200 tw-relative tw-bg-white">
+                  {/* Charger Safety band */}
+                  {isFirstPEItem && (
+                    <div className="tw-absolute tw-left-0 tw-top-0 tw-w-16 tw-h-[770px] tw-bg-gray-50 tw-border-r tw-border-b tw-border-gray-200 tw-items-center tw-justify-center tw-z-10 tw-pointer-events-none tw-flex">
+                      <div className="tw-transform tw--rotate-90 tw-text-xs tw-font-bold tw-text-gray-800 tw-whitespace-nowrap">
+                        Charger Safety
+                      </div>
                     </div>
                   )}
-                </div>
-              </div>
-            </div>
 
-            {/* Test Results Columns */}
-            <div className="tw-border-r tw-border-gray-800 tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-bg-white">
-              {/* 1st Test */}
-              <div className="tw-border-r md:tw-border-r tw-border-b md:tw-border-b-0 tw-border-gray-800 tw-grid tw-grid-cols-2">
-                <div className="tw-text-xs tw-font-medium tw-text-center md:tw-hidden tw-mb-2 tw-col-span-2">1st TEST</div>
-                {/* H.1 */}
-                <div className="tw-border-r tw-border-gray-800 tw-p-2">
+                  {/* Test details */}
+                  <div className="tw-p-3 tw-flex tw-items-center tw-h-full tw-ml-16">
+                    <div className="tw-w-full">
+                      {isRDCItem ? (
+                        // RDC/RCD: name + input + unit
+                        <div className="tw-flex tw-items-center tw-justify-center tw-gap-3 tw-h-full tw-text-center">
+                          <span className="tw-text-sm tw-text-gray-800">{item.testName}</span>
+                          <Input
+                            value={results.type2Values[index] || ""}
+                            onChange={(e) => onType2Change(index, e.target.value)}
+                            crossOrigin=""
+                            className="!tw-text-center !tw-border-gray-300 !tw-text-sm"
+                            containerProps={{ className: "!tw-min-w-0 !tw-w-20 !tw-h-8" }}
+                          />
+                          <span className="tw-text-xs tw-font-medium tw-text-gray-600 tw-border tw-border-gray-300 tw-px-2 tw-py-1 tw-rounded">
+                            mA
+                          </span>
+                        </div>
+                      ) : (
+                        // Normal: just name
+                        <div className="tw-flex tw-items-center tw-justify-center tw-h-full">
+                          <span className="tw-text-sm tw-text-gray-800">{item.testName}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Test Results Columns */}
+                <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-3 tw-bg-white">
+                  {/* 1st Test */}
+                  <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-2">
+                    <div className="tw-border-r tw-border-gray-200 tw-p-2">
+                      <Input
+                        value={results.test1[index]?.h1 || ""}
+                        onChange={(e) => onResultChange(0, index, "h1", e.target.value)}
+                        crossOrigin=""
+                        className="!tw-text-center !tw-border-gray-300"
+                        containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
+                      />
+                    </div>
+                    <div className="tw-p-2 tw-flex tw-justify-center tw-items-center">
+                      <PassFailButtons
+                        value={results.test1[index]?.result || ""}
+                        onChange={(v) => onResultChange(0, index, "result", v)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2nd Test */}
+                  <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-2">
+                    <div className="tw-border-r tw-border-gray-200 tw-p-2">
+                      <Input
+                        value={results.test2[index]?.h1 || ""}
+                        onChange={(e) => onResultChange(1, index, "h1", e.target.value)}
+                        crossOrigin=""
+                        className="!tw-text-center !tw-border-gray-300"
+                        containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
+                      />
+                    </div>
+                    <div className="tw-p-2 tw-flex tw-justify-center tw-items-center">
+                      <PassFailButtons
+                        value={results.test2[index]?.result || ""}
+                        onChange={(v) => onResultChange(1, index, "result", v)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3rd Test */}
+                  <div className="tw-grid tw-grid-cols-2">
+                    <div className="tw-border-r tw-border-gray-200 tw-p-2">
+                      <Input
+                        value={results.test3[index]?.h1 || ""}
+                        onChange={(e) => onResultChange(2, index, "h1", e.target.value)}
+                        crossOrigin=""
+                        className="!tw-text-center !tw-border-gray-300"
+                        containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
+                      />
+                    </div>
+                    <div className="tw-p-2 tw-flex tw-justify-center tw-items-center">
+                      <PassFailButtons
+                        value={results.test3[index]?.result || ""}
+                        onChange={(v) => onResultChange(2, index, "result", v)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Remark Column */}
+                <div className="tw-p-2 tw-bg-white">
                   <Input
-                    value={results.test1[index]?.h1 || ""}
-                    onChange={(e) => onResultChange(0, index, 'h1', e.target.value)}
+                    value={results.remarks[index] || ""}
+                    onChange={(e) => onRemarkChange(index, e.target.value)}
                     crossOrigin=""
-                    className="!tw-text-center !tw-border-gray-300"
+                    className="!tw-border-gray-300"
                     containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-                    placeholder=""
                   />
                 </div>
-                {/* Result */}
-                <div className="tw-p-2">
-                  <Button
-                    size="sm"
-                    color="green"
-                    variant={results.test1[index]?.result === "✓" ? "filled" : "outlined"}
-                    className="tw-text-xs tw-px-1 tw-py-1 tw-min-w-0 tw-flex-1"
-                    onClick={() => onResultChange(0, index, 'result', results.test1[index]?.result === "✓" ? "" : "✓")}
-                  >
-                    ✓
-                  </Button>
-                </div>
               </div>
+            );
+          })}
+        </div>
+      </div>
 
-              {/* 2nd Test */}
-              <div className="tw-border-r md:tw-border-r tw-border-b md:tw-border-b-0 tw-border-gray-800 tw-grid tw-grid-cols-2">
-                <div className="tw-text-xs tw-font-medium tw-text-center md:tw-hidden tw-mb-2 tw-col-span-2">2nd TEST</div>
-                {/* H.1 */}
-                <div className="tw-border-r tw-border-gray-800 tw-p-2">
-                  <Input
-                    value={results.test2[index]?.h1 || ""}
-                    onChange={(e) => onResultChange(1, index, 'h1', e.target.value)}
-                    crossOrigin=""
-                    className="!tw-text-center !tw-border-gray-300"
-                    containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-                    placeholder=""
-                  />
-                </div>
-                {/* Result */}
-                <div className="tw-p-2">
-                  <Button
-                    size="sm"
-                    color="green"
-                    variant={results.test2[index]?.result === "✓" ? "filled" : "outlined"}
-                    className="tw-text-xs tw-px-1 tw-py-1 tw-min-w-0 tw-flex-1"
-                    onClick={() => onResultChange(1, index, 'result', results.test2[index]?.result === "✓" ? "" : "✓")}
-                  >
-                    ✓
-                  </Button>
-                </div>
-              </div>
-
-              {/* 3rd Test */}
-              <div className="tw-grid tw-grid-cols-2">
-                <div className="tw-text-xs tw-font-medium tw-text-center md:tw-hidden tw-mb-2 tw-col-span-2">3rd TEST</div>
-                {/* H.1 */}
-                <div className="tw-border-r tw-border-gray-800 tw-p-2">
-                  <Input
-                    value={results.test3[index]?.h1 || ""}
-                    onChange={(e) => onResultChange(2, index, 'h1', e.target.value)}
-                    crossOrigin=""
-                    className="!tw-text-center !tw-border-gray-300"
-                    containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-                    placeholder=""
-                  />
-                </div>
-                {/* Result */}
-                <div className="tw-p-2">
-                  <Button
-                    size="sm"
-                    color="green"
-                    variant={results.test3[index]?.result === "✓" ? "filled" : "outlined"}
-                    className="tw-text-xs tw-px-1 tw-py-1 tw-min-w-0 tw-flex-1"
-                    onClick={() => onResultChange(2, index, 'result', results.test3[index]?.result === "✓" ? "" : "✓")}
-                  >
-                    ✓
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Remark Column */}
-            <div className="tw-p-2 tw-bg-white">
-              <div className="tw-text-xs tw-font-medium tw-text-center md:tw-hidden tw-mb-2">Remark</div>
-              <Input
-                value={results.remarks[index] || ""}
-                onChange={(e) => onRemarkChange(index, e.target.value)}
-                crossOrigin=""
-                className="!tw-border-gray-300"
-                containerProps={{ className: "!tw-min-w-0 !tw-h-10" }}
-                placeholder=""
-              />
-            </div>
+      {/* ================= MOBILE / TABLET (TEST-GROUPED VIEW) ================= */}
+      <div className="lg:tw-hidden tw-p-3 tw-space-y-6">
+        {/* Global header */}
+        <div className="tw-mb-2">
+          <div className="tw-text-[11px] tw-font-semibold tw-tracking-wide tw-text-gray-500 tw-uppercase">
+            Testing Checklist - Type 2
           </div>
-        );
-      })}
+          <div className="tw-text-sm tw-font-semibold tw-text-gray-800">{title}</div>
+        </div>
+
+        {[
+          { label: "1st TEST", testIndex: 0, short: "Test 1" },
+          { label: "2nd TEST", testIndex: 1, short: "Test 2" },
+          { label: "3rd TEST", testIndex: 2, short: "Test 3" },
+        ].map(({ label, testIndex, short }) => {
+          const roundNumber = testIndex + 1;
+          const isFirstRound = testIndex === 0;
+
+          return (
+            <section key={label} className="tw-space-y-3">
+              {/* Section header */}
+              <div className="tw-flex tw-items-center tw-gap-3 tw-mb-1">
+                <div className="tw-flex tw-items-center tw-gap-2">
+                  <div className="tw-w-7 tw-h-7 tw-rounded-full tw-border tw-border-gray-400 tw-flex tw-items-center tw-justify-center tw-text-xs tw-font-semibold tw-text-gray-800">
+                    {roundNumber}
+                  </div>
+                  <div className="tw-flex tw-flex-col tw-leading-tight">
+                    <span className="tw-text-xs tw-font-semibold tw-text-gray-800">
+                      {label}
+                    </span>
+                    <span className="tw-text-[11px] tw-text-gray-500">
+                      Round {roundNumber} of 3
+                    </span>
+                  </div>
+                </div>
+                <span className="tw-flex-1 tw-h-px tw-bg-gray-200" />
+              </div>
+
+              {testItems.map((item, index) => {
+                const isRDCItem =
+                  /^RCD type\s*(A|F|B)$/i.test(item.testName) ||
+                  /^RD[CD][-\s]?DD$/i.test(item.testName);
+
+                const currentResult =
+                  testIndex === 0
+                    ? results.test1[index]
+                    : testIndex === 1
+                    ? results.test2[index]
+                    : results.test3[index];
+
+                return (
+                  <div
+                    key={`${label}-${index}`}
+                    className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-gray-50 tw-p-3 tw-space-y-3 tw-shadow-sm"
+                  >
+                    {/* Top: Category + Test name + Test badge */}
+                    <div className="tw-space-y-2">
+                      <div className="tw-flex tw-items-start tw-justify-between tw-gap-2">
+                        {/* Left: category + test name */}
+                        <div className="tw-flex-1 tw-space-y-1">
+                          <div className="tw-flex tw-flex-wrap tw-gap-1">
+                            {item.category && (
+                              <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-white tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-gray-700 tw-border tw-border-gray-200">
+                                {item.category}
+                              </span>
+                            )}
+                            {item.subCategory && (
+                              <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-white tw-px-2 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-gray-500 tw-border tw-border-gray-200">
+                                {item.subCategory}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="tw-text-sm tw-font-medium tw-text-gray-800">
+                            {item.testName}
+                          </div>
+                        </div>
+
+                        {/* Right: Test badge */}
+                        <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-white tw-border tw-border-gray-300 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-semibold tw-uppercase tw-text-gray-700">
+                          {short}
+                        </span>
+                      </div>
+
+                      {/* RDC/RCD control - แสดงเฉพาะรอบแรก */}
+                      {isRDCItem && isFirstRound && (
+                        <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-pt-1">
+                          <span className="tw-text-[11px] tw-font-medium tw-text-gray-700">
+                            RCD/RDC value
+                          </span>
+                          <Input
+                            value={results.type2Values[index] || ""}
+                            onChange={(e) => onType2Change(index, e.target.value)}
+                            crossOrigin=""
+                            className="!tw-text-center !tw-border-gray-300 !tw-text-sm"
+                            containerProps={{ className: "!tw-min-w-0 !tw-w-24 !tw-h-8" }}
+                            placeholder="mA"
+                          />
+                          <span className="tw-text-[11px] tw-font-medium tw-text-gray-600 tw-border tw-border-gray-300 tw-px-2 tw-py-0.5 tw-rounded">
+                            mA
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Results section for H.1 & Result */}
+                    <div className="tw-space-y-2">
+                      <div className="tw-rounded-md tw-bg-white tw-border tw-border-gray-200 tw-p-2">
+                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-stretch sm:tw-items-center tw-gap-2">
+                          <div className="tw-flex-1">
+                            <div className="tw-text-[11px] tw-font-medium tw-text-gray-600 tw-mb-1">
+                              H.1 Value
+                            </div>
+                            <Input
+                              value={currentResult?.h1 || ""}
+                              onChange={(e) =>
+                                onResultChange(testIndex, index, "h1", e.target.value)
+                              }
+                              crossOrigin=""
+                              className="!tw-text-center !tw-border-gray-300 !tw-text-xs"
+                              containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
+                              placeholder={`${short} H.1 value`}
+                            />
+                          </div>
+                          <div className="tw-flex tw-flex-col tw-items-start sm:tw-items-center">
+                            <div className="tw-text-[11px] tw-font-medium tw-text-gray-600 tw-mb-1">
+                              Result
+                            </div>
+                            <PassFailButtons
+                              value={currentResult?.result || ""}
+                              onChange={(v) => onResultChange(testIndex, index, "result", v)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Remark - แสดงเฉพาะรอบแรก */}
+                    {isFirstRound && (
+                      <div className="tw-pt-1">
+                        <div className="tw-text-[11px] tw-font-medium tw-text-gray-600 tw-mb-1">
+                          Remark (used for Test 1–3)
+                        </div>
+                        <Input
+                          value={results.remarks[index] || ""}
+                          onChange={(e) => onRemarkChange(index, e.target.value)}
+                          crossOrigin=""
+                          className="!tw-border-gray-300 !tw-text-sm"
+                          containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
+                          placeholder="Remark for this item"
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 };

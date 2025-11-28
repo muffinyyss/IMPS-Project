@@ -551,8 +551,6 @@ export default function DCForm() {
       >
         <div className="tw-mx-auto tw-w-full tw-max-w-[1000px] lg:tw-max-w-[1100px] tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
 
-
-          {/* <div className="tw-mx-auto tw-max-w-4xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0"> */}
           {/* HEADER */}
           <CMFormHeader headerLabel="DC Report" />
 
@@ -604,17 +602,14 @@ export default function DCForm() {
                 onChange={(e) => setTestRemark(e.target.value)}
                 className="!tw-border-gray-400"
                 containerProps={{ className: "!tw-min-w-0" }}
-
               />
             </div>
-
             <div className="tw-mb-3">
               <ACPhotoSection initialItems={photoItems}
                 onItemsChange={setPhotoItems}
                 title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)"
               />
             </div>
-
             <div className="tw-mb-3">
               <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
                 Remark
@@ -626,17 +621,13 @@ export default function DCForm() {
                 onChange={(e) => setImgRemark(e.target.value)}
                 className="!tw-border-gray-400"
                 containerProps={{ className: "!tw-min-w-0" }}
-              // placeholder=""
               />
             </div>
-
             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
-              {/* Symbol (legend ขนาดเล็ก) */}
               <div>
                 <div className="tw-flex tw-items-center tw-gap-3 tw-mb-2">
                   <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Symbol</span>
                   <span className="tw-font-semibold tw-text-base">:</span>
-
                   <div className="tw-flex tw-items-center tw-flex-wrap tw-gap-8">
                     {/* ☑ PASS */}
                     <div className="tw-flex tw-items-center tw-gap-2">
@@ -648,7 +639,6 @@ export default function DCForm() {
                       </span>
                       <span className="tw-text-sm tw-text-gray-800 tw-whitespace-nowrap">PASS</span>
                     </div>
-
                     {/* ☒ Not PASS (บรรทัดเดียว) */}
                     <div className="tw-flex tw-items-center tw-gap-2">
                       <span
@@ -703,42 +693,6 @@ export default function DCForm() {
                 </button>
               </div>
 
-
-
-
-              {/* Phase Sequence Section */}
-              {/* <div>
-                <div className="tw-mb-3">
-                  <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Phase Sequence</span>
-                </div>
-                <div className="tw-flex tw-gap-3"> */}
-              {/* L1-L2-L3 Button */}
-              {/* <button
-                    type="button"
-                    onClick={() => handlePhaseSequenceChange('L1L2L3')}
-                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-transition-colors tw-border
-                      ${sigPhase === 'L1L2L3'
-                        ? 'tw-bg-blue-600 tw-text-white tw-border-blue-600'
-                        : 'tw-bg-white tw-text-blue-600 tw-border-blue-600 hover:tw-bg-blue-50'
-                      }`}
-                  >
-                    L1-L2-L3
-                  </button> */}
-
-              {/* L3-L2-L1 Button */}
-              {/* <button
-                    type="button"
-                    onClick={() => handlePhaseSequenceChange('L3L2L1')}
-                    className={`tw-px-6 tw-py-2 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors
-                      ${sigPhase === 'L3L2L1'
-                        ? 'tw-bg-orange-600 tw-text-white tw-border-orange-600'
-                        : 'tw-bg-white tw-text-orange-600 tw-border-orange-600 hover:tw-bg-orange-50'
-                      }`}
-                  >
-                    L3-L2-L1
-                  </button> */}
-              {/* </div> */}
-              {/* </div> */}
             </div>
 
             {/* Signature Section */}
