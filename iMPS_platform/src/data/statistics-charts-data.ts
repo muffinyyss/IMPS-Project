@@ -6,7 +6,7 @@ export type HistoryRow = {
   timestamp: string; // ISO
   VL1N?: number; VL2N?: number; VL3N?: number;
   I1?: number; I2?: number; I3?: number;
-  PL1N?: number; PL2N?: number; PL3N?: number;
+  PL1N?: number | string; PL2N?: number | string; PL3N?: number | string;
 };
 
 type Point = { x: number; y: number | null };
@@ -148,6 +148,15 @@ export function buildChartsFromHistory(
 
     return x;
   };
+
+  const num0 = (v: unknown, digits = 2): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+
+    const factor = 10 ** digits;
+    return Math.round((n + Number.EPSILON) * factor) / factor;
+  };
+
 
   // ✅ แปลงและกรอง history
   const mappedHistory = history
@@ -302,7 +311,8 @@ export function buildChartsFromHistory(
   return [
     {
       color: "white",
-      title: "Voltage Line to Neutral (V)",
+      // title: "Voltage Line to Neutral (V)",
+      title: "Voltage (V)",
       description: "Real-time voltage monitoring",
       chart: voltageChart,
       metrics: [
@@ -313,7 +323,8 @@ export function buildChartsFromHistory(
     },
     {
       color: "white",
-      title: "Current per Phase (A)",
+      // title: "Current per Phase (A)",
+      title: "Current (A)",
       description: "Real-time current monitoring",
       chart: currentChart,
       metrics: [
@@ -324,13 +335,14 @@ export function buildChartsFromHistory(
     },
     {
       color: "white",
-      title: "Active Power per Phase (W)",
+      // title: "Active Power per Phase (W)",
+      title: "Power Active (W)",
       description: "Real-time power monitoring",
       chart: powerChart,
       metrics: [
-        { label: "Power L1", value: `${Math.round(MDB.PL1N)} W` },
-        { label: "Power L2", value: `${Math.round(MDB.PL2N)} W` },
-        { label: "Power L3", value: `${Math.round(MDB.PL3N)} W` }
+        { label: "Power L1", value: `${(num0(MDB.PL1N))} W` },
+        { label: "Power L2", value: `${(num0(MDB.PL2N))} W` },
+        { label: "Power L3", value: `${(num0(MDB.PL3N))} W` }
       ]
     },
   ];

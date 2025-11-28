@@ -99,6 +99,31 @@ const num0 = (v: any) => {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
 };
+
+const digit1 = (v: any): number => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+
+  // ปัดเป็นทศนิยม 2 ตำแหน่ง
+  return Math.round((n + Number.EPSILON) * 10) / 10;
+};
+
+const digit2 = (v: any): number => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+
+  // ปัดเป็นทศนิยม 2 ตำแหน่ง
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+};
+
+const digit3 = (v: any): number => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+
+  // ปัดเป็นทศนิยม 3 ตำแหน่ง
+  return Math.round((n + Number.EPSILON) * 1000) / 1000;
+};
+
 const intDiv = (v: any, d: number) => {
     const n = Number(v);
     return Number.isFinite(n) && d ? (n / d).toFixed(2) : "0.00";
@@ -425,36 +450,37 @@ export default function MDBPage() {
         main_breaker: station?.breaker_main,
         breaker_charger: station?.breaker_charger,
 
-        I1: num0(station?.I1),
-        I2: num0(station?.I2),
-        I3: num0(station?.I3),
-        totalCurrentA: num0(station?.I1 + station?.I2 + station?.I3),
+        I1: digit2(station?.I1),
+        I2: digit2(station?.I2),
+        I3: digit2(station?.I3),
+        totalCurrentA: digit2(station?.I1 + station?.I2 + station?.I3),
 
         powerKW: intDiv(station?.PL123N, 1000),
         totalEnergyKWh: intDiv(station?.EL123, 1000),
 
         frequencyHz: num0(station?.frequency),
-        pfL1: num0(station?.pfL1),
-        pfL2: num0(station?.pfL2),
-        pfL3: num0(station?.pfL3),
+        pfL1: digit3(station?.pfL1),
+        pfL2: digit3(station?.pfL2),
+        pfL3: digit3(station?.pfL3),
 
-        PL1N: num0(station?.PL1N),
-        PL2N: num0(station?.PL2N),
-        PL3N: num0(station?.PL3N),
-        PL123N: num0(station?.PL123N),
+        PL1N: intDiv(station?.PL1N, 1000),
+        PL2N: intDiv(station?.PL2N, 1000),
+        PL3N: intDiv(station?.PL3N, 1000),
+        PL123N: intDiv(station?.PL123N, 1000),
+        // PL123N: num0Str(station?.PL123N),
 
         EL1: intDiv(station?.EL1, 1000),
         EL2: intDiv(station?.EL2, 1000),
         EL3: intDiv(station?.EL3, 1000),
         EL123: intDiv(station?.EL123, 1000),
 
-        VL1N: int0(station?.VL1N),
-        VL2N: int0(station?.VL2N),
-        VL3N: int0(station?.VL3N),
+        VL1N: digit1(station?.VL1N),
+        VL2N: digit1(station?.VL2N),
+        VL3N: digit1(station?.VL3N),
 
-        VL1L2: int0(station?.VL1L2),
-        VL2L3: int0(station?.VL2L3),
-        VL1L3: int0(station?.VL1L3),
+        VL1L2: digit1(station?.VL1L2),
+        VL2L3: digit1(station?.VL2L3),
+        VL1L3: digit1(station?.VL1L3),
 
         thdvL1: num0(station?.THDU_L1N),
         thdvL2: num0(station?.THDU_L2N),
@@ -464,9 +490,9 @@ export default function MDBPage() {
         // I2 : num0(station?.I2),
         // I3 : num0(station?.I3),
 
-        thdiL1: num0(station?.THDI_L1),
-        thdiL2: num0(station?.THDI_L2),
-        thdiL3: num0(station?.THDI_L3),
+        thdiL1: digit3(station?.THDI_L1),
+        thdiL2: digit3(station?.THDI_L2),
+        thdiL3: digit3(station?.THDI_L3),
 
         timeStamp : (station?.timestamp),
 
