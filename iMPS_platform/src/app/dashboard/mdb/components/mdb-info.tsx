@@ -28,10 +28,10 @@ export type MDBType = {
     pfL1: number ;
     pfL2: number ;
     pfL3: number ;
-    PL1N: number ;
-    PL2N: number ;
-    PL3N: number ;
-    PL123N: number ;
+    PL1N: number | string;
+    PL2N: number | string;
+    PL3N: number | string;
+    PL123N: number | string ;
     EL1: number | string ;
     EL2: number | string ;
     EL3: number | string ;
@@ -194,6 +194,68 @@ export default function MDBInfo({
 
             {/* Quality Section */}
             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
+
+                 {/* v */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        Voltage (%)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="VL1N" value={VL1N} />
+                        <Row label="VL1N" value={VL2N} />
+                        <Row label="VL1N" value={VL3N} />
+                    </div>
+                </div>
+
+                {/* I */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        Current (A)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="I1" value={I1} />
+                        <Row label="I2" value={I2} />
+                        <Row label="I3" value={I3} />
+                    </div>
+                </div>
+
+                {/* VL */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        Voltage Phase (V)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="VL1L2" value={VL1L2} />
+                        <Row label="VL2L3" value={VL2L3} />
+                        <Row label="VL1L3" value={VL1L3} />
+                    </div>
+                </div>
+
+                {/* PLN */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        Power Active (kW)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="PL1N" value={PL1N} />
+                        <Row label="PL2N" value={PL2N} />
+                        <Row label="PL3N" value={PL3N} />
+                        <Row label="PL123N" value={PL123N} />
+                    </div>
+                </div>
+
+                 {/* THDI */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        THDI (%)
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="L1" value={thdiL1} />
+                        <Row label="L2" value={thdiL2} />
+                        <Row label="L3" value={thdiL3} />
+                    </div>
+                </div>
+
                 {/* PF */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
@@ -206,23 +268,10 @@ export default function MDBInfo({
                     </div>
                 </div>
 
-                {/* PLN */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        PLN (W)
-                    </Typography>
-                    <div className="tw-space-y-1">
-                        <Row label="PL1N" value={PL1N} />
-                        <Row label="PL2N" value={PL2N} />
-                        <Row label="PL3N" value={PL3N} />
-                        <Row label="PL123N" value={PL123N} />
-                    </div>
-                </div>
-
                 {/* EL */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        EL (kWh)
+                        Energy Total (kWh)
                     </Typography>
                     <div className="tw-space-y-1">
                         <Row label="EL1" value={EL1} />
@@ -233,53 +282,13 @@ export default function MDBInfo({
                     </div>
                 </div>
 
-                {/* VL */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        Line-to-Line Voltage (V)
-                    </Typography>
-                    <div className="tw-space-y-1">
-                        <Row label="VL1L2" value={VL1L2} />
-                        <Row label="VL2L3" value={VL2L3} />
-                        <Row label="VL1L3" value={VL1L3} />
-                    </div>
-                </div>
+                
 
-                {/* THDV */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        Current per Phase (A)
-                    </Typography>
-                    <div className="tw-space-y-1">
-                        <Row label="I1" value={I1} />
-                        <Row label="I2" value={I2} />
-                        <Row label="I3" value={I3} />
-                    </div>
-                </div>
+                
 
-                {/* THDV */}
-                {/* <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        THDV (%)
-                    </Typography>
-                    <div className="tw-space-y-1">
-                        <Row label="L1" value={thdvL1} />
-                        <Row label="L2" value={thdvL2} />
-                        <Row label="L3" value={thdvL3} />
-                    </div>
-                </div> */}
+               
 
-                {/* THDI */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
-                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        THDI (%)
-                    </Typography>
-                    <div className="tw-space-y-1">
-                        <Row label="L1" value={thdiL1} />
-                        <Row label="L2" value={thdiL2} />
-                        <Row label="L3" value={thdiL3} />
-                    </div>
-                </div>
+                
             </div>
         </div>
     );
