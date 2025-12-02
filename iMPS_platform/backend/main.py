@@ -99,6 +99,37 @@ outputModule5 = client["OutputModule5"]
 outputModule6 = client["OutputModule6"]
 outputModule7 = client["OutputModule7"]
 
+inputModule1 = client["module1MdbDustPrediction"]
+inputModule2 = client["module2ChargerDustPrediction"]
+inputModule3 = client["module3ChargerOfflineAnalysis"]
+inputModule4 = client["module4AbnormalPowerPrediction"]
+inputModule5 = client["module5NetworkProblemPrediction"]
+inputModule6 = client["module6DcChargerRulPrediction"]
+inputModule7 = client["module7ChargerPowerIssue"]
+
+# ปรับให้รองรับหลายโมดูล
+MODULES = ["module1", "module2", "module3", "module4", "module5", "module6", "module7"]
+
+OUTPUT_DBS = {
+    "module1": outputModule1,
+    "module2": outputModule2,
+    "module3": outputModule3,
+    "module4": outputModule4,
+    "module5": outputModule5,
+    "module6": outputModule6,
+    "module7": outputModule7,
+}
+
+INPUT_DBS = {
+    "module1": inputModule1,
+    "module2": inputModule2,
+    "module3": inputModule3,
+    "module4": inputModule4,
+    "module5": inputModule5,
+    "module6": inputModule6,
+    "module7": inputModule7,
+}
+
 
 imps_db_async = client["iMPS"]
 stations_coll_async = imps_db_async["stations"]
@@ -106,8 +137,6 @@ users_coll_async = imps_db_async["users"]
 email_log_coll = imps_db_async["errorEmailLog"]
 
 MDB_collection = MDB_DB["Klongluang3"]
-
- 
 
 BROKER_HOST = "212.80.215.42"
 BROKER_PORT = 1883
@@ -7181,6 +7210,64 @@ async def get_module6_progress(
     resp.headers["Cache-Control"] = "private, max-age=60, stale-while-revalidate=300"
     return resp
 
+@app.get("/modules/detail")
+async def get_module_detail(
+    request: Request,
+    module_id: str = Query(..., description="เช่น module1..module7"),
+    station_id: str = Query(..., description="ชื่อสถานี เช่น Klongluang3"),
+    current: UserClaims = Depends(get_current_user),
+):
+    if module_id not in MODULES:
+        raise HTTPException(status_code=400, detail="Unknown module_id")
+
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+
+    input_doc = None
+    output_doc = None
+
+    # --- OUTPUT ---
+    try:
+        out_db = OUTPUT_DBS.get(module_id)
+        if out_db is not None:
+            out_coll = out_db.get_collection(str(station_id))
+            output_doc = await out_coll.find_one({}, sort=[("_id", -1)])
+    except Exception as e:
+        print("get_module_detail output error:", e)
+
+    # --- INPUT ---
+    try:
+        in_db = INPUT_DBS.get(module_id)
+        if in_db is not None:
+            in_coll = in_db.get_collection(str(station_id))
+            input_doc = await in_coll.find_one({}, sort=[("_id", -1)])
+    except Exception as e:
+        print("get_module_detail input error:", e)
+
+    # 🔧 แปลง ObjectId → str ด้วย custom_encoder
+    input_enc = jsonable_encoder(
+        input_doc,
+        custom_encoder={ObjectId: str},
+    ) if input_doc else None
+
+    output_enc = jsonable_encoder(
+        output_doc,
+        custom_encoder={ObjectId: str},
+    ) if output_doc else None
+
+    payload = {
+        "module_id": module_id,
+        "station_id": station_id,
+        "input": input_enc,
+        "output": output_enc,
+    }
+
+    resp = JSONResponse(content=payload)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+
 # สำหรับ modules อื่นๆ ทำแบบเดียวกัน
 @app.get("/modules/progress")
 async def get_all_modules_progress(
@@ -7252,8 +7339,6 @@ async def get_all_modules_progress(
     resp.headers["Cache-Control"] = "private, max-age=60"
     return resp
 
-# ปรับให้รองรับหลายโมดูล
-MODULES = ["module1", "module2", "module3", "module4", "module5", "module6", "module7"]
 
 def get_station_collection():
     return station_collection
