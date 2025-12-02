@@ -7,6 +7,7 @@ import re
 from typing import Optional, Tuple, List, Dict, Any, Union
 from io import BytesIO
 import base64
+from PIL import Image, ExifTags
 
 try:
     import requests  # optional
@@ -432,6 +433,49 @@ def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, 
     return None, None
 
 
+def load_image_autorotate(path_or_bytes):
+    """
+    โหลดรูปและหมุนตาม EXIF ให้ถูกต้อง
+    จากนั้นถ้ายังเป็นแนวนอน (w > h) ก็หมุนขึ้นอีกครั้ง
+    """
+    # โหลดภาพ
+    if isinstance(path_or_bytes, (str, Path)):
+        img = Image.open(path_or_bytes)
+    else:
+        img = Image.open(BytesIO(path_or_bytes))
+
+    # --- 1) แก้ EXIF Orientation ---
+    try:
+        exif = img._getexif()
+        if exif is not None:
+            for tag, value in ExifTags.TAGS.items():
+                if value == 'Orientation':
+                    orientation_key = tag
+                    break
+
+            orientation = exif.get(orientation_key)
+
+            if orientation == 3:
+                img = img.rotate(180, expand=True)
+            elif orientation == 6:
+                img = img.rotate(270, expand=True)
+            elif orientation == 8:
+                img = img.rotate(90, expand=True)
+    except Exception:
+        pass  # รูปไม่มี EXIF
+
+    # --- 2) Auto rotate เพิ่มเติมสำหรับรูปแนวนอนจริง ๆ ---
+    w, h = img.size
+    if w > h:
+        img = img.rotate(90, expand=True)
+
+    # ส่งออก
+    buf = BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+    return buf
+
+
 # -------------------- data helpers --------------------
 def _r_idx(k: str) -> int:
     m = re.match(r"r(\d+)$", k.lower())
@@ -778,15 +822,22 @@ def _draw_photos_row(
     pdf.set_font(base_font, "", FONT_MAIN)
 
     for i in range(PHOTO_MAX_PER_ROW):
+        # เส้นแบ่งช่อง
         if i > 0:
             pdf.line(cx - (PHOTO_GAP / 2.0), y, cx - (PHOTO_GAP / 2.0), y + row_h)
+
         if i < len(images):
             url_path = (images[i] or {}).get("url", "")
             src, img_type = _load_image_source_from_urlpath(url_path)
+
             if src is not None:
                 try:
+                    # --- NEW: Auto-rotate image ---
+                    img_buf = load_image_autorotate(src)
+
+                    # ใส่รูปที่หมุนแล้วเข้า PDF
                     pdf.image(
-                        src, x=cx, y=cy, w=slot_w, h=img_h, type=(img_type or None)
+                        img_buf, x=cx, y=cy, w=slot_w, h=img_h
                     )
                 except Exception as e:
                     _log(f"[IMG] place error: {e}")
@@ -795,10 +846,12 @@ def _draw_photos_row(
             else:
                 pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
                 pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
+
         cx += slot_w + PHOTO_GAP
 
     pdf.set_xy(x + q_w + g_w, y)
     return row_h
+
 
 
 # -------------------- ส่วนบล็อคข้อมูลงาน/สรุป/ลายเซ็น --------------------

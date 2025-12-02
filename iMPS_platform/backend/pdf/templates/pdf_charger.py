@@ -7,6 +7,7 @@ import re
 from typing import Optional, Tuple, List, Dict, Any, Union
 import base64
 from io import BytesIO
+from PIL import Image, ExifTags
 try:
     import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
 except Exception:
@@ -20,6 +21,9 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
     "I": ["THSarabunNew-Italic.ttf", "THSarabunNew Italic.ttf", "TH Sarabun New Italic.ttf", "THSarabun Italic.ttf"],
     "BI":["THSarabunNew-BoldItalic.ttf", "THSarabunNew BoldItalic.ttf", "TH Sarabun New BoldItalic.ttf", "THSarabun BoldItalic.ttf"],
 }
+
+PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
+
 
 def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
     """
@@ -549,68 +553,91 @@ def _env_photo_headers() -> Optional[dict]:
         hdrs[k.strip()] = v.strip()
     return hdrs or None
 
+def _log(msg: str):
+    if PDF_DEBUG:
+        print(msg)
+
+
+def _is_http_url(s: str) -> bool:
+    return s.startswith("http://") or s.startswith("https://")
+
 
 def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
-
     if not url_path:
         return None, None
 
-    # print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
+    _log(f"[IMG] lookup: {url_path}")
 
-    # 1) หา backend/uploads โดยตรง (เพราะ public_root อาจไม่มี uploads)
-    backend_root = Path(__file__).resolve().parents[2]  # จาก templates/ ขึ้น 2 ชั้น = backend/
+    # case: data URL (base64)
+    if url_path.startswith("data:image/"):
+        try:
+            head, b64 = url_path.split(",", 1)
+            mime = head.split(";")[0].split(":", 1)[1]
+            bio = BytesIO(base64.b64decode(b64))
+            img_type = (
+                "PNG"
+                if "png" in mime
+                else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
+            )
+            return bio, img_type
+        except Exception as e:
+            _log(f"[IMG] data-url parse error: {e}")
+
+    # case: absolute http(s) URL
+    if _is_http_url(url_path) and requests is not None:
+        try:
+            resp = requests.get(url_path, headers=_env_photo_headers(), timeout=10)
+            resp.raise_for_status()
+            _log(f"[IMG] downloaded {len(resp.content)} bytes from absolute URL")
+            return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
+        except Exception as e:
+            _log(f"[IMG] absolute URL failed: {e}")
+
+    # case: absolute filesystem path
+    p_abs = Path(url_path)
+    if p_abs.is_absolute() and p_abs.exists():
+        return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
+
+    # 1) backend/uploads
+    backend_root = Path(__file__).resolve().parents[2]
     uploads_root = backend_root / "uploads"
+    _log(f"[IMG] backend_root: {backend_root}")
+    _log(f"[IMG] uploads_root: {uploads_root}")
     
-    # print(f"[DEBUG] backend_root = {backend_root}")
-    # print(f"[DEBUG] uploads_root = {uploads_root}")
-
     if uploads_root.exists():
-        # url_path เช่น "/uploads/pm/Klongluang3/..." หรือ "uploads/pm/..."
-        # ต้องตัด "uploads/" ออกเพราะเราชี้ไปที่ uploads_root แล้ว
         clean_path = url_path.lstrip("/")
         if clean_path.startswith("uploads/"):
-            clean_path = clean_path[8:]  # ตัด "uploads/" ออก
-        
+            clean_path = clean_path[8:]
         local_path = uploads_root / clean_path
-        print(f"[DEBUG] 📂 ตรวจสอบไฟล์: {local_path}")
-        
+        _log(f"[IMG] try uploads: {local_path}")
         if local_path.exists() and local_path.is_file():
-            print(f"[DEBUG] ✅ เจอไฟล์แล้ว!")
+            _log(f"[IMG] ✅ found in uploads!")
             return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
-        else:
-            print(f"[DEBUG] ❌ ไม่เจอไฟล์ที่: {local_path}")
-    else:
-        print(f"[DEBUG] ⚠️ ไม่มีโฟลเดอร์ uploads: {uploads_root}")
 
-    # 2) ลอง public_root (กรณีรูปอยู่ใน public/)
-    # public_root = _find_public_root()
-    # if public_root:
-    #     local_path = public_root / url_path.lstrip("/")
-    #     print(f"[DEBUG] 📂 ลองหาใน public: {local_path}")
-        
-    #     if local_path.exists() and local_path.is_file():
-    #         print(f"[DEBUG] ✅ เจอไฟล์ใน public!")
-    #         return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+    # 2) public
+    public_root = _find_public_root()
+    if public_root:
+        local_path = public_root / url_path.lstrip("/")
+        _log(f"[IMG] try public: {local_path}")
+        if local_path.exists() and local_path.is_file():
+            _log(f"[IMG] ✅ found in public!")
+            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
 
-    # 3) ดาวน์โหลดผ่าน HTTP
-    # base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
-    # print(f"[DEBUG] PHOTOS_BASE_URL = {base_url}")
-    
-    # if base_url and requests is not None:
-    #     full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
-    #     print(f"[DEBUG] 🌐 พยายามดาวน์โหลดจาก: {full_url}")
-        
-    #     try:
-    #         resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
-    #         resp.raise_for_status()
-    #         print(f"[DEBUG] ✅ ดาวน์โหลดสำเร็จ: {len(resp.content)} bytes")
-    #         bio = BytesIO(resp.content)
-    #         return bio, _guess_img_type_from_ext(full_url)
-    #     except Exception as e:
-    #         print(f"[DEBUG] ❌ ดาวน์โหลดล้มเหลว: {e}")
+    # 3) base_url download
+    base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
+    if base_url and requests is not None:
+        full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
+        _log(f"[IMG] try base_url: {full_url}")
+        try:
+            resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
+            resp.raise_for_status()
+            _log(f"[IMG] ✅ downloaded from base_url!")
+            return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
+        except Exception as e:
+            _log(f"[IMG] base_url failed: {e}")
 
-    # print("[DEBUG] ❌ ไม่พบรูปภาพจากทุกวิธี")
-    # return None, None
+    _log("[IMG] ❌ not found via all methods")
+    return None, None
 
 
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
@@ -622,6 +649,39 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
             out.append(p)
     return out[:PHOTO_MAX_PER_ROW]
 
+def load_image_autorotate(path_or_bytes: Union[str, BytesIO]) -> BytesIO:
+    """
+    โหลดรูป และหมุนอัตโนมัติตาม EXIF Orientation
+    คืนค่า BytesIO (เป็น JPEG) สำหรับส่งให้ pdf.image()
+    """
+    # โหลดรูป (รับได้ทั้ง path = str และ BytesIO)
+    if isinstance(path_or_bytes, (str, Path)):
+        img = Image.open(path_or_bytes)
+    else:
+        img = Image.open(BytesIO(path_or_bytes.read()))
+
+    try:
+        exif = img._getexif()
+        if exif is not None:
+            for orientation in ExifTags.TAGS.keys():
+                if ExifTags.TAGS[orientation] == 'Orientation':
+                    break
+            o = exif.get(orientation)
+
+            if o == 3:
+                img = img.rotate(180, expand=True)
+            elif o == 6:
+                img = img.rotate(270, expand=True)
+            elif o == 8:
+                img = img.rotate(90, expand=True)
+    except Exception:
+        pass  # ถ้าไม่มี EXIF ก็ข้ามไป
+
+    # บันทึกลง buffer แบบ JPEG พร้อมใช้งาน
+    buf = BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+    return buf
 
 # -------------------------------------
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
@@ -644,55 +704,62 @@ def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w
     pdf.cell(g_w, header_h, "รูปภาพประกอบ", border=1, ln=1, align="C")
     return y + header_h
 
-def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float,
-                     question_text: str, image_items: List[dict]) -> float:
-    """
-    วาด 1 แถว: ซ้ายข้อความ, ขวารูป ≤ PHOTO_MAX_PER_ROW
-    image_items: list ของ dict ที่มี key "url"
-    """
-
-    # ---- ปรับฟอนต์ให้ไม่หนาเสมอ ----
-    pdf.set_font(base_font, "", FONT_MAIN)
-
-    # ความสูงฝั่งข้อความ
+def _draw_photos_row(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    q_w: float,
+    g_w: float,
+    question_text: str,
+    image_items: List[dict],
+) -> float:
     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
-
-    # ความสูงฝั่งรูป
     img_h = PHOTO_IMG_MAX_H
     row_h = max(ROW_MIN_H, text_h, img_h + 2 * PADDING_Y)
 
-    # ---- ซ้าย: คำถาม (ไม่หนา) ----
-    pdf.set_font(base_font, "", FONT_MAIN)  # ย้ำอีกครั้ง
-    _cell_text_in_box(pdf, x, y, q_w, row_h, question_text,
-                      align="L", lh=LINE_H, valign="top")
+    # ซ้าย: ข้อ/คำถาม
+    _cell_text_in_box(
+        pdf, x, y, q_w, row_h, question_text, align="L", lh=LINE_H, valign="top"
+    )
 
-    # ---- ขวา: กล่องรูป ----
+    # ขวา: รูป
     gx = x + q_w
     pdf.rect(gx, y, g_w, row_h)
 
-    slot_w = (g_w - 2 * PADDING_X - (PHOTO_MAX_PER_ROW - 1) * PHOTO_GAP) / PHOTO_MAX_PER_ROW
+    slot_w = (
+        g_w - 2 * PADDING_X - (PHOTO_MAX_PER_ROW - 1) * PHOTO_GAP
+    ) / PHOTO_MAX_PER_ROW
     cx = gx + PADDING_X
     cy = y + (row_h - img_h) / 2.0
 
     images = (image_items or [])[:PHOTO_MAX_PER_ROW]
-
-    pdf.set_font(base_font, "", FONT_MAIN)  # ฟอนต์ปกติ
+    pdf.set_font(base_font, "", FONT_MAIN)
 
     for i in range(PHOTO_MAX_PER_ROW):
+        # เส้นแบ่งช่อง
         if i > 0:
             pdf.line(cx - (PHOTO_GAP / 2.0), y, cx - (PHOTO_GAP / 2.0), y + row_h)
 
         if i < len(images):
             url_path = (images[i] or {}).get("url", "")
             src, img_type = _load_image_source_from_urlpath(url_path)
+
             if src is not None:
                 try:
-                    pdf.image(src, x=cx, y=cy, w=slot_w, h=img_h, type=(img_type or None))
-                except Exception:
-                    pdf.set_xy(cx, cy + (img_h - LINE_H) / 2)
+                    # --- NEW: Auto-rotate image ---
+                    img_buf = load_image_autorotate(src)
+
+                    # ใส่รูปที่หมุนแล้วเข้า PDF
+                    pdf.image(
+                        img_buf, x=cx, y=cy, w=slot_w, h=img_h
+                    )
+                except Exception as e:
+                    _log(f"[IMG] place error: {e}")
+                    pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
                     pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
             else:
-                pdf.set_xy(cx, cy + (img_h - LINE_H) / 2)
+                pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
                 pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
 
         cx += slot_w + PHOTO_GAP

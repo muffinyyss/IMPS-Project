@@ -755,12 +755,23 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             remark_with_offset = remark_lines
 
         # รวม remark ทั้งหมด
+        # if remark_with_offset:
+        #     remark_text = "\n".join(remark_with_offset)
+        #     if remark_text.strip():
+        #         remark_parts.append(remark_text)
+
+        # remark = "\n\n".join(remark_parts) if remark_parts else ""
+        # รวม remark ทั้งหมด
         if remark_with_offset:
-            remark_text = "\n".join(remark_with_offset)
-            if remark_text.strip():
+            # join แบบไม่เพิ่มบรรทัดว่างเกินจำเป็น
+            remark_text = "\n".join(remark_with_offset).strip()
+
+            if remark_text:
                 remark_parts.append(remark_text)
 
-        remark = "\n\n".join(remark_parts) if remark_parts else ""
+        # join remark_parts แบบบรรทัดเดียว ไม่ใช่ \n\n ที่ทำให้สูงเกินจริง
+        remark = "\n".join(part for part in remark_parts if part.strip())
+
 
         items.append(
             {
@@ -1124,7 +1135,6 @@ def _draw_job_info_block(
     return y + box_h
 
 
-
 # -------------------- สร้างเอกสาร --------------------
 def _output_pdf_bytes(pdf: FPDF) -> bytes:
     data = pdf.output(dest="S")
@@ -1237,19 +1247,27 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
         # คำนวนความสูงแต่ละส่วน
         item_lines, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
-        _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
+        _, remark_h_raw = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
 
         # ใช้ regex เพื่อหาหมายเลขข้อที่แท้จริง (ตัวเลขที่ขึ้นต้นบรรทัด)
         match_row = re.match(r"^(\d+)\.", text.strip())
         row_num = int(match_row.group(1)) if match_row else 0
 
-        # กำหนดความสูงขั้นต่ำของ remark ตามหมายเลขข้อที่แท้จริงเท่านั้น
+        # ✅ กำหนดความสูงขั้นต่ำของ remark เฉพาะข้อที่ต้องการเท่านั้น
+        # สำหรับข้ออื่นๆ ให้ใช้ความสูงจริงของเนื้อหา
         if row_num in [3, 4, 5, 7, 8]:
-            remark_h = max(remark_h, LINE_H * 4)
+            remark_h = max(remark_h_raw, LINE_H * 4)
         elif row_num == 6:
-            remark_h = max(remark_h, LINE_H * 6)
+            remark_h = max(remark_h_raw, LINE_H * 6)
         elif row_num == 9:
-            remark_h = max(remark_h, LINE_H * 15)
+            remark_h = max(remark_h_raw, LINE_H * 15)
+        else:
+            # ✅ ข้อที่ไม่ต้องการความสูงขั้นต่ำพิเศษ ให้ใช้ความสูงจริง
+            # แต่ถ้าไม่มี remark เลย ก็ให้ใช้ ROW_MIN_H
+            if not remark or remark.strip() == "":
+                remark_h = ROW_MIN_H
+            else:
+                remark_h = remark_h_raw
 
         result_block_h = max(ROW_MIN_H, len(result_lines) * LINE_H)
         row_h_eff = max(ROW_MIN_H, item_h, remark_h, result_block_h)
