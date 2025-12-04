@@ -1,7 +1,4 @@
 "use client";
-
-
-
 export type StationInfoProps = {
   station_name?: string;
   model?: string;
