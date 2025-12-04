@@ -7,11 +7,12 @@ import re
 from typing import Optional, Tuple, List, Dict, Any, Union
 import base64
 from io import BytesIO
+from PIL import Image, ExifTags
+
 try:
     import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
 except Exception:
     requests = None
-
 
 # -------------------- ฟอนต์ไทย --------------------
 FONT_CANDIDATES: Dict[str, List[str]] = {
@@ -20,6 +21,8 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
     "I": ["THSarabunNew-Italic.ttf", "THSarabunNew Italic.ttf", "TH Sarabun New Italic.ttf", "THSarabun Italic.ttf"],
     "BI":["THSarabunNew-BoldItalic.ttf", "THSarabunNew BoldItalic.ttf", "TH Sarabun New BoldItalic.ttf", "THSarabun BoldItalic.ttf"],
 }
+
+PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
 def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
   
@@ -58,7 +61,6 @@ def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
             pass
 
     return loaded_regular
-
 
 
 # -------------------- ชื่อหัวข้อแถวจากโค้ด --------------------
@@ -588,6 +590,49 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     return out[:PHOTO_MAX_PER_ROW]
 
 
+def load_image_autorotate(path_or_bytes):
+    """
+    โหลดรูปและหมุนตาม EXIF ให้ถูกต้อง
+    จากนั้นถ้ายังเป็นแนวนอน (w > h) ก็หมุนขึ้นอีกครั้ง
+    """
+    # โหลดภาพ
+    if isinstance(path_or_bytes, (str, Path)):
+        img = Image.open(path_or_bytes)
+    else:
+        img = Image.open(BytesIO(path_or_bytes))
+
+    # --- 1) แก้ EXIF Orientation ---
+    try:
+        exif = img._getexif()
+        if exif is not None:
+            for tag, value in ExifTags.TAGS.items():
+                if value == 'Orientation':
+                    orientation_key = tag
+                    break
+
+            orientation = exif.get(orientation_key)
+
+            if orientation == 3:
+                img = img.rotate(180, expand=True)
+            elif orientation == 6:
+                img = img.rotate(270, expand=True)
+            elif orientation == 8:
+                img = img.rotate(90, expand=True)
+    except Exception:
+        pass  # รูปไม่มี EXIF
+
+    # --- 2) Auto rotate เพิ่มเติมสำหรับรูปแนวนอนจริง ๆ ---
+    w, h = img.size
+    if w > h:
+        img = img.rotate(90, expand=True)
+
+    # ส่งออก
+    buf = BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+    return buf
+
+
 # -------------------------------------
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
 # -------------------------------------
@@ -609,47 +654,65 @@ def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w
     pdf.cell(g_w, header_h, "รูปภาพประกอบ", border=1, ln=1, align="C")
     return y + header_h
 
-def _draw_photos_row(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float,
-                     question_text: str, image_items: List[dict]) -> float:
-    
-    # ความสูงฝั่งข้อความ
-    _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
 
-    # ความสูงฝั่งรูป
+def _draw_photos_row(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    q_w: float,
+    g_w: float,
+    question_text: str,
+    image_items: List[dict],
+) -> float:
+    _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
     img_h = PHOTO_IMG_MAX_H
     row_h = max(ROW_MIN_H, text_h, img_h + 2 * PADDING_Y)
 
-    # ซ้าย: คำถาม
-    _cell_text_in_box(pdf, x, y, q_w, row_h, question_text, align="L", lh=LINE_H, valign="top")
+    # ซ้าย: ข้อ/คำถาม
+    _cell_text_in_box(
+        pdf, x, y, q_w, row_h, question_text, align="L", lh=LINE_H, valign="top"
+    )
 
     # ขวา: รูป
     gx = x + q_w
     pdf.rect(gx, y, g_w, row_h)
 
-    slot_w = (g_w - 2 * PADDING_X - (PHOTO_MAX_PER_ROW - 1) * PHOTO_GAP) / PHOTO_MAX_PER_ROW
+    slot_w = (
+        g_w - 2 * PADDING_X - (PHOTO_MAX_PER_ROW - 1) * PHOTO_GAP
+    ) / PHOTO_MAX_PER_ROW
     cx = gx + PADDING_X
     cy = y + (row_h - img_h) / 2.0
 
-    # เตรียมรายการรูป (สูงสุด PHOTO_MAX_PER_ROW)
     images = (image_items or [])[:PHOTO_MAX_PER_ROW]
     pdf.set_font(base_font, "", FONT_MAIN)
 
     for i in range(PHOTO_MAX_PER_ROW):
+        # เส้นแบ่งช่อง
         if i > 0:
             pdf.line(cx - (PHOTO_GAP / 2.0), y, cx - (PHOTO_GAP / 2.0), y + row_h)
 
         if i < len(images):
             url_path = (images[i] or {}).get("url", "")
             src, img_type = _load_image_source_from_urlpath(url_path)
+
             if src is not None:
                 try:
-                    pdf.image(src, x=cx, y=cy, w=slot_w, h=img_h, type=(img_type or None))
-                except Exception:
+                    # --- NEW: Auto-rotate image ---
+                    img_buf = load_image_autorotate(src)
+
+                    # ใส่รูปที่หมุนแล้วเข้า PDF
+                    pdf.image(
+                        img_buf, x=cx, y=cy, w=slot_w, h=img_h
+                    )
+                except Exception as e:
+                    _log(f"[IMG] place error: {e}")
                     pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
                     pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
             else:
                 pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
                 pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
+
         cx += slot_w + PHOTO_GAP
 
     pdf.set_xy(x + q_w + g_w, y)

@@ -238,8 +238,6 @@ def _format_m17(measures: dict) -> str:
 
     return "\n".join(lines)
 
-
-
     
 
 def _parse_date_flex(s: str) -> Optional[datetime]:
