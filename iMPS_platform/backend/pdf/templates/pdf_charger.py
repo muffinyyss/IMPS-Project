@@ -394,7 +394,6 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float,
     return y + TITLE_H
 
 
-
 def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str, is_top_align: bool = False):
     pdf.rect(x, y, w, h)
     col_w = w / 3.0
@@ -560,13 +559,15 @@ def _is_http_url(s: str) -> bool:
     return s.startswith("http://") or s.startswith("https://")
 
 
-def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+def _load_image_source_from_urlpath(
+    url_path: str,
+) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     if not url_path:
         return None, None
 
     _log(f"[IMG] lookup: {url_path}")
 
-    # case: data URL (base64)
+    # case: data URL
     if url_path.startswith("data:image/"):
         try:
             head, b64 = url_path.split(",", 1)
@@ -581,7 +582,7 @@ def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, 
         except Exception as e:
             _log(f"[IMG] data-url parse error: {e}")
 
-    # case: absolute http(s) URL
+    # case: absolute http(s)
     if _is_http_url(url_path) and requests is not None:
         try:
             resp = requests.get(url_path, headers=_env_photo_headers(), timeout=10)
@@ -599,9 +600,6 @@ def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, 
     # 1) backend/uploads
     backend_root = Path(__file__).resolve().parents[2]
     uploads_root = backend_root / "uploads"
-    _log(f"[IMG] backend_root: {backend_root}")
-    _log(f"[IMG] uploads_root: {uploads_root}")
-    
     if uploads_root.exists():
         clean_path = url_path.lstrip("/")
         if clean_path.startswith("uploads/"):
@@ -609,8 +607,9 @@ def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, 
         local_path = uploads_root / clean_path
         _log(f"[IMG] try uploads: {local_path}")
         if local_path.exists() and local_path.is_file():
-            _log(f"[IMG] ✅ found in uploads!")
-            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+            return local_path.as_posix(), _guess_img_type_from_ext(
+                local_path.as_posix()
+            )
 
     # 2) public
     public_root = _find_public_root()
@@ -618,8 +617,9 @@ def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, 
         local_path = public_root / url_path.lstrip("/")
         _log(f"[IMG] try public: {local_path}")
         if local_path.exists() and local_path.is_file():
-            _log(f"[IMG] ✅ found in public!")
-            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+            return local_path.as_posix(), _guess_img_type_from_ext(
+                local_path.as_posix()
+            )
 
     # 3) base_url download
     base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
@@ -629,12 +629,11 @@ def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, 
         try:
             resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
             resp.raise_for_status()
-            _log(f"[IMG] ✅ downloaded from base_url!")
             return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
         except Exception as e:
             _log(f"[IMG] base_url failed: {e}")
 
-    _log("[IMG] ❌ not found via all methods")
+    _log("[IMG] not found via all methods")
     return None, None
 
 
