@@ -15,7 +15,7 @@ import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../li
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
-
+import { apiFetch } from "@/utils/api";
 
 
 type TabId = "pre" | "post";
@@ -36,8 +36,6 @@ function slugToTab(slug: string | null): TabId {
 function tabToSlug(tab: TabId): "pre" | "post" {
     return TABS.find(t => t.id === tab)!.slug;
 }
-
-
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
 type StationPublic = {
@@ -65,6 +63,7 @@ type Me = {
 async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
     const res = await fetch(url, { cache: "no-store" }); // ✅ กัน cache
+    // const res = await apiFetch(url, { cache: "no-store" });
     if (res.status === 404) throw new Error("Station not found");
 
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
@@ -88,10 +87,6 @@ type PhotoItem = {
     uploading?: boolean;
     error?: string;
 };
-
-// type Question =
-//     | { no: number; key: `r${number}`; label: string; kind: "simple"; hasPhoto?: boolean }
-//     | { no: 17; key: "r17"; label: string; kind: "measure"; hasPhoto?: boolean };
 
 type Question =
     | {
@@ -325,6 +320,7 @@ function PassFailRow({
 /* =========================
  *       UI ATOMS
  * ========================= */
+
 function SectionCard({
     title,
     subtitle,
@@ -369,6 +365,32 @@ function SectionCard({
     );
 }
 
+// check
+function Section({
+    title,
+    ok,
+    children,
+}: {
+    title: React.ReactNode;
+    ok: boolean;
+    children?: React.ReactNode;
+}) {
+    return (
+        <div
+            className={`tw-rounded-lg tw-border tw-p-3 ${ok ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+                }`}
+        >
+            <Typography className="tw-font-medium">{title}</Typography>
+            {ok ? (
+                <Typography variant="small" className="!tw-text-green-700">
+                    ครบเรียบร้อย ✅
+                </Typography>
+            ) : (
+                children
+            )}
+        </div>
+    );
+}
 
 function InputWithUnit<U extends string>({
     label,
@@ -523,7 +545,7 @@ function PhotoMultiInput({
                             key={p.id}
                             className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"
                         >
-                            <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
+                            {/* <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
                                 {p.preview && (
                                     <img
                                         src={p.preview}
@@ -531,8 +553,8 @@ function PhotoMultiInput({
                                         className="tw-w-full tw-h-full tw-object-cover"
                                     />
                                 )}
-                            </div>
-                            <div className="tw-p-2 tw-space-y-2">
+                            </div> */}
+                            {/* <div className="tw-p-2 tw-space-y-2">
                                 <div className="tw-flex tw-justify-end">
                                     <Button
                                         size="sm"
@@ -543,6 +565,22 @@ function PhotoMultiInput({
                                         ลบรูป
                                     </Button>
                                 </div>
+                            </div> */}
+
+                            <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
+                                {p.preview && (
+                                    <img
+                                        src={p.preview}
+                                        alt="preview"
+                                        className="tw-w-full tw-h-full tw-object-cover"
+                                    />
+                                )}
+                                <button
+                                    onClick={() => handleRemove(p.id)}
+                                    className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors"
+                                >
+                                    ×
+                                </button>
                             </div>
                         </div>
                     ))}
@@ -573,6 +611,7 @@ async function fetchPreviewIssueId(
             : "";
 
     const r = await fetch(u.toString(), {
+        // const r = await apiFetch(u.toString(), {
         credentials: "include",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
@@ -602,6 +641,7 @@ async function fetchPreviewDocName(
             : "";
 
     const r = await fetch(u.toString(), {
+        // const r = await apiFetch(u.toString(), {
         credentials: "include",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
@@ -621,6 +661,7 @@ async function fetchReport(reportId: string, stationId: string) {
     const url = `${API_BASE}/pmreport/get?station_id=${stationId}&report_id=${reportId}`;
 
     const res = await fetch(url, {
+        // const res = await apiFetch(url, {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         credentials: "include",
@@ -787,6 +828,7 @@ export default function ChargerPMForm() {
         (async () => {
             try {
                 const res = await fetch(`${API_BASE}/me`, {
+                    // const res = await apiFetch(`${API_BASE}/me`, {
                     method: "GET",
                     headers: { Authorization: `Bearer ${token}` },
                     credentials: "include",
@@ -945,7 +987,7 @@ export default function ChargerPMForm() {
         []
     );
 
-    const REQUIRED_PHOTO_ITEMS_ALL = useMemo(
+    const REQUIRED_PHOTO_ITEMS_POST = useMemo(
         () =>
             QUESTIONS.filter((q) => q.hasPhoto)
                 .map((q) => q.no)
@@ -961,16 +1003,19 @@ export default function ChargerPMForm() {
         [REQUIRED_PHOTO_ITEMS_PRE, photos]
     );
 
-    const missingPhotoItemsAll = useMemo(
+    const missingPhotoItemsPost = useMemo(
         () =>
-            REQUIRED_PHOTO_ITEMS_ALL.filter(
+            REQUIRED_PHOTO_ITEMS_POST.filter(
                 (no) => (photos[no]?.length ?? 0) < 1
             ),
-        [REQUIRED_PHOTO_ITEMS_ALL, photos]
+        [REQUIRED_PHOTO_ITEMS_POST, photos]
     );
 
     const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
-    const allPhotosAttachedAll = missingPhotoItemsAll.length === 0;
+    const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
+
+    const missingPhotoItems = isPostMode ? missingPhotoItemsPost : missingPhotoItemsPre;
+    const allPhotosAttached = isPostMode ? allPhotosAttachedPost : allPhotosAttachedPre;
 
     // 🔹 PASS/FAIL: ก่อน After ยังไม่บังคับข้อ 19
     const PF_KEYS_PRE = useMemo(
@@ -1012,15 +1057,15 @@ export default function ChargerPMForm() {
         [rows, PF_KEYS_ALL]
     );
 
-    const REQUIRED_PHOTO_ITEMS = useMemo(
-        () => QUESTIONS.filter((q) => q.hasPhoto).map((q) => q.no).sort((a, b) => a - b),
-        []
-    );
-    const missingPhotoItems = useMemo(
-        () => REQUIRED_PHOTO_ITEMS.filter((no) => (photos[no]?.length ?? 0) < 1),
-        [REQUIRED_PHOTO_ITEMS, photos]
-    );
-    const allPhotosAttached = missingPhotoItems.length === 0;
+    // const REQUIRED_PHOTO_ITEMS = useMemo(
+    //     () => QUESTIONS.filter((q) => q.hasPhoto).map((q) => q.no).sort((a, b) => a - b),
+    //     []
+    // );
+    // const missingPhotoItems = useMemo(
+    //     () => REQUIRED_PHOTO_ITEMS.filter((no) => (photos[no]?.length ?? 0) < 1),
+    //     [REQUIRED_PHOTO_ITEMS, photos]
+    // );
+    // const allPhotosAttached = missingPhotoItems.length === 0;
 
     const MEASURE_BY_NO: Record<number, ReturnType<typeof useMeasure<UnitVoltage>> | undefined> = {
         17: m17,
@@ -1067,25 +1112,11 @@ export default function ChargerPMForm() {
         return lines;
     }, [missingInputs]);
 
-    // const canFinalSave = allPhotosAttached && allPFAnswered && allRequiredInputsFilled;
-    // const isSummaryFilled = summary.trim().length > 0;
-
-    // const canFinalSave =
-    //     allPhotosAttached &&
-    //     allPFAnswered &&
-    //     allRequiredInputsFilled &&
-    //     isSummaryFilled;
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
-    // const canFinalSave =
-    //     allPhotosAttachedAll &&
-    //     allPFAnsweredAll &&
-    //     allRequiredInputsFilled &&
-    //     isSummaryFilled;
-
     const canFinalSave =
-        allPhotosAttachedAll &&
+        allPhotosAttachedPost &&
         allPFAnsweredAll &&
         allRequiredInputsFilled &&
         isSummaryFilled &&
@@ -1164,43 +1195,6 @@ export default function ChargerPMForm() {
         );
     };
 
-    // const renderMeasureGridWithPre = (no: number) => {
-    //     const cfg = FIELD_GROUPS[no];
-    //     const m = MEASURE_BY_NO[no];
-    //     if (!cfg || !m) return null;
-
-    //     return (
-    //         <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
-    //             {cfg.keys.map((k) => (
-    //                 <div key={`${no}-${k}`} className="tw-space-y-2">
-    //                     {/* ก่อน PM */}
-    //                     <div className="tw-pointer-events-none tw-opacity-60">
-    //                         <InputWithUnit<UnitVoltage>
-    //                             label={LABELS[k] ?? k}              // 👈 label ลอยบนเส้นเหมือนหลัง PM
-    //                             value={m17Pre[k]?.value || ""}
-    //                             unit={(m17Pre[k]?.unit as UnitVoltage) || "V"}
-    //                             units={UNITS.voltage}
-    //                             onValueChange={() => { }}            // ไม่ให้เปลี่ยนค่า
-    //                             onUnitChange={() => { }}             // ไม่ให้เปลี่ยนหน่วย
-    //                             readOnly                            // กัน keyboard edit เผื่อ pointer-events ถูก override
-    //                             required={false}                    // ไม่มี *
-    //                         />
-    //                     </div>
-
-    //                     {/* หลัง PM */}
-    //                     <InputWithUnit<UnitVoltage>
-    //                         label={LABELS[k] ?? k}
-    //                         value={m.state[k]?.value || ""}
-    //                         unit={(m.state[k]?.unit as UnitVoltage) || "V"}
-    //                         units={UNITS.voltage}
-    //                         onValueChange={(v) => m.patch(k, { value: v })}
-    //                         onUnitChange={(u) => handleUnitChange(no, k, u)}
-    //                     />
-    //                 </div>
-    //             ))}
-    //         </div>
-    //     );
-    // };
     /* ---------- renderers ---------- */
     const renderMeasureGrid = (no: number) => {
         const cfg = FIELD_GROUPS[no];
@@ -1416,6 +1410,7 @@ export default function ChargerPMForm() {
                 : `${API_BASE}/pmreport/${reportId}/post/photos`;
 
         const res = await fetch(url, {
+            // const res = await apiFetch(url, {
             method: "POST",
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
             body: form,                 // ⛔ ห้ามใส่ Content-Type เอง
@@ -1445,13 +1440,11 @@ export default function ChargerPMForm() {
                 doc_name: docName,
                 side: "pre" as TabId,
 
-                // ...(summaryCheck ? { summaryCheck } : {}), // จากเคสก่อนหน้า
-                // ...(dustFilterChanged ? { dustFilterChanged } : {}),
-                // dust_filter: dustFilterChanged ? "yes" : "no",
             };
 
             // 1) สร้างรายงาน (submit)
             const res = await fetch(`${API_BASE}/pmreport/pre/submit`, {
+                // const res = await apiFetch(`${API_BASE}/pmreport/pre/submit`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -1479,15 +1472,6 @@ export default function ChargerPMForm() {
                 if (files.length === 0) continue;
                 await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre");
             }
-
-            // 3) finalize (ออปชัน)
-            // const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
-            //     method: "POST",
-            //     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-            //     credentials: "include",
-            //     body: new URLSearchParams({ station_id: stationId }), // endpoint นี้รับ Form-encoded
-            // });
-            // if (!fin.ok) throw new Error(await fin.text());
 
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
@@ -1526,6 +1510,7 @@ export default function ChargerPMForm() {
 
             // 1) สร้างรายงาน (submit)
             const res = await fetch(`${API_BASE}/pmreport/submit`, {
+                // const res = await apiFetch(`${API_BASE}/pmreport/submit`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -1556,6 +1541,7 @@ export default function ChargerPMForm() {
 
             // 3) finalize (ออปชัน)
             const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+                // const fin = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
                 method: "POST",
                 headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 credentials: "include",
@@ -1637,15 +1623,14 @@ export default function ChargerPMForm() {
     const allPhotosAttachedForUI =
         displayTab === "pre"
             ? allPhotosAttachedPre
-            : allPhotosAttachedAll;
+            : allPhotosAttachedPost;
     const missingPhotoItemsForUI =
         displayTab === "pre"
             ? missingPhotoItemsPre
-            : missingPhotoItemsAll;
+            : missingPhotoItemsPost;
     /* =========================
      *        RENDER
      * ========================= */
-    // const DOC_NAME = "FM-MA-CG-01"; // ชื่อ/เลขที่เอกสารที่อยากโชว์
     return (
 
         // <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
@@ -1663,29 +1648,7 @@ export default function ChargerPMForm() {
                 >
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
-                {/* <button
-                    type="button"
-                    onClick={() => router.back()}
-                    className="tw-inline-flex tw-items-center tw-gap-2 tw-text-blue-gray-700 hover:tw-text-blue-800"
-                >
-                    <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-                </button> */}
 
-                {/* ขวา: Tabs Before / After */}
-                {/* <Tabs value={active}>
-                    <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
-                        {TABS.map((t) => (
-                            <Tab
-                                key={t.id}
-                                value={t.id}
-                                onClick={() => go(t.id)}
-                                className="tw-px-4 tw-py-2 tw-font-medium"
-                            >
-                                {t.label}
-                            </Tab>
-                        ))}
-                    </TabsHeader>
-                </Tabs> */}
                 <Tabs value={displayTab}>
                     <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
                         {TABS.map((t) => {
@@ -1908,11 +1871,12 @@ export default function ChargerPMForm() {
                     </div>
 
                     {[
-                        [1, 5],
-                        [6, 10],
-                        [11, 16],
-                        [17, 17],
-                        [18, 19],
+                        // [1, 5],
+                        // [6, 10],
+                        // [11, 16],
+                        // [17, 17],
+                        // [18, 19],
+                        [1, 19]
                     ].map(([start, end]) => (
                         <CardBody key={`${start}-${end}`} className="tw-space-y-2">
                             {QUESTIONS
@@ -1933,7 +1897,7 @@ export default function ChargerPMForm() {
                                 value={summary}
                                 onChange={(e) => setSummary(e.target.value)}
                                 rows={4}
-                                required
+                                required={isPostMode}
                                 autoComplete="off"
                                 containerProps={{ className: "!tw-min-w-0" }}
                                 className="!tw-w-full resize-none"
@@ -1954,116 +1918,17 @@ export default function ChargerPMForm() {
                             </div>
                         )}
                     </CardBody>
-
-
-
-
                     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-                        {/* <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">
-                                1) สถานะ PASS / FAIL / N/A ทั้ง 18 ข้อ (ยกเว้นข้อ 17)
-                            </Typography>
-                            {allPFAnswered ? (
-                                <Typography variant="small" className="!tw-text-green-700">
-                                    ครบเรียบร้อย ✅
-                                </Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">
-                                    ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}
-                                </Typography>
-                            )}
-                        </div> */}
-
-
-
-                        {/* <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)</Typography>
-                            {allPhotosAttached ? (
-                                <Typography variant="small" className="!tw-text-green-700">
-                                    ครบเรียบร้อย ✅
-                                </Typography>
-                            ) : (
+                        <div className="tw-p-3 tw-flex tw-flex-col tw-gap-3">
+                            {/* ข้อ 1 (ใช้ค่าที่เลือกตาม tab) */}
+                            <Section title="1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)" ok={allPhotosAttached}>
                                 <Typography variant="small" className="!tw-text-amber-700">
                                     ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}
                                 </Typography>
-                            )}
-                        </div> */}
-                        {/* <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnsweredForUI
-                                ? "tw-border-green-200 tw-bg-green-50"
-                                : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">
-                                1) สถานะ PASS / FAIL / N/A ทั้ง 18 ข้อ (ยกเว้นข้อ 17)
-                            </Typography>
-                            {allPFAnsweredForUI ? (
-                                <Typography variant="small" className="!tw-text-green-700">
-                                    ครบเรียบร้อย ✅
-                                </Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">
-                                    ยังไม่ได้เลือกข้อ: {missingPFItemsForUI.join(", ")}
-                                </Typography>
-                            )}
-                        </div> */}
+                            </Section>
 
-
-
-                        {/* กล่อง 3: รูปภาพ */}
-
-                        <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)</Typography>
-                            {allPhotosAttached ? (
-                                <Typography variant="small" className="!tw-text-green-700">
-                                    ครบเรียบร้อย ✅
-                                </Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">
-                                    ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}
-                                </Typography>
-                            )}
-                        </div>
-
-                        <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnsweredForUI
-                                ? "tw-border-green-200 tw-bg-green-50"
-                                : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">
-                                2) สถานะ PASS / FAIL / N/A ทั้ง 19 ข้อ
-                            </Typography>
-                            {allPFAnsweredForUI ? (
-                                <Typography variant="small" className="!tw-text-green-700">
-                                    ครบเรียบร้อย ✅
-                                </Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">
-                                    ยังไม่ได้เลือกข้อ: {missingPFItemsForUI.join(", ")}
-                                </Typography>
-                            )}
-                        </div>
-
-                        <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">3) อินพุตข้อ 15 และ 17</Typography>
-                            {allRequiredInputsFilled ? (
-                                <Typography variant="small" className="!tw-text-green-700">
-                                    ครบเรียบร้อย ✅
-                                </Typography>
-                            ) : (
+                            {/* ข้อ 2 */}
+                            <Section title="2) อินพุตข้อ 15 และ 17" ok={allRequiredInputsFilled}>
                                 <div className="tw-space-y-1">
                                     <Typography variant="small" className="!tw-text-amber-700">
                                         ยังขาด:
@@ -2074,92 +1939,34 @@ export default function ChargerPMForm() {
                                         ))}
                                     </ul>
                                 </div>
+                            </Section>
+
+                            {/* บล็อก 3 & 4 แสดงเฉพาะหลัง (post) */}
+                            {isPostMode && (
+                                <>
+                                    <Section title="3) สถานะ PASS / FAIL / N/A ทั้ง 19 ข้อ" ok={allPFAnsweredForUI}>
+                                        <Typography variant="small" className="!tw-text-amber-700">
+                                            ยังไม่ได้เลือกข้อ: {missingPFItemsForUI.join(", ")}
+                                        </Typography>
+                                    </Section>
+
+                                    <Section title="4) สรุปผลการตรวจสอบ" ok={isSummaryFilled && isSummaryCheckFilled}>
+                                        <div className="tw-space-y-1">
+                                            {!isSummaryFilled && (
+                                                <Typography variant="small" className="!tw-text-amber-700">
+                                                    ยังไม่ได้กรอกข้อความสรุปผลการตรวจสอบ
+                                                </Typography>
+                                            )}
+                                            {!isSummaryCheckFilled && (
+                                                <Typography variant="small" className="!tw-text-amber-700">
+                                                    ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N&nbsp;A)
+                                                </Typography>
+                                            )}
+                                        </div>
+                                    </Section>
+                                </>
                             )}
                         </div>
-
-
-
-                        {/* <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
-                            {isSummaryFilled ? (
-                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-                            )}
-                        </div> */}
-                        {displayTab === "post" && (
-
-
-                            <div
-                                className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled && isSummaryCheckFilled
-                                    ? "tw-border-green-200 tw-bg-green-50"
-                                    : "tw-border-amber-200 tw-bg-amber-50"
-                                    }`}
-                            >
-                                <Typography className="tw-font-medium">
-                                    4) สรุปผลการตรวจสอบ
-                                </Typography>
-
-                                {isSummaryFilled && isSummaryCheckFilled ? (
-                                    <Typography variant="small" className="!tw-text-green-700">
-                                        ครบเรียบร้อย ✅
-                                    </Typography>
-                                ) : (
-                                    <div className="tw-space-y-1">
-                                        {!isSummaryFilled && (
-                                            <Typography variant="small" className="!tw-text-amber-700">
-                                                ยังไม่ได้กรอกข้อความสรุปผลการตรวจสอบ
-                                            </Typography>
-                                        )}
-                                        {!isSummaryCheckFilled && (
-                                            <Typography variant="small" className="!tw-text-amber-700">
-                                                ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N&nbsp;A)
-                                            </Typography>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-
-
-                        )}
-
-                        {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                            {displayTab === "before" ? (
-                                // อยู่แท็บ BEFORE → ปุ่ม "ถัดไป"
-                                <Button
-                                    color="blue"
-                                    type="button"
-                                    onClick={() => go("after")}
-                                    disabled={!canGoAfter}
-                                    title={
-                                        !canGoAfter
-                                            ? "กรุณากรอกข้อมูลในส่วน Before ให้ครบ (สถานะ PASS/FAIL, ค่าที่วัด และรูปภาพทุกข้อ) ก่อน"
-                                            : undefined
-                                    }
-                                >
-                                    บันทึก
-                                </Button>
-                            ) : (
-                                // อยู่แท็บ AFTER → ปุ่ม "บันทึก"
-                                <Button
-                                    color="blue"
-                                    type="button"
-                                    onClick={onFinalSave}
-                                    disabled={!canFinalSave || submitting}
-                                    title={
-                                        !canFinalSave
-                                            ? "กรุณากรอกข้อมูล / แนบรูป และสรุปผลให้ครบก่อนบันทึก"
-                                            : undefined
-                                    }
-                                >
-                                    {submitting ? "กำลังบันทึก..." : "บันทึก"}
-                                </Button>
-                            )}
-                        </div> */}
-
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
                             {displayTab === "pre" ? (
                                 // อยู่แท็บ BEFORE → บันทึกลง Mongo + img_before แล้วค่อยไป AFTER
@@ -2193,10 +2000,6 @@ export default function ChargerPMForm() {
                                 </Button>
                             )}
                         </div>
-
-
-
-
                     </CardFooter>
                 </div>
             </form>
