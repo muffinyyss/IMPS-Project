@@ -841,35 +841,6 @@ export default function CMOpenForm() {
                                         </span>
                                     </div>
 
-                                    {/* {open.problem_img[0]?.images?.length ? (
-                                            <div className="tw-flex tw-flex-wrap tw-gap-3">
-                                                {open.problem_img[0].images.map((img, idx) => (
-                                                    <div
-                                                        key={idx}
-                                                        className="tw-relative tw-w-24 tw-h-24 tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100"
-                                                    >
-                                                        <img
-                                                            src={img.url}
-                                                            alt={`Problem image ${idx + 1}`}
-                                                            className="tw-w-full tw-h-full tw-object-cover"
-                                                        />
-                                                        {!isEdit && (
-                                                            <button
-                                                                type="button"
-                                                                className="tw-absolute tw-top-1 tw-right-1 tw-bg-black/60 tw-text-white tw-text-xs tw-rounded-full tw-px-1.5 tw-py-0.5"
-                                                                onClick={() => removeProblemImage(0, idx)}
-                                                            >
-                                                                ×
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="tw-text-xs tw-text-blue-gray-400">
-                                                {isEdit ? "ไม่มีรูปประกอบที่แนบไว้" : "ยังไม่ได้แนบรูปภาพ"}
-                                            </p>
-                                        )} */}
                                     {open.problem_img.length ? (
                                         <div className="tw-flex tw-flex-wrap tw-gap-3">
                                             {open.problem_img.map((img, idx) => (
