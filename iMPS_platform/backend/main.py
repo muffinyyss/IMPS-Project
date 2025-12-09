@@ -2447,20 +2447,6 @@ class PMSubmitIn(BaseModel):
     inspector: Optional[str] = None 
     # dust_filter: Optional[str] = None
 
-# class PMSubmitIn(BaseModel):
-#     side: Literal["before", "after"]
-#     station_id: str
-#     job: dict
-#     rows: dict
-#     measures: dict
-#     summary: str
-#     pm_date:str
-#     issue_id: Optional[str] = None
-#     doc_name: Optional[str] = None 
-#     summaryCheck: Optional[Literal["PASS","FAIL","NA"]] = None
-#     inspector: Optional[str] = None 
-#     dust_filter: Optional[str] = None
-
 async def _latest_issue_id_anywhere(
     station_id: str,
     d: date,
@@ -2790,9 +2776,6 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
         yymm = f"{d.year % 100:02d}{d.month:02d}"
         prefix = f"PM-{pm_type}-{yymm}-"
         valid_fmt = client_issue.startswith(prefix)
-
-        # ⭐ เช็คทั้ง PMReportDB + PMUrlDB
-        # url_coll = get_pmurl_coll_upload(station_id)
         rep_exists = await coll.find_one({"station_id": station_id, "issue_id": client_issue})
         url_exists = await url_coll.find_one({"issue_id": client_issue})
         unique = not (rep_exists or url_exists)
@@ -2800,8 +2783,6 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
         if valid_fmt and unique:
             issue_id = client_issue
     
-    # if not issue_id:
-    #     issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
     if not issue_id:
         while True:
             candidate = await _next_issue_id(db, station_id, pm_type, d, pad=2)
@@ -2810,7 +2791,6 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
             if not rep_exists and not url_exists:
                 issue_id = candidate
                 break
-    # doc_name = await _next_year_seq(db, station_id, pm_type, d)
 
     client_docName = body.doc_name
     doc_name = None
@@ -2835,6 +2815,7 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
     inspector = body.inspector
     doc = {
         "station_id": station_id,
+        "doc_name": doc_name,
         "issue_id": issue_id,          # เดิม
         "job": body.job,
         # "rows": body.rows,
@@ -2846,7 +2827,6 @@ async def pmreport_submit(body: PMSubmitIn, current: UserClaims = Depends(get_cu
         # "dust_filter": body.dust_filter,
         # "year": year,                  # 👈 เพิ่ม
         # "year_seq": year_seq,          # 👈 เพิ่ม
-        "doc_name": doc_name,              # 👈 เพิ่ม ไว้โชว์บนฟอร์ม/ปกเอกสาร
         "photos_pre": {},
         "status": "draft",
         "side": body.side,
@@ -3457,10 +3437,10 @@ async def pmurl_upload_files(
     station_id: str = Form(...),
     reportDate: str = Form(...),                 # "YYYY-MM-DD" หรือ ISO
     files: list[UploadFile] = File(...),
-    # current: UserClaims = Depends(get_current_user),
     issue_id: Optional[str] = Form(None),
     doc_name: Optional[str] = Form(None),
     inspector: Optional[str] = Form(None),
+    # current: UserClaims = Depends(get_current_user),
 ):
     # auth (ถ้าจะเปิดใช้ก็เอา comment ออก)
     # if current.role != "admin" and station_id not in set(current.station_ids):
@@ -3702,17 +3682,19 @@ def get_mdbpmurl_coll_upload(station_id: str):
     return MDBPMUrlDB.get_collection(str(station_id))
 
 class MDBPMSubmitIn(BaseModel):
+    side: Literal["pre", "post"]
     station_id: str
     job: Dict[str, Any]         # โครงงาน (location/date/inspector ฯลฯ)
-    rows: Dict[str, Dict[str, Any]]  # {"r1": {"pf": "...", "remark": "..."}, ...}
-    measures: Dict[str, Dict[str, Any]]  # {"m4": {...}, "m5": {...}, ..., "m8": {...}}
-    summary: str
+    measures_pre: Dict[str, Dict[str, Any]] 
+    # rows: Dict[str, Dict[str, Any]]  # {"r1": {"pf": "...", "remark": "..."}, ...}
+    # measures: Dict[str, Dict[str, Any]]  # {"m4": {...}, "m5": {...}, ..., "m8": {...}}
+    # summary: str
     pm_date: str                # "YYYY-MM-DD"
     issue_id: Optional[str] = None
     doc_name: Optional[str] = None
-    summaryCheck: Optional[Literal["PASS","FAIL","NA"]] = None
+    # summaryCheck: Optional[Literal["PASS","FAIL","NA"]] = None
     inspector: Optional[str] = None 
-    dust_filter: Optional[str] = None
+    # dust_filter: Optional[str] = None
 
 @app.get("/mdbpmreport/preview-issueid")
 async def mdbpmreport_preview_issueid(
@@ -3792,7 +3774,7 @@ async def preview_docname(
 
     return {"doc_name": next_doc}
 
-@app.post("/mdbpmreport/submit")
+@app.post("/mdbpmreport/pre/submit")
 async def mdbpmreport_submit(body: MDBPMSubmitIn, current: UserClaims = Depends(get_current_user)):
     station_id = body.station_id.strip()
     coll = get_mdbpmreport_collection_for(station_id)
@@ -3822,10 +3804,6 @@ async def mdbpmreport_submit(body: MDBPMSubmitIn, current: UserClaims = Depends(
         if valid_fmt and unique:
             issue_id = client_issue
 
-    # ถ้าใช้ของ FE ไม่ได้ → สร้างใหม่แบบอะตอมมิก
-    # if not issue_id:
-    #     issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
-    
     if not issue_id:
         while True:
             candidate = await _next_issue_id(db, station_id, pm_type, d, pad=2)
@@ -3856,27 +3834,190 @@ async def mdbpmreport_submit(body: MDBPMSubmitIn, current: UserClaims = Depends(
         doc_name = f"{station_id}_{year_seq}/{year}"
 
     inspector = body.inspector
-    # เก็บเอกสารเป็น draft ก่อน
     doc = {
         "station_id": station_id,
         "doc_name": doc_name,
         "issue_id": issue_id,
         "job": body.job,
+        # "rows": body.rows,
+        "measures_pre": body.measures_pre,         # m4..m8
+        # "summary": body.summary,
+        # "summaryCheck": body.summaryCheck,
+        "pm_date": body.pm_date,           # string YYYY-MM-DD (ตามฟรอนต์)
+        "inspector": inspector,
+        # "dust_filter": body.dust_filter,
+        "photos_pre": {},
+        "status": "draft",
+        "side": body.side,
+        # "createdAt": datetime.now(timezone.utc),
+        # "updatedAt": datetime.now(timezone.utc),
+        "timestamp": datetime.now(timezone.utc),
+
+    }
+
+    res = await coll.insert_one(doc)
+    return {
+        "ok": True, 
+        "report_id": str(res.inserted_id), 
+        "issue_id": issue_id,
+        "doc_name": doc_name,
+    }
+
+class MDBPMPostIn(BaseModel):
+    report_id: str | None = None      # 👈 เพิ่ม
+    station_id: str
+    # issue_id: str | None = None
+    # job: dict
+    rows: dict
+    measures: dict
+    summary: str
+    # pm_date: str
+    # doc_name: str | None = None
+    summaryCheck: str | None = None
+    dust_filter: str | None = None
+    side: Literal["post", "after"]
+
+@app.post("/mdbpmreport/submit")
+async def mdbpmreport_submit(body: MDBPMPostIn, current: UserClaims = Depends(get_current_user)):
+    station_id = body.station_id.strip()
+    coll = get_mdbpmreport_collection_for(station_id)
+    db = coll.database
+
+    # pm_type = str(body.job.get("pm_type") or "MB").upper()
+    # body.job["pm_type"] = pm_type
+
+    url_coll = get_mdbpmurl_coll_upload(station_id)
+
+    # try:
+    #     d = datetime.strptime(body.pm_date, "%Y-%m-%d").date()
+    # except ValueError:
+    #     raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+    # client_issue = body.issue_id 
+    # issue_id: str | None = None    
+
+    # if client_issue:
+    #     yymm = f"{d.year % 100:02d}{d.month:02d}"
+    #     prefix = f"PM-{pm_type}-{yymm}-"
+    #     valid_fmt = client_issue.startswith(prefix)
+    #     rep_exists = await coll.find_one({"station_id": station_id, "issue_id": client_issue})
+    #     url_exists = await url_coll.find_one({"issue_id": client_issue})
+    #     unique = not (rep_exists or url_exists)
+
+    #     if valid_fmt and unique:
+    #         issue_id = client_issue
+
+    # ถ้าใช้ของ FE ไม่ได้ → สร้างใหม่แบบอะตอมมิก
+    # if not issue_id:
+    #     issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
+    
+    # if not issue_id:
+    #     while True:
+    #         candidate = await _next_issue_id(db, station_id, pm_type, d, pad=2)
+    #         rep_exists = await coll.find_one({"issue_id": candidate})
+    #         url_exists = await url_coll.find_one({"issue_id": candidate})
+    #         if not rep_exists and not url_exists:
+    #             issue_id = candidate
+    #             break
+
+    # client_docName = body.doc_name
+    # doc_name = None
+    # if client_docName:
+    #     year = f"{d.year}"
+    #     prefix = f"{station_id}_"
+    #     valid_fmt = client_docName.startswith(prefix)
+
+    #     url_coll = get_mdbpmurl_coll_upload(station_id)
+    #     rep_exists = await coll.find_one({"station_id": station_id, "doc_name": client_docName})
+    #     url_exists = await url_coll.find_one({"doc_name": client_docName})
+    #     unique = not (rep_exists or url_exists)
+
+    #     if valid_fmt and unique:
+    #         doc_name = client_docName
+ 
+    # if not doc_name:
+    #     year_seq = await _next_year_seq(db, station_id,d,"pm", pm_type)
+    #     year = d.year
+    #     doc_name = f"{station_id}_{year_seq}/{year}"
+
+    # inspector = body.inspector
+    # เก็บเอกสารเป็น draft ก่อน
+
+    if body.report_id:
+        try:
+            oid = ObjectId(body.report_id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail="invalid report_id")
+
+        existing = await coll.find_one({"_id": oid, "station_id": station_id})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Report not found")
+
+        # reuse ค่าเดิม ไม่ gen ใหม่
+        # issue_id = existing.get("issue_id")
+        # doc_name = existing.get("doc_name")
+        # inspector = body.inspector or existing.get("inspector") or current.username
+
+        update_fields = {
+            # "job": body.job,
+            "rows": body.rows,
+            "measures": body.measures,          # ใช้เป็นค่าหลัง PM
+            "summary": body.summary,
+            "summaryCheck": body.summaryCheck,
+            # "pm_date": body.pm_date,
+            # "inspector": inspector,
+            "dust_filter": body.dust_filter,
+            # "doc_name": doc_name,
+            "side": "post",                     # ตอนนี้อยู่ฝั่ง post แล้ว
+            "timestamp_post": datetime.now(timezone.utc),
+        }
+
+        await coll.update_one({"_id": oid}, {"$set": update_fields})
+
+        return {
+            "ok": True,
+            "report_id": body.report_id,
+            # "issue_id": issue_id,
+            # "doc_name": doc_name,
+        }
+    
+    doc = {
+        "station_id": station_id,
+        # "doc_name": doc_name,
+        # "issue_id": issue_id,
+        # "job": body.job,
         "rows": body.rows,
         "measures": body.measures,         # m4..m8
         "summary": body.summary,
         "summaryCheck": body.summaryCheck,
-        "pm_date": body.pm_date,           # string YYYY-MM-DD (ตามฟรอนต์)
-        "inspector": inspector,
+        # "pm_date": body.pm_date,           # string YYYY-MM-DD (ตามฟรอนต์)
+        # "inspector": inspector,
         "dust_filter": body.dust_filter,
         "status": "draft",
         "photos": {},                      # จะถูกเติมใน /photos
-        "createdAt": datetime.now(timezone.utc),
-        "updatedAt": datetime.now(timezone.utc),
+        # "createdAt": datetime.now(timezone.utc),
+        # "updatedAt": datetime.now(timezone.utc),
+        "side": "post",
+        "timestamp": datetime.now(timezone.utc),
     }
 
     res = await coll.insert_one(doc)
-    return {"ok": True, "report_id": str(res.inserted_id), "issue_id": issue_id,"doc_name": doc_name,}
+    return {
+        "ok": True, 
+        "report_id": str(res.inserted_id), 
+        # "issue_id": issue_id,
+        # "doc_name": doc_name,
+    }
+
+@app.get("/mdbpmreport/get")
+async def mdbpmreport_get(station_id: str, report_id: str, current: UserClaims = Depends(get_current_user)):
+    coll = get_mdbpmreport_collection_for(station_id)
+    doc = await coll.find_one({"_id": ObjectId(report_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="not found")
+
+    doc["_id"] = str(doc["_id"])
+    return doc
 
 @app.get("/mdbpmreport/list")
 async def mdbpmreport_list(
@@ -3891,7 +4032,7 @@ async def mdbpmreport_list(
     coll = get_mdbpmreport_collection_for(station_id)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1 , "pm_date": 1,"inspector":1, "createdAt": 1}).sort(
+    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1 , "pm_date": 1,"inspector":1,"side":1, "createdAt": 1}).sort(
         [("createdAt", -1), ("_id", -1)]
     ).skip(skip).limit(pageSize)
 
@@ -3915,7 +4056,8 @@ async def mdbpmreport_list(
         "id": str(it["_id"]),
         "issue_id": it.get("issue_id"),
         "doc_name": it.get("doc_name"),
-        "inspector": it.get(("inspector")), 
+        "inspector": it.get(("inspector")),
+        "side":it.get("side"), 
         "pm_date": it.get("pm_date"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("pm_date") or "", ""),
@@ -3923,7 +4065,75 @@ async def mdbpmreport_list(
 
     return {"items": items, "pm_date": [it.get("pm_date") for it in items_raw if it.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
 
-@app.post("/mdbpmreport/{report_id}/photos")
+@app.post("/mdbpmreport/{report_id}/pre/photos")
+async def mdbpmreport_upload_photos(
+    report_id: str,
+    station_id: str = Form(...),
+    group: str = Form(...),                   # เช่น "g1" .. "g10"
+    files: list[UploadFile] = File(...),
+    # remark: str | None = Form(None),
+    # current: UserClaims = Depends(get_current_user),
+):
+    # if current.role != "admin" and station_id not in set(current.station_ids):
+    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+    if not re.fullmatch(r"g\d+", group):
+        raise HTTPException(status_code=400, detail="Bad group key")
+
+    coll = get_mdbpmreport_collection_for(station_id)
+    from bson import ObjectId
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    # ยืนยันว่ารายงานนี้อยู่ใน station นี้
+    doc = await coll.find_one({"_id": oid}, {"_id":1, "station_id":1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if doc.get("station_id") != station_id:
+        raise HTTPException(status_code=400, detail="station_id mismatch")
+
+    # โฟลเดอร์ปลายทาง
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "pm" / station_id / report_id / group
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    total = 0
+    for f in files:
+        ext = _ext(f.filename or "")
+        if ext not in ALLOWED_EXTS:
+            raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
+
+        data = await f.read()
+        total += len(data)
+        if len(data) > MAX_FILE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        path = dest_dir / fname
+        with open(path, "wb") as out:
+            out.write(data)
+
+        # URL สำหรับแสดงบน Frontend
+        url_path = f"/uploads/mdbpm/{station_id}/{report_id}/{group}/{fname}"
+        saved.append({
+            "filename": fname,
+            "size": len(data),
+            "url": url_path,
+            # "remark": remark or "",
+            "uploadedAt": datetime.now(timezone.utc)
+        })
+
+    # อัปเดตเอกสาร PMReport: push ลง photos.<group>
+    await coll.update_one(
+        {"_id": oid},
+        {"$push": {f"photos_pre.{group}": {"$each": saved}}}
+    )
+
+    return {"ok": True, "count": len(saved), "group": group, "files": saved}
+
+
+@app.post("/mdbpmreport/{report_id}/post/photos")
 async def mdbpmreport_upload_photos(
     report_id: str,
     station_id: str = Form(...),

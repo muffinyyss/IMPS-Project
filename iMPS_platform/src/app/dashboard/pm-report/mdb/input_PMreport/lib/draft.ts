@@ -1,13 +1,14 @@
 type DraftData = {
   job: any;
   rows: any;
-  cp: any;
+  // cp: any;
   m4: any;
   m5: any;
   m6: any;
   m7: any;
   m8: any;
   summary: string;
+  inspector : string;
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
 };

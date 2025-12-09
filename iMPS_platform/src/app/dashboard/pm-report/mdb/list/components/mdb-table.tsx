@@ -1,6 +1,5 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-// import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   getCoreRowModel,
@@ -32,10 +31,10 @@ type TData = {
   doc_name?: string;
   issue_id?: string;
   pm_date: string;
-  // name: string;      // วันที่ (TH) สำหรับแสดงผล
   position: string;  // YYYY-MM-DD สำหรับ sort
   office: string;    // URL ไฟล์หรือ endpoint /pdf/mdb/{id}/export
   inspector?: string;
+  side?: string;
 };
 
 type Props = {
@@ -48,7 +47,6 @@ const REPORT_PREFIX = "mdbpmreport";
 const URL_PREFIX = "mdbpmurl";
 
 const PM_TYPE_CODE = "MB";
-
 
 function makePrefix(typeCode: string, dateISO: string) {
   const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
@@ -81,8 +79,6 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   const [a, b] = await Promise.allSettled([
     apiFetch(build(`/${REPORT_PREFIX}/list`), FetchOpts),
     apiFetch(build(`/${URL_PREFIX}/list`), FetchOpts),
-    // fetch(build(`/${REPORT_PREFIX}/list`), FetchOpts),
-    // fetch(build(`/${URL_PREFIX}/list`), FetchOpts),
   ]);
 
   let ids: string[] = [];
@@ -172,7 +168,6 @@ async function fetchLatestDocName(
       ? localStorage.getItem("access_token") ?? ""
       : "";
 
-  // const r = await fetch(u.toString(), {
   const r = await apiFetch(u.toString(), {
     credentials: "include",
     cache: "no-store",
@@ -229,9 +224,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   }, [searchParams]);
 
   useEffect(() => {
-    // ถ้าใช้ httpOnly cookie เป็นหลัก ก็ไม่ต้องพึ่ง localStorage มาก
     const useHttpOnlyCookie = true;
-
     (async () => {
       try {
         const headers: Record<string, string> = {};
@@ -243,7 +236,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         }
 
         const res = await apiFetch(`${apiBase}/me`, {
-          // const res = await fetch(`${apiBase}/me`, {
           method: "GET",
           headers,
           credentials: "include",
@@ -356,7 +348,16 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   }
 
   function pickDateFromItem(it: any): string {
-    const cands = [it?.pm_date, it?.reportDate, it?.job?.date, it?.submittedAt, it?.timestamp, it?.createdAt, it?.updatedAt, it?.date];
+    const cands = [
+      it?.pm_date,
+      it?.reportDate,
+      it?.job?.date,
+      it?.submittedAt,
+      it?.timestamp,
+      it?.createdAt,
+      it?.updatedAt,
+      it?.date
+    ];
     for (const v of cands) {
       const d = normalizeAnyDate(v);
       if (d) return d;
@@ -380,11 +381,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         u.searchParams.set("_ts", String(Date.now()));
         return u.toString();
       };
-      // const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
-
       const [pmRes, urlRes] = await Promise.allSettled([
-        // fetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
-        // fetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
         apiFetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
         apiFetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
       ]);
@@ -422,15 +419,21 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/mdb/${encodeURIComponent(id)}/export` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
-        // const issueId = (it.issue_id ? String(it.issue_id) : "") || id || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
 
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
-        const inspector =
-          (it.inspector ?? it.job?.inspector ?? "") as string;
-
-
-        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: fileUrl, inspector, } as TData;
+        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string;
+        const side = (it.side ?? it.job?.side ?? "") as string;
+        return {
+          id,
+          issue_id: issueId,
+          doc_name: doc_name,
+          pm_date: thDate(isoDay),
+          position: isoDay,
+          office: fileUrl,
+          inspector,
+          side
+        } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -441,13 +444,20 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
           it.file ??
           it.path;
         const href = resolveFileHref(raw, apiBase);
-        // const issueId = (it.issue_id ? String(it.issue_id) : "") || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
 
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
-        const inspector =
-          (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
-        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: href, inspector, } as TData;
+        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
+        const side = (it.side ?? it.job?.side ?? "") as string;
+        return {
+          issue_id: issueId,
+          doc_name: doc_name,
+          pm_date: thDate(isoDay),
+          position: isoDay,
+          office: href,
+          inspector,
+          side
+        } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
@@ -475,7 +485,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     let alive = true;
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId]);
 
   function appendParam(u: string, key: string, val?: string) {
@@ -527,9 +536,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     const ac = new AbortController();
     fetchRows(ac.signal);
     return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId, searchParams.toString()]);
-
 
   // ---- Table ----
   const columns: ColumnDef<TData, unknown>[] = [
@@ -586,6 +593,16 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
+    // {
+    //   accessorFn: (row) => row.side,
+    //   id: "side",
+    //   header: () => "side",
+    //   cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+    //   size: 100,
+    //   minSize: 80,
+    //   maxSize: 140,
+    //   meta: { headerAlign: "center", cellAlign: "center" },
+    // },
     {
       accessorFn: (row) => row.office,
       id: "pdf",
@@ -600,20 +617,67 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         }
 
         const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
-        return (
-          <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-            <a
-              aria-label="Preview"
-              href={previewHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-              title="Preview"
-            >
-              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-            </a>
-          </div>
-        );
+
+        const rowSide = info.row.original.side;
+
+        // return (
+        //   <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+        //     <a
+        //       aria-label="Preview"
+        //       href={previewHref}
+        //       target="_blank"
+        //       rel="noopener noreferrer"
+        //       className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+        //       title="Preview"
+        //     >
+        //       <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+        //     </a>
+        //   </div>
+        // );
+
+        if (rowSide == "pre") {
+          return (
+            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+              <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
+                <Button
+                  size="sm"
+                  color="blue"
+                  variant="outlined"
+                  className="tw-shrink-0"
+                  onClick={() => {
+                    // เอา query param เดิมมาต่อ ไม่ให้หาย
+                    const params = new URLSearchParams(searchParams.toString());
+                    // บังคับให้เปลี่ยนเป็นหน้า form (ChargerPMForm)
+                    params.set("view", "form");
+                    // ส่งคำว่า "post" ไปด้วยใน query string
+                    params.set("action", "post");
+                    params.set("edit_id", info.row.original.id || "");
+
+                    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+                  }}
+                >
+                  post-pm
+                </Button>
+              </div>
+            </div>
+          );
+        } else {
+          return (
+            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+              <a
+                aria-label="Preview"
+                href={previewHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+                title="Preview"
+              >
+                <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+              </a>
+            </div>
+          )
+
+        }
       },
       size: 150,
       minSize: 120,
@@ -767,7 +831,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   if (mode === "form") {
     return (
       <div className="tw-mt-6">
-        <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
+        {/* <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
           <Button
             variant="outlined"
             size="sm"
@@ -777,7 +841,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
           >
             <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
           </Button>
-        </div>
+        </div> */}
         <MDBPMForm />
       </div>
     );
