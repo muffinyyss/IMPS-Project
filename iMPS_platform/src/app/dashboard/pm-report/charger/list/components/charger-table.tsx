@@ -10,7 +10,6 @@ import {
   flexRender,
   type ColumnDef,
   type CellContext,
-  type Row,
   type SortingState,
 } from "@tanstack/react-table";
 import {
@@ -26,7 +25,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ChevronUpDownIcon,
-  ArrowLeftIcon,
 } from "@heroicons/react/24/solid";
 import { ArrowUpTrayIcon, DocumentArrowDownIcon, EyeIcon } from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
@@ -175,7 +173,6 @@ async function fetchLatestDocName(
       ? localStorage.getItem("access_token") ?? ""
       : "";
 
-  // const r = await fetch(u.toString(), {
   const r = await apiFetch(u.toString(), {
     credentials: "include",
     cache: "no-store",
@@ -232,9 +229,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   }, [searchParams]);
 
   useEffect(() => {
-    // ถ้าใช้ httpOnly cookie เป็นหลัก ก็ไม่ต้องพึ่ง localStorage มาก
     const useHttpOnlyCookie = true;
-
     (async () => {
       try {
         const headers: Record<string, string> = {};
@@ -246,7 +241,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         }
 
         const res = await apiFetch(`${apiBase}/me`, {
-          // const res = await fetch(`${apiBase}/me`, {
           method: "GET",
           headers,
           credentials: "include",
@@ -376,11 +370,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return "";
   }
 
-  // Fetch data (with abort support)
   const fetchRows = async (signal?: AbortSignal) => {
-    if (!stationId) { setData([]); return; }
+    if (!stationId) {
+      setData([]);
+      return;
+    }
     setLoading(true);
-
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
@@ -390,12 +385,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         u.searchParams.set("_ts", String(Date.now()));
         return u.toString();
       };
-
-      // const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
-
       const [pmRes, urlRes] = await Promise.allSettled([
-        // fetch(makeURL("/pmreport/list"), FetchOpts),
-        // fetch(makeURL("/pmurl/list"), FetchOpts),
         apiFetch(makeURL("/pmreport/list"), FetchOpts),
         apiFetch(makeURL("/pmurl/list"), FetchOpts),
       ]);
@@ -432,15 +422,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/charger/${encodeURIComponent(id)}/export` : "";
 
         const fileUrl = uploadedUrl || generatedUrl;
-        // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
 
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
-        const inspector =
-          (it.inspector ?? it.job?.inspector ?? "") as string;
-        // const side = (it.side ? String(it.side) : "")
-        const side =
-          (it.side ?? it.job?.side ?? "") as string;
+        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string;
+        const side = (it.side ?? it.job?.side ?? "") as string;
         return {
           id,
           issue_id: issueId,
@@ -455,20 +441,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
       const urlRows: TData[] = urlItems.map((it: any) => {
         const isoDay = pickDateFromItem(it);
-
-
         const raw =
           it.file_url ??
           (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
           it.file ?? it.path;
         const href = resolveFileHref(raw, apiBase);
-        // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
         const inspector = (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
-        // const side = (it.side ? String(it.side) : "")
         const side = (it.side ?? it.job?.side ?? "") as string;
-        // setSide(side)
         return {
           issue_id: issueId,
           doc_name: doc_name,
@@ -505,7 +486,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     let alive = true;
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId]);
 
   function appendParam(u: string, key: string, val: string) {
@@ -554,7 +534,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const ac = new AbortController();
     fetchRows(ac.signal);
     return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId, searchParams.toString()]);
 
   // Table columns

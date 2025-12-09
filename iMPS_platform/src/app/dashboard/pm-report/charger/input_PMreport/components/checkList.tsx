@@ -38,6 +38,7 @@ function tabToSlug(tab: TabId): "pre" | "post" {
 }
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
+
 type StationPublic = {
     station_id: string;
     station_name: string;
@@ -331,7 +332,6 @@ function SectionCard({
     children: React.ReactNode;
 }) {
     return (
-
         <>
             {/* Title นอกกรอบการ์ด */}
             {title && (
@@ -595,7 +595,6 @@ function PhotoMultiInput({
 }
 
 const PM_TYPE_CODE = "CG";
-
 
 async function fetchPreviewIssueId(
     stationId: string,
@@ -1057,16 +1056,6 @@ export default function ChargerPMForm() {
         [rows, PF_KEYS_ALL]
     );
 
-    // const REQUIRED_PHOTO_ITEMS = useMemo(
-    //     () => QUESTIONS.filter((q) => q.hasPhoto).map((q) => q.no).sort((a, b) => a - b),
-    //     []
-    // );
-    // const missingPhotoItems = useMemo(
-    //     () => REQUIRED_PHOTO_ITEMS.filter((no) => (photos[no]?.length ?? 0) < 1),
-    //     [REQUIRED_PHOTO_ITEMS, photos]
-    // );
-    // const allPhotosAttached = missingPhotoItems.length === 0;
-
     const MEASURE_BY_NO: Record<number, ReturnType<typeof useMeasure<UnitVoltage>> | undefined> = {
         17: m17,
     };
@@ -1421,6 +1410,10 @@ export default function ChargerPMForm() {
 
     const onPreSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+        if (!allRequiredInputsFilled) {
+            alert("กรุณากรอกค่าข้อ 15 (CP) และข้อ 17 ให้ครบก่อนบันทึก");
+            return;
+        }
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -1565,7 +1558,8 @@ export default function ChargerPMForm() {
     );
 
 
-    const canGoAfter = isPostMode ? true : allPhotosAttachedPre;
+    // const canGoAfter = isPostMode ? true : allPhotosAttachedPre;
+    const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
 
     useEffect(() => {
         const tabParam = searchParams.get("tab");
@@ -1976,9 +1970,14 @@ export default function ChargerPMForm() {
                                     onClick={onPreSave}
                                     disabled={!canGoAfter || submitting}
                                     title={
-                                        !canGoAfter
+                                        // !canGoAfter
+                                        //     ? "กรุณาแนบรูปในส่วน Pre ให้ครบก่อนบันทึก"
+                                        //     : undefined
+                                        !allPhotosAttachedPre
                                             ? "กรุณาแนบรูปในส่วน Pre ให้ครบก่อนบันทึก"
-                                            : undefined
+                                            : !allRequiredInputsFilled
+                                                ? "กรุณากรอกค่าข้อ 15 (CP) และข้อ 17 ให้ครบก่อนบันทึก"
+                                                : undefined
                                     }
                                 >
                                     {submitting ? "กำลังบันทึก..." : "บันทึก"}
