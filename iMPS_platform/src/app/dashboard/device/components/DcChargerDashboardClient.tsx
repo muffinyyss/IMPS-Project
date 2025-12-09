@@ -109,6 +109,7 @@ function Pill({
             <span className={`tw-inline-block tw-h-2.5 tw-w-2.5 tw-rounded-full ${color}`} />
             <span className="tw-text-[15px] tw-text-gray-700">{label}</span>
             <span className="tw-text-[15px] tw-font-bold">{value}</span>
+            <span className="tw-text-[15px] tw-text-gray-700">ตัว</span>
         </div>
     );
 }

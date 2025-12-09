@@ -87,7 +87,6 @@ function getHealthInfo(moduleId: string, output: any | null): HealthInfo {
       raw = typeof output?.health?.health_index === "number"
         ? output.health.health_index
         : null;
-      if (raw !== null && raw <= 1) raw = raw * 100;
       label = output?.health?.health_status ?? null;
       sourcePath = "health.health_index";
       break;
@@ -205,9 +204,7 @@ function extractFeaturesFromInput(
     for (const [k, v] of Object.entries(obj)) {
       if (result.length >= maxItems) return;
 
-      if (k === "_id") {
-        continue;
-      }
+      if (k === "_id") continue;
 
       const path = prefix ? `${prefix}.${k}` : k;
 
@@ -234,6 +231,105 @@ function extractFeaturesFromInput(
 
   walk(inputData, "", 0);
   return result;
+}
+
+type ModuleTimestamps = {
+  inputRaw?: string | null;
+  outputRaw?: string | null;
+  inputDisplay?: string | null;
+  outputDisplay?: string | null;
+};
+
+function normalizeIsoLike(str: string): string {
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+$/.test(str)) {
+    const [head, frac] = str.split(".");
+    if (frac.length > 3) {
+      return `${head}.${frac.slice(0, 3)}`;
+    }
+  }
+  return str;
+}
+
+function formatTimestamp(
+  ts: any,
+  opts?: { add7Hours?: boolean }
+): string | null {
+  if (!ts) return null;
+  let s = typeof ts === "string" ? ts : String(ts);
+  s = normalizeIsoLike(s);
+
+  const d0 = new Date(s);
+  if (Number.isNaN(d0.getTime())) {
+    return s;
+  }
+
+  let d = d0;
+  if (opts?.add7Hours) {
+    d = new Date(d0.getTime() + 7 * 60 * 60 * 1000);
+  }
+
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  const ss = pad(d.getSeconds());
+
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
+
+function getModuleTimestamps(
+  moduleId: string,
+  inputData: any | null,
+  outputData: any | null
+): ModuleTimestamps {
+  let inputRaw: string | null | undefined = null;
+  let outputRaw: string | null | undefined = null;
+  let outputAdd7 = false;
+
+  if (inputData && typeof inputData === "object") {
+    inputRaw = inputData.timestamp ?? null;
+  }
+
+  switch (moduleId) {
+    case "module1":
+      outputRaw = outputData?.original_timestamp ?? null;
+      break;
+    case "module2":
+      outputRaw = outputData?.timestamp ?? null;
+      break;
+    case "module3":
+      outputRaw = outputData?.source_timestamp ?? null;
+      break;
+    case "module4":
+      outputRaw = outputData?.timestamp ?? null;
+      break;
+    case "module5":
+      outputRaw = outputData?.metadata?.prediction_time ?? null;
+      break;
+    case "module6":
+      outputRaw = outputData?.timestamp ?? null;
+      outputAdd7 = true;
+      break;
+    case "module7":
+      outputRaw = outputData?.timestamp ?? null;
+      break;
+    default:
+      break;
+  }
+
+  const inputDisplay = formatTimestamp(inputRaw);
+  const outputDisplay = formatTimestamp(outputRaw, {
+    add7Hours: outputAdd7,
+  });
+
+  return {
+    inputRaw,
+    outputRaw,
+    inputDisplay,
+    outputDisplay,
+  };
 }
 
 export default function ModuleDetailPage() {
@@ -340,6 +436,11 @@ export default function ModuleDetailPage() {
       ? healthInfo.value.toFixed(1)
       : "--";
 
+  const timestamps = useMemo(
+    () => getModuleTimestamps(moduleId, inputData, outputData),
+    [moduleId, inputData, outputData]
+  );
+
   return (
     <div className="tw-mt-8 tw-space-y-4">
       <style jsx>{`
@@ -349,15 +450,6 @@ export default function ModuleDetailPage() {
           }
           50% {
             opacity: 0.5;
-          }
-        }
-        
-        @keyframes flow {
-          0% {
-            stroke-dashoffset: 1000;
-          }
-          100% {
-            stroke-dashoffset: 0;
           }
         }
         
@@ -381,12 +473,30 @@ export default function ModuleDetailPage() {
           }
         }
 
+        @keyframes slide-in-left {
+          from {
+            transform: translateX(-20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+
+        @keyframes slide-in-right {
+          from {
+            transform: translateX(20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+
         .animate-pulse-glow {
           animation: pulse-glow 2s ease-in-out infinite;
-        }
-        
-        .animate-flow {
-          animation: flow 3s linear infinite;
         }
 
         .animate-rotate {
@@ -395,6 +505,14 @@ export default function ModuleDetailPage() {
 
         .animate-scale-in {
           animation: scale-in 0.5s ease-out;
+        }
+
+        .animate-slide-in-left {
+          animation: slide-in-left 0.6s ease-out;
+        }
+
+        .animate-slide-in-right {
+          animation: slide-in-right 0.6s ease-out;
         }
         
         .feature-card {
@@ -405,9 +523,13 @@ export default function ModuleDetailPage() {
           transform: translateY(-2px);
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
+
+        .timestamp-badge {
+          backdrop-filter: blur(8px);
+        }
       `}</style>
 
-      {/* Header + ปุ่ม Back */}
+      {/* Header + Back */}
       <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
         <Button
           variant="outlined"
@@ -426,16 +548,12 @@ export default function ModuleDetailPage() {
           <div className="tw-flex tw-flex-wrap tw-gap-2 tw-mt-1">
             <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-blue-gray-50 tw-px-3 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-blue-gray-700">
               Module ID:
-              <span className="tw-ml-1 tw-font-mono">
-                {config.id}
-              </span>
+              <span className="tw-ml-1 tw-font-mono">{config.id}</span>
             </span>
             {stationId && (
               <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-green-50 tw-px-3 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-green-700">
                 Station:
-                <span className="tw-ml-1 tw-font-mono">
-                  {stationId}
-                </span>
+                <span className="tw-ml-1 tw-font-mono">{stationId}</span>
               </span>
             )}
           </div>
@@ -454,8 +572,8 @@ export default function ModuleDetailPage() {
         </Typography>
       )}
 
-      {/* Enhanced DIAGRAM */}
-      <Card className="tw-border tw-border-blue-gray-50 tw-bg-gradient-to-br tw-from-white tw-to-blue-gray-50/30">
+      {/* Enhanced DIAGRAM with Timestamps */}
+      <Card className="tw-border tw-border-blue-gray-50 tw-bg-gradient-to-br tw-from-white tw-to-blue-gray-50/30 tw-shadow-lg">
         <CardBody className="tw-p-6">
           {loading ? (
             <div className="tw-flex tw-flex-col tw-items-center tw-justify-center tw-py-12">
@@ -467,7 +585,7 @@ export default function ModuleDetailPage() {
           ) : (
             <div className="tw-flex tw-flex-col lg:tw-flex-row tw-gap-8 tw-items-stretch tw-justify-between">
               {/* LEFT: Input features */}
-              <div className="tw-flex-1 animate-scale-in">
+              <div className="tw-flex-1 animate-slide-in-left">
                 <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
                   <div className="tw-w-1 tw-h-6 tw-bg-gradient-to-b tw-from-blue-500 tw-to-blue-600 tw-rounded-full"></div>
                   <Typography className="tw-text-base tw-font-bold tw-text-blue-gray-900">
@@ -475,12 +593,22 @@ export default function ModuleDetailPage() {
                   </Typography>
                 </div>
                 
-                <div className="tw-bg-blue-50/50 tw-rounded-lg tw-p-3 tw-mb-4 tw-border tw-border-blue-100">
-                  <Typography className="tw-text-xs tw-text-blue-gray-700 tw-leading-relaxed">
+                <div className="tw-bg-gradient-to-r tw-from-blue-50 tw-to-indigo-50/50 tw-rounded-xl tw-p-4 tw-mb-4 tw-border tw-border-blue-100 tw-shadow-sm">
+                  <Typography className="tw-text-xs tw-text-blue-gray-700 tw-leading-relaxed tw-mb-2">
                     ข้อมูลจาก document ล่าสุดของสถานี{" "}
                     <span className="tw-font-mono tw-font-semibold tw-text-blue-600">{stationId}</span>
-                    {" "}รวมถึง เวลา, อุณหภูมิ, ความชื้น, สถานะอุปกรณ์ และอื่นๆ
                   </Typography>
+                  
+                  {timestamps.inputDisplay && (
+                    <div className="tw-flex tw-items-center tw-gap-2 tw-mt-2">
+                      <svg className="tw-w-3.5 tw-h-3.5 tw-text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="tw-text-[11px] tw-font-mono tw-text-blue-700 tw-font-semibold">
+                        {timestamps.inputDisplay}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {features.length === 0 ? (
@@ -516,7 +644,6 @@ export default function ModuleDetailPage() {
 
               {/* MIDDLE: Enhanced Flow Animation */}
               <div className="tw-hidden lg:tw-flex tw-flex-col tw-items-center tw-justify-center tw-min-w-[120px] tw-relative">
-                {/* Vertical Line with Dots */}
                 <div className="tw-relative tw-flex tw-flex-col tw-items-center">
                   {/* Top Section */}
                   <div className="tw-w-0.5 tw-h-16 tw-bg-gradient-to-b tw-from-blue-500 tw-to-blue-400 tw-rounded-full"></div>
@@ -554,15 +681,27 @@ export default function ModuleDetailPage() {
               </div>
 
               {/* RIGHT: Enhanced Health Index Display */}
-              <div className="tw-flex-1 tw-flex tw-flex-col tw-items-center tw-justify-center animate-scale-in" style={{ animationDelay: '0.3s' }}>
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-4">
+              <div className="tw-flex-1 tw-flex tw-flex-col tw-items-center tw-justify-center animate-slide-in-right">
+                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
                   <Typography className="tw-text-base tw-font-bold tw-text-blue-gray-900">
                     Health Index Output
                   </Typography>
                   <div className="tw-w-1 tw-h-6 tw-bg-gradient-to-b tw-from-green-500 tw-to-green-600 tw-rounded-full"></div>
                 </div>
 
-                <div className="tw-relative">
+                {/* Timestamp Badge */}
+                {timestamps.outputDisplay && (
+                  <div className="timestamp-badge tw-mb-4 tw-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2 tw-rounded-full tw-bg-gradient-to-r tw-from-purple-50 tw-to-pink-50 tw-border tw-border-purple-100 tw-shadow-sm">
+                    <svg className="tw-w-3.5 tw-h-3.5 tw-text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="tw-text-[11px] tw-font-mono tw-text-purple-700 tw-font-semibold">
+                      {timestamps.outputDisplay}
+                    </span>
+                  </div>
+                )}
+
+                <div className="tw-relative tw-mb-6">
                   {/* Outer Glow Ring */}
                   <div className={`tw-absolute tw-inset-0 tw-rounded-full tw-bg-gradient-to-br ${healthClasses.gradient} tw-opacity-20 tw-blur-2xl ${healthClasses.glow} tw-shadow-2xl animate-pulse-glow`}></div>
                   
@@ -591,7 +730,7 @@ export default function ModuleDetailPage() {
                 </div>
 
                 {/* Status Badge and Info */}
-                <div className="tw-mt-6 tw-flex tw-flex-col tw-items-center tw-gap-2 tw-w-full tw-max-w-xs">
+                <div className="tw-mt-2 tw-flex tw-flex-col tw-items-center tw-gap-3 tw-w-full tw-max-w-xs">
                   {healthInfo.label && (
                     <span
                       className={`tw-inline-flex tw-items-center tw-rounded-full tw-px-4 tw-py-2 tw-text-xs tw-font-bold tw-uppercase tw-tracking-wide ${healthClasses.badge} tw-shadow-sm`}
@@ -602,9 +741,14 @@ export default function ModuleDetailPage() {
                   )}
                   
                   {healthInfo.sourcePath && (
-                    <div className="tw-bg-blue-gray-50 tw-rounded-lg tw-px-3 tw-py-2 tw-w-full">
-                      <div className="tw-text-[10px] tw-text-blue-gray-500 tw-mb-0.5">
-                        Source Field
+                    <div className="tw-bg-gradient-to-r tw-from-blue-gray-50 tw-to-slate-50 tw-rounded-lg tw-px-4 tw-py-2.5 tw-w-full tw-border tw-border-blue-gray-100 tw-shadow-sm">
+                      <div className="tw-flex tw-items-center tw-gap-1.5 tw-mb-1">
+                        <svg className="tw-w-3 tw-h-3 tw-text-blue-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <div className="tw-text-[10px] tw-text-blue-gray-500 tw-font-semibold tw-uppercase tw-tracking-wide">
+                          Source Field
+                        </div>
                       </div>
                       <div className="tw-text-xs tw-font-mono tw-font-semibold tw-text-blue-gray-700 tw-break-all">
                         {healthInfo.sourcePath}
@@ -614,10 +758,15 @@ export default function ModuleDetailPage() {
                 </div>
 
                 {!outputData && !loading && (
-                  <div className="tw-mt-6 tw-text-center tw-py-4 tw-px-6 tw-bg-amber-50/50 tw-rounded-lg tw-border tw-border-amber-100">
-                    <Typography className="tw-text-xs tw-text-amber-700 tw-font-medium">
-                      ⚠️ ยังไม่พบผลลัพธ์ output ของโมดูลนี้
-                    </Typography>
+                  <div className="tw-mt-6 tw-text-center tw-py-4 tw-px-6 tw-bg-gradient-to-r tw-from-amber-50 tw-to-orange-50 tw-rounded-lg tw-border tw-border-amber-200 tw-shadow-sm">
+                    <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+                      <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <Typography className="tw-text-xs tw-text-amber-700 tw-font-medium">
+                        ยังไม่พบผลลัพธ์ output ของโมดูลนี้
+                      </Typography>
+                    </div>
                   </div>
                 )}
               </div>

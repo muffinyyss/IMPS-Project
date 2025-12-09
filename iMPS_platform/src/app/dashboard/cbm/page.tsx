@@ -203,8 +203,8 @@ export default function SalesPage() {
           <ChargingGunsCard
             updatedAt={lastUpdated}
             items={[
-              { id: "gun1", name: "Charging Gun 1 Temperature Plus", temp: toDec(data?.charger_gun_temp_plus1), target: 60 },
-              { id: "gun1", name: "Charging Gun 1 Temperature Minus", temp: toDec(data?.charger_gan_temp_minus1), target: 60 },
+              { id: "gun1", name: "Charging Gun 1 Temperature +", temp: toDec(data?.charger_gun_temp_plus1), target: 60 },
+              { id: "gun1", name: "Charging Gun 1 Temperature -", temp: toDec(data?.charger_gan_temp_minus1), target: 60 },
             ]}
           />
         </div>
@@ -213,8 +213,8 @@ export default function SalesPage() {
           <ChargingGunsCard
             updatedAt={lastUpdated}
             items={[
-              { id: "gun2", name: "Charging Gun 2 Temperature Plus", temp: toDec(data?.charger_gun_temp_plus2), target: 60 },
-              { id: "gun2", name: "Charging Gun 2 Temperature Minus", temp: toDec(data?.charger_gan_temp_minus2), target: 60 },
+              { id: "gun2", name: "Charging Gun 2 Temperature +", temp: toDec(data?.charger_gun_temp_plus2), target: 60 },
+              { id: "gun2", name: "Charging Gun 2 Temperature -", temp: toDec(data?.charger_gan_temp_minus2), target: 60 },
             ]}
           />
         </div>
