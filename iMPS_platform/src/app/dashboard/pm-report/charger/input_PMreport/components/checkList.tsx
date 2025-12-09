@@ -683,7 +683,7 @@ export default function ChargerPMForm() {
 
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const [reportId, setReportId] = useState<string | null>(null);
+    // const [reportId, setReportId] = useState<string | null>(null);
     const editId = searchParams.get("edit_id") ?? "";
     const isEdit = !!editId;
     const headerLabel = useMemo(() => (editId ? "PM Report (Edit)" : "PM Report (Add)"), [editId]);
@@ -1064,17 +1064,17 @@ export default function ChargerPMForm() {
     // ต้องตอบ PASS/FAIL ครบทุกข้อยกเว้น r17 (เป็นชุดวัดค่า)
     const PF_REQUIRED_KEYS = useMemo(() => QUESTIONS.filter((q) => q.key !== "r17").map((q) => q.key), []);
     // ตอบอะไรก็ได้ที่ไม่ว่าง: PASS/FAIL/NA
-    const allPFAnswered = useMemo(
-        () => PF_REQUIRED_KEYS.every((k) => rows[k].pf !== ""),
-        [rows, PF_REQUIRED_KEYS]
-    );
-    const missingPFItems = useMemo(
-        () =>
-            PF_REQUIRED_KEYS.filter((k) => !rows[k].pf)
-                .map((k) => Number(k.replace("r", "")))
-                .sort((a, b) => a - b),
-        [rows, PF_REQUIRED_KEYS]
-    );
+    // const allPFAnswered = useMemo(
+    //     () => PF_REQUIRED_KEYS.every((k) => rows[k].pf !== ""),
+    //     [rows, PF_REQUIRED_KEYS]
+    // );
+    // const missingPFItems = useMemo(
+    //     () =>
+    //         PF_REQUIRED_KEYS.filter((k) => !rows[k].pf)
+    //             .map((k) => Number(k.replace("r", "")))
+    //             .sort((a, b) => a - b),
+    //     [rows, PF_REQUIRED_KEYS]
+    // );
 
     // อินพุตที่บังคับ: เฉพาะข้อ 17
     const missingInputs = useMemo(() => {
@@ -1120,9 +1120,6 @@ export default function ChargerPMForm() {
         if (key !== firstKey) m.patch(firstKey, { unit: u });
         m.syncUnits(u);
     };
-
-    // ใช้ตอน Post-PM: แสดงก่อน PM (read-only) + หลัง PM (กรอกได้)
-    // ใช้ตอน Post-PM: ก่อน PM = แถวบน (read-only), หลัง PM = แถวล่าง (กรอกได้)
 
     const renderMeasureGridWithPre = (no: number) => {
         const cfg = FIELD_GROUPS[no];
@@ -1481,9 +1478,6 @@ export default function ChargerPMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            // const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
-
-            // const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
             const payload = {
                 station_id: stationId,
                 // issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
@@ -1674,7 +1668,7 @@ export default function ChargerPMForm() {
                                             "
                                         onClick={() => {
                                             alert(
-                                                "กรุณากรอกข้อมูลในส่วน Pre ให้ครบ (สถานะ PASS/FAIL, ค่าที่วัด และรูปภาพทุกข้อ) ก่อน"
+                                                "กรุณากรอกข้อมูลในส่วน Pre ให้ครบ (ค่าที่วัด และรูปภาพทุกข้อ) ก่อน"
                                             );
                                         }}
                                     >
