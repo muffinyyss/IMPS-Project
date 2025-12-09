@@ -243,7 +243,6 @@ def _format_m17(measures: dict) -> str:
 
     return "\n".join(lines)
 
-    
 
 def _parse_date_flex(s: str) -> Optional[datetime]:
     if not s:
@@ -444,9 +443,7 @@ def _draw_summary_checklist(pdf: FPDF, base_font: str, x: float, y: float, summa
     return y + LINE_H
 
 def _output_pdf_bytes(pdf: FPDF) -> bytes:
-    """
-    รองรับ fpdf2 หลายเวอร์ชัน: บางเวอร์ชันคืน bytearray, บางเวอร์ชันคืน str (latin1)
-    """
+  
     data = pdf.output(dest="S")
     if isinstance(data, (bytes, bytearray)):
         return bytes(data)
@@ -557,96 +554,139 @@ def _log(msg: str):
         print(msg)
 
 
+# def _load_image_source_from_urlpath(
+#     url_path: str,
+# ) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+#     if not url_path:
+#         return None, None
+
+#     _log(f"[IMG] lookup: {url_path}")
+
+#     # case: data URL
+#     if url_path.startswith("data:image/"):
+#         try:
+#             head, b64 = url_path.split(",", 1)
+#             mime = head.split(";")[0].split(":", 1)[1]
+#             bio = BytesIO(base64.b64decode(b64))
+#             img_type = (
+#                 "PNG"
+#                 if "png" in mime
+#                 else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
+#             )
+#             return bio, img_type
+#         except Exception as e:
+#             _log(f"[IMG] data-url parse error: {e}")
+#             return None, None
+
+#     # ปรับลำดับ: เช็ค local file ก่อน (เร็วที่สุด) แทนที่จะ download
+    
+#     # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
+#     if not url_path.startswith("http"):  # ข้าม http URL
+#         backend_root = Path(__file__).resolve().parents[2]
+#         uploads_root = backend_root / "uploads"
+        
+#         if uploads_root.exists():
+#             clean_path = url_path.lstrip("/")
+#             if clean_path.startswith("uploads/"):
+#                 clean_path = clean_path[8:]
+#             local_path = uploads_root / clean_path
+            
+#             if local_path.exists() and local_path.is_file():
+#                 _log(f"[IMG] found in uploads: {local_path}")
+#                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+
+#         # 2) public folder
+#         public_root = _find_public_root()
+#         if public_root:
+#             local_path = public_root / url_path.lstrip("/")
+#             if local_path.exists() and local_path.is_file():
+#                 _log(f"[IMG] found in public: {local_path}")
+#                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+
+#         # 3) absolute filesystem path
+#         p_abs = Path(url_path)
+#         if p_abs.is_absolute() and p_abs.exists():
+#             _log(f"[IMG] found absolute path: {p_abs}")
+#             return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
+
+#     # 4) HTTP download (ช้าที่สุด - ทำทีหลัง)
+#     if requests is not None:
+#         # ลอง base_url ก่อน (มักใช้บ่อยกว่า)
+#         base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
+        
+#         if base_url and not url_path.startswith("http"):
+#             full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
+#             _log(f"[IMG] try base_url: {full_url}")
+#             try:
+#                 resp = requests.get(
+#                     full_url, 
+#                     headers=_env_photo_headers(), 
+#                     timeout=5,  # ลดเหลือ 5 วินาที
+#                     stream=True  # ใช้ stream เพื่อ download เร็วขึ้น
+#                 )
+#                 resp.raise_for_status()
+#                 _log(f"[IMG] downloaded {len(resp.content)} bytes from base_url")
+#                 return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
+#             except Exception as e:
+#                 _log(f"[IMG] base_url failed: {e}")
+        
+#         # absolute http(s) URL
+#         if _is_http_url(url_path):
+#             try:
+#                 resp = requests.get(
+#                     url_path, 
+#                     headers=_env_photo_headers(), 
+#                     timeout=5,  # ลดเหลือ 5 วินาที
+#                     stream=True
+#                 )
+#                 resp.raise_for_status()
+#                 _log(f"[IMG] downloaded {len(resp.content)} bytes from absolute URL")
+#                 return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
+#             except Exception as e:
+#                 _log(f"[IMG] absolute URL failed: {e}")
+
+#     _log("[IMG] not found via all methods")
+#     return None, None
+
 def _load_image_source_from_urlpath(
     url_path: str,
 ) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+
     if not url_path:
         return None, None
 
     _log(f"[IMG] lookup: {url_path}")
 
-    # case: data URL
+    # case: data URL (base64)
     if url_path.startswith("data:image/"):
         try:
             head, b64 = url_path.split(",", 1)
             mime = head.split(";")[0].split(":", 1)[1]
             bio = BytesIO(base64.b64decode(b64))
-            img_type = (
-                "PNG"
-                if "png" in mime
-                else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
-            )
+            img_type = "PNG" if "png" in mime else "JPEG"
             return bio, img_type
         except Exception as e:
             _log(f"[IMG] data-url parse error: {e}")
             return None, None
 
-    # 🚀 ปรับลำดับ: เช็ค local file ก่อน (เร็วที่สุด) แทนที่จะ download
-    
-    # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
-    if not url_path.startswith("http"):  # ข้าม http URL
-        backend_root = Path(__file__).resolve().parents[2]
-        uploads_root = backend_root / "uploads"
-        
-        if uploads_root.exists():
-            clean_path = url_path.lstrip("/")
-            if clean_path.startswith("uploads/"):
-                clean_path = clean_path[8:]
-            local_path = uploads_root / clean_path
-            
-            if local_path.exists() and local_path.is_file():
-                _log(f"[IMG] found in uploads: {local_path}")
-                return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+    # case: absolute filesystem path
+    p_abs = Path(url_path)
+    if p_abs.is_absolute() and p_abs.exists():
+        return _pick_image_from_path(p_abs)
 
-        # 2) public folder
-        public_root = _find_public_root()
-        if public_root:
-            local_path = public_root / url_path.lstrip("/")
-            if local_path.exists() and local_path.is_file():
-                _log(f"[IMG] found in public: {local_path}")
-                return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+    # case: relative path → มองว่าอยู่ใต้ backend/uploads
+    backend_root = Path(__file__).resolve().parents[2]   # backend/
+    uploads_root = backend_root / "uploads"              # backend/uploads
+    clean_path = url_path.lstrip("/")
 
-        # 3) absolute filesystem path
-        p_abs = Path(url_path)
-        if p_abs.is_absolute() and p_abs.exists():
-            _log(f"[IMG] found absolute path: {p_abs}")
-            return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
+    # รองรับกรณีขึ้นต้นด้วย "uploads/"
+    if clean_path.startswith("uploads/"):
+        clean_path = clean_path[len("uploads/") :]
 
-    # 4) HTTP download (ช้าที่สุด - ทำทีหลัง)
-    if requests is not None:
-        # ลอง base_url ก่อน (มักใช้บ่อยกว่า)
-        base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
-        
-        if base_url and not url_path.startswith("http"):
-            full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
-            _log(f"[IMG] try base_url: {full_url}")
-            try:
-                resp = requests.get(
-                    full_url, 
-                    headers=_env_photo_headers(), 
-                    timeout=5,  # ลดเหลือ 5 วินาที
-                    stream=True  # ใช้ stream เพื่อ download เร็วขึ้น
-                )
-                resp.raise_for_status()
-                _log(f"[IMG] downloaded {len(resp.content)} bytes from base_url")
-                return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
-            except Exception as e:
-                _log(f"[IMG] base_url failed: {e}")
-        
-        # absolute http(s) URL
-        if _is_http_url(url_path):
-            try:
-                resp = requests.get(
-                    url_path, 
-                    headers=_env_photo_headers(), 
-                    timeout=5,  # ลดเหลือ 5 วินาที
-                    stream=True
-                )
-                resp.raise_for_status()
-                _log(f"[IMG] downloaded {len(resp.content)} bytes from absolute URL")
-                return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
-            except Exception as e:
-                _log(f"[IMG] absolute URL failed: {e}")
+    local_path = uploads_root / clean_path
+    _log(f"[IMG] try uploads: {local_path}")
+    if local_path.exists():
+        return _pick_image_from_path(local_path)
 
     _log("[IMG] not found via all methods")
     return None, None
@@ -656,7 +696,6 @@ def _load_image_source_from_urlpath(
 _IMAGE_CACHE = {}
 
 def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optional[str]]:
-    """โหลดรูปพร้อม cache เพื่อไม่ต้องโหลดซ้ำ (คืนค่า BytesIO ที่ rotate แล้วเสมอ)"""
     
     # ตรวจสอบ cache ก่อน
     if url_path in _IMAGE_CACHE:
@@ -789,9 +828,19 @@ def _draw_photos_row(
     row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
     
     # เช็คก่อนวาด ถ้าจะล้นหน้า ให้ขึ้นหน้าใหม่ 
-    if pdf.get_y() + row_h > pdf.page_break_trigger:
+    # if pdf.get_y() + row_h > pdf.page_break_trigger:
+    # if y + row_h > pdf.page_break_trigger:
+
+    #     pdf.add_page()
+    #     y = pdf.get_y()  # reset y หลังขึ้นหน้าใหม่
+    if y + row_h > pdf.page_break_trigger:
         pdf.add_page()
-        y = pdf.get_y()  # reset y หลังขึ้นหน้าใหม่
+        y = pdf.get_y()
+    # if y + row_h > pdf.page_break_trigger:
+    #     pdf.add_page()
+    #     y = _draw_header(pdf, base_font, issue_id)
+    #     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
+
 
     # ซ้าย: ข้อ/คำถาม
     _cell_text_in_box(
@@ -910,18 +959,22 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     result_w = 64
     remark_w = page_w - item_w - result_w
 
-    # _ensure_space ต้องถูกนิยามหลังจาก y ถูกประกาศ (เพื่อให้ nonlocal ถูกต้อง)
     def _ensure_space(height_needed: float):
         nonlocal y
-        if y + height_needed > (pdf.h - pdf.b_margin):
+        # ตรวจว่าพื้นที่พอไหม + เว้น buffer เพื่อกันล้น (5mm)
+        if y + height_needed > (pdf.h - pdf.b_margin - 5):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
-            # หลังขึ้นหน้าใหม่ ให้วาด header แล้ววาดหัวตารางด้วย
-            y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
+
+            # ต้องวาดหัวตารางใหม่ทุกหน้าด้วย
+            y = _draw_items_table_header(
+                pdf, base_font, x_table, y,
+                item_w, result_w, remark_w, charger_no
+            )
             pdf.set_font(base_font, "", FONT_MAIN)
 
+
     # วาดหัวตารางแรก
-    _ensure_space(0)   # สำคัญ: บังคับให้ logic หน้าใหม่ทำงานเสมือนทุกหน้าอื่น
     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
     pdf.set_font(base_font, "", FONT_MAIN)
     
@@ -944,6 +997,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             remark_h = max(remark_h, LINE_H * 3)
         
         row_h_eff = max(ROW_MIN_H, item_h, remark_h)
+
         _ensure_space(row_h_eff)
 
         x = x_table
