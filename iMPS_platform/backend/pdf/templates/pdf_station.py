@@ -347,13 +347,7 @@ def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[
 def _load_image_source_from_urlpath(
     url_path: str,
 ) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
-    """
-    โหลดรูปจาก:
-    - data:image/... (base64)
-    - path แบบ absolute
-    - path แบบ relative ใต้ backend/uploads
-    ไม่รองรับ http(s) แล้ว เพื่อลดเงื่อนไขและให้ทำงานเร็วขึ้น
-    """
+
     if not url_path:
         return None, None
 
@@ -575,11 +569,7 @@ def _get_station_id(doc: dict) -> str:
 
 
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-    """
-    1) ถ้า doc.photos.g{idx} มีค่า → ใช้ตามนั้น
-    2) ถ้าไม่มี → หาไฟล์จากเครื่องที่:
-       backend/uploads/stationpm/<station_id>/<doc_id>/g{idx}/*
-    """
+
     out: List[dict] = []
 
     # ---------- 1) ใช้ข้อมูลจาก doc.photos ถ้ามี ----------
