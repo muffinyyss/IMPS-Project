@@ -5785,12 +5785,10 @@ class CMSubmitIn(BaseModel):
     station_id: str
     issue_id: Optional[str] = None
     doc_name: Optional[str] = None 
-    found_date: Optional[str] = None
-    # job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
-    open:Dict[str,Any] = None
-    status:str=None
-    # inspector: Optional[str] = None
-    reported_by: Optional[str] = None
+    inspector: Optional[str] = None
+    job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
+    summary: str = ""            # สรุป/หมายเหตุแบบยาว (แล้วแต่จะใช้)
+    cm_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO; ถ้าไม่ส่งมาจะ fallback เป็น job.found_date
 
 async def _next_cm_issue_id(db, station_id: str, d, pad: int = 2) -> str:
     yymm = f"{d.year % 100:02d}{d.month:02d}"
@@ -5806,6 +5804,7 @@ async def _next_cm_issue_id(db, station_id: str, d, pad: int = 2) -> str:
 async def cmreport_preview_issueid(
     station_id: str = Query(...),
     found_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
 ):
     """
     ดู issue_id ถัดไป (PM-CG-YYMM-XX) โดยไม่ออกเลขจริง
@@ -5895,21 +5894,10 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
 
     url_coll = get_cmurl_coll_upload(station_id)
 
-    # try:
-    #     d = datetime.strptime(body.cm_date, "%Y-%m-%d").date()
-    # except ValueError:
-    #     raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
-
-    cm_date_src = body.found_date 
-    if cm_date_src:
-        try:
-            d = datetime.strptime(cm_date_src[:10], "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="cm_date/found_date must be YYYY-MM-DD")
-    else:
-        d = datetime.now(th_tz).date()
-
-    found_date = d.isoformat()
+    try:
+        d = datetime.strptime(body.cm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
     
     client_issue = body.issue_id 
     issue_id: str | None = None    
@@ -5927,7 +5915,7 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
     
     if not issue_id:
         while True:
-            candidate = await _next_cm_issue_id(coll.database, station_id, d, pad=2)
+            candidate = await _next_cm_issue_id(db, station_id, d, pad=2)
             rep_exists = await coll.find_one({"issue_id": candidate})
             url_exists = await url_coll.find_one({"issue_id": candidate})
             if not rep_exists and not url_exists:
@@ -5950,20 +5938,19 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
             doc_name = client_docName
  
     if not doc_name:
-        year_seq = await _next_year_seq(coll.database, station_id, d,"cm")
+        year_seq = await _next_year_seq(db, station_id, d,"cm")
         year = d.year
         doc_name = f"{station_id}_{year_seq}/{year}"
 
     doc = {
         "station_id": station_id,
-        "issue_id": issue_id,
+        "issue_id": body.job.get("issue_id"),
         "doc_name": doc_name,
-        "found_date": found_date,
-        # "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
-        "open": body.open,
-        "status": body.status,      # เผื่ออยาก query
-        # "inspector": body.inspector,
-        "reported_by": body.reported_by,
+        "cm_date": body.cm_date,
+        "job": body.job,              # เก็บฟอร์มทั้งก้อน (issue_id, severity, etc.)
+        "summary": body.summary,
+        "status": body.job.get("status", "Open"),      # เผื่ออยาก query
+        "inspector": body.inspector,
         "createdAt": datetime.now(timezone.utc),
         "updatedAt": datetime.now(timezone.utc),
         "photos": {},                 # รูปจะถูกเติมภายหลังที่ /cmreport/{report_id}/photos
@@ -6005,9 +5992,8 @@ async def cmreport_list(
     items = [{
         "id": str(it["_id"]),
         "issue_id": it.get("issue_id"),
-        # "cm_date": it.get("cm_date"),
+        "cm_date": it.get("cm_date"),
         "status": it.get("status"),
-        "doc_name":it.get("doc_name"),
         "inspector": it.get("inspector"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("cm_date") or "", ""),
@@ -6160,7 +6146,7 @@ async def cmurl_upload_files(
 
     if not final_issue_id:
         while True:
-            candidate = await _next_cm_issue_id(coll.database, station_id, d, pad=2)
+            candidate = await _next_cm_issue_id(db, station_id, d, pad=2)
             url_exists = await coll.find_one({"issue_id": candidate})
             rep_exists = await rep_coll.find_one({"issue_id": candidate})
             if not url_exists and not rep_exists:
@@ -6341,9 +6327,9 @@ async def cmreport_detail_path(
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    # # auth
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+    # auth
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
 
     coll = get_cmreport_collection_for(station_id)
     try:
@@ -6358,12 +6344,11 @@ async def cmreport_detail_path(
     return {
         "id": str(doc["_id"]),
         "station_id": doc.get("station_id"),
-        "found_date": doc.get("found_date"),
+        "cm_date": doc.get("cm_date"),
         "issue_id": doc.get("issue_id"),
-        "doc_name":doc.get("doc_name"),
         "status": doc.get("status"),
         "summary": doc.get("summary", ""),
-        "open": doc.get("open", {}),
+        "job": doc.get("job", {}),
         "photos": doc.get("photos", {}),
         "createdAt": _ensure_utc_iso(doc.get("createdAt")),
         "updatedAt": _ensure_utc_iso(doc.get("updatedAt")),
@@ -6380,9 +6365,9 @@ async def cmreport_detail_query(
 class CMStatusUpdateIn(BaseModel):
     station_id: str
     status: Literal["Open", "In Progress", "Closed"]
-    open: Optional[Dict[str, Any]] = None
-    # summary: Optional[str] = None
-    found_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO
+    job: Optional[Dict[str, Any]] = None
+    summary: Optional[str] = None
+    cm_date: Optional[str] = None  # "YYYY-MM-DD" หรือ ISO
 
 ALLOWED_STATUS: set[str] = {"Open", "In Progress", "Closed"}
 
@@ -6396,8 +6381,8 @@ async def cmreport_update_status(
     if body.status not in ALLOWED_STATUS:
         raise HTTPException(status_code=400, detail="Invalid status")
 
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+    if current.role != "admin" and station_id not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden station_id")
 
     coll = get_cmreport_collection_for(station_id)
     try:
@@ -6407,39 +6392,39 @@ async def cmreport_update_status(
 
     updates: Dict[str, Any] = {
         "status": body.status,          # top-level
-        "open.status": body.status,      # sync ใน job
+        "job.status": body.status,      # sync ใน job
     }
 
-    # if body.summary is not None:
-    #     updates["summary"] = body.summary
+    if body.summary is not None:
+        updates["summary"] = body.summary
 
-    if body.found_date is not None:
-        updates["found_date"] = normalize_pm_date(body.found_date)
+    if body.cm_date is not None:
+        updates["cm_date"] = normalize_pm_date(body.cm_date)
 
-    if body.open is not None:
+    if body.job is not None:
         # เลือกเฉพาะคีย์ที่อนุญาตจากฟอร์ม
         allowed_job_keys = {
-            "issue_id","found_date","location","equipment",
+            "issue_id","found_date","location","wo","sn",
             "equipment_list","problem_details","problem_type","severity",
             "reported_by","assignee","initial_cause","corrective_actions",
             "resolved_date","repair_result","preventive_action","remarks"
         }
         # ถ้า job.status ถูกส่งมา ให้ตรวจและ sync
-        if "status" in body.status:
-            js = body.status
+        if "status" in body.job:
+            js = body.job["status"]
             if js not in ALLOWED_STATUS:
                 raise HTTPException(status_code=400, detail="Invalid job.status")
             updates["status"] = js
             updates["job.status"] = js
 
-        for k, v in body.open.items():
+        for k, v in body.job.items():
             if k in allowed_job_keys:
                 updates[f"job.{k}"] = v
 
         # optional: sync cm_date จาก found_date
-        if "found_date" in body.open and body.found_date:
+        if "found_date" in body.job and body.job.get("found_date"):
             try:
-                updates.setdefault("cm_date", normalize_pm_date(body.found_date))
+                updates.setdefault("cm_date", normalize_pm_date(body.job["found_date"]))
             except Exception:
                 pass
 
