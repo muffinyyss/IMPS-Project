@@ -141,7 +141,7 @@ export default function BasicPage() {
 
             {!!message && <p className="tw-mt-3">{message}</p>}
 
-            <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-mt-6">
+            {/* <div className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-mt-6">
               <Checkbox
                 label={
                   <Typography
@@ -154,13 +154,7 @@ export default function BasicPage() {
                 }
                 containerProps={{ className: "-tw-ml-2.5" }}
               />
-              {/* <Typography
-                variant="small"
-                className="!tw-font-medium tw-text-gray-900"
-              >
-                <a href="#">Forgot Password</a>
-              </Typography> */}
-            </div>
+            </div> */}
 
             <Typography className="tw-text-center !tw-text-blue-gray-500 !tw-font-medium tw-mt-4">
               Not registered?

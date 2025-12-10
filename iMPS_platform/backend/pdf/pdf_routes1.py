@@ -128,6 +128,24 @@ async def export_pdf(
     if not data:
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
     
+    # ==========================================
+    # 🛠️ DEBUG ZONE: สำหรับดูข้อมูล AC
+    # ==========================================
+    # if template == "ac":
+    #     # วิธีที่ 1: Print ดูใน Terminal (Console) ที่รัน Server อยู่
+    #     import json
+    #     from bson import json_util
+        
+    #     # แปลงข้อมูลให้อ่านง่ายแล้ว Print
+    #     print(f"\n--- DEBUG DATA AC (ID: {id}) ---")
+    #     print(json_util.dumps(data, indent=4, ensure_ascii=False))
+    #     print("--------------------------------\n")
+
+        # วิธีที่ 2: ถ้าอยากให้ Browser แสดงข้อมูล JSON แทน PDF ให้ Uncomment 2 บรรทัดล่างนี้
+        # data["_id"] = str(data["_id"]) # แปลง ObjectId เป็น String ก่อน return
+        # return data 
+    # ==========================================
+    
     # ตั้งค่า environment variables ก่อนเรียก generate_pdf
     if public_dir:
         os.environ["PUBLIC_DIR"] = public_dir

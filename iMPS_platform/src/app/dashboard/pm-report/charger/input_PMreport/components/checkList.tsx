@@ -332,6 +332,20 @@ function SectionCard({
     children: React.ReactNode;
 }) {
     return (
+
+        // <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+        //     {(title || subtitle) && (
+        //         <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+        //             {title && <Typography variant="h6">{title}</Typography>}
+        //             {subtitle && (
+        //                 <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">
+        //                     {subtitle}
+        //                 </Typography>
+        //             )}
+        //         </CardHeader>
+        //     )}
+        //     <CardBody className="tw-space-y-4">{children}</CardBody>
+        // </Card>
         <>
             {/* Title นอกกรอบการ์ด */}
             {title && (
@@ -1776,6 +1790,14 @@ export default function ChargerPMForm() {
                             </div>
 
                             <div className="lg:tw-col-span-2">
+                                {/* <Input
+                                    label="วันที่ตรวจ"
+                                    type="date"
+                                    value={job.date}
+                                    onChange={(e) => setJob({ ...job, date: e.target.value })}
+                                    crossOrigin=""
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                /> */}
                                 <Input
                                     label="PM Date / วันที่ตรวจสอบ"
                                     type="date"
