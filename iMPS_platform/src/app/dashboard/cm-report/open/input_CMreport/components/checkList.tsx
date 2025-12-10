@@ -627,7 +627,6 @@ export default function CMOpenForm() {
                                     className="!tw-w-full !tw-bg-blue-gray-50"
                                 />
                             </div>
-
                             <div className="sm:tw-col-span-2 lg:tw-col-span-2">
                                 <Input
                                     label="Location / สถานที่"
