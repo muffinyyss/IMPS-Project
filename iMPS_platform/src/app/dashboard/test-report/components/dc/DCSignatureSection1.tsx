@@ -136,45 +136,6 @@ const ACSignatureSection: React.FC<SignatureSectionProps> = ({
             </div>
           </div>
 
-          {/* Signature Row */}
-          <div className="tw-grid tw-grid-cols-4 tw-border-t tw-border-gray-200">
-            <div className="tw-border-r tw-border-gray-200 tw-p-3 tw-bg-gray-50 tw-font-medium tw-text-sm tw-text-gray-700">
-              Signature
-            </div>
-            <div className="tw-border-r tw-border-gray-200 tw-p-2">
-              <Input
-                value={responsibility.performed.signature}
-                onChange={(e) =>
-                  handleResponsibilityChange("signature", "performed", e.target.value)
-                }
-                crossOrigin=""
-                className="!tw-border-gray-300"
-                containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-              />
-            </div>
-            <div className="tw-border-r tw-border-gray-200 tw-p-2">
-              <Input
-                value={responsibility.approved.signature}
-                onChange={(e) =>
-                  handleResponsibilityChange("signature", "approved", e.target.value)
-                }
-                crossOrigin=""
-                className="!tw-border-gray-300"
-                containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-              />
-            </div>
-            <div className="tw-p-2">
-              <Input
-                value={responsibility.witnessed.signature}
-                onChange={(e) =>
-                  handleResponsibilityChange("signature", "witnessed", e.target.value)
-                }
-                crossOrigin=""
-                className="!tw-border-gray-300"
-                containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-              />
-            </div>
-          </div>
 
           {/* Date Row */}
           <div className="tw-grid tw-grid-cols-4 tw-border-t tw-border-gray-200">

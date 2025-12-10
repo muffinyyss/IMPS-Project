@@ -145,7 +145,7 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
                 <div className="tw-border-r tw-border-gray-200 tw-relative tw-bg-white">
                   {/* Electrical Safety band */}
                   {isFirstPEItem && (
-                    <div className="tw-absolute tw-left-0 tw-top-0 tw-w-16 tw-h-[572px] tw-bg-gray-50 tw-border-r tw-border-b tw-border-gray-200 tw-items-center tw-justify-center tw-z-10 tw-pointer-events-none tw-flex">
+                    <div className="tw-absolute tw-left-0 tw-top-0 tw-w-16 tw-h-[539px] tw-bg-gray-50 tw-border-r tw-border-b tw-border-gray-200 tw-items-center tw-justify-center tw-z-10 tw-pointer-events-none tw-flex">
                       <div className="tw-transform tw--rotate-90 tw-text-xs tw-font-bold tw-text-gray-800 tw-whitespace-nowrap">
                         Electrical Safety
                       </div>
@@ -154,7 +154,7 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
 
                   {/* PE.Continuity band */}
                   {isFirstPEItem && (
-                    <div className="tw-absolute tw-left-16 tw-top-0 tw-w-32 tw-h-[383px] tw-bg-gray-100 tw-border-r tw-border-b tw-border-gray-200 tw-items-center tw-justify-center tw-z-10 tw-pointer-events-none tw-flex">
+                    <div className="tw-absolute tw-left-16 tw-top-0 tw-w-32 tw-h-[300px] tw-bg-gray-100 tw-border-r tw-border-b tw-border-gray-200 tw-items-center tw-justify-center tw-z-10 tw-pointer-events-none tw-flex">
                       <div className="tw-text-[11px] tw-font-semibold tw-text-gray-700 tw-text-center tw-leading-tight tw-px-2">
                         PE.Continuity protective Conductors of Charger
                       </div>
@@ -239,18 +239,20 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
                       </div>
                     </>
                   ) : (
-                    // Normal: Pass/Fail + Input
+                    // Normal: Value input + Pass/Fail buttons
                     <>
                       {/* 1st Test */}
-                      <div className="tw-border-r tw-border-gray-200 tw-p-2 tw-space-y-2">
-                        <div className="tw-flex tw-justify-center">
-                          {/* <Input
+                      <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-[1fr_auto] tw-items-center">
+                        <div className="tw-border-r tw-border-gray-200 tw-p-2">
+                          <Input
                             value={results.test1[index]?.value || ""}
                             onChange={(e) => onResultChange(0, index, "value", e.target.value)}
                             crossOrigin=""
                             className="!tw-text-center !tw-border-gray-300"
                             containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
                           />
+                        </div>
+                        <div className="tw-p-2 tw-flex tw-justify-center">
                           <PassFailButtons
                             value={
                               results.test1[index]?.pf === "PASS"
@@ -267,52 +269,13 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
                                 v === "✓" ? "PASS" : v === "✗" ? "FAIL" : ""
                               )
                             }
-                          /> */}
-                          {/* TEst */}
-                          <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-[1fr_auto] tw-items-center">
-                            <div className="tw-border-r tw-border-gray-200 t-p-2">
-                              <Input
-                                value={results.test1[index]?.value || ""}
-                                onChange={(e) => onResultChange(0, index, "value", e.target.value)}
-                                crossOrigin=""
-                                className="!tw-text-center !tw-border-gray-300"
-                                containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-                              />
-                            </div>
-                            <div className="tw-p-2 tw-flex tw-justify-center">
-                              <PassFailButtons
-                                value={
-                                  results.test1[index]?.pf === "PASS"
-                                    ? "✓"
-                                    : results.test1[index]?.pf === "FAIL"
-                                      ? "✗"
-                                      : ""
-                                }
-                                onChange={(v) =>
-                                  onResultChange(
-                                    0,
-                                    index,
-                                    "pf",
-                                    v === "✓" ? "PASS" : v === "✗" ? "FAIL" : ""
-                                  )
-                                }
-                              />
-                            </div>
-                          </div>
-
+                          />
                         </div>
-                        {/* <Input
-                          value={results.test1[index]?.value || ""}
-                          onChange={(e) => onResultChange(0, index, "value", e.target.value)}
-                          crossOrigin=""
-                          className="!tw-text-center !tw-border-gray-300"
-                          containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-                        /> */}
                       </div>
 
                       {/* 2nd Test */}
                       <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-[1fr_auto] tw-items-center">
-                        <div className="tw-border-r tw-border-gray-200 t-p-2">
+                        <div className="tw-border-r tw-border-gray-200 tw-p-2">
                           <Input
                             value={results.test2[index]?.value || ""}
                             onChange={(e) => onResultChange(1, index, "value", e.target.value)}
@@ -341,39 +304,10 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
                           />
                         </div>
                       </div>
-                      {/*  */}
-                      {/* <div className="tw-border-r tw-border-gray-200 tw-p-2 tw-space-y-2">
-                        <div className="tw-flex tw-justify-center">
-                          <PassFailButtons
-                            value={
-                              results.test2[index]?.pf === "PASS"
-                                ? "✓"
-                                : results.test2[index]?.pf === "FAIL"
-                                  ? "✗"
-                                  : ""
-                            }
-                            onChange={(v) =>
-                              onResultChange(
-                                1,
-                                index,
-                                "pf",
-                                v === "✓" ? "PASS" : v === "✗" ? "FAIL" : ""
-                              )
-                            }
-                          />
-                        </div>
-                        <Input
-                          value={results.test2[index]?.value || ""}
-                          onChange={(e) => onResultChange(1, index, "value", e.target.value)}
-                          crossOrigin=""
-                          className="!tw-text-center !tw-border-gray-300"
-                          containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-                        />
-                      </div> */}
 
                       {/* 3rd Test */}
-                      <div className="tw-border-r tw-border-gray-200 tw-grid tw-grid-cols-[1fr_auto] tw-items-center">
-                        <div className="tw-border-r tw-border-gray-200 t-p-2">
+                      <div className="tw-grid tw-grid-cols-[1fr_auto] tw-items-center">
+                        <div className="tw-border-r tw-border-gray-200 tw-p-2">
                           <Input
                             value={results.test3[index]?.value || ""}
                             onChange={(e) => onResultChange(2, index, "value", e.target.value)}
@@ -402,35 +336,6 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
                           />
                         </div>
                       </div>
-                      {/*  */}
-                      {/* <div className="tw-p-2 tw-space-y-2">
-                        <div className="tw-flex tw-justify-center">
-                          <PassFailButtons
-                            value={
-                              results.test3[index]?.pf === "PASS"
-                                ? "✓"
-                                : results.test3[index]?.pf === "FAIL"
-                                  ? "✗"
-                                  : ""
-                            }
-                            onChange={(v) =>
-                              onResultChange(
-                                2,
-                                index,
-                                "pf",
-                                v === "✓" ? "PASS" : v === "✗" ? "FAIL" : ""
-                              )
-                            }
-                          />
-                        </div>
-                        <Input
-                          value={results.test3[index]?.value || ""}
-                          onChange={(e) => onResultChange(2, index, "value", e.target.value)}
-                          crossOrigin=""
-                          className="!tw-text-center !tw-border-gray-300"
-                          containerProps={{ className: "!tw-min-w-0 !tw-h-8" }}
-                        />
-                      </div> */}
                     </>
                   )}
                 </div>
