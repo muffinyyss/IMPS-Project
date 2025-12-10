@@ -9,8 +9,8 @@ type User = { username: string; role?: string; company?: string };
 
 const navItems: NavItem[] = [
   { label: "Home", href: "/pages/mainpages/home", requireAuth: false },
-  { label: "About", href: "/pages/mainpages/about", requireAuth: true },
-  { label: "Contact", href: "/pages/mainpages/contact", requireAuth: true },
+  { label: "About", href: "/pages/mainpages/about", requireAuth: false },
+  { label: "Contact", href: "/pages/mainpages/contact", requireAuth: false },
   { label: "Dashboard", href: "/dashboard/chargers", requireAuth: true },
 ];
 
