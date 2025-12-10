@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState, useMemo, } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import CMOpenForm from "@/app/dashboard/cm-report/open/input_CMreport/components/checkList";
 import {
   getCoreRowModel,
@@ -16,21 +16,18 @@ import {
 import {
   Button, Card, CardBody, CardHeader, Typography, CardFooter, Input,
 } from "@material-tailwind/react";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon,DocumentArrowDownIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
-import { apiFetch } from "@/utils/api";
+
 
 type TData = {
   id?: string;
-  doc_name?: string;
-  issue_id?: string;
-  cm_date: string;     // วันที่ (แสดงผล)
+  name: string;     // วันที่ (แสดงผล)
   position: string; // YYYY-MM-DD ใช้ sort/filter
   office: string;   // ลิงก์ไฟล์
   status: string;
-  inspector?: string;
 };
 
 type Props = {
@@ -38,225 +35,29 @@ type Props = {
   apiBase?: string;
 };
 
+
+
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
-const REPORT_PREFIX = "cmreport";
-const URL_PREFIX = "cmurl";
-
-function makePrefix(dateISO: string) {
-  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-  const yy = String(d.getFullYear()).slice(2);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `CM-${yy}${mm}-`;
-}
-
-function nextIssueIdFor(dateISO: string, latestFromDb?: string) {
-  const prefix = makePrefix(dateISO);
-  const s = String(latestFromDb || "").trim();
-  if (!s || !s.startsWith(prefix)) return `${prefix}01`;
-  const m = s.match(/(\d+)$/);
-  const pad = m ? m[1].length : 2;
-  const n = (m ? parseInt(m[1], 10) : 0) + 1;
-  return `${prefix}${n.toString().padStart(pad, "0")}`;
-}
-
-// หา issue_id ล่าสุดจากทั้ง 2 ลิสต์ (รายงานจริง + URL) แล้วออกเลขถัดไป
-async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string, apiBase: string, fetchOpts: RequestInit) {
-  const build = (path: string) => {
-    const u = new URL(`${apiBase}${path}`);
-    u.searchParams.set("station_id", stationId);
-    u.searchParams.set("page", "1");
-    u.searchParams.set("pageSize", "50");
-    u.searchParams.set("_ts", String(Date.now()));
-    return u.toString();
-  };
-
-  const [a, b] = await Promise.allSettled([
-    apiFetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
-    apiFetch(build(`/${URL_PREFIX}/list`), fetchOpts),
-    // fetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
-    // fetch(build(`/${URL_PREFIX}/list`), fetchOpts),
-  ]);
-
-  let ids: string[] = [];
-  for (const r of [a, b]) {
-    if (r.status === "fulfilled" && r.value.ok) {
-      const j = await r.value.json();
-      const items: any[] = Array.isArray(j?.items) ? j.items : [];
-      ids = ids.concat(items.map((it) => String(it?.issue_id || "")).filter(Boolean));
-    }
-  }
-
-  const prefix = makePrefix(dateISO);
-  const same = ids.filter((x) => x.startsWith(prefix));
-  if (!same.length) return null;
-
-  const toTail = (s: string) => {
-    const m = s.match(/(\d+)$/);
-    return m ? parseInt(m[1], 10) : -1;
-  };
-  return same.reduce((acc, cur) => (toTail(cur) > toTail(acc) ? cur : acc), same[0]);
-}
-
-/* ---------- NEW: helper สำหรับ doc_name ---------- */
-function makeDocNameParts(stationId: string, dateISO: string) {
-  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-  const year = d.getFullYear();
-  const prefix = `${stationId}_`;
-  const suffix = `/${year}`;
-  return { year, prefix, suffix };
-}
-
-function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
-  const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
-  const s = String(latestFromDb || "").trim();
-
-  // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
-  if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
-    return `${prefix}1${suffix}`;
-  }
-
-  // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
-  const inside = s.slice(prefix.length, s.length - suffix.length);
-  const cur = parseInt(inside, 10);
-  const nextIndex = isNaN(cur) ? 1 : cur + 1;
-
-  return `${prefix}${nextIndex}${suffix}`;
-}
-
-async function fetchPreviewDocName(
-  stationId: string,
-  cmDate: string
-): Promise<string | null> {
-  const u = new URL(`${BASE}/cmreport/preview-docname`);
-  u.searchParams.set("station_id", stationId);
-  u.searchParams.set("cm_date", cmDate);
-
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("access_token") ?? ""
-      : "";
-
-  const r = await apiFetch(u.toString(), {
-    // const r = await fetch(u.toString(), {
-    credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-
-  if (!r.ok) {
-    console.error("fetchPreviewDocName failed:", r.status);
-    return null;
-  }
-
-  const j = await r.json();
-  return (j && typeof j.doc_name === "string") ? j.doc_name : null;
-}
-async function fetchLatestDocName(
-  stationId: string,
-  dateISO: string
-): Promise<string | null> {
-  const u = new URL(`${BASE}/cmreport/latest-docname`);
-  u.searchParams.set("station_id", stationId);
-  u.searchParams.set("cm_date", dateISO);
-  u.searchParams.set("_ts", String(Date.now()));
-
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("access_token") ?? ""
-      : "";
-
-  // const r = await fetch(u.toString(), {
-  const r = await apiFetch(u.toString(), {
-    credentials: "include",
-    cache: "no-store",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-
-  if (!r.ok) {
-    console.error("fetchLatestDocName failed:", r.status);
-    return null;
-  }
-
-  const j = await r.json();
-  return (j && typeof j.doc_name === "string") ? j.doc_name : null;
-}
-
-type Me = {
-  id: string;
-  username: string;
-  email: string;
-  role: string;
-  company: string;
-  tel: string;
-};
 
 export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
-  const [issueId, setIssueId] = useState<string>("");
+
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
-  const [docName, setDocName] = useState<string>("");
-  const [me, setMe] = useState<Me | null>(null);
-  const [inspector, setInspector] = useState<string>("");
-
-  const todayStr = useMemo(() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;   // YYYY-MM-DD ตามวันที่เครื่องผู้ใช้
-  }, []);
 
   useEffect(() => {
-    const sidFromUrl = searchParams.get("station_id");
-    if (sidFromUrl) {
-      setStationId(sidFromUrl);
-      localStorage.setItem("selected_station_id", sidFromUrl);
-      return;
-    }
-    const sidLocal = localStorage.getItem("selected_station_id");
-    setStationId(sidLocal);
-  }, [searchParams]);
-
-  useEffect(() => {
-    // ถ้าใช้ httpOnly cookie เป็นหลัก ก็ไม่ต้องพึ่ง localStorage มาก
-    const useHttpOnlyCookie = true;
-
-    (async () => {
-      try {
-        const headers: Record<string, string> = {};
-        if (!useHttpOnlyCookie) {
-          const t = typeof window !== "undefined"
-            ? localStorage.getItem("access_token") ?? ""
-            : "";
-          if (t) headers.Authorization = `Bearer ${t}`;
-        }
-
-        const res = await apiFetch(`${apiBase}/me`, {
-          // const res = await fetch(`${apiBase}/me`, {
-          method: "GET",
-          headers,
-          credentials: "include",
-        });
-
-        if (!res.ok) {
-          console.warn("/me failed:", res.status);
-          return;
-        }
-
-        const data: Me = await res.json();
-        setMe(data);
-
-        // ให้ inspector default เป็น username ถ้ายังว่างอยู่
-        setInspector((prev) => prev || data.username || "");
-      } catch (err) {
-        console.error("fetch /me error:", err);
+      const sidFromUrl = searchParams.get("station_id");
+      if (sidFromUrl) {
+        setStationId(sidFromUrl);
+        localStorage.setItem("selected_station_id", sidFromUrl);
+        return;
       }
-    })();
-  }, [apiBase]);
+      const sidLocal = localStorage.getItem("selected_station_id");
+      setStationId(sidLocal);
+    }, [searchParams]);
 
   const statusFromTab = (searchParams.get("status") ?? "open").toLowerCase();
   const statusLabel = statusFromTab
@@ -276,7 +77,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       params.set("view", "form");
     } else {
       params.delete("view");
-      params.delete("edit_id");
+      params.delete("edit_id"); 
     }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -297,19 +98,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   function thDate(iso?: string) {
     if (!iso) return "-";
-
-    // บังคับให้ตีความเป็นเวลา UTC
-    const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
-      ? new Date(iso + "T00:00:00Z")
-      : new Date(iso);
-
-    if (isNaN(d.getTime())) return "-";
-
-    return d.toLocaleDateString("th-TH-u-ca-gregory", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      timeZone: "UTC",
+    return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
+      day: "2-digit", month: "2-digit", year: "numeric",
     });
   }
 
@@ -346,25 +136,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     return String(it?.status ?? it?.job?.status ?? "").trim();
   }
 
-  function extractDocIdFromAnything(x: any): string {
-    if (!x) return "";
-    // ลองอ่านจาก field id/_id ก่อน
-    const raw = (x._id !== undefined ? x._id : x.id) ?? "";
-    let id = "";
-    if (raw && typeof raw === "object") id = raw.$oid || raw.oid || raw.$id || "";
-    else id = String(raw || "");
-    if (/^[a-fA-F0-9]{24}$/.test(id)) return id;
-
-    // สุดท้ายลองดึงจากสตริง URL
-    const s = typeof x === "string" ? x : JSON.stringify(x);
-    const m = s.match(/[A-Fa-f0-9]{24}/);
-    return m ? m[0] : "";
-  }
-
   const fetchRows = async () => {
     if (!stationId) { setData([]); return; }
     setLoading(true);
-
+    
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
@@ -377,8 +152,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       };
 
       const [cmRes, urlRes] = await Promise.allSettled([
-        apiFetch(makeURL("/cmreport/list"), fetchOpts),
-        apiFetch(makeURL("/cmurl/list"), fetchOpts),
+        fetch(makeURL("/cmreport/list"), fetchOpts),
+        fetch(makeURL("/cmurl/list"), fetchOpts),
       ]);
 
       let cmItems: any[] = [];
@@ -407,6 +182,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
 
       const cmRows: TData[] = cmItems.map((it: any) => {
+
         const isoDay = toISODateOnly(it.cm_date ?? it.createdAt ?? "");
         const rawUploaded =
           it.file_url
@@ -430,13 +206,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
         const fileUrl = uploadedUrl || generatedUrl;
 
-        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
-
-        const doc_name = (it.doc_name ? String(it.doc_name) : "")
-        const inspector =
-          (it.inspector ?? it.job?.inspector ?? "") as string;
-
-        return { id, issue_id: issueId, doc_name: doc_name, cm_date: thDate(isoDay), position: isoDay, office: fileUrl, status: getStatusText(it) || "-", inspector };
+        return { id, name: thDate(isoDay), position: isoDay, office: fileUrl, status: getStatusText(it) || "-", };
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -447,14 +217,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           ?? it.file
           ?? it.path;
 
-        const href = resolveFileHref(raw, apiBase);
-
-        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
-        const doc_name = (it.doc_name ? String(it.doc_name) : "")
-        const inspector =
-          (it.inspector ?? it.job?.inspector ?? "") as string;
-
-        return { id: it.id || it._id || "", issue_id: issueId, doc_name: doc_name, cm_date: thDate(isoDay), position: isoDay, office: resolveFileHref(raw, apiBase), status: getStatusText(it) || "-", inspector };
+        return { id: it.id || it._id || "", name: thDate(isoDay), position: isoDay, office: resolveFileHref(raw, apiBase), status: getStatusText(it) || "-", };
       });
 
       const allRows = [...cmRows, ...urlRows].sort((a, b) => {
@@ -497,29 +260,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.doc_name || "—",
-      id: "name",
-      header: () => "document name",
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 120,
-      minSize: 80,
-      maxSize: 160,
-      meta: { headerAlign: "center", cellAlign: "center" },
-    },
-    {
-      accessorFn: (row) => row.issue_id || "—",
-      id: "issue_id",
-      header: () => "issue id",
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 120,
-      minSize: 80,
-      maxSize: 160,
-      meta: { headerAlign: "center", cellAlign: "center" },
-    },
-    {
-      accessorFn: (row) => row.cm_date,
+      accessorFn: (row) => row.name,
       id: "date",
-      header: () => "cm date",
+      header: () => "date",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 50,
       minSize: 60,
@@ -546,16 +289,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       },
       size: 80,
       minSize: 60,
-      maxSize: 140,
-      meta: { headerAlign: "center", cellAlign: "center" },
-    },
-    {
-      accessorFn: (row) => row.inspector || "-",
-      id: "inspector",
-      header: () => "inspector",
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 100,
-      minSize: 80,
       maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
@@ -728,59 +461,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     }
   }
 
-  useEffect(() => {
-    if (!dateOpen || !stationId || !reportDate) return;
-
-    let canceled = false;
-
-    (async () => {
-      try {
-        // 1) ลองขอชื่อจาก preview endpoint ก่อน
-        const preview = await fetchPreviewDocName(stationId, reportDate);
-        if (!canceled && preview) {
-          setDocName(preview);
-          return;
-        }
-
-        // 2) ถ้าไม่มี preview → ดึง latest แล้วคำนวณชื่อถัดไป
-        const latest = await fetchLatestDocName(stationId, reportDate);
-        if (!canceled) {
-          const next = nextDocNameFor(stationId, reportDate, latest || undefined);
-          setDocName(next);
-        }
-      } catch (e) {
-        console.error("auto doc_name error:", e);
-        if (!canceled) {
-          // 3) กรณี error → fallback เป็นชื่อแรกของปีนั้น ๆ
-          const fallback = nextDocNameFor(stationId, reportDate);
-          setDocName(fallback);
-        }
-      }
-    })();
-
-    return () => {
-      canceled = true;
-    };
-  }, [dateOpen, stationId, reportDate]);
-
-  useEffect(() => {
-    if (!dateOpen || !stationId || !reportDate) return;
-
-    let canceled = false;
-    (async () => {
-      try {
-        const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, fetchOpts);
-        const next = nextIssueIdFor(reportDate, latest || "");
-        if (!canceled) setIssueId(next);
-      } catch {
-        if (!canceled) setIssueId(nextIssueIdFor(reportDate, ""));
-      }
-    })();
-
-    return () => { canceled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateOpen, stationId, reportDate]);
-
   const goAdd = () => setView("form");
   // const goList = () => setView("list");
   const goList = () => {
@@ -901,13 +581,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         <CardFooter className="tw-p-0">
           <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
             <table className="tw-w-full tw-text-left tw-min-w-[720px] md:tw-min-w-0 md:tw-table-fixed">
-              {/* <colgroup>
+              <colgroup>
                 {table.getFlatHeaders().map((header) => (
-                  <col key={header.id}
-                   style={{ width: header.getSize() }}
-                    />
+                  <col key={header.id} style={{ width: header.getSize() }} />
                 ))}
-              </colgroup> */}
+              </colgroup>
               <thead className="tw-bg-gray-50 tw-sticky tw-top-0">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
@@ -915,8 +593,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                       const canSort = header.column.getCanSort();
                       const align = (header.column.columnDef as any).meta?.headerAlign ?? "left";
                       return (
-                        <th key={header.id}
-                          //  style={{ width: header.getSize() }}
+                        <th key={header.id} style={{ width: header.getSize() }}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                           className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
                         >
@@ -954,8 +631,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
                         return (
-                          <td key={cell.id}
-                            // style={{ width: cell.column.getSize() }}
+                          <td key={cell.id} style={{ width: cell.column.getSize() }}
                             className={`!tw-border-y !tw-border-x-0 tw-align-middle ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
                           >
                             <Typography variant="small"
@@ -1005,48 +681,13 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         </DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
-            <Input
-              label="Document Name / ชื่อเอกสาร"
-              value={docName}
-              onChange={(e) => setDocName(e.target.value)}
-              crossOrigin=""
-              containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-w-full !tw-bg-blue-gray-50"
-              readOnly
-            />
-          </div>
-          <div className="tw-space-y-2">
-            <Input
-              label="Issue id / รหัสเอกสาร"
-              value={issueId}
-              onChange={(e) => setIssueId(e.target.value)}
-              crossOrigin=""
-              containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-w-full !tw-bg-blue-gray-50"
-              readOnly
-            />
-          </div>
-          <div className="tw-space-y-2">
-            <Input
-              label="Inspector / ผู้ตรวจสอบ"
-              value={inspector}
-              onChange={(e) => setInspector(e.target.value)}
-              crossOrigin=""
-              containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-w-full !tw-bg-blue-gray-50"
-              readOnly
-            />
-          </div>
-          <div className="tw-space-y-2">
-            {/* <Typography variant="small" className="!tw-text-blue-gray-600">
+            <Typography variant="small" className="!tw-text-blue-gray-600">
               วันที่ (รูปแบบ YYYY-MM-DD)
-            </Typography> */}
+            </Typography>
             <Input
               type="date"
               value={reportDate}
-              max={todayStr}  // ⬅️ จำกัดไม่ให้เลือกเกินวันนี้
               onChange={(e) => setReportDate(e.target.value)}
-              label="PM Date / วันที่ตรวจสอบ"
               crossOrigin=""
             />
 
