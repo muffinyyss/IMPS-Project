@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useMemo, useState, useEffect, useRef } from "react";
-import { Button, Input, Textarea, Select, Option } from "@material-tailwind/react";
+import React, { useMemo, useState, useEffect } from "react";
+import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 
 type Severity = "" | "Low" | "Medium" | "High" | "Critical";
 // type Status = "" | "Open" | "In Progress" | "Closed";
@@ -19,6 +18,8 @@ type Job = {
     issue_id: string;
     found_date: string;
     location: string;
+    wo: string;
+    sn: string;
     equipment_list: string[];
     problem_details: string;
     problem_type: string;
@@ -33,8 +34,6 @@ type Job = {
     status: Status;
     remarks: string;
 };
-
-
 
 type RepairOption = typeof REPAIR_OPTIONS[number];
 
@@ -63,6 +62,8 @@ const INITIAL_JOB: Job = {
     issue_id: "",
     found_date: "",
     location: "",
+    wo: "",
+    sn: "",
     equipment_list: [""],
     problem_details: "",
     problem_type: "",
@@ -88,92 +89,16 @@ type StationPublic = {
     status?: boolean;
 };
 
-type Me = {
-    id: string;
-    username: string;
-    email: string;
-    role: string;
-    company: string;
-    tel: string;
-};
-
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-
-async function fetchPreviewIssueId(
-    stationId: string,
-    foundDate: string
-): Promise<string | null> {
-    const u = new URL(`${API_BASE}/cmreport/preview-issueid`);
-    u.searchParams.set("station_id", stationId);
-    u.searchParams.set("found_date", foundDate);
-
-    const token =
-        typeof window !== "undefined"
-            ? localStorage.getItem("access_token") ?? ""
-            : "";
-
-    const r = await fetch(u.toString(), {
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
-
-    if (!r.ok) {
-        console.error("fetchPreviewIssueId failed:", r.status);
-        return null;
-    }
-
-    const j = await r.json();
-    return (j && typeof j.issue_id === "string") ? j.issue_id : null;
-}
-
-/* ---------- NEW: helper สำหรับ doc_name ---------- */
-
-async function fetchPreviewDocName(
-    stationId: string,
-    cmDate: string
-): Promise<string | null> {
-    const u = new URL(`${API_BASE}/cmreport/preview-docname`);
-    u.searchParams.set("station_id", stationId);
-    u.searchParams.set("found_date", cmDate);
-
-    const token =
-        typeof window !== "undefined"
-            ? localStorage.getItem("access_token") ?? ""
-            : "";
-
-    const r = await fetch(u.toString(), {
-        credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    });
-
-    if (!r.ok) {
-        console.error("fetchPreviewDocName failed:", r.status);
-        return null;
-    }
-
-    const j = await r.json();
-    return (j && typeof j.doc_name === "string") ? j.doc_name : null;
-}
-
 export default function CMOpenForm() {
-    const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const searchParams = useSearchParams();                  // 👈
     // const stationId = searchParams.get("station_id");
     const [stationId, setStationId] = useState<string | null>(null);
-    const [docName, setDocName] = useState<string>("");
 
     const editId = searchParams.get("edit_id") ?? "";
     const isEdit = !!editId;
-
-    const todayStr = useMemo(() => {
-        const d = new Date();
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        return `${y}-${m}-${day}`;       // YYYY-MM-DD (ตามเวลาท้องถิ่น browser)
-    }, []);
 
     useEffect(() => {
         const sidFromUrl = searchParams.get("station_id");
@@ -216,6 +141,62 @@ export default function CMOpenForm() {
     };
 
 
+    // const onFinalSave = async () => {
+    //     try {
+    //         if (!stationId) {
+    //             alert("ไม่พบ station_id ใน URL");
+    //             return;
+    //         }
+    //         setSaving(true);
+
+    //         // 1) สร้างรายงานหลัก
+    //         const payload = {
+    //             station_id: stationId,
+    //             cm_date: (job.found_date || "").slice(0, 10),
+    //             summary,
+    //             job: {
+    //                 ...job,
+    //                 // ฝั่งหลักเก็บแค่ชื่อไฟล์ (optional) แต่รูปจริงไปอัปโหลดในขั้นตอนถัดไป
+    //                 corrective_actions: job.corrective_actions.map((c) => ({
+    //                     text: c.text,
+    //                     images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
+    //                 })),
+    //             },
+    //         };
+
+    //         const res = await fetch(`${API_BASE}/cmreport/submit`, {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json" },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+    //         const { report_id } = await res.json();
+
+    //         // 2) อัปโหลดรูปตาม group (g1,g2,...) จาก Corrective Action
+    //         await uploadPhotosForReport(report_id);
+
+    //         // 3) (ถ้าต้องการ) finalize รายงาน
+    //         // await fetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/finalize`, {
+    //         //   method: "POST",
+    //         //   credentials: "include",
+    //         // });
+
+    //         // 4) กลับหน้า list พร้อมพารามิเตอร์สถานี
+    //         // const listUrl = `${LIST_ROUTE}?station_id=${encodeURIComponent(stationId)}`;
+    //         // router.replace(listUrl);
+
+    //         const listUrl = buildListUrl();
+    //         router.replace(listUrl);
+    //     } catch (e: any) {
+    //         console.error(e);
+    //         alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+    //     } finally {
+    //         setSaving(false);
+    //     }
+    // };
+
     const onFinalSave = async () => {
         try {
             if (!stationId) {
@@ -243,7 +224,7 @@ export default function CMOpenForm() {
                 // 👇 โหมดเพิ่มใหม่: ทำเหมือนเดิม (สร้าง -> อัปโหลดรูป)
                 const payload = {
                     station_id: stationId,
-                    found_date: (job.found_date || "").slice(0, 10),
+                    cm_date: (job.found_date || "").slice(0, 10),
                     summary,
                     job: {
                         ...job,
@@ -276,7 +257,13 @@ export default function CMOpenForm() {
         }
     };
 
-
+    // const onCancelLocal = () => {
+    //     const evt = new CustomEvent("cmform:cancel", { cancelable: true });
+    //     const wasPrevented = !window.dispatchEvent(evt); // false = มีคนเรียก preventDefault()
+    //     if (!wasPrevented) {
+    //         router.replace(LIST_ROUTE);
+    //     }
+    // };
     const onCancelLocal = () => {
         const evt = new CustomEvent("cmform:cancel", { cancelable: true });
         const wasPrevented = !window.dispatchEvent(evt);
@@ -354,35 +341,35 @@ export default function CMOpenForm() {
         start?: number;           // เริ่มนับที่เลขไหน (เริ่มต้น 1)
     };
 
-    // function makeNextIssueId({
-    //     latestId = null,
-    //     date = new Date(),
-    //     prefix = "EL",
-    //     pad = 2,
-    //     start = 1,
-    // }: NextIssueIdParams = {}): string {
-    //     const d = typeof date === "string" ? new Date(date) : date;
-    //     const y = d.getFullYear();
-    //     const m = String(d.getMonth() + 1).padStart(2, "0");
-    //     const base = `${prefix}-${y}-${m}`;
+    function makeNextIssueId({
+        latestId = null,
+        date = new Date(),
+        prefix = "EL",
+        pad = 2,
+        start = 1,
+    }: NextIssueIdParams = {}): string {
+        const d = typeof date === "string" ? new Date(date) : date;
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const base = `${prefix}-${y}-${m}`;
 
-    //     let seq = start;
+        let seq = start;
 
-    //     if (latestId) {
-    //         // รองรับรูปแบบ EL-YYYY-MMNN...
-    //         const rx = new RegExp(`^${prefix}-(\\d{4})-(\\d{2})(\\d+)$`);
-    //         const m2 = latestId.match(rx);
-    //         if (m2) {
-    //             const [_, yy, mm, tail] = m2;
-    //             if (Number(yy) === y && mm === m) {
-    //                 seq = Math.max(Number(tail) + 1, start);
-    //             }
-    //         }
-    //     }
+        if (latestId) {
+            // รองรับรูปแบบ EL-YYYY-MMNN...
+            const rx = new RegExp(`^${prefix}-(\\d{4})-(\\d{2})(\\d+)$`);
+            const m2 = latestId.match(rx);
+            if (m2) {
+                const [_, yy, mm, tail] = m2;
+                if (Number(yy) === y && mm === m) {
+                    seq = Math.max(Number(tail) + 1, start);
+                }
+            }
+        }
 
-    //     const tail = String(seq).padStart(pad, "0");
-    //     return `${base}${tail}`;
-    // }
+        const tail = String(seq).padStart(pad, "0");
+        return `${base}${tail}`;
+    }
 
     function localTodayISO(): string {
         const d = new Date();
@@ -409,7 +396,9 @@ export default function CMOpenForm() {
                 if (!alive) return;
                 setJob(prev => ({
                     ...prev,
-                    location: data.station.station_name || prev.location, 
+                    location: data.station.station_name || prev.location, // 👈 เซ็ตสถานที่ = station_name
+                    wo: data.station.WO ?? prev.wo,
+                    sn: data.station.SN ?? prev.sn
                 }));
             } catch (err) {
                 console.error("โหลดข้อมูลสถานีไม่สำเร็จ:", err);
@@ -420,51 +409,35 @@ export default function CMOpenForm() {
         return () => { alive = false; };
     }, [stationId]);
 
-    useEffect(() => {
-        if (!stationId || !job.found_date) return;
-
-        let canceled = false;
-
-        (async () => {
-            try {
-                const preview = await fetchPreviewIssueId(stationId, job.found_date);
-                if (!canceled && preview) {
-                    setJob(prev => ({ ...prev, issue_id: preview }));
-                }
-            } catch (err) {
-                console.error("preview issue_id error:", err);
-                // ถ้า error ปล่อยให้ว่างไว้ → backend จะ gen เองตอน submit
-            }
-        })();
-
-        return () => { canceled = true; };
-    }, [stationId, job.found_date]);
-
 
     useEffect(() => {
-        if (!stationId || !job.found_date) return;
-
-        let canceled = false;
+        let alive = true;
 
         (async () => {
-            try {
-                const preview = await fetchPreviewDocName(stationId, job.found_date);
+            const todayStr = localTodayISO(); // เช่น 2025-10-17
+            const [y, m] = todayStr.split("-");
 
-                if (!canceled && preview) {
-                    // ถ้าเป็นหน้า edit แล้วดึง doc_name เดิมจาก DB มาอยู่แล้ว
-                    // จะไม่บังคับทับ ถ้าอยากกันตรงนี้เพิ่มเงื่อนไข isEdit ได้
-                    setDocName(preview);
+            let latestId: string | null = null;
+            try {
+                const res = await fetch(`/api/cm/latest-id?y=${y}&m=${m}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    latestId = data?.id ?? null; // เช่น "EL-2025-1007"
                 }
-            } catch (err) {
-                console.error("preview docName error:", err);
-                // ถ้า error ปล่อยให้ docName ว่างไว้ → ฝั่ง backend จะ gen เองตอน submit อยู่แล้ว
-            }
+            } catch { /* fallback: เริ่ม 01 */ }
+
+            const nextId = makeNextIssueId({ latestId, date: todayStr });
+
+            if (!alive) return;
+            setJob(prev => ({
+                ...prev,
+                found_date: todayStr,
+                issue_id: nextId,
+            }));
         })();
 
-        return () => {
-            canceled = true;
-        };
-    }, [stationId, job.found_date]);
+        return () => { alive = false; };
+    }, []); // ⭐ รันครั้งเดียวตอน mount
 
     useEffect(() => {
         if (!editId || !stationId) return;         // 👈 ต้องมีทั้ง editId และ stationId
@@ -480,8 +453,11 @@ export default function CMOpenForm() {
                     ...prev,
                     // ใช้ค่า top-level ของ backend เป็นหลัก (มี backup เป็น job.*)
                     issue_id: data.issue_id ?? data.job?.issue_id ?? prev.issue_id,
-                    found_date: data.found_date ?? data.job?.found_date ?? prev.found_date,
+                    // ใช้ cm_date เป็น found_date (ฟอร์แมต YYYY-MM-DD) ถ้าไม่มีค่อย fallback
+                    found_date: data.cm_date ?? data.job?.found_date ?? prev.found_date,
                     location: data.job?.location ?? prev.location,
+                    wo: data.job?.wo ?? prev.wo,
+                    sn: data.job?.sn ?? prev.sn,
                     problem_details: data.job?.problem_details ?? prev.problem_details,
                     problem_type: data.job?.problem_type ?? prev.problem_type,
                     severity: (data.job?.severity ?? "") as Severity,
@@ -573,16 +549,6 @@ export default function CMOpenForm() {
                                 </div>
                             </div>
                         </div>
-                        {/* ขวาสุด: ชื่อเอกสาร / เลขที่เอกสาร */}
-                        <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
-                            <div className="tw-font-semibold">
-                                Document Name.
-                            </div>
-                            <div>
-                                {docName || "-"}
-                            </div>
-
-                        </div>
 
                         {/* ปุ่มด้านขวาใน HEADER */}
                         {/* <div className="tw-flex tw-items-start tw-gap-2 tw-print:tw-hidden">
@@ -611,10 +577,22 @@ export default function CMOpenForm() {
                         {/* META – การ์ดหัวเรื่อง */}
                         <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
                             <div className="lg:tw-col-span-1">
+                                <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
+                                    Issue ID
+                                </label>
+                                {/* <Input
+                                    value={job.issue_id}
+                                    onChange={(e) => setJob({ ...job, issue_id: e.target.value })}
+                                    crossOrigin=""
+                                    // className="!tw-w-full"
+                                    readOnly
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full !tw-bg-blue-gray-50"
+                                /> */}
                                 <Input
-                                    label="Issue Id / รหัสเอกสาร"
                                     value={job.issue_id || "-"}
                                     readOnly
+                                    key={job.issue_id}  // บังคับให้รี-mount เมื่อค่าเปลี่ยน
                                     crossOrigin=""
                                     containerProps={{ className: "!tw-min-w-0" }}
                                     className="!tw-w-full !tw-bg-blue-gray-50"
@@ -622,30 +600,37 @@ export default function CMOpenForm() {
                             </div>
 
                             <div className="sm:tw-col-span-2 lg:tw-col-span-3">
+                                <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
+                                    Location
+                                </label>
                                 <Input
-                                    label="Location / สถานที่"
                                     value={job.location}
                                     onChange={(e) => setJob({ ...job, location: e.target.value })}
                                     crossOrigin=""
                                     readOnly
+                                    className="!tw-w-full !tw-bg-blue-gray-50"
+                                    // className="!tw-w-full"
                                     containerProps={{ className: "!tw-min-w-0" }}
-                                    className="!tw-bg-blue-gray-50"
                                 />
                             </div>
+
+
                             <div className="lg:tw-col-span-2">
+                                <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
+                                    วันที่ต้องการ
+                                </label>
                                 <Input
-                                    label="found date/ วันที่พบปัญหา"
                                     type="date"
-                                    value={job.found_date}
-                                    max={todayStr}  // ⬅️ จำกัดไม่ให้เลือกเกินวันนี้
+                                    value={(job.found_date || "").slice(0, 10)}
                                     onChange={(e) => setJob({ ...job, found_date: e.target.value })}
                                     crossOrigin=""
-                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    readOnly={isEdit}
                                     className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
+
+
+                                    containerProps={{ className: "!tw-min-w-0" }}
                                 />
                             </div>
-
-
 
                             {/* <div className="lg:tw-col-span-1">
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
@@ -662,7 +647,7 @@ export default function CMOpenForm() {
                                 />
                             </div> */}
                         </div>
-                        {/* <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
+                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
                             <div className="sm:tw-col-span-2 lg:tw-col-span-3">
                                 <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">
                                     Work order
@@ -694,7 +679,7 @@ export default function CMOpenForm() {
                             </div>
 
 
-                        </div> */}
+                        </div>
 
 
                         {/* รายละเอียดปัญหา */}
@@ -703,31 +688,26 @@ export default function CMOpenForm() {
                                 รายละเอียดปัญหา
                             </div>
                             <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4">
-                                <div className="tw-space-y-4">
-                                    <Input
-                                        label="Equipment / อุปกรณ์"
-                                        value={job.problem_type}
-                                        onChange={(e) => setJob({ ...job, problem_type: e.target.value })}
-                                        crossOrigin=""
-                                        readOnly={isEdit}
-                                        className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
-                                    />
-
-                                    <Select
-                                        label="Severity / ความรุนแรง"
+                                <div>
+                                    <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-3">
+                                        ความรุนแรง
+                                    </div>
+                                    <select
                                         value={job.severity}
                                         disabled={isEdit}
-                                        onChange={(value) =>
-                                            setJob((prev) => ({ ...prev, severity: value as Severity }))
-                                        }
-                                        className={isEdit ? "!tw-bg-blue-gray-50 !tw-text-blue-gray-400" : ""}
+                                        onChange={(e) => setJob({ ...job, severity: e.target.value as Severity })}
+                                        className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-3 tw-py-2
+                                            ${isEdit ? "tw-bg-blue-gray-50 tw-text-blue-gray-400 tw-cursor-not-allowed" : ""}`}
                                     >
                                         {SEVERITY_OPTIONS.map((s) => (
-                                            <Option key={s} value={s}>
+                                            <option key={s} value={s}>
                                                 {s || "เลือก..."}
-                                            </Option>
+                                            </option>
                                         ))}
-                                    </Select>
+                                    </select>
+                                </div>
+                                <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-3">
+                                    ประเภทปัญหา
                                 </div>
                                 <Input
                                     label="ประเภทปัญหา"
@@ -803,15 +783,17 @@ export default function CMOpenForm() {
                             <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
                                 หมายเหตุ
                             </div>
-                            <Textarea
-                                label="หมายเหตุ"
-                                rows={3}
-                                value={job.remarks}
-                                onChange={(e) => setJob({ ...job, remarks: e.target.value })}
-                                readOnly={isEdit}
-                                className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
-                                containerProps={{ className: "!tw-min-w-0" }}
-                            />
+                            <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4">
+                                <Textarea
+                                    label="หมายเหตุ"
+                                    rows={3}
+                                    value={job.remarks}
+                                    onChange={(e) => setJob({ ...job, remarks: e.target.value })}
+                                    readOnly={isEdit}
+                                    className={`!tw-w-full ${isEdit ? "!tw-bg-blue-gray-50" : ""}`}
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                />
+                            </div>
                         </div>
 
                         {/* FOOTER + ปุ่มบันทึก */}
@@ -849,6 +831,6 @@ export default function CMOpenForm() {
                     `}
                 </style>
             </form>
-        </section >
+        </section>
     );
 }

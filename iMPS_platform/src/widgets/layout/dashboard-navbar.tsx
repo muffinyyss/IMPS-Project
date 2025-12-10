@@ -51,7 +51,7 @@ export function DashboardNavbar() {
   const view = searchParams.get("view") ?? "";
   const tab = searchParams.get("tab") ?? "";
   const isFormView = view === "form";
-  // const isChargerTab = tab === "charger" || "mdb";
+  const isChargerTab = tab === "charger" || "mdb";
 
   // ซ่อน topbar บางหน้า
   const HIDE_TOPBAR = ["/pages", "/mainpages"];
@@ -76,8 +76,7 @@ export function DashboardNavbar() {
   // const lockStationDropdown = pathname.startsWith("/dashboard/input_PMreport");
   // const lockStationDropdown = pathname.startsWith("/dashboard/pm-report/mdb/input_PMreport");
   const lockStationDropdown =
-  pathname.startsWith("/dashboard/pm-report")  && isFormView
-  || pathname.startsWith("/dashboard/cm-report") && isFormView ;
+  pathname.startsWith("/dashboard/pm-report") && isChargerTab && isFormView;
 
   // Dropdown state
   const [query, setQuery] = useState("");

@@ -1,5 +1,28 @@
 type DraftData = {
   job: any;
+  rows: any;
+  summary: string;
+  // รูปแนบ (เพิ่มในเวอร์ชันใหม่)
+  photos?: any;
+
+  // โครงสร้างใหม่: ค่าวัดของ "ข้อ 9" (Main + ย่อย 1–5)
+  m9_0?: any;
+  m9_1?: any;
+  m9_2?: any;
+  m9_3?: any;
+  m9_4?: any;
+  m9_5?: any;
+
+  // โครงสร้างเก่า (เผื่อมี draft เก่าค้างอยู่ให้โหลดได้ ไม่ error)
+  cp?: any;
+  m4?: any;
+  m5?: any;
+  m6?: any;
+  m7?: any;
+  m8?: any;
+
+  // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
+  // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
 };
 
 function safeStorage() {
@@ -14,9 +37,9 @@ function safeStorage() {
 // export function draftKeyCCB(stationId?: string | null, draftId = "default") {
 //   return `pmDraft:v2:ccb:${stationId ?? "unknown"}:${draftId}`;
 // }
-export function draftKey(stationId: string | null | undefined, draftId = "default") {
+export function draftKeyCCB(stationId: string | null | undefined, draftId = "default") {
   // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
-  return `cmDraft:open:${stationId ?? "unknown"}:${draftId}`;
+  return `pmDraft:v2:ccb:${stationId ?? "unknown"}:${draftId}`;
 }
 
 
