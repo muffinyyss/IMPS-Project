@@ -1,17 +1,20 @@
 # backend/pdf/templates/pdf_actest.py
+import os
+import re
+import base64
+import json
+
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
 from datetime import datetime, date
-import os
-import re
 from typing import Optional, Tuple, List, Dict, Any, Union
-import base64
+from PIL import Image, ImageOps
 from io import BytesIO
+
 try:
     import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
 except Exception:
     requests = None
-
 
 # -------------------- ฟอนต์ไทย --------------------
 FONT_CANDIDATES: Dict[str, List[str]] = {
@@ -21,14 +24,8 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
     "BI":["THSarabunNew-BoldItalic.ttf", "THSarabunNew BoldItalic.ttf", "TH Sarabun New BoldItalic.ttf", "THSarabun BoldItalic.ttf"],
 }
 
+
 def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
-    """
-    โหลดฟอนต์ TH Sarabun โดยค้นทั้ง:
-      - <this file>/fonts            (เช่น backend/pdf/templates/fonts)
-      - <this file>/../fonts         (เช่น backend/pdf/fonts)
-      - โฟลเดอร์ฟอนต์ของระบบ (Windows/macOS/Linux)
-    คืนค่า True ถ้าโหลด regular ("") ได้สำเร็จ
-    """
 
     here = Path(__file__).parent
     search_dirs = [
@@ -220,120 +217,9 @@ def _resolve_logo_path() -> Optional[Path]:
                 return p
     return None
 
-def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float,
-                         station_name: str, model: str, sn: str, pm_date: str) -> float:
-    row_h = 8.5
-    col_w = w / 2.0
-    label_w = 30
-    box_h = row_h * 2
-    pdf.set_line_width(LINE_W_INNER)
-    pdf.rect(x, y, w, box_h)
-    pdf.line(x + col_w, y, x + col_w, y + box_h)   # คอลัมน์
-    pdf.line(x, y + row_h, x + w, y + row_h)       # แถว
-
-    def _item(x0, y0, label, value):
-        pdf.set_xy(x0 + 2, y0 + 1.5)
-        pdf.set_font(base_font, "B", FONT_MAIN)
-        pdf.cell(label_w, row_h - 3, label, border=0, align="L")
-        pdf.set_font(base_font, "", FONT_MAIN)
-        pdf.set_xy(x0 + 2 + label_w, y0 + 1.5)
-        pdf.cell(col_w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
-
-    _item(x, y, "Station", station_name)
-    _item(x + col_w, y, "Serial No.", sn)
-    _item(x, y + row_h, "Model", model)
-    _item(x + col_w, y + row_h, "PM Date", pm_date)
-
-    return y + box_h
-
-
-def _r_idx(k: str) -> int:
-    m = re.match(r"r(\d+)$", k.lower())
-    return int(m.group(1)) if m else 10_000
-
-
-def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
-    if not isinstance(rows, dict):
-        return []
-    items: List[dict] = []
-    measures = measures or {}
-    for key in sorted(rows.keys(), key=_r_idx):
-        idx = _r_idx(key)
-        data = rows.get(key) or {}
-        title = ROW_TITLES.get(key, f"รายการที่ {idx}")
-        remark = (data.get("remark") or "").strip()
-        if key.lower() == "r17":
-            mtxt = _format_m17(measures or {})
-            if mtxt:
-                remark = mtxt
-        if key.lower() == "r15":
-            cp_value = (measures.get("cp", {}) or {}).get("value", "-")
-            cp_unit = (measures.get("cp", {}) or {}).get("unit", "")
-            remark = f"CP = {cp_value}{cp_unit}"
-        items.append({
-            "idx": idx,
-            "text": f"{idx}. {title}",
-            "result": _norm_result(data.get("pf", "")),
-            "remark": remark,
-        })
-    return items
-
-
-# def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
-#     header_h = 9.0
-#     pdf.set_line_width(LINE_W_INNER)
-#     pdf.set_font(base_font, "B", FONT_MAIN)
-#     pdf.set_xy(x, y)
-#     pdf.cell(item_w, header_h, "Item", border=1, align="C")
-#     pdf.cell(result_w, header_h, "Result", border=1, align="C")
-#     pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
-#     y += header_h
-#     pdf.set_fill_color(255, 230, 100)
-#     pdf.set_xy(x, y)
-#     pdf.cell(item_w + result_w + remark_w, 8, "เครื่องอัดประจุไฟฟ้า เครื่องที่ 1", border=1, ln=1, align="L", fill=True)
-#     return y + 8
-
-def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h: float, result: str):
-    pdf.rect(x, y, w, h)
-    col_w = w / 3.0
-    labels = [("Pass", result == "pass"), ("Fail", result == "fail"), ("N/A", result == "na")]
-    pdf.set_font(base_font, "", FONT_SMALL)
-    for i, (lab, chk) in enumerate(labels):
-        sx = x + i * col_w
-        if i > 0:
-            pdf.line(sx, y, sx, y + h)
-        text_w = pdf.get_string_width(lab)
-        content_w = CHECKBOX_SIZE + 1.6 + text_w
-        start_x = sx + (col_w - content_w) / 2.0
-        start_y = y + (h - CHECKBOX_SIZE) / 2.0
-        _draw_check(pdf, start_x, start_y, CHECKBOX_SIZE, chk)
-        pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, y + (h - LINE_H) / 2.0)
-        pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
-    pdf.set_xy(x + w, y)
-
-def _draw_summary_checklist(pdf: FPDF, base_font: str, x: float, y: float, summary_check: str):
-    pass_checked = summary_check == "PASS"
-    fail_checked = summary_check == "FAIL"
-    na_checked = summary_check == "N/A"
-    pdf.set_font(base_font, "", FONT_MAIN)
-    start_x = x
-    _draw_check(pdf, start_x, y, CHECKBOX_SIZE, pass_checked)
-    pdf.set_xy(start_x + CHECKBOX_SIZE + 2, y - 0.5)
-    pdf.cell(15, LINE_H, "PASS", align="L")
-    start_x += 25
-    _draw_check(pdf, start_x, y, CHECKBOX_SIZE, fail_checked)
-    pdf.set_xy(start_x + CHECKBOX_SIZE + 2, y - 0.5)
-    pdf.cell(15, LINE_H, "FAIL", align="L")
-    start_x += 25
-    _draw_check(pdf, start_x, y, CHECKBOX_SIZE, na_checked)
-    pdf.set_xy(start_x + CHECKBOX_SIZE + 2, y - 0.5)
-    pdf.cell(15, LINE_H, "N/A", align="L")
-    return y + LINE_H
 
 def _output_pdf_bytes(pdf: FPDF) -> bytes:
-    """
-    รองรับ fpdf2 หลายเวอร์ชัน: บางเวอร์ชันคืน bytearray, บางเวอร์ชันคืน str (latin1)
-    """
+
     data = pdf.output(dest="S")
     if isinstance(data, (bytes, bytearray)):
         return bytes(data)
@@ -349,52 +235,56 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", inset_mm: float
 
     col_left, col_mid = 40, 120
     col_right = page_w - col_left - col_mid
-    h_all = 22
-    h_right_top = 8
+
+    # ▼▼ ลดความสูงลงจาก 22 → 16  และ box ขวาบนจาก 8 → 6 ▼▼
+    h_all = 16
+    h_right_top = 6
 
     pdf.set_line_width(LINE_W_INNER)
 
-    # โลโก้
+    # ----- โลโก้ ----- #
     pdf.rect(x0, y_top, col_left, h_all)
     logo_path = _resolve_logo_path()
     if logo_path:
-        IMG_W = 35
+        IMG_W = 28                     # ลดความกว้างโลโก้ลง (จาก ~35)
         img_x = x0 + (col_left - IMG_W) / 2
-        img_y = y_top + (h_all - 16) / 2
+        img_y = y_top + (h_all - 12) / 2    # ปรับให้สมส่วน
         try:
             pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
         except Exception:
             pass
 
-    # กล่องกลาง
+    # ----- กล่องกลาง ----- #
     box_x = x0 + col_left
     pdf.rect(box_x, y_top, col_mid, h_all)
-    pdf.set_font(base_font, "B", 25)
-    line_h = 6.2
+
+    pdf.set_font(base_font, "B", 20)   # ลดฟอนต์ลงจาก 25
+    line_h = 5                         # ลดจาก 6.2
     start_y = y_top + (h_all - line_h) / 2
+
     pdf.set_xy(box_x + 3, start_y)
     pdf.cell(col_mid - 6, line_h, "EV Charger Safety Test", align="C")
 
-    # กล่องขวา (Page/Issue)
+    # ----- กล่องขวา (Page/Issue) ----- #
     xr = x0 + col_left + col_mid
     pdf.rect(xr, y_top, col_right, h_right_top)
     pdf.rect(xr, y_top + h_right_top, col_right, h_all - h_right_top)
 
     pdf.set_xy(xr, y_top + 1)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C")
+    pdf.set_font(base_font, "", FONT_MAIN - 1)  # ลดขนาดลงเล็กน้อย
+    pdf.cell(col_right, 5, f"Page {pdf.page_no()}", align="C")
 
-    pdf.set_xy(xr, y_top + h_right_top + 1)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.multi_cell(col_right, 6, f"Issue ID\n{issue_id}", align="C")
+    pdf.set_xy(xr, y_top + h_right_top + 0.5)
+    pdf.set_font(base_font, "B", FONT_MAIN - 2)  # ลด font issue id
+    pdf.multi_cell(col_right, 5, f"Issue ID\n{issue_id}", align="C")
 
     return y_top + h_all
+
 
 
 def _kv_underline(pdf: FPDF, base_font: str, x: float, y: float, w: float,
                   label: str, value: str = "", row_h: float = 8.0,
                   label_w: float = 28.0, colon_w: float = 3.0):
-    """Label : ________ (ปรับ label อัตโนมัติถ้าช่องแคบ และกันเส้นใต้ติดลบ)"""
     # คำนวณ label_w แบบปลอดภัยเมื่อช่อง w แคบ
     min_gap = 6.0  # เผื่อช่องว่างหลังโคลอนก่อนเริ่มเส้นใต้
     eff_label_w = min(label_w, max(w - colon_w - min_gap, 12.0))
@@ -429,7 +319,7 @@ def _draw_ev_header_form(pdf: FPDF, base_font: str, x: float, y: float, w: float
                          manufacturer: str = "", model: str = "", power: str = "",
                          serial_no: str = "", location: str = "",
                          firmware: str = "", inspection_date: str = "",
-                         power_w_mm: float = 32.0,   # 👈 กำหนดกว้างช่อง Power ที่นี่ (เช่น 28–36)
+                         power_w_mm: float = 32.0,   # กำหนดกว้างช่อง Power ที่นี่ (เช่น 28–36)
                          gap_mm: float = 4.0) -> float:
 
     row_h = 6
@@ -437,7 +327,7 @@ def _draw_ev_header_form(pdf: FPDF, base_font: str, x: float, y: float, w: float
     right_w = w - left_w
 
     lx, rx = x, x + left_w
-    y0 = y
+    y0 = y + 1
 
     # แถวที่ 1
     _kv_underline(pdf, base_font, lx, y0, left_w,  "Manufacturer", manufacturer, row_h)
@@ -453,7 +343,7 @@ def _draw_ev_header_form(pdf: FPDF, base_font: str, x: float, y: float, w: float
     y0 += row_h
 
     # แถวที่ 3
-    _kv_underline(pdf, base_font, lx, y0, left_w,  "Serial Number",  serial_no,       row_h)
+    _kv_underline(pdf, base_font, lx, y0, left_w,  "Serial Number",  serial_no, row_h)
     _kv_underline(pdf, base_font, rx, y0, right_w, "Inspection Date", inspection_date, row_h)
     y0 += row_h
 
@@ -462,7 +352,6 @@ def _draw_ev_header_form(pdf: FPDF, base_font: str, x: float, y: float, w: float
 def _kv_inline(pdf: FPDF, base_font: str, x: float, y: float, w: float,
                label: str, value: str = "", row_h: float = 8.0,
                label_w: float = 25.0, colon_w: float = 3.0):
-    """เวอร์ชันสั้น ใช้เรียง 3 ช่องในบรรทัดเดียว (Manufacturer / Model / Serial Number)"""
     _kv_underline(pdf, base_font, x, y, w, label, value, row_h, label_w, colon_w)
 
 
@@ -470,12 +359,13 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
                                   items: List[Dict[str, str]] | None = None,
                                   num_rows: int = 2) -> float:
     
-    pdf.rect(6, 28, 198, 255)
-    """หัวข้อ Equipment Identification Details + 2 บรรทัด (ตามภาพ)"""
+    pdf.rect(6, 22, 198, 270)
+    
+    # pdf.rect(frame_x, frame_y, frame_w, frame_h)
     pdf.set_font(base_font, "BU", FONT_MAIN)
     pdf.set_xy(x, y)
     pdf.cell(w, 2, "Equipment Identification Details", border=0, ln=1, align="L")
-    y = pdf.get_y() + 1.0 
+    y = pdf.get_y() + 2.5 
 
     row_h = 6.0
     num_w = 5.0
@@ -485,7 +375,7 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
     col3_w = (w - num_w) * 0.36
 
     items = items or []
-    total = max(num_rows, len(items))
+    total = len(items) if items else num_rows
 
     for i in range(total):
         m = items[i].get("manufacturer", "") if i < len(items) else ""
@@ -500,7 +390,7 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
         cx = x + num_w
         _kv_inline(pdf, base_font, cx, y, col1_w, "Manufacturer", m, row_h)
         cx += col1_w + 2
-        _kv_inline(pdf, base_font, cx, y, col2_w, "Model", mo, row_h,15)
+        _kv_inline(pdf, base_font, cx, y, col2_w, "Model", mo, row_h, 15)
         cx += col2_w + 2
         _kv_inline(pdf, base_font, cx, y, col3_w, "Serial Number", sn, row_h)
 
@@ -509,243 +399,895 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
     return y
 
 def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
-                                       table_width=None, safety=None):
-    """
-    วาดหัวข้อ
-      'Testing Topics for Safety (Specifically Power Supply/Input Side)'
-    + ตารางตามรูป (Electrical Safety table)
+                                     table_width=None, safety=None):
+    
+    # =========================================================
+    # 🛠️ DEBUG ZONE: แสดงค่า safety ออกมาดู
+    # =========================================================
+    # print("\n" + "█" * 50)
+    # print(">>> DEBUG: SAFETY VARIABLE <<<")
+    # try:
+    #     # ใช้วิธีนี้เพื่อรองรับภาษาไทย และกัน Error กรณีมี Object แปลกๆ
+    #     print(json.dumps(safety, indent=4, ensure_ascii=False, default=str))
+    # except Exception as e:
+    #     print(f"Cannot JSON dump: {e}")
+    #     print(safety) # ถ้า dump ไม่ได้ ก็ print ดิบๆ
+    # print("█" * 50 + "\n")
+    # =========================================================
 
-    เริ่มวาดที่ตำแหน่ง (x, y)
-    คืนค่า y ตำแหน่งหลังจบตาราง
-    """
-    def _fmt_pe(entry: dict | None) -> str:
-        """
-        ใช้แปลง object เช่น {"h1": "2", "result": "PASS"} → "2 / PASS"
-        ถ้าได้มาไม่ครบจะคืนอย่างใดอย่างหนึ่ง หรือว่างเปล่า
-        """
+    # 1. รับข้อมูลเข้ามา (กัน Error ถ้าเป็น None)
+    safety = safety or {} 
+
+    # 2. ฟังก์ชันแยกค่า Value กับ Result
+    def _get_val_res(entry: dict | None):
         if not isinstance(entry, dict):
-            return ""
-        h1 = str(entry.get("h1") or "").strip()
+            return "", ""
+        val = str(entry.get("h1") or "").strip()
         res = str(entry.get("result") or "").strip()
-        if h1 and res:
-            return f"{h1} / {res}"
-        return h1 or res
+        return val, res
+
+    # 3. ฟังก์ชันวาดช่องคู่: ซ้าย(ตัวเลข) | ขวา(เครื่องหมาย)
+    def draw_result_pair(pdf_obj, w_total, h, val_str, res_str):
+        w_half = w_total / 2.0
+        
+        # วาดช่องซ้าย (ตัวเลข)
+        pdf_obj.cell(w_half, h, val_str, border=1, align="C")
+        
+        # วาดช่องขวา (สัญลักษณ์)
+        res_lower = res_str.lower()
+        symbol = ""
+        is_symbol = False
+        
+        if res_lower == "pass":
+            symbol = "3"  # ZapfDingbats: 3 = ถูก (✓)
+            is_symbol = True
+        elif res_lower == "fail":
+            symbol = "7"  # ZapfDingbats: 7 = ผิด (✗)
+            is_symbol = True
+        else:
+            symbol = ""   # ถ้าไม่มีผลลัพธ์ ให้ปล่อยว่าง
+        
+        if is_symbol:
+            # สลับไปใช้ฟอนต์สัญลักษณ์
+            current_font = pdf_obj.font_family
+            current_style = pdf_obj.font_style
+            current_size = pdf_obj.font_size_pt
+            
+            pdf_obj.set_font("ZapfDingbats", "", current_size)
+            pdf_obj.cell(w_half, h, symbol, border=1, align="C")
+            
+            # สลับกลับมาฟอนต์เดิม
+            pdf_obj.set_font(current_font, current_style, current_size)
+        else:
+            pdf_obj.cell(w_half, h, symbol, border=1, align="C")
+
 
     if table_width is None:
         table_width = pdf.w - pdf.l_margin - pdf.r_margin
 
-    # ---------- ความกว้างคอลัมน์ ----------
-    col_cat     = 20   # Electrical Safety (แนวตั้ง)
-    col_pe      = 30   # PE.Continuity...
-    col_item    = 25   # Left/Right/Front/Back/...
-    col_test    = 28   # 1st / 2nd / 3rd TEST
-    
+    # ---------- Config ขนาดตาราง ----------
+    col_cat     = 15   
+    col_pe      = 30   
+    col_item    = 25   
+    col_test    = 28   
     col_remark  = table_width - (col_cat + col_pe + col_item + 3 * col_test)
+    h_header1, h_header2, h_row = 5, 5, 5
 
-    h_header1 = 5 
-    h_header2 = 7
-    h_row     = 5
-
-    # ---------- 1) หัวข้อบรรทัดบน ----------
+    # ---------- Start Drawing ----------
+    # Header บนสุด
     pdf.set_xy(x, y)
     pdf.set_font(base_font, "BU", font_size)
-    pdf.cell(
-        table_width, 6,
-        "Testing Topics for Safety (Specifically Power Supply/Input Side)",
-        border=0,
-        ln=1,
-        align="L",
-    )
+    pdf.cell(table_width, 6, "Testing Topics for Safety (Specifically Power Supply/Input Side)", border=0, ln=1, align="L")
 
     y = pdf.get_y() + 2
     table_y0 = y
     lw_old = pdf.line_width
     pdf.set_line_width(lw_old)
 
-
-    # ---------- 2) Header แถวที่ 1 ----------
+    # Header ตาราง
     pdf.set_font(base_font, "B", font_size)
-    
-    # ไม่วาดคอลัมน์ Electrical Safety ใน header (ตามรูป)
     pdf.set_xy(x + col_cat, y)
-    
-    # Testing Checklist
     pdf.cell(col_pe + col_item, h_header1+h_header2, "Testing Checklist", 1, 0, "C")
-    
-    # Test Results
-    pdf.cell(
-        col_test * 3,
-        h_header1,
-        "Test Results (Record as Pass/Fail) or Numeric Results",
-        1,
-        0,
-        "C",
-    )
-    
-    # Remark (merge 2 แถว)
+    pdf.cell(col_test * 3, h_header1, "Test Results (Record as Pass/Fail) or Numeric Results", 1, 0, "C")
     pdf.cell(col_remark, h_header1 + h_header2, "Remark", 1, 0, "C")
-    
     y += h_header1
 
-    # ---------- 3) Header แถวที่ 2 ----------
     pdf.set_xy(x + col_cat, y)
-    
-    # ช่องว่างใต้ Testing Checklist
-    # pdf.cell(col_pe, h_header2, "", 1, 0, "C")
-    # pdf.cell(col_item, h_header2, "", 1, 0, "C")
-    # ช่องว่างใต้ Testing Checklist (merge col_pe + col_item)
     pdf.cell(col_pe + col_item, h_header2, "", 0, 0, "C")
-    
-    # Test columns
     pdf.cell(col_test, h_header2, "1st TEST", 1, 0, "C")
     pdf.cell(col_test, h_header2, "2nd TEST", 1, 0, "C")
     pdf.cell(col_test, h_header2, "3rd TEST", 1, 0, "C")
-    
     y += h_header2
     y_body_start = y
 
     pdf.set_font(base_font, "", font_size)
 
-    # ---------- 4) ส่วน PE.Continuity ----------
-    items = [
-        "Left Cover",
-        "Right Cover",
-        "Front Cover",
-        "Back Cover",
-        "Charger Stand",
-        "Charger Case",
-    ]
+    # ==========================================
+    # ส่วนที่ 1: PE.Continuity (แสดงผล Pass/Fail)
+    # ==========================================
+    items = ["Left Cover", "Right Cover", "Front Cover", "Back Cover", "Charger Stand", "Charger Case"]
+    
+    # Mapping ชื่อรายการ -> Key ใน JSON ของคุณ
+    pe_key_map = {
+        "Left Cover": "leftCover",
+        "Right Cover": "rightCover",
+        "Front Cover": "frontCover",
+        "Back Cover": "backCover",
+        "Charger Stand": "chargerStand",
+        "Charger Case": "chargerCase"
+    }
 
-    # วาดกล่องใหญ่ PE.Continuity
+    # วาด Header PE ด้านซ้าย
     pe_rows = len(items)
     pe_h = pe_rows * h_row
-    pdf.rect(x + col_cat, y, col_pe, pe_h)
-
-    # ข้อความใน PE.Continuity
-    pe_text_lines = [
-        "PE.Continuity",
-        "protective",
-        "Conductors of",
-        "Charger",
-    ]
-    text_total_h = len(pe_text_lines) * 4.0
-    text_y = y + (pe_h - text_total_h) / 2.0
+    pdf.rect(x + col_cat, y, col_pe, pe_h) # กรอบ
     
+    pe_text_lines = ["PE.Continuity", "protective", "Conductors of", "Charger"]
+    text_y = y + (pe_h - (len(pe_text_lines) * 4.0)) / 2.0
     pdf.set_font(base_font, "", font_size - 1)
     for i, ln in enumerate(pe_text_lines):
         pdf.set_xy(x + col_cat, text_y + i * 4.0)
         pdf.cell(col_pe, 4.0, ln, 0, 0, "C")
     pdf.set_font(base_font, "", font_size)
 
-    # วาดแถว Left/Right/Front/Back/Stand/Case
+    # ดึง Data ก้อน PE Continuity
+    pe_data = safety.get("peContinuity", {}) 
+
     for txt in items:
         row_y = y
+        db_key = pe_key_map.get(txt)
+        
+        # ดึงข้อมูล r1, r2, r3 (Value และ Result)
+        v1, r1 = _get_val_res(pe_data.get("r1", {}).get(db_key))
+        v2, r2 = _get_val_res(pe_data.get("r2", {}).get(db_key))
+        v3, r3 = _get_val_res(pe_data.get("r3", {}).get(db_key))
+        
+        remark_txt = safety.get("remarks", {}).get(db_key, "")
 
-        # คอลัมน์ Electrical Safety (ว่างไว้)
+        # วาดแถว
         pdf.set_xy(x, row_y)
-        # pdf.cell(col_cat, h_row, "", 1, 0, "C")
-        pdf.cell(col_cat, h_row, "", 0, 0, "C")  # border=0
-
-        # ข้ามพื้นที่ PE.Continuity
+        pdf.cell(col_cat, h_row, "", 0, 0, "C") 
         pdf.set_xy(x + col_cat + col_pe, row_y)
-
-        # คอลัมน์รายการ
         pdf.cell(col_item, h_row, txt, 1, 0, "L")
 
-        # Test columns
-        pdf.cell(col_test, h_row, "", 1, 0, "C")
-        pdf.cell(col_test, h_row, "", 1, 0, "C")
-        pdf.cell(col_test, h_row, "", 1, 0, "C")
+        # *** จุดสำคัญ: เรียกใช้ draw_result_pair ***
+        draw_result_pair(pdf, col_test, h_row, v1, r1)
+        draw_result_pair(pdf, col_test, h_row, v2, r2)
+        draw_result_pair(pdf, col_test, h_row, v3, r3)
 
-        # Remark
-        pdf.cell(col_remark, h_row, "", 1, 0, "L")
-
+        pdf.cell(col_remark, h_row, remark_txt, 1, 0, "L")
         y += h_row
 
-    # ---------- 5) RCD type rows ----------
+    # ==========================================
+    # ส่วนที่ 2: RCD (แสดง Value + Unit)
+    # ==========================================
     rcd_rows = [
-        ("RCD type A", "-", "mA"),
-        ("RCD type F", "-", "mA"),
-        ("RCD type B", "-", "mA"),
+        ("RCD type A", "typeA", "mA"),
+        ("RCD type F", "typeF", "mA"),
+        ("RCD type B", "typeB", "mA"),
     ]
+    rcd_data = safety.get("rcd", {})
+    rcd_remark_data = safety.get("remarks", {})
 
-    for label, val, unit in rcd_rows:
+    for label, key, default_unit in rcd_rows:
+        item_data = rcd_data.get(key, {})
+        val_str = str(item_data.get("value") or "-")
+        unit_str = str(item_data.get("unit") or default_unit)
+        
+        # Mapping remark key: typeA -> rcdTypeA
+        rem_key = "rcd" + key[0].upper() + key[1:]
+        remark_txt = rcd_remark_data.get(rem_key, "")
+
         pdf.set_xy(x, y)
-        
-        # Electrical Safety (ว่าง)
-        # pdf.cell(col_cat, h_row, "", 1, 0, "C")
         pdf.cell(col_cat, h_row, "", 0, 0, "C")
-        
-        # RCD type label
         pdf.cell(col_pe, h_row, label, 1, 0, "L")
         
-        # แบ่งช่อง item เป็น 2 ส่วน
-        w1 = col_item * 0.35
-        w2 = col_item * 0.65
-        pdf.cell(w1, h_row, val, 1, 0, "C")
-        pdf.cell(w2, h_row, unit, 1, 0, "L")
+        # ช่อง Value
+        w1, w2 = col_item * 0.60, col_item * 0.40 
+        pdf.cell(w1, h_row, val_str, 1, 0, "C")
+        pdf.cell(w2, h_row, unit_str, 1, 0, "C")
         
-        # Test columns
+        # Test columns (RCD ไม่มี Pass/Fail ใน JSON นี้ ปล่อยว่างไว้)
         pdf.cell(col_test, h_row, "", 1, 0, "C")
         pdf.cell(col_test, h_row, "", 1, 0, "C")
         pdf.cell(col_test, h_row, "", 1, 0, "C")
         
-        # Remark
-        pdf.cell(col_remark, h_row, "", 1, 0, "L")
-        
+        pdf.cell(col_remark, h_row, remark_txt, 1, 0, "L")
         y += h_row
 
-    # ---------- 6) Power standby ----------
+    # ==========================================
+    # ส่วนที่ 3: Power Standby
+    # ==========================================
+    ps_data = safety.get("powerStandby", {})
+    l1 = ps_data.get("L1", " ")
+    l2 = ps_data.get("L2", " ")
+    l3 = ps_data.get("L3", " ")
+    ps_remark = safety.get("remarks", {}).get("powerStandby", "")
+
     pdf.set_xy(x, y)
-    # pdf.cell(col_cat, h_row, "", 1, 0, "C")
     pdf.cell(col_cat, h_row, "", 0, 0, "C")
     pdf.cell(col_pe, h_row, "Power standby", 1, 0, "L")
     pdf.cell(col_item, h_row, "", 1, 0, "C")
     
-    # L1=, L2=, L3= พร้อมหน่วย A
     pdf.set_font(base_font, "", font_size - 1)
-    pdf.cell(col_test, h_row, "L1=          A", 1, 0, "L")
-    pdf.cell(col_test, h_row, "L2=          A", 1, 0, "L")
-    pdf.cell(col_test, h_row, "L3=          A", 1, 0, "L")
+    pdf.cell(col_test, h_row, f"L1 = {l1} A", 1, 0, "C")
+    pdf.cell(col_test, h_row, f"L2 = {l2} A", 1, 0, "C")
+    pdf.cell(col_test, h_row, f"L3 = {l3} A", 1, 0, "C")
     pdf.set_font(base_font, "", font_size)
     
-    pdf.cell(col_remark, h_row, "", 1, 0, "L")
-    
+    pdf.cell(col_remark, h_row, ps_remark, 1, 0, "L")
     y += h_row
     y_body_end = y
 
-    # ---------- 7) Electrical Safety แนวตั้ง ----------
+    # วาด Header แนวตั้งด้านซ้าย (Electrical Safety)
     body_height = y_body_end - y_body_start
     pdf.rect(x, y_body_start, col_cat, body_height)
     
     pdf.set_font(base_font, "B", 20)
     text = "Electrical Safety"
-    text_width = pdf.get_string_width(text)
-    
+    text_w = pdf.get_string_width(text)
     text_x = x + col_cat / 2.0
-    text_y = y_body_start + (body_height + text_width) / 2.0
-    
-    # ถ้า FPDF ไม่รองรับ rotation context manager ให้ใช้วิธีนี้แทน:
+    text_y = y_body_start + (body_height + text_w) / 2.0
     try:
         with pdf.rotation(90, text_x, text_y):
             pdf.set_xy(text_x, text_y)
             pdf.cell(0, 0, text, 0, 0, "L")
     except:
-        # สำรอง: เขียนแยกเป็น 2 บรรทัด
-        text_lines = ["Electrical", "Safety"]
-        line_h = 4.5
-        total_h = len(text_lines) * line_h
-        text_y2 = y_body_start + (body_height - total_h) / 2.0
-        for i, ln in enumerate(text_lines):
-            pdf.set_xy(x + 1, text_y2 + i * line_h)
-            pdf.cell(col_cat - 2, line_h, ln, 0, 0, "C")
+        pass # Handle case where rotation is not supported
 
-    # ---------- 8) กรอบนอกเส้นหนา ----------
-    pdf.set_line_width(0.8)
+    # กรอบใหญ่นอกสุด
+    pdf.set_line_width(0.3)
     pdf.rect(x, table_y0, table_width, y_body_end - table_y0)
     pdf.set_line_width(lw_old)
 
     pdf.set_font(base_font, "", font_size)
+    return y
+
+
+def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
+                                    table_width=None, safety=None):
+
+    # 1. จัดการข้อมูลนำเข้า
+    safety = safety or {}
+    
+    # เช็คว่า data ที่ส่งมาเป็นก้อนใหญ่ (มี key 'charger_safety') หรือก้อนย่อยแล้ว
+    if "charger_safety" in safety:
+        data_src = safety["charger_safety"]
+    else:
+        data_src = safety  # กรณีส่งก้อน debug มาตรงๆ
+
+    # ดึงก้อนย่อย
+    pe_data_root = data_src.get("peContinuity", {})
+    rcd_data_root = data_src.get("rcd", {})
+    remarks_data = data_src.get("remarks", {})
+
+    # =======================================================
+    # ฟังก์ชันช่วยวาดสัญลักษณ์ (ติ๊กถูก/กากบาท)
+    # =======================================================
+    def _draw_result_symbol(pdf_obj, bx, by, w, h, result_str):
+        res_lower = str(result_str).lower().strip()
+        
+        symbol = ""
+        is_symbol = False
+        
+        # เช็คเงื่อนไข PASS
+        if res_lower in ["pass", "p"]:
+            symbol = "3"  # ถูก (✓) ใน ZapfDingbats
+            is_symbol = True
+        # เช็คเงื่อนไข FAIL
+        elif res_lower in ["fail", "notpass", "f", "✗", "x"]:
+            symbol = "7"  # ผิด (✗) ใน ZapfDingbats
+            is_symbol = True
+            
+        if is_symbol:
+            # เปลี่ยน Font เป็น ZapfDingbats เพื่อวาดสัญลักษณ์
+            original_font = pdf_obj.font_family
+            original_style = pdf_obj.font_style
+            original_size = pdf_obj.font_size_pt
+            
+            pdf_obj.set_font("ZapfDingbats", "", original_size)
+            pdf_obj.set_xy(bx, by)
+            pdf_obj.cell(w, h, symbol, border=1, align="C")
+            
+            # คืนค่า Font เดิม
+            pdf_obj.set_font(original_font, original_style, original_size)
+        else:
+            # ถ้าไม่มีสถานะ หรือเป็นค่าอื่น ให้เขียนข้อความเดิม
+            pdf_obj.set_xy(bx, by)
+            pdf_obj.cell(w, h, result_str, border=1, align="C")
+
+    # ฟังก์ชันดึงค่า h1 และ result จาก object
+    def _get_val_res(data_obj):
+        if not isinstance(data_obj, dict):
+            return "", ""
+        return str(data_obj.get("h1", "")), str(data_obj.get("result", ""))
+
+
+    if table_width is None:
+        table_width = pdf.w - pdf.l_margin - pdf.r_margin
+
+    # ---------- Config Column ----------
+    col_cat    = 15
+    col_item   = 55
+    col_test_group = 28
+    col_h1         = col_test_group / 2 
+    col_result     = col_test_group / 2 
+    col_remark = table_width - (col_cat + col_item + (3 * col_test_group))
+
+    h_header = 5 
+    h_row    = 5 
+
+    # -----------------------------------------------------------
+    # 1) Header Table
+    # -----------------------------------------------------------
+    pdf.set_xy(x, y)
+    pdf.set_font(base_font, "BU", font_size)
+    pdf.cell(table_width, 6, "Charging Process Testing", 0, 1, "L")
+
+    y = pdf.get_y() + 2
+    table_y0 = y 
+    lw_old = pdf.line_width
+    pdf.set_line_width(lw_old)
+
+    pdf.set_font(base_font, "B", font_size)
+
+    # Row 1
+    pdf.set_xy(x + col_cat, y)
+    pdf.cell(col_item, h_header * 2, "Testing Checklist", 1, 0, "C")
+    pdf.cell(col_test_group * 3, h_header, "Test Results (Record as Pass/Fail) or Numeric Results", 1, 0, "C")
+    pdf.cell(col_remark, h_header * 3, "Remark", 1, 0, "C")
+    y += h_header
+    
+    # Row 2
+    start_x_test = x + col_cat + col_item
+    pdf.set_xy(start_x_test, y)
+    pdf.cell(col_test_group, h_header, "1st TEST", 1, 0, "C")
+    pdf.cell(col_test_group, h_header, "2nd TEST", 1, 0, "C")
+    pdf.cell(col_test_group, h_header, "3rd TEST", 1, 0, "C")
+    y += h_header
+
+    # Row 3
+    pdf.set_xy(x + col_cat, y)
+    pdf.cell(col_item, h_header, "Type2", 1, 0, "C")
+    for _ in range(3):
+        pdf.cell(col_h1, h_header, "H.1", 1, 0, "C")
+        pdf.cell(col_result, h_header, "Result", 1, 0, "C")
+    y += h_header
+    
+    y_body_start = y 
+    pdf.set_font(base_font, "", font_size)
+
+    # ===========================================================
+    # 2) Body Data (Mapping ตรงตาม JSON Debug)
+    # ===========================================================
+    
+    # รายการที่ต้องแสดง (Label ใน PDF, Key ใน JSON)
+    items = [
+        ("Continuity PE",    "continuityPE"),
+        ("Insulation Cable", "insulationCable"),
+        ("State A",          "stateA"),
+        ("State B",          "stateB"),
+        ("State C",          "stateC"),
+        ("CP Short",         "CPShort"),
+        ("PE Cut",           "PECut")
+    ]
+
+    # ดึงข้อมูล r1, r2, r3 ออกมาเตรียมไว้ (เพื่อความง่ายในการเรียกใช้)
+    # ตาม JSON: peContinuity -> r1 -> [key]
+    r1_data_root = pe_data_root.get("r1", {})
+    r2_data_root = pe_data_root.get("r2", {})
+    r3_data_root = pe_data_root.get("r3", {})
+
+    for label_txt, key_db in items:
+        
+        # ดึงข้อมูลของแต่ละ Item จาก r1, r2, r3
+        item_r1 = r1_data_root.get(key_db, {})
+        item_r2 = r2_data_root.get(key_db, {})
+        item_r3 = r3_data_root.get(key_db, {})
+
+        # แยกค่า h1 และ result
+        h1_1, res_1 = _get_val_res(item_r1)
+        h1_2, res_2 = _get_val_res(item_r2)
+        h1_3, res_3 = _get_val_res(item_r3)
+        
+        # Remark
+        rem = remarks_data.get(key_db, "")
+
+        pdf.set_xy(x + col_cat, y)
+        
+        # 1. ชื่อรายการ
+        pdf.cell(col_item, h_row, label_txt, 1, 0, "L")
+
+        # 2. ผลการทดสอบ 1st
+        pdf.cell(col_h1, h_row, h1_1, 1, 0, "C")
+        _draw_result_symbol(pdf, pdf.get_x(), y, col_result, h_row, res_1)
+        
+        # 3. ผลการทดสอบ 2nd
+        # ต้อง set_xy ใหม่เพื่อให้ตำแหน่งถูกต้องเป๊ะๆ
+        current_x = x + col_cat + col_item + col_test_group
+        pdf.set_xy(current_x, y)
+        pdf.cell(col_h1, h_row, h1_2, 1, 0, "C")
+        _draw_result_symbol(pdf, pdf.get_x(), y, col_result, h_row, res_2)
+        
+        # 4. ผลการทดสอบ 3rd
+        current_x = x + col_cat + col_item + (col_test_group*2)
+        pdf.set_xy(current_x, y)
+        pdf.cell(col_h1, h_row, h1_3, 1, 0, "C")
+        _draw_result_symbol(pdf, pdf.get_x(), y, col_result, h_row, res_3)
+
+        # 5. Remark
+        current_x = x + col_cat + col_item + (col_test_group*3)
+        pdf.set_xy(current_x, y)
+        pdf.cell(col_remark, h_row, rem, 1, 0, "L")
+        
+        y += h_row
+
+    # ===========================================================
+    # 3) RCD Data
+    # ===========================================================
+    rcd_rows = [
+        ("RCD type A", "typeA", "30", "mA"),
+        ("RCD type F", "typeF", "-",  "mA"),
+        ("RCD type B", "typeB", "-",  "mA"),
+        ("RCD-DD",     "DD",    "6",  "mA")
+    ]
+
+    for label, key_db, def_val, def_unit in rcd_rows:
+        pdf.set_xy(x + col_cat, y)
+
+        label_w = col_item * 0.55
+        w_val   = col_item * 0.3
+        w_unit  = col_item * 0.15
+        
+        # ดึงค่าจาก JSON
+        item_data = rcd_data_root.get(key_db, {})
+        val_str = str(item_data.get("value") or def_val)
+        unit_str = str(item_data.get("unit") or def_unit)
+        
+        # Map Key Remark (typeA -> rcdTypeA)
+        rem_key = key_db
+        if key_db.startswith("type"):
+             rem_key = "rcd" + key_db[0].upper() + key_db[1:]
+        
+        rem_txt = remarks_data.get(rem_key, "")
+
+        # วาดข้อมูล
+        pdf.cell(label_w, h_row, label, 1, 0, "L")
+        pdf.cell(w_val, h_row, val_str, 1, 0, "C")
+        pdf.cell(w_unit, h_row, unit_str, 1, 0, "C")
+
+        # ช่อง Test Results ว่างไว้ (ไม่มีข้อมูล pass/fail ใน JSON ส่วนนี้)
+        for _ in range(3):
+            pdf.cell(col_h1, h_row, "", 1, 0, "C")
+            pdf.cell(col_result, h_row, "", 1, 0, "C")
+
+        pdf.cell(col_remark, h_row, rem_txt, 1, 0, "L")
+
+        y += h_row
+
+    y_body_end = y
+
+    # -----------------------------------------------------------
+    # Vertical Header (Left Side)
+    # -----------------------------------------------------------
+    total_height = y_body_end - table_y0 
+    
+    pdf.rect(x, table_y0, col_cat, total_height)
+    
+    pdf.set_font(base_font, "B", 20)
+    text = "Charger Safety"
+    text_width = pdf.get_string_width(text)
+    
+    center_x = x + (col_cat / 2.0) + 2.5
+    center_y = table_y0 + (total_height + text_width) / 2.0
+    
+    try:
+        with pdf.rotation(90, center_x, center_y):
+            pdf.text(center_x, center_y, text)
+    except:
+        pass 
+
+    # -----------------------------------------------------------
+    # Outer Border
+    # -----------------------------------------------------------
+    pdf.set_line_width(0.3) 
+    pdf.rect(x, table_y0, table_width, total_height)
+    pdf.set_line_width(lw_old)
+
+    pdf.set_font(base_font, "", font_size)
+    return y
+
+# ฟังก์ชันวาด (Helper Function) เหมือนเดิม
+def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool, style: str = "tick"):
+
+    # วาดกรอบสี่เหลี่ยม
+    pdf.rect(x, y, size, size)
+    
+    if not checked:
+        return
+
+    # [ปรับแก้] กำหนดระยะร่นจากขอบ (Padding)
+    # ยิ่งค่ามาก เครื่องหมายข้างในยิ่งเล็ก (เดิมประมาณ 0.7 หรือ 0)
+    pad = 1.2 
+
+    if style == "tick":
+        lw_old = pdf.line_width
+        pdf.set_line_width(0.6)
+        
+        # คำนวณพิกัดใหม่โดยใส่ pad เข้าไปเพื่อให้เส้นหดเข้ามา
+        # จุดเริ่ม (ซ้าย)
+        p1_x, p1_y = x + pad, y + (size * 0.55)
+        # จุดหักมุม (ล่าง) - ขยับขึ้นมาจากก้นกล่องเท่ากับ pad
+        p2_x, p2_y = x + (size * 0.40), y + size - pad
+        # จุดปลาย (ขวาบน) - ขยับลงมาจากด้านบนเท่ากับ pad
+        p3_x, p3_y = x + size - pad, y + pad
+        
+        pdf.line(p1_x, p1_y, p2_x, p2_y)
+        pdf.line(p2_x, p2_y, p3_x, p3_y)
+        
+        pdf.set_line_width(lw_old)
+        
+    elif style == "cross":
+        lw_old = pdf.line_width
+        pdf.set_line_width(0.6) 
+        
+        # วาดกากบาทโดยบวก/ลบ pad เข้าไปที่จุดเริ่มและจุดจบ
+        # เส้นเฉียงลง
+        pdf.line(x + pad, y + pad, x + size - pad, y + size - pad)
+        # เส้นเฉียงขึ้น
+        pdf.line(x + pad, y + size - pad, x + size - pad, y + pad)
+        
+        pdf.set_line_width(lw_old)
+
+# ------------------------------------------------------------------
+
+def draw_remark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float, w: float, doc: dict = None) -> float:
+    
+    # 1. รับข้อมูล (กัน Error ถ้า doc เป็น None)
+    doc = doc or {}
+    
+    # =======================================================
+    # 🟢 ส่วน Logic: กำหนดสถานะ Checkbox
+    # =======================================================
+    
+    # 1. Phase Sequence (ยังคงดึงจาก Database ตามปกติ)
+    phase_val = str(doc.get("phaseSequence") or "").strip()
+    SHOW_PHASE_L1 = (phase_val == "L1L2L3")
+    SHOW_PHASE_L3 = (phase_val == "L3L2L1")
+
+    # 2. Remark Text
+    remark_text = doc.get("remarks", {}).get("testRematk", "")
+
+    # 3. Symbol (PASS / Not PASS) -> ปรับเป็น Hardcode ไม่ดึง Data
+    SHOW_PASS     = True   # ✅ ให้แสดงติ๊กถูกเสมอ
+    SHOW_NOT_PASS = True   # ❌ ให้แสดงกากบาทเสมอ
+    
+    # ส่วน N/A (ถ้าอยากดึง Data ก็ใช้ Logic เดิม หรือจะ Hardcode ก็ได้)
+    symbol_val = str(doc.get("symbol") or "").lower().replace(" ", "")
+    SHOW_NA    = (symbol_val in ["na", "n/a"])
+
+    y -= 2
+
+    # -----------------------------------------------------------
+    # ฟังก์ชันวาด Checkbox Helper
+    # -----------------------------------------------------------
+    def _draw_check(pdf_obj, bx, by, size, checked=False, style="tick"):
+        # วาดกรอบสี่เหลี่ยม
+        pdf_obj.rect(bx, by, size, size)
+        
+        if checked:
+            original_font = pdf_obj.font_family
+            original_style = pdf_obj.font_style
+            original_size = pdf_obj.font_size_pt
+            
+            # ใช้ Font ZapfDingbats
+            # '3' = ติ๊กถูก (✓), '7' = กากบาท (✗)
+            char = "7" if style == "cross" else "3"
+            
+            try:
+                pdf_obj.set_font("ZapfDingbats", "", original_size)
+                pdf_obj.set_xy(bx, by)
+                pdf_obj.cell(size, size, char, border=0, align="C")
+            except:
+                # Fallback
+                fallback_char = "X" if style == "cross" else "/"
+                pdf_obj.set_font("Arial", "", original_size)
+                pdf_obj.set_xy(bx, by)
+                pdf_obj.cell(size, size, fallback_char, border=0, align="C")
+            
+            pdf_obj.set_font(original_font, original_style, original_size)
+
+    # -----------------------------------------------------------
+    # ส่วน Remark Section (วาดเส้น + ข้อความ)
+    # -----------------------------------------------------------
+    remark_h = 25 
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_xy(x, y)
+    pdf.cell(20, 6, "Remark : ", border=0, align="L")
+    
+    line_x1 = x + 20
+    line_x2 = x + w
+    line_gap = 6
+    start_line_y = y + 7 
+    pdf.set_line_width(0.3)
+    
+    for i in range(4):
+        current_line_y = start_line_y + (i * line_gap)
+        pdf.line(line_x1, current_line_y, line_x2, current_line_y)
+
+    if remark_text:
+        pdf.set_font(base_font, "", FONT_MAIN)
+        text_y = start_line_y - line_gap + 1.5 
+        pdf.set_xy(line_x1, text_y)
+        pdf.multi_cell(w - 25, line_gap, remark_text, border=0, align="L")
+
+    y += remark_h + 3
+    
+    # -----------------------------------------------------------
+    # ส่วน Symbol & Phase Section
+    # -----------------------------------------------------------
+    section_h = 5
+    
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_xy(x, y)
+    pdf.cell(15, 6, "Symbol :", border=0, align="L")
+    
+    checkbox_size = 5
+    checkbox_y = y + 1
+    
+    # 1. PASS (แสดงติ๊กถูกเสมอ)
+    cx = x + 16  
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PASS, style="tick")
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.set_font(base_font, "", FONT_MAIN)
+    pdf.cell(12, 6, "PASS", border=0, align="L")
+    
+    # 2. Not PASS (แสดงกากบาทเสมอ)
+    cx += 18 
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_NOT_PASS, style="cross")
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.cell(20, 6, "Not PASS", border=0, align="L")
+    
+    # 3. N/A (ตาม Logic Data)
+    cx += 26
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_NA, style="tick")
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.cell(25, 6, "N/A (Not TEST)", border=0, align="L")
+    
+    # -----------------------------------------------------------
+    # 🟢 ส่วน Phase Sequence (ตาม Logic Data)
+    # -----------------------------------------------------------
+    phase_label_x = cx + 32 
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_xy(phase_label_x, y)
+    pdf.cell(28, 6, "Phase Sequence :", border=0, align="L")
+    
+    # Checkbox 1: L1-L2-L3
+    cx = phase_label_x + 28
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PHASE_L1, style="tick")
+    
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.set_font(base_font, "", FONT_MAIN)
+    pdf.cell(18, 6, "L1-L2-L3", border=0, align="L")
+    
+    # Checkbox 2: L3-L2-L1
+    cx += 24
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PHASE_L3, style="tick")
+    
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.cell(18, 6, "L3-L2-L1", border=0, align="L")
+
+    y += section_h
+    
+    return y
+
+def draw_IMGremark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float, w: float, doc: dict = None) -> float:
+    
+    # 1. รับข้อมูล (กัน Error ถ้า doc เป็น None)
+    doc = doc or {}
+    
+    # =======================================================
+    # 🟢 ส่วน Logic: กำหนดสถานะ Checkbox
+    # =======================================================
+    
+    # 1. Phase Sequence (ยังคงดึงจาก Database ตามปกติ)
+    phase_val = str(doc.get("phaseSequence") or "").strip()
+    SHOW_PHASE_L1 = (phase_val == "L1L2L3")
+    SHOW_PHASE_L3 = (phase_val == "L3L2L1")
+
+    # 2. Remark Text
+    remark_text = doc.get("remarks", {}).get("imgRemark", "")
+
+    # 3. Symbol (PASS / Not PASS) -> ปรับเป็น Hardcode ไม่ดึง Data
+    SHOW_PASS     = True   # ✅ ให้แสดงติ๊กถูกเสมอ
+    SHOW_NOT_PASS = True   # ❌ ให้แสดงกากบาทเสมอ
+    
+    # ส่วน N/A (ถ้าอยากดึง Data ก็ใช้ Logic เดิม หรือจะ Hardcode ก็ได้)
+    symbol_val = str(doc.get("symbol") or "").lower().replace(" ", "")
+    SHOW_NA    = (symbol_val in ["na", "n/a"])
+
+    y -= 2
+
+    # -----------------------------------------------------------
+    # ฟังก์ชันวาด Checkbox Helper
+    # -----------------------------------------------------------
+    def _draw_check(pdf_obj, bx, by, size, checked=False, style="tick"):
+        # วาดกรอบสี่เหลี่ยม
+        pdf_obj.rect(bx, by, size, size)
+        
+        if checked:
+            original_font = pdf_obj.font_family
+            original_style = pdf_obj.font_style
+            original_size = pdf_obj.font_size_pt
+            
+            # ใช้ Font ZapfDingbats
+            # '3' = ติ๊กถูก (✓), '7' = กากบาท (✗)
+            char = "7" if style == "cross" else "3"
+            
+            try:
+                pdf_obj.set_font("ZapfDingbats", "", original_size)
+                pdf_obj.set_xy(bx, by)
+                pdf_obj.cell(size, size, char, border=0, align="C")
+            except:
+                # Fallback
+                fallback_char = "X" if style == "cross" else "/"
+                pdf_obj.set_font("Arial", "", original_size)
+                pdf_obj.set_xy(bx, by)
+                pdf_obj.cell(size, size, fallback_char, border=0, align="C")
+            
+            pdf_obj.set_font(original_font, original_style, original_size)
+
+    # -----------------------------------------------------------
+    # ส่วน Remark Section (วาดเส้น + ข้อความ)
+    # -----------------------------------------------------------
+    remark_h = 25 
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_xy(x, y)
+    pdf.cell(20, 6, "Remark : ", border=0, align="L")
+    
+    line_x1 = x + 20
+    line_x2 = x + w
+    line_gap = 6
+    start_line_y = y + 7 
+    pdf.set_line_width(0.3)
+    
+    for i in range(4):
+        current_line_y = start_line_y + (i * line_gap)
+        pdf.line(line_x1, current_line_y, line_x2, current_line_y)
+
+    if remark_text:
+        pdf.set_font(base_font, "", FONT_MAIN)
+        text_y = start_line_y - line_gap + 1.5 
+        pdf.set_xy(line_x1, text_y)
+        pdf.multi_cell(w - 25, line_gap, remark_text, border=0, align="L")
+
+    y += remark_h + 3
+    
+    # -----------------------------------------------------------
+    # ส่วน Symbol & Phase Section
+    # -----------------------------------------------------------
+    section_h = 5
+    
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_xy(x, y)
+    pdf.cell(15, 6, "Symbol :", border=0, align="L")
+    
+    checkbox_size = 5
+    checkbox_y = y + 1
+    
+    # 1. PASS (แสดงติ๊กถูกเสมอ)
+    cx = x + 16  
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PASS, style="tick")
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.set_font(base_font, "", FONT_MAIN)
+    pdf.cell(12, 6, "PASS", border=0, align="L")
+    
+    # 2. Not PASS (แสดงกากบาทเสมอ)
+    cx += 18 
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_NOT_PASS, style="cross")
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.cell(20, 6, "Not PASS", border=0, align="L")
+    
+    # 3. N/A (ตาม Logic Data)
+    cx += 26
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_NA, style="tick")
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.cell(25, 6, "N/A (Not TEST)", border=0, align="L")
+    
+    # -----------------------------------------------------------
+    # 🟢 ส่วน Phase Sequence (ตาม Logic Data)
+    # -----------------------------------------------------------
+    phase_label_x = cx + 32 
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    pdf.set_xy(phase_label_x, y)
+    pdf.cell(28, 6, "Phase Sequence :", border=0, align="L")
+    
+    # Checkbox 1: L1-L2-L3
+    cx = phase_label_x + 28
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PHASE_L1, style="tick")
+    
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.set_font(base_font, "", FONT_MAIN)
+    pdf.cell(18, 6, "L1-L2-L3", border=0, align="L")
+    
+    # Checkbox 2: L3-L2-L1
+    cx += 24
+    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PHASE_L3, style="tick")
+    
+    pdf.set_xy(cx + checkbox_size + 1, y)
+    pdf.cell(18, 6, "L3-L2-L1", border=0, align="L")
+
+    y += section_h
+    
+    return y
+
+
+def draw_signature_section(pdf: FPDF, base_font: str, x: float, y: float, w: float, db_data: dict = None) -> float:
+    y += 2 
+    
+    # 1. เตรียมข้อมูลจาก DB (กัน Error ถ้า db_data เป็น None)
+    db_data = db_data or {}
+    
+    # เจาะเข้าไปเอาข้อมูลตามโครงสร้าง JSON: signature -> responsibility
+    sig_data = db_data.get("signature", {}).get("responsibility", {})
+    
+    # แยกก้อนย่อยออกมา
+    perf_data = sig_data.get("performed", {})
+    appr_data = sig_data.get("approved", {})
+    wit_data  = sig_data.get("witnessed", {})
+    
+    # 2. ตั้งค่าขนาด (ตามเดิม)
+    row_h = 7         
+    col_label_w = 35  
+    col_data_w = (w - col_label_w) / 3 
+    
+    # 3. วาดส่วน Header (แถวแรก)
+    pdf.set_xy(x, y)
+    pdf.set_font(base_font, "B", FONT_MAIN)
+    
+    headers = [
+        ("Responsibility", col_label_w),
+        ("Performed by", col_data_w),
+        ("Approved by", col_data_w),
+        ("Witnessed by", col_data_w)
+    ]
+    
+    for text, width in headers:
+        pdf.cell(width, row_h, text, border=1, align="C")
+    
+    y += row_h 
+    
+    # 4. วาดส่วนข้อมูล (Rows: Name, Signature, Date, Company)
+    # Mapping: (Label ที่โชว์ใน PDF, Key ที่อยู่ใน JSON)
+    rows_config = [
+        ("Name", "name"),
+        ("Signature", "signature"),
+        ("Date", "date"),
+        ("Company", "company")
+    ]
+    
+    pdf.set_font(base_font, "", FONT_MAIN)
+    
+    for label, key in rows_config:
+        pdf.set_xy(x, y)
+        
+        # Col 1: Label (หัวข้อด้านซ้าย)
+        pdf.cell(col_label_w, row_h, label, border=1, align="L")
+        
+        # Col 2: Performed by (ดึงจาก perf_data ด้วย key)
+        val_p = str(perf_data.get(key, "") or "")
+        pdf.cell(col_data_w, row_h, val_p, border=1, align="C")
+        
+        # Col 3: Approved by (ดึงจาก appr_data ด้วย key)
+        val_a = str(appr_data.get(key, "") or "")
+        pdf.cell(col_data_w, row_h, val_a, border=1, align="C")
+        
+        # Col 4: Witnessed by (ดึงจาก wit_data ด้วย key)
+        val_w = str(wit_data.get(key, "") or "")
+        pdf.cell(col_data_w, row_h, val_w, border=1, align="C")
+        
+        y += row_h
+
     return y
 
 # -------------------- Photo helpers (ปรับใหม่) --------------------
@@ -787,7 +1329,7 @@ def _load_image_source_from_urlpath(
     if not url_path:
         return None, None
 
-    print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
+    # print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
 
     # Normalize
     raw = str(url_path).strip()
@@ -832,64 +1374,6 @@ def _load_image_source_from_urlpath(
                 print(f"[DEBUG] ✅ เจอไฟล์ใน backend/uploads: {candidate}")
                 return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
 
-    # 2) Try sibling location: current_file.parents.../uploads (covers case project root/uploads)
-    for i in range(0, min(5, len(current_file.parents))):
-        cand_root = current_file.parents[i] / "uploads"
-        candidate = cand_root / rel_after_uploads
-        tried_paths.append(candidate)
-        print(f"[DEBUG] 📂 ตรวจสอบ (parent-level {i}) : {candidate}")
-        if candidate.exists() and candidate.is_file():
-            print(f"[DEBUG] ✅ เจอไฟล์: {candidate}")
-            return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
-
-    # 3) Try CWD/uploads
-    cwd_uploads = Path.cwd() / "uploads"
-    candidate = cwd_uploads / rel_after_uploads
-    tried_paths.append(candidate)
-    print(f"[DEBUG] 📂 ตรวจสอบไฟล์ที่ CWD: {candidate}")
-    if candidate.exists() and candidate.is_file():
-        print(f"[DEBUG] ✅ เจอไฟล์ที่ CWD: {candidate}")
-        return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
-
-    # 4) Try public root if exists
-    public_root = _find_public_root()
-    if public_root:
-        candidate = public_root / clean_path
-        tried_paths.append(candidate)
-        print(f"[DEBUG] 📂 ลองหาใน public: {candidate}")
-        if candidate.exists() and candidate.is_file():
-            print(f"[DEBUG] ✅ เจอไฟล์ใน public: {candidate}")
-            return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
-
-    # 5) If url_path itself looks like a relative filename (no folders), try searching inside common subfolders
-    #    (e.g., doc contains only "image.png") — try inside typical category folders
-    filename_only = Path(clean_path).name
-    common_folders = ["charger", "circuit_breaker", "gun1", "gun2", "nameplate", "rcd"]
-    for root_try in (backend_root, Path.cwd(), public_root):
-        if not root_try:
-            continue
-        for cf in common_folders:
-            candidate = root_try / "uploads" / "dctest" / cf / filename_only
-            tried_paths.append(candidate)
-            if candidate.exists() and candidate.is_file():
-                print(f"[DEBUG] ✅ เจอไฟล์โดยค้นหา common folders: {candidate}")
-                return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
-
-    # 6) Try HTTP if base url provided
-    base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
-    print(f"[DEBUG] PHOTOS_BASE_URL = {base_url}")
-    if base_url and requests is not None:
-        full_url = base_url.rstrip("/") + "/" + clean_path.lstrip("/")
-        print(f"[DEBUG] 🌐 พยายามดาวน์โหลดจาก: {full_url}")
-        try:
-            resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
-            resp.raise_for_status()
-            print(f"[DEBUG] ✅ ดาวน์โหลดสำเร็จ: {len(resp.content)} bytes")
-            bio = BytesIO(resp.content)
-            return bio, _guess_img_type_from_ext(full_url)
-        except Exception as e:
-            print(f"[DEBUG] ❌ ดาวน์โหลดล้มเหลว: {e}")
-
     # Nothing found
     print("[DEBUG] ❌ ไม่พบรูปภาพจากทุกวิธี — paths tried:")
     for p in tried_paths:
@@ -897,16 +1381,13 @@ def _load_image_source_from_urlpath(
     return None, None
 
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-    """
-    อ่านรูปจาก doc["photos"]["g{idx}"] → list ของ dict ที่มี key 'url'
-    """
+
     photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
     out = []
     for p in photos:
         if isinstance(p, dict) and p.get("url"):
             out.append(p)
     return out[:PHOTO_MAX_PER_ROW]
-
 
 
 # -------------------------------------
@@ -930,67 +1411,147 @@ def _draw_photos_table_header(
     pdf.cell(g_w, header_h, "รูปภาพประกอบ", border=1, ln=1, align="C")
     return y + header_h
 
-def _draw_picture_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict):
-    """วาดหน้ารูปภาพแบบ 2 คอลัมน์ตามรูปแบบที่กำหนด"""
-    pdf.add_page()
+def load_image_autorotate(path_or_bytes: Union[str, Path, BytesIO]) -> BytesIO:
+    """
+    โหลดรูปภาพ และหมุนให้ตั้งตรงอัตโนมัติโดยอ้างอิงจากข้อมูล EXIF
+    """
+    # 1. โหลดรูปภาพ
+    try:
+        if isinstance(path_or_bytes, (str, Path)):
+            img = Image.open(path_or_bytes)
+        elif isinstance(path_or_bytes, BytesIO):
+            path_or_bytes.seek(0) # Ensure we read from start
+            img = Image.open(path_or_bytes)
+        else:
+             # กรณีส่ง type อื่นที่ไม่รองรับมา
+             raise ValueError("Unsupported image source type")
 
-    x0 = 10
-    page_w = pdf.w - 20
+        img = ImageOps.exif_transpose(img)
 
-    # วาด header แบบพิเศษสำหรับหน้า PICTURE
-    inset_mm = 10
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+
+        # 4. บันทึกลง Buffer เป็น JPEG
+        buf = BytesIO()
+        # สามารถปรับ quality=... ได้ตามต้องการ (มาตรฐานคือ 75, สูงสุด 100)
+        img.save(buf, format="JPEG", quality=90)
+        buf.seek(0)
+        return buf
+
+    except Exception as e:
+        print(f"[Error] Could not process image autorotate: {e}")
+        # กรณีเกิดข้อผิดพลาดจริงๆ ให้พยายามส่งข้อมูลเดิมกลับไป หรือส่งภาพเปล่า
+        if isinstance(path_or_bytes, BytesIO):
+            path_or_bytes.seek(0)
+            return path_or_bytes
+        return BytesIO() # Return empty buffer on failure
+
+def _draw_header_picture(pdf: FPDF, base_font: str, issue_id: str) -> float:
+
+    # ใช้ค่าเดียวกับ _draw_header
+    inset_mm = 6.0  # ✅ เปลี่ยนจาก 10 เป็น 6
+    page_w = pdf.w - 2*inset_mm
+    x0 = inset_mm
     y_top = inset_mm
-    col_left, col_mid = 40, 120
+    
+    # ขนาดคอลัมน์ (เหมือน _draw_header)
+    col_left = 40
+    col_mid = 120
     col_right = page_w - col_left - col_mid
-    h_all = 30
-    h_right_top = 15
+    
+    # ความสูง (เหมือน _draw_header)
+    h_all = 16  # ✅ เปลี่ยนจาก 30 เป็น 16
+    h_right_top = 6  # ✅ เปลี่ยนจาก 15 เป็น 6
 
     pdf.set_line_width(LINE_W_INNER)
 
-    # โลโก้
+    # --- 1. ส่วน Logo (ซ้าย) ---
     pdf.rect(x0, y_top, col_left, h_all)
+    
     logo_path = _resolve_logo_path()
     if logo_path:
-        IMG_W = 35
+        IMG_W = 28  # ✅ เปลี่ยนจาก 35 เป็น 28 (เหมือน _draw_header)
         img_x = x0 + (col_left - IMG_W) / 2
-        img_y = y_top + (h_all - 16) / 2
+        img_y = y_top + (h_all - 12) / 2
         try:
             pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
         except Exception:
             pass
 
-    # กล่องกลาง - แสดง "Photos"
+    # --- 2. ส่วน Title (กลาง) ---
     box_x = x0 + col_left
     pdf.rect(box_x, y_top, col_mid, h_all)
-    pdf.set_font(base_font, "B", 28)
-    pdf.set_xy(box_x, y_top + (h_all - 8) / 2)
-    pdf.cell(col_mid, 8, "Photos", align="C")
     
-    # pdf.set_font(base_font, "", 18)
-    # pdf.set_xy(box_x, y_top + h_all + 2)  # เลื่อนลงมานิดหน่อยจากกล่อง Photos
-    # pdf.cell(col_mid, 8, "DC Charger Test", align="C")
+    pdf.set_font(base_font, "B", 20)  # ✅ เปลี่ยนจาก 28 เป็น 20
+    line_h = 5  # ✅ เพิ่มตัวแปรนี้
+    start_y = y_top + (h_all - line_h) / 2
+    
+    pdf.set_xy(box_x + 3, start_y)
+    pdf.cell(col_mid - 6, line_h, "Photos", align="C")
 
-    # กล่องขวา - แสดง Page / Issue ID
+    # --- 3. ส่วน Information (ขวา) ---
     xr = x0 + col_left + col_mid
     pdf.rect(xr, y_top, col_right, h_right_top)
     pdf.rect(xr, y_top + h_right_top, col_right, h_all - h_right_top)
 
-    pdf.set_xy(xr, y_top + 4)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    # แก้ไข: แสดงหมายเลขหน้าปัจจุบัน (pdf.page_no())
-    pdf.cell(col_right, 6, f"Page {pdf.page_no()}", align="C") 
+    # Page Number
+    pdf.set_xy(xr, y_top + 1)
+    pdf.set_font(base_font, "", FONT_MAIN - 1)
+    pdf.cell(col_right, 5, f"Page {pdf.page_no()}", align="C")
 
-    pdf.set_xy(xr, y_top + h_right_top + (h_all - h_right_top) / 2 - 3)
-    pdf.set_font(base_font, "B", 16)
-    # แก้ไข: แสดง issue_id แทน "2 / 2"
-    pdf.cell(col_right, 8, issue_id, align="C") 
+    # Issue ID
+    pdf.set_xy(xr, y_top + h_right_top + 0.5)
+    pdf.set_font(base_font, "B", FONT_MAIN - 2)
+    pdf.multi_cell(col_right, 5, f"Issue ID\n{issue_id}", align="C")
 
-    y = y_top + h_all + 5
+    return y_top + h_all
 
-    # ดึงรูปภาพจาก doc
+def _draw_picture_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict):
+
+    pdf.add_page()
+    
+    # วาดกรอบหน้าแรก
+    pdf.rect(6, 22, 198, 270)
+    
+    # -------------------------------------------------------
+    # 1. วาด Header Photos
+    # -------------------------------------------------------
+    header_bottom_y = _draw_header_picture(pdf, base_font, issue_id)
+    y = header_bottom_y + 3
+    
+    # -------------------------------------------------------
+    # 2. วาด EV Header Form
+    # -------------------------------------------------------
+    x0 = 10
+    page_w = pdf.w - 20
+    
+    head_data = doc.get("head", {})
+    manufacturer = str(head_data.get("manufacturer", "-"))
+    model        = str(head_data.get("model", "-"))
+    power        = str(head_data.get("power", "-"))
+    serial_no    = str(head_data.get("serial_number", "-"))
+    location     = str(head_data.get("location", "-"))
+    firmware     = str(head_data.get("firmware_version", "-"))
+    inspection_date = str(doc.get("inspection_date", "-"))
+
+    y = _draw_ev_header_form(
+        pdf, base_font, x0, y, page_w,
+        manufacturer=manufacturer,
+        model=model,
+        power=power,
+        serial_no=serial_no,
+        location=location,
+        firmware=firmware,
+        inspection_date=inspection_date
+    )
+    
+    # -------------------------------------------------------
+    # 3. เตรียมวาดรูปภาพ
+    # -------------------------------------------------------
+    y += 1 
+    
     photos = doc.get("photos", {}) or {}
 
-    # กำหนดหมวดหมู่รูปภาพ
     photo_categories = [
         ("nameplate", "Nameplate"),
         ("charger", "Charger"),
@@ -1000,95 +1561,138 @@ def _draw_picture_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict):
         ("gun2", "GUN 2"),
     ]
 
-    # ตั้งค่าขนาดกรอบรูป - ลดขนาดให้พอดีในหน้าเดียว
-    col_w = (page_w - 10) / 2  # ความกว้างแต่ละคอลัมน์
-    img_h = 55  # ลดความสูงจาก 70 เป็น 55
-    label_h = 6  # ลดความสูง label จาก 7 เป็น 6
+    col_w = (page_w - 10) / 2  
+    img_h = 55  
+    label_h = 6  
     total_h = img_h + label_h
-    gap_between_rows = 3  # ระยะห่างระหว่างแถว
+    gap_between_rows = 3  
 
-    # คำนวณพื้นที่ที่ต้องการทั้งหมด
-    total_needed = (total_h * 3) + (gap_between_rows * 2)  # 3 แถว + ช่องว่าง 2 ช่อง
-    available_space = pdf.h - y - 20  # พื้นที่ว่างที่เหลือ
+    footer_height_needed = 80 
+    total_needed = (total_h * 3) + (gap_between_rows * 2) 
+    available_space = pdf.h - y - 20 - footer_height_needed 
 
-    # ถ้าพื้นที่ไม่พอ ให้ปรับขนาดรูปให้เล็กลง
+    # Logic การย่อรูป (Auto Scale)
     if total_needed > available_space:
         scale_factor = available_space / total_needed
+        if scale_factor < 0.6: scale_factor = 0.6 
         img_h = int(img_h * scale_factor)
         total_h = img_h + label_h
         gap_between_rows = 2
 
-    # วาดรูปภาพทีละคู่ (2 คอลัมน์)
+    # ==============================================================================
+    # ฟังก์ชันช่วยวาดรูป (Nested Function) เพื่อลด code ซ้ำและจัดการเรื่องสัดส่วน
+    # ==============================================================================
+    def draw_image_in_box(url_path, x_box, y_box, box_w, box_h):
+        if not url_path: return
+        
+        try:
+            # 1. โหลด Source ดิบมาก่อน (ยังไม่แก้กลับหัว)
+            raw_src, _ = _load_image_source_from_urlpath(url_path)
+            if not raw_src: return
+
+            # -----------------------------------------------------------
+            # [เรียกใช้ที่นี่!] ส่งไปหมุนให้ถูกต้องก่อน
+            # -----------------------------------------------------------
+            final_src = load_image_autorotate(raw_src)
+            # -----------------------------------------------------------
+
+            # 2. ใช้ PIL อ่านขนาดจากรูปที่หมุนแล้ว (final_src)
+            from PIL import Image
+            with Image.open(final_src) as pil_img:
+                orig_w, orig_h = pil_img.size
+            
+            # (สำคัญ) รีเซ็ตพอยเตอร์ไฟล์หลังจาก PIL อ่าน header เสร็จ
+            final_src.seek(0)
+
+            # 3. คำนวณ Scale ตามปกติ (Fit to Box & Center)
+            padding = 2
+            max_draw_w = box_w - (2 * padding)
+            max_draw_h = box_h - (2 * padding)
+
+            ratio_w = max_draw_w / orig_w
+            ratio_h = max_draw_h / orig_h
+            scale = min(ratio_w, ratio_h)
+
+            new_w = orig_w * scale
+            new_h = orig_h * scale
+
+            center_x = x_box + (box_w / 2)
+            center_y = y_box + (box_h / 2)
+            draw_x = center_x - (new_w / 2)
+            draw_y = center_y - (new_h / 2)
+
+            # 4. ส่ง final_src ให้ FPDF วาด
+            # ระบุ type="JPEG" เพราะ load_image_autorotate เรา save เป็น JPEG มา
+            pdf.image(final_src, x=draw_x, y=draw_y, w=new_w, h=new_h, type="JPEG")
+
+        except Exception as e:
+            print(f"[DEBUG] Error drawing image: {e}")
+
+
+    # -------------------------------------------------------
+    # 4. Loop วาดรูปภาพ
+    # -------------------------------------------------------
     for i in range(0, len(photo_categories), 2):
-        # คอลัมน์ซ้าย
+        # --- Left Column ---
         cat_key_left = photo_categories[i][0]
         cat_name_left = photo_categories[i][1]
         photo_list_left = photos.get(cat_key_left, [])
 
         x_left = x0
-
-        # วาดกรอบรูปซ้าย
+        
+        # 1. วาดกรอบรูป (ขนาดเท่าเดิม)
         pdf.rect(x_left, y, col_w, img_h)
 
-        # แสดงรูปถ้ามี
+        # 2. วาดรูปข้างใน (เรียกใช้ฟังก์ชันช่วย)
         if photo_list_left and len(photo_list_left) > 0:
-            url_path = photo_list_left[0].get("url", "")
-            src, img_type = _load_image_source_from_urlpath(url_path)
-            if src:
-                try:
-                    pdf.image(
-                        src,
-                        x=x_left + 2,
-                        y=y + 2,
-                        w=col_w - 4,
-                        h=img_h - 4,
-                        type=(img_type or None),
-                    )
-                except Exception as e:
-                    print(f"[DEBUG] ❌ ไม่สามารถแสดงรูป: {e}")
+            draw_image_in_box(photo_list_left[0].get("url", ""), x_left, y, col_w, img_h)
 
-        # วาดชื่อหมวดหมู่ซ้าย
+        # 3. วาดป้ายชื่อ
         pdf.rect(x_left, y + img_h, col_w, label_h)
         pdf.set_xy(x_left, y + img_h + 0.5)
-        pdf.set_font(base_font, "B", FONT_MAIN)
+        pdf.set_font(base_font, "B", FONT_MAIN if 'FONT_MAIN' in globals() else 10)
         pdf.cell(col_w, label_h - 1, cat_name_left, border=0, align="C")
 
-        # คอลัมน์ขวา (ถ้ามี)
+        # --- Right Column ---
         if i + 1 < len(photo_categories):
             cat_key_right = photo_categories[i + 1][0]
             cat_name_right = photo_categories[i + 1][1]
             photo_list_right = photos.get(cat_key_right, [])
 
             x_right = x0 + col_w + 10
-
-            # วาดกรอบรูปขวา
+            
+            # 1. วาดกรอบรูปขวา (ขนาดเท่าเดิม)
             pdf.rect(x_right, y, col_w, img_h)
 
-            # แสดงรูปถ้ามี
+            # 2. วาดรูปข้างในขวา
             if photo_list_right and len(photo_list_right) > 0:
-                url_path = photo_list_right[0].get("url", "")
-                src, img_type = _load_image_source_from_urlpath(url_path)
-                if src:
-                    try:
-                        pdf.image(
-                            src,
-                            x=x_right + 2,
-                            y=y + 2,
-                            w=col_w - 4,
-                            h=img_h - 4,
-                            type=(img_type or None),
-                        )
-                    except Exception as e:
-                        print(f"[DEBUG] ❌ ไม่สามารถแสดงรูป: {e}")
+                draw_image_in_box(photo_list_right[0].get("url", ""), x_right, y, col_w, img_h)
 
-            # วาดชื่อหมวดหมู่ขวา
+            # 3. วาดป้ายชื่อขวา
             pdf.rect(x_right, y + img_h, col_w, label_h)
             pdf.set_xy(x_right, y + img_h + 0.5)
-            pdf.set_font(base_font, "B", FONT_MAIN)
+            pdf.set_font(base_font, "B", FONT_MAIN if 'FONT_MAIN' in globals() else 10)
             pdf.cell(col_w, label_h - 1, cat_name_right, border=0, align="C")
 
-        y += total_h + gap_between_rows  # เพิ่ม y สำหรับแถวถัดไป
+        y += total_h + gap_between_rows
 
+    # -------------------------------------------------------
+    # 5. ส่วนท้าย (Remark & Signature)
+    # -------------------------------------------------------
+    remark_h = 45 
+    sig_h = 40
+    total_footer_h = remark_h + sig_h
+    
+    if y + total_footer_h > 290: 
+        pdf.add_page()
+        pdf.rect(6, 22, 198, 270)
+        y = 30 
+
+    y += 3
+    y = draw_IMGremark_and_symbol_section(pdf, base_font, x0, y, page_w, doc= doc)
+    
+    y += 2
+    y = draw_signature_section(pdf, base_font, 10, y, 190, db_data=doc)
 
 def _draw_photos_row(
     pdf: FPDF,
@@ -1100,11 +1704,12 @@ def _draw_photos_row(
     question_text: str,
     image_items: List[dict],
 ) -> float:
-    """
-    วาด 1 แถว: ซ้ายข้อความ, ขวารูป ≤ PHOTO_MAX_PER_ROW
-    """
+
+    img_h = 45  
+    
+    inner_padding = 1.0 
+
     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
-    img_h = PHOTO_IMG_MAX_H
     row_h = max(ROW_MIN_H, text_h, img_h + 2 * PADDING_Y)
 
     # ซ้าย: คำถาม
@@ -1116,33 +1721,66 @@ def _draw_photos_row(
     gx = x + q_w
     pdf.rect(gx, y, g_w, row_h)
 
+    # ตัวอย่าง: slot_w = 50 # (แบบ Fix ค่า)
+    # แบบ Auto (แนะนำ):
     slot_w = (
         g_w - 2 * PADDING_X - (PHOTO_MAX_PER_ROW - 1) * PHOTO_GAP
     ) / PHOTO_MAX_PER_ROW
+
     cx = gx + PADDING_X
-    cy = y + (row_h - img_h) / 2.0
+    cy = y + (row_h - img_h) / 2.0  # จุดเริ่ม Y ของพื้นที่รูปภาพ
 
     images = (image_items or [])[:PHOTO_MAX_PER_ROW]
     pdf.set_font(base_font, "", FONT_MAIN)
 
     for i in range(PHOTO_MAX_PER_ROW):
+        # วาดเส้นแบ่งระหว่างรูป
         if i > 0:
             pdf.line(cx - (PHOTO_GAP / 2.0), y, cx - (PHOTO_GAP / 2.0), y + row_h)
 
         if i < len(images):
             url_path = (images[i] or {}).get("url", "")
             src, img_type = _load_image_source_from_urlpath(url_path)
+            
             if src is not None:
                 try:
+                    # ใช้ PIL อ่านขนาดรูปจริง
+                    from PIL import Image
+                    with Image.open(src) as pil_img:
+                        orig_w, orig_h = pil_img.size
+                    
+                    # --- คำนวณพื้นที่วาดจริง (หัก inner_padding ออก) ---
+                    draw_box_w = slot_w - (2 * inner_padding)
+                    draw_box_h = img_h - (2 * inner_padding)
+
+                    # คำนวณ Scale
+                    ratio_w = draw_box_w / orig_w
+                    ratio_h = draw_box_h / orig_h
+                    scale = min(ratio_w, ratio_h)
+                    
+                    new_w = orig_w * scale
+                    new_h = orig_h * scale
+                    
+                    # คำนวณจุดกึ่งกลาง (เทียบกับช่อง slot_w, img_h)
+                    offset_x = (slot_w - new_w) / 2
+                    offset_y = (img_h - new_h) / 2
+                    
                     pdf.image(
-                        src, x=cx, y=cy, w=slot_w, h=img_h, type=(img_type or None)
+                        src, 
+                        x=cx + offset_x, 
+                        y=cy + offset_y, 
+                        w=new_w, 
+                        h=new_h, 
+                        type=(img_type or None)
                     )
+                    
                 except Exception:
                     pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
                     pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
             else:
                 pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
                 pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
+        
         cx += slot_w + PHOTO_GAP
 
     pdf.set_xy(x + q_w + g_w, y)
@@ -1150,8 +1788,8 @@ def _draw_photos_row(
 
 def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf = HTML2PDF(unit="mm", format="A4")
-    pdf.set_margins(left=10, top=10, right=10)
-    pdf.set_auto_page_break(auto=True, margin=12)
+    pdf.set_margins(left=12, top=12, right=12)
+    pdf.set_auto_page_break(auto=True, margin=15)
 
     # ---- โหลดฟอนต์ไทยให้แน่นอนก่อน set_font ----
     base_font = "THSarabun" if add_all_thsarabun_fonts(pdf) else "Arial"
@@ -1162,20 +1800,18 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     left = pdf.l_margin
     right = pdf.r_margin
-    page_w = pdf.w - left - right
-    x0 = left
+    page_w = pdf.w - left - right - 4
+    x0 = left + 2
     EDGE_ALIGN_FIX = (LINE_W_OUTER - LINE_W_INNER) / 2.0
 
     col_left, col_mid = 40, 120
     col_right = page_w - col_left - col_mid
-    h_all = 30
-    h_right_top = 12
+
     
     pdf.set_line_width(LINE_W_INNER)
 
     # เริ่มหน้าแรกด้วย add_page แล้วเรียก header ทันที (สำคัญ)
     pdf.add_page()
-    # _draw_page_frame(pdf, inset_mm=6)   # 👈 ปรับเป็น 5–8 ได้ตามต้องการ (ขอบกระดาษ)
     y = _draw_header(pdf, base_font, issue_id)
 
     # ====== ฟอร์มรายละเอียดตามภาพ ======
@@ -1194,7 +1830,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
                          power_w_mm=30.0) 
 
     eq = doc.get("equipment") or {}
-
     mans = eq.get("manufacturers") or []
     mods = eq.get("models") or []
     sns  = eq.get("serialNumbers") or []
@@ -1208,19 +1843,38 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             "model":        mods[i] if i < len(mods) else "",
             "serial_no":    sns[i]  if i < len(sns)  else "",
         })
+        
+    electrical_safety = doc.get("electrical_safety", {})
+    charger_safety = doc.get("charger_safety", {})
+    remark_text = doc.get("remarks", {}).get("testRematk", "")
+    
+    
 
     y = _draw_equipment_ident_details(pdf, base_font, x0, y, page_w, equip_items, num_rows=5)
-
-    # เว้นระยะนิดหน่อยแล้ววาดตาราง
-    y += 2
-
     y = draw_testing_topics_safety_section(
         pdf,
         x=x0 + EDGE_ALIGN_FIX,
         y=y,
         base_font=base_font,
         font_size=FONT_MAIN,
+        safety=electrical_safety
     )
+    
+    y += 2
+    y = draw_charging_procresss_testing(
+        pdf,
+        x=x0 + EDGE_ALIGN_FIX,
+        y=y,
+        base_font=base_font,
+        font_size=FONT_MAIN,
+        safety=charger_safety
+    )
+    
+    y += 3
+    y = draw_remark_and_symbol_section(pdf, base_font, x0, y, page_w, doc= doc)
+    
+    y += 2
+    y = draw_signature_section(pdf, base_font, 10, y, 190, db_data=doc)
 
     item_w = 65
     result_w = 64
@@ -1233,8 +1887,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
             pdf.set_font(base_font, "", FONT_MAIN)
-
-    pdf.set_font(base_font, "", FONT_MAIN)
 
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.set_draw_color(0, 0, 0)
@@ -1251,8 +1903,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     row_h_date = 7
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
 
-    _ensure_space(total_sig_h + 5)
-
     _draw_picture_page(pdf, base_font, issue_id, doc)
 
     pdf.set_font(base_font, "B", FONT_MAIN)
@@ -1260,12 +1910,5 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     
     return _output_pdf_bytes(pdf)
 
-
-# Public API expected by pdf_routes: generate_pdf(data) -> bytes
 def generate_pdf(data: dict) -> bytes:
-    """
-    Adapter for existing pdf_routes which expects each template to expose
-    generate_pdf(data) returning PDF bytes.
-    `data` is the Mongo document / dict for that PM report.
-    """
     return make_pm_report_html_pdf_bytes(data)
