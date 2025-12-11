@@ -1,100 +1,17 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Card from "./chargerSetting-card";
-import { useSearchParams } from "next/navigation";
 
-type SettingDoc = {
-    insulation_monitoring1?: string;
-    insulation_monitoring2?: string;
-    insulation_kohm1?: string;
-    insulation_kohm2?: string;
-    insulation_fault1?: boolean;  // ใช้ boolean แทน string
-    insulation_fault2?: boolean;  // ใช้ boolean แทน string
-};
+const rows = [
+    ["IMD Status1", "Operative"],
+    ["IMD Status2", "Operative"],
+    ["PM Status1", "Operative"],
+    ["PM Status2", "Operative"],
+    ["Isolation Status1", "fault"],
+    ["Isolation Status2", "fault"],
+] as const;
 
-const InfoPanel = () => {
-    const searchParams = useSearchParams();
-    const [stationId, setStationId] = useState<string | null>(null);
-    const [data, setData] = useState<SettingDoc | null>(null);
-    const [err, setErr] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
-
-    // ดึง station_id จาก URL หรือ localStorage
-    useEffect(() => {
-        const sidFromUrl = searchParams.get("station_id");
-        if (sidFromUrl) {
-            setStationId(sidFromUrl);
-            localStorage.setItem("selected_station_id", sidFromUrl);
-            return;
-        }
-        const sidLocal = localStorage.getItem("selected_station_id");
-        setStationId(sidLocal);
-    }, [searchParams]);
-
-    useEffect(() => {
-        if (!stationId) return;
-
-        setLoading(true);
-        setErr(null);
-
-        const es = new EventSource(
-            `${process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000"}/setting?station_id=${encodeURIComponent(stationId)}`,
-            { withCredentials: true } // สำหรับ cookie-auth
-        );
-
-        es.onopen = () => setErr(null);
-        es.onmessage = (e) => {
-            try {
-                const obj = JSON.parse(e.data);
-                setData(obj);
-                setLoading(false);
-            } catch {
-                setErr("ผิดรูปแบบข้อมูล");
-                setLoading(false);
-            }
-        };
-
-        es.onerror = () => {
-            setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
-            setLoading(false);
-        };
-
-        return () => es.close();
-    }, [stationId]);
-
-    // ฟังก์ชันแปลงค่าจาก true/false เป็นข้อความที่เหมาะสม
-    const formatFaultStatus = (status?: boolean): string => {
-        return status === true ? "Fault" : status === false ? "No Fault" : "N/A";
-    };
-
-    const rows = [
-        { label: "IMD Status Head 1", value: data?.insulation_monitoring1 ?? "N/A" },
-        { label: "IMD Status Head 2", value: data?.insulation_monitoring2 ?? "N/A" },
-        { label: "Insulation (kohm) Head 1", value: data?.insulation_kohm1 ?? "N/A" },
-        { label: "Insulation (kohm) Head 2", value: data?.insulation_kohm2 ?? "N/A" },
-        { label: "Isolation Status Head 1", value: formatFaultStatus(data?.insulation_fault1) },
-        { label: "Isolation Status Head 2", value: formatFaultStatus(data?.insulation_fault2) },
-    ];
-    return (
-        <Card title="Info">
-            {/* แสดงสถานะการโหลดหรือข้อผิดพลาด */}
-            {(loading || err) && (
-                <div className="tw-px-3 tw-py-2">
-                    {loading && <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลด...</div>}
-                    {err && <div className="tw-text-sm tw-text-red-600">{err}</div>}
-                </div>
-            )}
-
-            <div className="tw-rounded-lg tw-overflow-hidden">
-                {rows.map((r, i) => (
-                    <Row key={i} label={r.label} value={r.value} zebra={i % 2 === 1} />
-                ))}
-            </div>
-        </Card>
-    );
-};
-
-// แสดงแถวข้อมูล
+/* แถวข้อมูลแบบสลับสี */
 function Row({
     label,
     value,
@@ -118,4 +35,23 @@ function Row({
     );
 }
 
-export default InfoPanel;
+export default function InfoPanel() {
+    const rows = [
+        { label: "IMD Status Head 1", value: "Operative" },
+        { label: "IMD Status Head 2", value: "Operative" },
+        { label: "PM Status Head 1", value: "Operative" },
+        { label: "PM Status Head 2", value: "Operative" },
+        { label: "Isolation Status Head 1", value: "fault" },
+        { label: "Isolation Status Head 2", value: "fault" },
+    ];
+
+    return (
+        <Card title="Info">
+            <div className="tw-rounded-lg tw-overflow-hidden">
+                {rows.map((r, i) => (
+                    <Row key={i} label={r.label} value={r.value} zebra={i % 2 === 1} />
+                ))}
+            </div>
+        </Card>
+    );
+}
