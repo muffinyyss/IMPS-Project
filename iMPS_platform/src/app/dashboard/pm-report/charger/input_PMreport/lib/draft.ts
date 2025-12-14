@@ -1,12 +1,14 @@
 // app/pm-report/charger/input_PMreport/lib/draft.ts
+import type { PhotoRef } from "./draftPhotos";
 type DraftData = {
   job: any;
   rows: any;
   cp: any;
-  m17: any;
+  m16: any;
   summary: string;
   inspector?: string;
   dustFilterChanged?: boolean;
+  photoRefs?: Record<number, PhotoRef[]>;
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
 };

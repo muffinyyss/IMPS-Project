@@ -16,6 +16,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
+import { putPhoto, getPhoto, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 
 
 type TabId = "pre" | "post";
@@ -76,7 +77,7 @@ async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
  *        CONSTANTS
  * ========================= */
 const UNITS = {
-    voltage: ["V", "MΩ", "kΩ"] as const,
+    voltage: ["V"] as const,
 };
 type UnitVoltage = (typeof UNITS.voltage)[number];
 
@@ -87,6 +88,7 @@ type PhotoItem = {
     remark?: string;
     uploading?: boolean;
     error?: string;
+    ref?: PhotoRef;
 };
 
 type Question =
@@ -100,8 +102,8 @@ type Question =
         hasPhoto?: boolean;
     }
     | {
-        no: 17;
-        key: "r17";
+        no: 16;
+        key: "r16";
         label: string;
         labelPre?: string;
         labelPost?: string;
@@ -150,20 +152,17 @@ const QUESTIONS: Question[] = [
 
     { no: 8, key: "r8", label: "8) ป้ายเตือนต้องการระบายอากาศ", kind: "simple", hasPhoto: true },
     { no: 9, key: "r9", label: "9) ป้ายเตือนปุ่มฉุกเฉิน", kind: "simple", hasPhoto: true },
-    { no: 10, key: "r10", label: "10) วัดแรงดันวงจรควบคุมการอัดประจุ", kind: "simple", hasPhoto: true },
+    // { no: 10, key: "r10", label: "10) วัดแรงดันวงจรควบคุมการอัดประจุ", kind: "simple", hasPhoto: true },
+    { no: 10, key: "r10", label: "10) ตรวจสอบแผ่นกรองระบายอากาศ", kind: "simple", hasPhoto: true },
+    { no: 11, key: "r11", label: "11) ตรวจสอบจุดต่อทางไฟฟ้า", kind: "simple", hasPhoto: true },
+    { no: 12, key: "r12", label: "12) ตรวจสอบคอนแทคเตอร์", kind: "simple", hasPhoto: true },
+    { no: 13, key: "r13", label: "14) ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก", kind: "simple", hasPhoto: true },
+    { no: 14, key: "r14", label: "14) ตรวจสอบแรงดันไฟฟ้าที่พิน CP", kind: "simple", hasPhoto: true },
+    { no: 15, key: "r15", label: "15) ตรวจสอบลำดับเฟส", kind: "simple", hasPhoto: true },
+    { no: 16, key: "r16", label: "16) วัดแรงดันไฟฟ้าด้านเข้า", kind: "measure", hasPhoto: true },
 
-    { no: 11, key: "r11", label: "11) ตรวจสอบแผ่นกรองระบายอากาศ", kind: "simple", hasPhoto: true },
-    { no: 12, key: "r12", label: "12) ตรวจสอบจุดต่อทางไฟฟ้า", kind: "simple", hasPhoto: true },
-
-    { no: 13, key: "r13", label: "13) ตรวจสอบคอนแทคเตอร์", kind: "simple", hasPhoto: true },
-    { no: 14, key: "r14", label: "14) ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก", kind: "simple", hasPhoto: true },
-    { no: 15, key: "r15", label: "15) ตรวจสอบแรงดันไฟฟ้าที่พิน CP", kind: "simple", hasPhoto: true },
-    { no: 16, key: "r16", label: "16) ตรวจสอบลำดับเฟส", kind: "simple", hasPhoto: true },
-
-    { no: 17, key: "r17", label: "17) วัดแรงดันไฟฟ้าด้านเข้า", kind: "measure", hasPhoto: true },
-
-    { no: 18, key: "r18", label: "18) ทดสอบการอัดประจุ", kind: "simple", hasPhoto: true },
-    { no: 19, key: "r19", label: "19) ทำความสะอาด", kind: "simple", hasPhoto: true },
+    { no: 17, key: "r17", label: "17) ทดสอบการอัดประจุ", kind: "simple", hasPhoto: true },
+    { no: 18, key: "r18", label: "18) ทำความสะอาด", kind: "simple", hasPhoto: true },
 ];
 
 function getQuestionLabel(q: Question, mode: TabId): string {
@@ -181,7 +180,7 @@ const FIELD_GROUPS: Record<
     | { keys: readonly string[]; unitType: "voltage"; note?: string }
     | undefined
 > = {
-    17: { keys: VOLTAGE1_FIELDS, unitType: "voltage" },
+    16: { keys: VOLTAGE1_FIELDS, unitType: "voltage" },
 };
 
 /* =========================
@@ -485,30 +484,68 @@ function PhotoMultiInput({
     photos,
     setPhotos,
     max = 10,
+    draftKey,
+    qNo,
 }: {
     label?: string;
     photos: PhotoItem[];
     setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number;
+    draftKey: string;  // ✅ เพิ่ม
+    qNo: number;
 }) {
     const fileRef = useRef<HTMLInputElement>(null);
     const handlePick = () => fileRef.current?.click();
 
-    const handleFiles = (list: FileList | null) => {
+    // const handleFiles = (list: FileList | null) => {
+    //     if (!list) return;
+    //     const remain = Math.max(0, max - photos.length);
+    //     const files = Array.from(list).slice(0, remain);
+    //     const items: PhotoItem[] = files.map((f, i) => ({
+    //         id: `${Date.now()}-${i}-${f.name}`,
+    //         file: f,
+    //         preview: URL.createObjectURL(f),
+    //         remark: "",
+    //     }));
+    //     setPhotos((prev) => [...prev, ...items]);
+    //     if (fileRef.current) fileRef.current.value = "";
+    // };
+    const handleFiles = async (list: FileList | null) => {
         if (!list) return;
+
         const remain = Math.max(0, max - photos.length);
         const files = Array.from(list).slice(0, remain);
-        const items: PhotoItem[] = files.map((f, i) => ({
-            id: `${Date.now()}-${i}-${f.name}`,
-            file: f,
-            preview: URL.createObjectURL(f),
-            remark: "",
-        }));
+
+        const items: PhotoItem[] = await Promise.all(
+            files.map(async (f, i) => {
+                const photoId = `${qNo}-${Date.now()}-${i}-${f.name}`;
+                const ref = await putPhoto(draftKey, photoId, f);
+
+                return {
+                    id: photoId,
+                    file: f,
+                    preview: URL.createObjectURL(f),
+                    remark: "",
+                    ref,
+                };
+            })
+        );
+
         setPhotos((prev) => [...prev, ...items]);
         if (fileRef.current) fileRef.current.value = "";
     };
 
-    const handleRemove = (id: string) => {
+
+    // const handleRemove = (id: string) => {
+    //     setPhotos((prev) => {
+    //         const target = prev.find((p) => p.id === id);
+    //         if (target?.preview) URL.revokeObjectURL(target.preview);
+    //         return prev.filter((p) => p.id !== id);
+    //     });
+    // };
+    const handleRemove = async (id: string) => {
+        await delPhoto(draftKey, id);
+
         setPhotos((prev) => {
             const target = prev.find((p) => p.id === id);
             if (target?.preview) URL.revokeObjectURL(target.preview);
@@ -549,7 +586,9 @@ function PhotoMultiInput({
                 multiple
                 capture="environment"
                 className="tw-hidden"
-                onChange={(e) => handleFiles(e.target.files)}
+                // onChange={(e) => handleFiles(e.target.files)}
+                onChange={(e) => { void handleFiles(e.target.files); }}
+
             />
 
             {photos.length > 0 ? (
@@ -590,7 +629,8 @@ function PhotoMultiInput({
                                     />
                                 )}
                                 <button
-                                    onClick={() => handleRemove(p.id)}
+                                    // onClick={() => handleRemove(p.id)}
+                                    onClick={() => { void handleRemove(p.id); }}
                                     className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors"
                                 >
                                     ×
@@ -759,11 +799,11 @@ export default function ChargerPMForm() {
         >
     );
 
-    const [m17Pre, setM17Pre] = useState<MeasureState<UnitVoltage>>(
+    const [m16Pre, setM16Pre] = useState<MeasureState<UnitVoltage>>(
         () => initMeasureState(VOLTAGE1_FIELDS, "V")
     );
     /* ---------- measure group (เฉพาะข้อ 17) ---------- */
-    const m17 = useMeasure<UnitVoltage>(VOLTAGE1_FIELDS, "V");
+    const m16 = useMeasure<UnitVoltage>(VOLTAGE1_FIELDS, "V");
 
 
     useEffect(() => {
@@ -800,12 +840,12 @@ export default function ChargerPMForm() {
                     });
                 }
 
-                const m17FromPre = data?.measures_pre?.m17;
-                if (m17FromPre) {
-                    setM17Pre((prev) => {
+                const m16FromPre = data?.measures_pre?.m16;
+                if (m16FromPre) {
+                    setM16Pre((prev) => {
                         const next = { ...prev };
                         VOLTAGE1_FIELDS.forEach((k) => {
-                            const row = m17FromPre[k] ?? {};
+                            const row = m16FromPre[k] ?? {};
                             next[k] = {
                                 value: row.value ?? "",
                                 unit: (row.unit as UnitVoltage) ?? "V",
@@ -941,10 +981,11 @@ export default function ChargerPMForm() {
             job: typeof job & { inspector?: string };
             rows: typeof rows;
             cp: typeof cp;
-            m17: typeof m17.state;
+            m16: typeof m16.state;
             summary: string;
             inspector?: string;        // สำหรับ draft ใหม่
             dustFilterChanged?: boolean;
+            photoRefs?: Record<number, PhotoRef[]>;
         }>(key);
         if (!draft) return;
 
@@ -955,14 +996,50 @@ export default function ChargerPMForm() {
         setJob((prev) => ({ ...prev, ...draftJobWithoutIssue }));
         setRows(draft.rows);
         setCp(draft.cp);
-        m17.setState(draft.m17);
+        // m16.setState(draft.m16);
+        if (draft.m16 && typeof draft.m16 === "object") {
+            // (ถ้าจะเอาง่าย ๆ แค่นี้ก็พอ)
+            m16.setState(draft.m16);
+        } else {
+            // draft เก่า/ไม่มี m16 → คืนค่าเริ่มต้น
+            m16.setState(initMeasureState(VOLTAGE1_FIELDS, "V"));
+        }
         setSummary(draft.summary);
 
         // ถ้าเป็น draft เก่า: ใช้ draft.job.inspector
         // ถ้าเป็น draft ใหม่: ใช้ draft.inspector
         setInspector(draft.inspector ?? "");
         setDustFilterChanged(draft.dustFilterChanged ?? false);
-    }, [stationId]); // โหลดครั้งเดียวเมื่อรู้ stationId
+
+        (async () => {
+            if (!draft.photoRefs) return;
+
+            const next: Record<number, PhotoItem[]> = Object.fromEntries(
+                QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
+            ) as Record<number, PhotoItem[]>;
+
+            for (const [noStr, refs] of Object.entries(draft.photoRefs)) {
+                const no = Number(noStr);
+                const items: PhotoItem[] = [];
+
+                for (const ref of refs || []) {
+                    const file = await getPhoto(key, ref.id); // ✅ draftKey=key, photoId=ref.id
+                    if (!file) continue;
+
+                    items.push({
+                        id: ref.id,
+                        file,
+                        preview: URL.createObjectURL(file),
+                        remark: ref.remark ?? "",
+                        ref,
+                    });
+                }
+                next[no] = items;
+            }
+
+            setPhotos(next);
+        })();
+    }, [stationId, key]); // โหลดครั้งเดียวเมื่อรู้ stationId
 
     useEffect(() => {
         const onInfo = (e: Event) => {
@@ -994,7 +1071,7 @@ export default function ChargerPMForm() {
     // 🔹 รูป: ก่อน After ยังไม่บังคับข้อ 19
     const REQUIRED_PHOTO_ITEMS_PRE = useMemo(
         () =>
-            QUESTIONS.filter((q) => q.hasPhoto && q.no !== 19)
+            QUESTIONS.filter((q) => q.hasPhoto && q.no !== 18)
                 .map((q) => q.no)
                 .sort((a, b) => a - b),
         []
@@ -1033,7 +1110,7 @@ export default function ChargerPMForm() {
     // 🔹 PASS/FAIL: ก่อน After ยังไม่บังคับข้อ 19
     const PF_KEYS_PRE = useMemo(
         () =>
-            QUESTIONS.filter((q) => q.key !== "r17" && q.no !== 19).map(
+            QUESTIONS.filter((q) => q.key !== "r16" && q.no !== 18).map(
                 (q) => q.key
             ),
         []
@@ -1071,12 +1148,12 @@ export default function ChargerPMForm() {
     );
 
     const MEASURE_BY_NO: Record<number, ReturnType<typeof useMeasure<UnitVoltage>> | undefined> = {
-        17: m17,
+        16: m16,
     };
 
     /* ---------- validations ---------- */
     // ต้องตอบ PASS/FAIL ครบทุกข้อยกเว้น r17 (เป็นชุดวัดค่า)
-    const PF_REQUIRED_KEYS = useMemo(() => QUESTIONS.filter((q) => q.key !== "r17").map((q) => q.key), []);
+    const PF_REQUIRED_KEYS = useMemo(() => QUESTIONS.filter((q) => q.key !== "r16").map((q) => q.key), []);
     // ตอบอะไรก็ได้ที่ไม่ว่าง: PASS/FAIL/NA
     // const allPFAnswered = useMemo(
     //     () => PF_REQUIRED_KEYS.every((k) => rows[k].pf !== ""),
@@ -1093,10 +1170,12 @@ export default function ChargerPMForm() {
     // อินพุตที่บังคับ: เฉพาะข้อ 17
     const missingInputs = useMemo(() => {
         const r: Record<number, string[]> = {};
-        r[15] = cp.value.trim() ? [] : ["CP"];
-        r[17] = VOLTAGE1_FIELDS.filter((k) => !m17.state[k]?.value?.toString().trim());
+        r[14] = cp.value.trim() ? [] : ["CP"];
+        r[16] = VOLTAGE1_FIELDS.filter((k) => !m16.state[k]?.value?.toString().trim());
+        // r[16] = VOLTAGE1_FIELDS.filter((k) => !m16.state?.[k]?.value?.toString().trim());
+
         return r;
-    }, [cp.value, m17.state]);
+    }, [cp.value, m16.state]);
 
 
     const allRequiredInputsFilled = useMemo(
@@ -1158,8 +1237,8 @@ export default function ChargerPMForm() {
                         >
                             <InputWithUnit<UnitVoltage>
                                 label={LABELS[k] ?? k}          // มี label เหมือนหลัง PM
-                                value={m17Pre[k]?.value || ""}
-                                unit={(m17Pre[k]?.unit as UnitVoltage) || "V"}
+                                value={m16Pre[k]?.value || ""}
+                                unit={(m16Pre[k]?.unit as UnitVoltage) || "V"}
                                 units={UNITS.voltage}
                                 onValueChange={() => { }}        // ห้ามแก้
                                 onUnitChange={() => { }}
@@ -1226,7 +1305,7 @@ export default function ChargerPMForm() {
         const subtitle = FIELD_GROUPS[q.no]?.note;
 
         const inlineLeft =
-            q.no === 11 ? (
+            q.no === 10 ? (
                 <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
                     <input
                         type="checkbox"
@@ -1254,6 +1333,8 @@ export default function ChargerPMForm() {
                                 photos={photos[q.no] || []}
                                 setPhotos={makePhotoSetter(q.no)}
                                 max={10}
+                                draftKey={key}   // ✅ เพิ่ม
+                                qNo={q.no}
                             />
                         </div>
                     )}
@@ -1262,7 +1343,7 @@ export default function ChargerPMForm() {
                     {hasMeasure && renderMeasureGrid(q.no)}
 
                     {/* ข้อ 15: CP */}
-                    {q.no === 15 && (
+                    {q.no === 14 && (
                         <div className="tw-pt-1 tw-space-y-2">
                             <div className="tw-max-w-xs">
                                 <InputWithUnit<UnitVoltage>
@@ -1303,6 +1384,8 @@ export default function ChargerPMForm() {
                                     photos={photos[q.no] || []}
                                     setPhotos={makePhotoSetter(q.no)}
                                     max={10}
+                                    draftKey={key}   // ✅ เพิ่ม
+                                    qNo={q.no}
                                 />
                             </div>
                         )
@@ -1313,13 +1396,13 @@ export default function ChargerPMForm() {
                 {/* {hasMeasure && renderMeasureGrid(q.no)} */}
 
                 {hasMeasure &&
-                    (q.no === 17
+                    (q.no === 16
                         ? renderMeasureGridWithPre(q.no)
                         : renderMeasureGrid(q.no))}
 
 
 
-                {q.no === 15 && (
+                {q.no === 14 && (
                     <div className="tw-pt-1 tw-space-y-2">
                         {/* ค่า CP ก่อน PM – disable + ไม่ required + label ด้านบน */}
                         <div className="tw-max-w-xs tw-pointer-events-none tw-opacity-60">
@@ -1366,6 +1449,14 @@ export default function ChargerPMForm() {
             return () => clearTimeout(h);
         }, deps); // eslint-disable-line react-hooks/exhaustive-deps
     }
+    const photoRefs = useMemo(() => {
+        const out: Record<number, PhotoRef[]> = {};
+        Object.entries(photos).forEach(([noStr, list]) => {
+            const no = Number(noStr);
+            out[no] = (list || []).map(p => p.ref).filter(Boolean) as PhotoRef[];
+        });
+        return out;
+    }, [photos]);
 
     useDebouncedEffect(() => {
         if (!stationId) return;
@@ -1374,12 +1465,13 @@ export default function ChargerPMForm() {
             job: { ...job, issue_id: "" },
             rows,
             cp,
-            m17: m17.state,
+            m16: m16.state,
             summary,
             inspector,
             dustFilterChanged,
+            photoRefs,
         });
-    }, [key, stationId, job, rows, cp, m17.state, summary, inspector]);
+    }, [key, stationId, job, rows, cp, m16.state, summary, inspector, dustFilterChanged, photoRefs,]);
 
     /* ---------- actions ---------- */
 
@@ -1422,7 +1514,7 @@ export default function ChargerPMForm() {
     const onPreSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
         if (!allRequiredInputsFilled) {
-            alert("กรุณากรอกค่าข้อ 15 (CP) และข้อ 17 ให้ครบก่อนบันทึก");
+            alert("กรุณากรอกค่าข้อ 14 (CP) และข้อ 16 ให้ครบก่อนบันทึก");
             return;
         }
         if (submitting) return;
@@ -1438,7 +1530,7 @@ export default function ChargerPMForm() {
                 job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
                 inspector,
                 // rows,
-                measures_pre: { m17: m17.state, cp },
+                measures_pre: { m16: m16.state, cp },
                 // summary,
                 pm_date,
                 doc_name: docName,
@@ -1476,6 +1568,9 @@ export default function ChargerPMForm() {
                 if (files.length === 0) continue;
                 await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre");
             }
+            await Promise.all(
+                Object.values(photos).flat().map(p => delPhoto(key, p.id))
+            );
 
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
@@ -1498,7 +1593,7 @@ export default function ChargerPMForm() {
                 // job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
                 // inspector,
                 rows,
-                measures: { m17: m17.state, cp },
+                measures: { m16: m16.state, cp },
                 summary,
                 // pm_date,
                 // doc_name: docName,
@@ -1800,14 +1895,13 @@ export default function ChargerPMForm() {
                                 /> */}
                                 <Input
                                     label="PM Date / วันที่ตรวจสอบ"
-                                    type="date"
+                                    type="text"
                                     value={job.date}
-                                    max={todayStr}
                                     onChange={(e) => setJob({ ...job, date: e.target.value })}
                                     crossOrigin=""
                                     containerProps={{ className: "!tw-min-w-0" }}
-                                    readOnly={isPostMode}
-                                    className={isPostMode ? "!tw-bg-blue-gray-50" : "!tw-bg-white"}
+                                    readOnly
+                                    className="!tw-bg-blue-gray-50"
                                 />
                             </div>
 
@@ -1886,12 +1980,12 @@ export default function ChargerPMForm() {
                         // [11, 16],
                         // [17, 17],
                         // [18, 19],
-                        [1, 19]
+                        [1, 18]
                     ].map(([start, end]) => (
                         <CardBody key={`${start}-${end}`} className="tw-space-y-2">
                             {QUESTIONS
                                 .filter((q) => q.no >= start && q.no <= end)
-                                .filter((q) => !(displayTab === "pre" && q.no === 19))
+                                .filter((q) => !(displayTab === "pre" && q.no === 18))
                                 .map((q) => renderQuestionBlock(q, displayTab))}
                         </CardBody>
                     ))}
@@ -1938,7 +2032,7 @@ export default function ChargerPMForm() {
                             </Section>
 
                             {/* ข้อ 2 */}
-                            <Section title="2) อินพุตข้อ 15 และ 17" ok={allRequiredInputsFilled}>
+                            <Section title="2) อินพุตข้อ 14 และ 16" ok={allRequiredInputsFilled}>
                                 <div className="tw-space-y-1">
                                     <Typography variant="small" className="!tw-text-amber-700">
                                         ยังขาด:
@@ -1954,7 +2048,7 @@ export default function ChargerPMForm() {
                             {/* บล็อก 3 & 4 แสดงเฉพาะหลัง (post) */}
                             {isPostMode && (
                                 <>
-                                    <Section title="3) สถานะ PASS / FAIL / N/A ทั้ง 19 ข้อ" ok={allPFAnsweredForUI}>
+                                    <Section title="3) สถานะ PASS / FAIL / N/A ทั้ง 18 ข้อ" ok={allPFAnsweredForUI}>
                                         <Typography variant="small" className="!tw-text-amber-700">
                                             ยังไม่ได้เลือกข้อ: {missingPFItemsForUI.join(", ")}
                                         </Typography>
@@ -1992,7 +2086,7 @@ export default function ChargerPMForm() {
                                         !allPhotosAttachedPre
                                             ? "กรุณาแนบรูปในส่วน Pre ให้ครบก่อนบันทึก"
                                             : !allRequiredInputsFilled
-                                                ? "กรุณากรอกค่าข้อ 15 (CP) และข้อ 17 ให้ครบก่อนบันทึก"
+                                                ? "กรุณากรอกค่าข้อ 14 (CP) และข้อ 16 ให้ครบก่อนบันทึก"
                                                 : undefined
                                     }
                                 >
