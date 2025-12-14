@@ -2426,7 +2426,7 @@ class PMMeasureRow(BaseModel):
     unit: str = "V"
 
 class PMMeasures(BaseModel):
-    m17: Dict[str, PMMeasureRow] = Field(default_factory=dict)  # L1-L2, L2-L3, ...
+    m16: Dict[str, PMMeasureRow] = Field(default_factory=dict)  # L1-L2, L2-L3, ...
     cp: PMMeasureRow = PMMeasureRow()
 
 class PMRowPF(BaseModel):
