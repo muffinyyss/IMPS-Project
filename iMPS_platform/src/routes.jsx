@@ -10,7 +10,7 @@ const baseRoutes = [
     name: "admin",                       // ← จะถูกเปลี่ยนเป็นชื่อคนที่ล็อกอิน
     icon: <i className="fa fa-user" />,
     divider: true,
-    allow: ["admin", "owner","Technician"],
+    allow: ["admin", "owner","technician"],
     pages: [
       {
         layout: "dashboard",
@@ -33,9 +33,9 @@ const baseRoutes = [
   { name: "Configuration",    icon: <i className="fa fa-cog" />,      path: "/dashboard/setting",  allow: ["admin","owner"] },
   { name: "Monitor(CBM)", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm",                   allow: ["admin","owner"] },
   { name: "MDB/CCB",      icon: <i className="fa fa-database" />, path: "/dashboard/mdb",     allow: ["admin","owner"] },
-  { name: "PM report",    icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin","owner","Technician"] },
-  { name: "CM report",    icon: <i className="far fa-file" />,     path: "/dashboard/cm-report", allow: ["admin","owner","Technician"] },
-  { name: "Test report",  icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin","owner","Technician"] },
+  { name: "PM report",    icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin","owner","technician"] },
+  { name: "CM report",    icon: <i className="far fa-file" />,     path: "/dashboard/cm-report", allow: ["admin","owner","technician"] },
+  { name: "Test report",  icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin","owner","technician"] },
   { name: "Ai Module",    icon: <i className="fa fa-robot" />,    path: "/dashboard/ai",      allow: ["admin","owner"] },
   { name: "Users",        icon: <i className="fa fa-users" />,    path: "/dashboard/users",   allow: ["admin"] },
   { name: "Stations",     icon: <i className="fa fa-charging-station" />, path: "/dashboard/stations", allow: ["admin","owner"] },
