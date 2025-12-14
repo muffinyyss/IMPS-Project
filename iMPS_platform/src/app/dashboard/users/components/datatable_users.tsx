@@ -583,8 +583,7 @@ export default function SearchDataTables() {
                 <Select label="Role" value={roleValue} onChange={(v) => setRoleValue(v ?? "user")}>
                   <Option value="admin">admin</Option>
                   <Option value="owner">owner</Option>
-                  <Option value="Technician">Technician</Option>
-                  <Option value="user">user</Option>
+                  <Option value="technician">Technician</Option>
                 </Select>
               )}
             </div>
