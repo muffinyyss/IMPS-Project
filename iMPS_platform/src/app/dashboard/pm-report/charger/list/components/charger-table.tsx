@@ -663,8 +663,27 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     },
   ];
 
+  function sameUser(a?: string, b?: string) {
+    return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+  }
+
+  const visibleData = useMemo(() => {
+    const username = me?.username;
+    return data.filter((row) => {
+      // แถวปกติ แสดงได้ทั้งหมด
+      if (row.side !== "pre") return true;
+
+      // แถว pre: ถ้ายังไม่รู้ว่า login เป็นใคร -> ซ่อนไว้ก่อน
+      if (!username) return false;
+
+      // แถว pre: แสดงเฉพาะ inspector ตรงกับ username
+      return sameUser(row.inspector, username);
+    });
+  }, [data, me?.username]);
+
   const table = useReactTable({
-    data,
+    // data,
+    data: visibleData,
     columns,
     state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting,
