@@ -32,13 +32,6 @@ DOCUMENT_TITLE_PHOTO_CONT = "Photos (Continued)"
 DOCUMENT_TITLE_PHOTO_PRE_PM = "Photos (Pre-PM)"
 DOCUMENT_TITLE_PHOTO_POST_PM = "Photos (POST-PM)"
 
-
-ORG_ADDRESS_LINES = [
-    "Electricity Generating Authority of Thailand (EGAT)",
-    "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",
-    "Call Center Tel. 02-114-3350",
-]
-
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
 
@@ -290,10 +283,6 @@ def _format_measures_pre_cp(cp: dict) -> str:
     return f"CP = {val}{unit}" if val else "CP = -"
 
 
-
-
-    
-
 def _parse_date_flex(s: str) -> Optional[datetime]:
     if not s:
         return None
@@ -322,6 +311,7 @@ def _fmt_date_thai_like_sample(val) -> str:
     year_be_2 = (d.year + 543) % 100
     return d.strftime(f"%d-%b-{year_be_2:02d}")
 
+
 def _resolve_logo_path() -> Optional[Path]:
     names = [
         "logo_egat.png", "logo_egatev.png", "logo_egat_ev.png",
@@ -331,7 +321,7 @@ def _resolve_logo_path() -> Optional[Path]:
     roots = [
         Path(__file__).parent / "assets",                     # backend/pdf/templates/assets
         Path(__file__).parent.parent / "assets",              # backend/pdf/assets
-        Path(__file__).resolve().parents[3] / "public" / "img",        # ✅ iMPS_platform/public/img
+        Path(__file__).resolve().parents[3] / "public" / "img",        # iMPS_platform/public/img
         Path(__file__).resolve().parents[3] / "public" / "img" / "logo",# iMPS_platform/public/img/logo
     ]
     for root in roots:
@@ -493,9 +483,6 @@ def _draw_summary_checklist(pdf: FPDF, base_font: str, x: float, y: float, summa
     return y + LINE_H
 
 def _output_pdf_bytes(pdf: FPDF) -> bytes:
-    """
-    รองรับ fpdf2 หลายเวอร์ชัน: บางเวอร์ชันคืน bytearray, บางเวอร์ชันคืน str (latin1)
-    """
     data = pdf.output(dest="S")
     if isinstance(data, (bytes, bytearray)):
         return bytes(data)
@@ -573,7 +560,7 @@ def _guess_img_type_from_ext(path_or_url: str) -> str:
     ext = os.path.splitext(str(path_or_url).lower())[1]
     if ext in (".png",): return "PNG"
     if ext in (".jpg", ".jpeg"): return "JPEG"
-    return ""  # ให้ fpdf2 เดาเองได้ในบางเวอร์ชัน แต่เราจะพยายามระบุเสมอ
+    return ""
 
 def _find_public_root() -> Optional[Path]:
     """หาตำแหน่งโฟลเดอร์ public แบบ robust: PUBLIC_DIR env > ไต่โฟลเดอร์หา 'public'"""
