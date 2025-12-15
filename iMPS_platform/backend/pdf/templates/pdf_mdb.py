@@ -1,13 +1,16 @@
 # backend/pdf/templates/pdf_mdb.py
+import os
+import re
+import math
+import base64
+
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
 from datetime import datetime, date
-import os
-import re
 from typing import Optional, Tuple, List, Dict, Any, Union
 from io import BytesIO
-import base64
 from PIL import Image, ExifTags
+from functools import lru_cache
 
 try:
     import requests  # optional
@@ -16,37 +19,18 @@ except Exception:
 
 # -------------------- ตั้งค่าทั่วไป --------------------
 DOCUMENT_TITLE_MAIN = "Preventive Maintenance Checklist - MDB"
-DOCUMENT_TITLE_PHOTO = "Preventive Maintenance Checklist"
-DOCUMENT_TITLE_PHOTO_CONT = "Photos - MDB (ต่อ)"
+DOCUMENT_TITLE_PHOTO_CONT = "Photos (Continued)"
+DOCUMENT_TITLE_PHOTO_PRE_PM = "Photos (Pre-PM)"
+DOCUMENT_TITLE_PHOTO_POST_PM = "Photos (POST-PM)"
 
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
 # -------------------- ฟอนต์ไทย --------------------
 FONT_CANDIDATES: Dict[str, List[str]] = {
-    "": [
-        "THSarabunNew.ttf",
-        "TH Sarabun New.ttf",
-        "THSarabun.ttf",
-        "TH SarabunPSK.ttf",
-    ],
-    "B": [
-        "THSarabunNew-Bold.ttf",
-        "THSarabunNew Bold.ttf",
-        "TH Sarabun New Bold.ttf",
-        "THSarabun Bold.ttf",
-    ],
-    "I": [
-        "THSarabunNew-Italic.ttf",
-        "THSarabunNew Italic.ttf",
-        "TH Sarabun New Italic.ttf",
-        "THSarabun Italic.ttf",
-    ],
-    "BI": [
-        "THSarabunNew-BoldItalic.ttf",
-        "THSarabunNew BoldItalic.ttf",
-        "TH Sarabun New BoldItalic.ttf",
-        "THSarabun BoldItalic.ttf",
-    ],
+    "":  ["THSarabunNew.ttf", "TH Sarabun New.ttf", "THSarabun.ttf", "TH SarabunPSK.ttf"],
+    "B": ["THSarabunNew-Bold.ttf", "THSarabunNew Bold.ttf", "TH Sarabun New Bold.ttf", "THSarabun Bold.ttf"],
+    "I": ["THSarabunNew-Italic.ttf", "THSarabunNew Italic.ttf", "TH Sarabun New Italic.ttf", "THSarabun Italic.ttf"],
+    "BI":["THSarabunNew-BoldItalic.ttf", "THSarabunNew BoldItalic.ttf", "TH Sarabun New BoldItalic.ttf", "THSarabun BoldItalic.ttf"],
 }
 
 LINE_W_OUTER = 0.45
@@ -59,14 +43,15 @@ LINE_H = 5.0
 ROW_MIN_H = 7
 CHECKBOX_SIZE = 3.5
 
-PHOTO_MAX_PER_ROW = 3
-PHOTO_IMG_MAX_H = 48
-PHOTO_GAP = 3
-PHOTO_PAD_X = 2
-PHOTO_PAD_Y = 4
-PHOTO_ROW_MIN_H = 15
-PHOTO_FONT_SMALL = 10
-PHOTO_LINE_H = 6
+PHOTO_MAX_PER_ROW = 10
+PHOTO_PER_LINE    = 4  
+PHOTO_IMG_MAX_H   = 40
+PHOTO_GAP         = 0.7
+PHOTO_PAD_X       = 1
+PHOTO_PAD_Y       = 1
+PHOTO_ROW_MIN_H = PHOTO_IMG_MAX_H + 4
+PHOTO_FONT_SMALL  = 10
+PHOTO_LINE_H      = 5
 
 # -------------------- รายการหัวข้อ MDB --------------------
 ROW_TITLES = {
@@ -112,11 +97,6 @@ class ReportPDF(HTML2PDF):
         self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", 0, 0, "R")
 
 # -------------------- Utilities --------------------
-def _log(msg: str):
-    if PDF_DEBUG:
-        print(msg)
-
-
 def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
     here = Path(__file__).parent
     search_dirs = [
@@ -280,28 +260,16 @@ def _fmt_date_thai_like_sample(val) -> str:
 
 # -------------------- รูป/โลโก้ --------------------
 def _resolve_logo_path() -> Optional[Path]:
-    # 1) LOGO_PATH (absolute)
-    p_env = os.getenv("LOGO_PATH")
-    if p_env:
-        p = Path(p_env)
-        if p.exists():
-            return p
-    # 2) โฟลเดอร์ assets ใกล้ไฟล์
     names = [
-        "logo_egat.png",
-        "logo_egatev.png",
-        "logo_egat_ev.png",
-        "egat_logo.png",
-        "logo-ct.png",
-        "logo_ct.png",
-        "logo_egat.jpg",
-        "logo_egat.jpeg",
+        "logo_egat.png", "logo_egatev.png", "logo_egat_ev.png",
+        "egat_logo.png", "logo-ct.png", "logo_ct.png",
+        "logo_egat.jpg", "logo_egat.jpeg",
     ]
     roots = [
-        Path(__file__).parent / "assets",
-        Path(__file__).parent.parent / "assets",
-        Path(__file__).resolve().parents[3] / "public" / "img",
-        Path(__file__).resolve().parents[3] / "public" / "img" / "logo",
+        Path(__file__).parent / "assets",                     # backend/pdf/templates/assets
+        Path(__file__).parent.parent / "assets",              # backend/pdf/assets
+        Path(__file__).resolve().parents[3] / "public" / "img",        # iMPS_platform/public/img
+        Path(__file__).resolve().parents[3] / "public" / "img" / "logo",# iMPS_platform/public/img/logo
     ]
     for root in roots:
         if not root.exists():
@@ -315,14 +283,13 @@ def _resolve_logo_path() -> Optional[Path]:
 
 def _guess_img_type_from_ext(path_or_url: str) -> str:
     ext = os.path.splitext(str(path_or_url).lower())[1]
-    if ext in (".png",):
-        return "PNG"
-    if ext in (".jpg", ".jpeg"):
-        return "JPEG"
+    if ext in (".png",): return "PNG"
+    if ext in (".jpg", ".jpeg"): return "JPEG"
     return ""
 
 
 def _find_public_root() -> Optional[Path]:
+    """หาตำแหน่งโฟลเดอร์ public แบบ robust: PUBLIC_DIR env > ไต่โฟลเดอร์หา 'public'"""
     env_dir = os.getenv("PUBLIC_DIR")
     if env_dir:
         p = Path(env_dir)
@@ -337,9 +304,7 @@ def _find_public_root() -> Optional[Path]:
 
 
 def _env_photo_headers() -> Optional[dict]:
-    """
-    แปลง PHOTOS_HEADERS="Header1: val|Header2: val" เป็น dict
-    """
+
     raw = os.getenv("PHOTOS_HEADERS") or ""
     hdrs = {}
     for seg in raw.split("|"):
@@ -350,18 +315,23 @@ def _env_photo_headers() -> Optional[dict]:
         hdrs[k.strip()] = v.strip()
     return hdrs or None
 
+def _log(msg: str):
+    if PDF_DEBUG:
+        print(msg)
 
 def _is_http_url(s: str) -> bool:
     return s.startswith("http://") or s.startswith("https://")
 
 
-def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+def _load_image_source_from_urlpath(
+    url_path: str,
+) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     if not url_path:
         return None, None
 
     _log(f"[IMG] lookup: {url_path}")
 
-    # case: data URL (base64)
+    # case: data URL
     if url_path.startswith("data:image/"):
         try:
             head, b64 = url_path.split(",", 1)
@@ -375,69 +345,131 @@ def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, 
             return bio, img_type
         except Exception as e:
             _log(f"[IMG] data-url parse error: {e}")
+            return None, None
 
-    # case: absolute http(s) URL
-    if _is_http_url(url_path) and requests is not None:
-        try:
-            resp = requests.get(url_path, headers=_env_photo_headers(), timeout=10)
-            resp.raise_for_status()
-            _log(f"[IMG] downloaded {len(resp.content)} bytes from absolute URL")
-            return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
-        except Exception as e:
-            _log(f"[IMG] absolute URL failed: {e}")
-
-    # case: absolute filesystem path
-    p_abs = Path(url_path)
-    if p_abs.is_absolute() and p_abs.exists():
-        return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
-
-    # 1) backend/uploads
-    backend_root = Path(__file__).resolve().parents[2]
-    uploads_root = backend_root / "uploads"
-    _log(f"[IMG] backend_root: {backend_root}")
-    _log(f"[IMG] uploads_root: {uploads_root}")
+    # ปรับลำดับ: เช็ค local file ก่อน (เร็วที่สุด) แทนที่จะ download
     
-    if uploads_root.exists():
-        clean_path = url_path.lstrip("/")
-        if clean_path.startswith("uploads/"):
-            clean_path = clean_path[8:]
-        local_path = uploads_root / clean_path
-        _log(f"[IMG] try uploads: {local_path}")
-        if local_path.exists() and local_path.is_file():
-            _log(f"[IMG] ✅ found in uploads!")
-            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+    # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
+    if not url_path.startswith("http"):  # ข้าม http URL
+        backend_root = Path(__file__).resolve().parents[2]
+        uploads_root = backend_root / "uploads"
+        
+        if uploads_root.exists():
+            clean_path = url_path.lstrip("/")
+            if clean_path.startswith("uploads/"):
+                clean_path = clean_path[8:]
+            local_path = uploads_root / clean_path
+            
+            if local_path.exists() and local_path.is_file():
+                _log(f"[IMG] found in uploads: {local_path}")
+                return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
 
-    # 2) public
-    public_root = _find_public_root()
-    if public_root:
-        local_path = public_root / url_path.lstrip("/")
-        _log(f"[IMG] try public: {local_path}")
-        if local_path.exists() and local_path.is_file():
-            _log(f"[IMG] ✅ found in public!")
-            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+        # 2) public folder
+        public_root = _find_public_root()
+        if public_root:
+            local_path = public_root / url_path.lstrip("/")
+            if local_path.exists() and local_path.is_file():
+                _log(f"[IMG] found in public: {local_path}")
+                return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
 
-    # 3) base_url download
-    base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
-    if base_url and requests is not None:
-        full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
-        _log(f"[IMG] try base_url: {full_url}")
-        try:
-            resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
-            resp.raise_for_status()
-            _log(f"[IMG] ✅ downloaded from base_url!")
-            return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
-        except Exception as e:
-            _log(f"[IMG] base_url failed: {e}")
+        # 3) absolute filesystem path
+        p_abs = Path(url_path)
+        if p_abs.is_absolute() and p_abs.exists():
+            _log(f"[IMG] found absolute path: {p_abs}")
+            return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
 
-    _log("[IMG] ❌ not found via all methods")
+    # 4) HTTP download (ช้าที่สุด - ทำทีหลัง)
+    if requests is not None:
+        # ลอง base_url ก่อน (มักใช้บ่อยกว่า)
+        base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
+        
+        if base_url and not url_path.startswith("http"):
+            full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
+            _log(f"[IMG] try base_url: {full_url}")
+            try:
+                resp = requests.get(
+                    full_url, 
+                    headers=_env_photo_headers(), 
+                    timeout=5,  # ลดเหลือ 5 วินาที
+                    stream=True  # ใช้ stream เพื่อ download เร็วขึ้น
+                )
+                resp.raise_for_status()
+                _log(f"[IMG] downloaded {len(resp.content)} bytes from base_url")
+                return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
+            except Exception as e:
+                _log(f"[IMG] base_url failed: {e}")
+        
+        # absolute http(s) URL
+        if _is_http_url(url_path):
+            try:
+                resp = requests.get(
+                    url_path, 
+                    headers=_env_photo_headers(), 
+                    timeout=5,  # ลดเหลือ 5 วินาที
+                    stream=True
+                )
+                resp.raise_for_status()
+                _log(f"[IMG] downloaded {len(resp.content)} bytes from absolute URL")
+                return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
+            except Exception as e:
+                _log(f"[IMG] absolute URL failed: {e}")
+
+    _log("[IMG] not found via all methods")
     return None, None
 
+# Image cache dictionary
+_IMAGE_CACHE = {}
+
+def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optional[str]]:
+    
+    # ตรวจสอบ cache ก่อน
+    if url_path in _IMAGE_CACHE:
+        _log(f"[IMG] cache hit: {url_path}")
+        cached_buf, cached_type = _IMAGE_CACHE[url_path]
+        # สร้าง BytesIO ใหม่เพื่อ reset position
+        new_buf = BytesIO(cached_buf.getvalue())
+        return new_buf, cached_type
+    
+    # โหลดรูปปกติ
+    src, img_type = _load_image_source_from_urlpath(url_path)
+    
+    if src is None:
+        return None, None
+    
+    # แปลงเป็น BytesIO และ auto-rotate ทุกกรณี
+    try:
+        img_buf = load_image_autorotate(src)
+        _IMAGE_CACHE[url_path] = (img_buf, img_type)
+        _log(f"[IMG] cached: {url_path}")
+        
+        # สร้าง BytesIO ใหม่เพื่อ return (เพราะ cache ใช้ต้นฉบับ)
+        new_buf = BytesIO(img_buf.getvalue())
+        return new_buf, img_type
+        
+    except Exception as e:
+        _log(f"[IMG] auto-rotate error: {e}")
+        return None, None
+    
+def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
+   
+    photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
+    out = []
+    for p in photos:
+        if isinstance(p, dict) and p.get("url"):
+            out.append(p)
+    return out[:PHOTO_MAX_PER_ROW]
+
+def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
+    """ดึงรูปจาก photos_pre (ก่อน PM)"""
+    photos_pre = ((doc.get("photos_pre") or {}).get(f"g{idx}") or [])
+    out = []
+    for p in photos_pre:
+        if isinstance(p, dict) and p.get("url"):
+            out.append(p)
+    return out[:PHOTO_MAX_PER_ROW]
 
 def load_image_autorotate(path_or_bytes):
-    """
-    โหลดรูปและหมุนตาม EXIF ให้ถูกต้อง
-    จากนั้นถ้ายังเป็นแนวนอน (w > h) ก็หมุนขึ้นอีกครั้ง
-    """
+
     # โหลดภาพ
     if isinstance(path_or_bytes, (str, Path)):
         img = Image.open(path_or_bytes)
@@ -483,10 +515,57 @@ def _r_idx(k: str) -> int:
 
 
 def _format_voltage_measurement(measures: dict, key: str) -> str:
-    """
-    จัดรูปแบบแรงดันไฟฟ้าแบบจัดกลุ่มทีละ 3 ค่า (เหมือน _format_m17)
-    กรณี 3 ค่า (m8) → รวมเป็น 1 บรรทัด
-    """
+
+    ms = (measures or {}).get(key) or {}
+    if not ms:
+        return "-"
+
+    # normalize key
+    norm_ms = {}
+    for k, v in ms.items():
+        nk = str(k).strip().replace("–", "-").replace(" ", "")
+        norm_ms[nk.upper()] = v
+
+    # 10 ค่า
+    order_full = [
+        "L1-L2", "L2-L3", "L3-L1",
+        "L1-N", "L2-N", "L3-N",
+        "L1-G", "L2-G", "L3-G",
+        "N-G"
+    ]
+
+    # 3 ค่า (m8)
+    order_short = ["L1-N", "L1-G", "N-G"]
+
+    # เลือก order
+    use_order = order_short if len(norm_ms) <= 3 else order_full
+
+    def fmt(k: str) -> str:
+        d = norm_ms.get(k.upper()) or {}
+        val = str(d.get("value", "")).strip()
+        unit = str(d.get("unit", "")).strip()
+        return f"{k} = {val}{unit}" if val else f"{k} = -"
+
+    # ---------- กรณี 3 ค่า (m8) → 1 บรรทัด ----------
+    if use_order is order_short:
+        return ", ".join(fmt(k) for k in use_order)
+
+    # ---------- กรณีมากกว่า 3 ค่า → 3 ค่า/บรรทัด ----------
+    lines = []
+    group = []
+    for k in use_order:
+        group.append(fmt(k))
+        if len(group) == 3:
+            lines.append(", ".join(group))
+            group = []
+
+    if group:
+        lines.append(", ".join(group))
+
+    return "\n".join(lines)
+
+def _format_voltage_pre_measurement(measures: dict, key: str) -> str:
+
     ms = (measures or {}).get(key) or {}
     if not ms:
         return "-"
@@ -645,15 +724,6 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
     return items
 
 
-def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-    photos = (doc.get("photos") or {}).get(f"g{idx}") or []
-    out = []
-    for p in photos:
-        if isinstance(p, dict) and p.get("url"):
-            out.append(p)
-    return out[:PHOTO_MAX_PER_ROW]
-
-
 # -------------------- วาดชิ้นส่วนเอกสาร --------------------
 def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
     pdf.rect(x, y, size, size)
@@ -765,7 +835,7 @@ def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h
         content_w = CHECKBOX_SIZE + 1.6 + text_w
         start_x = sx + (col_w - content_w) / 2.0
         
-        # ✅ ถ้า is_top_align=True ให้ชิดบน, ไม่งั้นให้อยู่ตรงกลาง
+        # ถ้า is_top_align=True ให้ชิดบน, ไม่งั้นให้อยู่ตรงกลาง
         if is_top_align:
             start_y = y + PADDING_Y
         else:
@@ -777,15 +847,13 @@ def _draw_result_cell(pdf: FPDF, base_font: str, x: float, y: float, w: float, h
     pdf.set_xy(x + w, y)
 
 
-def _draw_photos_table_header(
-    pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float
-) -> float:
+def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float) -> float:
     header_h = 6.0
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_xy(x, y)
-    pdf.cell(q_w, header_h, "ข้อ / คำถาม", border=1, align="C")
-    pdf.cell(g_w, header_h, "รูปภาพประกอบ", border=1, ln=1, align="C")
+    pdf.cell(q_w, header_h, "Item / Question", border=1, align="C")
+    pdf.cell(g_w, header_h, "Reference Photos", border=1, ln=1, align="C")
     return y + header_h
 
 
@@ -799,55 +867,78 @@ def _draw_photos_row(
     question_text: str,
     image_items: List[dict],
 ) -> float:
+    """
+    วาดแถวรูปภาพโดยคำนวณความสูงจริงที่ใช้
+    """
     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
-    img_h = PHOTO_IMG_MAX_H
-    row_h = max(ROW_MIN_H, text_h, img_h + 2 * PADDING_Y)
-
+    
+    images = (image_items or [])[:PHOTO_MAX_PER_ROW]
+    total_images = len(images)
+    
+    # คำนวณจำนวนแถวของรูป
+    if total_images == 0:
+        num_rows = 0
+    else:
+        num_rows = math.ceil(total_images / PHOTO_PER_LINE)
+    
+    # คำนวณความสูงจริงของส่วนรูปภาพ (ไม่รวม padding เกิน)
+    if num_rows > 0:
+        # ความสูงรูป + ช่องว่างระหว่างแถว + padding บน-ล่าง
+        images_content_h = num_rows * PHOTO_IMG_MAX_H + (num_rows - 1) * PHOTO_GAP
+        images_total_h = images_content_h + 2 * PHOTO_PAD_Y
+    else:
+        images_total_h = 0
+    
+    # ความสูงของ row = max ระหว่าง text กับ รูป (ไม่บวกค่าพิเศษ)
+    row_h = max(text_h + 2 * PADDING_Y, images_total_h)
+    
     # ซ้าย: ข้อ/คำถาม
     _cell_text_in_box(
         pdf, x, y, q_w, row_h, question_text, align="L", lh=LINE_H, valign="top"
     )
 
-    # ขวา: รูป
+    # ขวา: กรอบรูป
     gx = x + q_w
     pdf.rect(gx, y, g_w, row_h)
 
-    slot_w = (
-        g_w - 2 * PADDING_X - (PHOTO_MAX_PER_ROW - 1) * PHOTO_GAP
-    ) / PHOTO_MAX_PER_ROW
-    cx = gx + PADDING_X
-    cy = y + (row_h - img_h) / 2.0
+    if total_images == 0:
+        pdf.set_font(base_font, "", FONT_MAIN)
+        pdf.set_xy(gx, y + (row_h - LINE_H) / 2.0)
+        pdf.cell(g_w, LINE_H, "-", border=0, align="C")
+        pdf.set_xy(x + q_w + g_w, y)
+        return row_h
 
-    images = (image_items or [])[:PHOTO_MAX_PER_ROW]
+    # คำนวณความกว้างของแต่ละช่องรูป
+    slot_w = (g_w - 2 * PHOTO_PAD_X - (PHOTO_PER_LINE - 1) * PHOTO_GAP) / PHOTO_PER_LINE
+    
     pdf.set_font(base_font, "", FONT_MAIN)
 
-    for i in range(PHOTO_MAX_PER_ROW):
-        # เส้นแบ่งช่อง
-        if i > 0:
-            pdf.line(cx - (PHOTO_GAP / 2.0), y, cx - (PHOTO_GAP / 2.0), y + row_h)
+    # วาดรูปทีละแถว (เริ่มจาก PHOTO_PAD_Y จากด้านบน)
+    for row_idx in range(num_rows):
+        cy = y + PHOTO_PAD_Y + row_idx * (PHOTO_IMG_MAX_H + PHOTO_GAP)
+        
+        # จำนวนรูปในแถวนี้
+        start_img = row_idx * PHOTO_PER_LINE
+        end_img = min(start_img + PHOTO_PER_LINE, total_images)
+        imgs_in_row = end_img - start_img
+        
+        for col_idx in range(imgs_in_row):
+            img_idx = start_img + col_idx
+            cx = gx + PHOTO_PAD_X + col_idx * (slot_w + PHOTO_GAP)
+            
+            url_path = (images[img_idx] or {}).get("url", "")
+            img_buf, img_type = _load_image_with_cache(url_path)
 
-        if i < len(images):
-            url_path = (images[i] or {}).get("url", "")
-            src, img_type = _load_image_source_from_urlpath(url_path)
-
-            if src is not None:
+            if img_buf is not None:
                 try:
-                    # --- NEW: Auto-rotate image ---
-                    img_buf = load_image_autorotate(src)
-
-                    # ใส่รูปที่หมุนแล้วเข้า PDF
-                    pdf.image(
-                        img_buf, x=cx, y=cy, w=slot_w, h=img_h
-                    )
+                    pdf.image(img_buf, x=cx, y=cy, w=slot_w, h=PHOTO_IMG_MAX_H)
                 except Exception as e:
                     _log(f"[IMG] place error: {e}")
-                    pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
+                    pdf.set_xy(cx, cy + (PHOTO_IMG_MAX_H - LINE_H) / 2.0)
                     pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
             else:
-                pdf.set_xy(cx, cy + (img_h - LINE_H) / 2.0)
+                pdf.set_xy(cx, cy + (PHOTO_IMG_MAX_H - LINE_H) / 2.0)
                 pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
-
-        cx += slot_w + PHOTO_GAP
 
     pdf.set_xy(x + q_w + g_w, y)
     return row_h
@@ -938,7 +1029,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     # แสดงข้อมูลงานใต้หัวเรื่อง
     y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
 
-    # ตารางรายการ
+    # ========== ตารางรายการ ==========
     x_table = x0 + EDGE_ALIGN_FIX
     table_total_w = page_w - 2 * EDGE_ALIGN_FIX
     pdf.set_line_width(LINE_W_INNER)
@@ -1054,8 +1145,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     
     pdf.set_xy(comment_x, y)
     pdf.set_font(base_font, "B", 11)
-    pdf.cell(comment_item_w, h_checklist, "ผลการตรวจสอบ :", border=0, align="L")
-    
+    pdf.cell(item_w, h_checklist, "Inspection Results :", border=0, align="L")
+
     # วาดเส้นคั่น
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
     
@@ -1130,85 +1221,211 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     # -------------------------------
     # ขึ้นหน้าใหม่สำหรับรูป (เรียก header ทุกครั้งหลัง add_page)
     # -------------------------------
-    pdf.add_page()
+    # pdf.add_page()
 
-    # วาด header เหมือนหน้าก่อนหน้า
-    x0 = 10
-    y = _draw_header(pdf, base_font, issue_id)  # วาดหัวกระดาษ
+    # # วาด header เหมือนหน้าก่อนหน้า
+    # x0 = 10
+    # y = _draw_header(pdf, base_font, issue_id)  # วาดหัวกระดาษ
 
-    # ชื่อเอกสาร
-    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+    # # ชื่อเอกสาร
+    # TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
 
-    pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 13)
-    pdf.cell(page_w, TITLE_H,
-            "Preventive Maintenance Checklist - MDB",
-            border=1, ln=1, align="C")
+    # pdf.set_xy(x0, y)
+    # pdf.set_font(base_font, "B", 13)
+    # pdf.cell(page_w, TITLE_H,
+    #         "Preventive Maintenance Checklist - MDB",
+    #         border=1, ln=1, align="C")
 
-    y += TITLE_H
+    # y += TITLE_H
 
-    # แสดงข้อมูลงานใต้หัวเรื่อง
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
+    # # แสดงข้อมูลงานใต้หัวเรื่อง
+    # y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
     
-    # photo
-    TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
+    # # photo
+    # TITLE_H = 7  # ความสูงใหม่ที่ต้องการ
 
-    pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 13)
-    pdf.set_fill_color(255, 230, 100)
-    pdf.cell(page_w, TITLE_H,
-            "Photos",
-            border=1, ln=1, align="C", fill=True)
+    # pdf.set_xy(x0, y)
+    # pdf.set_font(base_font, "B", 13)
+    # pdf.set_fill_color(255, 230, 100)
+    # pdf.cell(page_w, TITLE_H,
+    #         "Photos",
+    #         border=1, ln=1, align="C", fill=True)
 
-    y += TITLE_H
+    # y += TITLE_H
 
-    # ========== ตารางรูปแบบ 2 คอลัมน์: r# (ซ้าย) / g# (ขวา) ==========
-    # ตั้งค่าความกว้างคอลัมน์
+    # # ========== ตารางรูปแบบ 2 คอลัมน์: r# (ซ้าย) / g# (ขวา) ==========
+    # # ตั้งค่าความกว้างคอลัมน์
+    # x_table = x0 + EDGE_ALIGN_FIX
+    # q_w = 85.0                       # กว้างคอลัมน์ "ข้อ/คำถาม"
+    # g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w  # กว้างคอลัมน์รูป
+
+    # # ฟังก์ชันตรวจพื้นที่ (ใช้ตัวเดียวกับตารางก่อนหน้า)
+    # def _ensure_space_photo(height_needed: float):
+    #     nonlocal y
+    #     if y + height_needed > (pdf.h - pdf.b_margin):
+    #         pdf.add_page()
+    #         y = _draw_header(pdf, base_font, issue_id)
+    #         # หัวเรื่องย่อย Photos ซ้ำเมื่อขึ้นหน้าใหม่เพื่อไม่ให้สับสน
+    #         pdf.set_xy(x0, y)
+    #         pdf.set_font(base_font, "B", 13)
+    #         pdf.set_fill_color(255, 230, 100)
+    #         photo_continue_h = 6  # ← กำหนดความสูงแถว Photos (ต่อ)
+
+    #         pdf.cell(page_w, photo_continue_h, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
+    #         y += photo_continue_h
+
+    #         y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+    #         pdf.set_font(base_font, "", FONT_MAIN)
+            
+
+    # # วาดหัวตาราง Photos
+    # y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+    # pdf.set_font(base_font, "", FONT_MAIN)
+
+    # # วาดทีละข้อ โดย map r# -> g# จาก doc["photos"]
+    # for it in checks:
+    #     idx = int(it.get("idx") or 0)
+    #     question_text = ROW_TITLES.get(f"r{idx}", it.get("text", f"{idx}. -"))
+
+    #     # ดึงรูป: photos.g{idx}[].url
+    #     img_items = _get_photo_items_for_idx(doc, idx)
+
+    #     # ประเมินพื้นที่ก่อนขึ้นหน้าใหม่
+    #     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
+    #     est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
+    #     _ensure_space_photo(est_row_h)
+
+    #     # วาดแถว
+    #     row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, question_text, img_items)
+    #     y += row_h_used
+
+    
+    # return _output_pdf_bytes(pdf)
+    pdf.add_page()
+    y = _draw_header(pdf, base_font, issue_id)
+    
     x_table = x0 + EDGE_ALIGN_FIX
-    q_w = 85.0                       # กว้างคอลัมน์ "ข้อ/คำถาม"
-    g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w  # กว้างคอลัมน์รูป
-
-    # ฟังก์ชันตรวจพื้นที่ (ใช้ตัวเดียวกับตารางก่อนหน้า)
+    q_w = 85.0
+    g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
+    
     def _ensure_space_photo(height_needed: float):
         nonlocal y
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
-            # หัวเรื่องย่อย Photos ซ้ำเมื่อขึ้นหน้าใหม่เพื่อไม่ให้สับสน
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
-            photo_continue_h = 6  # ← กำหนดความสูงแถว Photos (ต่อ)
-
-            pdf.cell(page_w, photo_continue_h, "Photos (ต่อ)", border=1, ln=1, align="C", fill=True)
+            photo_continue_h = 6
+            pdf.cell(page_w, photo_continue_h, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
             y += photo_continue_h
-
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
             pdf.set_font(base_font, "", FONT_MAIN)
-            
 
-    # วาดหัวตาราง Photos
+    has_pre_photos = bool(doc.get("photos_pre"))
+
+    # ===== ส่วนที่ 1: Pre-PM Photos (ถ้ามี) =====
+    if has_pre_photos:
+        pdf.set_xy(x0, y)
+        pdf.set_font(base_font, "B", 13)
+        pdf.set_fill_color(255, 230, 100)
+        TITLE_H = 7
+        pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_PHOTO_PRE_PM, border=1, ln=1, align="C", fill=True)
+        y += TITLE_H
+
+        y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+        pdf.set_font(base_font, "", FONT_MAIN)
+        
+        for it in checks:
+            idx = int(it.get("idx") or 0)
+
+            question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
+            question_text_pre = f"{question_text} (Pre-PM)"
+
+            # RESET ทุก iteration
+            measures_text = ""
+            measures_pre = doc.get("measures_pre", {})
+
+            # 🔥 ใช้ _format_voltage_pre_measurement สำหรับ Pre-PM
+            # ข้อ 4-8: แรงดันไฟฟ้า
+            if idx in [4, 5, 6, 7, 8]:
+                measure_key = f"m{idx}"
+                measures_text = _format_voltage_pre_measurement(measures_pre, measure_key)
+
+            # append เฉพาะกรณีที่มีค่า
+            if measures_text:
+                question_text_pre += "\n" + measures_text
+
+            img_items = _get_photo_items_for_idx_pre(doc, idx)
+            if not img_items:
+                continue
+
+            # คำนวณความสูงจริงของแถว
+            _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text_pre, LINE_H)
+            total_images = len(img_items)
+            num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
+            img_h = PHOTO_IMG_MAX_H
+            images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
+            actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
+            
+            # เช็คว่าจะล้นหน้าไหม
+            _ensure_space_photo(actual_row_h)
+
+            row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
+                                         question_text_pre, img_items)
+            y += row_h_used
+
+        # ขึ้นหน้าใหม่สำหรับ Photos (หลัง PM)
+        pdf.add_page()
+        y = _draw_header(pdf, base_font, issue_id)
+
+    # ===== ส่วนที่ 2: Post-PM Photos =====
+    pdf.set_xy(x0, y)
+    pdf.set_font(base_font, "B", 13)
+    pdf.set_fill_color(255, 230, 100)
+    TITLE_H = 7
+    title_text = DOCUMENT_TITLE_PHOTO_POST_PM if has_pre_photos else "Photos"
+    pdf.cell(page_w, TITLE_H, title_text, border=1, ln=1, align="C", fill=True)
+    y += TITLE_H
+
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
-    # วาดทีละข้อ โดย map r# -> g# จาก doc["photos"]
     for it in checks:
         idx = int(it.get("idx") or 0)
-        question_text = ROW_TITLES.get(f"r{idx}", it.get("text", f"{idx}. -"))
+        question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
 
-        # ดึงรูป: photos.g{idx}[].url
+        # RESET ทุก iteration
+        measures_text = ""
+        measures = doc.get("measures", {})
+
+        # 🔥 ใช้ _format_voltage_measurement สำหรับ Post-PM
+        # ข้อ 4-8: แรงดันไฟฟ้า
+        if idx in [4, 5, 6, 7, 8]:
+            measure_key = f"m{idx}"
+            measures_text = _format_voltage_measurement(measures, measure_key)
+
+        # append เฉพาะกรณีที่มีค่า
+        if measures_text:
+            question_text += "\n" + measures_text
+
         img_items = _get_photo_items_for_idx(doc, idx)
 
-        # ประเมินพื้นที่ก่อนขึ้นหน้าใหม่
+        # คำนวณความสูงจริงของแถว
         _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
-        est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
-        _ensure_space_photo(est_row_h)
+        total_images = len(img_items)
+        num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
+        img_h = PHOTO_IMG_MAX_H
+        images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
+        actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
+        
+        # เช็คว่าจะล้นหน้าไหม
+        _ensure_space_photo(actual_row_h)
 
-        # วาดแถว
-        row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, question_text, img_items)
+        row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
+                                     question_text, img_items)
         y += row_h_used
 
-    
     return _output_pdf_bytes(pdf)
 
 
