@@ -990,7 +990,9 @@ export default function ChargerPMForm() {
         if (!draft) return;
 
         // ตัด issue_id ทิ้ง ไม่ให้มาทับของที่ gen ใหม่
-        const { issue_id, ...draftJobWithoutIssue } = draft.job;
+        // const { issue_id, ...draftJobWithoutIssue } = draft.job;
+        const draftJob = draft?.job ?? {};           // ถ้าไม่มี job ให้เป็น object ว่าง
+        const { issue_id, ...draftJobWithoutIssue } = draftJob;
 
         // setJob((prev) => ({ ...prev, ...draft.job }));
         setJob((prev) => ({ ...prev, ...draftJobWithoutIssue }));
