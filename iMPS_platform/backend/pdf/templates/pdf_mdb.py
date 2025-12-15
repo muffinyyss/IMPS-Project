@@ -1323,7 +1323,67 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             pdf.set_font(base_font, "", FONT_MAIN)
 
     has_pre_photos = bool(doc.get("photos_pre"))
+    # has_pre_photos = any(
+    #     (doc.get("photos_pre") or {}).get(f"g{i}")
+    #     for i in range(1, len(checks) + 1)
+    # )
 
+
+    # ===== ส่วนที่ 1: Pre-PM Photos (ถ้ามี) =====
+    # if has_pre_photos:
+    #     pdf.set_xy(x0, y)
+    #     pdf.set_font(base_font, "B", 13)
+    #     pdf.set_fill_color(255, 230, 100)
+    #     TITLE_H = 7
+    #     pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_PHOTO_PRE_PM, border=1, ln=1, align="C", fill=True)
+    #     y += TITLE_H
+
+    #     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+    #     pdf.set_font(base_font, "", FONT_MAIN)
+        
+    #     for it in checks:
+    #         idx = int(it.get("idx") or 0)
+
+    #         question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
+    #         question_text_pre = f"{question_text} (Pre-PM)"
+
+    #         # RESET ทุก iteration
+    #         measures_text = ""
+    #         measures_pre = doc.get("measures_pre", {})
+
+    #         # 🔥 ใช้ _format_voltage_pre_measurement สำหรับ Pre-PM
+    #         # ข้อ 4-8: แรงดันไฟฟ้า
+    #         if idx in [4, 5, 6, 7, 8]:
+    #             measure_key = f"m{idx}"
+    #             measures_text = _format_voltage_pre_measurement(measures_pre, measure_key)
+
+    #         # append เฉพาะกรณีที่มีค่า
+    #         if measures_text:
+    #             question_text_pre += "\n" + measures_text
+
+    #         img_items = _get_photo_items_for_idx_pre(doc, idx)
+    #         if not img_items:
+    #             continue
+
+    #         # คำนวณความสูงจริงของแถว
+    #         _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text_pre, LINE_H)
+    #         total_images = len(img_items)
+    #         num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
+    #         img_h = PHOTO_IMG_MAX_H
+    #         images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
+    #         actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
+            
+    #         # เช็คว่าจะล้นหน้าไหม
+    #         _ensure_space_photo(actual_row_h)
+
+    #         row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
+    #                                      question_text_pre, img_items)
+    #         y += row_h_used
+
+    #     # ขึ้นหน้าใหม่สำหรับ Photos (หลัง PM)
+    #     pdf.add_page()
+    #     y = _draw_header(pdf, base_font, issue_id)
+    
     # ===== ส่วนที่ 1: Pre-PM Photos (ถ้ามี) =====
     if has_pre_photos:
         pdf.set_xy(x0, y)
@@ -1336,8 +1396,17 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
         pdf.set_font(base_font, "", FONT_MAIN)
         
+        # 🔥 แก้ไขตรงนี้: ต้องตรวจสอบว่ามีรูปจริงก่อนแสดง
         for it in checks:
             idx = int(it.get("idx") or 0)
+            
+            # ดึงรูป Pre-PM ก่อน
+            img_items_pre = _get_photo_items_for_idx_pre(doc, idx)
+            
+            # ถ้าไม่มีรูป Pre-PM ข้ามไป
+            # if not img_items_pre:
+            #     continue
+            img_items_pre = img_items_pre or []
 
             question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
             question_text_pre = f"{question_text} (Pre-PM)"
@@ -1356,13 +1425,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             if measures_text:
                 question_text_pre += "\n" + measures_text
 
-            img_items = _get_photo_items_for_idx_pre(doc, idx)
-            if not img_items:
-                continue
-
             # คำนวณความสูงจริงของแถว
             _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text_pre, LINE_H)
-            total_images = len(img_items)
+            total_images = len(img_items_pre)
             num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
             img_h = PHOTO_IMG_MAX_H
             images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
@@ -1372,7 +1437,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             _ensure_space_photo(actual_row_h)
 
             row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
-                                         question_text_pre, img_items)
+                                        question_text_pre, img_items_pre)
             y += row_h_used
 
         # ขึ้นหน้าใหม่สำหรับ Photos (หลัง PM)
