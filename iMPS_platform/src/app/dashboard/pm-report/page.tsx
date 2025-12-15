@@ -49,18 +49,29 @@ export default function DataTablesPage() {
   const isFormView = useMemo(() => searchParams.get("view") === "form", [searchParams]);
 
   const active: TabId = useMemo(() => slugToTab(searchParams.get("tab")), [searchParams]);
-
+  // const active: TabId = useMemo(
+  //   () => slugToTab(searchParams.get("stage")),
+  //   [searchParams]
+  // );
   const editId = searchParams.get("edit_id") ?? "";
   const mode: "list" | "form" =
     searchParams.get("view") === "form" || !!editId ? "form" : "list";
 
+  // useEffect(() => {
+  //   if (!searchParams.get("tab")) {
+  //     const params = new URLSearchParams(searchParams.toString());
+  //     params.set("tab", tabToSlug(active)); // จะเป็น "open" ตอนแรก
+  //     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  //   }
+  // }, [active, pathname, router, searchParams]);
   useEffect(() => {
     if (!searchParams.get("tab")) {
       const params = new URLSearchParams(searchParams.toString());
-      params.set("tab", tabToSlug(active)); // จะเป็น "open" ตอนแรก
+      params.set("tab", "charger");   // หรือ tabToSlug(active)
+      params.delete("stage");
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     }
-  }, [active, pathname, router, searchParams]);
+  }, [pathname, router, searchParams]);
 
   // const go = (next: TabId) => {
   //   // if (isFormView) return; // 🔒 กันการเปลี่ยนแท็บตอนกรอกฟอร์ม
@@ -69,10 +80,9 @@ export default function DataTablesPage() {
   //   router.push(`${pathname}?${params.toString()}`, { scroll: false });
   // };
   const go = (next: TabId) => {
-    // ถ้าอยากกันเปลี่ยนแท็บตอนอยู่หน้า form ก็ใช้ mode ร่วมได้
-    // if (mode === "form") return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tabToSlug(next));
+    params.delete("stage"); // กันของเก่าค้าง
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 

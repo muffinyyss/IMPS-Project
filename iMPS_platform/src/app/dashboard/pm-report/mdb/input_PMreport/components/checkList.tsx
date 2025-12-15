@@ -17,6 +17,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
+import { putPhoto, getPhoto, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 
 type TabId = "pre" | "post";
 
@@ -73,7 +74,7 @@ async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
  *        CONSTANTS
  * ========================= */
 const UNITS = {
-    voltage: ["V", "MΩ", "kΩ"] as const,
+    voltage: ["V"] as const,
 };
 type UnitVoltage = (typeof UNITS.voltage)[number];
 
@@ -84,6 +85,7 @@ type PhotoItem = {
     remark?: string;
     uploading?: boolean;
     error?: string;
+    ref?: PhotoRef;
 };
 
 type Question =
@@ -469,36 +471,73 @@ function PhotoMultiInput({
     photos,
     setPhotos,
     max = 10,
+    draftKey,
+    qNo,
 }: {
     label?: string;
     photos: PhotoItem[];
     setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number;
+    draftKey: string;  // ✅ เพิ่ม
+    qNo: number;
 }) {
     const fileRef = useRef<HTMLInputElement>(null);
     const handlePick = () => fileRef.current?.click();
-    const handleFiles = (list: FileList | null) => {
+    // const handleFiles = (list: FileList | null) => {
+    //     if (!list) return;
+    //     const remain = Math.max(0, max - photos.length);
+    //     const files = Array.from(list).slice(0, remain);
+    //     const items: PhotoItem[] = files.map((f, i) => ({
+    //         id: `${Date.now()}-${i}-${f.name}`,
+    //         file: f,
+    //         preview: URL.createObjectURL(f),
+    //         remark: "",
+    //     }));
+    //     setPhotos((prev) => [...prev, ...items]);
+    //     if (fileRef.current) fileRef.current.value = "";
+    // };
+    const handleFiles = async (list: FileList | null) => {
         if (!list) return;
+
         const remain = Math.max(0, max - photos.length);
         const files = Array.from(list).slice(0, remain);
-        const items: PhotoItem[] = files.map((f, i) => ({
-            id: `${Date.now()}-${i}-${f.name}`,
-            file: f,
-            preview: URL.createObjectURL(f),
-            remark: "",
-        }));
+
+        const items: PhotoItem[] = await Promise.all(
+            files.map(async (f, i) => {
+                const photoId = `${qNo}-${Date.now()}-${i}-${f.name}`;
+                const ref = await putPhoto(draftKey, photoId, f);
+
+                return {
+                    id: photoId,
+                    file: f,
+                    preview: URL.createObjectURL(f),
+                    remark: "",
+                    ref,
+                };
+            })
+        );
+
         setPhotos((prev) => [...prev, ...items]);
         if (fileRef.current) fileRef.current.value = "";
     };
 
-    const handleRemove = (id: string) => {
+    // const handleRemove = (id: string) => {
+    //     setPhotos((prev) => {
+    //         const target = prev.find((p) => p.id === id);
+    //         if (target?.preview) URL.revokeObjectURL(target.preview);
+    //         return prev.filter((p) => p.id !== id);
+    //     });
+    // };
+
+    const handleRemove = async (id: string) => {
+        await delPhoto(draftKey, id);
+
         setPhotos((prev) => {
             const target = prev.find((p) => p.id === id);
             if (target?.preview) URL.revokeObjectURL(target.preview);
             return prev.filter((p) => p.id !== id);
         });
     };
-
     return (
 
         <div className="tw-space-y-3">
@@ -536,7 +575,8 @@ function PhotoMultiInput({
                 multiple
                 capture="environment"
                 className="tw-hidden"
-                onChange={(e) => handleFiles(e.target.files)}
+                // onChange={(e) => handleFiles(e.target.files)}
+                onChange={(e) => { void handleFiles(e.target.files); }}
             />
 
             {photos.length > 0 ? (
@@ -577,7 +617,8 @@ function PhotoMultiInput({
                                     />
                                 )}
                                 <button
-                                    onClick={() => handleRemove(p.id)}
+                                    // onClick={() => handleRemove(p.id)}
+                                    onClick={() => { void handleRemove(p.id); }}
                                     className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors"
                                 >
                                     ×
@@ -701,6 +742,10 @@ export default function MDBPMMForm() {
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
     const key = useMemo(() => draftKey(stationId), [stationId]);
+    // const key = useMemo(
+    //     () => `${draftKey(stationId)}:${draftId ?? "default"}`,
+    //     [stationId, draftId]
+    // );
     // const [สรุปผล, setสรุปผล] = useState<PF>("");
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
     const [inspector, setInspector] = useState<string>("");
@@ -739,16 +784,16 @@ export default function MDBPMMForm() {
     const [m7Pre, setM7Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS, "V"));
     const [m8Pre, setM8Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
 
-function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
-    switch (no) {
-        case 4: return m4Pre;
-        case 5: return m5Pre;
-        case 6: return m6Pre;
-        case 7: return m7Pre;
-        case 8: return m8Pre;
-        default: return null;
+    function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
+        switch (no) {
+            case 4: return m4Pre;
+            case 5: return m5Pre;
+            case 6: return m6Pre;
+            case 7: return m7Pre;
+            case 8: return m8Pre;
+            default: return null;
+        }
     }
-}
 
     /* ---------- measure group (เฉพาะข้อ 17) ---------- */
     const m4 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS, "V");
@@ -994,10 +1039,15 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
             m7: typeof m7.state;
             m8: typeof m8.state;
             summary: string;
+            inspector?: string;
+            dustFilterChanged?: boolean;
+            photoRefs?: Record<number, PhotoRef[]>;
         }>(key);
         if (!draft) return;
 
-        const { issue_id, ...draftJobWithoutIssue } = draft.job;
+        // const { issue_id, ...draftJobWithoutIssue } = draft.job;
+        const draftJob = draft?.job ?? {};           // ถ้าไม่มี job ให้เป็น object ว่าง
+        const { issue_id, ...draftJobWithoutIssue } = draftJob;
 
         setJob((prev) => ({ ...prev, ...draft.job }));
         setRows(draft.rows);
@@ -1007,7 +1057,37 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
         m7.setState(draft.m7 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
         m8.setState(draft.m8 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         // setSummary(draft.summary);
-    }, [stationId]); // โหลดครั้งเดียวเมื่อรู้ stationId
+        setInspector(draft.inspector ?? "");
+        setDustFilterChanged(draft.dustFilterChanged ?? false);
+        (async () => {
+            if (!draft.photoRefs) return;
+
+            const next: Record<number, PhotoItem[]> = Object.fromEntries(
+                QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
+            ) as Record<number, PhotoItem[]>;
+
+            for (const [noStr, refs] of Object.entries(draft.photoRefs)) {
+                const no = Number(noStr);
+                const items: PhotoItem[] = [];
+
+                for (const ref of refs || []) {
+                    const file = await getPhoto(key, ref.id); // ✅ draftKey=key, photoId=ref.id
+                    if (!file) continue;
+
+                    items.push({
+                        id: ref.id,
+                        file,
+                        preview: URL.createObjectURL(file),
+                        remark: ref.remark ?? "",
+                        ref,
+                    });
+                }
+                next[no] = items;
+            }
+
+            setPhotos(next);
+        })();
+    }, [stationId, key]); // โหลดครั้งเดียวเมื่อรู้ stationId
 
     useEffect(() => {
         const onInfo = (e: Event) => {
@@ -1201,7 +1281,7 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
     const renderMeasureGridWithPre = (no: number) => {
         const cfg = FIELD_GROUPS[no];
         const m = MEASURE_BY_NO[no];
-        const pre = getPreMeasureState(no); 
+        const pre = getPreMeasureState(no);
 
         if (!cfg || !m || !pre) return null;
 
@@ -1316,6 +1396,8 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
                                 photos={photos[q.no] || []}
                                 setPhotos={makePhotoSetter(q.no)}
                                 max={10}
+                                draftKey={key}   // ✅ เพิ่ม
+                                qNo={q.no}
                             />
                         </div>
                     )}
@@ -1364,6 +1446,8 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
                                     photos={photos[q.no] || []}
                                     setPhotos={makePhotoSetter(q.no)}
                                     max={10}
+                                    draftKey={key}   // ✅ เพิ่ม
+                                    qNo={q.no}
                                 />
                             </div>
                         )
@@ -1391,6 +1475,14 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
             return () => clearTimeout(h);
         }, deps); // eslint-disable-line react-hooks/exhaustive-deps
     }
+    const photoRefs = useMemo(() => {
+        const out: Record<number, PhotoRef[]> = {};
+        Object.entries(photos).forEach(([noStr, list]) => {
+            const no = Number(noStr);
+            out[no] = (list || []).map(p => p.ref).filter(Boolean) as PhotoRef[];
+        });
+        return out;
+    }, [photos]);
 
     // เรียกใช้ – เก็บเฉพาะข้อมูลที่ serialize ได้
     useDebouncedEffect(() => {
@@ -1406,8 +1498,9 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
             m8: m8.state,
             summary,
             inspector,
+            photoRefs,
         });
-    }, [key, stationId, job, rows, m4.state, m5.state, m6.state, m7.state, summary, inspector,]);
+    }, [key, stationId, job, rows, m4.state, m5.state, m6.state, m7.state, summary, inspector, photoRefs,]);
 
     /* ---------- actions ---------- */
     // const onSave = () => {
@@ -1521,6 +1614,9 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
                 if (files.length === 0) continue;
                 await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre");
             }
+            await Promise.all(
+                Object.values(photos).flat().map(p => delPhoto(key, p.id))
+            );
 
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
@@ -1838,14 +1934,14 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
                             <div className="lg:tw-col-span-1">
                                 <Input
                                     label="PM Date / วันที่ตรวจสอบ"
-                                    type="date"
+                                    type="text"
                                     value={job.date}
-                                    max={todayStr}
+                                    // max={todayStr}
                                     onChange={(e) => setJob({ ...job, date: e.target.value })}
                                     crossOrigin=""
                                     containerProps={{ className: "!tw-min-w-0" }}
-                                    readOnly={isPostMode}
-                                    className={isPostMode ? "!tw-bg-blue-gray-50" : "!tw-bg-white"}
+                                    readOnly
+                                    className="!tw-bg-blue-gray-50"
                                 />
                             </div>
                         </div>
@@ -1871,7 +1967,7 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
                                 .map((q) => renderQuestionBlock(q, displayTab))}
                         </CardBody>
                     ))}
-                    
+
                     <CardBody className="tw-space-y-3 !tw-pt-4 !tw-pb-0">
                         <Typography variant="h6" className="tw-mb-1">
                             Comment
@@ -1915,7 +2011,7 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
                             </Section>
 
                             {/* ข้อ 2 */}
-                            <Section title="2) อินพุตข้อ 4–7" ok={allRequiredInputsFilled}>
+                            <Section title="2) อินพุตข้อ 4–8" ok={allRequiredInputsFilled}>
                                 <div className="tw-space-y-1">
                                     <Typography variant="small" className="!tw-text-amber-700">
                                         ยังขาด:
@@ -1955,82 +2051,7 @@ function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
                             )}
                         </div>
 
-                        {/* <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">
-                                1) สถานะ PASS / FAIL / N/A (ยกเว้นข้อ 4–7 ซึ่งเป็นชุดวัดค่า)
-                            </Typography>
-
-                            {allPFAnswered ? (
-                                <Typography variant="small" className="!tw-text-green-700">
-                                    ครบเรียบร้อย ✅
-                                </Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">
-                                    ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}
-                                </Typography>
-                            )}
-                        </div> */}
-
-                        {/* <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${allRequiredInputsFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">2) อินพุตข้อ 4–7</Typography>
-                            {allRequiredInputsFilled ? (
-                                <Typography variant="small" className="!tw-text-green-700">
-                                    ครบเรียบร้อย ✅
-                                </Typography>
-                            ) : (
-                                <div className="tw-space-y-1">
-                                    <Typography variant="small" className="!tw-text-amber-700">
-                                        ยังขาด:
-                                    </Typography>
-                                    <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
-                                        {missingInputsTextLines.map((line, i) => (
-                                            <li key={i}>{line}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
-                        </div> */}
-
-                        {/* <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">3) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)</Typography>
-                            {allPhotosAttached ? (
-                                <Typography variant="small" className="!tw-text-green-700">
-                                    ครบเรียบร้อย ✅
-                                </Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">
-                                    ยังไม่ได้แนบรูปข้อ: {missingPhotoItems.join(", ")}
-                                </Typography>
-                            )}
-                        </div> */}
-
-                        {/* <div
-                            className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-                                }`}
-                        >
-                            <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
-                            {isSummaryFilled ? (
-                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-                            )}
-                        </div> */}
-
-                        {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                            <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
-                                {submitting ? "กำลังบันทึก..." : "บันทึก"}
-                            </Button>
-                        </div> */}
-
+                       
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
                             {displayTab === "pre" ? (
                                 // อยู่แท็บ BEFORE → บันทึกลง Mongo + img_before แล้วค่อยไป AFTER

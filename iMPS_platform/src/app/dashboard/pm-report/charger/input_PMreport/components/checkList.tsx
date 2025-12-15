@@ -18,7 +18,6 @@ import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/re
 import { apiFetch } from "@/utils/api";
 import { putPhoto, getPhoto, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 
-
 type TabId = "pre" | "post";
 
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
@@ -1219,6 +1218,7 @@ export default function ChargerPMForm() {
     const renderMeasureGridWithPre = (no: number) => {
         const cfg = FIELD_GROUPS[no];
         const m = MEASURE_BY_NO[no];
+        
         if (!cfg || !m) return null;
 
         return (
