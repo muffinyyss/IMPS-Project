@@ -1,7 +1,8 @@
+import type { PhotoRef } from "./draftPhotos";
+
 type DraftData = {
   job: any;
   rows: any;
-  // cp: any;
   m4: any;
   m5: any;
   m6: any;
@@ -9,6 +10,8 @@ type DraftData = {
   m8: any;
   summary: string;
   inspector : string;
+  dustFilterChanged?: boolean;
+  photoRefs?: Record<number, PhotoRef[]>;
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
 };

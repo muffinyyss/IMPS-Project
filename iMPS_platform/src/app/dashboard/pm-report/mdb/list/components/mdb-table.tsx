@@ -22,7 +22,7 @@ import {
   Typography,
 } from "@material-tailwind/react";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
-import { ArrowLeftIcon, ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import MDBPMForm from "@/app/dashboard/pm-report/mdb/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
@@ -593,16 +593,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-    // {
-    //   accessorFn: (row) => row.side,
-    //   id: "side",
-    //   header: () => "side",
-    //   cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-    //   size: 100,
-    //   minSize: 80,
-    //   maxSize: 140,
-    //   meta: { headerAlign: "center", cellAlign: "center" },
-    // },
     {
       accessorFn: (row) => row.office,
       id: "pdf",
@@ -619,21 +609,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
 
         const rowSide = info.row.original.side;
-
-        // return (
-        //   <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-        //     <a
-        //       aria-label="Preview"
-        //       href={previewHref}
-        //       target="_blank"
-        //       rel="noopener noreferrer"
-        //       className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-        //       title="Preview"
-        //     >
-        //       <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-        //     </a>
-        //   </div>
-        // );
 
         if (rowSide == "pre") {
           return (
@@ -685,9 +660,28 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
   ];
+  
+  function sameUser(a?: string, b?: string) {
+      return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+    }
+  
+    const visibleData = useMemo(() => {
+      const username = me?.username;
+      return data.filter((row) => {
+        // แถวปกติ แสดงได้ทั้งหมด
+        if (row.side !== "pre") return true;
+  
+        // แถว pre: ถ้ายังไม่รู้ว่า login เป็นใคร -> ซ่อนไว้ก่อน
+        if (!username) return false;
+  
+        // แถว pre: แสดงเฉพาะ inspector ตรงกับ username
+        return sameUser(row.inspector, username);
+      });
+    }, [data, me?.username]);
 
   const table = useReactTable({
-    data,
+    // data,
+    data: visibleData,
     columns,
     state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting,
@@ -1023,14 +1017,10 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         </div>
       </Card>
 
-      {/* Upload dialog */}
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
         <DialogHeader>เลือกวันที่รายงาน</DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
-            {/* <Typography variant="small" className="!tw-text-blue-gray-600">
-                        Issue ID
-                      </Typography> */}
             <Input
               label="Document Name / ชื่อเอกสาร"
               value={docName}
@@ -1040,14 +1030,8 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
               className="!tw-w-full !tw-bg-blue-gray-50"
               readOnly
             />
-            {/* <Typography variant="small" className="!tw-text-blue-gray-500">
-                        ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
-                      </Typography> */}
           </div>
           <div className="tw-space-y-2">
-            {/* <Typography variant="small" className="!tw-text-blue-gray-600">
-                        Issue ID
-                      </Typography> */}
             <Input
               label="Issue id / รหัสเอกสาร"
               value={issueId}
@@ -1057,9 +1041,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
               className="!tw-w-full !tw-bg-blue-gray-50"
               readOnly
             />
-            {/* <Typography variant="small" className="!tw-text-blue-gray-500">
-                        ระบบจะออกให้อัตโนมัติตามวันที่/สถานี (แก้ไขได้เอง)
-                      </Typography> */}
           </div>
           <div className="tw-space-y-2">
             <Input
