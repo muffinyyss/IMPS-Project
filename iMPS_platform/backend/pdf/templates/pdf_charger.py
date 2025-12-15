@@ -1124,32 +1124,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
         y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
         pdf.set_font(base_font, "", FONT_MAIN)
-
-        # for it in checks:
-        #     idx = int(it.get("idx") or 0)
-
-        #     question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
-        #     question_text_pre = f"{question_text} (Pre-PM)"
-
-        #     # RESET ทุก iteration
-        #     measures_text = ""
-
-        #     if idx == 16:
-        #         measures_pre = doc.get("measures_pre", {})
-        #         m16 = measures_pre.get("m16")
-        #         if m16:
-        #             measures_text = _format_measures_pre_m16(m16)
-                    
-
-        #     # append เฉพาะกรณีที่มีค่า
-        #     if measures_text:
-        #         question_text_pre += "\n" + measures_text
-
-        #     print(question_text_pre)
-
-        #     img_items = _get_photo_items_for_idx_pre(doc, idx)
-        #     if not img_items:
-        #         continue
         
         for it in checks:
             idx = int(it.get("idx") or 0)
@@ -1183,8 +1157,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             img_items = _get_photo_items_for_idx_pre(doc, idx)
             if not img_items:
                 continue
-
-
 
             #  คำนวณความสูงจริงของแถว
             _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text_pre, LINE_H)
