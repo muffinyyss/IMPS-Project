@@ -1,3 +1,5 @@
+import type { PhotoRef } from "./draftPhotos";
+
 type DraftData = {
   job: any;
   rows: any;
@@ -13,13 +15,15 @@ type DraftData = {
   m9_4?: any;
   m9_5?: any;
 
+  inspector : string;
+  photoRefs?: Record<number, PhotoRef[]>;
   // โครงสร้างเก่า (เผื่อมี draft เก่าค้างอยู่ให้โหลดได้ ไม่ error)
-  cp?: any;
-  m4?: any;
-  m5?: any;
-  m6?: any;
-  m7?: any;
-  m8?: any;
+  // cp?: any;
+  // m4?: any;
+  // m5?: any;
+  // m6?: any;
+  // m7?: any;
+  // m8?: any;
 
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
