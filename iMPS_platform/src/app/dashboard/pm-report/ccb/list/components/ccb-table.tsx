@@ -1,6 +1,5 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-// import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   getCoreRowModel,
@@ -37,6 +36,7 @@ type TData = {
   position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
   office: string; // URL ไฟล์
   inspector?: string;
+  side?: string;
 };
 
 type Props = {
@@ -450,8 +450,17 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
         const inspector =
           (it.inspector ?? it.job?.inspector ?? "") as string;
-
-        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: fileUrl, inspector, } as TData;
+        const side = (it.side ?? it.job?.side ?? "") as string;
+        return {
+          id,
+          issue_id: issueId,
+          doc_name: doc_name,
+          pm_date: thDate(isoDay),
+          position: isoDay,
+          office: fileUrl,
+          inspector,
+          side
+        } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -466,7 +475,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
         const inspector =
           (it.inspector ?? it.job?.inspector ?? "") as string;
-        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: href, inspector } as TData;
+        const side = (it.side ?? it.job?.side ?? "") as string;
+        return {
+          issue_id: issueId,
+          doc_name: doc_name,
+          pm_date: thDate(isoDay),
+          position: isoDay,
+          office: href,
+          inspector,
+          side
+        } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
@@ -621,20 +639,65 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         }
 
         const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
-        return (
-          <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-            <a
-              aria-label="Preview"
-              href={previewHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-              title="Preview"
-            >
-              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-            </a>
-          </div>
-        );
+        // return (
+        //   <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+        //     <a
+        //       aria-label="Preview"
+        //       href={previewHref}
+        //       target="_blank"
+        //       rel="noopener noreferrer"
+        //       className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+        //       title="Preview"
+        //     >
+        //       <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+        //     </a>
+        //   </div>
+        // );
+        const rowSide = info.row.original.side;
+
+        if (rowSide == "pre") {
+          return (
+            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+              <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
+                <Button
+                  size="sm"
+                  color="blue"
+                  variant="outlined"
+                  className="tw-shrink-0"
+                  onClick={() => {
+                    // เอา query param เดิมมาต่อ ไม่ให้หาย
+                    const params = new URLSearchParams(searchParams.toString());
+                    // บังคับให้เปลี่ยนเป็นหน้า form (ChargerPMForm)
+                    params.set("view", "form");
+                    // ส่งคำว่า "post" ไปด้วยใน query string
+                    params.set("action", "post");
+                    params.set("edit_id", info.row.original.id || "");
+
+                    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+                  }}
+                >
+                  post-pm
+                </Button>
+              </div>
+            </div>
+          );
+        } else {
+          return (
+            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+              <a
+                aria-label="Preview"
+                href={previewHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+                title="Preview"
+              >
+                <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+              </a>
+            </div>
+          )
+
+        }
       },
       size: 150,
       minSize: 120,
@@ -643,8 +706,27 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     },
   ];
 
+  function sameUser(a?: string, b?: string) {
+    return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+  }
+
+  const visibleData = useMemo(() => {
+    const username = me?.username;
+    return data.filter((row) => {
+      // แถวปกติ แสดงได้ทั้งหมด
+      if (row.side !== "pre") return true;
+
+      // แถว pre: ถ้ายังไม่รู้ว่า login เป็นใคร -> ซ่อนไว้ก่อน
+      if (!username) return false;
+
+      // แถว pre: แสดงเฉพาะ inspector ตรงกับ username
+      return sameUser(row.inspector, username);
+    });
+  }, [data, me?.username]);
+
   const table = useReactTable({
-    data,
+    // data,
+    data: visibleData,
     columns,
     state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting,
@@ -698,7 +780,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       const fd = new FormData();
       fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
-      fd.append("issue_id", issueId); 
+      fd.append("issue_id", issueId);
       fd.append("doc_name", docName || "");
       fd.append("inspector", inspector || "");
       pendingFiles.forEach((f) => fd.append("files", f));
@@ -805,7 +887,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   if (mode === "form") {
     return (
       <div className="tw-mt-6">
-        <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
+        {/* <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
           <Button
             variant="outlined"
             size="sm"
@@ -815,7 +897,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           >
             <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
           </Button>
-        </div>
+        </div> */}
         <CCBPMForm />
       </div>
     );
