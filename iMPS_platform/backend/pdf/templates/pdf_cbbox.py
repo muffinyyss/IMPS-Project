@@ -1,16 +1,19 @@
 # backend/pdf/templates/pdf_cbbox.py
+import os
+import re
+import math
+import base64
+
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
 from datetime import datetime, date
-import os
-import re
 from typing import Optional, Tuple, List, Dict, Any, Union
-import base64
 from io import BytesIO
 from PIL import Image, ExifTags
+from functools import lru_cache
 
 try:
-    import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
+    import requests  # optional
 except Exception:
     requests = None
 
@@ -21,6 +24,12 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
     "I": ["THSarabunNew-Italic.ttf", "THSarabunNew Italic.ttf", "TH Sarabun New Italic.ttf", "THSarabun Italic.ttf"],
     "BI":["THSarabunNew-BoldItalic.ttf", "THSarabunNew BoldItalic.ttf", "TH Sarabun New BoldItalic.ttf", "THSarabun BoldItalic.ttf"],
 }
+
+# -------------------- ตั้งค่าทั่วไป --------------------
+DOCUMENT_TITLE_MAIN = "Preventive Maintenance Checklist - CB BOX"
+DOCUMENT_TITLE_PHOTO_CONT = "Photos (Continued)"
+DOCUMENT_TITLE_PHOTO_PRE_PM = "Photos (Pre-PM)"
+DOCUMENT_TITLE_PHOTO_POST_PM = "Photos (POST-PM)"
 
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
@@ -223,9 +232,6 @@ def _format_m5(measures: dict) -> str:
         lines.append(line)
 
     return "\n".join(lines)
-
-
-
 
 def _parse_date_flex(s: str) -> Optional[datetime]:
     if not s:

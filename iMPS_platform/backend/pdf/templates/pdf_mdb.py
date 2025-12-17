@@ -43,16 +43,6 @@ LINE_H = 5.0
 ROW_MIN_H = 7
 CHECKBOX_SIZE = 3.5
 
-PHOTO_MAX_PER_ROW = 10
-PHOTO_PER_LINE    = 4  
-PHOTO_IMG_MAX_H   = 40
-PHOTO_GAP         = 0.7
-PHOTO_PAD_X       = 1
-PHOTO_PAD_Y       = 1
-PHOTO_ROW_MIN_H = PHOTO_IMG_MAX_H + 4
-PHOTO_FONT_SMALL  = 10
-PHOTO_LINE_H      = 5
-
 # -------------------- รายการหัวข้อ MDB --------------------
 ROW_TITLES = {
     "r1": "ตรวจสอบสภาพทั่วไป",
@@ -68,7 +58,7 @@ ROW_TITLES = {
     "r11": "ทำความสะอาดตู้ MDB",
 }
 
-# -------------------- Utilities / Core helpers   --------------------
+# -------------------- Utilities / Core helpers --------------------
 def _log(msg: str):
     if PDF_DEBUG:
         print(msg)
@@ -290,67 +280,136 @@ def _env_photo_headers() -> Optional[dict]:
     return hdrs or None
 
 # -------------------- Logo / Path / Environment helpers   --------------------
-# Image cache dictionary
-_IMAGE_CACHE: Dict[str, bytes] = {}
-def _load_image_source_from_urlpath(url_path: str) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+def _load_image_source_from_urlpath(
+    url_path: str,
+) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     if not url_path:
         return None, None
 
+    # 🔥 เพิ่ม debug ที่นี่
+    print(f"\n{'='*80}")
     print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
+    print(f"{'='*80}")
 
-    # 1) หา backend/uploads โดยตรง (เพราะ public_root อาจไม่มี uploads)
-    backend_root = Path(__file__).resolve().parents[2]  # จาก templates/ ขึ้น 2 ชั้น = backend/
-    uploads_root = backend_root / "uploads"
+    # case: data URL
+    if url_path.startswith("data:image/"):
+        print("[DEBUG] ✅ เป็น data URL")
+        try:
+            head, b64 = url_path.split(",", 1)
+            mime = head.split(";")[0].split(":", 1)[1]
+            bio = BytesIO(base64.b64decode(b64))
+            img_type = (
+                "PNG"
+                if "png" in mime
+                else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
+            )
+            print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
+            return bio, img_type
+        except Exception as e:
+            print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
+            return None, None
+
+    # ปรับลำดับ: เช็ค local file ก่อน (เร็วที่สุด) แทนที่จะ download
     
-    # print(f"[DEBUG] backend_root = {backend_root}")
-    # print(f"[DEBUG] uploads_root = {uploads_root}")
-
-    if uploads_root.exists():
-        # url_path เช่น "/uploads/pm/Klongluang3/..." หรือ "uploads/pm/..."
-        # ต้องตัด "uploads/" ออกเพราะเราชี้ไปที่ uploads_root แล้ว
-        clean_path = url_path.lstrip("/")
-        if clean_path.startswith("uploads/"):
-            clean_path = clean_path[8:]  # ตัด "uploads/" ออก
+    # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
+    if not url_path.startswith("http"):  # ข้าม http URL
+        print("[DEBUG] 📂 ลองหาใน backend/uploads...")
         
-        local_path = uploads_root / clean_path
-        print(f"[DEBUG] 📂 ตรวจสอบไฟล์: {local_path}")
+        backend_root = Path(__file__).resolve().parents[2]
+        uploads_root = backend_root / "uploads"
         
-        if local_path.exists() and local_path.is_file():
-            print(f"[DEBUG] ✅ เจอไฟล์แล้ว!")
-            return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
-        else:
-            print(f"[DEBUG] ❌ ไม่เจอไฟล์ที่: {local_path}")
-    else:
-        print(f"[DEBUG] ⚠️ ไม่มีโฟลเดอร์ uploads: {uploads_root}")
-
-    # 2) ลอง public_root (กรณีรูปอยู่ใน public/)
-    # public_root = _find_public_root()
-    # if public_root:
-    #     local_path = public_root / url_path.lstrip("/")
-    #     print(f"[DEBUG] 📂 ลองหาใน public: {local_path}")
+        print(f"[DEBUG]   📍 backend_root = {backend_root}")
+        print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
+        print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
         
-    #     if local_path.exists() and local_path.is_file():
-    #         print(f"[DEBUG] ✅ เจอไฟล์ใน public!")
-    #         return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+        if uploads_root.exists():
+            clean_path = url_path.lstrip("/")
+            print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
+            
+            if clean_path.startswith("uploads/"):
+                clean_path = clean_path[8:]
+                print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
+            
+            local_path = uploads_root / clean_path
+            print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
+            print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
+            print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
+            
+            if local_path.exists() and local_path.is_file():
+                print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
+                return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+            else:
+                print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
 
-    # 3) ดาวน์โหลดผ่าน HTTP
-    # base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
-    # print(f"[DEBUG] PHOTOS_BASE_URL = {base_url}")
-    
-    # if base_url and requests is not None:
-    #     full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
-    #     print(f"[DEBUG] 🌐 พยายามดาวน์โหลดจาก: {full_url}")
+        # 2) public folder
+        # print("[DEBUG] 📂 ลองหาใน public folder...")
+        # public_root = _find_public_root()
+        # if public_root:
+        #     print(f"[DEBUG]   📍 public_root = {public_root}")
+        #     local_path = public_root / url_path.lstrip("/")
+        #     print(f"[DEBUG]   📍 local_path = {local_path}")
+        #     print(f"[DEBUG]   📍 exists = {local_path.exists()}")
+            
+        #     if local_path.exists() and local_path.is_file():
+        #         print(f"[DEBUG] ✅ เจอรูปใน public! {local_path}")
+        #         return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+        #     else:
+        #         print(f"[DEBUG] ❌ ไม่เจอรูปใน public")
+        # else:
+        #     print("[DEBUG] ❌ ไม่เจอ public_root")
+
+        # 3) absolute filesystem path
+        # print("[DEBUG] 📂 ลองเช็ค absolute path...")
+        # p_abs = Path(url_path)
+        # print(f"[DEBUG]   📍 absolute path = {p_abs}")
+        # print(f"[DEBUG]   📍 is_absolute = {p_abs.is_absolute()}")
+        # print(f"[DEBUG]   📍 exists = {p_abs.exists()}")
         
-    #     try:
-    #         resp = requests.get(full_url, headers=_env_photo_headers(), timeout=10)
-    #         resp.raise_for_status()
-    #         print(f"[DEBUG] ✅ ดาวน์โหลดสำเร็จ: {len(resp.content)} bytes")
-    #         bio = BytesIO(resp.content)
-    #         return bio, _guess_img_type_from_ext(full_url)
-    #     except Exception as e:
-    #         print(f"[DEBUG] ❌ ดาวน์โหลดล้มเหลว: {e}")
+        # if p_abs.is_absolute() and p_abs.exists():
+        #     print(f"[DEBUG] ✅ เจอรูป absolute path! {p_abs}")
+        #     return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
+        # else:
+        #     print("[DEBUG] ❌ ไม่ใช่ absolute path หรือไม่มีไฟล์")
 
-    print("[DEBUG] ❌ ไม่พบรูปภาพจากทุกวิธี")
+    # 4) HTTP download (ช้าที่สุด - ทำทีหลัง)
+    # if requests is not None:
+        # ลอง base_url ก่อน (มักใช้บ่อยกว่า)
+        # base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
+        
+        # if base_url and not url_path.startswith("http"):
+        #     full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
+        #     print(f"[DEBUG] 🌐 ลอง download จาก base_url: {full_url}")
+        #     try:
+        #         resp = requests.get(
+        #             full_url, 
+        #             headers=_env_photo_headers(), 
+        #             timeout=5,
+        #             stream=True
+        #         )
+        #         resp.raise_for_status()
+        #         print(f"[DEBUG] ✅ Download สำเร็จ! ({len(resp.content)} bytes)")
+        #         return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
+        #     except Exception as e:
+        #         print(f"[DEBUG] ❌ Download ล้มเหลว: {e}")
+        
+        # absolute http(s) URL
+        # if _is_http_url(url_path):
+        #     print(f"[DEBUG] 🌐 ลอง download จาก URL: {url_path}")
+        #     try:
+        #         resp = requests.get(
+        #             url_path, 
+        #             headers=_env_photo_headers(), 
+        #             timeout=5,
+        #             stream=True
+        #         )
+        #         resp.raise_for_status()
+        #         print(f"[DEBUG] ✅ Download สำเร็จ! ({len(resp.content)} bytes)")
+        #         return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
+        #     except Exception as e:
+        #         print(f"[DEBUG] ❌ Download ล้มเหลว: {e}")
+
+    print(f"[DEBUG] ❌ ไม่เจอรูปจากทุกวิธี!")
+    print(f"{'='*80}\n")
     return None, None
 
 def load_image_autorotate(path_or_bytes):
@@ -382,9 +441,9 @@ def load_image_autorotate(path_or_bytes):
         pass  # รูปไม่มี EXIF
 
     # --- 2) Auto rotate เพิ่มเติมสำหรับรูปแนวนอนจริง ๆ ---
-    # w, h = img.size
-    # if w > h:
-    #     img = img.rotate(90, expand=True)
+    w, h = img.size
+    if w > h:
+        img = img.rotate(90, expand=True)
 
     # ส่งออก
     buf = BytesIO()
@@ -392,30 +451,36 @@ def load_image_autorotate(path_or_bytes):
     buf.seek(0)
     return buf
 
-def _load_image_with_cache(url_path: str) -> Tuple[Optional[BytesIO], Optional[str]]:
-    if not url_path:
-        return None, None
+# Image cache dictionary
+_IMAGE_CACHE = {}
 
-    # cache hit
+def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optional[str]]:
+    # ตรวจสอบ cache ก่อน
     if url_path in _IMAGE_CACHE:
-        raw = _IMAGE_CACHE[url_path]
-        return BytesIO(raw), "JPEG"
-
+        _log(f"[IMG] cache hit: {url_path}")
+        cached_buf, cached_type = _IMAGE_CACHE[url_path]
+        # สร้าง BytesIO ใหม่เพื่อ reset position
+        new_buf = BytesIO(cached_buf.getvalue())
+        return new_buf, cached_type
+    
+    # โหลดรูปปกติ
     src, img_type = _load_image_source_from_urlpath(url_path)
+    
     if src is None:
         return None, None
-
+    
+    # แปลงเป็น BytesIO และ auto-rotate ทุกกรณี
     try:
-        buf = load_image_autorotate(src)
-        raw = buf.getvalue()
-
-        # cache เป็น bytes เท่านั้น
-        _IMAGE_CACHE[url_path] = raw
-
-        return BytesIO(raw), "JPEG"
-
+        img_buf = load_image_autorotate(src)
+        _IMAGE_CACHE[url_path] = (img_buf, img_type)
+        _log(f"[IMG] cached: {url_path}")
+        
+        # สร้าง BytesIO ใหม่เพื่อ return (เพราะ cache ใช้ต้นฉบับ)
+        new_buf = BytesIO(img_buf.getvalue())
+        return new_buf, img_type
+        
     except Exception as e:
-        _log(f"[IMG] load error: {e}")
+        _log(f"[IMG] auto-rotate error: {e}")
         return None, None
 
 # -------------------- Photo data helpers --------------------
@@ -436,27 +501,6 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
         if isinstance(p, dict) and p.get("url"):
             out.append(p)
     return out[:PHOTO_MAX_PER_ROW]
-
-def debug_photos_pre(doc: dict):
-    """ฟังก์ชัน debug ให้เรียกก่อนสร้าง PDF"""
-    photos_pre = doc.get("photos_pre", {})
-    print("=" * 50)
-    print("DEBUG: photos_pre structure")
-    print("=" * 50)
-    
-    for idx in range(1, 12):  # ข้อ 1-11
-        key = f"g{idx}"
-        photos = photos_pre.get(key, [])
-        print(f"\nข้อ {idx} ({key}): {len(photos)} รูป")
-        
-        for i, photo in enumerate(photos, 1):
-            if isinstance(photo, dict):
-                url = photo.get("url", "")
-                print(f"  รูปที่ {i}: {url}")
-            else:
-                print(f"  รูปที่ {i}: invalid format - {type(photo)}")
-    
-    print("=" * 50)
 
 # -------------------- Measurement / Data formatting --------------------
 def _format_voltage_measurement(measures: dict, key: str) -> str:
@@ -709,6 +753,19 @@ def _draw_items_table_header(
 
     return y
 
+# -------------------------------------
+# 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
+# -------------------------------------
+PHOTO_MAX_PER_ROW = 10
+PHOTO_PER_LINE    = 4    # จำนวนรูปต่อบรรทัด
+PHOTO_IMG_MAX_H   = 40
+PHOTO_GAP         = 0.7
+PHOTO_PAD_X       = 1
+PHOTO_PAD_Y       = 1
+PHOTO_ROW_MIN_H = PHOTO_IMG_MAX_H + 4
+PHOTO_FONT_SMALL  = 10
+PHOTO_LINE_H      = 5
+
 def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float) -> float:
     header_h = 6.0
     pdf.set_font(base_font, "B", FONT_MAIN)
@@ -809,8 +866,7 @@ def _draw_photos_row(
     """
     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
     
-    # images = (image_items or [])[:PHOTO_MAX_PER_ROW]
-    images = image_items
+    images = (image_items or [])[:PHOTO_MAX_PER_ROW]
     total_images = len(images)
     
     # คำนวณจำนวนแถวของรูป
@@ -869,14 +925,7 @@ def _draw_photos_row(
 
             if img_buf is not None:
                 try:
-                    # pdf.image(img_buf, x=cx, y=cy, w=slot_w, h=PHOTO_IMG_MAX_H)
-                    pdf.image(
-                        img_buf,
-                        x=cx,
-                        y=cy,
-                        w=slot_w
-                    )
-
+                    pdf.image(img_buf, x=cx, y=cy, w=slot_w, h=PHOTO_IMG_MAX_H)
                 except Exception as e:
                     _log(f"[IMG] place error: {e}")
                     pdf.set_xy(cx, cy + (PHOTO_IMG_MAX_H - LINE_H) / 2.0)
@@ -1226,7 +1275,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
         pdf.set_font(base_font, "", FONT_MAIN)
         
-        # 🔥 แก้ไขตรงนี้: วนลูปทุก index แม้ไม่มีรูปก็ยังแสดงแถว
         for it in checks:
             idx = int(it.get("idx") or 0)
             
@@ -1255,12 +1303,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
             img_h = PHOTO_IMG_MAX_H
             images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
-            actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
+            actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h)
             
             # เช็คว่าจะล้นหน้าไหม
             _ensure_space_photo(actual_row_h)
 
-            # 🔥 วาดแถวทุก index (แม้ไม่มีรูปก็แสดง "-")
             row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
                                         question_text_pre, img_items_pre)
             y += row_h_used
@@ -1281,23 +1328,43 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
+    # for it in checks:
+    #     idx = int(it.get("idx") or 0)
+    #     question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
+
+    #     # RESET ทุก iteration
+    #     measures_text = ""
+    #     measures = doc.get("measures", {})
+
+    #     # ใช้ _format_voltage_measurement สำหรับ Post-PM
+    #     # ข้อ 4-8: แรงดันไฟฟ้า
+    #     if idx in [4, 5, 6, 7, 8]:
+    #         measure_key = f"m{idx}"
+    #         measures_text = _format_voltage_measurement(measures, measure_key)
+
+    #     # append เฉพาะกรณีที่มีค่า
+    #     if measures_text:
+    #         question_text += "\n" + measures_text
+
+    #     img_items = _get_photo_items_for_idx(doc, idx)
+
+    #     # คำนวณความสูงจริงของแถว
+    #     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
+    #     total_images = len(img_items)
+    #     num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
+    #     img_h = PHOTO_IMG_MAX_H
+    #     images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
+    #     actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
+        
+    #     # เช็คว่าจะล้นหน้าไหม
+    #     _ensure_space_photo(actual_row_h)
+
+    #     row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, question_text, img_items)
+    #     y += row_h_used
+    
     for it in checks:
         idx = int(it.get("idx") or 0)
         question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
-
-        # RESET ทุก iteration
-        measures_text = ""
-        measures = doc.get("measures", {})
-
-        # 🔥 ใช้ _format_voltage_measurement สำหรับ Post-PM
-        # ข้อ 4-8: แรงดันไฟฟ้า
-        if idx in [4, 5, 6, 7, 8]:
-            measure_key = f"m{idx}"
-            measures_text = _format_voltage_measurement(measures, measure_key)
-
-        # append เฉพาะกรณีที่มีค่า
-        if measures_text:
-            question_text += "\n" + measures_text
 
         img_items = _get_photo_items_for_idx(doc, idx)
 
@@ -1309,10 +1376,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
         actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
         
-        # เช็คว่าจะล้นหน้าไหม
+        # เช็คว่าจะล้นหน้าไหม ถ้าใช่ ให้ขึ้นหน้าใหม่ก่อนวาด
         _ensure_space_photo(actual_row_h)
 
-        row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, question_text, img_items)
+        row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
+                                     question_text, img_items)
         y += row_h_used
 
     return _output_pdf_bytes(pdf)

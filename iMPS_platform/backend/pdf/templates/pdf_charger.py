@@ -601,10 +601,14 @@ def _load_image_source_from_urlpath(
     if not url_path:
         return None, None
 
-    _log(f"[IMG] lookup: {url_path}")
+    # 🔥 เพิ่ม debug ที่นี่
+    print(f"\n{'='*80}")
+    print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
+    print(f"{'='*80}")
 
     # case: data URL
     if url_path.startswith("data:image/"):
+        print("[DEBUG] ✅ เป็น data URL")
         try:
             head, b64 = url_path.split(",", 1)
             mime = head.split(";")[0].split(":", 1)[1]
@@ -614,79 +618,113 @@ def _load_image_source_from_urlpath(
                 if "png" in mime
                 else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
             )
+            print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
             return bio, img_type
         except Exception as e:
-            _log(f"[IMG] data-url parse error: {e}")
+            print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
             return None, None
 
     # ปรับลำดับ: เช็ค local file ก่อน (เร็วที่สุด) แทนที่จะ download
     
     # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
     if not url_path.startswith("http"):  # ข้าม http URL
+        print("[DEBUG] 📂 ลองหาใน backend/uploads...")
+        
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
         
+        print(f"[DEBUG]   📍 backend_root = {backend_root}")
+        print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
+        print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
+        
         if uploads_root.exists():
             clean_path = url_path.lstrip("/")
+            print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
+            
             if clean_path.startswith("uploads/"):
                 clean_path = clean_path[8:]
+                print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
+            
             local_path = uploads_root / clean_path
+            print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
+            print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
+            print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
             
             if local_path.exists() and local_path.is_file():
-                _log(f"[IMG] found in uploads: {local_path}")
+                print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+            else:
+                print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
 
         # 2) public folder
-        public_root = _find_public_root()
-        if public_root:
-            local_path = public_root / url_path.lstrip("/")
-            if local_path.exists() and local_path.is_file():
-                _log(f"[IMG] found in public: {local_path}")
-                return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+        # print("[DEBUG] 📂 ลองหาใน public folder...")
+        # public_root = _find_public_root()
+        # if public_root:
+        #     print(f"[DEBUG]   📍 public_root = {public_root}")
+        #     local_path = public_root / url_path.lstrip("/")
+        #     print(f"[DEBUG]   📍 local_path = {local_path}")
+        #     print(f"[DEBUG]   📍 exists = {local_path.exists()}")
+            
+        #     if local_path.exists() and local_path.is_file():
+        #         print(f"[DEBUG] ✅ เจอรูปใน public! {local_path}")
+        #         return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+        #     else:
+        #         print(f"[DEBUG] ❌ ไม่เจอรูปใน public")
+        # else:
+        #     print("[DEBUG] ❌ ไม่เจอ public_root")
 
         # 3) absolute filesystem path
-        p_abs = Path(url_path)
-        if p_abs.is_absolute() and p_abs.exists():
-            _log(f"[IMG] found absolute path: {p_abs}")
-            return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
+        # print("[DEBUG] 📂 ลองเช็ค absolute path...")
+        # p_abs = Path(url_path)
+        # print(f"[DEBUG]   📍 absolute path = {p_abs}")
+        # print(f"[DEBUG]   📍 is_absolute = {p_abs.is_absolute()}")
+        # print(f"[DEBUG]   📍 exists = {p_abs.exists()}")
+        
+        # if p_abs.is_absolute() and p_abs.exists():
+        #     print(f"[DEBUG] ✅ เจอรูป absolute path! {p_abs}")
+        #     return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
+        # else:
+        #     print("[DEBUG] ❌ ไม่ใช่ absolute path หรือไม่มีไฟล์")
 
     # 4) HTTP download (ช้าที่สุด - ทำทีหลัง)
-    if requests is not None:
+    # if requests is not None:
         # ลอง base_url ก่อน (มักใช้บ่อยกว่า)
-        base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
+        # base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
         
-        if base_url and not url_path.startswith("http"):
-            full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
-            _log(f"[IMG] try base_url: {full_url}")
-            try:
-                resp = requests.get(
-                    full_url, 
-                    headers=_env_photo_headers(), 
-                    timeout=5,  # ลดเหลือ 5 วินาที
-                    stream=True  # ใช้ stream เพื่อ download เร็วขึ้น
-                )
-                resp.raise_for_status()
-                _log(f"[IMG] downloaded {len(resp.content)} bytes from base_url")
-                return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
-            except Exception as e:
-                _log(f"[IMG] base_url failed: {e}")
+        # if base_url and not url_path.startswith("http"):
+        #     full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
+        #     print(f"[DEBUG] 🌐 ลอง download จาก base_url: {full_url}")
+        #     try:
+        #         resp = requests.get(
+        #             full_url, 
+        #             headers=_env_photo_headers(), 
+        #             timeout=5,
+        #             stream=True
+        #         )
+        #         resp.raise_for_status()
+        #         print(f"[DEBUG] ✅ Download สำเร็จ! ({len(resp.content)} bytes)")
+        #         return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
+        #     except Exception as e:
+        #         print(f"[DEBUG] ❌ Download ล้มเหลว: {e}")
         
         # absolute http(s) URL
-        if _is_http_url(url_path):
-            try:
-                resp = requests.get(
-                    url_path, 
-                    headers=_env_photo_headers(), 
-                    timeout=5,  # ลดเหลือ 5 วินาที
-                    stream=True
-                )
-                resp.raise_for_status()
-                _log(f"[IMG] downloaded {len(resp.content)} bytes from absolute URL")
-                return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
-            except Exception as e:
-                _log(f"[IMG] absolute URL failed: {e}")
+        # if _is_http_url(url_path):
+        #     print(f"[DEBUG] 🌐 ลอง download จาก URL: {url_path}")
+        #     try:
+        #         resp = requests.get(
+        #             url_path, 
+        #             headers=_env_photo_headers(), 
+        #             timeout=5,
+        #             stream=True
+        #         )
+        #         resp.raise_for_status()
+        #         print(f"[DEBUG] ✅ Download สำเร็จ! ({len(resp.content)} bytes)")
+        #         return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
+        #     except Exception as e:
+        #         print(f"[DEBUG] ❌ Download ล้มเหลว: {e}")
 
-    _log("[IMG] not found via all methods")
+    print(f"[DEBUG] ❌ ไม่เจอรูปจากทุกวิธี!")
+    print(f"{'='*80}\n")
     return None, None
 
 
@@ -1164,7 +1202,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         y = _draw_header(pdf, base_font, issue_id)
 
     # ===== ส่วนที่ 2: Post-PM Photos =====
-    # วาดหัว "Photos" หรือ "Photos (หลัง PM)" ขึ้นอยู่กับว่ามี pre หรือไม่
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
