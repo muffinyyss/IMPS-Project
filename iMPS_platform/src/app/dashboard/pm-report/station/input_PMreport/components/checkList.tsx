@@ -744,12 +744,9 @@ export default function StationPMReport() {
         (async () => {
             if (!draft.photoRefs) return;
 
-            const next: Record<number, PhotoItem[]> = Object.fromEntries(
-                QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
-            ) as Record<number, PhotoItem[]>;
+            const next: Record<string, PhotoItem[]> = {};
 
-            for (const [noStr, refs] of Object.entries(draft.photoRefs)) {
-                const no = Number(noStr);
+            for (const [photoKey, refs] of Object.entries(draft.photoRefs)) {
                 const items: PhotoItem[] = [];
 
                 for (const ref of refs || []) {
@@ -764,10 +761,12 @@ export default function StationPMReport() {
                         ref,
                     });
                 }
-                next[no] = items;
+                if (items.length > 0) {
+                    next[photoKey] = items;
+                }
             }
 
-            setPhotos(next);
+            setPhotos(prev => ({ ...prev, ...next }));
         })();
     }, [stationId, draftId, key]);
     useEffect(() => {
@@ -948,10 +947,9 @@ export default function StationPMReport() {
         }, deps); // eslint-disable-line react-hooks/exhaustive-deps
     }
     const photoRefs = useMemo(() => {
-        const out: Record<number, PhotoRef[]> = {};
-        Object.entries(photos).forEach(([noStr, list]) => {
-            const no = Number(noStr);
-            out[no] = (list || []).map(p => p.ref).filter(Boolean) as PhotoRef[];
+        const out: Record<string, PhotoRef[]> = {};
+        Object.entries(photos).forEach(([key, list]) => {
+            out[key] = (list || []).map(p => p.ref).filter(Boolean) as PhotoRef[];
         });
         return out;
     }, [photos]);
