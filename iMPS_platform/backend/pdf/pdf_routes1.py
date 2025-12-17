@@ -135,6 +135,11 @@ async def export_pdf(
         os.environ["PHOTOS_BASE_URL"] = photos_base_url
     if photos_headers:
         os.environ["PHOTOS_HEADERS"] = photos_headers
+        
+    # ถ้าไม่ส่งมา ให้ใช้ request.base_url
+    if not os.environ.get("APP_BASE_URL"):
+        base_url = str(request.base_url).rstrip('/')
+        os.environ["APP_BASE_URL"] = base_url
 
     # สร้าง PDF
     try:
