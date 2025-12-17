@@ -2024,6 +2024,7 @@ export default function ChargerPMForm() {
                             </div>
                         )}
                     </CardBody>
+                    
                     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
                         <div className="tw-p-3 tw-flex tw-flex-col tw-gap-3">
                             {/* ข้อ 1 (ใช้ค่าที่เลือกตาม tab) */}
