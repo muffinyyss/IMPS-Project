@@ -1,8 +1,10 @@
+import type { PhotoRef } from "./draftPhotos";
+
 type DraftData = {
-  job: any;
+  // job: any;
   rows: any;
   summary: string;
-  photos?: any;
+  photoRefs?: Record<number, PhotoRef[]>;
 };
 
 function safeStorage() {
