@@ -207,7 +207,6 @@ def _format_m16(measures: dict) -> str:
 
     # ถ้ามี m16 ใช้มันก่อน, ถ้าไม่มีก็ใช้ root dict
     ms = measures.get("m16", measures)
-    # ms_pre = measures_pre.get("m16", measures_pre)
 
     order = [
         "L1-L2", "L2-L3", "L3-L1",
