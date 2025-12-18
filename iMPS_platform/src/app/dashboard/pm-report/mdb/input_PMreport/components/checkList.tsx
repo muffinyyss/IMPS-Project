@@ -464,8 +464,6 @@ function InputWithUnit<U extends string>({
     );
 }
 
-
-
 function PhotoMultiInput({
     label,
     photos,
@@ -1648,7 +1646,7 @@ export default function MDBPMMForm() {
                 // doc_name: docName,
                 ...(summaryCheck ? { summaryCheck } : {}),
                 dust_filter: dustFilterChanged ? "yes" : "no",
-                side: "after" as TabId,
+                side: "post" as TabId,
                 report_id: editId,
             };
             // 1) สร้างรายงาน (submit)
