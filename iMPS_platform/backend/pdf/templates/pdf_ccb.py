@@ -867,7 +867,7 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
 # -------------------------------------
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
 # -------------------------------------
-PHOTO_MAX_PER_ROW = 10
+PHOTO_MAX_PER_ROW = 20
 PHOTO_PER_LINE    = 4    
 PHOTO_IMG_MAX_H   = 40
 PHOTO_GAP         = 0.7

@@ -607,22 +607,22 @@ def _load_image_source_from_urlpath(
     print(f"{'='*80}")
 
     # case: data URL
-    if url_path.startswith("data:image/"):
-        print("[DEBUG] ✅ เป็น data URL")
-        try:
-            head, b64 = url_path.split(",", 1)
-            mime = head.split(";")[0].split(":", 1)[1]
-            bio = BytesIO(base64.b64decode(b64))
-            img_type = (
-                "PNG"
-                if "png" in mime
-                else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
-            )
-            print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
-            return bio, img_type
-        except Exception as e:
-            print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
-            return None, None
+    # if url_path.startswith("data:image/"):
+    #     print("[DEBUG] ✅ เป็น data URL")
+    #     try:
+    #         head, b64 = url_path.split(",", 1)
+    #         mime = head.split(";")[0].split(":", 1)[1]
+    #         bio = BytesIO(base64.b64decode(b64))
+    #         img_type = (
+    #             "PNG"
+    #             if "png" in mime
+    #             else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
+    #         )
+    #         print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
+    #         return bio, img_type
+    #     except Exception as e:
+    #         print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
+    #         return None, None
 
     # ปรับลำดับ: เช็ค local file ก่อน (เร็วที่สุด) แทนที่จะ download
     
@@ -633,22 +633,22 @@ def _load_image_source_from_urlpath(
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
         
-        print(f"[DEBUG]   📍 backend_root = {backend_root}")
-        print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
-        print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
+        # print(f"[DEBUG]   📍 backend_root = {backend_root}")
+        # print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
+        # print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
         
         if uploads_root.exists():
             clean_path = url_path.lstrip("/")
-            print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
+            # print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
             
             if clean_path.startswith("uploads/"):
                 clean_path = clean_path[8:]
-                print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
+                # print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
             
             local_path = uploads_root / clean_path
-            print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
-            print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
-            print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
+            # print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
+            # print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
+            # print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
             
             if local_path.exists() and local_path.is_file():
                 print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
@@ -1023,39 +1023,64 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     # ========== Comment & Summary ==========
     comment_x = x_table
-    h_comment = 7
-    h_checklist = 7
-    total_h = h_comment + h_checklist
-    
-    _ensure_space(total_h + 5)
-    
-    pdf.rect(comment_x, y, item_w + result_w + remark_w, total_h)
-    
-    pdf.set_font(base_font, "B", 11)
-    pdf.set_xy(comment_x, y)
-    pdf.cell(item_w, h_comment, "Comment :", border=0, align="L")
-    pdf.line(comment_x + item_w, y, comment_x + item_w, y + h_comment)
-    
-    pdf.set_font(base_font, "", 11)
-    comment_text = str(doc.get("summary", "") or "-")
-    _cell_text_in_box(pdf, comment_x + item_w, y, result_w + remark_w, h_comment, 
-                     comment_text, align="L", lh=LINE_H, valign="middle")
-    y += h_comment
-    
-    pdf.line(comment_x, y, comment_x + item_w + result_w + remark_w, y)
+    comment_item_w = item_w
+    comment_result_w = result_w
+    comment_remark_w = remark_w
 
+    # 1. ดึงข้อความ comment ก่อน
+    comment_text = str(doc.get("summary", "") or "-")
+
+    # 2. คำนวณความสูงจริงของ comment text
+    _, comment_h_calculated = _split_lines(pdf, comment_result_w + comment_remark_w - 2 * PADDING_X, comment_text, LINE_H)
+
+    #    (LINE_H * 0.5) เพื่อให้มี space เหลือด้านบน-ล่าง
+    h_comment = max(LINE_H * 2, comment_h_calculated + LINE_H * 0.5)
+
+    # 4. h_checklist ยังคงเดิม
+    h_checklist = 7
+
+    # 5. คำนวณ total_h ใหม่ (ตามความสูงของ comment)
+    total_h = h_comment + h_checklist
+
+    # ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
+    _ensure_space(total_h + 5)
+
+    # วาดกรอบนอกทั้งหมด (ความสูงขยายแล้ว)
+    pdf.rect(comment_x, y, comment_item_w + comment_result_w + comment_remark_w, total_h)
+
+    # ========== แถว Comment (ขยายตามความสูง) ==========
+    pdf.set_font(base_font, "B", 11)
+    pdf.set_xy(comment_x, y)
+    pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
+
+    # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ (สูงเต็ม h_comment)
+    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
+
+    pdf.set_font(base_font, "", 11)
+    _cell_text_in_box(pdf, comment_x + comment_item_w, y, comment_result_w + comment_remark_w, h_comment, 
+                    comment_text, align="L", lh=LINE_H, valign="middle")
+
+    y += h_comment
+
+    # เส้นคั่นระหว่าง Comment และ Inspection Results
+    pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
+
+    # ========== แถว Inspection Results (ความสูงคงที่) ==========
     summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
+
     pdf.set_xy(comment_x, y)
     pdf.set_font(base_font, "B", 11)
-    pdf.cell(item_w, h_checklist, "Inspection Results :", border=0, align="L")
-    pdf.line(comment_x + item_w, y, comment_x + item_w, y + h_checklist)
-    
+    pdf.cell(comment_item_w, h_checklist, "Inspection Results :", border=0, align="L")
+
+    # วาดเส้นคั่น
+    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
+
+    # วาด checkbox
     pdf.set_font(base_font, "", 11)
-    x_check_start = comment_x + item_w + 10
+    x_check_start = comment_x + comment_item_w + 10
     y_check = y + (h_checklist - CHECKBOX_SIZE) / 2.0
     gap = 35
-    options = [("Pass", summary_check == "PASS"), ("Fail", summary_check == "FAIL"), 
-               ("N/A", summary_check == "N/A")]
+    options = [("Pass", summary_check == "PASS"), ("Fail", summary_check == "FAIL"), ("N/A", summary_check == "N/A")]
     for i, (label, checked) in enumerate(options):
         x_box = x_check_start + i * gap
         _draw_check(pdf, x_box, y_check, CHECKBOX_SIZE + 0.5, checked)
@@ -1202,6 +1227,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         y = _draw_header(pdf, base_font, issue_id)
 
     # ===== ส่วนที่ 2: Post-PM Photos =====
+    # วาดหัว "Photos" หรือ "Photos (หลัง PM)" ขึ้นอยู่กับว่ามี pre หรือไม่
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
