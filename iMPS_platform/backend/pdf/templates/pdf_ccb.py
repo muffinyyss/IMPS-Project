@@ -19,6 +19,7 @@ except Exception:
 
 # -------------------- ตั้งค่าทั่วไป --------------------
 DOCUMENT_TITLE_MAIN = "Preventive Maintenance Checklist - CCB"
+DOCUMENT_TITLE_MAIN_CONT = "Preventive Maintenance Checklist - CCB (Continued)"
 DOCUMENT_TITLE_PHOTO_CONT = "Photos (Continued)"
 DOCUMENT_TITLE_PHOTO_PRE_PM = "Photos (Pre-PM)"
 DOCUMENT_TITLE_PHOTO_POST_PM = "Photos (POST-PM)"
@@ -728,6 +729,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         # join remark_parts แบบบรรทัดเดียว ไม่ใช่ \n\n ที่ทำให้สูงเกินจริง
         remark = "\n".join(part for part in remark_parts if part.strip())
 
+
         items.append(
             {
                 "idx": idx,
@@ -1231,7 +1233,13 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
+            TITLE_H = 5.5
+            pdf.set_xy(x0, y)
+            pdf.set_font(base_font, "B", 13)
+            pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_MAIN_CONT, border=1, ln=1, align="C")
+            y += TITLE_H
             pdf.set_font(base_font, "", FONT_MAIN)
+            
 
     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
     pdf.set_font(base_font, "", FONT_MAIN)

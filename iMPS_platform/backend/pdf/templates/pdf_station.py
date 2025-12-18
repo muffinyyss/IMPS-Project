@@ -51,12 +51,15 @@ ROW_TITLES = {
     "r4": "ตรวจสอบสีพื้นผิวสถานี",
     "r5": "ตรวจสอบตัวกั้นห้ามล้อ",
     "r6": "ตรวจสอบเสากันชนเครื่องอัดประจุไฟฟ้า",
+    
     "r7": "โคมไฟส่องสว่าง",
     "r7_1": "ตรวจสอบสภาพโคมไฟส่องสว่าง",
     "r7_2": "ตรวจสอบการทำงาน",
+    
     "r8": "ป้ายชื่อสถานี",
     "r8_1": "ตรวจสอบสภาพป้ายชื่อสถานี",
     "r8_2": "ตรวจสอบการทำงาน",
+    
     "r9": "ป้ายวิธีใช้งาน",
     "r9_1": "ตรวจสอบสภาพป้ายวิธีใช้งาน",
     "r9_2": "ตรวจสอบการทำงาน",
@@ -879,6 +882,7 @@ def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[
 def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
     grouped: List[dict] = []
 
+    # เดินตามลำดับการประกาศใน ROW_TITLES เพื่อคงลำดับหัวข้อ
     main_keys: List[Tuple[int, str, str]] = []  # (idx, key, title)
     for k, title in row_titles.items():
         m = re.fullmatch(r"r(\d+)", k)
@@ -886,11 +890,9 @@ def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
             main_keys.append((int(m.group(1)), k, title))
 
     for idx, main_key, main_title in main_keys:
-        # ❌ เดิม: lines = [f"{idx}. {main_title}"]
-        # ✅ ใหม่: ไม่มีเลขข้อ
-        lines = [f"{main_title}"]
+        lines = [f"{idx}. {main_title}"]
 
-        # รวม sub ตามลำดับ
+        # รวม sub ทั้งหมดของหัวข้อนี้ ตามลำดับชื่อคีย์ (r{idx}_sub1, r{idx}_sub2, ...)
         subs: List[Tuple[int, str]] = []
         for k, stitle in row_titles.items():
             m = re.fullmatch(rf"r{idx}_sub(\d+)", k)
@@ -902,7 +904,6 @@ def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
             clean_stitle = re.sub(r"^\s*\.\s*", "", str(stitle))
             lines.append(f" {clean_stitle}")
 
-        # ยังเก็บ idx ไว้เพื่อใช้ sorting ภายนอก
         grouped.append({"idx": idx, "text": "\n".join(lines)})
 
     return grouped
@@ -1182,52 +1183,61 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
         y += row_h_eff
 
-    # ส่วน Comment & Summary
+    # ========== Comment & Summary ==========
     comment_x = x_table
-    comment_y = y
     comment_item_w = item_w
     comment_result_w = result_w
     comment_remark_w = remark_w
 
-    h_comment = 7
+    # 1. ดึงข้อความ comment ก่อน
+    comment_text = str(doc.get("summary", "") or "-")
+
+    # 2. คำนวณความสูงจริงของ comment text
+    _, comment_h_calculated = _split_lines(pdf, comment_result_w + comment_remark_w - 2 * PADDING_X, comment_text, LINE_H)
+
+    # 3. ใช้ความสูงที่มากกว่า (7mm ขั้นต่ำ หรือความสูงที่คำนวณได้)
+    h_comment = max(7, comment_h_calculated)
+
+    # 4. h_checklist ยังคงเดิม
     h_checklist = 7
+
+    # 5. คำนวณ total_h ใหม่ (ตามความสูงของ comment)
     total_h = h_comment + h_checklist
-    
+
     # ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
     _ensure_space(total_h + 5)
-    
-    # วาดกรอบนอกทั้งหมด
-    pdf.rect(comment_x, y, item_w + result_w + remark_w, total_h)
-    
-    # แถว Comment (ใช้ _cell_text_in_box แทน multi_cell)
+
+    # วาดกรอบนอกทั้งหมด (ความสูงขยายแล้ว)
+    pdf.rect(comment_x, y, comment_item_w + comment_result_w + comment_remark_w, total_h)
+
+    # ========== แถว Comment (ขยายตามความสูง) ==========
     pdf.set_font(base_font, "B", 11)
     pdf.set_xy(comment_x, y)
     pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
-    
-    # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ
-    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
-    
-    # ใช้ _cell_text_in_box สำหรับ comment text
-    pdf.set_font(base_font, "", 11)
-    comment_text = str(doc.get("summary", "") or "-")
-    comment_text_x = comment_x + comment_item_w
-    _cell_text_in_box(pdf, comment_text_x, y, comment_result_w + comment_remark_w, h_comment, comment_text, align="L", lh=LINE_H, valign="middle")
-    
-    y += h_comment
-    
-    # เส้นคั่นระหว่าง Comment และ ผลการตรวจสอบ
-    pdf.line(comment_x, y, comment_x + item_w + result_w + remark_w, y)
 
-    # แถวผลการตรวจสอบ
+    # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ (สูงเต็ม h_comment)
+    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
+
+    # ใช้ _cell_text_in_box สำหรับ comment text (ขยายตามความสูง)
+    pdf.set_font(base_font, "", 11)
+    _cell_text_in_box(pdf, comment_x + comment_item_w, y, comment_result_w + comment_remark_w, h_comment, 
+                    comment_text, align="L", lh=LINE_H, valign="top")
+
+    y += h_comment
+
+    # เส้นคั่นระหว่าง Comment และ Inspection Results
+    pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
+
+    # ========== แถว Inspection Results (ความสูงคงที่) ==========
     summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
-    
+
     pdf.set_xy(comment_x, y)
     pdf.set_font(base_font, "B", 11)
-    pdf.cell(comment_item_w, h_checklist, "ผลการตรวจสอบ :", border=0, align="L")
-    
+    pdf.cell(comment_item_w, h_checklist, "Inspection Results :", border=0, align="L")
+
     # วาดเส้นคั่น
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
-    
+
     # วาด checkbox
     pdf.set_font(base_font, "", 11)
     x_check_start = comment_x + comment_item_w + 10
@@ -1320,6 +1330,12 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             pdf.set_font(base_font, "", FONT_MAIN)
 
     has_pre_photos = bool(doc.get("photos_pre"))
+    # photos_pre = doc.get("photos_pre") or {}
+    # has_pre_photos = any(
+    #     isinstance(v, list) and len(v) > 0
+    #     for v in photos_pre.values()
+    # )
+
     
     # ===== ส่วนที่ 1: Pre-PM Photos (ถ้ามี) =====
     if has_pre_photos:
@@ -1338,19 +1354,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             
             question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
             question_text_pre = f"{question_text} (Pre-PM)"
-
-            # RESET ทุก iteration
-            # measures_text = ""
-            # measures_pre = doc.get("measures_pre", {})
-
-            # ข้อ 4-8: แรงดันไฟฟ้า
-            # if idx in [4, 5, 6, 7, 8]:
-            #     measure_key = f"m{idx}"
-            #     measures_text = _format_voltage_pre_measurement(measures_pre, measure_key)
-
-            # append เฉพาะกรณีที่มีค่า
-            # if measures_text:
-            #     question_text_pre += "\n" + measures_text
 
             # ดึงรูป Pre-PM (ถ้าไม่มีจะได้ list ว่าง)
             img_items_pre = _get_photo_items_for_idx_pre(doc, idx)
@@ -1386,40 +1389,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
-    # for it in checks:
-    #     idx = int(it.get("idx") or 0)
-    #     question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
-
-    #     # RESET ทุก iteration
-    #     measures_text = ""
-    #     measures = doc.get("measures", {})
-
-    #     # ใช้ _format_voltage_measurement สำหรับ Post-PM
-    #     # ข้อ 4-8: แรงดันไฟฟ้า
-    #     if idx in [4, 5, 6, 7, 8]:
-    #         measure_key = f"m{idx}"
-    #         measures_text = _format_voltage_measurement(measures, measure_key)
-
-    #     # append เฉพาะกรณีที่มีค่า
-    #     if measures_text:
-    #         question_text += "\n" + measures_text
-
-    #     img_items = _get_photo_items_for_idx(doc, idx)
-
-    #     # คำนวณความสูงจริงของแถว
-    #     _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
-    #     total_images = len(img_items)
-    #     num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
-    #     img_h = PHOTO_IMG_MAX_H
-    #     images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
-    #     actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
-        
-    #     # เช็คว่าจะล้นหน้าไหม
-    #     _ensure_space_photo(actual_row_h)
-
-    #     row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, question_text, img_items)
-    #     y += row_h_used
-    
     for it in checks:
         idx = int(it.get("idx") or 0)
         question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"

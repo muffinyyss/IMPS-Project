@@ -27,6 +27,7 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
 
 # -------------------- ตั้งค่าทั่วไป --------------------
 DOCUMENT_TITLE_MAIN = "Preventive Maintenance Checklist - CB BOX"
+DOCUMENT_TITLE_MAIN_CONT = "Preventive Maintenance Checklist - CB BOX (Continued)"
 DOCUMENT_TITLE_PHOTO_CONT = "Photos (Continued)"
 DOCUMENT_TITLE_PHOTO_PRE_PM = "Photos (Pre-PM)"
 DOCUMENT_TITLE_PHOTO_POST_PM = "Photos (POST-PM)"
@@ -736,19 +737,24 @@ def _draw_result_cell(
     w: float,
     h: float,
     result: Union[str, List[str]],
-    offset_lines: int = 0,   # บรรทัดที่ต้องข้ามก่อนเริ่มวาด
-    line_step: int = 1,      # จำนวนบรรทัดข้อความต่อ 1 row ของ Result
+    offset_lines: int = 0,
+    line_step: int = 1,
+    mode: str = "checkbox",  # 🆕 เพิ่ม parameter
 ):
-   
     pdf.rect(x, y, w, h)
 
-    # ให้ result เป็น list เสมอ
+    # 🆕 กรณีโหมด "text" → แสดงข้อความแบบ Comment
+    if mode == "text":
+        text = str(result) if isinstance(result, str) else "\n".join(str(r) for r in result)
+        _cell_text_in_box(pdf, x, y, w, h, text, align="L", lh=LINE_H, valign="top")
+        return
+
+    # ส่วนเดิม (checkbox mode) ไม่เปลี่ยน...
     if isinstance(result, (list, tuple)):
         results = list(result)
     else:
         results = [result]
 
-    # normalize ผลแต่ละบรรทัด
     results = [_norm_result(r) for r in results]
     n_lines = max(1, len(results))
 
@@ -758,18 +764,15 @@ def _draw_result_cell(
 
     pdf.set_font(base_font, "", FONT_SMALL)
 
-    # วาดเส้นแบ่งคอลัมน์แนวตั้งเต็ม cell
     for i in range(1, 3):
         sx = x + i * col_w
         pdf.line(sx, y, sx, y + h)
 
-    # base_y = จุดเริ่มต้นของบรรทัดแรก (ชิดบน + ข้ามหัวข้อหลัก offset_lines บรรทัด)
     base_y = y + PADDING_Y + offset_lines * LINE_H
 
     for row_idx, res in enumerate(results):
         line_y = base_y + row_idx * line_step * LINE_H
 
-        # ถ้าลงล่างเกิน cell แล้วให้หยุด
         if line_y + CHECKBOX_SIZE > y + h - PADDING_Y:
             break
 
@@ -790,6 +793,68 @@ def _draw_result_cell(
             pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
 
     pdf.set_xy(x + w, y)
+# def _draw_result_cell(
+#     pdf: FPDF,
+#     base_font: str,
+#     x: float,
+#     y: float,
+#     w: float,
+#     h: float,
+#     result: Union[str, List[str]],
+#     offset_lines: int = 0,   # บรรทัดที่ต้องข้ามก่อนเริ่มวาด
+#     line_step: int = 1,      # จำนวนบรรทัดข้อความต่อ 1 row ของ Result
+# ):
+   
+#     pdf.rect(x, y, w, h)
+
+#     # ให้ result เป็น list เสมอ
+#     if isinstance(result, (list, tuple)):
+#         results = list(result)
+#     else:
+#         results = [result]
+
+#     # normalize ผลแต่ละบรรทัด
+#     results = [_norm_result(r) for r in results]
+#     n_lines = max(1, len(results))
+
+#     col_w = w / 3.0
+#     labels = ["pass", "fail", "na"]
+#     label_text = {"pass": "Pass", "fail": "Fail", "na": "N/A"}
+
+#     pdf.set_font(base_font, "", FONT_SMALL)
+
+#     # วาดเส้นแบ่งคอลัมน์แนวตั้งเต็ม cell
+#     for i in range(1, 3):
+#         sx = x + i * col_w
+#         pdf.line(sx, y, sx, y + h)
+
+#     # base_y = จุดเริ่มต้นของบรรทัดแรก (ชิดบน + ข้ามหัวข้อหลัก offset_lines บรรทัด)
+#     base_y = y + PADDING_Y + offset_lines * LINE_H
+
+#     for row_idx, res in enumerate(results):
+#         line_y = base_y + row_idx * line_step * LINE_H
+
+#         # ถ้าลงล่างเกิน cell แล้วให้หยุด
+#         if line_y + CHECKBOX_SIZE > y + h - PADDING_Y:
+#             break
+
+#         for col_idx, key in enumerate(labels):
+#             lab = label_text[key]
+#             sx = x + col_idx * col_w
+
+#             text_w = pdf.get_string_width(lab)
+#             content_w = CHECKBOX_SIZE + 1.6 + text_w
+
+#             start_x = sx + (col_w - content_w) / 2.0
+#             start_y = line_y + (LINE_H - CHECKBOX_SIZE) / 2.0
+
+#             checked = (res == key)
+
+#             _draw_check(pdf, start_x, start_y, CHECKBOX_SIZE, checked)
+#             pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, start_y - 0.3)
+#             pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
+
+#     pdf.set_xy(x + w, y)
 
 def _extract_row_result(row: dict) -> str:
     if not isinstance(row, dict):
@@ -1071,7 +1136,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     station_name = job.get("station_name", "-")
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
-    issue_id = str(doc.get("issue_id", "-"))
+    dropdownQ1 = str(doc.get("dropdownQ1", "-"))
+    dropdownQ2 = str(doc.get("dropdownQ2", "-"))
+    
 
     checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
 
@@ -1120,8 +1187,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
-            # หลังขึ้นหน้าใหม่ ให้วาด header แล้ววาดหัวตารางด้วย
-            # y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
+            TITLE_H = 5.5
+            pdf.set_xy(x0, y)
+            pdf.set_font(base_font, "B", 13)
+            pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_MAIN_CONT, border=1, ln=1, align="C")
+            y += TITLE_H
             pdf.set_font(base_font, "", FONT_MAIN)
 
     # วาดหัวตารางแรก
@@ -1132,13 +1202,10 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         text = str(it.get("text", ""))
         result = it.get("result", "na")
         remark = str(it.get("remark", "") or "")
-        has_subitems = it.get("has_subitems", False)
-        subitems = it.get("subitems", [])
-        remark = str(it.get("remark", "") or "")
+        idx = it.get("idx", 0)  # 🆕 ดึง idx
 
         _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
         _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
-        
         
         is_row_5 = "5." in text
         if is_row_5:
@@ -1151,19 +1218,30 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H)
         x += item_w
         
-        # ถ้ามีข้อย่อย ใช้ฟังก์ชันพิเศษ
-        if has_subitems and subitems:
-            _draw_result_cell_with_subitems(pdf, base_font, x, y, result_w, row_h_eff, subitems)
+        # 🆕 ตรวจสอบว่าเป็นข้อ 1 หรือ 2
+        if idx == 1:
+            # ข้อ 1: แสดงค่าจาก dropdownQ1
+            result_text = str(doc.get("dropdownQ1", "") or "555")
+            _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result_text, mode="text")
+            x += result_w
+            # Remark column ยังคงแสดงค่า remark ปกติ
+            _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
+            
+        elif idx == 2:
+            # ข้อ 2: แสดงค่าจาก dropdownQ2
+            result_text = str(doc.get("dropdownQ2", "") or "-")
+            _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result_text, mode="text")
+            x += result_w
+            # Remark column ยังคงแสดงค่า remark ปกติ
+            _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
+            
         else:
+            # ข้ออื่นๆ: ใช้ checkbox ปกติ
             _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result)
-        
-        x += result_w
-        _cell_text_in_box(
-            pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top"
-        )
+            x += result_w
+            _cell_text_in_box(pdf, x, y, remark_w, row_h_eff, remark, align="L", lh=LINE_H, valign="top")
 
-        y += row_h_eff
-    
+        y += row_h_eff 
 
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.set_draw_color(0, 0, 0)
@@ -1209,33 +1287,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
                     comment_text, align="L", lh=LINE_H, valign="top")
 
     y += h_comment
-
-    # เส้นคั่นระหว่าง Comment และ Inspection Results
-    pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
-
-    # ========== แถว Inspection Results (ความสูงคงที่) ==========
-    summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
-
-    pdf.set_xy(comment_x, y)
-    pdf.set_font(base_font, "B", 11)
-    pdf.cell(comment_item_w, h_checklist, "Inspection Results :", border=0, align="L")
-
-    # วาดเส้นคั่น
-    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
-
-    # วาด checkbox
-    pdf.set_font(base_font, "", 11)
-    x_check_start = comment_x + comment_item_w + 10
-    y_check = y + (h_checklist - CHECKBOX_SIZE) / 2.0
-    gap = 35
-    options = [("Pass", summary_check == "PASS"), ("Fail", summary_check == "FAIL"), ("N/A", summary_check == "N/A")]
-    for i, (label, checked) in enumerate(options):
-        x_box = x_check_start + i * gap
-        _draw_check(pdf, x_box, y_check, CHECKBOX_SIZE + 0.5, checked)
-        pdf.set_xy(x_box + CHECKBOX_SIZE + 3, y_check - 1)
-        pdf.cell(20, LINE_H + 1, label, ln=0, align="L")
-
-    y += h_checklist
 
     # เส้นคั่นระหว่าง Comment และ Inspection Results
     pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
@@ -1319,7 +1370,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y += row_h_date
 
     # ======================= ส่วนที่ 1: Pre-PM Photos =======================
-    # ✅ แก้: ตรวจสอบว่ามี photos_pre หรือ photos
     has_pre_photos = bool(
         (doc.get("photos_pre") and len(str(doc.get("photos_pre"))) > 2) or
         (doc.get("photos") and len(str(doc.get("photos"))) > 2)
