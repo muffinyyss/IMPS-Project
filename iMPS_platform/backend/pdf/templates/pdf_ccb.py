@@ -282,32 +282,6 @@ def _resolve_logo_path() -> Optional[Path]:
                 return p
     return None
 
-def _find_public_root() -> Optional[Path]:
-    env_dir = os.getenv("PUBLIC_DIR")
-    if env_dir:
-        p = Path(env_dir)
-        if p.exists():
-            return p
-    cur = Path(__file__).resolve()
-    for parent in [cur.parent, *cur.parents]:
-        cand = parent / "public"
-        if cand.exists():
-            return cand
-    return None
-
-def _env_photo_headers() -> Optional[dict]:
-    raw = os.getenv("PHOTOS_HEADERS") or ""
-    hdrs = {}
-    for seg in raw.split("|"):
-        seg = seg.strip()
-        if not seg or ":" not in seg:
-            continue
-        k, v = seg.split(":", 1)
-        hdrs[k.strip()] = v.strip()
-    return hdrs or None
-
-
-# -------------------- Logo / Path / Environment helpers   --------------------
 def _load_image_source_from_urlpath(
     url_path: str,
 ) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
@@ -341,27 +315,27 @@ def _load_image_source_from_urlpath(
     
     # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
     if not url_path.startswith("http"):  # ข้าม http URL
-        print("[DEBUG] 📂 ลองหาใน backend/uploads...")
+        # print("[DEBUG] 📂 ลองหาใน backend/uploads...")
         
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
         
-        print(f"[DEBUG]   📍 backend_root = {backend_root}")
-        print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
-        print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
+        # print(f"[DEBUG]   📍 backend_root = {backend_root}")
+        # print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
+        # print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
         
         if uploads_root.exists():
             clean_path = url_path.lstrip("/")
-            print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
+            # print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
             
             if clean_path.startswith("uploads/"):
                 clean_path = clean_path[8:]
-                print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
+                # print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
             
             local_path = uploads_root / clean_path
-            print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
-            print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
-            print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
+            # print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
+            # print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
+            # print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
             
             if local_path.exists() and local_path.is_file():
                 print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
@@ -744,13 +718,6 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             remark_with_offset = remark_lines
 
         # รวม remark ทั้งหมด
-        # if remark_with_offset:
-        #     remark_text = "\n".join(remark_with_offset)
-        #     if remark_text.strip():
-        #         remark_parts.append(remark_text)
-
-        # remark = "\n\n".join(remark_parts) if remark_parts else ""
-        # รวม remark ทั้งหมด
         if remark_with_offset:
             # join แบบไม่เพิ่มบรรทัดว่างเกินจำเป็น
             remark_text = "\n".join(remark_with_offset).strip()
@@ -760,7 +727,6 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
 
         # join remark_parts แบบบรรทัดเดียว ไม่ใช่ \n\n ที่ทำให้สูงเกินจริง
         remark = "\n".join(part for part in remark_parts if part.strip())
-
 
         items.append(
             {
@@ -1004,6 +970,10 @@ def _split_upload_url_parts(url_path: str):
         return type_part, station, doc_id, group, filename
     return None
 
+IMAGE_EXTS = [
+    ".jpg", ".jpeg", ".png", ".jfif",
+    ".webp", ".bmp", ".gif", ".tiff", ".tif"
+]
 
 def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
     # 1) ถ้าเป็นไฟล์อยู่แล้ว
@@ -1145,28 +1115,6 @@ def _draw_photos_row(
 
     pdf.set_xy(x + q_w + g_w, y)
     return row_h
-
-
-def _build_photo_questions(row_titles: dict) -> List[dict]:
-    """
-    สร้างรายการคำถามสำหรับหน้า Photos โดย
-    - แสดงเฉพาะหัวข้อหลัก r{n}
-    - รวมหัวข้อย่อย r{n}_sub* ต่อท้ายในช่องเดียวกัน (คนละบรรทัด)
-    """
-    out: List[dict] = []
-    # ใช้ลำดับตามการประกาศใน ROW_TITLES
-    for key, title in row_titles.items():
-        m = re.match(r"^r(\d+)$", key)
-        if not m:
-            continue
-        idx = int(m.group(1))
-        lines = [f"{idx}. {title}"]
-        # รวมทุก sub ของหัวข้อนี้ (ถ้ามี) ตามลำดับที่ประกาศไว้
-        for sk, st in row_titles.items():
-            if sk.startswith(f"r{idx}_sub"):
-                lines.append(f" {st}")
-        out.append({"idx": idx, "text": "\n".join(lines)})
-    return out
 
 # -------------------- Drawing – job / summary blocks --------------------
 def _draw_job_info_block(
@@ -1337,43 +1285,62 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
         y += row_h_eff
 
-    # ส่วน Comment & Summary
+    # ========== Comment & Summary ==========
     comment_x = x_table
     comment_item_w = item_w
     comment_result_w = result_w
     comment_remark_w = remark_w
 
-    h_comment = 7
+    # 1. ดึงข้อความ comment ก่อน
+    comment_text = str(doc.get("summary", "") or "-")
+
+    # 2. คำนวณความสูงจริงของ comment text
+    _, comment_h_calculated = _split_lines(pdf, comment_result_w + comment_remark_w - 2 * PADDING_X, comment_text, LINE_H)
+
+    # 3. ใช้ความสูงที่มากกว่า (7mm ขั้นต่ำ หรือความสูงที่คำนวณได้)
+    h_comment = max(7, comment_h_calculated)
+
+    # 4. h_checklist ยังคงเดิม
     h_checklist = 7
+
+    # 5. คำนวณ total_h ใหม่ (ตามความสูงของ comment)
     total_h = h_comment + h_checklist
-    
+
+    # ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
     _ensure_space(total_h + 5)
-    
-    pdf.rect(comment_x, y, item_w + result_w + remark_w, total_h)
-    
+
+    # วาดกรอบนอกทั้งหมด (ความสูงขยายแล้ว)
+    pdf.rect(comment_x, y, comment_item_w + comment_result_w + comment_remark_w, total_h)
+
+    # ========== แถว Comment (ขยายตามความสูง) ==========
     pdf.set_font(base_font, "B", 11)
     pdf.set_xy(comment_x, y)
     pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
-    
-    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
-    
-    pdf.set_font(base_font, "", 11)
-    comment_text = str(doc.get("summary", "") or "-")
-    comment_text_x = comment_x + comment_item_w
-    _cell_text_in_box(pdf, comment_text_x, y, comment_result_w + comment_remark_w, h_comment, comment_text, align="L", lh=LINE_H, valign="middle")
-    
-    y += h_comment
-    
-    pdf.line(comment_x, y, comment_x + item_w + result_w + remark_w, y)
 
+    # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ (สูงเต็ม h_comment)
+    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
+
+    # ใช้ _cell_text_in_box สำหรับ comment text (ขยายตามความสูง)
+    pdf.set_font(base_font, "", 11)
+    _cell_text_in_box(pdf, comment_x + comment_item_w, y, comment_result_w + comment_remark_w, h_comment, 
+                    comment_text, align="L", lh=LINE_H, valign="top")
+
+    y += h_comment
+
+    # เส้นคั่นระหว่าง Comment และ Inspection Results
+    pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
+
+    # ========== แถว Inspection Results (ความสูงคงที่) ==========
     summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
-    
+
     pdf.set_xy(comment_x, y)
     pdf.set_font(base_font, "B", 11)
     pdf.cell(comment_item_w, h_checklist, "Inspection Results :", border=0, align="L")
-    
+
+    # วาดเส้นคั่น
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
-    
+
+    # วาด checkbox
     pdf.set_font(base_font, "", 11)
     x_check_start = comment_x + comment_item_w + 10
     y_check = y + (h_checklist - CHECKBOX_SIZE) / 2.0
