@@ -266,7 +266,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     if (view === "form") {
       params.set("view", "form");
-      params.delete("tab");
       params.set("pmtab", "pre");
     } else {
       params.delete("view");
@@ -626,7 +625,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                     // เอา query param เดิมมาต่อ ไม่ให้หาย
                     const params = new URLSearchParams(searchParams.toString());
                     // ลบ tab parameter ที่ใช้สำหรับ list page
-                    params.delete("tab");
                     // บังคับให้เปลี่ยนเป็นหน้า form (ChargerPMForm)
                     params.set("view", "form");
                     // ส่งคำว่า "post" ไปด้วยใน query string
@@ -666,24 +664,24 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
   ];
-  
+
   function sameUser(a?: string, b?: string) {
-      return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
-    }
-  
-    const visibleData = useMemo(() => {
-      const username = me?.username;
-      return data.filter((row) => {
-        // แถวปกติ แสดงได้ทั้งหมด
-        if (row.side !== "pre") return true;
-  
-        // แถว pre: ถ้ายังไม่รู้ว่า login เป็นใคร -> ซ่อนไว้ก่อน
-        if (!username) return false;
-  
-        // แถว pre: แสดงเฉพาะ inspector ตรงกับ username
-        return sameUser(row.inspector, username);
-      });
-    }, [data, me?.username]);
+    return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+  }
+
+  const visibleData = useMemo(() => {
+    const username = me?.username;
+    return data.filter((row) => {
+      // แถวปกติ แสดงได้ทั้งหมด
+      if (row.side !== "pre") return true;
+
+      // แถว pre: ถ้ายังไม่รู้ว่า login เป็นใคร -> ซ่อนไว้ก่อน
+      if (!username) return false;
+
+      // แถว pre: แสดงเฉพาะ inspector ตรงกับ username
+      return sameUser(row.inspector, username);
+    });
+  }, [data, me?.username]);
 
   const table = useReactTable({
     // data,
@@ -817,7 +815,9 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   const goList = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
-    params.delete("edit_id"); // 👈 ลบด้วย
+    params.delete("edit_id");
+    params.delete("pmtab");
+    // ไม่ต้องลบ tab เพราะต้องการให้กลับไปที่ tab เดิม
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
   function goEdit(row: TData) {
@@ -825,6 +825,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
     params.set("edit_id", row.id);       // 👈 ให้ฟอร์มใช้โหลดข้อมูล
+    params.set("pmtab", "pre");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 

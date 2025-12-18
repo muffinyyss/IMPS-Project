@@ -64,14 +64,25 @@ export default function DataTablesPage() {
   //     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   //   }
   // }, [active, pathname, router, searchParams]);
+  const goToForm = (id?: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "form");
+    if (id) params.set("edit_id", id);
+    // เก็บ tab ปัจจุบัน
+    if (!params.get("tab")) {
+      params.set("tab", tabToSlug(active));
+    }
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   useEffect(() => {
     if (!searchParams.get("tab")) {
       const params = new URLSearchParams(searchParams.toString());
-      params.set("tab", "charger");   // หรือ tabToSlug(active)
+      params.set("tab", tabToSlug(active));
       params.delete("stage");
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     }
-  }, [pathname, router, searchParams]);
+  }, [pathname, router, searchParams, active]);
 
   // const go = (next: TabId) => {
   //   // if (isFormView) return; // 🔒 กันการเปลี่ยนแท็บตอนกรอกฟอร์ม
