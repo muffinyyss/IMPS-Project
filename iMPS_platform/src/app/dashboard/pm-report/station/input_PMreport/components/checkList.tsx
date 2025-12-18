@@ -1455,16 +1455,17 @@ export default function StationPMReport() {
                                 </div>
                             </div>
                         </div>
-                        {/* ขวาสุด: ชื่อเอกสาร / เลขที่เอกสาร */}
-                        <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
-                            <div className="tw-font-semibold">
-                                Document Name.
+                        {/* ขวาสุด: ชื่อเอกสาร / เลขที่เอกสาร (ซ่อนใน post mode) */}
+                        {!isPostMode && (
+                            <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
+                                <div className="tw-font-semibold">
+                                    Document Name.
+                                </div>
+                                <div>
+                                    {docName || "-"}
+                                </div>
                             </div>
-                            <div>
-                                {docName || "-"}
-                            </div>
-
-                        </div>
+                        )}
                     </div>
                     {/* BODY */}
                     <div className="tw-mt-8 tw-space-y-8">
