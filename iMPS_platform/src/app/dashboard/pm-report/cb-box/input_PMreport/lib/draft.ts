@@ -1,28 +1,17 @@
+import type { PhotoRef } from "./draftPhotos";
+
 type PF = "PASS" | "FAIL" | "NA" | "";
 
 type DraftData = {
-  job: any;
+  // job: any;
   rows: any;
   summary: string;
   summary_pf?: PF;
-  // รูปแนบ (เพิ่มในเวอร์ชันใหม่)
-  photos?: any;
-
-  // โครงสร้างใหม่: ค่าวัดของ "ข้อ 9" (Main + ย่อย 1–5)
-  m9_0?: any;
-  m9_1?: any;
-  m9_2?: any;
-  m9_3?: any;
-  m9_4?: any;
-  m9_5?: any;
-
-  // โครงสร้างเก่า (เผื่อมี draft เก่าค้างอยู่ให้โหลดได้ ไม่ error)
-  cp?: any;
-  m4?: any;
   m5?: any;
-  m6?: any;
-  m7?: any;
-  m8?: any;
+  inspector : string;
+  photoRefs?: Record<number, PhotoRef[]>;
+  dropdownQ1?: any;  // เพิ่ม dropdownQ1
+  dropdownQ2?: any; 
 
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
