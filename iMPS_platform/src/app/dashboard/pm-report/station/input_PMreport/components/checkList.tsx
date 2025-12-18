@@ -730,7 +730,8 @@ export default function StationPMReport() {
             rows: typeof rows;
             // photos: typeof photos;
             summary: string;
-            inspector?: string;
+            summary_pf?: PF;
+            // inspector?: string;
             photoRefs?: Record<string, PhotoRef[]>;
         }>(key);
         if (!draft) return;
@@ -741,7 +742,8 @@ export default function StationPMReport() {
         setRows(draft.rows);
         // setPhotos(draft.photos ?? initialPhotos);
         setSummary(draft.summary);
-        setInspector(draft.inspector ?? "");
+        if (draft.summary_pf) setSummaryCheck(draft.summary_pf);
+        // setInspector(draft.inspector ?? "");
         (async () => {
             if (!draft.photoRefs) return;
 
@@ -959,10 +961,10 @@ export default function StationPMReport() {
             rows,
             // 
             summary,
-            // photos,
+            summary_pf: summaryCheck,
             photoRefs,
         });
-    }, [key, stationId, draftId, rows, summary, photoRefs,]);
+    }, [key, stationId, draftId, rows, summary, summaryCheck, photoRefs,]);
     /* ---------- actions (submit ยังคงเดิม) ---------- */
     async function uploadGroupPhotos(
         reportId: string,
@@ -1061,7 +1063,7 @@ export default function StationPMReport() {
             );
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=station`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
@@ -1147,7 +1149,7 @@ export default function StationPMReport() {
             if (!fin.ok) throw new Error(await fin.text());
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=station`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
@@ -1574,13 +1576,13 @@ export default function StationPMReport() {
                             {/* บล็อก 3 & 4 แสดงเฉพาะหลัง (post) */}
                             {isPostMode && (
                                 <>
-                                    <Section title="3) สถานะ PASS / FAIL / N/A ทั้ง 18 ข้อ" ok={allPFAnsweredForUI}>
+                                    <Section title="2) สถานะ PASS / FAIL / N/A ทั้ง 18 ข้อ" ok={allPFAnsweredForUI}>
                                         <Typography variant="small" className="!tw-text-amber-700">
                                             ยังไม่ได้เลือกข้อ: {missingPFItemsForUI.join(", ")}
                                         </Typography>
                                     </Section>
 
-                                    <Section title="4) สรุปผลการตรวจสอบ" ok={isSummaryFilled && isSummaryCheckFilled}>
+                                    <Section title="3) สรุปผลการตรวจสอบ" ok={isSummaryFilled && isSummaryCheckFilled}>
                                         <div className="tw-space-y-1">
                                             {!isSummaryFilled && (
                                                 <Typography variant="small" className="!tw-text-amber-700">
