@@ -287,27 +287,27 @@ def _load_image_source_from_urlpath(
         return None, None
 
     # 🔥 เพิ่ม debug ที่นี่
-    print(f"\n{'='*80}")
-    print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
-    print(f"{'='*80}")
+    # print(f"\n{'='*80}")
+    # print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
+    # print(f"{'='*80}")
 
     # case: data URL
-    if url_path.startswith("data:image/"):
-        print("[DEBUG] ✅ เป็น data URL")
-        try:
-            head, b64 = url_path.split(",", 1)
-            mime = head.split(";")[0].split(":", 1)[1]
-            bio = BytesIO(base64.b64decode(b64))
-            img_type = (
-                "PNG"
-                if "png" in mime
-                else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
-            )
-            print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
-            return bio, img_type
-        except Exception as e:
-            print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
-            return None, None
+    # if url_path.startswith("data:image/"):
+    #     print("[DEBUG] ✅ เป็น data URL")
+    #     try:
+    #         head, b64 = url_path.split(",", 1)
+    #         mime = head.split(";")[0].split(":", 1)[1]
+    #         bio = BytesIO(base64.b64decode(b64))
+    #         img_type = (
+    #             "PNG"
+    #             if "png" in mime
+    #             else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
+    #         )
+    #         print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
+    #         return bio, img_type
+    #     except Exception as e:
+    #         print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
+    #         return None, None
 
     # ปรับลำดับ: เช็ค local file ก่อน (เร็วที่สุด) แทนที่จะ download
     
@@ -318,22 +318,22 @@ def _load_image_source_from_urlpath(
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
         
-        print(f"[DEBUG]   📍 backend_root = {backend_root}")
-        print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
-        print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
+        # print(f"[DEBUG]   📍 backend_root = {backend_root}")
+        # print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
+        # print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
         
         if uploads_root.exists():
             clean_path = url_path.lstrip("/")
-            print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
+            # print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
             
             if clean_path.startswith("uploads/"):
                 clean_path = clean_path[8:]
-                print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
+                # print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
             
             local_path = uploads_root / clean_path
-            print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
-            print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
-            print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
+            # print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
+            # print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
+            # print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
             
             if local_path.exists() and local_path.is_file():
                 print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
@@ -1066,7 +1066,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
             # หลังขึ้นหน้าใหม่ ให้วาด header แล้ววาดหัวตารางด้วย
-            y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
+            # y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
             pdf.set_font(base_font, "", FONT_MAIN)
 
     # วาดหัวตารางแรก

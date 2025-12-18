@@ -43,7 +43,6 @@ LINE_H = 5.0
 ROW_MIN_H = 7
 CHECKBOX_SIZE = 3.5
 
-
 # -------------------- รายการหัวข้อ CCB --------------------
 ROW_TITLES = {
     "r1": "ตรวจสอบสภาพทั่วไป",
@@ -369,73 +368,6 @@ def _load_image_source_from_urlpath(
                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
             else:
                 print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
-
-        # 2) public folder
-        # print("[DEBUG] 📂 ลองหาใน public folder...")
-        # public_root = _find_public_root()
-        # if public_root:
-        #     print(f"[DEBUG]   📍 public_root = {public_root}")
-        #     local_path = public_root / url_path.lstrip("/")
-        #     print(f"[DEBUG]   📍 local_path = {local_path}")
-        #     print(f"[DEBUG]   📍 exists = {local_path.exists()}")
-            
-        #     if local_path.exists() and local_path.is_file():
-        #         print(f"[DEBUG] ✅ เจอรูปใน public! {local_path}")
-        #         return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
-        #     else:
-        #         print(f"[DEBUG] ❌ ไม่เจอรูปใน public")
-        # else:
-        #     print("[DEBUG] ❌ ไม่เจอ public_root")
-
-        # 3) absolute filesystem path
-        # print("[DEBUG] 📂 ลองเช็ค absolute path...")
-        # p_abs = Path(url_path)
-        # print(f"[DEBUG]   📍 absolute path = {p_abs}")
-        # print(f"[DEBUG]   📍 is_absolute = {p_abs.is_absolute()}")
-        # print(f"[DEBUG]   📍 exists = {p_abs.exists()}")
-        
-        # if p_abs.is_absolute() and p_abs.exists():
-        #     print(f"[DEBUG] ✅ เจอรูป absolute path! {p_abs}")
-        #     return p_abs.as_posix(), _guess_img_type_from_ext(url_path)
-        # else:
-        #     print("[DEBUG] ❌ ไม่ใช่ absolute path หรือไม่มีไฟล์")
-
-    # 4) HTTP download (ช้าที่สุด - ทำทีหลัง)
-    # if requests is not None:
-        # ลอง base_url ก่อน (มักใช้บ่อยกว่า)
-        # base_url = os.getenv("PHOTOS_BASE_URL") or os.getenv("APP_BASE_URL") or ""
-        
-        # if base_url and not url_path.startswith("http"):
-        #     full_url = base_url.rstrip("/") + "/" + url_path.lstrip("/")
-        #     print(f"[DEBUG] 🌐 ลอง download จาก base_url: {full_url}")
-        #     try:
-        #         resp = requests.get(
-        #             full_url, 
-        #             headers=_env_photo_headers(), 
-        #             timeout=5,
-        #             stream=True
-        #         )
-        #         resp.raise_for_status()
-        #         print(f"[DEBUG] ✅ Download สำเร็จ! ({len(resp.content)} bytes)")
-        #         return BytesIO(resp.content), _guess_img_type_from_ext(full_url)
-        #     except Exception as e:
-        #         print(f"[DEBUG] ❌ Download ล้มเหลว: {e}")
-        
-        # absolute http(s) URL
-        # if _is_http_url(url_path):
-        #     print(f"[DEBUG] 🌐 ลอง download จาก URL: {url_path}")
-        #     try:
-        #         resp = requests.get(
-        #             url_path, 
-        #             headers=_env_photo_headers(), 
-        #             timeout=5,
-        #             stream=True
-        #         )
-        #         resp.raise_for_status()
-        #         print(f"[DEBUG] ✅ Download สำเร็จ! ({len(resp.content)} bytes)")
-        #         return BytesIO(resp.content), _guess_img_type_from_ext(url_path)
-        #     except Exception as e:
-        #         print(f"[DEBUG] ❌ Download ล้มเหลว: {e}")
 
     print(f"[DEBUG] ❌ ไม่เจอรูปจากทุกวิธี!")
     print(f"{'='*80}\n")
@@ -776,7 +708,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             result_step = 1
 
 
-                # ---------- Remark (รวม voltage + remark แยกบรรทัด) ----------
+        # ---------- Remark (รวม voltage + remark แยกบรรทัด) ----------
         remark_parts: List[str] = []
 
         # ข้อ 4–8 : พ่วงข้อมูลวัดแรงดันไฟฟ้าแบบเดิม (m4..m8)
@@ -785,8 +717,6 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             voltage_text = _format_voltage_measurement(measures, measure_key)
             if voltage_text:
                 remark_parts.append(voltage_text)
-        # r9 ใช้ measures["r9"] แสดงในคอลัมน์ Item แล้ว เลยไม่ต้องพ่วงใน remark อีก
-
 
         # เพิ่ม remark ของหัวข้อหลัก (ถ้ามี)
         data_main = rows.get(main_key) or {}
@@ -938,7 +868,7 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
 # -------------------------------------
 PHOTO_MAX_PER_ROW = 10
-PHOTO_PER_LINE    = 4    # จำนวนรูปต่อบรรทัด
+PHOTO_PER_LINE    = 4    
 PHOTO_IMG_MAX_H   = 40
 PHOTO_GAP         = 0.7
 PHOTO_PAD_X       = 1
@@ -1050,14 +980,6 @@ def _extract_row_result(row: dict) -> str:
 
     return ""
 
-
-
-
-
-
-
-
-
 def _get_uploads_root() -> Path:
     """เลือก root ของ uploads: ENV(PHOTOS_UPLOADS_DIR) > <backend>/uploads"""
     override = os.getenv("PHOTOS_UPLOADS_DIR")
@@ -1106,14 +1028,7 @@ def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[
     return None, None
 
 
-
-
-
 # -------------------- data helpers --------------------
-
-
-
-
 def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
     grouped: List[dict] = []
 
