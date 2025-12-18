@@ -4534,14 +4534,14 @@ async def ccbpmreport_list(
 async def ccbpmreport_upload_photos(
     report_id: str,
     station_id: str = Form(...),
-    group: str = Form(...),                   # "g1" .. "g11"
+    group: str = Form(...),                   # "r1" .. "r10", "r9_0" .. "r9_5"
     files: List[UploadFile] = File(...),
     # remark: Optional[str] = Form(None),
     # current: UserClaims = Depends(get_current_user),
 ):
     # if current.role != "admin" and station_id not in set(current.station_ids):
     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-    if not re.fullmatch(r"g\d+", group):
+    if not re.fullmatch(r"r\d+(_\d+)?", group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
     coll = get_ccbpmreport_collection_for(station_id)
@@ -4598,14 +4598,14 @@ async def ccbpmreport_upload_photos(
 async def ccbpmreport_upload_photos(
     report_id: str,
     station_id: str = Form(...),
-    group: str = Form(...),                   # "g1" .. "g11"
+    group: str = Form(...),                   # "r1" .. "r10", "r9_0" .. "r9_5"
     files: List[UploadFile] = File(...),
     remark: Optional[str] = Form(None),
     # current: UserClaims = Depends(get_current_user),
 ):
     # if current.role != "admin" and station_id not in set(current.station_ids):
     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-    if not re.fullmatch(r"g\d+", group):
+    if not re.fullmatch(r"r\d+(_\d+)?", group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
     coll = get_ccbpmreport_collection_for(station_id)
@@ -4855,6 +4855,8 @@ class CBBOXPMSubmitIn(BaseModel):
     doc_name: Optional[str] = None 
     # summaryCheck: Optional[Literal["PASS","FAIL","NA"]] = None
     inspector: Optional[str] = None
+    dropdownQ1: Optional[str] = None  # ✅ เพิ่ม dropdown Q1
+    dropdownQ2: Optional[str] = None  # ✅ เพิ่ม dropdown Q2
 
 @app.get("/cbboxpmreport/preview-issueid")
 async def cbboxpmreport_preview_issueid(
@@ -5001,6 +5003,8 @@ async def cbboxpmreport_submit(body: CBBOXPMSubmitIn, current: UserClaims = Depe
         "doc_name": doc_name,
         "issue_id": issue_id,
         "job": body.job,
+        "dropdownQ1" : body.dropdownQ1,  # ✅ เพิ่ม dropdown Q1
+        "dropdownQ2" : body.dropdownQ2,  # ✅ เพิ่ม dropdown Q2
         # "rows": body.rows,
         "measures_pre": body.measures_pre,         # m4..m8
         # "summary": body.summary,
@@ -5034,6 +5038,8 @@ class CBBOXPMPostIn(BaseModel):
     # pm_date: str
     # doc_name: str | None = None
     summaryCheck: str | None = None
+    dropdownQ1: Optional[str] = None  # ✅ เพิ่ม dropdown Q1
+    dropdownQ2: Optional[str] = None  # ✅ เพิ่ม dropdown Q2
     # dust_filter: str | None = None
     side: Literal["post", "after"]
 
@@ -5065,6 +5071,8 @@ async def cbboxpmreport_submit(body: CBBOXPMPostIn, current: UserClaims = Depend
             # "inspector": inspector,
             # "dust_filter": body.dust_filter,
             # "doc_name": doc_name,
+            "dropdownQ1": body.dropdownQ1,  # ✅ เพิ่ม dropdown Q1
+            "dropdownQ2": body.dropdownQ2,  # ✅ เพิ่ม dropdown Q2
             "side": "post",                     # ตอนนี้อยู่ฝั่ง post แล้ว
             "updatedAt": datetime.now(timezone.utc),
         }

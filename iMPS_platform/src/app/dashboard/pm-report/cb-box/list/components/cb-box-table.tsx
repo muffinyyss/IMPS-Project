@@ -1,8 +1,5 @@
-
 "use client";
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   getCoreRowModel,
@@ -27,12 +24,9 @@ import {
 } from "@material-tailwind/react";
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
-// import { AppDataTable } from "@/data";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import CBBOXPMForm from "@/app/dashboard/pm-report/cb-box/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
-// type TData = (typeof AppDataTable)[number];
-// type TData = { name: React.ReactNode; position: string; office: string };
 type TData = {
   id?: string;
   doc_name?: string;
@@ -41,6 +35,7 @@ type TData = {
   position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
   office: string; // URL ไฟล์
   inspector?: string;
+  side?: string;
 };
 
 type Props = {
@@ -281,9 +276,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     if (view === "form") {
       params.set("view", "form");
+      // params.delete("tab");
+      params.set("pmtab", "pre");
     } else {
       params.delete("view");
       params.delete("edit_id");
+      params.delete("pmtab");
     }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -454,8 +452,17 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
         const inspector =
           (it.inspector ?? it.job?.inspector ?? "") as string;
-
-        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: fileUrl, inspector, } as TData;
+        const side = (it.side ?? it.job?.side ?? "") as string;
+        return {
+          id,
+          issue_id: issueId,
+          doc_name: doc_name,
+          pm_date: thDate(isoDay),
+          position: isoDay,
+          office: fileUrl,
+          inspector,
+          side
+        } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -470,7 +477,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
         const inspector =
           (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
-        return { issue_id: issueId, doc_name: doc_name, pm_date: thDate(isoDay), position: isoDay, office: href, inspector, } as TData;
+        const side = (it.side ?? it.job?.side ?? "") as string;
+        return {
+          issue_id: issueId,
+          doc_name: doc_name,
+          pm_date: thDate(isoDay),
+          position: isoDay,
+          office: href,
+          inspector,
+          side
+        } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
@@ -500,14 +516,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId]);
 
-
-
   function appendParam(u: string, key: string, val: string) {
     const url = new URL(u, apiBase);
     if (!url.searchParams.has(key)) url.searchParams.set(key, val);
     return url.toString();
   }
-
 
   function buildHtmlLinks(baseUrl?: string) {
     const u = (baseUrl || "").trim();
@@ -554,10 +567,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return () => ac.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId, searchParams.toString()]);
-
-
-
-
 
   const columns: ColumnDef<TData, unknown>[] = [
     {
@@ -629,20 +638,54 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         }
 
         const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
-        return (
-          <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-            <a
-              aria-label="Preview"
-              href={previewHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-              title="Preview"
-            >
-              <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-            </a>
-          </div>
-        );
+        const rowSide = info.row.original.side;
+
+        if (rowSide == "pre") {
+          return (
+            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+              <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
+                <Button
+                  size="sm"
+                  color="blue"
+                  variant="outlined"
+                  className="tw-shrink-0"
+                  onClick={() => {
+                    // เอา query param เดิมมาต่อ ไม่ให้หาย
+                    const params = new URLSearchParams(searchParams.toString());
+                    // ลบ tab parameter ที่ใช้สำหรับ list page
+                    // params.delete("tab");
+                    // บังคับให้เปลี่ยนเป็นหน้า form (ChargerPMForm)
+                    params.set("view", "form");
+                    // ส่งคำว่า "post" ไปด้วยใน query string
+                    params.set("action", "post");
+                    params.set("edit_id", info.row.original.id || "");
+                    params.set("pmtab", "post");
+
+                    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+                  }}
+                >
+                  post-pm
+                </Button>
+              </div>
+            </div>
+          );
+        } else {
+          return (
+            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+              <a
+                aria-label="Preview"
+                href={previewHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+                title="Preview"
+              >
+                <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+              </a>
+            </div>
+          )
+
+        }
       },
       size: 150,
       minSize: 120,
@@ -817,7 +860,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   if (mode === "form") {
     return (
       <div className="tw-mt-6">
-        <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
+        {/* <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
           <Button
             variant="outlined"
             size="sm"
@@ -827,7 +870,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           >
             <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
           </Button>
-        </div>
+        </div> */}
         <CBBOXPMForm />
       </div>
     );

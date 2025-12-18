@@ -272,9 +272,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     if (view === "form") {
       params.set("view", "form");
+      params.delete("tab");
+      params.set("pmtab", "pre");
     } else {
       params.delete("view");
       params.delete("edit_id");
+      params.delete("pmtab");
     }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
@@ -622,11 +625,14 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   onClick={() => {
                     // เอา query param เดิมมาต่อ ไม่ให้หาย
                     const params = new URLSearchParams(searchParams.toString());
+                    // ลบ tab parameter ที่ใช้สำหรับ list page
+                    params.delete("tab");
                     // บังคับให้เปลี่ยนเป็นหน้า form (ChargerPMForm)
                     params.set("view", "form");
                     // ส่งคำว่า "post" ไปด้วยใน query string
                     params.set("action", "post");
                     params.set("edit_id", info.row.original.id || "");
+                    params.set("pmtab", "post");
 
                     router.push(`${pathname}?${params.toString()}`, { scroll: false });
                   }}

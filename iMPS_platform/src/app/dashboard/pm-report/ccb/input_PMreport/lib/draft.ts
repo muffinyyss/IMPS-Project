@@ -1,11 +1,11 @@
 import type { PhotoRef } from "./draftPhotos";
 
 type DraftData = {
-  job: any;
+  // job: any;
   rows: any;
   summary: string;
   // รูปแนบ (เพิ่มในเวอร์ชันใหม่)
-  photos?: any;
+  // photos?: any;
 
   // โครงสร้างใหม่: ค่าวัดของ "ข้อ 9" (Main + ย่อย 1–5)
   m9_0?: any;
@@ -15,7 +15,7 @@ type DraftData = {
   m9_4?: any;
   m9_5?: any;
 
-  inspector : string;
+  // inspector : string;
   photoRefs?: Record<number, PhotoRef[]>;
   // โครงสร้างเก่า (เผื่อมี draft เก่าค้างอยู่ให้โหลดได้ ไม่ error)
   // cp?: any;

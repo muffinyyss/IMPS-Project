@@ -388,33 +388,6 @@ function InputWithUnit<U extends string>({
     required?: boolean;
 }) {
     return (
-        // <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
-        //     <Input
-        //         type="number"
-        //         inputMode="decimal"
-        //         step="any"
-        //         label={label}
-        //         value={value}
-        //         onChange={(e) => onValueChange(e.target.value)}
-        //         onWheel={(e) => (e.target as HTMLInputElement).blur()}
-        //         crossOrigin=""
-        //         containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
-        //         className="!tw-w-full"
-        //         required
-        //     />
-        //     <select
-        //         required
-        //         value={unit}
-        //         onChange={(e) => onUnitChange(e.target.value as U)}
-        //         className="tw-col-span-1 tw-h-10 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-2 tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-500"
-        //     >
-        //         {units.map((u) => (
-        //             <option key={u} value={u}>
-        //                 {u}
-        //             </option>
-        //         ))}
-        //     </select>
-        // </div>
 
         <div className="tw-space-y-1">
             {labelOnTop && (
@@ -427,7 +400,7 @@ function InputWithUnit<U extends string>({
             )}
 
             <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
-                <Input
+                {/* <Input
                     type="number"
                     inputMode="decimal"
                     step="any"
@@ -442,6 +415,34 @@ function InputWithUnit<U extends string>({
                     readOnly={readOnly}
                     disabled={disabled}
                     required={required}          // 👈 ใช้ค่าจาก prop
+                /> */}
+                <Input
+                    type="text"
+                    inputMode="decimal"
+                    label={labelOnTop ? undefined : label}
+                    value={value}
+                    onChange={(e) => {
+                        const newValue = e.target.value;
+
+                        // อนุญาต:
+                        // 1. ค่าว่าง ""
+                        // 2. เฉพาะ "-" (ขีดกลางตัวเดียว)
+                        // 3. ตัวเลข + จุดทศนิยม + เครื่องหมายลบหน้าตัวเลข (เช่น -123.45)
+                        if (
+                            newValue === "" ||                           // ค่าว่าง
+                            newValue === "-" ||                          // ขีดกลางตัวเดียว
+                            /^-?\d*\.?\d*$/.test(newValue)              // ตัวเลข (มีหรือไม่มีลบข้างหน้า)
+                        ) {
+                            onValueChange(newValue);
+                        }
+                    }}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    crossOrigin=""
+                    containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
+                    className={`!tw-w-full ${disabled ? "!tw-bg-blue-gray-50" : ""}`}
+                    readOnly={readOnly}
+                    disabled={disabled}
+                    required={required}
                 />
                 <select
                     required={required}          // 👈 ใส่ตาม prop จะได้ไม่บังคับตอน pre
@@ -481,19 +482,6 @@ function PhotoMultiInput({
 }) {
     const fileRef = useRef<HTMLInputElement>(null);
     const handlePick = () => fileRef.current?.click();
-    // const handleFiles = (list: FileList | null) => {
-    //     if (!list) return;
-    //     const remain = Math.max(0, max - photos.length);
-    //     const files = Array.from(list).slice(0, remain);
-    //     const items: PhotoItem[] = files.map((f, i) => ({
-    //         id: `${Date.now()}-${i}-${f.name}`,
-    //         file: f,
-    //         preview: URL.createObjectURL(f),
-    //         remark: "",
-    //     }));
-    //     setPhotos((prev) => [...prev, ...items]);
-    //     if (fileRef.current) fileRef.current.value = "";
-    // };
     const handleFiles = async (list: FileList | null) => {
         if (!list) return;
 
@@ -518,14 +506,6 @@ function PhotoMultiInput({
         setPhotos((prev) => [...prev, ...items]);
         if (fileRef.current) fileRef.current.value = "";
     };
-
-    // const handleRemove = (id: string) => {
-    //     setPhotos((prev) => {
-    //         const target = prev.find((p) => p.id === id);
-    //         if (target?.preview) URL.revokeObjectURL(target.preview);
-    //         return prev.filter((p) => p.id !== id);
-    //     });
-    // };
 
     const handleRemove = async (id: string) => {
         await delPhoto(draftKey, id);
@@ -584,27 +564,6 @@ function PhotoMultiInput({
                             key={p.id}
                             className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"
                         >
-                            {/* <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
-                                {p.preview && (
-                                    <img
-                                        src={p.preview}
-                                        alt="preview"
-                                        className="tw-w-full tw-h-full tw-object-cover"
-                                    />
-                                )}
-                            </div>
-                            <div className="tw-p-2 tw-space-y-2">
-                                <div className="tw-flex tw-justify-end">
-                                    <Button
-                                        size="sm"
-                                        color="red"
-                                        variant="text"
-                                        onClick={() => handleRemove(p.id)}
-                                    >
-                                        ลบรูป
-                                    </Button>
-                                </div>
-                            </div> */}
 
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
                                 {p.preview && (
@@ -1699,14 +1658,14 @@ export default function MDBPMMForm() {
     };
 
     const active: TabId = useMemo(
-        () => slugToTab(searchParams.get("tab")),
+        () => slugToTab(searchParams.get("pmtab")),
         [searchParams]
     );
 
     const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
 
     useEffect(() => {
-        const tabParam = searchParams.get("tab");
+        const tabParam = searchParams.get("pmtab");
 
         let desired: "pre" | "post";
 
@@ -1725,7 +1684,7 @@ export default function MDBPMMForm() {
 
         if (tabParam !== desired) {
             const params = new URLSearchParams(searchParams.toString());
-            params.set("tab", desired);
+            params.set("pmtab", desired);
             router.replace(`${pathname}?${params.toString()}`, { scroll: false });
         }
     }, [searchParams, canGoAfter, pathname, router, isPostMode]);
@@ -1743,7 +1702,7 @@ export default function MDBPMMForm() {
         }
 
         const params = new URLSearchParams(searchParams.toString());
-        params.set("tab", tabToSlug(next));
+        params.set("pmtab", tabToSlug(next));
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
@@ -2049,7 +2008,7 @@ export default function MDBPMMForm() {
                             )}
                         </div>
 
-                       
+
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
                             {displayTab === "pre" ? (
                                 // อยู่แท็บ BEFORE → บันทึกลง Mongo + img_before แล้วค่อยไป AFTER

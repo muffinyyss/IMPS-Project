@@ -17,6 +17,7 @@ import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
 import { putPhoto, getPhoto, delPhoto, type PhotoRef } from "../lib/draftPhotos";
+
 type TabId = "pre" | "post";
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
     { id: "pre", label: "Pre\u2011PM", slug: "pre" },
@@ -793,8 +794,6 @@ export default function StationPMReport() {
                         ? (action as (x: PhotoItem[]) => PhotoItem[])(current)
                         : action;
 
-                console.log('makePhotoSetter:', { key, current, next }); // ✅ เพิ่ม debug
-
                 return { ...prev, [key]: next };
             });
         };
@@ -1277,14 +1276,14 @@ export default function StationPMReport() {
     };
 
     const active: TabId = useMemo(
-        () => slugToTab(searchParams.get("tab")),
+        () => slugToTab(searchParams.get("pmtab")),
         [searchParams]
     );
 
     const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
 
     useEffect(() => {
-        const tabParam = searchParams.get("tab");
+        const tabParam = searchParams.get("pmtab");
 
         let desired: "pre" | "post";
 
@@ -1303,7 +1302,7 @@ export default function StationPMReport() {
 
         if (tabParam !== desired) {
             const params = new URLSearchParams(searchParams.toString());
-            params.set("tab", desired);
+            params.set("pmtab", desired);
             router.replace(`${pathname}?${params.toString()}`, { scroll: false });
         }
     }, [searchParams, canGoAfter, pathname, router, isPostMode]);
@@ -1320,7 +1319,7 @@ export default function StationPMReport() {
         }
 
         const params = new URLSearchParams(searchParams.toString());
-        params.set("tab", tabToSlug(next));
+        params.set("pmtab", tabToSlug(next));
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
@@ -1516,23 +1515,8 @@ export default function StationPMReport() {
                             </div>
                         </div>
                     </div>
-                    {/* <CardBody className="tw-space-y-1">
-                        {QUESTIONS.map(renderQuestionBlock)}
-                    </CardBody> */}
-
                     {[
-                        // [1, 5],
-                        // [6, 10],
-                        // [11, 16],
-                        // [17, 17], // มีกริดวัดค่า
-                        // [18, 19],
                         [1, 10]
-                        // ].map(([start, end]) => (
-                        //     <CardBody className="tw-space-y-2">
-                        //         {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
-                        //     </CardBody>
-
-                        // ))}
                     ].map(([start, end]) => (
                         <CardBody key={`${start}-${end}`} className="tw-space-y-2">
                             {QUESTIONS
