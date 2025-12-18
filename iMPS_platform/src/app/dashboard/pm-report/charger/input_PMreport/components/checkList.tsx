@@ -1464,16 +1464,16 @@ export default function ChargerPMForm() {
         if (!stationId) return;
         saveDraftLocal(key, {
             // job,
-            job: { ...job, issue_id: "" },
+            // job: { ...job, issue_id: "" },
             rows,
             cp,
             m16: m16.state,
             summary,
-            inspector,
+            // inspector,
             dustFilterChanged,
             photoRefs,
         });
-    }, [key, stationId, job, rows, cp, m16.state, summary, inspector, dustFilterChanged, photoRefs,]);
+    }, [key, stationId, rows, cp, m16.state, summary, dustFilterChanged, photoRefs,]);
 
     /* ---------- actions ---------- */
 
@@ -1658,7 +1658,7 @@ export default function ChargerPMForm() {
 
 
     const active: TabId = useMemo(
-        () => slugToTab(searchParams.get("tab")),
+        () => slugToTab(searchParams.get("pmtab")),
         [searchParams]
     );
 
@@ -1667,7 +1667,7 @@ export default function ChargerPMForm() {
     const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
 
     useEffect(() => {
-        const tabParam = searchParams.get("tab");
+        const tabParam = searchParams.get("pmtab");
 
         let desired: "pre" | "post";
 
@@ -1686,7 +1686,7 @@ export default function ChargerPMForm() {
 
         if (tabParam !== desired) {
             const params = new URLSearchParams(searchParams.toString());
-            params.set("tab", desired);
+            params.set("pmtab", desired);
             router.replace(`${pathname}?${params.toString()}`, { scroll: false });
         }
     }, [searchParams, canGoAfter, pathname, router, isPostMode]);
@@ -1705,7 +1705,7 @@ export default function ChargerPMForm() {
         }
 
         const params = new URLSearchParams(searchParams.toString());
-        params.set("tab", tabToSlug(next));
+        params.set("pmtab", tabToSlug(next));
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 

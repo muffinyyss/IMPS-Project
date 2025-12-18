@@ -1277,14 +1277,14 @@ export default function StationPMReport() {
     };
 
     const active: TabId = useMemo(
-        () => slugToTab(searchParams.get("tab")),
+        () => slugToTab(searchParams.get("pmtab")),
         [searchParams]
     );
 
     const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
 
     useEffect(() => {
-        const tabParam = searchParams.get("tab");
+        const tabParam = searchParams.get("pmtab");
 
         let desired: "pre" | "post";
 
@@ -1303,7 +1303,7 @@ export default function StationPMReport() {
 
         if (tabParam !== desired) {
             const params = new URLSearchParams(searchParams.toString());
-            params.set("tab", desired);
+            params.set("pmtab", desired);
             router.replace(`${pathname}?${params.toString()}`, { scroll: false });
         }
     }, [searchParams, canGoAfter, pathname, router, isPostMode]);
@@ -1320,7 +1320,7 @@ export default function StationPMReport() {
         }
 
         const params = new URLSearchParams(searchParams.toString());
-        params.set("tab", tabToSlug(next));
+        params.set("pmtab", tabToSlug(next));
         router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
 
