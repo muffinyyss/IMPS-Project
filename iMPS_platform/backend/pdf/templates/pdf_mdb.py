@@ -756,7 +756,7 @@ def _draw_items_table_header(
 # -------------------------------------
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
 # -------------------------------------
-PHOTO_MAX_PER_ROW = 10
+PHOTO_MAX_PER_ROW = 20
 PHOTO_PER_LINE    = 4    # จำนวนรูปต่อบรรทัด
 PHOTO_IMG_MAX_H   = 40
 PHOTO_GAP         = 0.7
@@ -1054,7 +1054,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     table_total_w = page_w - 2 * EDGE_ALIGN_FIX
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_font(base_font, "", FONT_MAIN)
-    
+
     item_w = 65
     result_w = 64
     remark_w = page_w - item_w - result_w
@@ -1065,11 +1065,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
-            # หลังขึ้นหน้าใหม่ ให้วาด header แล้ววาดหัวตารางด้วย
             # y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
             pdf.set_font(base_font, "", FONT_MAIN)
 
-    # วาดหัวตารางแรก
     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
@@ -1083,22 +1081,15 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         _, item_h = _split_lines(pdf, item_w - 2 * PADDING_X, text, LINE_H)
         _, remark_h = _split_lines(pdf, remark_w - 2 * PADDING_X, remark, LINE_H)
         
-        is_row_4 = "4." in text
-        is_row_5 = "5." in text
-        is_row_6 = "6." in text
-        is_row_7 = "7." in text
-        is_row_8 = "8." in text
-        is_row_9 = "9." in text
+        idx = it.get("idx", 0)
         
-        if is_row_4 or is_row_5 or is_row_6 or is_row_7:
+        # ข้อที่ต้องเพิ่มความสูง
+        if idx in (4, 5, 6, 7):
             remark_h = max(remark_h, LINE_H * 6)
-
-        elif is_row_8:
+        elif idx == 8:
             remark_h = max(remark_h, LINE_H * 4)
-
-        elif is_row_9:
+        elif idx == 9:
             remark_h = max(remark_h, LINE_H * 6)
-
         
         row_h_eff = max(ROW_MIN_H, item_h, remark_h)
 
@@ -1124,52 +1115,61 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_font(base_font, "", FONT_MAIN)
     pdf.set_draw_color(0, 0, 0)
 
-    # ส่วน Comment & Summary
+    # ========== Comment & Summary ==========
     comment_x = x_table
-    comment_y = y
     comment_item_w = item_w
     comment_result_w = result_w
     comment_remark_w = remark_w
 
-    h_comment = 7
+    # 1. ดึงข้อความ comment ก่อน
+    comment_text = str(doc.get("summary", "") or "-")
+
+    # 2. คำนวณความสูงจริงของ comment text
+    _, comment_h_calculated = _split_lines(pdf, comment_result_w + comment_remark_w - 2 * PADDING_X, comment_text, LINE_H)
+
+    # 3. ใช้ความสูงที่มากกว่า (7mm ขั้นต่ำ หรือความสูงที่คำนวณได้)
+    h_comment = max(7, comment_h_calculated)
+
+    # 4. h_checklist ยังคงเดิม
     h_checklist = 7
+
+    # 5. คำนวณ total_h ใหม่ (ตามความสูงของ comment)
     total_h = h_comment + h_checklist
-    
+
     # ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
     _ensure_space(total_h + 5)
-    
-    # วาดกรอบนอกทั้งหมด
-    pdf.rect(comment_x, y, item_w + result_w + remark_w, total_h)
-    
-    # แถว Comment (ใช้ _cell_text_in_box แทน multi_cell)
+
+    # วาดกรอบนอกทั้งหมด (ความสูงขยายแล้ว)
+    pdf.rect(comment_x, y, comment_item_w + comment_result_w + comment_remark_w, total_h)
+
+    # ========== แถว Comment (ขยายตามความสูง) ==========
     pdf.set_font(base_font, "B", 11)
     pdf.set_xy(comment_x, y)
     pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
-    
-    # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ
-    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
-    
-    # ใช้ _cell_text_in_box สำหรับ comment text
-    pdf.set_font(base_font, "", 11)
-    comment_text = str(doc.get("summary", "") or "-")
-    comment_text_x = comment_x + comment_item_w
-    _cell_text_in_box(pdf, comment_text_x, y, comment_result_w + comment_remark_w, h_comment, comment_text, align="L", lh=LINE_H, valign="middle")
-    
-    y += h_comment
-    
-    # เส้นคั่นระหว่าง Comment และ ผลการตรวจสอบ
-    pdf.line(comment_x, y, comment_x + item_w + result_w + remark_w, y)
 
-    # แถวผลการตรวจสอบ
+    # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ (สูงเต็ม h_comment)
+    pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
+
+    # ใช้ _cell_text_in_box สำหรับ comment text (ขยายตามความสูง)
+    pdf.set_font(base_font, "", 11)
+    _cell_text_in_box(pdf, comment_x + comment_item_w, y, comment_result_w + comment_remark_w, h_comment, 
+                    comment_text, align="L", lh=LINE_H, valign="top")
+
+    y += h_comment
+
+    # เส้นคั่นระหว่าง Comment และ Inspection Results
+    pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
+
+    # ========== แถว Inspection Results (ความสูงคงที่) ==========
     summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
-    
+
     pdf.set_xy(comment_x, y)
     pdf.set_font(base_font, "B", 11)
-    pdf.cell(item_w, h_checklist, "Inspection Results :", border=0, align="L")
+    pdf.cell(comment_item_w, h_checklist, "Inspection Results :", border=0, align="L")
 
     # วาดเส้นคั่น
     pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_checklist)
-    
+
     # วาด checkbox
     pdf.set_font(base_font, "", 11)
     x_check_start = comment_x + comment_item_w + 10
