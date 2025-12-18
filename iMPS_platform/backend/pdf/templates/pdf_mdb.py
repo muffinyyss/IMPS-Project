@@ -19,6 +19,7 @@ except Exception:
 
 # -------------------- ตั้งค่าทั่วไป --------------------
 DOCUMENT_TITLE_MAIN = "Preventive Maintenance Checklist - MDB"
+DOCUMENT_TITLE_MAIN_CONT = "Preventive Maintenance Checklist - MDB (Continued)"
 DOCUMENT_TITLE_PHOTO_CONT = "Photos (Continued)"
 DOCUMENT_TITLE_PHOTO_PRE_PM = "Photos (Pre-PM)"
 DOCUMENT_TITLE_PHOTO_POST_PM = "Photos (POST-PM)"
@@ -413,7 +414,6 @@ def _load_image_source_from_urlpath(
     return None, None
 
 def load_image_autorotate(path_or_bytes):
-
     # โหลดภาพ
     if isinstance(path_or_bytes, (str, Path)):
         img = Image.open(path_or_bytes)
@@ -482,6 +482,7 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
     except Exception as e:
         _log(f"[IMG] auto-rotate error: {e}")
         return None, None
+
 
 # -------------------- Photo data helpers --------------------
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
@@ -654,7 +655,6 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             })
 
     return items
-
 
 def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
     pdf.rect(x, y, size, size)
@@ -1040,9 +1040,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
-    pdf.cell(page_w, TITLE_H,
-            "Preventive Maintenance Checklist - MDB",
-            border=1, ln=1, align="C", fill=True)
+    pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_MAIN, border=1, ln=1, align="C", fill=True)
 
     y += TITLE_H
 
@@ -1065,8 +1063,13 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         if y + height_needed > (pdf.h - pdf.b_margin):
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
+            TITLE_H = 5.5
+            pdf.set_xy(x0, y)
+            pdf.set_font(base_font, "B", 13)
+            pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_MAIN_CONT, border=1, ln=1, align="C")
+            y += TITLE_H
             # y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
-            pdf.set_font(base_font, "", FONT_MAIN)
+            # pdf.set_font(base_font, "", FONT_MAIN)
 
     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
     pdf.set_font(base_font, "", FONT_MAIN)
