@@ -388,7 +388,7 @@ function InputWithUnit<U extends string>({
     required?: boolean;
 }) {
     return (
-        
+
         <div className="tw-space-y-1">
             {labelOnTop && (
                 <Typography
@@ -400,7 +400,7 @@ function InputWithUnit<U extends string>({
             )}
 
             <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
-                <Input
+                {/* <Input
                     type="number"
                     inputMode="decimal"
                     step="any"
@@ -415,6 +415,34 @@ function InputWithUnit<U extends string>({
                     readOnly={readOnly}
                     disabled={disabled}
                     required={required}          // 👈 ใช้ค่าจาก prop
+                /> */}
+                <Input
+                    type="text"
+                    inputMode="decimal"
+                    label={labelOnTop ? undefined : label}
+                    value={value}
+                    onChange={(e) => {
+                        const newValue = e.target.value;
+
+                        // อนุญาต:
+                        // 1. ค่าว่าง ""
+                        // 2. เฉพาะ "-" (ขีดกลางตัวเดียว)
+                        // 3. ตัวเลข + จุดทศนิยม + เครื่องหมายลบหน้าตัวเลข (เช่น -123.45)
+                        if (
+                            newValue === "" ||                           // ค่าว่าง
+                            newValue === "-" ||                          // ขีดกลางตัวเดียว
+                            /^-?\d*\.?\d*$/.test(newValue)              // ตัวเลข (มีหรือไม่มีลบข้างหน้า)
+                        ) {
+                            onValueChange(newValue);
+                        }
+                    }}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    crossOrigin=""
+                    containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
+                    className={`!tw-w-full ${disabled ? "!tw-bg-blue-gray-50" : ""}`}
+                    readOnly={readOnly}
+                    disabled={disabled}
+                    required={required}
                 />
                 <select
                     required={required}          // 👈 ใส่ตาม prop จะได้ไม่บังคับตอน pre
@@ -536,7 +564,7 @@ function PhotoMultiInput({
                             key={p.id}
                             className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"
                         >
-                           
+
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
                                 {p.preview && (
                                     <img
@@ -1980,7 +2008,7 @@ export default function MDBPMMForm() {
                             )}
                         </div>
 
-                       
+
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
                             {displayTab === "pre" ? (
                                 // อยู่แท็บ BEFORE → บันทึกลง Mongo + img_before แล้วค่อยไป AFTER
