@@ -771,7 +771,7 @@ export default function CCBPMReport() {
     const [inspector, setInspector] = useState<string>("");
 
 
-    const key = useMemo(() => draftKeyCCB(stationId), [stationId]);
+    const key = useMemo(() => draftKeyCCB(stationId, draftId || "default"), [stationId, draftId]);
 
 
     /* ---------- job info ---------- */
@@ -886,6 +886,7 @@ export default function CCBPMReport() {
     }, []);
 
     useEffect(() => {
+        if (isPostMode) return;
         if (!stationId || !job.date) return;
 
         let canceled = false;
@@ -970,7 +971,6 @@ export default function CCBPMReport() {
     useEffect(() => {
         if (!stationId || !draftId) return;
         const draft = loadDraftLocal<{
-            // job: typeof job & { inspector?: string };
             rows: typeof rows;
             m9_0: typeof m9_0.state;
             m9_1: typeof m9_1.state;
@@ -978,18 +978,12 @@ export default function CCBPMReport() {
             m9_3: typeof m9_3.state;
             m9_4: typeof m9_4.state;
             m9_5: typeof m9_5.state;
-            // photos: typeof photos;
             summary: string;
+            summary_pf?: PF;
             photoRefs?: Record<string, PhotoRef[]>;
         }>(key);
         if (!draft) return;
 
-        // const { issue_id, ...draftJobWithoutIssue } = draft.job;
-        // const draftJob = draft?.job ?? {};           // ถ้าไม่มี job ให้เป็น object ว่าง
-        // const { issue_id, ...draftJobWithoutIssue } = draftJob;
-
-        // setJob((prev) => ({ ...prev, ...draft.job }));
-        // setJob((prev) => ({ ...prev, ...draftJobWithoutIssue, date: getTodayLocalStr(), }));
         setRows(draft.rows);
         m9_0.setState(draft.m9_0 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         m9_1.setState(draft.m9_1 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
@@ -999,7 +993,7 @@ export default function CCBPMReport() {
         m9_5.setState(draft.m9_5 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         // setPhotos(draft.photos ?? initialPhotos);
         setSummary(draft.summary);
-
+        if (draft.summary_pf) setSummaryCheck(draft.summary_pf);
         // setInspector(draft.inspector ?? "");
         (async () => {
             if (!draft.photoRefs) return;
@@ -1033,10 +1027,10 @@ export default function CCBPMReport() {
 
         (async () => {
             // hydrate รูปจาก draftPhotos storage
-            const next: Record<number, PhotoItem[]> = { ...photos };
+            const next: Record<string, PhotoItem[]> = { ...photos };
 
-            for (const no of Object.keys(next).map(Number)) {
-                next[no] = await Promise.all((next[no] ?? []).map(async (p) => {
+            for (const photoKey of Object.keys(next)) {
+                next[photoKey] = await Promise.all((next[photoKey] ?? []).map(async (p) => {
                     if (p.file && p.preview) return p;
                     const f = await getPhoto(key, p.id);        // ✅ ดึง file/blob กลับมา
                     return f
@@ -1084,6 +1078,14 @@ export default function CCBPMReport() {
                 // Load summaryCheck if available
                 if (report.summaryCheck) {
                     setSummaryCheck(report.summaryCheck as PF);
+                }
+
+                // Load issue_id and doc_name from database in post mode
+                if (report.issue_id) {
+                    setJob(prev => ({ ...prev, issue_id: report.issue_id }));
+                }
+                if (report.doc_name) {
+                    setDocName(report.doc_name);
                 }
             } catch (err) {
                 console.error("load report data error:", err);
@@ -1419,7 +1421,6 @@ export default function CCBPMReport() {
     useDebouncedEffect(() => {
         if (!stationId || !draftId) return;
         saveDraftLocal(key, {
-            // job: { ...job, issue_id: "", date: getTodayLocalStr() },
             rows,
             m9_0: m9_0.state,
             m9_1: m9_1.state,
@@ -1427,12 +1428,11 @@ export default function CCBPMReport() {
             m9_3: m9_3.state,
             m9_4: m9_4.state,
             m9_5: m9_5.state,
-            // photos,
             summary,
-            // inspector,
+            summary_pf: summaryCheck,
             photoRefs,
         });
-    }, [key, stationId, draftId, rows, m9_0.state, m9_1.state, m9_2.state, m9_3.state, m9_4.state, m9_5.state, summary, photoRefs]);
+    }, [key, stationId, draftId, rows, m9_0.state, m9_1.state, m9_2.state, m9_3.state, m9_4.state, m9_5.state, summary,summaryCheck, photoRefs]);
 
 
     /* ---------- actions (submit เหมือนเดิม) ---------- */
@@ -1561,7 +1561,7 @@ export default function CCBPMReport() {
             );
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=ccb`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
@@ -1680,7 +1680,7 @@ export default function CCBPMReport() {
             if (!fin.ok) throw new Error(await fin.text());
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=ccb`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
@@ -1870,22 +1870,22 @@ export default function CCBPMReport() {
                         <div className="tw-space-y-3">
                             {/* เบรกเกอร์แต่ละตัว */}
                             {[
-                                { idx: 0, title: BREAKERS[0], m: m9_0, key: 'r9_0' },
-                                { idx: 1, title: BREAKERS[1], m: m9_1, key: 'r9_1' },
-                                { idx: 2, title: BREAKERS[2], m: m9_2, key: 'r9_2' },
-                                { idx: 3, title: BREAKERS[3], m: m9_3, key: 'r9_3' },
-                                { idx: 4, title: BREAKERS[4], m: m9_4, key: 'r9_4' },
-                                { idx: 5, title: BREAKERS[5], m: m9_5, key: 'r9_5' },
-                            ].map(({ idx, title, m, key }) => (
-                                <div key={key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+                                { idx: 0, title: BREAKERS[0], m: m9_0, photoKey: 'r9_0' },
+                                { idx: 1, title: BREAKERS[1], m: m9_1, photoKey: 'r9_1' },
+                                { idx: 2, title: BREAKERS[2], m: m9_2, photoKey: 'r9_2' },
+                                { idx: 3, title: BREAKERS[3], m: m9_3, photoKey: 'r9_3' },
+                                { idx: 4, title: BREAKERS[4], m: m9_4, photoKey: 'r9_4' },
+                                { idx: 5, title: BREAKERS[5], m: m9_5, photoKey: 'r9_5' },
+                            ].map(({ idx, title, m, photoKey }) => (
+                                <div key={photoKey} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
                                     <Typography className="tw-font-medium tw-mb-3">{title}</Typography>
 
                                     {/* แนบรูปของเบรกเกอร์นี้ */}
                                     <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
                                         <PhotoMultiInput
                                             label={`แนบรูปประกอบ (${title})`}
-                                            photos={photos[key] || []}
-                                            setPhotos={makePhotoSetter(key)}
+                                            photos={photos[photoKey] || []}
+                                            setPhotos={makePhotoSetter(photoKey)}
                                             max={3}
                                             draftKey={key}
                                             qNo={q.no}
@@ -1989,14 +1989,14 @@ export default function CCBPMReport() {
                 {q.kind === "measure9" && (
                     <div className="tw-space-y-3">
                         {[
-                            { idx: 0, title: BREAKERS[0], m: m9_0, mPre: m9_0Pre, key: 'r9_0' },
-                            { idx: 1, title: BREAKERS[1], m: m9_1, mPre: m9_1Pre, key: 'r9_1' },
-                            { idx: 2, title: BREAKERS[2], m: m9_2, mPre: m9_2Pre, key: 'r9_2' },
-                            { idx: 3, title: BREAKERS[3], m: m9_3, mPre: m9_3Pre, key: 'r9_3' },
-                            { idx: 4, title: BREAKERS[4], m: m9_4, mPre: m9_4Pre, key: 'r9_4' },
-                            { idx: 5, title: BREAKERS[5], m: m9_5, mPre: m9_5Pre, key: 'r9_5' },
-                        ].map(({ idx, title, m, mPre, key }) => (
-                            <div key={key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+                            { idx: 0, title: BREAKERS[0], m: m9_0, mPre: m9_0Pre, photoKey: 'r9_0' },
+                            { idx: 1, title: BREAKERS[1], m: m9_1, mPre: m9_1Pre, photoKey: 'r9_1' },
+                            { idx: 2, title: BREAKERS[2], m: m9_2, mPre: m9_2Pre, photoKey: 'r9_2' },
+                            { idx: 3, title: BREAKERS[3], m: m9_3, mPre: m9_3Pre, photoKey: 'r9_3' },
+                            { idx: 4, title: BREAKERS[4], m: m9_4, mPre: m9_4Pre, photoKey: 'r9_4' },
+                            { idx: 5, title: BREAKERS[5], m: m9_5, mPre: m9_5Pre, photoKey: 'r9_5' },
+                        ].map(({ idx, title, m, mPre, photoKey }) => (
+                            <div key={photoKey} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
                                 <Typography className="tw-font-medium tw-mb-3">{title}</Typography>
 
                                 {/* แนบรูปของเบรกเกอร์นี้ */}
@@ -2004,8 +2004,8 @@ export default function CCBPMReport() {
                                     <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
                                         <PhotoMultiInput
                                             label={`แนบรูปประกอบ (${title})`}
-                                            photos={photos[key] || []}
-                                            setPhotos={makePhotoSetter(key)}
+                                            photos={photos[photoKey] || []}
+                                            setPhotos={makePhotoSetter(photoKey)}
                                             max={3}
                                             draftKey={key}
                                             qNo={q.no}
@@ -2017,18 +2017,18 @@ export default function CCBPMReport() {
                                 <div className="tw-mb-4">
                                     <PassFailRow
                                         label="ผลการทดสอบ"
-                                        value={rows[key]?.pf ?? ""}
+                                        value={rows[photoKey]?.pf ?? ""}
                                         onChange={(v) =>
                                             setRows({
                                                 ...rows,
-                                                [key]: { ...(rows[key] ?? { remark: "" }), pf: v },
+                                                [photoKey]: { ...(rows[photoKey] ?? { remark: "" }), pf: v },
                                             })
                                         }
-                                        remark={rows[key]?.remark ?? ""}
+                                        remark={rows[photoKey]?.remark ?? ""}
                                         onRemarkChange={(v) =>
                                             setRows({
                                                 ...rows,
-                                                [key]: { ...(rows[key] ?? { pf: "" }), remark: v },
+                                                [photoKey]: { ...(rows[photoKey] ?? { pf: "" }), remark: v },
                                             })
                                         }
                                     />
@@ -2413,12 +2413,19 @@ export default function CCBPMReport() {
                         )}
 
                         {isPostMode && (
-                            <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+                            <div className={`tw-rounded-lg tw-border tw-p-3 ${(isSummaryFilled && isSummaryCheckFilled) ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
                                 <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
-                                {isSummaryFilled ? (
+                                {(isSummaryFilled && isSummaryCheckFilled) ? (
                                     <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
                                 ) : (
-                                    <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
+                                    <div className="tw-space-y-1">
+                                        {!isSummaryFilled && (
+                                            <Typography variant="small" className="!tw-text-amber-700">• ยังไม่ได้กรอก Comment</Typography>
+                                        )}
+                                        {!isSummaryCheckFilled && (
+                                            <Typography variant="small" className="!tw-text-amber-700">• ยังไม่ได้เลือก สรุปผลการตรวจสอบ (Pass/Fail/N/A)</Typography>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         )}
