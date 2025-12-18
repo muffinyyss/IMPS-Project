@@ -275,7 +275,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     if (view === "form") {
       params.set("view", "form");
-      params.delete("tab");
+      // params.delete("tab");
       params.set("pmtab", "pre");
     } else {
       params.delete("view");
@@ -671,7 +671,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                     // เอา query param เดิมมาต่อ ไม่ให้หาย
                     const params = new URLSearchParams(searchParams.toString());
                     // ลบ tab parameter ที่ใช้สำหรับ list page
-                    params.delete("tab");
+                    // params.delete("tab");
                     // บังคับให้เปลี่ยนเป็นหน้า form (ChargerPMForm)
                     params.set("view", "form");
                     // ส่งคำว่า "post" ไปด้วยใน query string
