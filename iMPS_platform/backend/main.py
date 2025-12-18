@@ -4534,14 +4534,14 @@ async def ccbpmreport_list(
 async def ccbpmreport_upload_photos(
     report_id: str,
     station_id: str = Form(...),
-    group: str = Form(...),                   # "g1" .. "g11"
+    group: str = Form(...),                   # "r1" .. "r10", "r9_0" .. "r9_5"
     files: List[UploadFile] = File(...),
     # remark: Optional[str] = Form(None),
     # current: UserClaims = Depends(get_current_user),
 ):
     # if current.role != "admin" and station_id not in set(current.station_ids):
     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-    if not re.fullmatch(r"g\d+", group):
+    if not re.fullmatch(r"r\d+(_\d+)?", group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
     coll = get_ccbpmreport_collection_for(station_id)
@@ -4598,14 +4598,14 @@ async def ccbpmreport_upload_photos(
 async def ccbpmreport_upload_photos(
     report_id: str,
     station_id: str = Form(...),
-    group: str = Form(...),                   # "g1" .. "g11"
+    group: str = Form(...),                   # "r1" .. "r10", "r9_0" .. "r9_5"
     files: List[UploadFile] = File(...),
     remark: Optional[str] = Form(None),
     # current: UserClaims = Depends(get_current_user),
 ):
     # if current.role != "admin" and station_id not in set(current.station_ids):
     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-    if not re.fullmatch(r"g\d+", group):
+    if not re.fullmatch(r"r\d+(_\d+)?", group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
     coll = get_ccbpmreport_collection_for(station_id)

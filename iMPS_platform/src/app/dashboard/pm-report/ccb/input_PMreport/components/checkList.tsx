@@ -19,7 +19,6 @@ import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/re
 import { apiFetch } from "@/utils/api";
 import { putPhoto, getPhoto, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 
-
 type TabId = "pre" | "post";
 
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
@@ -97,11 +96,11 @@ const LABELS: Record<string, string> = { "L-N": "L - N", "L-G": "L - G", "N-G": 
 
 /* ---------- 9 หัวข้อ ตามภาพ ---------- */
 type Question =
-    | { no: number; key: `r${number}`; label: string; kind: "simple"; hasPhoto?: boolean }
-    | { no: number; key: `r${number}`; label: string; kind: "group"; items: { key: string; label: string }[]; hasPhoto?: boolean }
-    | { no: number; key: `r${number}`; label: string; kind: "measure9"; hasPhoto?: boolean };
+    | { no: number; key: `r${number}`; label: string; labelPre?: string; labelPost?: string; kind: "simple"; hasPhoto?: boolean }
+    | { no: number; key: `r${number}`; label: string; labelPre?: string; labelPost?: string; kind: "group"; items: { key: string; label: string }[]; hasPhoto?: boolean }
+    | { no: number; key: `r${number}`; label: string; labelPre?: string; labelPost?: string; kind: "measure9"; hasPhoto?: boolean };
 
-const QUESTIONS: Question[] = [
+const QUESTIONS_RAW: Question[] = [
     { no: 1, key: "r1", label: "1) ตรวจสอบสภาพทั่วไป", kind: "simple", hasPhoto: true },
     { no: 2, key: "r2", label: "2) ตรวจสอบสภาพดักซีล, ซิลิโคนกันซึม", kind: "simple", hasPhoto: true },
 
@@ -180,7 +179,22 @@ const QUESTIONS: Question[] = [
     },
 
     { no: 9, key: "r9", label: "9) ตรวจสอบแรงดันไฟฟ้า (Consumer Unit)", kind: "measure9", hasPhoto: true },
+    { no: 10, key: "r10", label: "10) ทำความสะอาด", kind: "simple", hasPhoto: true },
 ];
+
+function getQuestionLabel(q: Question, mode: TabId): string {
+    if (mode === "pre") {
+        // ถ้ามี labelPre ให้ใช้, ถ้าไม่มีก็เอา label ปกติแล้วเติม "(ก่อน PM)"
+        return q.labelPre ?? `${q.label} (ก่อน PM)`;
+    }
+    // mode === "post"
+    return q.labelPost ?? `${q.label} (หลัง PM)`;
+}
+
+const QUESTIONS: Question[] = QUESTIONS_RAW.filter(
+    (q) => q.kind === "simple" || q.kind === "group" || q.kind === "measure9"
+) as Question[];
+
 
 /* =========================
  *        TYPES & HOOKS
@@ -211,7 +225,15 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
 /* =========================
  *       UI ATOMS
  * ========================= */
-function SectionCard({ title, subtitle, children }: { title?: string; subtitle?: string; children: React.ReactNode }) {
+function SectionCard({
+    title,
+    subtitle,
+    children
+}: {
+    title?: string;
+    subtitle?: string;
+    children: React.ReactNode
+}) {
     return (
         <>
             {/* Title นอกกรอบการ์ด */}
@@ -296,33 +318,7 @@ function InputWithUnit<U extends string>({
     required?: boolean;
 }) {
     return (
-        // <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
-        //     <Input
-        //         type="number"
-        //         inputMode="decimal"
-        //         step="any"
-        //         label={label}
-        //         value={value}
-        //         onChange={(e) => onValueChange(e.target.value)}
-        //         onWheel={(e) => (e.target as HTMLInputElement).blur()}
-        //         crossOrigin=""
-        //         containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
-        //         className="!tw-w-full"
-        //         required
-        //     />
-        //     <select
-        //         required
-        //         value={unit}
-        //         onChange={(e) => onUnitChange(e.target.value as U)}
-        //         className="tw-col-span-1 tw-h-10 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-2 tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-500"
-        //     >
-        //         {units.map((u) => (
-        //             <option key={u} value={u}>
-        //                 {u}
-        //             </option>
-        //         ))}
-        //     </select>
-        // </div>
+
         <div className="tw-space-y-1">
             {labelOnTop && (
                 <Typography
@@ -334,7 +330,7 @@ function InputWithUnit<U extends string>({
             )}
 
             <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
-                <Input
+                {/* <Input
                     type="number"
                     inputMode="decimal"
                     step="any"
@@ -349,6 +345,34 @@ function InputWithUnit<U extends string>({
                     readOnly={readOnly}
                     disabled={disabled}
                     required={required}          // 👈 ใช้ค่าจาก prop
+                /> */}
+                <Input
+                    type="text"
+                    inputMode="decimal"
+                    label={labelOnTop ? undefined : label}
+                    value={value}
+                    onChange={(e) => {
+                        const newValue = e.target.value;
+
+                        // อนุญาต:
+                        // 1. ค่าว่าง ""
+                        // 2. เฉพาะ "-" (ขีดกลางตัวเดียว)
+                        // 3. ตัวเลข + จุดทศนิยม + เครื่องหมายลบหน้าตัวเลข (เช่น -123.45)
+                        if (
+                            newValue === "" ||                           // ค่าว่าง
+                            newValue === "-" ||                          // ขีดกลางตัวเดียว
+                            /^-?\d*\.?\d*$/.test(newValue)              // ตัวเลข (มีหรือไม่มีลบข้างหน้า)
+                        ) {
+                            onValueChange(newValue);
+                        }
+                    }}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                    crossOrigin=""
+                    containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
+                    className={`!tw-w-full ${disabled ? "!tw-bg-blue-gray-50" : ""}`}
+                    readOnly={readOnly}
+                    disabled={disabled}
+                    required={required}
                 />
                 <select
                     required={required}          // 👈 ใส่ตาม prop จะได้ไม่บังคับตอน pre
@@ -441,56 +465,6 @@ function PassFailRow({
     );
 
     return (
-        // <div className="tw-space-y-3 tw-py-3">
-        //     <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
-        //         <Typography className="tw-font-medium">{label}</Typography>
-
-        //         <div className="tw-flex tw-gap-2 tw-w-full sm:tw-w-auto">
-        //             <Button
-        //                 size="sm"
-        //                 color="green"
-        //                 variant={value === "PASS" ? "filled" : "outlined"}
-        //                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-        //                 onClick={() => onChange("PASS")}
-        //             >
-        //                 {text.PASS}
-        //             </Button>
-        //             <Button
-        //                 size="sm"
-        //                 color="red"
-        //                 variant={value === "FAIL" ? "filled" : "outlined"}
-        //                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-        //                 onClick={() => onChange("FAIL")}
-        //             >
-        //                 {text.FAIL}
-        //             </Button>
-        //             <Button
-        //                 size="sm"
-        //                 color="blue-gray"
-        //                 variant={value === "NA" ? "filled" : "outlined"}
-        //                 className="tw-w-1/3 sm:tw-w-auto sm:tw-min-w-[84px]"
-        //                 onClick={() => onChange("NA")}
-        //             >
-        //                 {text.NA}
-        //             </Button>
-        //         </div>
-        //     </div>
-
-        //     {onRemarkChange && (
-        //         <div className="tw-w-full tw-min-w-0 tw-space-y-2">
-        //             {/* 👇 รูปจะมาอยู่ตรงนี้ เหนือช่องหมายเหตุ */}
-        //             {aboveRemark}
-
-        //             <Textarea
-        //                 label="หมายเหตุ (ถ้ามี)"
-        //                 value={remark || ""}
-        //                 onChange={(e) => onRemarkChange(e.target.value)}
-        //                 containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
-        //                 className="!tw-w-full"
-        //             />
-        //         </div>
-        //     )}
-        // </div>
 
         <div className="tw-space-y-3 tw-py-3">
             <Typography className="tw-font-medium">{label}</Typography>
@@ -537,19 +511,6 @@ function PhotoMultiInput({
 }) {
     const fileRef = useRef<HTMLInputElement>(null);
     const handlePick = () => fileRef.current?.click();
-    // const handleFiles = (list: FileList | null) => {
-    //     if (!list) return;
-    //     const remain = Math.max(0, max - photos.length);
-    //     const files = Array.from(list).slice(0, remain);
-    //     const items: PhotoItem[] = files.map((f, i) => ({
-    //         id: `${Date.now()}-${i}-${f.name}`,
-    //         file: f,
-    //         preview: URL.createObjectURL(f),
-    //         remark: "",
-    //     }));
-    //     setPhotos((prev) => [...prev, ...items]);
-    //     if (fileRef.current) fileRef.current.value = "";
-    // };
     const handleFiles = async (list: FileList | null) => {
         if (!list) return;
 
@@ -574,13 +535,6 @@ function PhotoMultiInput({
         setPhotos((prev) => [...prev, ...items]);
         if (fileRef.current) fileRef.current.value = "";
     };
-    // const handleRemove = (id: string) => {
-    //     setPhotos((prev) => {
-    //         const target = prev.find((p) => p.id === id);
-    //         if (target?.preview) URL.revokeObjectURL(target.preview);
-    //         return prev.filter((p) => p.id !== id);
-    //     });
-    // };
     const handleRemove = async (id: string) => {
         await delPhoto(draftKey, id);
 
@@ -638,27 +592,7 @@ function PhotoMultiInput({
                             key={p.id}
                             className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"
                         >
-                            {/* <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
-                                {p.preview && (
-                                    <img
-                                        src={p.preview}
-                                        alt="preview"
-                                        className="tw-w-full tw-h-full tw-object-cover"
-                                    />
-                                )}
-                            </div>
-                            <div className="tw-p-2 tw-space-y-2">
-                                <div className="tw-flex tw-justify-end">
-                                    <Button
-                                        size="sm"
-                                        color="red"
-                                        variant="text"
-                                        onClick={() => handleRemove(p.id)}
-                                    >
-                                        ลบรูป
-                                    </Button>
-                                </div>
-                            </div> */}
+
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
                                 {p.preview && (
                                     <img
@@ -789,10 +723,44 @@ export default function CCBPMReport() {
     const PM_PREFIX = "ccbpmreport";
 
     /* ---------- photos per question ---------- */
-    const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
-        QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
-    ) as Record<number, PhotoItem[]>;
-    const [photos, setPhotos] = useState<Record<number, PhotoItem[]>>(initialPhotos);
+    // const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
+    //     QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
+    // ) as Record<number, PhotoItem[]>;
+    // const initialPhotos: Record<string, PhotoItem[]> = Object.fromEntries(
+    //     QUESTIONS.filter((q) => q.hasPhoto).flatMap((q) => {
+    //         const entries: [string, PhotoItem[]][] = [];
+    //         // เพิ่มสำหรับ question level
+    //         entries.push([`q${q.no}`, []]);
+    //         // เพิ่มสำหรับ sub-items ของ group
+    //         if (q.kind === "group") {
+    //             q.items.forEach((item) => {
+    //                 entries.push([item.key, []]);
+    //             });
+    //         }
+    //         return entries;
+    //     })
+    // ) as Record<string, PhotoItem[]>;
+    const initialPhotos: Record<string, PhotoItem[]> = Object.fromEntries(
+        QUESTIONS.filter((q) => q.hasPhoto).flatMap((q) => {
+            const entries: [string, PhotoItem[]][] = [];
+
+            if (q.kind === "simple") {
+                entries.push([`q${q.no}`, []]);
+            } else if (q.kind === "group") {
+                q.items.forEach((item) => {
+                    entries.push([item.key, []]);
+                });
+            } else if (q.kind === "measure9") {
+                // ✅ เพิ่มส่วนนี้
+                for (let i = 0; i <= 5; i++) {
+                    entries.push([`r9_${i}`, []]);
+                }
+            }
+
+            return entries;
+        })
+    ) as Record<string, PhotoItem[]>;
+    const [photos, setPhotos] = useState<Record<string, PhotoItem[]>>(initialPhotos);
 
     const [summary, setSummary] = useState<string>("");
 
@@ -824,11 +792,24 @@ export default function CCBPMReport() {
         return base;
     }, []);
 
+    // const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
+    //     Object.fromEntries(ALL_KEYS.map((k) => [k, { pf: "", remark: "" }])) as Record<string, { pf: PF; remark: string }>
+    // );
+    const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
+        const initial: Record<string, { pf: PF; remark: string }> = {};
 
+        QUESTIONS.forEach((q) => {
+            if (q.kind === "simple") {
+                initial[q.key] = { pf: "", remark: "" };
+            } else if (q.kind === "group") {
+                q.items.forEach((item) => {
+                    initial[item.key] = { pf: "", remark: "" };
+                });
+            }
+        });
 
-    const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
-        Object.fromEntries(ALL_KEYS.map((k) => [k, { pf: "", remark: "" }])) as Record<string, { pf: PF; remark: string }>
-    );
+        return initial;
+    });
 
     /* ---------- ข้อ 9: วัดค่าแรงดัน (เมน + ย่อย 1–5) ---------- */
     const BREAKERS = [
@@ -847,6 +828,30 @@ export default function CCBPMReport() {
     const m9_4 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS_CCB, "V");
     const m9_5 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS_CCB, "V");
     const M9_LIST = [m9_0, m9_1, m9_2, m9_3, m9_4, m9_5];
+
+    // Pre-PM measurements for display comparison in post mode
+    const [m9_0Pre, setM9_0Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
+    const [m9_1Pre, setM9_1Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
+    const [m9_2Pre, setM9_2Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
+    const [m9_3Pre, setM9_3Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
+    const [m9_4Pre, setM9_4Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
+    const [m9_5Pre, setM9_5Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
+
+    // Helper objects
+    const FIELD_GROUPS: Record<number, { keys: readonly string[] }> = {
+        9: { keys: VOLTAGE_FIELDS_CCB },
+    };
+
+    const MEASURE_BY_NO: Record<number, ReturnType<typeof useMeasure<UnitVoltage>>> = {
+        9: m9_0, // Note: this is just for reference, actual measure is determined per breaker
+    };
+
+    function getPreMeasureState(no: number): MeasureState<UnitVoltage> | null {
+        // For measure9, return the pre-state for breaker 0 (main)
+        // This is used by renderMeasureGridWithPre
+        if (no === 9) return m9_0Pre;
+        return null;
+    }
 
     useEffect(() => {
         const token =
@@ -901,6 +906,7 @@ export default function CCBPMReport() {
     }, [stationId, job.date]);
 
     useEffect(() => {
+        if (isPostMode) return;
         if (!stationId || !job.date) return;
 
         let canceled = false;
@@ -964,7 +970,7 @@ export default function CCBPMReport() {
     useEffect(() => {
         if (!stationId || !draftId) return;
         const draft = loadDraftLocal<{
-            job: typeof job & { inspector?: string };
+            // job: typeof job & { inspector?: string };
             rows: typeof rows;
             m9_0: typeof m9_0.state;
             m9_1: typeof m9_1.state;
@@ -972,18 +978,18 @@ export default function CCBPMReport() {
             m9_3: typeof m9_3.state;
             m9_4: typeof m9_4.state;
             m9_5: typeof m9_5.state;
-            photos: typeof photos;
+            // photos: typeof photos;
             summary: string;
-            photoRefs?: Record<number, PhotoRef[]>;
+            photoRefs?: Record<string, PhotoRef[]>;
         }>(key);
         if (!draft) return;
 
         // const { issue_id, ...draftJobWithoutIssue } = draft.job;
-        const draftJob = draft?.job ?? {};           // ถ้าไม่มี job ให้เป็น object ว่าง
-        const { issue_id, ...draftJobWithoutIssue } = draftJob;
+        // const draftJob = draft?.job ?? {};           // ถ้าไม่มี job ให้เป็น object ว่าง
+        // const { issue_id, ...draftJobWithoutIssue } = draftJob;
 
         // setJob((prev) => ({ ...prev, ...draft.job }));
-        setJob((prev) => ({ ...prev, ...draftJobWithoutIssue, date: getTodayLocalStr(), }));
+        // setJob((prev) => ({ ...prev, ...draftJobWithoutIssue, date: getTodayLocalStr(), }));
         setRows(draft.rows);
         m9_0.setState(draft.m9_0 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         m9_1.setState(draft.m9_1 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
@@ -991,19 +997,16 @@ export default function CCBPMReport() {
         m9_3.setState(draft.m9_3 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         m9_4.setState(draft.m9_4 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         m9_5.setState(draft.m9_5 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-        setPhotos(draft.photos ?? initialPhotos);
+        // setPhotos(draft.photos ?? initialPhotos);
         setSummary(draft.summary);
 
         // setInspector(draft.inspector ?? "");
         (async () => {
             if (!draft.photoRefs) return;
 
-            const next: Record<number, PhotoItem[]> = Object.fromEntries(
-                QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
-            ) as Record<number, PhotoItem[]>;
+            const next: Record<string, PhotoItem[]> = { ...initialPhotos };
 
-            for (const [noStr, refs] of Object.entries(draft.photoRefs)) {
-                const no = Number(noStr);
+            for (const [photoKey, refs] of Object.entries(draft.photoRefs)) {
                 const items: PhotoItem[] = [];
 
                 for (const ref of refs || []) {
@@ -1018,12 +1021,12 @@ export default function CCBPMReport() {
                         ref,
                     });
                 }
-                next[no] = items;
+                next[photoKey] = items;
             }
 
             setPhotos(next);
         })();
-    }, [stationId, draftId, key]);
+    }, [stationId, key]);
 
     useEffect(() => {
         if (!stationId || !draftId) return;
@@ -1047,6 +1050,48 @@ export default function CCBPMReport() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [stationId, draftId]);
 
+    /* ---------- load pre data in post mode ---------- */
+    useEffect(() => {
+        if (!isPostMode || !editId || !stationId) return;
+
+        (async () => {
+            try {
+                const report = await fetchReport(editId, stationId);
+                if (!report) return;
+
+                // Load measures_pre from database to populate post mode inputs
+                const measuresPre = report.measures_pre || {};
+                const r9Data = measuresPre.r9 || {};
+
+                // Set the pre measure9 values for display comparison
+                if (r9Data["0"]) setM9_0Pre(r9Data["0"]);
+                if (r9Data["1"]) setM9_1Pre(r9Data["1"]);
+                if (r9Data["2"]) setM9_2Pre(r9Data["2"]);
+                if (r9Data["3"]) setM9_3Pre(r9Data["3"]);
+                if (r9Data["4"]) setM9_4Pre(r9Data["4"]);
+                if (r9Data["5"]) setM9_5Pre(r9Data["5"]);
+
+                // Load rows (PASS/FAIL) from database if available
+                if (report.rows) {
+                    setRows(report.rows);
+                }
+
+                // Load summary if available
+                if (report.summary) {
+                    setSummary(report.summary);
+                }
+
+                // Load summaryCheck if available
+                if (report.summaryCheck) {
+                    setSummaryCheck(report.summaryCheck as PF);
+                }
+            } catch (err) {
+                console.error("load report data error:", err);
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isPostMode, editId, stationId]);
+
     useEffect(() => {
         const onInfo = (e: Event) => {
             const detail = (e as CustomEvent).detail as { info?: StationPublic; station?: StationPublic };
@@ -1064,37 +1109,247 @@ export default function CCBPMReport() {
 
 
     // ---------- render helpers ----------
+    // const makePhotoSetter = (
+    //     no: string | number
+    // ): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
+    //     return (action: React.SetStateAction<PhotoItem[]>) => {
+    //         setPhotos((prev) => {
+    //             const current = prev[no] ?? [];
+    //             const next =
+    //                 typeof action === "function"
+    //                     ? (action as (x: PhotoItem[]) => PhotoItem[])(current)
+    //                     : action;
+    //             return { ...prev, [no]: next };
+    //         });
+    //     };
+    // };
     const makePhotoSetter = (
-        no: number
+        key: string | number
     ): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
         return (action: React.SetStateAction<PhotoItem[]>) => {
             setPhotos((prev) => {
-                const current = prev[no] ?? [];
+                const current = prev[key] ?? [];
                 const next =
                     typeof action === "function"
                         ? (action as (x: PhotoItem[]) => PhotoItem[])(current)
                         : action;
-                return { ...prev, [no]: next };
+
+                return { ...prev, [key]: next };
             });
         };
     };
 
+    // const REQUIRED_PHOTO_KEYS_PRE = useMemo(
+    //     () => {
+    //         const keys: string[] = [];
+    //         QUESTIONS.filter((q) => q.hasPhoto && q.no !== 10).forEach((q) => {
+    //             if (q.kind === "group") {
+    //                 // สำหรับ group ต้องมีรูปสำหรับ sub-items
+    //                 q.items.forEach((item) => {
+    //                     keys.push(item.key);
+    //                 });
+    //             } else {
+    //                 // สำหรับ simple ใช้ q-prefix
+    //                 keys.push(`q${q.no}`);
+    //             }
+    //         });
+    //         return keys;
+    //     },
+    //     []
+    // );
+    // const REQUIRED_PHOTO_KEYS_PRE = useMemo(
+    //     () => {
+    //         const keys: string[] = [];
+    //         QUESTIONS.filter((q) => q.hasPhoto && q.no !== 10).forEach((q) => {  // คงกรองไม่ให้ q.no === 10
+    //             if (q.kind === "group") {
+    //                 // สำหรับ group ต้องมีรูปสำหรับ sub-items
+    //                 q.items.forEach((item) => {
+    //                     keys.push(item.key);
+    //                 });
+    //             } else {
+    //                 // สำหรับ simple ใช้ q-prefix
+    //                 keys.push(`q${q.no}`);
+    //             }
+    //         });
+    //         return keys;
+    //     },
+    //     []
+    // );
+    const REQUIRED_PHOTO_KEYS_PRE = useMemo(
+        () => {
+            const keys: string[] = [];
+            QUESTIONS.filter((q) => q.hasPhoto && q.no !== 10).forEach((q) => {
+                if (q.kind === "group") {
+                    // สำหรับ group ต้องมีรูปสำหรับ sub-items
+                    q.items.forEach((item) => {
+                        keys.push(item.key);
+                    });
+                } else if (q.kind === "measure9") {
+                    // ✅ เพิ่มส่วนนี้สำหรับข้อ 9
+                    for (let i = 0; i <= 5; i++) {
+                        keys.push(`r9_${i}`);
+                    }
+                } else {
+                    // สำหรับ simple ใช้ q-prefix
+                    keys.push(`q${q.no}`);
+                }
+            });
+            return keys;
+        },
+        []
+    );
 
-    const REQUIRED_PHOTO_ITEMS = useMemo(() => QUESTIONS.filter((q) => q.hasPhoto).map((q) => q.no).sort((a, b) => a - b), []);
-    const missingPhotoItems = useMemo(() => REQUIRED_PHOTO_ITEMS.filter((no) => (photos[no]?.length ?? 0) < 1), [REQUIRED_PHOTO_ITEMS, photos]);
-    const allPhotosAttached = missingPhotoItems.length === 0;
+    // const REQUIRED_PHOTO_KEYS_POST = useMemo(
+    //     () => {
+    //         const keys: string[] = [];
+    //         QUESTIONS.filter((q) => q.hasPhoto).forEach((q) => {
+    //             if (q.kind === "group") {
+    //                 // สำหรับ group ต้องมีรูปสำหรับ sub-items
+    //                 q.items.forEach((item) => {
+    //                     keys.push(item.key);
+    //                 });
+    //             } else {
+    //                 // สำหรับ simple ใช้ q-prefix
+    //                 keys.push(`q${q.no}`);
+    //             }
+    //         });
+    //         return keys;
+    //     },
+    //     []
+    // );
+    const REQUIRED_PHOTO_KEYS_POST = useMemo(
+        () => {
+            const keys: string[] = [];
+            QUESTIONS.filter((q) => q.hasPhoto).forEach((q) => {
+                if (q.kind === "group") {
+                    // สำหรับ group ต้องมีรูปสำหรับ sub-items
+                    q.items.forEach((item) => {
+                        keys.push(item.key);
+                    });
+                } else if (q.kind === "measure9") {
+                    // ✅ เพิ่มส่วนนี้สำหรับข้อ 9
+                    for (let i = 0; i <= 5; i++) {
+                        keys.push(`r9_${i}`);
+                    }
+                } else {
+                    // สำหรับ simple ใช้ q-prefix
+                    keys.push(`q${q.no}`);
+                }
+            });
+            return keys;
+        },
+        []
+    );
+
+    // const missingPhotoItemsPre = useMemo(
+    //     () =>
+    //         REQUIRED_PHOTO_KEYS_PRE.filter(
+    //             (key) => (photos[key]?.length ?? 0) < 1
+    //         ),
+    //     [REQUIRED_PHOTO_KEYS_PRE, photos]
+    // );
+    const missingPhotoItemsPre = useMemo(
+        () =>
+            REQUIRED_PHOTO_KEYS_PRE.filter(
+                (key) => (photos[key]?.length ?? 0) < 1  // ถ้ายังไม่มีรูปภาพ (หรือจำนวนรูป = 0)
+            ),
+        [REQUIRED_PHOTO_KEYS_PRE, photos]
+    );
+
+    const missingPhotoItemsPost = useMemo(
+        () =>
+            REQUIRED_PHOTO_KEYS_POST.filter(
+                (key) => (photos[key]?.length ?? 0) < 1
+            ),
+        [REQUIRED_PHOTO_KEYS_POST, photos]
+    );
+
+    const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
+    const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
+    const missingPhotoItems = isPostMode ? missingPhotoItemsPost : missingPhotoItemsPre;
+    const allPhotosAttached = isPostMode ? allPhotosAttachedPost : allPhotosAttachedPre;
+
+    // 🔹 PASS/FAIL: ก่อน After ยังไม่บังคับข้อ 19
+    const PF_KEYS_PRE = useMemo(
+        () =>
+            QUESTIONS.filter((q) => q.no !== 10).map(
+                (q) => q.key
+            ),
+        []
+    );
+    const PF_KEYS_ALL = useMemo(
+        () => QUESTIONS.map((q) => q.key),
+        []
+    );
+
+    const allPFAnsweredPre = useMemo(
+        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""), // ✅ เพิ่ม optional chaining
+        [rows, PF_KEYS_PRE]
+    );
+
+    const allPFAnsweredAll = useMemo(
+        () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""), // ✅ เพิ่ม optional chaining
+        [rows, PF_KEYS_ALL]
+    );
+
+    const missingPFItemsPre = useMemo(
+        () =>
+            PF_KEYS_PRE.filter((k) => rows[k] && !rows[k].pf) // ✅ เพิ่มการตรวจสอบ
+                .map((k) => Number(k.replace("r", "")))
+                .sort((a, b) => a - b),
+        [rows, PF_KEYS_PRE]
+    );
+    const missingPFItemsAll = useMemo(
+        () =>
+            PF_KEYS_ALL.filter((k) => rows[k] && !rows[k].pf) // ✅ เพิ่มการตรวจสอบ
+                .map((k) => Number(k.replace("r", "")))
+                .sort((a, b) => a - b),
+        [rows, PF_KEYS_ALL]
+    );
+    const isSummaryFilled = summary.trim().length > 0;
+    const isSummaryCheckFilled = summaryCheck !== "";
+    const canFinalSave =
+        allPhotosAttachedPost &&
+        allPFAnsweredAll &&
+        isSummaryFilled &&
+        isSummaryCheckFilled;
+
+    // const REQUIRED_PHOTO_ITEMS = useMemo(
+    //     () =>
+    //         QUESTIONS.filter((q) => q.hasPhoto).map((q) => q.no).sort((a, b) => a - b), []);
+    // const missingPhotoItems = useMemo(() => REQUIRED_PHOTO_ITEMS.filter((no) => (photos[no]?.length ?? 0) < 1), [REQUIRED_PHOTO_ITEMS, photos]);
+    // const allPhotosAttached = missingPhotoItems.length === 0;
 
     /* ---------- validation ---------- */
     // ต้องตอบ PASS/FAIL/N/A สำหรับ: หัวข้อเดี่ยว + หัวข้อย่อยทั้งหมด
+    // const PF_REQUIRED_KEYS = useMemo(() => {
+    //     const keys: string[] = [];
+    //     QUESTIONS.forEach((q) => {
+    //         if (q.kind === "group") keys.push(...q.items.map((i) => i.key));
+    //         if (q.kind === "simple") keys.push(q.key);
+    //         // ข้อ 9 (measure) ไม่มี PASS/FAIL ย่อย จึงไม่บังคับ
+    //     });
+    //     return keys;
+    // }, []);
+
     const PF_REQUIRED_KEYS = useMemo(() => {
         const keys: string[] = [];
         QUESTIONS.forEach((q) => {
-            if (q.kind === "group") keys.push(...q.items.map((i) => i.key));
-            if (q.kind === "simple") keys.push(q.key);
-            // ข้อ 9 (measure) ไม่มี PASS/FAIL ย่อย จึงไม่บังคับ
+            if (q.kind === "simple") {
+                keys.push(q.key); // ✅ เพิ่ม simple
+            }
+            if (q.kind === "measure9") {
+                keys.push(q.key);
+            } else if (q.kind === "group") {
+                q.items.forEach((item) => {
+                    keys.push(item.key); // ✅ เพิ่ม group items
+                });
+            }
+
         });
         return keys;
     }, []);
+
 
     // const allPFAnswered = useMemo(() => PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== ""), [rows, PF_REQUIRED_KEYS]);
 
@@ -1119,7 +1374,7 @@ export default function CCBPMReport() {
             .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0]));
     }, [isPreMode, rows, PF_REQUIRED_KEYS]);
 
-    const isSummaryFilled = isPreMode ? true : summary.trim().length > 0;
+    // const isSummaryFilled = isPreMode ? true : summary.trim().length > 0;
 
     // // เช็คอินพุตของข้อ 9 ให้ครบทุกช่อง
     const missingInputs = useMemo(() => {
@@ -1140,9 +1395,9 @@ export default function CCBPMReport() {
 
 
 
-    const canFinalSave = isPreMode
-        ? (allPhotosAttached && allRequiredInputsFilled)                   // ✅ pre: รูป + ข้อ9
-        : (allPhotosAttached && allPFAnswered && allRequiredInputsFilled && isSummaryFilled); // ✅ post: ครบทั้งหมด
+    // const canFinalSave = isPreMode
+    //     ? (allPhotosAttached && allRequiredInputsFilled)                   // ✅ pre: รูป + ข้อ9
+    //     : (allPhotosAttached && allPFAnswered && allRequiredInputsFilled && isSummaryFilled); // ✅ post: ครบทั้งหมด
 
     // useEffect(() => onComplete(allPFAnswered), [allPFAnswered, onComplete]);
 
@@ -1154,10 +1409,9 @@ export default function CCBPMReport() {
         }, deps); // eslint-disable-line react-hooks/exhaustive-deps
     }
     const photoRefs = useMemo(() => {
-        const out: Record<number, PhotoRef[]> = {};
-        Object.entries(photos).forEach(([noStr, list]) => {
-            const no = Number(noStr);
-            out[no] = (list || []).map(p => p.ref).filter(Boolean) as PhotoRef[];
+        const out: Record<string, PhotoRef[]> = {};
+        Object.entries(photos).forEach(([key, list]) => {
+            out[key] = (list || []).map(p => p.ref).filter(Boolean) as PhotoRef[];
         });
         return out;
     }, [photos]);
@@ -1165,7 +1419,7 @@ export default function CCBPMReport() {
     useDebouncedEffect(() => {
         if (!stationId || !draftId) return;
         saveDraftLocal(key, {
-            job: { ...job, issue_id: "", date: getTodayLocalStr() },
+            // job: { ...job, issue_id: "", date: getTodayLocalStr() },
             rows,
             m9_0: m9_0.state,
             m9_1: m9_1.state,
@@ -1173,42 +1427,13 @@ export default function CCBPMReport() {
             m9_3: m9_3.state,
             m9_4: m9_4.state,
             m9_5: m9_5.state,
-            photos,
+            // photos,
             summary,
-            inspector,
+            // inspector,
             photoRefs,
         });
-    }, [key, stationId, draftId, job, rows, m9_0.state, m9_1.state, m9_2.state, m9_3.state, m9_4.state, m9_5.state, photos, summary, inspector, photoRefs]);
+    }, [key, stationId, draftId, rows, m9_0.state, m9_1.state, m9_2.state, m9_3.state, m9_4.state, m9_5.state, summary, photoRefs]);
 
-    // const onSave = () => {
-    //     if (!stationId) {
-    //         alert("ยังไม่ทราบ station_id — บันทึกชั่วคราวไม่สำเร็จ");
-    //         return;
-    //     }
-    //     // เซฟดราฟต์ (ซ้ำกับ auto-save ก็ได้ เพื่อความชัวร์ตอนกดปุ่ม)
-    //     // saveDraftLocal(key, {
-    //     //     job,
-    //     //     rows,
-    //     //     cp,
-    //     //     m17: m17.state,
-    //     //     summary,
-    //     // });
-    //     saveDraftLocal(key, {
-    //         // job,
-    //         job: { ...job, issue_id: "" },
-    //         rows,
-    //         m9_0: m9_0.state,
-    //         m9_1: m9_1.state,
-    //         m9_2: m9_2.state,
-    //         m9_3: m9_3.state,
-    //         m9_4: m9_4.state,
-    //         m9_5: m9_5.state,
-    //         photos,
-    //         summary,
-    //         photoRefs
-    //     });
-    //     alert("บันทึกชั่วคราวไว้ในเครื่องแล้ว (Offline Draft)");
-    // };
 
     /* ---------- actions (submit เหมือนเดิม) ---------- */
     async function uploadGroupPhotos(
@@ -1303,25 +1528,37 @@ export default function CCBPMReport() {
             if (doc_name) {
                 setDocName(doc_name);
             }
-            // อัปโหลดรูปแยกกลุ่ม g1..g9
-            const photoNos = Object.keys(photos).map(Number);
-            for (const no of photoNos) {
-                const list = photos[no] || [];
+            const photoKeys = Object.keys(photos);
+            for (const photoKey of photoKeys) {
+                const list = photos[photoKey] || [];
                 if (list.length === 0) continue;
-                const files = list.map((p) => p.file!).filter(Boolean) as File[];
+                const files = list.map(p => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre");
+
+                // ค้นหา question เพื่อให้ได้ question key (r1, r2, r7, etc)
+                let groupKey: string | null = null;
+
+                if (photoKey.startsWith("q")) {
+                    // simple question: q1 -> find question no 1 -> get r1
+                    const qNo = Number(photoKey.substring(1));
+                    const q = QUESTIONS.find(q => q.no === qNo);
+                    if (q) groupKey = q.key;
+                } else if (photoKey.includes("_")) {
+                    // group item: r7_1 or r7_2 -> find question no 7 -> get r7
+                    const match = photoKey.match(/r(\d+)/);
+                    if (match) {
+                        const qNo = Number(match[1]);
+                        const q = QUESTIONS.find(q => q.no === qNo);
+                        if (q) groupKey = q.key;
+                    }
+                }
+
+                if (!groupKey) continue;
+                await uploadGroupPhotos(report_id, stationId, groupKey, files, "pre");
             }
             await Promise.all(
                 Object.values(photos).flat().map(p => delPhoto(key, p.id))
             );
-            // const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
-            //     method: "POST",
-            //     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-            //     credentials: "include",
-            //     body: new URLSearchParams({ station_id: stationId }),
-            // });
-            // if (!fin.ok) throw new Error(await fin.text());
 
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
@@ -1377,7 +1614,7 @@ export default function CCBPMReport() {
                 summary,
                 // pm_date,
                 ...(summaryCheck ? { summaryCheck } : {}),
-                inspector,
+                // inspector,
                 report_id: editId,
             };
 
@@ -1397,13 +1634,41 @@ export default function CCBPMReport() {
             //     setDocName(doc_name);
             // }
             // อัปโหลดรูปแยกกลุ่ม g1..g9
-            const photoNos = Object.keys(photos).map(Number);
-            for (const no of photoNos) {
-                const list = photos[no] || [];
+            // const photoNos = Object.keys(photos).map(Number);
+            // for (const no of photoNos) {
+            //     const list = photos[no] || [];
+            //     if (list.length === 0) continue;
+            //     const files = list.map((p) => p.file!).filter(Boolean) as File[];
+            //     if (files.length === 0) continue;
+            //     await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post");
+            // }
+            const photoKeys = Object.keys(photos);
+            for (const photoKey of photoKeys) {
+                const list = photos[photoKey] || [];
                 if (list.length === 0) continue;
                 const files = list.map((p) => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post");
+
+                // ค้นหา question เพื่อให้ได้ question key (r1, r2, r7, etc)
+                let groupKey: string | null = null;
+
+                if (photoKey.startsWith("q")) {
+                    // simple question: q1 -> find question no 1 -> get r1
+                    const qNo = Number(photoKey.substring(1));
+                    const q = QUESTIONS.find(q => q.no === qNo);
+                    if (q) groupKey = q.key;
+                } else if (photoKey.includes("_")) {
+                    // group item: r7_1 or r7_2 -> find question no 7 -> get r7
+                    const match = photoKey.match(/r(\d+)/);
+                    if (match) {
+                        const qNo = Number(match[1]);
+                        const q = QUESTIONS.find(q => q.no === qNo);
+                        if (q) groupKey = q.key;
+                    }
+                }
+
+                if (!groupKey) continue;
+                await uploadGroupPhotos(report_id, stationId, groupKey, files, "post");
             }
 
             const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
@@ -1444,6 +1709,76 @@ export default function CCBPMReport() {
     //     );
     // };
 
+    const handleUnitChange = (no: number, key: string, u: UnitVoltage) => {
+        const m = MEASURE_BY_NO[no];
+        if (!m) return;
+        const firstKey = (FIELD_GROUPS[no]?.keys ?? [key])[0] as string;
+        if (key !== firstKey) m.patch(firstKey, { unit: u });
+        m.syncUnits(u);
+    };
+
+    const renderMeasureGridWithPre = (no: number) => {
+        const cfg = FIELD_GROUPS[no];
+        const m = MEASURE_BY_NO[no];
+        const pre = getPreMeasureState(no);
+
+        if (!cfg || !m || !pre) return null;
+
+        return (
+            <div className="tw-space-y-3">
+                {/* ---------- ชุด ก่อน PM ---------- */}
+                <Typography
+                    variant="small"
+                    className="tw-font-medium tw-text-blue-gray-700"
+                >
+                    ก่อน PM
+                </Typography>
+
+                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    {cfg.keys.map((k) => (
+                        <div
+                            key={`pre-${no}-${k}`}
+                            className="tw-pointer-events-none tw-opacity-60"
+                        >
+                            <InputWithUnit<UnitVoltage>
+                                label={LABELS[k] ?? k}          // มี label เหมือนหลัง PM
+                                value={pre[k]?.value || ""}
+                                unit={(pre[k]?.unit as UnitVoltage) || "V"}
+                                units={UNITS.voltage}
+                                onValueChange={() => { }}        // ห้ามแก้
+                                onUnitChange={() => { }}
+                                readOnly
+                                required={false}                // ไม่มี *
+                            />
+                        </div>
+                    ))}
+                </div>
+
+                {/* ---------- ชุด หลัง PM ---------- */}
+                <Typography
+                    variant="small"
+                    className="tw-font-medium tw-text-blue-gray-700 tw-mt-2"
+                >
+                    หลัง PM
+                </Typography>
+
+                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    {cfg.keys.map((k) => (
+                        <InputWithUnit<UnitVoltage>
+                            key={`post-${no}-${k}`}
+                            label={LABELS[k] ?? k}
+                            value={m.state[k]?.value || ""}
+                            unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+                            units={UNITS.voltage}
+                            onValueChange={(v) => m.patch(k, { value: v })}
+                            onUnitChange={(u) => handleUnitChange(no, k, u)}
+                        />
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
     const renderMeasureGrid9 = (idx: number, title: string, m: ReturnType<typeof useMeasure<UnitVoltage>>) => {
         return (
             <div className="tw-space-y-3 tw-py-4 tw-px-3 tw-border-b tw-border-blue-gray-100 tw-mb-4">
@@ -1466,40 +1801,157 @@ export default function CCBPMReport() {
         );
     };
 
-    const renderQuestionBlock = (q: Question) => {
-        return (
-            <SectionCard key={q.key} title={q.label}>
-                {/* รูป (ถ้ามี) -> อยู่ด้านบนสุดของแต่ละข้อ */}
-                {q.hasPhoto && (
-                    <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
-                        <PhotoMultiInput
-                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                            photos={photos[q.no] || []}
-                            setPhotos={makePhotoSetter(q.no)}
-                            max={18}
-                            draftKey={key}   // ✅ เพิ่ม
-                            qNo={q.no}
-                        />
-                    </div>
-                )}
 
-                {/* simple/group header row */}
-                {/* {q.kind === "simple" && (
+    const renderQuestionBlock = (q: Question, mode: TabId) => {
+        if (mode === "pre") {
+            return (
+                // <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+                <SectionCard
+                    key={q.key}
+                    title={getQuestionLabel(q, mode)}
+                // subtitle={subtitle}
+                >
+                    {q.kind === "simple" && q.hasPhoto && (
+                        <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                            <PhotoMultiInput
+                                label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                photos={photos[`q${q.no}`] || []}
+                                setPhotos={makePhotoSetter(`q${q.no}`)}
+                                max={10}
+                                draftKey={key}
+                                qNo={q.no}
+                            />
+                        </div>
+                    )}
+                    {q.kind === "group" && q.hasPhoto && (
+                        <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                            {q.items.map((item) => (
+                                <div key={item.key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+                                    <Typography variant="small" className="tw-font-medium tw-mb-2">
+                                        {item.label}
+                                    </Typography>
+                                    <PhotoMultiInput
+                                        label={`แนบรูปประกอบ (${item.label})`}
+                                        photos={photos[item.key] || []}
+                                        setPhotos={makePhotoSetter(item.key)}
+                                        max={10}
+                                        draftKey={key}
+                                        qNo={q.no}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* {q.kind === "measure9" && q.hasPhoto && (
+                        <div>
+                            <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                                <PhotoMultiInput
+                                    label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                    photos={photos[`q${q.no}`] || []}
+                                    setPhotos={makePhotoSetter(`q${q.no}`)}
+                                    max={10}
+                                    draftKey={key}
+                                    qNo={q.no}
+                                />
+                            </div>
+                            <div className="tw-space-y-3">
+                                {renderMeasureGrid9(0, BREAKERS[0], m9_0)}
+                                {renderMeasureGrid9(1, BREAKERS[1], m9_1)}
+                                {renderMeasureGrid9(2, BREAKERS[2], m9_2)}
+                                {renderMeasureGrid9(3, BREAKERS[3], m9_3)}
+                                {renderMeasureGrid9(4, BREAKERS[4], m9_4)}
+                                {renderMeasureGrid9(5, BREAKERS[5], m9_5)}
+                            </div>
+                        </div>
+
+                    )} */}
+                    {q.kind === "measure9" && q.hasPhoto && (
+                        <div className="tw-space-y-3">
+                            {/* เบรกเกอร์แต่ละตัว */}
+                            {[
+                                { idx: 0, title: BREAKERS[0], m: m9_0, key: 'r9_0' },
+                                { idx: 1, title: BREAKERS[1], m: m9_1, key: 'r9_1' },
+                                { idx: 2, title: BREAKERS[2], m: m9_2, key: 'r9_2' },
+                                { idx: 3, title: BREAKERS[3], m: m9_3, key: 'r9_3' },
+                                { idx: 4, title: BREAKERS[4], m: m9_4, key: 'r9_4' },
+                                { idx: 5, title: BREAKERS[5], m: m9_5, key: 'r9_5' },
+                            ].map(({ idx, title, m, key }) => (
+                                <div key={key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+                                    <Typography className="tw-font-medium tw-mb-3">{title}</Typography>
+
+                                    {/* แนบรูปของเบรกเกอร์นี้ */}
+                                    <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                        <PhotoMultiInput
+                                            label={`แนบรูปประกอบ (${title})`}
+                                            photos={photos[key] || []}
+                                            setPhotos={makePhotoSetter(key)}
+                                            max={3}
+                                            draftKey={key}
+                                            qNo={q.no}
+                                        />
+                                    </div>
+
+                                    {/* ฟอร์มวัดค่า */}
+                                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4">
+                                        {VOLTAGE_FIELDS_CCB.map((k) => (
+                                            <InputWithUnit<UnitVoltage>
+                                                key={`${idx}-${k}`}
+                                                label={LABELS[k]}
+                                                value={m.state[k]?.value || ""}
+                                                unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+                                                units={["V"] as const}
+                                                onValueChange={(v) => m.patch(k, { value: v })}
+                                                onUnitChange={(u) => m.syncUnits(u)}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+
+
+
+                </SectionCard>
+            );
+        }
+        return (
+
+            <SectionCard key={q.key} title={q.label}>
+                {/* simple */}
+                {q.kind === "simple" && (
                     <PassFailRow
                         label="ผลการทดสอบ"
-                        value={rows[q.key].pf}
+                        value={rows[q.key]?.pf ?? ""}
                         onChange={(v) =>
                             setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
                         }
-                        remark={rows[q.key].remark}
+                        remark={rows[q.key]?.remark ?? ""}
                         onRemarkChange={(v) =>
                             setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
+                        }
+                        aboveRemark={
+                            q.hasPhoto && (
+                                <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                    <PhotoMultiInput
+                                        label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                        photos={photos[`q${q.no}`] || []}
+                                        setPhotos={makePhotoSetter(`q${q.no}`)}
+                                        max={3}
+                                        draftKey={key}
+                                        qNo={q.no}
+                                    />
+                                </div>
+                            )
                         }
                     />
                 )}
 
+                {/* group */}
                 {q.kind === "group" &&
-                    q.items.map((it) => (
+                    q.items.map((it, idx) => (
                         <PassFailRow
                             key={it.key}
                             label={it.label}
@@ -1510,66 +1962,200 @@ export default function CCBPMReport() {
                                     [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
                                 })
                             }
-                            remark={rows[it.key]?.remark}
+                            remark={rows[it.key]?.remark ?? ""}
                             onRemarkChange={(v) =>
                                 setRows({
                                     ...rows,
                                     [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
                                 })
                             }
+                            // แนบรูปสำหรับแต่ละ sub-item
+                            aboveRemark={
+                                q.hasPhoto && (
+                                    <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                        <PhotoMultiInput
+                                            label={`แนบรูปประกอบ (${it.label})`}
+                                            photos={photos[it.key] || []}
+                                            setPhotos={makePhotoSetter(it.key)}
+                                            max={3}
+                                            draftKey={key}
+                                            qNo={q.no}
+                                        />
+                                    </div>
+                                )
+                            }
                         />
-                    ))} */}
-
-                {isPostMode && q.kind === "simple" && (
-                    <PassFailRow
-                        label="ผลการทดสอบ"
-                        value={rows[q.key].pf}
-                        onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
-                        remark={rows[q.key].remark}
-                        onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-                    />
-                )}
-
-                {/* group */}
-                {isPostMode && q.kind === "group" && q.items.map((it) => (
-                    <PassFailRow
-                        key={it.key}
-                        label={it.label}
-                        value={rows[it.key]?.pf ?? ""}
-                        onChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
-                        remark={rows[it.key]?.remark}
-                        onRemarkChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
-                    />
-                ))}
+                    ))}
                 {q.kind === "measure9" && (
                     <div className="tw-space-y-3">
-                        {renderMeasureGrid9(0, BREAKERS[0], m9_0)}
-                        {renderMeasureGrid9(1, BREAKERS[1], m9_1)}
-                        {renderMeasureGrid9(2, BREAKERS[2], m9_2)}
-                        {renderMeasureGrid9(3, BREAKERS[3], m9_3)}
-                        {renderMeasureGrid9(4, BREAKERS[4], m9_4)}
-                        {renderMeasureGrid9(5, BREAKERS[5], m9_5)}
+                        {[
+                            { idx: 0, title: BREAKERS[0], m: m9_0, mPre: m9_0Pre, key: 'r9_0' },
+                            { idx: 1, title: BREAKERS[1], m: m9_1, mPre: m9_1Pre, key: 'r9_1' },
+                            { idx: 2, title: BREAKERS[2], m: m9_2, mPre: m9_2Pre, key: 'r9_2' },
+                            { idx: 3, title: BREAKERS[3], m: m9_3, mPre: m9_3Pre, key: 'r9_3' },
+                            { idx: 4, title: BREAKERS[4], m: m9_4, mPre: m9_4Pre, key: 'r9_4' },
+                            { idx: 5, title: BREAKERS[5], m: m9_5, mPre: m9_5Pre, key: 'r9_5' },
+                        ].map(({ idx, title, m, mPre, key }) => (
+                            <div key={key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+                                <Typography className="tw-font-medium tw-mb-3">{title}</Typography>
+
+                                {/* แนบรูปของเบรกเกอร์นี้ */}
+                                {q.hasPhoto && (
+                                    <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                        <PhotoMultiInput
+                                            label={`แนบรูปประกอบ (${title})`}
+                                            photos={photos[key] || []}
+                                            setPhotos={makePhotoSetter(key)}
+                                            max={3}
+                                            draftKey={key}
+                                            qNo={q.no}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* PASS/FAIL + Remark สำหรับเบรกเกอร์นี้ */}
+                                <div className="tw-mb-4">
+                                    <PassFailRow
+                                        label="ผลการทดสอบ"
+                                        value={rows[key]?.pf ?? ""}
+                                        onChange={(v) =>
+                                            setRows({
+                                                ...rows,
+                                                [key]: { ...(rows[key] ?? { remark: "" }), pf: v },
+                                            })
+                                        }
+                                        remark={rows[key]?.remark ?? ""}
+                                        onRemarkChange={(v) =>
+                                            setRows({
+                                                ...rows,
+                                                [key]: { ...(rows[key] ?? { pf: "" }), remark: v },
+                                            })
+                                        }
+                                    />
+                                </div>
+
+                                {/* ฟอร์มวัดค่า - หลัง PM */}
+
+
+                                {/* ก่อน PM - อ้างอิง (ล่าง) */}
+                                <div>
+                                    <Typography
+                                        variant="small"
+                                        className="tw-font-medium tw-text-blue-gray-700 tw-mb-2"
+                                    >
+                                        ก่อน PM (อ้างอิง)
+                                    </Typography>
+                                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4 tw-opacity-60 tw-pointer-events-none">
+                                        {VOLTAGE_FIELDS_CCB.map((k) => (
+                                            <InputWithUnit<UnitVoltage>
+                                                key={`pre-${idx}-${k}`}
+                                                label={LABELS[k]}
+                                                value={mPre[k]?.value || ""}
+                                                unit={(mPre[k]?.unit as UnitVoltage) || "V"}
+                                                units={["V"] as const}
+                                                onValueChange={() => { }}
+                                                onUnitChange={() => { }}
+                                                readOnly
+                                                required={false}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="tw-mb-4">
+                                    <Typography
+                                        variant="small"
+                                        className="tw-font-medium tw-text-blue-gray-700 tw-mb-2"
+                                    >
+                                        หลัง PM
+                                    </Typography>
+                                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4">
+                                        {VOLTAGE_FIELDS_CCB.map((k) => (
+                                            <InputWithUnit<UnitVoltage>
+                                                key={`post-${idx}-${k}`}
+                                                label={LABELS[k]}
+                                                value={m.state[k]?.value || ""}
+                                                unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+                                                units={["V"] as const}
+                                                onValueChange={(v) => m.patch(k, { value: v })}
+                                                onUnitChange={(u) => m.syncUnits(u)}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 )}
+
             </SectionCard>
         );
     };
 
-    // ✅ แท็บที่กำลังแสดง (อิงจาก action=post)
-    const displayTab: TabId = isPostMode ? "post" : "pre";
 
-    // ✅ เงื่อนไขปลดล็อคไป Post (ต้องกรอก Pre ให้ครบก่อน)
-    const canGoAfter = allPhotosAttached && allRequiredInputsFilled;
+    const active: TabId = useMemo(
+        () => slugToTab(searchParams.get("pmtab")),
+        [searchParams]
+    );
 
-    // ✅ ฟังก์ชันเปลี่ยนแท็บ (เปลี่ยน URL param action)
-    const go = (tab: TabId) => {
+    const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled);
+
+    useEffect(() => {
+        const tabParam = searchParams.get("pmtab");
+
+        let desired: "pre" | "post";
+
+        if (isPostMode) {
+            // ถ้ามาแบบ action=post → บังคับให้เริ่มที่แท็บ after
+            desired = "post";
+        } else if (!tabParam) {
+            // ปกติ (ไม่ใช่ post) → ค่าเริ่มต้นเป็น before
+            desired = "pre";
+        } else if (tabParam === "after" && !canGoAfter) {
+            // พยายามเปิด after ตรง ๆ แต่ยังไม่ครบ → บังคับกลับเป็น before
+            desired = "pre";
+        } else {
+            desired = tabParam === "post" ? "post" : "pre";
+        }
+
+        if (tabParam !== desired) {
+            const params = new URLSearchParams(searchParams.toString());
+            params.set("pmtab", desired);
+            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        }
+    }, [searchParams, canGoAfter, pathname, router, isPostMode]);
+    const go = (next: TabId) => {
+        // ถ้าเป็น post-mode ห้ามย้อนกลับไป Pre-PM
+        if (isPostMode && next === "pre") {
+            return; // จะไม่ทำอะไรเลย (หรือจะ alert ก็ได้)
+        }
+
+        // 🔒 mode ปกติ: ถ้ายังไป post ไม่ได้
+        if (next === "post" && !canGoAfter) {
+            alert("กรุณากรอกข้อมูลในส่วน Pre ให้ครบก่อน");
+            return;
+        }
+
         const params = new URLSearchParams(searchParams.toString());
-
-        if (tab === "post") params.set("action", "post");
-        else params.delete("action"); // หรือ params.set("action","pre") ก็ได้ แต่ต้องให้ logic isPostMode รองรับ
-
-        router.replace(`${pathname}?${params.toString()}`);
+        params.set("pmtab", tabToSlug(next));
+        router.push(`${pathname}?${params.toString()}`, { scroll: false });
     };
+    const displayTab: TabId = isPostMode
+        ? "post" // ถ้าเป็นหน้า post ให้โชว์แท็บ post เสมอ
+        : (active === "post" && !canGoAfter ? "pre" : active);
+
+    const allPFAnsweredForUI =
+        displayTab === "pre" ? allPFAnsweredPre : allPFAnsweredAll;
+    const missingPFItemsForUI =
+        displayTab === "pre" ? missingPFItemsPre : missingPFItemsAll;
+
+    const allPhotosAttachedForUI =
+        displayTab === "pre"
+            ? allPhotosAttachedPre
+            : allPhotosAttachedPost;
+    const missingPhotoItemsForUI =
+        displayTab === "pre"
+            ? missingPhotoItemsPre
+            : missingPhotoItemsPost;
     /* =========================
      *        RENDER
      * ========================= */
@@ -1745,47 +2331,16 @@ export default function CCBPMReport() {
                         </div>
                     </div>
                     {[
-                        // [1, 3],
-                        // [4, 6],
-                        // [7, 9],
-                        [1, 9]
-                        // [17, 17], // มีกริดวัดค่า
-                        // [18, 19],
+                        [1, 10]
                     ].map(([start, end]) => (
                         <CardBody key={`${start}-${end}`} className="tw-space-y-2">
-                            {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
+                            {QUESTIONS
+                                .filter((q) => q.no >= start && q.no <= end)
+                                .filter((q) => !(displayTab === "pre" && q.no === 10))
+                                .map((q) => renderQuestionBlock(q, displayTab))}
                         </CardBody>
                     ))}
-                    {/* Summary */}
-                    {/* <SectionCard title="Comment">
-                        <div className="tw-space-y-2">
-                            <Textarea
-                                label="Comment"
-                                value={summary}
-                                onChange={(e) => setSummary(e.target.value)}
-                                rows={4}
-                                required
-                                autoComplete="off"
-                                containerProps={{ className: "!tw-min-w-0" }}
-                                className="!tw-w-full resize-none"
-                            />
-                        </div>
 
-                        {isPostMode && (
-                            <div className="tw-pt-3 tw-border-t tw-border-blue-gray-50">
-                                <PassFailRow
-                                    label="สรุปผลการตรวจสอบ"
-                                    value={summaryCheck}
-                                    onChange={(v) => setSummaryCheck(v)}
-                                    labels={{                    // ⬅️ ไทยเฉพาะตรงนี้
-                                        PASS: "Pass : ผ่าน",
-                                        FAIL: "Fail : ไม่ผ่าน",
-                                        NA: "N/A : ไม่พบ",
-                                    }}
-                                />
-                            </div>
-                        )}
-                    </SectionCard> */}
 
                     <CardBody className="tw-space-y-3 !tw-pt-4 !tw-pb-0">
                         <Typography variant="h6" className="tw-mb-1">
@@ -1821,14 +2376,6 @@ export default function CCBPMReport() {
                     </CardBody>
                     {/* Footer checks */}
                     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-                        {/* <div className={`tw-rounded-lg tw-border tw-p-3 ${allPFAnswered ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-                            <Typography className="tw-font-medium">1) สถานะ PASS / FAIL / N/A (หัวข้อย่อยทุกข้อ)</Typography>
-                            {allPFAnswered ? (
-                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้เลือกข้อ: {missingPFItems.join(", ")}</Typography>
-                            )}
-                        </div> */}
 
 
                         <div className={`tw-rounded-lg tw-border tw-p-3 ${allPhotosAttached ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
@@ -1876,29 +2423,43 @@ export default function CCBPMReport() {
                             </div>
                         )}
 
-
-
-                        {/* <div className={`tw-rounded-lg tw-border tw-p-3 ${isSummaryFilled ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-                            <Typography className="tw-font-medium">4) สรุปผลการตรวจสอบ</Typography>
-                            {isSummaryFilled ? (
-                                <Typography variant="small" className="!tw-text-green-700">ครบเรียบร้อย ✅</Typography>
-                            ) : (
-                                <Typography variant="small" className="!tw-text-amber-700">ยังไม่ได้กรอกสรุปผลการตรวจสอบ</Typography>
-                            )}
-                        </div> */}
-
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                            {/* <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>
-                                {submitting ? "กำลังบันทึก..." : "บันทึก"}
-                            </Button> */}
-                            <Button
-                                color="blue"
-                                type="button"
-                                onClick={isPostMode ? onFinalSave : onPreSave}
-                                disabled={!canFinalSave || submitting}
-                            >
-                                {submitting ? "กำลังบันทึก..." : "บันทึก"}
-                            </Button>
+                            {displayTab === "pre" ? (
+                                // อยู่แท็บ BEFORE → บันทึกลง Mongo + img_before แล้วค่อยไป AFTER
+                                <Button
+                                    color="blue"
+                                    type="button"
+                                    onClick={onPreSave}
+                                    disabled={!canGoAfter || submitting}
+                                    title={
+                                        // !canGoAfter
+                                        //     ? "กรุณาแนบรูปในส่วน Pre ให้ครบก่อนบันทึก"
+                                        //     : undefined
+                                        !allPhotosAttachedPre
+                                            ? "กรุณาแนบรูปในส่วน Pre ให้ครบก่อนบันทึก"
+                                            : !allRequiredInputsFilled
+                                                ? "กรุณากรอกค่าข้อ 14 (CP) และข้อ 16 ให้ครบก่อนบันทึก"
+                                                : undefined
+                                    }
+                                >
+                                    {submitting ? "กำลังบันทึก..." : "บันทึก"}
+                                </Button>
+                            ) : (
+                                // อยู่แท็บ AFTER → บันทึกสุดท้าย + finalize
+                                <Button
+                                    color="blue"
+                                    type="button"
+                                    onClick={onFinalSave}
+                                    disabled={!canFinalSave || submitting}
+                                    title={
+                                        !canFinalSave
+                                            ? "กรุณากรอกข้อมูล / แนบรูป และสรุปผลให้ครบก่อนบันทึก"
+                                            : undefined
+                                    }
+                                >
+                                    {submitting ? "กำลังบันทึก..." : "บันทึก"}
+                                </Button>
+                            )}
                         </div>
                     </CardFooter>
                 </div>
