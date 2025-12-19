@@ -957,9 +957,7 @@ export default function StationPMReport() {
     useDebouncedEffect(() => {
         if (!stationId || !draftId) return;
         saveDraftLocal(key, {
-            // job,
             rows,
-            // 
             summary,
             summary_pf: summaryCheck,
             photoRefs,

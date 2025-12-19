@@ -1,19 +1,23 @@
 import type { PhotoRef } from "./draftPhotos";
 
+type PF = "PASS" | "FAIL" | "NA" | "";
+
 type DraftData = {
-  job: any;
   rows: any;
   m4: any;
   m5: any;
   m6: any;
   m7: any;
   m8: any;
+  m4Pre?: any;
+  m5Pre?: any;
+  m6Pre?: any;
+  m7Pre?: any;
+  m8Pre?: any;
   summary: string;
-  inspector : string;
+  summary_pf?: PF;
   dustFilterChanged?: boolean;
-  photoRefs?: Record<number, PhotoRef[]>;
-  // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
-  // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
+  photoRefs?: Record<number | string, PhotoRef[]>;
 };
 
 function safeStorage() {

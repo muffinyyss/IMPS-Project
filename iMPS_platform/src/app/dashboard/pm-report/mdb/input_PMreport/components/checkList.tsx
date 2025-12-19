@@ -728,12 +728,13 @@ export default function MDBPMMForm() {
     }, []);
 
     /* ---------- PASS/FAIL + remark ---------- */
-    const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
-        Object.fromEntries(QUESTIONS.map((q) => [q.key, { pf: "", remark: "" }])) as Record<
-            string,
-            { pf: PF; remark: string }
-        >
-    );
+    const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
+        const initial: Record<string, { pf: PF; remark: string }> = {};
+        QUESTIONS.forEach((q) => {
+            initial[q.key] = { pf: "", remark: "" };
+        });
+        return initial;
+    });
 
     const [m4Pre, setM4Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS, "V"));
     const [m5Pre, setM5Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS, "V"));
@@ -1124,18 +1125,18 @@ export default function MDBPMMForm() {
     );
 
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k].pf !== ""),
+        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
     const allPFAnsweredAll = useMemo(
-        () => PF_KEYS_ALL.every((k) => rows[k].pf !== ""),
+        () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_ALL]
     );
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => !rows[k].pf)
+            PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
@@ -1143,7 +1144,7 @@ export default function MDBPMMForm() {
 
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => !rows[k].pf)
+            PF_KEYS_ALL.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_ALL]
@@ -1169,12 +1170,12 @@ export default function MDBPMMForm() {
 
     // ตอบอะไรก็ได้ที่ไม่ว่าง: PASS/FAIL/NA
     const allPFAnswered = useMemo(
-        () => PF_REQUIRED_KEYS.every((k) => rows[k].pf !== ""),
+        () => PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== ""),
         [rows, PF_REQUIRED_KEYS]
     );
     const missingPFItems = useMemo(
         () =>
-            PF_REQUIRED_KEYS.filter((k) => !rows[k].pf)
+            PF_REQUIRED_KEYS.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_REQUIRED_KEYS]
@@ -1387,13 +1388,13 @@ export default function MDBPMMForm() {
             <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
                 <PassFailRow
                     label="ผลการทดสอบ"
-                    value={rows[q.key].pf}
+                    value={rows[q.key]?.pf ?? ""}
                     onChange={(v) =>
-                        setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
+                        setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
                     }
-                    remark={rows[q.key].remark}
+                    remark={rows[q.key]?.remark ?? ""}
                     onRemarkChange={(v) =>
-                        setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
+                        setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
                     }
                     aboveRemark={
                         q.hasPhoto && (
@@ -1445,7 +1446,7 @@ export default function MDBPMMForm() {
     useDebouncedEffect(() => {
         if (!stationId || !draftId) return;
         saveDraftLocal(key, {
-            job: { ...job, issue_id: "" },
+            // job: { ...job, issue_id: "" },
             rows,
             // cp,
             m4: m4.state,
@@ -1454,10 +1455,10 @@ export default function MDBPMMForm() {
             m7: m7.state,
             m8: m8.state,
             summary,
-            inspector,
+            // inspector,
             photoRefs,
         });
-    }, [key, stationId, job, rows, m4.state, m5.state, m6.state, m7.state, summary, inspector, photoRefs,]);
+    }, [key, stationId, rows, m4.state, m5.state, m6.state, m7.state, summary, photoRefs,]);
 
     /* ---------- actions ---------- */
     // const onSave = () => {
