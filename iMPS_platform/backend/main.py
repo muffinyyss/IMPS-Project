@@ -3893,8 +3893,19 @@ async def mdbpmreport_upload_photos(
 ):
     # if current.role != "admin" and station_id not in set(current.station_ids):
     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-    if not re.fullmatch(r"g\d+", group):
-        raise HTTPException(status_code=400, detail="Bad group key")
+    # Accept both formats: "g1", "g2" (simple questions) and "r9_1", "r9_2" (group sub-items)
+    if not re.fullmatch(r"(g\d+|r\d+_\d+)", group):
+        raise HTTPException(status_code=400, detail=f"Bad group key format: {group}")
+
+    # Map group key to database storage key:
+    # - "g1" -> "g1", "g2" -> "g2", etc. (keep g prefix)
+    # - "r9_1", "r9_2", "r9_3", "r9_4" -> "g9" (all merged into question 9 with g prefix)
+    storage_key = group
+    group_match = re.match(r"r(\d+)_\d+", group)
+    if group_match:  # Convert r9_1 format to g9
+        question_num = group_match.group(1)  # Extract question number (e.g., "9")
+        storage_key = f"g{question_num}"  # Add g prefix for database
+    # else: keep group as-is (e.g., "g1" stays "g1")
 
     coll = get_mdbpmreport_collection_for(station_id)
     from bson import ObjectId
@@ -3910,8 +3921,8 @@ async def mdbpmreport_upload_photos(
     if doc.get("station_id") != station_id:
         raise HTTPException(status_code=400, detail="station_id mismatch")
 
-    # โฟลเดอร์ปลายทาง
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "mdbpm" / station_id / report_id  / "pre" / group
+    # โฟลเดอร์ปลายทาง (use storage_key for consistent path)
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "mdbpm" / station_id / report_id  / "pre" / storage_key
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     saved = []
@@ -3931,8 +3942,8 @@ async def mdbpmreport_upload_photos(
         with open(path, "wb") as out:
             out.write(data)
 
-        # URL สำหรับแสดงบน Frontend
-        url_path = f"/uploads/mdbpm/{station_id}/{report_id}/pre/{group}/{fname}"
+        # URL สำหรับแสดงบน Frontend (use storage_key for consistent URL)
+        url_path = f"/uploads/mdbpm/{station_id}/{report_id}/pre/{storage_key}/{fname}"
         saved.append({
             "filename": fname,
             "size": len(data),
@@ -3941,13 +3952,15 @@ async def mdbpmreport_upload_photos(
             "uploadedAt": datetime.now(timezone.utc)
         })
 
-    # อัปเดตเอกสาร PMReport: push ลง photos.<group>
+    # อัปเดตเอกสาร PMReport: push ลง photos_pre.<storage_key>
+    # Note: storage_key already calculated above
     await coll.update_one(
         {"_id": oid},
-        {"$push": {f"photos_pre.{group}": {"$each": saved}}}
+        {"$push": {f"photos_pre.{storage_key}": {"$each": saved}}}
     )
 
     return {"ok": True, "count": len(saved), "group": group, "files": saved}
+
 
 
 @app.post("/mdbpmreport/{report_id}/post/photos")
@@ -3961,8 +3974,19 @@ async def mdbpmreport_upload_photos(
 ):
     # if current.role != "admin" and station_id not in set(current.station_ids):
     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-    if not re.fullmatch(r"g\d+", group):
-        raise HTTPException(status_code=400, detail="Bad group key")
+    # Accept both formats: "g1", "g2" (simple questions) and "r9_1", "r9_2" (group sub-items)
+    if not re.fullmatch(r"(g\d+|r\d+_\d+)", group):
+        raise HTTPException(status_code=400, detail=f"Bad group key format: {group}")
+
+    # Map group key to database storage key:
+    # - "g1" -> "g1", "g2" -> "g2", etc. (keep g prefix)
+    # - "r9_1", "r9_2", "r9_3", "r9_4" -> "g9" (all merged into question 9 with g prefix)
+    storage_key = group
+    group_match = re.match(r"r(\d+)_\d+", group)
+    if group_match:  # Convert r9_1 format to g9
+        question_num = group_match.group(1)  # Extract question number (e.g., "9")
+        storage_key = f"g{question_num}"  # Add g prefix for database
+    # else: keep group as-is (e.g., "g1" stays "g1")
 
     coll = get_mdbpmreport_collection_for(station_id)
     try:
@@ -3977,7 +4001,7 @@ async def mdbpmreport_upload_photos(
         raise HTTPException(status_code=400, detail="station_id mismatch")
 
     # โฟลเดอร์: /uploads/mdbpm/{station_id}/{report_id}/{group}/
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "mdbpm" / station_id / report_id / "post" / group
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "mdbpm" / station_id / report_id / "post" / storage_key
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     saved = []
@@ -3995,7 +4019,7 @@ async def mdbpmreport_upload_photos(
         with open(path, "wb") as out:
             out.write(data)
 
-        url_path = f"/uploads/mdbpm/{station_id}/{report_id}/post/{group}/{fname}"
+        url_path = f"/uploads/mdbpm/{station_id}/{report_id}/post/{storage_key}/{fname}"
         saved.append({
             "filename": fname,
             "size": len(data),
@@ -4004,10 +4028,11 @@ async def mdbpmreport_upload_photos(
             "uploadedAt": datetime.now(timezone.utc)
         })
 
+    # Note: storage_key mapping already done above (before file operations)
     await coll.update_one(
         {"_id": oid},
         {
-            "$push": {f"photos.{group}": {"$each": saved}},
+            "$push": {f"photos.{storage_key}": {"$each": saved}},
             "$set": {"updatedAt": datetime.now(timezone.utc)}
         }
     )
