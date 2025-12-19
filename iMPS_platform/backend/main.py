@@ -5836,7 +5836,7 @@ async def stationpmreport_upload_photos(
         with open(path, "wb") as out:
             out.write(data)
 
-        url_path = f"/uploads/stationpm/{station_id}/{report_id}/{group}/pre/{fname}"
+        url_path = f"/uploads/stationpm/{station_id}/{report_id}/pre/{group}/{fname}"
         saved.append({
             "filename": fname,
             "size": len(data),
@@ -5899,7 +5899,7 @@ async def stationpmreport_upload_photos(
         with open(path, "wb") as out:
             out.write(data)
 
-        url_path = f"/uploads/stationpm/{station_id}/{report_id}/{group}/post/{fname}"
+        url_path = f"/uploads/stationpm/{station_id}/{report_id}/post/{group}/{fname}"
         saved.append({
             "filename": fname,
             "size": len(data),

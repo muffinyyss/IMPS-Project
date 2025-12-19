@@ -1,9 +1,12 @@
 import type { PhotoRef } from "./draftPhotos";
 
+type PF = "PASS" | "FAIL" | "NA" | "";
+
 type DraftData = {
   // job: any;
   rows: any;
   summary: string;
+  summary_pf?: PF;
   photoRefs?: Record<number, PhotoRef[]>;
 };
 
