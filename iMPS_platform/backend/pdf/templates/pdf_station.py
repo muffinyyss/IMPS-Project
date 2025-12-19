@@ -579,10 +579,9 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
 
         data_main = rows.get(main_key) or {}
         main_rmk = (data_main.get("remark") or "").strip()
-        if main_rmk:
-            remark_parts.append(main_rmk)
 
         if subs and result_offset == 1:
+            # เมื่อมีหัวข้อย่อย ให้เว้นบรรทัดแรก แล้วต่อด้วย remark ของหัวข้อย่อย
             formatted_remarks = []
             for i, rmk in enumerate(remark_lines):
                 if rmk:
@@ -594,9 +593,13 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
                     formatted_remarks.append("")
             
             remark_with_offset = [""] + formatted_remarks
-            remark_text = "\n".join(remark_with_offset).strip()
-            if remark_text:
+            remark_text = "\n".join(remark_with_offset)
+            if remark_text.strip():
                 remark_parts.append(remark_text)
+        else:
+            # เมื่อไม่มีหัวข้อย่อย ให้ใช้ remark ของหัวข้อหลัก
+            if main_rmk:
+                remark_parts.append(main_rmk)
 
         remark = "\n".join(part for part in remark_parts if part.strip())
 
@@ -1196,7 +1199,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     _, comment_h_calculated = _split_lines(pdf, comment_result_w + comment_remark_w - 2 * PADDING_X, comment_text, LINE_H)
 
     # 3. ใช้ความสูงที่มากกว่า (7mm ขั้นต่ำ หรือความสูงที่คำนวณได้)
-    h_comment = max(7, comment_h_calculated)
+    h_comment = max(7, comment_h_calculated + 2 * PADDING_Y)
 
     # 4. h_checklist ยังคงเดิม
     h_checklist = 7

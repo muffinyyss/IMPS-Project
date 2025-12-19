@@ -713,18 +713,15 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
                 else:
                     formatted_remarks.append("")  # บรรทัดว่าง
             
-            # เพิ่มบรรทัดว่าง 1 บรรทัดเพื่อให้ตรงกับหัวข้อหลัก
+            # เพิ่มบรรทัดว่าง 1 บรรทัดเพื่อให้ตรงกับหัวข้อหลัก (ไม่ strip เพื่อเก็บ newline)
             remark_with_offset = [""] + formatted_remarks
+            remark_text = "\n".join(remark_with_offset)
         else:
-            remark_with_offset = remark_lines
+            remark_text = "\n".join(remark_lines).strip() if remark_lines else ""
 
         # รวม remark ทั้งหมด
-        if remark_with_offset:
-            # join แบบไม่เพิ่มบรรทัดว่างเกินจำเป็น
-            remark_text = "\n".join(remark_with_offset).strip()
-
-            if remark_text:
-                remark_parts.append(remark_text)
+        if remark_text:
+            remark_parts.append(remark_text)
 
         # join remark_parts แบบบรรทัดเดียว ไม่ใช่ \n\n ที่ทำให้สูงเกินจริง
         remark = "\n".join(part for part in remark_parts if part.strip())
@@ -1001,8 +998,14 @@ def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[
 
 
 # -------------------- data helpers --------------------
-def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
+def _build_photo_rows_grouped(row_titles: dict, measures_data: Optional[dict] = None) -> List[dict]:
+    """สร้าง photo rows พร้อมแสดง voltage measurements ของข้อ 9
+    
+    measures_data: ข้อมูลการวัด (measures_pre สำหรับ Pre-PM หรือ measures สำหรับ Post-PM)
+    """
     grouped: List[dict] = []
+    measures_data = measures_data or {}
+    active_measures = measures_data
 
     # เดินตามลำดับการประกาศใน ROW_TITLES เพื่อคงลำดับหัวข้อ
     main_keys: List[Tuple[int, str, str]] = []  # (idx, key, title)
@@ -1022,11 +1025,17 @@ def _build_photo_rows_grouped(row_titles: dict) -> List[dict]:
                 subs.append((int(m.group(1)), stitle))
         subs.sort(key=lambda x: x[0])
 
-        for _, stitle in subs:
+        for sub_order, stitle in subs:
             clean_stitle = re.sub(r"^\s*\.\s*", "", str(stitle))
             lines.append(f" {clean_stitle}")
+            
+            # ถ้าเป็นข้อ 9 ให้เพิ่มค่า measures
+            if idx == 9:
+                short_text = _format_r9_short(active_measures, sub_order - 1)
+                if short_text:
+                    lines.append(f" {short_text}")
 
-        grouped.append({"idx": idx, "text": "\n".join(lines)})
+        grouped.append({"idx": idx, "text": "\n".join(lines), "measures": active_measures})
 
     return grouped
 
@@ -1305,8 +1314,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     # 2. คำนวณความสูงจริงของ comment text
     _, comment_h_calculated = _split_lines(pdf, comment_result_w + comment_remark_w - 2 * PADDING_X, comment_text, LINE_H)
 
-    # 3. ใช้ความสูงที่มากกว่า (7mm ขั้นต่ำ หรือความสูงที่คำนวณได้)
-    h_comment = max(7, comment_h_calculated)
+    # 3. ใช้ความสูงที่มากกว่า (7mm ขั้นต่ำ หรือความสูงที่คำนวณได้ + padding)
+    h_comment = max(7, comment_h_calculated + 2 * PADDING_Y)
 
     # 4. h_checklist ยังคงเดิม
     h_checklist = 7
@@ -1446,13 +1455,18 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
         pdf.set_font(base_font, "", FONT_MAIN)
 
-        photo_rows = _build_photo_rows_grouped(ROW_TITLES)
+        # Pre-PM photos: ใช้ measures_pre สำหรับแสดง voltage measurements
+        photo_rows = _build_photo_rows_grouped(ROW_TITLES, doc.get("measures_pre") or {})
 
         for it in photo_rows:
             idx = int(it.get("idx") or 0)
             
-            question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
-            question_text_pre = f"{question_text} (Pre-PM)"
+            base_text = it.get("text", "")  # ข้อมูลที่มี subitems แล้ว
+            # เพิ่ม (Pre-PM) ต่อจากบรรทัดแรกเท่านั้น
+            lines = base_text.split("\n")
+            if lines:
+                lines[0] = f"{lines[0]} (Pre-PM)"
+            question_text_pre = "\n".join(lines)
             img_items = _get_photo_items_for_idx_pre(doc, idx)
 
             # คำนวณความสูงจริงของแถวรูป
@@ -1502,11 +1516,12 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
-    photo_rows = _build_photo_rows_grouped(ROW_TITLES)
+    # Post-PM photos: ใช้ measures สำหรับแสดง voltage measurements
+    photo_rows = _build_photo_rows_grouped(ROW_TITLES, doc.get("measures") or {})
 
     for it in photo_rows:
         idx = int(it.get("idx") or 0)
-        question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
+        question_text = it.get("text", "")  # ใช้ text ที่มี subitems แล้ว
         img_items = _get_photo_items_for_idx(doc, idx)
 
         # คำนวณความสูงจริงของแถวรูป

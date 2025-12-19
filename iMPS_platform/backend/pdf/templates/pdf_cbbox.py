@@ -1254,7 +1254,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     _, comment_h_calculated = _split_lines(pdf, comment_result_w + comment_remark_w - 2 * PADDING_X, comment_text, LINE_H)
 
     # 3. ใช้ความสูงที่มากกว่า (7mm ขั้นต่ำ หรือความสูงที่คำนวณได้)
-    h_comment = max(7, comment_h_calculated)
+    h_comment = max(7, comment_h_calculated + 2 * PADDING_Y)
 
     # 4. h_checklist ยังคงเดิม
     h_checklist = 7
