@@ -595,11 +595,6 @@ def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item
 
     return y
 
-
-
-
-
-
 def _draw_summary_checklist(pdf: FPDF, base_font: str, x: float, y: float, summary_check: str):
     pass_checked = summary_check == "PASS"
     fail_checked = summary_check == "FAIL"

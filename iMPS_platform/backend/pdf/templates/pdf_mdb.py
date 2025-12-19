@@ -1281,6 +1281,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         for it in checks:
             idx = int(it.get("idx") or 0)
             
+            if idx == 11:
+                continue
+            
             question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
             question_text_pre = f"{question_text} (Pre-PM)"
 
