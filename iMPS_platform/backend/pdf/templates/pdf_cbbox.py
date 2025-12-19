@@ -522,6 +522,7 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
     page_w = pdf.w - left - right
     x0 = left
     y_top = 10
+    
 
     col_left, col_mid = 40, 120
     col_right = page_w - col_left - col_mid
@@ -1218,7 +1219,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         _cell_text_in_box(pdf, x, y, item_w, row_h_eff, text, align="L", lh=LINE_H)
         x += item_w
         
-        # 🆕 ตรวจสอบว่าเป็นข้อ 1 หรือ 2
         if idx == 1:
             # ข้อ 1: แสดงค่าจาก dropdownQ1
             result_text = str(doc.get("dropdownQ1", "") or "555")
@@ -1368,130 +1368,92 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         pdf.cell(col_widths[i] - margin_left, row_h_date, date_text, border=0, align="L")
         x_pos += col_widths[i]
     y += row_h_date
+    
+    pdf.add_page()
+    y = _draw_header(pdf, base_font, issue_id)
+    
+    x_table = x0 + EDGE_ALIGN_FIX
+    q_w = 85.0
+    g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
+    
+    def _ensure_space_photo(height_needed: float):
+        nonlocal y
+        if y + height_needed > (pdf.h - pdf.b_margin):
+            pdf.add_page()
+            y = _draw_header(pdf, base_font, issue_id)
+            pdf.set_xy(x0, y)
+            pdf.set_font(base_font, "B", 13)
+            pdf.set_fill_color(255, 230, 100)
+            photo_continue_h = 6
+            pdf.cell(page_w, photo_continue_h, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
+            y += photo_continue_h
+            y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+            pdf.set_font(base_font, "", FONT_MAIN)
+
 
     # ======================= ส่วนที่ 1: Pre-PM Photos =======================
-    has_pre_photos = bool(
-        (doc.get("photos_pre") and len(str(doc.get("photos_pre"))) > 2) or
-        (doc.get("photos") and len(str(doc.get("photos"))) > 2)
-    )
-    
-    # print(f"\n{'='*80}")
-    # print(f"[DEBUG] has_pre_photos = {has_pre_photos}")
-    # print(f"[DEBUG] photos_pre = {bool(doc.get('photos_pre'))}")
-    # print(f"[DEBUG] photos = {bool(doc.get('photos'))}")
-    # print(f"{'='*80}\n")
-    
-    if has_pre_photos:
-        pdf.add_page()
-        y = _draw_header(pdf, base_font, issue_id)
-
-        TITLE_H = 7
-        pdf.set_xy(x0, y)
-        pdf.set_font(base_font, "B", 13)
-        pdf.set_fill_color(255, 230, 100)
-        pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_PHOTO_PRE_PM, border=1, ln=1, align="C", fill=True)
-        y += TITLE_H
-
-        x_table = x0 + EDGE_ALIGN_FIX
-        q_w = 85.0
-        g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
-
-        def _ensure_space_photo_pre(height_needed: float):
-            nonlocal y
-            if y + height_needed > (pdf.h - pdf.b_margin):
-                pdf.add_page()
-                y = _draw_header(pdf, base_font, issue_id)
-                pdf.set_xy(x0, y)
-                pdf.set_font(base_font, "B", 13)
-                pdf.set_fill_color(255, 230, 100)
-                photo_continue_h = 6
-                pdf.cell(page_w, photo_continue_h, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
-                y += photo_continue_h
-                y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-                pdf.set_font(base_font, "", FONT_MAIN)
-
-        y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-        pdf.set_font(base_font, "", FONT_MAIN)
-
-        photo_rows = _build_photo_rows_grouped(ROW_TITLES)
-
-        for it in photo_rows:
-            idx = int(it.get("idx") or 0)
-            
-            question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
-            question_text_pre = f"{question_text} (Pre-PM)"
-            
-            # ✅ ใช้ฟังก์ชัน _get_photo_items_for_idx_pre ที่แก้แล้ว
-            img_items = _get_photo_items_for_idx_pre(doc, idx)
-            print(f"[DEBUG] idx={idx}, ได้ {len(img_items)} รูป (pre-pm)")
-
-            _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text_pre, LINE_H)
-            est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
-            _ensure_space_photo_pre(est_row_h)
-
-            row_h_used = _draw_photos_row(
-                pdf, base_font, x_table, y, q_w, g_w, question_text_pre, img_items
-            )
-            y += row_h_used
-    else:
-        print("[DEBUG] ⏭️ ข้ามส่วน Pre-PM Photos (ไม่มีข้อมูล)")
-    # # ======================= ส่วนที่ 1: Pre-PM Photos =======================
-    # has_pre_photos = bool(doc.get("photos_pre"))
+    has_pre_photos = bool(doc.get("photos_pre"))
     
     # print(f"\n{'='*80}")
     # print(f"[DEBUG MAIN] has_pre_photos = {has_pre_photos}")
     # print(f"[DEBUG MAIN] doc.get('photos_pre') = {doc.get('photos_pre')}")
     # print(f"{'='*80}\n")
     
-    # if has_pre_photos:
-    #     pdf.add_page()
-    #     y = _draw_header(pdf, base_font, issue_id)
+    if has_pre_photos:
+        pdf.set_xy(x0, y)
+        pdf.set_font(base_font, "B", 13)
+        pdf.set_fill_color(255, 230, 100)
+        TITLE_H = 5.5
+        pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_PHOTO_PRE_PM, border=1, ln=1, align="C", fill=True)
+        y += TITLE_H
 
-    #     TITLE_H = 7
-    #     pdf.set_xy(x0, y)
-    #     pdf.set_font(base_font, "B", 13)
-    #     pdf.set_fill_color(255, 230, 100)
-    #     pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_PHOTO_PRE_PM, border=1, ln=1, align="C", fill=True)
-    #     y += TITLE_H
-
-    #     x_table = x0 + EDGE_ALIGN_FIX
-    #     q_w = 85.0
-    #     g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
-
-    #     def _ensure_space_photo_pre(height_needed: float):
-    #         nonlocal y
-    #         if y + height_needed > (pdf.h - pdf.b_margin):
-    #             pdf.add_page()
-    #             y = _draw_header(pdf, base_font, issue_id)
-    #             pdf.set_xy(x0, y)
-    #             pdf.set_font(base_font, "B", 13)
-    #             pdf.set_fill_color(255, 230, 100)
-    #             photo_continue_h = 6
-    #             pdf.cell(page_w, photo_continue_h, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
-    #             y += photo_continue_h
-    #             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-    #             pdf.set_font(base_font, "", FONT_MAIN)
-
-    #     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-    #     pdf.set_font(base_font, "", FONT_MAIN)
-
-    #     photo_rows = _build_photo_rows_grouped(ROW_TITLES)
-
-    #     for it in photo_rows:
-    #         idx = int(it.get("idx") or 0)
+        y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+        pdf.set_font(base_font, "", FONT_MAIN)
+        
+        for it in checks:
+            idx = int(it.get("idx") or 0)
             
-    #         question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
-    #         question_text_pre = f"{question_text} (Pre-PM)"
-    #         img_items = _get_photo_items_for_idx_pre(doc, idx)
+            if idx == 8:
+                continue
 
-    #         _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text_pre, LINE_H)
-    #         est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
-    #         _ensure_space_photo_pre(est_row_h)
+            question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
+            question_text_pre = f"{question_text} (Pre-PM)"
 
-    #         row_h_used = _draw_photos_row(
-    #             pdf, base_font, x_table, y, q_w, g_w, question_text_pre, img_items
-    #         )
-    #         y += row_h_used
+            # RESET ทุก iteration
+            measures_text = ""
+
+            measures_pre = doc.get("measures_pre", {})
+
+            # -------- ข้อ 5 --------
+            if idx == 5:
+                m5 = measures_pre.get("m5")
+                if m5:
+                    measures_text = _format_m5({"m5": m5})
+
+            # append เฉพาะกรณีที่มีค่า
+            if measures_text:
+                question_text_pre += "\n" + measures_text
+
+            # print(question_text_pre)
+
+            img_items = _get_photo_items_for_idx_pre(doc, idx)
+            if not img_items:
+                continue
+
+            #  คำนวณความสูงจริงของแถว
+            _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text_pre, LINE_H)
+            total_images = len(img_items)
+            num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
+            img_h = PHOTO_IMG_MAX_H
+            images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
+            actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
+            
+            #  เช็คว่าจะล้นหน้าไหม ถ้าใช่ ให้ขึ้นหน้าใหม่ก่อนวาด
+            _ensure_space_photo(actual_row_h)
+
+            row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
+                                         question_text_pre, img_items)
+            y += row_h_used
 
     # ======================= ส่วนที่ 2: Post-PM Photos =======================
     pdf.add_page()
