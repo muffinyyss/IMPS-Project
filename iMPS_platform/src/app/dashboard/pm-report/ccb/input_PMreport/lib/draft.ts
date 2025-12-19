@@ -1,32 +1,18 @@
 import type { PhotoRef } from "./draftPhotos";
 
-type DraftData = {
-  // job: any;
-  rows: any;
-  summary: string;
-  // รูปแนบ (เพิ่มในเวอร์ชันใหม่)
-  // photos?: any;
+type PF = "PASS" | "FAIL" | "NA" | "";
 
-  // โครงสร้างใหม่: ค่าวัดของ "ข้อ 9" (Main + ย่อย 1–5)
+type DraftData = {
+  rows: any;
   m9_0?: any;
   m9_1?: any;
   m9_2?: any;
   m9_3?: any;
   m9_4?: any;
   m9_5?: any;
-
-  // inspector : string;
-  photoRefs?: Record<number, PhotoRef[]>;
-  // โครงสร้างเก่า (เผื่อมี draft เก่าค้างอยู่ให้โหลดได้ ไม่ error)
-  // cp?: any;
-  // m4?: any;
-  // m5?: any;
-  // m6?: any;
-  // m7?: any;
-  // m8?: any;
-
-  // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
-  // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
+  summary: string;
+  summary_pf?: PF;
+  photoRefs?: Record<string, PhotoRef[]>;
 };
 
 function safeStorage() {
