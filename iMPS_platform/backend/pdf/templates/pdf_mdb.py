@@ -487,7 +487,7 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
 # -------------------- Photo data helpers --------------------
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
    
-    photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
+    photos = ((doc.get("photos") or {}).get(f"r{idx}") or [])
     out = []
     for p in photos:
         if isinstance(p, dict) and p.get("url"):
@@ -496,7 +496,7 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
 
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
     """ดึงรูปจาก photos_pre (ก่อน PM)"""
-    photos_pre = ((doc.get("photos_pre") or {}).get(f"g{idx}") or [])
+    photos_pre = ((doc.get("photos_pre") or {}).get(f"r{idx}") or [])
     out = []
     for p in photos_pre:
         if isinstance(p, dict) and p.get("url"):
