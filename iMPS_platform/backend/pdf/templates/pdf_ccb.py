@@ -321,9 +321,9 @@ def _load_image_source_from_urlpath(
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
         
-        # print(f"[DEBUG]   📍 backend_root = {backend_root}")
-        # print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
-        # print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
+        print(f"[DEBUG]   📍 backend_root = {backend_root}")
+        print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
+        print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
         
         if uploads_root.exists():
             clean_path = url_path.lstrip("/")
@@ -421,7 +421,7 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
 
 # -------------------- Photo data helpers --------------------
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-    items_in = (doc.get("photos") or {}).get(f"g{idx}") or []
+    items_in = (doc.get("photos") or {}).get(f"r{idx}") or []
     out: List[dict] = []
 
     def _normalize(s: str) -> str:
@@ -477,7 +477,7 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     return out[:PHOTO_MAX_PER_ROW]
 
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
-    items_in = (doc.get("photos_pre") or {}).get(f"g{idx}") or []
+    items_in = (doc.get("photos_pre") or {}).get(f"r{idx}") or []
     out: List[dict] = []
 
     def _normalize(s: str) -> str:
@@ -1455,9 +1455,14 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             question_text_pre = f"{question_text} (Pre-PM)"
             img_items = _get_photo_items_for_idx_pre(doc, idx)
 
+            # คำนวณความสูงจริงของแถวรูป
             _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text_pre, LINE_H)
-            est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
-            _ensure_space_photo_pre(est_row_h)
+            total_images = len(img_items)
+            num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
+            images_total_h = (num_rows * PHOTO_IMG_MAX_H + (num_rows - 1) * PHOTO_GAP + 2 * PHOTO_PAD_Y) if num_rows > 0 else 0
+            actual_row_h = max(text_h + 2 * PADDING_Y, images_total_h)
+            
+            _ensure_space_photo_pre(actual_row_h)
 
             row_h_used = _draw_photos_row(
                 pdf, base_font, x_table, y, q_w, g_w, question_text_pre, img_items
@@ -1504,9 +1509,14 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
         img_items = _get_photo_items_for_idx(doc, idx)
 
+        # คำนวณความสูงจริงของแถวรูป
         _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
-        est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
-        _ensure_space_photo_post(est_row_h)
+        total_images = len(img_items)
+        num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
+        images_total_h = (num_rows * PHOTO_IMG_MAX_H + (num_rows - 1) * PHOTO_GAP + 2 * PHOTO_PAD_Y) if num_rows > 0 else 0
+        actual_row_h = max(text_h + 2 * PADDING_Y, images_total_h)
+        
+        _ensure_space_photo_post(actual_row_h)
 
         row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
                                      question_text, img_items)
