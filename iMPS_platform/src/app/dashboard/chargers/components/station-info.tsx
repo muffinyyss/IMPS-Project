@@ -73,7 +73,7 @@ export default function StationInfo({
 
           {/* Number of days available for use */}
           <div className="tw-grid tw-grid-cols-3 tw-gap-4">
-            <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left">
+            <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left tw-whitespace-nowrap">
               Number of days available for use
             </dt>
             <dd className="tw-col-span-2 tw-text-blue-gray-900 tw-font-medium tw-text-right tw-min-w-0 tw-truncate">
@@ -83,7 +83,7 @@ export default function StationInfo({
 
           {/* Remaining Warranty */}
           <div className="tw-grid tw-grid-cols-3 tw-gap-4">
-            <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left">
+            <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left tw-whitespace-nowrap">
               Remaining Warranty
             </dt>
             <dd className="tw-col-span-2 tw-text-blue-gray-900 tw-font-medium tw-text-right tw-min-w-0 tw-truncate">
