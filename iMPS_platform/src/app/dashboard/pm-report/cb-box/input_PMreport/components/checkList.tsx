@@ -1441,11 +1441,13 @@ export default function CBBOXPMForm() {
             <SectionCard key={q.key} title={getQuestionLabel(q, mode)} subtitle={subtitle}>
                 <PassFailRow
                     label="ผลการทดสอบ"
-                    value={rows[q.key].pf}
+                    // value={rows[q.key].pf}
+                    value={rows[q.key]?.pf ?? ""}
                     onChange={(v) =>
                         setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
                     }
-                    remark={rows[q.key].remark}
+                    // remark={rows[q.key].remark}
+                    remark={rows[q.key]?.remark || ""} 
                     onRemarkChange={(v) =>
                         setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
                     }
