@@ -111,7 +111,7 @@ def _norm_result(val: str) -> str:
 
 def _r_idx(k: str) -> int:
     m = re.match(r"r(\d+)$", k.lower())
-    return int(m.group(1)) if m else ""
+    return int(m.group(1)) if m else 10_000
 
 # -------------------- Font / Text layout helpers --------------------
 def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
@@ -606,6 +606,11 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
 
     for key in sorted(rows.keys(), key=_r_idx):
         idx = _r_idx(key)
+        
+        # ข้ามรายการที่ไม่ถูกต้อง (fallback value)
+        if idx == 10_000:
+            continue
+        
         data = rows.get(key) or {}
 
         title = ROW_TITLES.get(key, f"รายการที่ {idx}")
@@ -1096,7 +1101,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         if idx in (4, 5, 6, 7):
             remark_h = max(remark_h, LINE_H * 6)
         elif idx == 8:
-            remark_h = max(remark_h, LINE_H * 4)
+            remark_h = max(remark_h, LINE_H * 3)
         elif idx == 9:
             remark_h = max(remark_h, LINE_H * 6)
         
@@ -1199,8 +1204,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     # ใช้ความกว้างของแต่ละคอลัมน์จริงแทน col_w
     col_widths = [item_w, result_w, remark_w]
-    row_h_header = 7
-    row_h_sig = 15
+    row_h_header = 5
+    row_h_sig = 14
     row_h_name = 5
     row_h_date = 5
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date

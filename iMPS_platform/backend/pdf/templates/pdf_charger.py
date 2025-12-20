@@ -1100,8 +1100,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_line_width(LINE_W_INNER)
 
     col_widths = [item_w, result_w, remark_w]
-    row_h_header = 7
-    row_h_sig = 15
+    row_h_header = 5
+    row_h_sig = 14
     row_h_name = 5
     row_h_date = 5
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
