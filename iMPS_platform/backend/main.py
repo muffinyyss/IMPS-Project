@@ -546,6 +546,8 @@ def station_info(
             "PIFirmware": 1, 
             "RTFirmware": 1, 
             "chargeBoxID": 1, 
+            "commit_date" :1,
+            "warranty_year": 1,
             "model": 1, 
             "status": 1, 
             "module1_isActive":1, 
