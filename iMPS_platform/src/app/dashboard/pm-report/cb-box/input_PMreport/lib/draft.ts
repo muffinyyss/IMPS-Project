@@ -8,7 +8,6 @@ type DraftData = {
   summary: string;
   summary_pf?: PF;
   m5?: any;
-  inspector : string;
   photoRefs?: Record<number, PhotoRef[]>;
   dropdownQ1?: any;  // เพิ่ม dropdownQ1
   dropdownQ2?: any; 
