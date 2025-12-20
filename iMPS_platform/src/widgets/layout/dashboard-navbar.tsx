@@ -63,7 +63,7 @@ export function DashboardNavbar() {
   let title = segs[segs.length - 1]?.replace(/-/g, " ");
   if (segs[1] === "mdb") title = "Main Distribution Board (MDB)";
   else if (segs[1] === "chargers") title = "My Charger Station";
-  else if (segs[1] === "device") title = "DC Charger";
+  else if (segs[1] === "device") title = "Device";
   else if (segs[1] === "setting") title = "Charger Setting";
   else if (segs[1] === "ai") title = "Ai Module";
   else if (segs[2] === "settings") title = "My Profile";

@@ -306,12 +306,24 @@ function SideList({
 }) {
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        return items.filter((d) => {
+        const originalItems = items.filter((d) => {
             const matchText = d.name.toLowerCase().includes(q);
             const matchStatus = filter === "all" ? true : d.status === filter;
             return matchText && matchStatus;
         });
-    }, [items, filter, search]);
+        if (title.includes("Left")) {
+        const extraItems: Device[] = Array.from({ length: 8 }, (_, i) => ({
+            id: `Fan-${i + 1}`,
+            name: `Fan${i + 1}`,        // ชื่อตามรูปภาพ
+            value: "0",                // ค่าสมมติในรูปภาพ
+            status: "error" as Status,              // สถานะสมมติในรูปภาพ
+            metricType: "times" as MetricType,    // ไอคอนนาฬิกาทราย/เวลา
+        }));
+        
+        return [...originalItems, ...extraItems];
+        }
+        return originalItems;
+    }, [items, filter, search, title]);
 
     return (
         <aside className="tw-rounded-3xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-p-4 sm:tw-p-5">
@@ -322,7 +334,7 @@ function SideList({
                         <ClockIcon className="tw-h-3.5 tw-w-3.5 tw-text-gray-400" /> Times
                     </span>
                     <span className="tw-inline-flex tw-items-center tw-gap-1.5">
-                        <HourglassIcon className="tw-h-3.5 tw-w-3.5 tw-text-gray-400" /> Hour
+                        <HourglassIcon className="tw-h-3.5 tw-w-3.5 tw-text-gray-400" /> Day
                     </span>
                 </div>
             </div>
@@ -380,7 +392,9 @@ function SideList({
                         ไม่พบอุปกรณ์ตามตัวกรอง
                     </li>
                 )}
+                
             </ul>
+            
 
         </aside>
     );
@@ -440,7 +454,7 @@ function Group({
                         ))}
                         {filtered.length === 0 && (
                             <div className="tw-col-span-full tw-text-center tw-text-sm tw-text-gray-500 tw-py-6">
-                                ไม่พบรายการในกลุ่มนี้
+                                No items found in this 
                             </div>
                         )}
                     </div>
@@ -490,30 +504,30 @@ export default function DCChargerDashboard() {
     const { LEFT_LIST, RIGHT_LIST, CENTER_LIST, DEVICES } = useMemo(() => {
         const p = live || {};
         const left: Device[] = [
-            { id: "dc-contact-l", name: "DC Power Contactor1", value: String(p.DC_power_contractor1 ?? ""), status: pickStatus(p.DC_power_contractor1, 250000, 300000), metricType: "times" },
-            { id: "dc-contact-2", name: "DC Power Contactor2", value: String(p.DC_power_contractor2 ?? ""), status: pickStatus(p.DC_power_contractor2, 250000, 300000), metricType: "times" },
-            { id: "dc-contact-5", name: "DC Power Contactor5", value: String(p.DC_power_contractor5 ?? ""), status: pickStatus(p.DC_power_contractor5, 250000, 300000), metricType: "times" },
-            { id: "dc-contact-6", name: "DC Power Contactor6", value: String(p.DC_power_contractor6 ?? ""), status: pickStatus(p.DC_power_contractor6, 250000, 300000), metricType: "times" },
+            { id: "dc-contact-l", name: "DC Power Contactor1", value: String(p.DC_power_contractor1 ?? ""), status: pickStatus(p.DC_power_contractor1, p.DC_power_contractor1+(20/100),  p.DC_power_contractor1+(50/100)), metricType: "times" },
+            { id: "dc-contact-2", name: "DC Power Contactor2", value: String(p.DC_power_contractor2 ?? ""), status: pickStatus(p.DC_power_contractor2, p.DC_power_contractor2+(20/100),  p.DC_power_contractor2+(50/100)), metricType: "times" },
+            { id: "dc-contact-5", name: "DC Power Contactor5", value: String(p.DC_power_contractor5 ?? ""), status: pickStatus(p.DC_power_contractor5, p.DC_power_contractor5+(20/100),  p.DC_power_contractor5+(50/100)), metricType: "times" },
+            { id: "dc-contact-6", name: "DC Power Contactor6", value: String(p.DC_power_contractor6 ?? ""), status: pickStatus(p.DC_power_contractor6, p.DC_power_contractor6+(20/100),  p.DC_power_contractor6+(50/100)), metricType: "times" },
             { id: "fuse1-l", name: "FUSE1", value: parseTimes(p.FUSE1), status: "ok", metricType: "hour" },
             // { id: "fuse1-l", name: "FUSE1", value: "25647118 h 2 m", status: "ok", metricType: "hour" },
             { id: "rccb1-l", name: "RCCB1", value: parseTimes(p.RCCB1), status: "ok", metricType: "hour" },
-            { id: "ac-contact-l", name: "AC Power Contactor1", value: String(p.AC_power_contractor1 ?? ""), status: pickStatus(p.AC_power_contractor1, 9500000, 10000000), metricType: "times" },
-            { id: "motor1-l", name: "Motor Starter1", value: String(p.motor_starter1 ?? ""), status: pickStatus(p.motor_starter1, 9000, 10000), metricType: "times" },
-            { id: "motor2-2", name: "Motor Starter2", value: String(p.motor_starter2 ?? ""), status: pickStatus(p.motor_starter2, 9000, 10000), metricType: "times" },
+            { id: "ac-contact-l", name: "AC Power Contactor1", value: String(p.AC_power_contractor1 ?? ""), status: pickStatus(p.AC_power_contractor1, p.AC_power_contractor1+(20/100),  p.AC_power_contractor1+(50/100)), metricType: "times" },
+            { id: "motor1-l", name: "Motor Starter1", value: String(p.motor_starter1 ?? ""), status: pickStatus(p.motor_starter1, p.motor_starter1+(20/100), p.motor_starter1+(50/100)), metricType: "times" },
+            { id: "motor2-2", name: "Motor Starter2", value: String(p.motor_starter2 ?? ""), status: pickStatus(p.motor_starter2, p.motor_starter2+(20/100), p.motor_starter2+(50/100)), metricType: "times" },
             { id: "emeter1", name: "Energy Meter1", value: parseTimes(p.energyMeter1), status: "ok", metricType: "hour" },
             { id: "charge-ctl1", name: "Charging Controller1", value: parseTimes(p.chargingController1), status: "ok", metricType: "hour" },
             { id: "iso1", name: "Insulation Monitoring1", value: parseTimes(p.insulationMonitoring1), status: "ok", metricType: "hour" },
         ];
 
         const right: Device[] = [
-            { id: "dc-contact-3", name: "DC Power Contactor3", value: String(p.DC_power_contractor3 ?? ""), status: pickStatus(p.DC_power_contractor3, 250000, 300000), metricType: "times" },
-            { id: "dc-contact-4", name: "DC Power Contactor4", value: String(p.DC_power_contractor4 ?? ""), status: pickStatus(p.DC_power_contractor4, 250000, 300000), metricType: "times" },
+            { id: "dc-contact-3", name: "DC Power Contactor3", value: String(p.DC_power_contractor3 ?? ""), status: pickStatus(p.DC_power_contractor3, p.DC_power_contractor3+(20/100), p.DC_power_contractor3+(50/100)), metricType: "times" },
+            { id: "dc-contact-4", name: "DC Power Contactor4", value: String(p.DC_power_contractor4 ?? ""), status: pickStatus(p.DC_power_contractor4, p.DC_power_contractor4+(20/100), p.DC_power_contractor4+(50/100)), metricType: "times" },
             { id: "fuse2-2", name: "FUSE2", value: parseTimes(p.FUSE2), status: "ok", metricType: "hour" },
             { id: "rccb2-2", name: "RCCB2", value: parseTimes(p.RCCB2), status: "ok", metricType: "hour" },
-            { id: "ac-contact-2", name: "AC Power Contactor2", value: String(p.AC_power_contractor2 ?? ""), status: pickStatus(p.AC_power_contractor2, 9500000, 10000000), metricType: "times" },
-            { id: "motor3-3", name: "Motor Starter3", value: String(p.motor_starter3 ?? ""), status: pickStatus(p.motor_starter3, 9000, 10000), metricType: "times" },
-            { id: "motor4-4", name: "Motor Starter4", value: String(p.motor_starter4 ?? ""), status: pickStatus(p.motor_starter4, 9000, 10000), metricType: "times" },
-            { id: "motor5-5", name: "Motor Starter5", value: String(p.motor_starter5 ?? ""), status: pickStatus(p.motor_starter5, 9000, 10000), metricType: "times" },
+            { id: "ac-contact-2", name: "AC Power Contactor2", value: String(p.AC_power_contractor2 ?? ""), status: pickStatus(p.AC_power_contractor2, p.AC_power_contractor2+(20/100), p.AC_power_contractor2+(50/100)), metricType: "times" },
+            { id: "motor3-3", name: "Motor Starter3", value: String(p.motor_starter3 ?? ""), status: pickStatus(p.motor_starter3, p.motor_starter3+(20/100), p.motor_starter3+(50/100)), metricType: "times" },
+            { id: "motor4-4", name: "Motor Starter4", value: String(p.motor_starter4 ?? ""), status: pickStatus(p.motor_starter4, p.motor_starter4+(20/100), p.motor_starter4+(50/100)), metricType: "times" },
+            { id: "motor5-5", name: "Motor Starter5", value: String(p.motor_starter5 ?? ""), status: pickStatus(p.motor_starter5, p.motor_starter5+(20/100), p.motor_starter5+(50/100)), metricType: "times" },
             { id: "emeter2", name: "Energy Meter2", value: parseTimes(p.energyMeter2), status: "ok", metricType: "hour" },
             { id: "charge-ctl2", name: "Charging Controller2", value: parseTimes(p.chargingController2), status: "ok", metricType: "hour" },
             { id: "iso2", name: "Insulation Monitoring2", value: parseTimes(p.insulationMonitoring2), status: "ok", metricType: "hour" },
@@ -559,10 +573,12 @@ export default function DCChargerDashboard() {
         id,
         label,
         dot,
+        value,
     }: {
         id: "all" | Status;
         label: string;
         dot?: string;
+        value?: number;
     }) => (
         <button
             onClick={() => setFilter(id)}
@@ -571,7 +587,13 @@ export default function DCChargerDashboard() {
             aria-pressed={filter === id}
         >
             {dot && <span className={`tw-h-2.5 tw-w-2.5 tw-rounded-full ${dot}`} />}
-            {label}
+            <span className="tw-flex tw-items-center tw-gap-1">
+            <span>{label}</span>
+                {value !== undefined && (
+                    <span className="tw-font-bold">{value}</span>
+                )}
+                unit
+            </span>
         </button>
     );
 
@@ -588,35 +610,26 @@ export default function DCChargerDashboard() {
 
             {/* แผงสรุป/ค้นหา */}
             <div className="tw-rounded-3xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-p-4 md:tw-p-5">
-                <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-3">
-                    <div className="tw-flex tw-flex-wrap tw-gap-2">
-                        <Pill color="tw-bg-red-600" label="มีปัญหา" value={errorList.length} />
-                        <Pill color="tw-bg-amber-500" label="ต้องตรวจ" value={warnList.length} />
-                        <Pill color="tw-bg-green-600" label="ปกติ" value={okList.length} />
-                    </div>
-                    <span className={`tw-hidden sm:tw-inline-flex tw-rounded-full tw-px-3.5 tw-py-1.5 tw-text-[12px] tw-font-medium ${systemChip}`}>
-                        สถานะระบบ: {overall === "error" ? "มีปัญหา" : overall === "warn" ? "ต้องตรวจสอบ" : "ปกติ"}
-                    </span>
-                </div>
+                <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-2">
+                        <FilterBtn id="all" label="All" value={errorList.length + warnList.length + okList.length} />
+                        <FilterBtn id="error" label="issues" dot="tw-bg-red-600" value={errorList.length} />
+                        <FilterBtn id="warn" label="Monitor" dot="tw-bg-amber-500" value={warnList.length} />
+                        <FilterBtn id="ok" label="Normal" dot="tw-bg-green-600" value={okList.length} />
+                </div>               
 
                 <div className="tw-mt-4">
-                    <label className="tw-text-sm tw-text-gray-700">ค้นหาอุปกรณ์</label>
+                    <label className="tw-text-sm tw-text-gray-700">Search Devices</label>
                     <div className="tw-relative tw-mt-1">
                         <MagnifyingGlassIcon className="tw-absolute tw-left-3 tw-top-2.5 tw-h-5 tw-w-5 tw-text-gray-400" />
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder="พิมพ์ชื่ออุปกรณ์…"
+                            placeholder="Type device name..."
                             className="tw-w-full tw-pl-11 tw-pr-3.5 tw-py-3 tw-text-base tw-rounded-2xl tw-border tw-border-gray-200  
                                        focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-indigo-200"
                         />
                     </div>
-                    <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-2">
-                        <FilterBtn id="all" label="ทั้งหมด" />
-                        <FilterBtn id="error" label="มีปัญหา" dot="tw-bg-red-600" />
-                        <FilterBtn id="warn" label="ต้องตรวจ" dot="tw-bg-amber-500" />
-                        <FilterBtn id="ok" label="ปกติ" dot="tw-bg-green-600" />
-                    </div>
+                    
                 </div>
             </div>
             <div
@@ -628,17 +641,19 @@ export default function DCChargerDashboard() {
              xl:tw-grid-cols-3
              2xl:tw-grid-cols-3"
             >
-                <SideList title="อุปกรณ์ (ซ้าย)" items={LEFT_LIST} filter={filter} search={query} />
-                <SideList title="อุปกรณ์ (ส่วนกลาง)" items={CENTER_LIST} filter={filter} search={query} />
-                <SideList title="อุปกรณ์ (ขวา)" items={RIGHT_LIST} filter={filter} search={query} />
+                <SideList title="Device (Left)" items={LEFT_LIST} filter={filter} search={query} />
+                <SideList title="Device (Center)" items={CENTER_LIST} filter={filter} search={query} />
+                <SideList title="Device (Right)" items={RIGHT_LIST} filter={filter} search={query} />
             </div>
+
+
 
             {/* รายการแบบจัดกลุ่ม (ตามสถานะ) */}
             <div className="tw-mt-8 tw-space-y-6">
                 {showError && (
                     <Group
                         status="error"
-                        title="อุปกรณ์ที่มีปัญหา"
+                        title="issues"
                         devices={DEVICES.filter((d) => d.status === "error")}
                         defaultOpen
                         search={query}
@@ -647,7 +662,7 @@ export default function DCChargerDashboard() {
                 {showWarn && DEVICES.some((d) => d.status === "warn") && (
                     <Group
                         status="warn"
-                        title="อุปกรณ์ที่ต้องตรวจสอบ"
+                        title="Monitor"
                         devices={DEVICES.filter((d) => d.status === "warn")}
                         defaultOpen
                         search={query}
@@ -656,7 +671,7 @@ export default function DCChargerDashboard() {
                 {showOk && (
                     <Group
                         status="ok"
-                        title="อุปกรณ์สถานะปกติ"
+                        title="Normal"
                         devices={DEVICES.filter((d) => d.status === "ok")}
                         defaultOpen={false}
                         search={query}
