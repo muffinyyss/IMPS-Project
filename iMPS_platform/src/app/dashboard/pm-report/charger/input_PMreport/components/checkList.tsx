@@ -1240,7 +1240,7 @@ export default function ChargerPMForm() {
     const renderMeasureGridWithPre = (no: number) => {
         const cfg = FIELD_GROUPS[no];
         const m = MEASURE_BY_NO[no];
-        
+
         if (!cfg || !m) return null;
 
         return (
@@ -1535,6 +1535,80 @@ export default function ChargerPMForm() {
         if (!res.ok) throw new Error(await res.text());
     }
 
+    // const onPreSave = async () => {
+    //     if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    //     if (!allRequiredInputsFilled) {
+    //         alert("กรุณากรอกค่าข้อ 14 (CP) และข้อ 16 ให้ครบก่อนบันทึก");
+    //         return;
+    //     }
+    //     if (submitting) return;
+    //     setSubmitting(true);
+    //     try {
+    //         const token = localStorage.getItem("access_token");
+    //         const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
+
+    //         const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+    //         const payload = {
+    //             station_id: stationId,
+    //             issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
+    //             job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
+    //             inspector,
+    //             // rows,
+    //             measures_pre: { m16: m16.state, cp },
+    //             // summary,
+    //             pm_date,
+    //             doc_name: docName,
+    //             side: "pre" as TabId,
+
+    //         };
+
+    //         // 1) สร้างรายงาน (submit)
+    //         const res = await fetch(`${API_BASE}/pmreport/pre/submit`, {
+    //             // const res = await apiFetch(`${API_BASE}/pmreport/pre/submit`, {
+    //             method: "POST",
+    //             headers: {
+    //                 "Content-Type": "application/json",
+    //                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    //             },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error(await res.text());
+    //         // const { report_id } = await res.json();
+    //         const { report_id, doc_name } = await res.json() as {
+    //             report_id: string;
+    //             doc_name?: string;
+    //         };
+    //         if (doc_name) {
+    //             setDocName(doc_name);
+    //         }
+
+    //         // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group "g{no}"
+    //         const photoNos = Object.keys(photos).map(n => Number(n));
+    //         const uploadPromises: Promise<void>[] = [];
+    //         for (const no of photoNos) {
+    //             const list = photos[no] || [];
+    //             if (list.length === 0) continue;
+    //             const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //             if (files.length === 0) continue;
+    //             uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
+    //         }
+    //         await Promise.all(uploadPromises);
+
+    //         await Promise.all(
+    //             Object.values(photos).flat().map(p => delPhoto(key, p.id))
+    //         );
+
+    //         clearDraftLocal(key);
+    //         // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+    //         router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
+    //     } catch (err: any) {
+    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    //     } finally {
+    //         setSubmitting(false);
+    //     }
+    // };
+
     const onPreSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
         if (!allRequiredInputsFilled) {
@@ -1545,26 +1619,21 @@ export default function ChargerPMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
+            const pm_date = job.date?.trim() || "";
 
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
             const payload = {
                 station_id: stationId,
-                issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
-                job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
+                issue_id: issueIdFromJob,
+                job: jobWithoutIssueId,
                 inspector,
-                // rows,
                 measures_pre: { m16: m16.state, cp },
-                // summary,
                 pm_date,
                 doc_name: docName,
                 side: "pre" as TabId,
-
             };
 
-            // 1) สร้างรายงาน (submit)
             const res = await fetch(`${API_BASE}/pmreport/pre/submit`, {
-                // const res = await apiFetch(`${API_BASE}/pmreport/pre/submit`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -1574,33 +1643,34 @@ export default function ChargerPMForm() {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            // const { report_id } = await res.json();
+
             const { report_id, doc_name } = await res.json() as {
                 report_id: string;
                 doc_name?: string;
             };
-            if (doc_name) {
-                setDocName(doc_name);
-            }
+            if (doc_name) setDocName(doc_name);
 
-            // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group "g{no}"
-            const photoNos = Object.keys(photos).map(n => Number(n));
+            // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
             const uploadPromises: Promise<void>[] = [];
-            for (const no of photoNos) {
-                const list = photos[no] || [];
-                if (list.length === 0) continue;
-                const files = list.map(p => p.file!).filter(Boolean) as File[];
-                if (files.length === 0) continue;
-                uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
-            }
+            const photoNos = Object.keys(photos).map(n => Number(n));
+
+            photoNos.forEach(no => {
+                const list = photos[no];
+                if (list?.length) {
+                    const files = list.map(p => p.file!).filter(Boolean) as File[];
+                    if (files.length) {
+                        uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
+                    }
+                }
+            });
+
             await Promise.all(uploadPromises);
 
-            await Promise.all(
-                Object.values(photos).flat().map(p => delPhoto(key, p.id))
-            );
+            // ลบไฟล์ทั้งหมดแบบ parallel
+            const allPhotos = Object.values(photos).flat();
+            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
 
             clearDraftLocal(key);
-            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
@@ -1608,82 +1678,148 @@ export default function ChargerPMForm() {
             setSubmitting(false);
         }
     };
+
+    // const onFinalSave = async () => {
+    //     if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    //     if (submitting) return;
+    //     setSubmitting(true);
+    //     try {
+    //         const token = localStorage.getItem("access_token");
+    //         const payload = {
+    //             station_id: stationId,
+    //             // issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
+    //             // job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
+    //             // inspector,
+    //             rows,
+    //             measures: { m16: m16.state, cp },
+    //             summary,
+    //             // pm_date,
+    //             // doc_name: docName,
+    //             ...(summaryCheck ? { summaryCheck } : {}), // จากเคสก่อนหน้า
+    //             // ...(dustFilterChanged ? { dustFilterChanged } : {}),
+    //             dust_filter: dustFilterChanged ? "yes" : "no",
+    //             side: "after" as TabId,
+    //             report_id: editId,
+    //         };
+
+    //         // 1) สร้างรายงาน (submit)
+    //         const res = await fetch(`${API_BASE}/pmreport/submit`, {
+    //             // const res = await apiFetch(`${API_BASE}/pmreport/submit`, {
+    //             method: "POST",
+    //             headers: {
+    //                 "Content-Type": "application/json",
+    //                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    //             },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error(await res.text());
+    //         // const { report_id } = await res.json();
+    //         const { report_id, doc_name } = await res.json() as {
+    //             report_id: string;
+    //             doc_name?: string;
+    //         };
+    //         // if (doc_name) {
+    //         //     setDocName(doc_name);
+    //         // }
+
+    //         // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group "g{no}"
+    //         const photoNos = Object.keys(photos).map(n => Number(n));
+    //         const uploadPromises: Promise<void>[] = [];
+    //         for (const no of photoNos) {
+    //             const list = photos[no] || [];
+    //             if (list.length === 0) continue;
+    //             const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //             if (files.length === 0) continue;
+    //             uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post"));
+    //         }
+    //         await Promise.all(uploadPromises);
+
+    //         // 3) finalize (ออปชัน)
+    //         const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+    //             // const fin = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+    //             method: "POST",
+    //             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    //             credentials: "include",
+    //             body: new URLSearchParams({ station_id: stationId }), // endpoint นี้รับ Form-encoded
+    //         });
+    //         if (!fin.ok) throw new Error(await fin.text());
+
+    //         clearDraftLocal(key);
+    //         // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+    //         router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
+    //     } catch (err: any) {
+    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    //     } finally {
+    //         setSubmitting(false);
+    //     }
+    // };
 
     const onFinalSave = async () => {
-        if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
-        if (submitting) return;
-        setSubmitting(true);
-        try {
-            const token = localStorage.getItem("access_token");
-            const payload = {
-                station_id: stationId,
-                // issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
-                // job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
-                // inspector,
-                rows,
-                measures: { m16: m16.state, cp },
-                summary,
-                // pm_date,
-                // doc_name: docName,
-                ...(summaryCheck ? { summaryCheck } : {}), // จากเคสก่อนหน้า
-                // ...(dustFilterChanged ? { dustFilterChanged } : {}),
-                dust_filter: dustFilterChanged ? "yes" : "no",
-                side: "after" as TabId,
-                report_id: editId,
-            };
+    if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+        const token = localStorage.getItem("access_token");
 
-            // 1) สร้างรายงาน (submit)
-            const res = await fetch(`${API_BASE}/pmreport/submit`, {
-                // const res = await apiFetch(`${API_BASE}/pmreport/submit`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
-                credentials: "include",
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            // const { report_id } = await res.json();
-            const { report_id, doc_name } = await res.json() as {
-                report_id: string;
-                doc_name?: string;
-            };
-            // if (doc_name) {
-            //     setDocName(doc_name);
-            // }
+        const payload = {
+            station_id: stationId,
+            rows,
+            measures: { m16: m16.state, cp },
+            summary,
+            ...(summaryCheck ? { summaryCheck } : {}),
+            dust_filter: dustFilterChanged ? "yes" : "no",
+            side: "after" as TabId,
+            report_id: editId,
+        };
 
-            // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group "g{no}"
-            const photoNos = Object.keys(photos).map(n => Number(n));
-            const uploadPromises: Promise<void>[] = [];
-            for (const no of photoNos) {
-                const list = photos[no] || [];
-                if (list.length === 0) continue;
+        const res = await fetch(`${API_BASE}/pmreport/submit`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            credentials: "include",
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(await res.text());
+
+        const { report_id } = await res.json() as { report_id: string; doc_name?: string };
+
+
+        // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
+        const uploadPromises: Promise<void>[] = [];
+        const photoNos = Object.keys(photos).map(n => Number(n));
+
+        photoNos.forEach(no => {
+            const list = photos[no];
+            if (list?.length) {
                 const files = list.map(p => p.file!).filter(Boolean) as File[];
-                if (files.length === 0) continue;
-                uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post"));
+                if (files.length) {
+                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post"));
+                }
             }
-            await Promise.all(uploadPromises);
+        });
 
-            // 3) finalize (ออปชัน)
-            const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
-                // const fin = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
-                method: "POST",
-                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-                credentials: "include",
-                body: new URLSearchParams({ station_id: stationId }), // endpoint นี้รับ Form-encoded
-            });
-            if (!fin.ok) throw new Error(await fin.text());
+        await Promise.all(uploadPromises);
 
-            clearDraftLocal(key);
-            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
-        } catch (err: any) {
-            alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
-        } finally {
-            setSubmitting(false);
-        }
-    };
+        const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            credentials: "include",
+            body: new URLSearchParams({ station_id: stationId }),
+        });
+        if (!fin.ok) throw new Error(await fin.text());
+
+        clearDraftLocal(key);
+        
+        router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
+    } catch (err: any) {
+        alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    } finally {
+        setSubmitting(false);
+    }
+};
 
 
     const active: TabId = useMemo(
@@ -2053,7 +2189,7 @@ export default function ChargerPMForm() {
                             </div>
                         )}
                     </CardBody>
-                    
+
                     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
                         <div className="tw-p-3 tw-flex tw-flex-col tw-gap-3">
                             {/* ข้อ 1 (ใช้ค่าที่เลือกตาม tab) */}
