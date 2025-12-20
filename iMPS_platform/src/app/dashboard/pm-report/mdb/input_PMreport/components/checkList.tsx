@@ -1264,23 +1264,35 @@ export default function MDBPMMForm() {
     );
 
     const PF_KEYS_ALL = useMemo(
-        () => QUESTIONS.map((q) => q.key),
+        () => {
+            const keys: string[] = [];
+            QUESTIONS.forEach((q) => {
+                if (q.kind === "simple" || q.kind === "measure") {
+                    keys.push(q.key);
+                } else if (q.kind === "group") {
+                    q.items.forEach((item) => {
+                        keys.push(item.key);
+                    });
+                }
+            });
+            return keys;
+        },
         []
     );
 
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
+        () => PF_KEYS_PRE.every((k) => rows[k] && rows[k].pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
     const allPFAnsweredAll = useMemo(
-        () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""),
+        () => PF_KEYS_ALL.every((k) => rows[k] && rows[k].pf !== ""),
         [rows, PF_KEYS_ALL]
     );
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
+            PF_KEYS_PRE.filter((k) => rows[k] && !rows[k].pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
@@ -1288,7 +1300,7 @@ export default function MDBPMMForm() {
 
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => !rows[k]?.pf)
+            PF_KEYS_ALL.filter((k) => rows[k] && !rows[k].pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_ALL]
@@ -1353,7 +1365,7 @@ export default function MDBPMMForm() {
     const missingPFItems = useMemo(() => {
         if (isPreMode) return [];
         return PF_REQUIRED_KEYS
-            .filter((k) => !rows[k]?.pf) // ✅ เพิ่ม `?.` เพื่อหลีกเลี่ยง undefined error
+            .filter((k) => !rows[k] || !rows[k].pf) // ✅ เพิ่ม null check
             .map((k) => k.replace(/^r(\d+)_?(\d+)?$/, (_, a, b) => (b ? `${a}.${b}` : a)))
             .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0]));
     }, [isPreMode, rows, PF_REQUIRED_KEYS]);
