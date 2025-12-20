@@ -1547,19 +1547,220 @@ export default function MDBPMMForm() {
         );
     };
 
-    const renderQuestionBlock = (q: Question, mode: TabId) => {
-        const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
-        const subtitle = FIELD_GROUPS[q.no]?.note;
+    // const renderQuestionBlock = (q: Question, mode: TabId) => {
+    //     const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
+    //     const subtitle = FIELD_GROUPS[q.no]?.note;
 
-        if (mode === "pre") {
-            return (
-                // <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
-                <SectionCard
-                    key={q.key}
-                    title={getQuestionLabel(q, mode)}
-                // subtitle={subtitle}
-                >
-                    {q.kind === "simple" && q.hasPhoto && (
+    //     if (mode === "pre") {
+    //         return (
+    //             // <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+    //             <SectionCard
+    //                 key={q.key}
+    //                 title={getQuestionLabel(q, mode)}
+    //             // subtitle={subtitle}
+    //             >
+    //                 {q.kind === "simple" && q.hasPhoto && (
+    //                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                         <PhotoMultiInput
+    //                             label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                             photos={photos[q.no] || []}
+    //                             setPhotos={makePhotoSetter(q.no)}
+    //                             max={10}
+    //                             draftKey={key}
+    //                             qNo={q.no}
+    //                         />
+    //                     </div>
+    //                 )}
+
+
+    //                 {hasMeasure && q.hasPhoto && (
+    //                     <div className="tw-space-y-3">
+    //                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                             <PhotoMultiInput
+    //                                 label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                 photos={photos[q.no] || []}
+    //                                 setPhotos={makePhotoSetter(q.no)}
+    //                                 max={10}
+    //                                 draftKey={key}
+    //                                 qNo={q.no}
+    //                             />
+    //                         </div>
+    //                         {renderMeasureGrid(q.no)}
+    //                     </div>
+    //                 )}
+
+    //                 {q.kind === "group" && q.hasPhoto && (
+    //                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                         {q.items.map((item) => (
+    //                             <div key={item.key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+    //                                 <Typography variant="small" className="tw-font-medium tw-mb-2">
+    //                                     {item.label}
+    //                                 </Typography>
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (${item.label})`}
+    //                                     photos={photos[item.key] || []}
+    //                                     setPhotos={makePhotoSetter(item.key)}
+    //                                     max={10}
+    //                                     draftKey={key}
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                         ))}
+    //                     </div>
+    //                 )}
+    //             </SectionCard>
+    //         );
+    //     }
+
+    //     // const hasMeasure = q.kind === "measure" && FIELD_GROUPS[q.no];
+
+    //     const inlineLeft =
+    //         q.no === 11 ? (
+    //             <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
+    //                 <input
+    //                     type="checkbox"
+    //                     className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+    //                     checked={dustFilterChanged}
+    //                     onChange={(e) => setDustFilterChanged(e.target.checked)}
+    //                 />
+    //                 <span>เปลี่ยนแผ่นกรองระบายอากาศ</span>
+    //             </label>
+    //         ) : null;
+
+
+
+    //     return (
+    //         <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+    //             {q.kind === "simple" && (
+    //                 <PassFailRow
+    //                     label="ผลการทดสอบ"
+    //                     value={rows[q.key]?.pf ?? ""}
+    //                     onChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+    //                     }
+    //                     remark={rows[q.key]?.remark ?? ""}
+    //                     onRemarkChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+    //                     }
+    //                     aboveRemark={
+    //                         q.hasPhoto && (
+    //                             <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-8 tw-border-blue-gray-50">
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                     photos={photos[q.no] || []}
+    //                                     setPhotos={makePhotoSetter(q.no)}
+    //                                     max={10}
+    //                                     draftKey={key}   // ✅ เพิ่ม
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                         )
+    //                     }
+    //                     inlineLeft={inlineLeft}
+    //                 />
+    //             )}
+
+    //             {/* {hasMeasure && renderMeasureGrid(q.no)} */}
+    //             {/* group */}
+    //             {q.kind === "group" &&
+    //                 q.items.map((it, idx) => (
+    //                     <PassFailRow
+    //                         key={it.key}
+    //                         label={it.label}
+    //                         value={rows[it.key]?.pf ?? ""}
+    //                         onChange={(v) =>
+    //                             setRows({
+    //                                 ...rows,
+    //                                 [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
+    //                             })
+    //                         }
+    //                         remark={rows[it.key]?.remark ?? ""}
+    //                         onRemarkChange={(v) =>
+    //                             setRows({
+    //                                 ...rows,
+    //                                 [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
+    //                             })
+    //                         }
+    //                         // แนบรูปสำหรับแต่ละ sub-item
+    //                         aboveRemark={
+    //                             q.hasPhoto && (
+    //                                 <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                     <PhotoMultiInput
+    //                                         label={`แนบรูปประกอบ (${it.label})`}
+    //                                         photos={photos[it.key] || []}
+    //                                         setPhotos={makePhotoSetter(it.key)}
+    //                                         max={3}
+    //                                         draftKey={key}
+    //                                         qNo={q.no}
+    //                                     />
+    //                                 </div>
+    //                             )
+    //                         }
+    //                     />
+    //                 ))}
+    //             {q.kind === "measure" && hasMeasure && (
+    //                 <PassFailRow
+    //                     label="ผลการทดสอบ"
+    //                     value={rows[q.key]?.pf ?? ""}
+    //                     onChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+    //                     }
+    //                     remark={rows[q.key]?.remark ?? ""}
+    //                     onRemarkChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+    //                     }
+    //                     aboveRemark={
+    //                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                             <PhotoMultiInput
+    //                                 label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                 photos={photos[q.no] || []}
+    //                                 setPhotos={makePhotoSetter(q.no)}
+    //                                 max={10}
+    //                                 draftKey={key}
+    //                                 qNo={q.no}
+    //                             />
+    //                         </div>
+    //                     }
+    //                     belowRemark={
+    //                         (q.no === 4 || q.no === 5 || q.no === 6 || q.no === 7 || q.no === 8
+    //                             ? renderMeasureGridWithPre(q.no)
+    //                             : renderMeasureGrid(q.no))
+    //                     }
+    //                 />
+    //             )}
+
+
+    //         </SectionCard>
+    //     );
+    // };
+
+    // debounce ง่าย ๆ ในไฟล์นี้เลยก็ได้
+
+    const renderQuestionBlock = (q: Question, mode: TabId) => {
+    const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
+    const subtitle = FIELD_GROUPS[q.no]?.note;
+
+    if (mode === "pre") {
+        return (
+            <SectionCard
+                key={q.key}
+                title={getQuestionLabel(q, mode)}
+            >
+                {q.kind === "simple" && q.hasPhoto && (
+                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                        <PhotoMultiInput
+                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                            photos={photos[q.no] || []}
+                            setPhotos={makePhotoSetter(q.no)}
+                            max={10}
+                            draftKey={key}
+                            qNo={q.no}
+                        />
+                    </div>
+                )}
+
+                {hasMeasure && q.hasPhoto && (
+                    <div className="tw-space-y-3">
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                             <PhotoMultiInput
                                 label={`แนบรูปประกอบ (ข้อ ${q.no})`}
@@ -1570,68 +1771,56 @@ export default function MDBPMMForm() {
                                 qNo={q.no}
                             />
                         </div>
-                    )}
+                        {renderMeasureGrid(q.no)}
+                    </div>
+                )}
 
-
-                    {hasMeasure && q.hasPhoto && (
-                        <div className="tw-space-y-3">
-                            <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                {q.kind === "group" && q.hasPhoto && (
+                    <div className="tw-pt-2 tw-pb-4 tw-space-y-4">
+                        {q.items.map((item, idx) => (
+                            <div
+                                key={item.key}
+                                className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100"
+                            >
+                                <Typography
+                                    variant="small"
+                                    className="tw-font-medium tw-mb-3 tw-text-sm md:tw-text-base"
+                                >
+                                    {item.label}
+                                </Typography>
                                 <PhotoMultiInput
-                                    label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                                    photos={photos[q.no] || []}
-                                    setPhotos={makePhotoSetter(q.no)}
+                                    label={`แนบรูปประกอบ (${item.label})`}
+                                    photos={photos[item.key] || []}
+                                    setPhotos={makePhotoSetter(item.key)}
                                     max={10}
                                     draftKey={key}
                                     qNo={q.no}
                                 />
                             </div>
-                            {renderMeasureGrid(q.no)}
-                        </div>
-                    )}
+                        ))}
+                    </div>
+                )}
+            </SectionCard>
+        );
+    }
 
-                    {q.kind === "group" && q.hasPhoto && (
-                        <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
-                            {q.items.map((item) => (
-                                <div key={item.key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
-                                    <Typography variant="small" className="tw-font-medium tw-mb-2">
-                                        {item.label}
-                                    </Typography>
-                                    <PhotoMultiInput
-                                        label={`แนบรูปประกอบ (${item.label})`}
-                                        photos={photos[item.key] || []}
-                                        setPhotos={makePhotoSetter(item.key)}
-                                        max={10}
-                                        draftKey={key}
-                                        qNo={q.no}
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </SectionCard>
-            );
-        }
+    // ✅ Checkbox สำหรับข้อ 11 - แยกออกมาเป็น element ตัวเอง
+    const checkboxElement = q.no === 11 ? (
+        <label className="tw-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700 tw-py-2">
+            <input
+                type="checkbox"
+                className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                checked={dustFilterChanged}
+                onChange={(e) => setDustFilterChanged(e.target.checked)}
+            />
+            <span className="tw-leading-tight">เปลี่ยนแผ่นกรองระบายอากาศ</span>
+        </label>
+    ) : null;
 
-        // const hasMeasure = q.kind === "measure" && FIELD_GROUPS[q.no];
-
-        const inlineLeft =
-            q.no === 11 ? (
-                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
-                    <input
-                        type="checkbox"
-                        className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                        checked={dustFilterChanged}
-                        onChange={(e) => setDustFilterChanged(e.target.checked)}
-                    />
-                    <span>เปลี่ยนแผ่นกรองระบายอากาศ</span>
-                </label>
-            ) : null;
-
-
-
-        return (
-            <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
-                {q.kind === "simple" && (
+    return (
+        <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+            {q.kind === "simple" && (
+                <div className="tw-space-y-3">
                     <PassFailRow
                         label="ผลการทดสอบ"
                         value={rows[q.key]?.pf ?? ""}
@@ -1643,62 +1832,84 @@ export default function MDBPMMForm() {
                             setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
                         }
                         aboveRemark={
-                            q.hasPhoto && (
-                                <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-8 tw-border-blue-gray-50">
-                                    <PhotoMultiInput
-                                        label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                                        photos={photos[q.no] || []}
-                                        setPhotos={makePhotoSetter(q.no)}
-                                        max={10}
-                                        draftKey={key}   // ✅ เพิ่ม
-                                        qNo={q.no}
-                                    />
-                                </div>
-                            )
-                        }
-                        inlineLeft={inlineLeft}
-                    />
-                )}
-
-                {/* {hasMeasure && renderMeasureGrid(q.no)} */}
-                {/* group */}
-                {q.kind === "group" &&
-                    q.items.map((it, idx) => (
-                        <PassFailRow
-                            key={it.key}
-                            label={it.label}
-                            value={rows[it.key]?.pf ?? ""}
-                            onChange={(v) =>
-                                setRows({
-                                    ...rows,
-                                    [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
-                                })
-                            }
-                            remark={rows[it.key]?.remark ?? ""}
-                            onRemarkChange={(v) =>
-                                setRows({
-                                    ...rows,
-                                    [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
-                                })
-                            }
-                            // แนบรูปสำหรับแต่ละ sub-item
-                            aboveRemark={
-                                q.hasPhoto && (
-                                    <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                            <>
+                                {q.hasPhoto && (
+                                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                                         <PhotoMultiInput
-                                            label={`แนบรูปประกอบ (${it.label})`}
-                                            photos={photos[it.key] || []}
-                                            setPhotos={makePhotoSetter(it.key)}
-                                            max={3}
+                                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                            photos={photos[q.no] || []}
+                                            setPhotos={makePhotoSetter(q.no)}
+                                            max={10}
                                             draftKey={key}
                                             qNo={q.no}
                                         />
                                     </div>
-                                )
-                            }
-                        />
+                                )}
+                                {/* ✅ Checkbox อยู่ด้านบน (mobile) */}
+                                {checkboxElement && (
+                                    <div className="sm:tw-hidden tw-mb-3">
+                                        {checkboxElement}
+                                    </div>
+                                )}
+                            </>
+                        }
+                        inlineLeft={
+                            /* ✅ Checkbox อยู่ข้างซ้าย (desktop) */
+                            checkboxElement && (
+                                <div className="tw-hidden sm:tw-flex">
+                                    {checkboxElement}
+                                </div>
+                            )
+                        }
+                    />
+                </div>
+            )}
+
+            {q.kind === "group" && (
+                <div className="tw-space-y-4 md:tw-space-y-6">
+                    {q.items.map((it, idx) => (
+                        <div
+                            key={it.key}
+                            className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100"
+                        >
+                            <PassFailRow
+                                label={it.label}
+                                value={rows[it.key]?.pf ?? ""}
+                                onChange={(v) =>
+                                    setRows({
+                                        ...rows,
+                                        [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
+                                    })
+                                }
+                                remark={rows[it.key]?.remark ?? ""}
+                                onRemarkChange={(v) =>
+                                    setRows({
+                                        ...rows,
+                                        [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
+                                    })
+                                }
+                                aboveRemark={
+                                    q.hasPhoto && (
+                                        <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                            <PhotoMultiInput
+                                                label={`แนบรูปประกอบ (${it.label})`}
+                                                photos={photos[it.key] || []}
+                                                setPhotos={makePhotoSetter(it.key)}
+                                                max={3}
+                                                draftKey={key}
+                                                qNo={q.no}
+                                            />
+                                        </div>
+                                    )
+                                }
+                            />
+                        </div>
                     ))}
-                {q.kind === "measure" && hasMeasure && (
+                </div>
+            )}
+
+            {q.kind === "measure" && hasMeasure && (
+                <div className="tw-space-y-3">
                     <PassFailRow
                         label="ผลการทดสอบ"
                         value={rows[q.key]?.pf ?? ""}
@@ -1722,19 +1933,19 @@ export default function MDBPMMForm() {
                             </div>
                         }
                         belowRemark={
-                            (q.no === 4 || q.no === 5 || q.no === 6 || q.no === 7 || q.no === 8
-                                ? renderMeasureGridWithPre(q.no)
-                                : renderMeasureGrid(q.no))
+                            <div className="tw-mt-4">
+                                {(q.no === 4 || q.no === 5 || q.no === 6 || q.no === 7 || q.no === 8
+                                    ? renderMeasureGridWithPre(q.no)
+                                    : renderMeasureGrid(q.no))}
+                            </div>
                         }
                     />
-                )}
+                </div>
+            )}
+        </SectionCard>
+    );
+};
 
-
-            </SectionCard>
-        );
-    };
-
-    // debounce ง่าย ๆ ในไฟล์นี้เลยก็ได้
     function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
         useEffect(() => {
             const h = setTimeout(effect, delay);
@@ -1823,91 +2034,91 @@ export default function MDBPMMForm() {
         if (!res.ok) throw new Error(await res.text());
     }
 
-   
+
 
     const onPreSave = async () => {
-    if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
-    if (!allRequiredInputsFilled) {
-        alert("กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก");
-        return;
-    }
-    if (submitting) return;
-    setSubmitting(true);
-    try {
-        const token = localStorage.getItem("access_token");
-        const pm_date = job.date?.trim() || "";
+        if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+        if (!allRequiredInputsFilled) {
+            alert("กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก");
+            return;
+        }
+        if (submitting) return;
+        setSubmitting(true);
+        try {
+            const token = localStorage.getItem("access_token");
+            const pm_date = job.date?.trim() || "";
 
-        const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-        const payload = {
-            station_id: stationId,
-            issue_id: issueIdFromJob,
-            job: jobWithoutIssueId,
-            inspector,
-            measures_pre: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state, },
-            pm_date,
-            doc_name: docName,
-            side: "pre" as TabId,
-        };
+            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+            const payload = {
+                station_id: stationId,
+                issue_id: issueIdFromJob,
+                job: jobWithoutIssueId,
+                inspector,
+                measures_pre: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state, },
+                pm_date,
+                doc_name: docName,
+                side: "pre" as TabId,
+            };
 
-        const res = await fetch(`${API_BASE}/mdbpmreport/pre/submit`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            credentials: "include",
-            body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error(await res.text());
+            const res = await fetch(`${API_BASE}/mdbpmreport/pre/submit`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                credentials: "include",
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error(await res.text());
 
-        const { report_id, doc_name } = await res.json() as {
-            report_id: string;
-            doc_name?: string;
-        };
-        if (doc_name) setDocName(doc_name);
+            const { report_id, doc_name } = await res.json() as {
+                report_id: string;
+                doc_name?: string;
+            };
+            if (doc_name) setDocName(doc_name);
 
 
-        // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
-        const uploadPromises: Promise<void>[] = [];
-        const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
+            const uploadPromises: Promise<void>[] = [];
+            const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
-        for (const qNo of orderedQuestions) {
-            if (qNo === 9) {
-                const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
-                subKeys.forEach(subKey => {
-                    const list = photos[subKey];
+            for (const qNo of orderedQuestions) {
+                if (qNo === 9) {
+                    const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+                    subKeys.forEach(subKey => {
+                        const list = photos[subKey];
+                        if (list?.length) {
+                            const files = list.map(p => p.file!).filter(Boolean) as File[];
+                            if (files.length) {
+                                uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "pre"));
+                            }
+                        }
+                    });
+                } else {
+                    const list = photos[qNo];
                     if (list?.length) {
                         const files = list.map(p => p.file!).filter(Boolean) as File[];
                         if (files.length) {
-                            uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "pre"));
+                            uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${qNo}`, files, "pre"));
                         }
-                    }
-                });
-            } else {
-                const list = photos[qNo];
-                if (list?.length) {
-                    const files = list.map(p => p.file!).filter(Boolean) as File[];
-                    if (files.length) {
-                        uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${qNo}`, files, "pre"));
                     }
                 }
             }
+            await Promise.all(uploadPromises);
+
+            // ลบไฟล์ทั้งหมดแบบ parallel (เร็วกว่า)
+            const allPhotos = Object.values(photos).flat();
+            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+
+            clearDraftLocal(key);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+        } catch (err: any) {
+            alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+        } finally {
+            setSubmitting(false);
         }
-        await Promise.all(uploadPromises);
-
-        // ลบไฟล์ทั้งหมดแบบ parallel (เร็วกว่า)
-        const allPhotos = Object.values(photos).flat();
-        await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
-
-        clearDraftLocal(key);
-        router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
-    } catch (err: any) {
-        alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
-    } finally {
-        setSubmitting(false);
-    }
-};
- // const onPreSave = async () => {
+    };
+    // const onPreSave = async () => {
     //     if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
     //     if (!allRequiredInputsFilled) {
     //         alert("กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก");
@@ -2075,83 +2286,83 @@ export default function MDBPMMForm() {
     // };
 
     const onFinalSave = async () => {
-    if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
-    if (submitting) return;
-    setSubmitting(true);
-    try {
-        const token = localStorage.getItem("access_token");
+        if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+        if (submitting) return;
+        setSubmitting(true);
+        try {
+            const token = localStorage.getItem("access_token");
 
-        const payload = {
-            station_id: stationId,
-            rows,
-            measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
-            summary,
-            ...(summaryCheck ? { summaryCheck } : {}),
-            dust_filter: dustFilterChanged ? "yes" : "no",
-            side: "post" as TabId,
-            report_id: editId,
-        };
+            const payload = {
+                station_id: stationId,
+                rows,
+                measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
+                summary,
+                ...(summaryCheck ? { summaryCheck } : {}),
+                dust_filter: dustFilterChanged ? "yes" : "no",
+                side: "post" as TabId,
+                report_id: editId,
+            };
 
-        const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            credentials: "include",
-            body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error(await res.text());
+            const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                credentials: "include",
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error(await res.text());
 
-        const { report_id } = await res.json() as { report_id: string; doc_name?: string };
+            const { report_id } = await res.json() as { report_id: string; doc_name?: string };
 
 
-        // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
-        const uploadPromises: Promise<void>[] = [];
-        const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
+            const uploadPromises: Promise<void>[] = [];
+            const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
-        for (const qNo of orderedQuestions) {
-            if (qNo === 9) {
-                const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
-                subKeys.forEach(subKey => {
-                    const list = photos[subKey];
+            for (const qNo of orderedQuestions) {
+                if (qNo === 9) {
+                    const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+                    subKeys.forEach(subKey => {
+                        const list = photos[subKey];
+                        if (list?.length) {
+                            const files = list.map(p => p.file!).filter(Boolean) as File[];
+                            if (files.length) {
+                                uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "post"));
+                            }
+                        }
+                    });
+                } else {
+                    const list = photos[qNo];
                     if (list?.length) {
                         const files = list.map(p => p.file!).filter(Boolean) as File[];
                         if (files.length) {
-                            uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "post"));
+                            uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${qNo}`, files, "post"));
                         }
-                    }
-                });
-            } else {
-                const list = photos[qNo];
-                if (list?.length) {
-                    const files = list.map(p => p.file!).filter(Boolean) as File[];
-                    if (files.length) {
-                        uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${qNo}`, files, "post"));
                     }
                 }
             }
+
+            await Promise.all(uploadPromises);
+
+            const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
+                method: "POST",
+                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                credentials: "include",
+                body: new URLSearchParams({ station_id: stationId }),
+            });
+            if (!fin.ok) throw new Error(await fin.text());
+
+            clearDraftLocal(key);
+
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+        } catch (err: any) {
+            alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+        } finally {
+            setSubmitting(false);
         }
-
-        await Promise.all(uploadPromises);
-
-        const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
-            method: "POST",
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-            credentials: "include",
-            body: new URLSearchParams({ station_id: stationId }),
-        });
-        if (!fin.ok) throw new Error(await fin.text());
-
-        clearDraftLocal(key);
-        
-        router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
-    } catch (err: any) {
-        alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
-    } finally {
-        setSubmitting(false);
-    }
-};
+    };
     const active: TabId = useMemo(
         () => slugToTab(searchParams.get("pmtab")),
         [searchParams]
