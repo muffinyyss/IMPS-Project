@@ -312,15 +312,16 @@ function SideList({
             return matchText && matchStatus;
         });
         if (title.includes("Left")) {
-        const extraItems: Device[] = Array.from({ length: 8 }, (_, i) => ({
-            id: `Fan-${i + 1}`,
-            name: `Fan${i + 1}`,        // ชื่อตามรูปภาพ
-            value: "0",                // ค่าสมมติในรูปภาพ
-            status: "error" as Status,              // สถานะสมมติในรูปภาพ
-            metricType: "times" as MetricType,    // ไอคอนนาฬิกาทราย/เวลา
-        }));
+        // const extraItems: Device[] = Array.from({ length: 8 }, (_, i) => ({
+        //     id: `Fan-${i + 1}`,
+        //     name: `Fan${i + 1}`,        // ชื่อตามรูปภาพ
+        //     value: "0",                // ค่าสมมติในรูปภาพ
+        //     status: "error" as Status,              // สถานะสมมติในรูปภาพ
+        //     metricType: "times" as MetricType,    // ไอคอนนาฬิกาทราย/เวลา
+        // }));
         
-        return [...originalItems, ...extraItems];
+        // return [...originalItems, ...extraItems];
+        return [...originalItems, ];
         }
         return originalItems;
     }, [items, filter, search, title]);
