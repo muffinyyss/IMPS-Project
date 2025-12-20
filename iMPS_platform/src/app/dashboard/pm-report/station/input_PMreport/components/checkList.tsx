@@ -953,11 +953,11 @@ export default function StationPMReport() {
         return keys;
     }, []);
 
-    const allPFAnswered = useMemo(() => PF_REQUIRED_KEYS.every((k) => rows[k] && rows[k].pf !== ""), [rows, PF_REQUIRED_KEYS]);
+    const allPFAnswered = useMemo(() => PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== ""), [rows, PF_REQUIRED_KEYS]);
 
     const missingPFItems = useMemo(
         () =>
-            PF_REQUIRED_KEYS.filter((k) => !rows[k] || !rows[k].pf)
+            PF_REQUIRED_KEYS.filter((k) => !rows[k]?.pf)
                 .map((k) => k.replace(/^r(\d+)_?(\d+)?$/, (_, a, b) => (b ? `${a}.${b}` : a)))
                 .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0])),
         [rows, PF_REQUIRED_KEYS]
@@ -1052,9 +1052,10 @@ export default function StationPMReport() {
             if (doc_name) {
                 setDocName(doc_name);
             }
-            // 2) อัปโหลดรูปทั้งหมด - จัดกลุ่มตามข้อที่มี
+            // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) - จัดกลุ่มตามข้อที่มี
             // สำหรับ simple: ใช้ q-prefix, สำหรับ group items: ใช้ item key
             const photoKeys = Object.keys(photos);
+            const uploadPromises: Promise<void>[] = [];
             for (const photoKey of photoKeys) {
                 const list = photos[photoKey] || [];
                 if (list.length === 0) continue;
@@ -1080,8 +1081,10 @@ export default function StationPMReport() {
                 }
 
                 if (!groupKey) continue;
-                await uploadGroupPhotos(report_id, stationId, groupKey, files, "pre");
+                uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "pre"));
             }
+            await Promise.all(uploadPromises);
+
             await Promise.all(
                 Object.values(photos).flat().map(p => delPhoto(key, p.id))
             );
@@ -1134,9 +1137,10 @@ export default function StationPMReport() {
             //     setDocName(doc_name);
             // }
 
-            // อัปโหลดรูปแยกกลุ่ม - จัดกลุ่มตามข้อที่มี
+            // อัปโหลดรูปแยกกลุ่ม (แบบ parallel) - จัดกลุ่มตามข้อที่มี
             // สำหรับ simple: ใช้ q-prefix, สำหรับ group items: ใช้ item key
             const photoKeys = Object.keys(photos);
+            const uploadPromises: Promise<void>[] = [];
             for (const photoKey of photoKeys) {
                 const list = photos[photoKey] || [];
                 if (list.length === 0) continue;
@@ -1162,8 +1166,9 @@ export default function StationPMReport() {
                 }
 
                 if (!groupKey) continue;
-                await uploadGroupPhotos(report_id, stationId, groupKey, files, "post");
+                uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "post"));
             }
+            await Promise.all(uploadPromises);
 
             const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
                 method: "POST",

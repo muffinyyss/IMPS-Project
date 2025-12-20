@@ -1118,11 +1118,11 @@ export default function CBBOXPMForm() {
         return keys;
     }, []);
 
-    const allPFAnswered = useMemo(() => PF_REQUIRED_KEYS.every((k) => rows[k] && rows[k].pf !== ""), [rows, PF_REQUIRED_KEYS]);
+    const allPFAnswered = useMemo(() => PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== ""), [rows, PF_REQUIRED_KEYS]);
 
     const missingPFItems = useMemo(
         () =>
-            PF_REQUIRED_KEYS.filter((k) => !rows[k] || !rows[k].pf)
+            PF_REQUIRED_KEYS.filter((k) => !rows[k]?.pf)
                 .map((k) => k.replace(/^r(\d+)_?(\d+)?$/, (_, a, b) => (b ? `${a}.${b}` : a)))
                 .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0])),
         [rows, PF_REQUIRED_KEYS]
@@ -1581,15 +1581,17 @@ export default function CBBOXPMForm() {
                 setDocName(doc_name);
             }
 
-            // อัปโหลดรูปแยกกลุ่ม g1..g8 (map ตาม photos ที่มีจาก QUESTIONS)
+            // อัปโหลดรูปแยกกลุ่ม (แบบ parallel) g1..g8 (map ตาม photos ที่มีจาก QUESTIONS)
             const photoNos = Object.keys(photos).map(Number);
+            const uploadPromises: Promise<void>[] = [];
             for (const no of photoNos) {
                 const list = photos[no] || [];
                 if (list.length === 0) continue;
                 const files = list.map((p) => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre");
+                uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
             }
+            await Promise.all(uploadPromises);
 
             await Promise.all(
                 Object.values(photos).flat().map(p => delPhoto(key, p.id))
@@ -1658,15 +1660,17 @@ export default function CBBOXPMForm() {
             //     setDocName(doc_name);
             // }
 
-            // อัปโหลดรูปแยกกลุ่ม g1..g8 (map ตาม photos ที่มีจาก QUESTIONS)
+            // อัปโหลดรูปแยกกลุ่ม (แบบ parallel) g1..g8 (map ตาม photos ที่มีจาก QUESTIONS)
             const photoNos = Object.keys(photos).map(Number);
+            const uploadPromises: Promise<void>[] = [];
             for (const no of photoNos) {
                 const list = photos[no] || [];
                 if (list.length === 0) continue;
                 const files = list.map((p) => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-                await uploadGroupPhotos(finalReportId, stationId, `g${no}`, files, "post");
+                uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, `g${no}`, files, "post"));
             }
+            await Promise.all(uploadPromises);
 
             const fin = await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, {
                 method: "POST",

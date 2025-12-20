@@ -1145,7 +1145,7 @@ export default function ChargerPMForm() {
     );
 
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k] && rows[k].pf !== ""),
+        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
@@ -1156,7 +1156,7 @@ export default function ChargerPMForm() {
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => !rows[k] || !rows[k].pf)
+            PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
@@ -1583,15 +1583,18 @@ export default function ChargerPMForm() {
                 setDocName(doc_name);
             }
 
-            // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group "g{no}"
+            // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group "g{no}"
             const photoNos = Object.keys(photos).map(n => Number(n));
+            const uploadPromises: Promise<void>[] = [];
             for (const no of photoNos) {
                 const list = photos[no] || [];
                 if (list.length === 0) continue;
                 const files = list.map(p => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre");
+                uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
             }
+            await Promise.all(uploadPromises);
+
             await Promise.all(
                 Object.values(photos).flat().map(p => delPhoto(key, p.id))
             );
@@ -1650,15 +1653,17 @@ export default function ChargerPMForm() {
             //     setDocName(doc_name);
             // }
 
-            // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group "g{no}"
+            // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group "g{no}"
             const photoNos = Object.keys(photos).map(n => Number(n));
+            const uploadPromises: Promise<void>[] = [];
             for (const no of photoNos) {
                 const list = photos[no] || [];
                 if (list.length === 0) continue;
                 const files = list.map(p => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post");
+                uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post"));
             }
+            await Promise.all(uploadPromises);
 
             // 3) finalize (ออปชัน)
             const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {

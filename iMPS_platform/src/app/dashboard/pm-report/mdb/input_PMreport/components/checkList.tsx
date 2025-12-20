@@ -1312,7 +1312,7 @@ export default function MDBPMMForm() {
     );
 
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k] && rows[k].pf !== ""),
+        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
@@ -1323,7 +1323,7 @@ export default function MDBPMMForm() {
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => rows[k] && !rows[k].pf)
+            PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
@@ -1867,9 +1867,9 @@ export default function MDBPMMForm() {
                 setDocName(doc_name);
             }
 
-            // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group key
-            // กำหนดลำดับการอัปโหลดแบบตายตัว: 1→2→3→4→5→6→7→8→9→10→11
+            // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group key
             const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            const uploadPromises: Promise<void>[] = [];
 
             for (const qNo of orderedQuestions) {
                 // ข้อ 9 เป็น group (r9_1, r9_2, r9_3, r9_4)
@@ -1880,7 +1880,7 @@ export default function MDBPMMForm() {
                         if (!list || list.length === 0) continue;
                         const files = list.map(p => p.file!).filter(Boolean) as File[];
                         if (files.length === 0) continue;
-                        await uploadGroupPhotos(report_id, stationId, subKey, files, "pre");
+                        uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "pre"));
                     }
                 } else {
                     // ข้อธรรมดา (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
@@ -1889,9 +1889,12 @@ export default function MDBPMMForm() {
                     const files = list.map(p => p.file!).filter(Boolean) as File[];
                     if (files.length === 0) continue;
                     const groupKey = `g${qNo}`;
-                    await uploadGroupPhotos(report_id, stationId, groupKey, files, "pre");
+                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "pre"));
                 }
             }
+
+            // รอให้ทุก upload เสร็จ
+            await Promise.all(uploadPromises);
 
             await Promise.all(
                 Object.values(photos).flat().map(p => delPhoto(key, p.id))
@@ -1941,9 +1944,9 @@ export default function MDBPMMForm() {
                 doc_name?: string;
             };
 
-            // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group key
-            // กำหนดลำดับการอัปโหลดแบบตายตัว: 1→2→3→4→5→6→7→8→9→10→11
+            // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group key
             const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            const uploadPromises: Promise<void>[] = [];
 
             for (const qNo of orderedQuestions) {
                 // ข้อ 9 เป็น group (r9_1, r9_2, r9_3, r9_4)
@@ -1954,7 +1957,7 @@ export default function MDBPMMForm() {
                         if (!list || list.length === 0) continue;
                         const files = list.map(p => p.file!).filter(Boolean) as File[];
                         if (files.length === 0) continue;
-                        await uploadGroupPhotos(report_id, stationId, subKey, files, "post");
+                        uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "post"));
                     }
                 } else {
                     // ข้อธรรมดา (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
@@ -1963,9 +1966,12 @@ export default function MDBPMMForm() {
                     const files = list.map(p => p.file!).filter(Boolean) as File[];
                     if (files.length === 0) continue;
                     const groupKey = `g${qNo}`;
-                    await uploadGroupPhotos(report_id, stationId, groupKey, files, "post");
+                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "post"));
                 }
             }
+
+            // รอให้ทุก upload เสร็จ
+            await Promise.all(uploadPromises);
 
             // 3) finalize (ออปชัน)
             const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
