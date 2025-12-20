@@ -619,6 +619,31 @@ export default function StationPMReport() {
                 // 5) inspector
                 if (data.inspector) setInspector(data.inspector);
 
+                // 6) Load rows (PASS/FAIL) from database if available
+                if (data.rows) {
+                    // Merge with current state to ensure all keys are present
+                    setRows(prev => ({
+                        ...prev,
+                        ...data.rows
+                    }));
+                } else {
+                    // Initialize all rows if not loaded from database
+                    const initializedRows: Record<string, { pf: PF; remark: string }> = {};
+                    QUESTIONS.forEach(q => {
+                        if (q.kind === "simple") {
+                            initializedRows[q.key] = { pf: "", remark: "" };
+                        } else if (q.kind === "group") {
+                            q.items.forEach((item) => {
+                                initializedRows[item.key] = { pf: "", remark: "" };
+                            });
+                        }
+                    });
+                    setRows(prev => ({
+                        ...prev,
+                        ...initializedRows
+                    }));
+                }
+
             } catch (err) {
                 console.error("load report failed:", err);
             }
@@ -872,25 +897,25 @@ export default function StationPMReport() {
     //     [rows, PF_KEYS_PRE]
     // );
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k] && rows[k].pf !== ""),
+        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
     const allPFAnsweredAll = useMemo(
-        () => PF_KEYS_ALL.every((k) => rows[k] && rows[k].pf !== ""),
+        () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_ALL]
     );
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => rows[k] && !rows[k].pf) // ✅ เพิ่มการตรวจสอบ
+            PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
     );
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => rows[k] && !rows[k].pf) // ✅ เพิ่มการตรวจสอบ
+            PF_KEYS_ALL.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_ALL]

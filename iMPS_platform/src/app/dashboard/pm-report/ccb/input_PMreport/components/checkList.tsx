@@ -1067,7 +1067,28 @@
 
                     // Load rows (PASS/FAIL) from database if available
                     if (report.rows) {
-                        setRows(report.rows);
+                        // Merge with current state to ensure all keys are present
+                        setRows(prev => ({
+                            ...prev,
+                            ...report.rows
+                        }));
+                    } else {
+                        // Initialize all rows if not loaded from database
+                        const initializedRows: Record<string, { pf: PF; remark: string }> = {};
+                        QUESTIONS.forEach(q => {
+                            initializedRows[q.key] = { pf: "", remark: "" };
+                        });
+                        if (PF_KEYS_ALL) {
+                            PF_KEYS_ALL.forEach(key => {
+                                if (!initializedRows[key]) {
+                                    initializedRows[key] = { pf: "", remark: "" };
+                                }
+                            });
+                        }
+                        setRows(prev => ({
+                            ...prev,
+                            ...initializedRows
+                        }));
                     }
 
                     // Load summary if available
@@ -1290,7 +1311,7 @@
         );
 
         const allPFAnsweredAll = useMemo(
-            () => PF_KEYS_ALL.every((k) => rows[k] && rows[k].pf !== ""),
+            () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""),
             [rows, PF_KEYS_ALL]
         );
 
@@ -1303,7 +1324,7 @@
         );
         const missingPFItemsAll = useMemo(
             () =>
-                PF_KEYS_ALL.filter((k) => !rows[k] || !rows[k].pf)
+                PF_KEYS_ALL.filter((k) => !rows[k]?.pf)
                     .map((k) => Number(k.replace("r", "")))
                     .sort((a, b) => a - b),
             [rows, PF_KEYS_ALL]

@@ -924,6 +924,37 @@ export default function MDBPMMForm() {
                 // 5) inspector
                 if (data.inspector) setInspector(data.inspector);
 
+                // 6) rows - initialize from post data if available, otherwise use defaults
+                if (data.rows) {
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        // Merge with existing to ensure all keys are present
+                        Object.entries(data.rows).forEach(([k, v]) => {
+                            next[k] = v as { pf: PF; remark: string };
+                        });
+                        return next;
+                    });
+                } else {
+                    // Ensure all keys are initialized with defaults
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        QUESTIONS.forEach((q) => {
+                            if (q.kind === "simple" || q.kind === "measure") {
+                                if (!next[q.key]) {
+                                    next[q.key] = { pf: "", remark: "" };
+                                }
+                            } else if (q.kind === "group") {
+                                q.items.forEach((item) => {
+                                    if (!next[item.key]) {
+                                        next[item.key] = { pf: "", remark: "" };
+                                    }
+                                });
+                            }
+                        });
+                        return next;
+                    });
+                }
+
             } catch (err) {
                 console.error("load report failed:", err);
             }
@@ -1286,7 +1317,7 @@ export default function MDBPMMForm() {
     );
 
     const allPFAnsweredAll = useMemo(
-        () => PF_KEYS_ALL.every((k) => rows[k] && rows[k].pf !== ""),
+        () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_ALL]
     );
 
@@ -1300,9 +1331,9 @@ export default function MDBPMMForm() {
 
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => rows[k] && !rows[k].pf)
-                .map((k) => Number(k.replace("r", "")))
-                .sort((a, b) => a - b),
+            PF_KEYS_ALL.filter((k) => !rows[k]?.pf)
+                .map((k) => k.replace(/^r(\d+)_?(\d+)?$/, (_, a, b) => (b ? `${a}.${b}` : a)))
+                .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0])),
         [rows, PF_KEYS_ALL]
     );
 
