@@ -795,6 +795,32 @@ export default function CBBOXPMForm() {
                 if (data.dropdownQ1) setDropdownQ1(data.dropdownQ1);
                 if (data.dropdownQ2) setDropdownQ2(data.dropdownQ2);
 
+                // 7) Load rows (PASS/FAIL) from database if available
+                if (data.rows) {
+                    // Merge with current state to ensure all keys are present
+                    setRows(prev => ({
+                        ...prev,
+                        ...data.rows
+                    }));
+                } else {
+                    // Initialize all rows if not loaded from database
+                    const initializedRows: Record<string, { pf: PF; remark: string }> = {};
+                    QUESTIONS.forEach(q => {
+                        initializedRows[q.key] = { pf: "", remark: "" };
+                    });
+                    if (PF_KEYS_ALL) {
+                        PF_KEYS_ALL.forEach(key => {
+                            if (!initializedRows[key]) {
+                                initializedRows[key] = { pf: "", remark: "" };
+                            }
+                        });
+                    }
+                    setRows(prev => ({
+                        ...prev,
+                        ...initializedRows
+                    }));
+                }
+
             } catch (err) {
                 console.error("load report failed:", err);
             }
@@ -1056,18 +1082,18 @@ export default function CBBOXPMForm() {
     );
 
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k] && rows[k].pf !== ""),
+        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
     const allPFAnsweredAll = useMemo(
-        () => PF_KEYS_ALL.filter((k) => k !== "r1" && k !== "r2").every((k) => rows[k] && rows[k].pf !== ""),
+        () => PF_KEYS_ALL.filter((k) => k !== "r1" && k !== "r2").every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_ALL]
     );
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => rows[k] && !rows[k].pf)
+            PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
@@ -1075,7 +1101,7 @@ export default function CBBOXPMForm() {
 
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => rows[k] && !rows[k].pf && k !== "r1" && k !== "r2")
+            PF_KEYS_ALL.filter((k) => !rows[k]?.pf && k !== "r1" && k !== "r2")
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_ALL]
