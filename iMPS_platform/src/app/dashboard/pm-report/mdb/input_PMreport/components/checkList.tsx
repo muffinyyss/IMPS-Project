@@ -1823,173 +1823,335 @@ export default function MDBPMMForm() {
         if (!res.ok) throw new Error(await res.text());
     }
 
+   
+
     const onPreSave = async () => {
-        if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
-        if (!allRequiredInputsFilled) {
-            alert("กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก");
-            return;
-        }
-        if (submitting) return;
-        setSubmitting(true);
-        try {
-            const token = localStorage.getItem("access_token");
-            const pm_date = job.date?.trim() || "";
+    if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    if (!allRequiredInputsFilled) {
+        alert("กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก");
+        return;
+    }
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+        const token = localStorage.getItem("access_token");
+        const pm_date = job.date?.trim() || "";
 
-            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-            const payload = {
-                station_id: stationId,
-                issue_id: issueIdFromJob,
-                job: jobWithoutIssueId,
-                inspector,
-                measures_pre: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state, },
-                pm_date,
-                doc_name: docName,
-                side: "pre" as TabId,
-            };
+        const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+        const payload = {
+            station_id: stationId,
+            issue_id: issueIdFromJob,
+            job: jobWithoutIssueId,
+            inspector,
+            measures_pre: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state, },
+            pm_date,
+            doc_name: docName,
+            side: "pre" as TabId,
+        };
 
-            // 1) สร้างรายงาน (submit)
-            const res = await fetch(`${API_BASE}/mdbpmreport/pre/submit`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
-                credentials: "include",
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await res.text());
+        const res = await fetch(`${API_BASE}/mdbpmreport/pre/submit`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            credentials: "include",
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(await res.text());
 
-            const { report_id, doc_name } = await res.json() as {
-                report_id: string;
-                doc_name?: string;
-            };
-            if (doc_name) {
-                setDocName(doc_name);
-            }
+        const { report_id, doc_name } = await res.json() as {
+            report_id: string;
+            doc_name?: string;
+        };
+        if (doc_name) setDocName(doc_name);
 
-            // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group key
-            const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-            const uploadPromises: Promise<void>[] = [];
 
-            for (const qNo of orderedQuestions) {
-                // ข้อ 9 เป็น group (r9_1, r9_2, r9_3, r9_4)
-                if (qNo === 9) {
-                    const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
-                    for (const subKey of subKeys) {
-                        const list = photos[subKey];
-                        if (!list || list.length === 0) continue;
+        // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
+        const uploadPromises: Promise<void>[] = [];
+        const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+        for (const qNo of orderedQuestions) {
+            if (qNo === 9) {
+                const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+                subKeys.forEach(subKey => {
+                    const list = photos[subKey];
+                    if (list?.length) {
                         const files = list.map(p => p.file!).filter(Boolean) as File[];
-                        if (files.length === 0) continue;
-                        uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "pre"));
+                        if (files.length) {
+                            uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "pre"));
+                        }
                     }
-                } else {
-                    // ข้อธรรมดา (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
-                    const list = photos[qNo];
-                    if (!list || list.length === 0) continue;
+                });
+            } else {
+                const list = photos[qNo];
+                if (list?.length) {
                     const files = list.map(p => p.file!).filter(Boolean) as File[];
-                    if (files.length === 0) continue;
-                    const groupKey = `g${qNo}`;
-                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "pre"));
+                    if (files.length) {
+                        uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${qNo}`, files, "pre"));
+                    }
                 }
             }
-
-            // รอให้ทุก upload เสร็จ
-            await Promise.all(uploadPromises);
-
-            await Promise.all(
-                Object.values(photos).flat().map(p => delPhoto(key, p.id))
-            );
-
-            clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
-        } catch (err: any) {
-            alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
-        } finally {
-            setSubmitting(false);
         }
-    };
+        await Promise.all(uploadPromises);
+
+        // ลบไฟล์ทั้งหมดแบบ parallel (เร็วกว่า)
+        const allPhotos = Object.values(photos).flat();
+        await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+
+        clearDraftLocal(key);
+        router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+    } catch (err: any) {
+        alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    } finally {
+        setSubmitting(false);
+    }
+};
+ // const onPreSave = async () => {
+    //     if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    //     if (!allRequiredInputsFilled) {
+    //         alert("กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก");
+    //         return;
+    //     }
+    //     if (submitting) return;
+    //     setSubmitting(true);
+    //     try {
+    //         const token = localStorage.getItem("access_token");
+    //         const pm_date = job.date?.trim() || "";
+
+    //         const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+    //         const payload = {
+    //             station_id: stationId,
+    //             issue_id: issueIdFromJob,
+    //             job: jobWithoutIssueId,
+    //             inspector,
+    //             measures_pre: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state, },
+    //             pm_date,
+    //             doc_name: docName,
+    //             side: "pre" as TabId,
+    //         };
+
+    //         // 1) สร้างรายงาน (submit)
+    //         const res = await fetch(`${API_BASE}/mdbpmreport/pre/submit`, {
+    //             method: "POST",
+    //             headers: {
+    //                 "Content-Type": "application/json",
+    //                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    //             },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error(await res.text());
+
+    //         const { report_id, doc_name } = await res.json() as {
+    //             report_id: string;
+    //             doc_name?: string;
+    //         };
+    //         if (doc_name) {
+    //             setDocName(doc_name);
+    //         }
+
+    //         // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group key
+    //         const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    //         const uploadPromises: Promise<void>[] = [];
+
+    //         for (const qNo of orderedQuestions) {
+    //             // ข้อ 9 เป็น group (r9_1, r9_2, r9_3, r9_4)
+    //             if (qNo === 9) {
+    //                 const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+    //                 for (const subKey of subKeys) {
+    //                     const list = photos[subKey];
+    //                     if (!list || list.length === 0) continue;
+    //                     const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //                     if (files.length === 0) continue;
+    //                     uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "pre"));
+    //                 }
+    //             } else {
+    //                 // ข้อธรรมดา (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
+    //                 const list = photos[qNo];
+    //                 if (!list || list.length === 0) continue;
+    //                 const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //                 if (files.length === 0) continue;
+    //                 const groupKey = `g${qNo}`;
+    //                 uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "pre"));
+    //             }
+    //         }
+
+    //         // รอให้ทุก upload เสร็จ
+    //         await Promise.all(uploadPromises);
+
+    //         await Promise.all(
+    //             Object.values(photos).flat().map(p => delPhoto(key, p.id))
+    //         );
+
+    //         clearDraftLocal(key);
+    //         router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+    //     } catch (err: any) {
+    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    //     } finally {
+    //         setSubmitting(false);
+    //     }
+    // };
+
+    // const onFinalSave = async () => {
+    //     if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    //     if (submitting) return;
+    //     setSubmitting(true);
+    //     try {
+    //         const token = localStorage.getItem("access_token");
+
+    //         const payload = {
+    //             station_id: stationId,
+    //             rows,
+    //             measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
+    //             summary,
+    //             ...(summaryCheck ? { summaryCheck } : {}),
+    //             dust_filter: dustFilterChanged ? "yes" : "no",
+    //             side: "post" as TabId,
+    //             report_id: editId,
+    //         };
+
+    //         // 1) สร้างรายงาน (submit)
+    //         const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
+    //             method: "POST",
+    //             headers: {
+    //                 "Content-Type": "application/json",
+    //                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    //             },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error(await res.text());
+
+    //         const { report_id, doc_name } = await res.json() as {
+    //             report_id: string;
+    //             doc_name?: string;
+    //         };
+
+    //         // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group key
+    //         const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    //         const uploadPromises: Promise<void>[] = [];
+
+    //         for (const qNo of orderedQuestions) {
+    //             // ข้อ 9 เป็น group (r9_1, r9_2, r9_3, r9_4)
+    //             if (qNo === 9) {
+    //                 const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+    //                 for (const subKey of subKeys) {
+    //                     const list = photos[subKey];
+    //                     if (!list || list.length === 0) continue;
+    //                     const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //                     if (files.length === 0) continue;
+    //                     uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "post"));
+    //                 }
+    //             } else {
+    //                 // ข้อธรรมดา (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
+    //                 const list = photos[qNo];
+    //                 if (!list || list.length === 0) continue;
+    //                 const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //                 if (files.length === 0) continue;
+    //                 const groupKey = `g${qNo}`;
+    //                 uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "post"));
+    //             }
+    //         }
+
+    //         // รอให้ทุก upload เสร็จ
+    //         await Promise.all(uploadPromises);
+
+    //         // 3) finalize (ออปชัน)
+    //         const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
+    //             method: "POST",
+    //             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    //             credentials: "include",
+    //             body: new URLSearchParams({ station_id: stationId }),
+    //         });
+    //         if (!fin.ok) throw new Error(await fin.text());
+    //         clearDraftLocal(key);
+    //         router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+    //     } catch (err: any) {
+    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    //     } finally {
+    //         setSubmitting(false);
+    //     }
+    // };
 
     const onFinalSave = async () => {
-        if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
-        if (submitting) return;
-        setSubmitting(true);
-        try {
-            const token = localStorage.getItem("access_token");
+    if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+        const token = localStorage.getItem("access_token");
 
-            const payload = {
-                station_id: stationId,
-                rows,
-                measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
-                summary,
-                ...(summaryCheck ? { summaryCheck } : {}),
-                dust_filter: dustFilterChanged ? "yes" : "no",
-                side: "post" as TabId,
-                report_id: editId,
-            };
+        const payload = {
+            station_id: stationId,
+            rows,
+            measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
+            summary,
+            ...(summaryCheck ? { summaryCheck } : {}),
+            dust_filter: dustFilterChanged ? "yes" : "no",
+            side: "post" as TabId,
+            report_id: editId,
+        };
 
-            // 1) สร้างรายงาน (submit)
-            const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
-                credentials: "include",
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await res.text());
+        const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            credentials: "include",
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(await res.text());
 
-            const { report_id, doc_name } = await res.json() as {
-                report_id: string;
-                doc_name?: string;
-            };
+        const { report_id } = await res.json() as { report_id: string; doc_name?: string };
 
-            // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group key
-            const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-            const uploadPromises: Promise<void>[] = [];
 
-            for (const qNo of orderedQuestions) {
-                // ข้อ 9 เป็น group (r9_1, r9_2, r9_3, r9_4)
-                if (qNo === 9) {
-                    const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
-                    for (const subKey of subKeys) {
-                        const list = photos[subKey];
-                        if (!list || list.length === 0) continue;
+        // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
+        const uploadPromises: Promise<void>[] = [];
+        const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+        for (const qNo of orderedQuestions) {
+            if (qNo === 9) {
+                const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+                subKeys.forEach(subKey => {
+                    const list = photos[subKey];
+                    if (list?.length) {
                         const files = list.map(p => p.file!).filter(Boolean) as File[];
-                        if (files.length === 0) continue;
-                        uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "post"));
+                        if (files.length) {
+                            uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "post"));
+                        }
                     }
-                } else {
-                    // ข้อธรรมดา (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
-                    const list = photos[qNo];
-                    if (!list || list.length === 0) continue;
+                });
+            } else {
+                const list = photos[qNo];
+                if (list?.length) {
                     const files = list.map(p => p.file!).filter(Boolean) as File[];
-                    if (files.length === 0) continue;
-                    const groupKey = `g${qNo}`;
-                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "post"));
+                    if (files.length) {
+                        uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${qNo}`, files, "post"));
+                    }
                 }
             }
-
-            // รอให้ทุก upload เสร็จ
-            await Promise.all(uploadPromises);
-
-            // 3) finalize (ออปชัน)
-            const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
-                method: "POST",
-                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-                credentials: "include",
-                body: new URLSearchParams({ station_id: stationId }),
-            });
-            if (!fin.ok) throw new Error(await fin.text());
-            clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
-        } catch (err: any) {
-            alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
-        } finally {
-            setSubmitting(false);
         }
-    };
 
+        await Promise.all(uploadPromises);
+
+        const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            credentials: "include",
+            body: new URLSearchParams({ station_id: stationId }),
+        });
+        if (!fin.ok) throw new Error(await fin.text());
+
+        clearDraftLocal(key);
+        
+        router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+    } catch (err: any) {
+        alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    } finally {
+        setSubmitting(false);
+    }
+};
     const active: TabId = useMemo(
         () => slugToTab(searchParams.get("pmtab")),
         [searchParams]
