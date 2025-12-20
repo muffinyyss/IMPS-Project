@@ -1285,25 +1285,25 @@
         );
 
         const allPFAnsweredPre = useMemo(
-            () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""), // ✅ เพิ่ม optional chaining
+            () => PF_KEYS_PRE.every((k) => rows[k] && rows[k].pf !== ""),
             [rows, PF_KEYS_PRE]
         );
 
         const allPFAnsweredAll = useMemo(
-            () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""), // ✅ เพิ่ม optional chaining
+            () => PF_KEYS_ALL.every((k) => rows[k] && rows[k].pf !== ""),
             [rows, PF_KEYS_ALL]
         );
 
         const missingPFItemsPre = useMemo(
             () =>
-                PF_KEYS_PRE.filter((k) => rows[k] && !rows[k].pf) // ✅ เพิ่มการตรวจสอบ
+                PF_KEYS_PRE.filter((k) => !rows[k] || !rows[k].pf)
                     .map((k) => Number(k.replace("r", "")))
                     .sort((a, b) => a - b),
             [rows, PF_KEYS_PRE]
         );
         const missingPFItemsAll = useMemo(
             () =>
-                PF_KEYS_ALL.filter((k) => rows[k] && !rows[k].pf) // ✅ เพิ่มการตรวจสอบ
+                PF_KEYS_ALL.filter((k) => !rows[k] || !rows[k].pf)
                     .map((k) => Number(k.replace("r", "")))
                     .sort((a, b) => a - b),
             [rows, PF_KEYS_ALL]
@@ -1908,11 +1908,11 @@
                             label="ผลการทดสอบ"
                             value={rows[q.key]?.pf ?? ""}
                             onChange={(v) =>
-                                setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
+                                setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
                             }
                             remark={rows[q.key]?.remark ?? ""}
                             onRemarkChange={(v) =>
-                                setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
+                                setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
                             }
                             aboveRemark={
                                 q.hasPhoto && (

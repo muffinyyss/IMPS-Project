@@ -1133,7 +1133,7 @@ export default function ChargerPMForm() {
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => rows[k] && !rows[k].pf)
+            PF_KEYS_PRE.filter((k) => !rows[k] || !rows[k].pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
@@ -1141,7 +1141,7 @@ export default function ChargerPMForm() {
 
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => rows[k] && !rows[k].pf)
+            PF_KEYS_ALL.filter((k) => !rows[k] || !rows[k].pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_ALL]
@@ -1369,13 +1369,13 @@ export default function ChargerPMForm() {
             <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
                 <PassFailRow
                     label="ผลการทดสอบ"
-                    value={rows[q.key].pf}
+                    value={rows[q.key]?.pf ?? ""}
                     onChange={(v) =>
-                        setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
+                        setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
                     }
-                    remark={rows[q.key].remark}
+                    remark={rows[q.key]?.remark ?? ""}
                     onRemarkChange={(v) =>
-                        setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
+                        setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
                     }
                     aboveRemark={
                         q.hasPhoto && (

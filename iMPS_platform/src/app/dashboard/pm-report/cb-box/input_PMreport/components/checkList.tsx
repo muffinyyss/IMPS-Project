@@ -1092,11 +1092,11 @@ export default function CBBOXPMForm() {
         return keys;
     }, []);
 
-    const allPFAnswered = useMemo(() => PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== ""), [rows, PF_REQUIRED_KEYS]);
+    const allPFAnswered = useMemo(() => PF_REQUIRED_KEYS.every((k) => rows[k] && rows[k].pf !== ""), [rows, PF_REQUIRED_KEYS]);
 
     const missingPFItems = useMemo(
         () =>
-            PF_REQUIRED_KEYS.filter((k) => !rows[k]?.pf)
+            PF_REQUIRED_KEYS.filter((k) => !rows[k] || !rows[k].pf)
                 .map((k) => k.replace(/^r(\d+)_?(\d+)?$/, (_, a, b) => (b ? `${a}.${b}` : a)))
                 .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0])),
         [rows, PF_REQUIRED_KEYS]
