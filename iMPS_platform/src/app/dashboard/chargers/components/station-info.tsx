@@ -3,12 +3,18 @@ export type StationInfoProps = {
   station_name?: string;
   model?: string;
   status?: boolean | null; // ✅ ตรงกับข้อมูลจริง
+  commit_date?: Date | null;
+  number_available_use?: number | null;
+  remaining_warranty?: number | null;
 };
 
 export default function StationInfo({
   station_name,
   model,
   status,
+  commit_date,
+  number_available_use,
+  remaining_warranty,
 }: StationInfoProps) {
   const statusColor =
     status === true
@@ -54,6 +60,38 @@ export default function StationInfo({
               </span>
             </dd>
           </div>
+
+          {/*Commit Date */}
+          <div className="tw-grid tw-grid-cols-3 tw-gap-4">
+            <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left">
+              Commit Date
+            </dt>
+            <dd className="tw-col-span-2 tw-text-blue-gray-900 tw-font-medium tw-text-right tw-min-w-0 tw-truncate">
+              {commit_date ? commit_date.toLocaleDateString() : "-"}
+            </dd>
+          </div>
+
+          {/* Number of days available for use */}
+          <div className="tw-grid tw-grid-cols-3 tw-gap-4">
+            <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left">
+              Number of days available for use
+            </dt>
+            <dd className="tw-col-span-2 tw-text-blue-gray-900 tw-font-medium tw-text-right tw-min-w-0 tw-truncate">
+              {number_available_use ?? "-"}
+            </dd>
+          </div>
+
+          {/* Remaining Warranty */}
+          <div className="tw-grid tw-grid-cols-3 tw-gap-4">
+            <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left">
+              Remaining Warranty
+            </dt>
+            <dd className="tw-col-span-2 tw-text-blue-gray-900 tw-font-medium tw-text-right tw-min-w-0 tw-truncate">
+              {remaining_warranty ?? "-"}
+            </dd>
+          </div>
+
+
         </dl>
       </div>
     </div>
