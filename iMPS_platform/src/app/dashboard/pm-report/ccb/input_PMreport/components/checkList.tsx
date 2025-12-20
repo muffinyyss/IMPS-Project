@@ -1306,7 +1306,7 @@
         );
 
         const allPFAnsweredPre = useMemo(
-            () => PF_KEYS_PRE.every((k) => rows[k] && rows[k].pf !== ""),
+            () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
             [rows, PF_KEYS_PRE]
         );
 
@@ -1317,7 +1317,7 @@
 
         const missingPFItemsPre = useMemo(
             () =>
-                PF_KEYS_PRE.filter((k) => !rows[k] || !rows[k].pf)
+                PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
                     .map((k) => Number(k.replace("r", "")))
                     .sort((a, b) => a - b),
             [rows, PF_KEYS_PRE]
@@ -1550,6 +1550,7 @@
                     setDocName(doc_name);
                 }
                 const photoKeys = Object.keys(photos);
+                const uploadPromises: Promise<void>[] = [];
                 for (const photoKey of photoKeys) {
                     const list = photos[photoKey] || [];
                     if (list.length === 0) continue;
@@ -1575,8 +1576,10 @@
                     }
 
                     if (!groupKey) continue;
-                    await uploadGroupPhotos(report_id, stationId, groupKey, files, "pre");
+                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "pre"));
                 }
+                await Promise.all(uploadPromises);
+
                 await Promise.all(
                     Object.values(photos).flat().map(p => delPhoto(key, p.id))
                 );
@@ -1655,16 +1658,9 @@
                 // if (doc_name) {
                 //     setDocName(doc_name);
                 // }
-                // อัปโหลดรูปแยกกลุ่ม g1..g9
-                // const photoNos = Object.keys(photos).map(Number);
-                // for (const no of photoNos) {
-                //     const list = photos[no] || [];
-                //     if (list.length === 0) continue;
-                //     const files = list.map((p) => p.file!).filter(Boolean) as File[];
-                //     if (files.length === 0) continue;
-                //     await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post");
-                // }
+                // อัปโหลดรูปแยกกลุ่ม (แบบ parallel)
                 const photoKeys = Object.keys(photos);
+                const uploadPromises: Promise<void>[] = [];
                 for (const photoKey of photoKeys) {
                     const list = photos[photoKey] || [];
                     if (list.length === 0) continue;
@@ -1690,8 +1686,9 @@
                     }
 
                     if (!groupKey) continue;
-                    await uploadGroupPhotos(report_id, stationId, groupKey, files, "post");
+                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "post"));
                 }
+                await Promise.all(uploadPromises);
 
                 const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
                     method: "POST",
