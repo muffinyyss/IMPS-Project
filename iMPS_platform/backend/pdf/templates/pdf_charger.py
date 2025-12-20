@@ -764,8 +764,8 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
 
 
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-   
-    photos = ((doc.get("photos") or {}).get(f"r{idx}") or [])
+    """ดึงรูปจาก photos (หลัง PM) - charger ใช้ key g{idx}"""
+    photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
     out = []
     for p in photos:
         if isinstance(p, dict) and p.get("url"):
@@ -773,8 +773,8 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     return out[:PHOTO_MAX_PER_ROW]
 
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
-    """ดึงรูปจาก photos_pre (ก่อน PM)"""
-    photos_pre = ((doc.get("photos_pre") or {}).get(f"r{idx}") or [])
+    """ดึงรูปจาก photos_pre (ก่อน PM) - charger ใช้ key g{idx}"""
+    photos_pre = ((doc.get("photos_pre") or {}).get(f"g{idx}") or [])
     out = []
     for p in photos_pre:
         if isinstance(p, dict) and p.get("url"):

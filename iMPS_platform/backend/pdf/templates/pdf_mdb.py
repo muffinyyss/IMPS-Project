@@ -486,8 +486,8 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
 
 # -------------------- Photo data helpers --------------------
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-   
-    photos = ((doc.get("photos") or {}).get(f"r{idx}") or [])
+    """ดึงรูปจาก photos (หลัง PM) - MDB ใช้ key g{idx}"""
+    photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
     out = []
     for p in photos:
         if isinstance(p, dict) and p.get("url"):
@@ -495,8 +495,8 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     return out[:PHOTO_MAX_PER_ROW]
 
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
-    """ดึงรูปจาก photos_pre (ก่อน PM)"""
-    photos_pre = ((doc.get("photos_pre") or {}).get(f"r{idx}") or [])
+    """ดึงรูปจาก photos_pre (ก่อน PM) - MDB ใช้ key g{idx}"""
+    photos_pre = ((doc.get("photos_pre") or {}).get(f"g{idx}") or [])
     out = []
     for p in photos_pre:
         if isinstance(p, dict) and p.get("url"):
@@ -820,6 +820,12 @@ def _draw_result_cell_with_subitems(
     subitem_h = h / len(subitems)
     col_w = w / 3.0   # ใช้จัดตำแหน่ง checkbox
     pdf.set_font(base_font, "", FONT_SMALL)
+    
+    # วาดเส้นแนวตั้งแยก Pass/Fail/N/A columns
+    pdf.set_line_width(LINE_W_INNER)
+    for i in range(1, 3):  # วาด 2 เส้น (แยก 3 ช่อง)
+        col_x = x + i * col_w
+        pdf.line(col_x, y, col_x, y + h)
 
     for idx, subitem in enumerate(subitems):
         sub_y = y + idx * subitem_h
