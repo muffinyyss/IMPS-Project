@@ -25,7 +25,7 @@ const EVENTS_CARD_DATA = [
     },
     {
         icon: ChatBubbleLeftEllipsisIcon,
-        title: "Chat GPT",
+        title: "Ask expert",
         description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
     },
     // {
