@@ -101,10 +101,10 @@ export default function DataTablesPage() {
   return (
     // <Tabs id="data-tabs" value={active} onChange={handleChange} className="tw-w-full">
     <Tabs id="data-tabs" value={active} className="tw-w-full">
-      <div className="tw-w-full tw-flex tw-justify-start">
+      <div className="tw-w-full tw-flex tw-justify-start tw-overflow-x-auto tw-scrollbar-hide">
         <TabsHeader
           // className="tw-bg-gray-100 tw-rounded-xl tw-p-1 tw-border tw-border-gray-200 tw-overflow-hidden tw-w-fit tw-gap-1 tw-m-0"
-          className={`tw-bg-gray-100 tw-rounded-xl tw-p-1 tw-border tw-border-gray-200 tw-overflow-hidden tw-w-fit tw-gap-1 tw-m-0
+          className={`tw-bg-gray-100 tw-rounded-xl tw-p-1 tw-border tw-border-gray-200 tw-overflow-visible tw-w-fit tw-gap-1 tw-m-0
             ${isFormView ? "tw-pointer-events-none tw-opacity-60" : ""}
           `}
           indicatorProps={{ className: "tw-h-full tw-rounded-lg tw-bg-white tw-shadow tw-ring-1 tw-ring-gray-200" }}

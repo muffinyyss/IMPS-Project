@@ -780,9 +780,11 @@ export default function MDBPMMForm() {
         const initial: Record<string, { pf: PF; remark: string }> = {};
 
         QUESTIONS.forEach((q) => {
-            if (q.kind === "simple") {
+            if (q.kind === "simple" || q.kind === "measure") {
+                // ✅ ตั้งค่าเริ่มต้นสำหรับ simple และ measure
                 initial[q.key] = { pf: "", remark: "" };
             } else if (q.kind === "group") {
+                // ✅ ตั้งค่าเริ่มต้นสำหรับทุก sub-item ใน group
                 q.items.forEach((item) => {
                     initial[item.key] = { pf: "", remark: "" };
                 });
@@ -1341,13 +1343,17 @@ export default function MDBPMMForm() {
     // );
     const allPFAnswered = useMemo(() => {
         if (isPreMode) return true;
-        return PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== "");
+        // ✅ ตรวจสอบว่ามี default value สำหรับทุก key หรือไม่
+        return PF_REQUIRED_KEYS.every((k) => {
+            const rowData = rows[k];
+            return rowData && rowData.pf !== "";
+        });
     }, [isPreMode, rows, PF_REQUIRED_KEYS]);
 
     const missingPFItems = useMemo(() => {
         if (isPreMode) return [];
         return PF_REQUIRED_KEYS
-            .filter((k) => !rows[k]?.pf)
+            .filter((k) => !rows[k]?.pf) // ✅ เพิ่ม `?.` เพื่อหลีกเลี่ยง undefined error
             .map((k) => k.replace(/^r(\d+)_?(\d+)?$/, (_, a, b) => (b ? `${a}.${b}` : a)))
             .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0]));
     }, [isPreMode, rows, PF_REQUIRED_KEYS]);
