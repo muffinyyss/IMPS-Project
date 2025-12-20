@@ -1472,11 +1472,10 @@ export default function CBBOXPMForm() {
             summary,
             summary_pf: summaryCheck, // ⬅️ เก็บเป็นคีย์ใหม่
             photoRefs,
-            inspector,
             dropdownQ1,
             dropdownQ2,
         });
-    }, [key, stationId, draftId, rows, m5.state, inspector, summary, summaryCheck, dropdownQ1, dropdownQ2, photoRefs]); // ⬅️ เพิ่ม photoRefs
+    }, [key, stationId, draftId, rows, m5.state,  summary, summaryCheck, dropdownQ1, dropdownQ2, photoRefs]); // ⬅️ เพิ่ม photoRefs
 
 
     /* ---------- actions (submit เหมือนเดิม) ---------- */
@@ -1578,7 +1577,8 @@ export default function CBBOXPMForm() {
             // if (!fin.ok) throw new Error(await fin.text());
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
@@ -1651,7 +1651,8 @@ export default function CBBOXPMForm() {
             if (!fin.ok) throw new Error(await fin.text());
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
