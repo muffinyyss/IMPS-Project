@@ -1061,7 +1061,8 @@ export default function StationPMReport() {
             );
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=station`);
+            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=station`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=station`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
@@ -1147,7 +1148,8 @@ export default function StationPMReport() {
             if (!fin.ok) throw new Error(await fin.text());
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=station`);
+            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=station`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=station`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
