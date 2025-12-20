@@ -350,7 +350,7 @@ function InputWithUnit<U extends string>({
                     type="text"
                     inputMode="decimal"
                     label={labelOnTop ? undefined : label}
-                    value={value}
+                    value={value === null ? "-" : value}
                     onChange={(e) => {
                         const newValue = e.target.value;
 
@@ -1742,7 +1742,7 @@ export default function CCBPMReport() {
                         >
                             <InputWithUnit<UnitVoltage>
                                 label={LABELS[k] ?? k}          // มี label เหมือนหลัง PM
-                                value={pre[k]?.value || ""}
+                                value={pre[k]?.value === null ? "-" : (pre[k]?.value || "")}
                                 unit={(pre[k]?.unit as UnitVoltage) || "V"}
                                 units={UNITS.voltage}
                                 onValueChange={() => { }}        // ห้ามแก้
@@ -2050,7 +2050,7 @@ export default function CCBPMReport() {
                                             <InputWithUnit<UnitVoltage>
                                                 key={`pre-${idx}-${k}`}
                                                 label={LABELS[k]}
-                                                value={mPre[k]?.value || ""}
+                                                value={mPre[k]?.value === null ? "-" : (mPre[k]?.value || "")}
                                                 unit={(mPre[k]?.unit as UnitVoltage) || "V"}
                                                 units={["V"] as const}
                                                 onValueChange={() => { }}
