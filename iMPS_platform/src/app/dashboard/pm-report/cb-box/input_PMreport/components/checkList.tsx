@@ -1056,18 +1056,18 @@ export default function CBBOXPMForm() {
     );
 
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k].pf !== ""),
+        () => PF_KEYS_PRE.every((k) => rows[k] && rows[k].pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
     const allPFAnsweredAll = useMemo(
-        () => PF_KEYS_ALL.filter((k) => k !== "r1" && k !== "r2").every((k) => rows[k].pf !== ""),
+        () => PF_KEYS_ALL.filter((k) => k !== "r1" && k !== "r2").every((k) => rows[k] && rows[k].pf !== ""),
         [rows, PF_KEYS_ALL]
     );
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => !rows[k].pf)
+            PF_KEYS_PRE.filter((k) => rows[k] && !rows[k].pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
@@ -1075,7 +1075,7 @@ export default function CBBOXPMForm() {
 
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => !rows[k].pf && k !== "r1" && k !== "r2")
+            PF_KEYS_ALL.filter((k) => rows[k] && !rows[k].pf && k !== "r1" && k !== "r2")
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_ALL]
