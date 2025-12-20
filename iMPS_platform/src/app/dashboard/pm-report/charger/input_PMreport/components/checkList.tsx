@@ -151,12 +151,11 @@ const QUESTIONS: Question[] = [
 
     { no: 8, key: "r8", label: "8) ป้ายเตือนต้องการระบายอากาศ", kind: "simple", hasPhoto: true },
     { no: 9, key: "r9", label: "9) ป้ายเตือนปุ่มฉุกเฉิน", kind: "simple", hasPhoto: true },
-    // { no: 10, key: "r10", label: "10) วัดแรงดันวงจรควบคุมการอัดประจุ", kind: "simple", hasPhoto: true },
-    { no: 10, key: "r10", label: "10) ตรวจสอบแผ่นกรองระบายอากาศ", kind: "simple", hasPhoto: true },
-    { no: 11, key: "r11", label: "11) ตรวจสอบจุดต่อทางไฟฟ้า", kind: "simple", hasPhoto: true },
-    { no: 12, key: "r12", label: "12) ตรวจสอบคอนแทคเตอร์", kind: "simple", hasPhoto: true },
-    { no: 13, key: "r13", label: "14) ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก", kind: "simple", hasPhoto: true },
-    { no: 14, key: "r14", label: "14) ตรวจสอบแรงดันไฟฟ้าที่พิน CP", kind: "simple", hasPhoto: true },
+    { no: 10, key: "r10", label: "10) ตรวจสอบแรงดันไฟฟ้าที่พิน CP", kind: "simple", hasPhoto: true },
+    { no: 11, key: "r11", label: "11) ตรวจสอบแผ่นกรองระบายอากาศ", kind: "simple", hasPhoto: true },
+    { no: 12, key: "r12", label: "12) ตรวจสอบจุดต่อทางไฟฟ้า", kind: "simple", hasPhoto: true },
+    { no: 13, key: "r13", label: "13) ตรวจสอบคอนแทคเตอร์", kind: "simple", hasPhoto: true },
+    { no: 14, key: "r14", label: "14) ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก", kind: "simple", hasPhoto: true },
     { no: 15, key: "r15", label: "15) ตรวจสอบลำดับเฟส", kind: "simple", hasPhoto: true },
     { no: 16, key: "r16", label: "16) วัดแรงดันไฟฟ้าด้านเข้า", kind: "measure", hasPhoto: true },
 
