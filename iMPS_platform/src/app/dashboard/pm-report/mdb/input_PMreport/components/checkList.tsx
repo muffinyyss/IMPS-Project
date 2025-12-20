@@ -1529,7 +1529,22 @@ export default function MDBPMMForm() {
                         </div>
                     )}
 
-                    {hasMeasure && renderMeasureGrid(q.no)}
+
+                    {hasMeasure && q.hasPhoto && (
+                        <div className="tw-space-y-3">
+                            <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                                <PhotoMultiInput
+                                    label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                    photos={photos[q.no] || []}
+                                    setPhotos={makePhotoSetter(q.no)}
+                                    max={10}
+                                    draftKey={key}
+                                    qNo={q.no}
+                                />
+                            </div>
+                            {renderMeasureGrid(q.no)}
+                        </div>
+                    )}
 
                     {q.kind === "group" && q.hasPhoto && (
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
