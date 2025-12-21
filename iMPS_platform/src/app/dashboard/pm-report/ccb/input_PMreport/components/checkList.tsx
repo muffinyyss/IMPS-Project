@@ -1442,7 +1442,7 @@ export default function CCBPMReport() {
     // 🔄 auto-save: เก็บ draft ทุกครั้งที่มีการเปลี่ยนแปลง (debounce 1500ms)
     useDebouncedEffect(() => {
         if (!stationId || !draftId) return;
-        
+
         try {
             setDraftStatus("saving");
             saveDraftLocal(key, {
@@ -1459,7 +1459,7 @@ export default function CCBPMReport() {
             });
             setDraftStatus("saved");
             setShowDraftBadge(true);
-            
+
             // ซ่อน badge หลังจาก 3 วินาที
             const timer = setTimeout(() => setShowDraftBadge(false), 3000);
             return () => clearTimeout(timer);
@@ -1469,7 +1469,7 @@ export default function CCBPMReport() {
         }
     }, [key, stationId, draftId, rows, m9_0.state, m9_1.state, m9_2.state, m9_3.state, m9_4.state, m9_5.state, summary, summaryCheck, photoRefs], 1500);
 
-    
+
 
     /* ---------- actions (submit เหมือนเดิม) ---------- */
     async function uploadGroupPhotos(
@@ -2057,15 +2057,304 @@ export default function CCBPMReport() {
     };
 
 
+    // const renderQuestionBlock = (q: Question, mode: TabId) => {
+    //     if (mode === "pre") {
+    //         return (
+    //             // <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+    //             <SectionCard
+    //                 key={q.key}
+    //                 title={getQuestionLabel(q, mode)}
+    //             // subtitle={subtitle}
+    //             >
+    //                 {q.kind === "simple" && q.hasPhoto && (
+    //                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                         <PhotoMultiInput
+    //                             label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                             photos={photos[`q${q.no}`] || []}
+    //                             setPhotos={makePhotoSetter(`q${q.no}`)}
+    //                             max={10}
+    //                             draftKey={key}
+    //                             qNo={q.no}
+    //                         />
+    //                     </div>
+    //                 )}
+    //                 {q.kind === "group" && q.hasPhoto && (
+    //                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                         {q.items.map((item) => (
+    //                             <div key={item.key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+    //                                 <Typography variant="small" className="tw-font-medium tw-mb-2">
+    //                                     {item.label}
+    //                                 </Typography>
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (${item.label})`}
+    //                                     photos={photos[item.key] || []}
+    //                                     setPhotos={makePhotoSetter(item.key)}
+    //                                     max={10}
+    //                                     draftKey={key}
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                         ))}
+    //                     </div>
+    //                 )}
+
+    //                 {/* {q.kind === "measure9" && q.hasPhoto && (
+    //                         <div>
+    //                             <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                     photos={photos[`q${q.no}`] || []}
+    //                                     setPhotos={makePhotoSetter(`q${q.no}`)}
+    //                                     max={10}
+    //                                     draftKey={key}
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                             <div className="tw-space-y-3">
+    //                                 {renderMeasureGrid9(0, BREAKERS[0], m9_0)}
+    //                                 {renderMeasureGrid9(1, BREAKERS[1], m9_1)}
+    //                                 {renderMeasureGrid9(2, BREAKERS[2], m9_2)}
+    //                                 {renderMeasureGrid9(3, BREAKERS[3], m9_3)}
+    //                                 {renderMeasureGrid9(4, BREAKERS[4], m9_4)}
+    //                                 {renderMeasureGrid9(5, BREAKERS[5], m9_5)}
+    //                             </div>
+    //                         </div>
+
+    //                     )} */}
+    //                 {q.kind === "measure9" && q.hasPhoto && (
+    //                     <div className="tw-space-y-3">
+    //                         {/* เบรกเกอร์แต่ละตัว */}
+    //                         {[
+    //                             { idx: 0, title: BREAKERS[0], m: m9_0, photoKey: 'r9_0' },
+    //                             { idx: 1, title: BREAKERS[1], m: m9_1, photoKey: 'r9_1' },
+    //                             { idx: 2, title: BREAKERS[2], m: m9_2, photoKey: 'r9_2' },
+    //                             { idx: 3, title: BREAKERS[3], m: m9_3, photoKey: 'r9_3' },
+    //                             { idx: 4, title: BREAKERS[4], m: m9_4, photoKey: 'r9_4' },
+    //                             { idx: 5, title: BREAKERS[5], m: m9_5, photoKey: 'r9_5' },
+    //                         ].map(({ idx, title, m, photoKey }) => (
+    //                             <div key={photoKey} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+    //                                 <Typography className="tw-font-medium tw-mb-3">{title}</Typography>
+
+    //                                 {/* แนบรูปของเบรกเกอร์นี้ */}
+    //                                 <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                     <PhotoMultiInput
+    //                                         label={`แนบรูปประกอบ (${title})`}
+    //                                         photos={photos[photoKey] || []}
+    //                                         setPhotos={makePhotoSetter(photoKey)}
+    //                                         max={3}
+    //                                         draftKey={key}
+    //                                         qNo={q.no}
+    //                                     />
+    //                                 </div>
+
+    //                                 {/* ฟอร์มวัดค่า */}
+    //                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4">
+    //                                     {VOLTAGE_FIELDS_CCB.map((k) => (
+    //                                         <InputWithUnit<UnitVoltage>
+    //                                             key={`${idx}-${k}`}
+    //                                             label={LABELS[k]}
+    //                                             value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
+    //                                             unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+    //                                             units={["V"] as const}
+    //                                             onValueChange={(v) => m.patch(k, { value: v })}
+    //                                             onUnitChange={(u) => m.syncUnits(u)}
+    //                                         />
+    //                                     ))}
+    //                                 </div>
+    //                             </div>
+    //                         ))}
+    //                     </div>
+    //                 )}
+
+
+
+
+    //             </SectionCard>
+    //         );
+    //     }
+    //     return (
+
+    //         <SectionCard key={q.key} title={q.label}>
+    //             {/* simple */}
+    //             {q.kind === "simple" && (
+    //                 <PassFailRow
+    //                     label="ผลการทดสอบ"
+    //                     value={rows[q.key]?.pf ?? ""}
+    //                     onChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+    //                     }
+    //                     remark={rows[q.key]?.remark ?? ""}
+    //                     onRemarkChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+    //                     }
+    //                     aboveRemark={
+    //                         q.hasPhoto && (
+    //                             <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                     photos={photos[`q${q.no}`] || []}
+    //                                     setPhotos={makePhotoSetter(`q${q.no}`)}
+    //                                     max={3}
+    //                                     draftKey={key}
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                         )
+    //                     }
+    //                 />
+    //             )}
+
+    //             {/* group */}
+    //             {q.kind === "group" &&
+    //                 q.items.map((it, idx) => (
+    //                     <PassFailRow
+    //                         key={it.key}
+    //                         label={it.label}
+    //                         value={rows[it.key]?.pf ?? ""}
+    //                         onChange={(v) =>
+    //                             setRows({
+    //                                 ...rows,
+    //                                 [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
+    //                             })
+    //                         }
+    //                         remark={rows[it.key]?.remark ?? ""}
+    //                         onRemarkChange={(v) =>
+    //                             setRows({
+    //                                 ...rows,
+    //                                 [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
+    //                             })
+    //                         }
+    //                         // แนบรูปสำหรับแต่ละ sub-item
+    //                         aboveRemark={
+    //                             q.hasPhoto && (
+    //                                 <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                     <PhotoMultiInput
+    //                                         label={`แนบรูปประกอบ (${it.label})`}
+    //                                         photos={photos[it.key] || []}
+    //                                         setPhotos={makePhotoSetter(it.key)}
+    //                                         max={3}
+    //                                         draftKey={key}
+    //                                         qNo={q.no}
+    //                                     />
+    //                                 </div>
+    //                             )
+    //                         }
+    //                     />
+    //                 ))}
+    //             {q.kind === "measure9" && (
+    //                 <div className="tw-space-y-3">
+    //                     {[
+    //                         { idx: 0, title: BREAKERS[0], m: m9_0, mPre: m9_0Pre, photoKey: 'r9_0' },
+    //                         { idx: 1, title: BREAKERS[1], m: m9_1, mPre: m9_1Pre, photoKey: 'r9_1' },
+    //                         { idx: 2, title: BREAKERS[2], m: m9_2, mPre: m9_2Pre, photoKey: 'r9_2' },
+    //                         { idx: 3, title: BREAKERS[3], m: m9_3, mPre: m9_3Pre, photoKey: 'r9_3' },
+    //                         { idx: 4, title: BREAKERS[4], m: m9_4, mPre: m9_4Pre, photoKey: 'r9_4' },
+    //                         { idx: 5, title: BREAKERS[5], m: m9_5, mPre: m9_5Pre, photoKey: 'r9_5' },
+    //                     ].map(({ idx, title, m, mPre, photoKey }) => (
+    //                         <div key={photoKey} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+    //                             <Typography className="tw-font-medium tw-mb-3">{title}</Typography>
+
+    //                             {/* แนบรูปของเบรกเกอร์นี้ */}
+    //                             {q.hasPhoto && (
+    //                                 <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                     <PhotoMultiInput
+    //                                         label={`แนบรูปประกอบ (${title})`}
+    //                                         photos={photos[photoKey] || []}
+    //                                         setPhotos={makePhotoSetter(photoKey)}
+    //                                         max={3}
+    //                                         draftKey={key}
+    //                                         qNo={q.no}
+    //                                     />
+    //                                 </div>
+    //                             )}
+
+    //                             {/* PASS/FAIL + Remark สำหรับเบรกเกอร์นี้ */}
+    //                             <div className="tw-mb-4">
+    //                                 <PassFailRow
+    //                                     label="ผลการทดสอบ"
+    //                                     value={rows[photoKey]?.pf ?? ""}
+    //                                     onChange={(v) =>
+    //                                         setRows({
+    //                                             ...rows,
+    //                                             [photoKey]: { ...(rows[photoKey] ?? { remark: "" }), pf: v },
+    //                                         })
+    //                                     }
+    //                                     remark={rows[photoKey]?.remark ?? ""}
+    //                                     onRemarkChange={(v) =>
+    //                                         setRows({
+    //                                             ...rows,
+    //                                             [photoKey]: { ...(rows[photoKey] ?? { pf: "" }), remark: v },
+    //                                         })
+    //                                     }
+    //                                 />
+    //                             </div>
+
+    //                             {/* ฟอร์มวัดค่า - หลัง PM */}
+
+
+    //                             {/* ก่อน PM - อ้างอิง (ล่าง) */}
+    //                             <div>
+    //                                 <Typography
+    //                                     variant="small"
+    //                                     className="tw-font-medium tw-text-blue-gray-700 tw-mb-2"
+    //                                 >
+    //                                     ก่อน PM (อ้างอิง)
+    //                                 </Typography>
+    //                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4 tw-opacity-60 tw-pointer-events-none">
+    //                                     {VOLTAGE_FIELDS_CCB.map((k) => (
+    //                                         <InputWithUnit<UnitVoltage>
+    //                                             key={`pre-${idx}-${k}`}
+    //                                             label={LABELS[k]}
+    //                                             value={mPre[k]?.value === null || mPre[k]?.value === undefined ? "-" : String(mPre[k]?.value)}
+    //                                             unit={(mPre[k]?.unit as UnitVoltage) || "V"}
+    //                                             units={["V"] as const}
+    //                                             onValueChange={() => { }}
+    //                                             onUnitChange={() => { }}
+    //                                             readOnly
+    //                                             required={false}
+    //                                         />
+    //                                     ))}
+    //                                 </div>
+    //                             </div>
+    //                             <div className="tw-mb-4">
+    //                                 <Typography
+    //                                     variant="small"
+    //                                     className="tw-font-medium tw-text-blue-gray-700 tw-mb-2"
+    //                                 >
+    //                                     หลัง PM
+    //                                 </Typography>
+    //                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4">
+    //                                     {VOLTAGE_FIELDS_CCB.map((k) => (
+    //                                         <InputWithUnit<UnitVoltage>
+    //                                             key={`post-${idx}-${k}`}
+    //                                             label={LABELS[k]}
+    //                                             value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
+    //                                             unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+    //                                             units={["V"] as const}
+    //                                             onValueChange={(v) => m.patch(k, { value: v })}
+    //                                             onUnitChange={(u) => m.syncUnits(u)}
+    //                                         />
+    //                                     ))}
+    //                                 </div>
+    //                             </div>
+    //                         </div>
+    //                     ))}
+    //                 </div>
+    //             )}
+
+    //         </SectionCard>
+    //     );
+    // };
+
+
     const renderQuestionBlock = (q: Question, mode: TabId) => {
         if (mode === "pre") {
             return (
-                // <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
                 <SectionCard
                     key={q.key}
                     title={getQuestionLabel(q, mode)}
-                // subtitle={subtitle}
                 >
+                    {/* ✅ ข้อ Simple: แสดงเฉพาะรูปภาพ */}
                     {q.kind === "simple" && q.hasPhoto && (
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                             <PhotoMultiInput
@@ -2078,6 +2367,8 @@ export default function CCBPMReport() {
                             />
                         </div>
                     )}
+
+                    {/* ✅ ข้อ Group: แสดงเฉพาะรูปภาพ */}
                     {q.kind === "group" && q.hasPhoto && (
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                             {q.items.map((item) => (
@@ -2098,29 +2389,7 @@ export default function CCBPMReport() {
                         </div>
                     )}
 
-                    {/* {q.kind === "measure9" && q.hasPhoto && (
-                            <div>
-                                <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
-                                    <PhotoMultiInput
-                                        label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                                        photos={photos[`q${q.no}`] || []}
-                                        setPhotos={makePhotoSetter(`q${q.no}`)}
-                                        max={10}
-                                        draftKey={key}
-                                        qNo={q.no}
-                                    />
-                                </div>
-                                <div className="tw-space-y-3">
-                                    {renderMeasureGrid9(0, BREAKERS[0], m9_0)}
-                                    {renderMeasureGrid9(1, BREAKERS[1], m9_1)}
-                                    {renderMeasureGrid9(2, BREAKERS[2], m9_2)}
-                                    {renderMeasureGrid9(3, BREAKERS[3], m9_3)}
-                                    {renderMeasureGrid9(4, BREAKERS[4], m9_4)}
-                                    {renderMeasureGrid9(5, BREAKERS[5], m9_5)}
-                                </div>
-                            </div>
-
-                        )} */}
+                    {/* ✅ ข้อ Measure9: แสดงรูปภาพ + ฟอร์มวัดค่าเท่านั้น (ไม่มี PASS/FAIL) */}
                     {q.kind === "measure9" && q.hasPhoto && (
                         <div className="tw-space-y-3">
                             {/* เบรกเกอร์แต่ละตัว */}
@@ -2166,14 +2435,12 @@ export default function CCBPMReport() {
                         </div>
                     )}
 
-
-
-
                 </SectionCard>
             );
         }
-        return (
 
+        // ✅ โหมด POST: แสดงทั้งรูป + PASS/FAIL + Remark
+        return (
             <SectionCard key={q.key} title={q.label}>
                 {/* simple */}
                 {q.kind === "simple" && (
@@ -2289,9 +2556,6 @@ export default function CCBPMReport() {
                                     />
                                 </div>
 
-                                {/* ฟอร์มวัดค่า - หลัง PM */}
-
-
                                 {/* ก่อน PM - อ้างอิง (ล่าง) */}
                                 <div>
                                     <Typography
@@ -2345,8 +2609,6 @@ export default function CCBPMReport() {
             </SectionCard>
         );
     };
-
-
     const active: TabId = useMemo(
         () => slugToTab(searchParams.get("pmtab")),
         [searchParams]
@@ -2429,20 +2691,7 @@ export default function CCBPMReport() {
                         <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                     </Button>
 
-                    {/* ✨ Draft Status Indicator */}
-                    {showDraftBadge && (
-                        <div className={`tw-px-3 tw-py-1 tw-rounded-full tw-text-xs tw-font-medium tw-transition-all ${
-                            draftStatus === "saving"
-                                ? "tw-bg-blue-50 tw-text-blue-700 tw-animate-pulse"
-                                : draftStatus === "saved"
-                                ? "tw-bg-green-50 tw-text-green-700"
-                                : "tw-bg-red-50 tw-text-red-700"
-                        }`}>
-                            {draftStatus === "saving" && "🔄 Saving..."}
-                            {draftStatus === "saved" && "✅ Saved"}
-                            {draftStatus === "error" && "❌ Error"}
-                        </div>
-                    )}
+
                 </div>
 
                 <Tabs value={displayTab}>
