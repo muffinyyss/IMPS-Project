@@ -2022,7 +2022,7 @@ export default function CCBPMReport() {
                         <InputWithUnit<UnitVoltage>
                             key={`post-${no}-${k}`}
                             label={LABELS[k] ?? k}
-                            value={m.state[k]?.value || ""}
+                            value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
                             unit={(m.state[k]?.unit as UnitVoltage) || "V"}
                             units={UNITS.voltage}
                             onValueChange={(v) => m.patch(k, { value: v })}
@@ -2044,7 +2044,7 @@ export default function CCBPMReport() {
                         <InputWithUnit<UnitVoltage>
                             key={`${idx}-${k}`}
                             label={LABELS[k]}
-                            value={m.state[k]?.value || ""}
+                            value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
                             unit={(m.state[k]?.unit as UnitVoltage) || "V"}
                             units={["V"] as const}
                             onValueChange={(v) => m.patch(k, { value: v })}
@@ -2153,7 +2153,7 @@ export default function CCBPMReport() {
                                             <InputWithUnit<UnitVoltage>
                                                 key={`${idx}-${k}`}
                                                 label={LABELS[k]}
-                                                value={m.state[k]?.value || ""}
+                                                value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
                                                 unit={(m.state[k]?.unit as UnitVoltage) || "V"}
                                                 units={["V"] as const}
                                                 onValueChange={(v) => m.patch(k, { value: v })}
@@ -2328,7 +2328,7 @@ export default function CCBPMReport() {
                                             <InputWithUnit<UnitVoltage>
                                                 key={`post-${idx}-${k}`}
                                                 label={LABELS[k]}
-                                                value={m.state[k]?.value || ""}
+                                                value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
                                                 unit={(m.state[k]?.unit as UnitVoltage) || "V"}
                                                 units={["V"] as const}
                                                 onValueChange={(v) => m.patch(k, { value: v })}
