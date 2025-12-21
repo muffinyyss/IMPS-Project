@@ -90,7 +90,8 @@ type PhotoItem = {
 
 type Question =
     | { no: number; key: `r${number}`; label: string; labelPre?: string; labelPost?: string; kind: "simple"; hasPhoto?: boolean }
-    | { no: number; key: `r${number}`; label: string; labelPre?: string; labelPost?: string; kind: "measure"; hasPhoto?: boolean };
+    | { no: number; key: `r${number}`; label: string; labelPre?: string; labelPost?: string; kind: "measure"; hasPhoto?: boolean }
+    | { no: number; key: `r${number}`; label: string; labelPre?: string; labelPost?: string; kind: "group"; items: { key: string; label: string }[]; hasPhoto?: boolean };
 
 const VOLTAGE_FIELDS = [
     "L1-N",
@@ -126,7 +127,7 @@ const LABELS: Record<string, string> = {
 };
 
 /** ทุกข้อมีการแนบรูป, ข้อ 17 เป็นหัวข้อวัดค่า */
-const QUESTIONS: Question[] = [
+const QUESTIONS_RAW: Question[] = [
     { no: 1, key: "r1", label: "1) ตรวจสอบสภาพทั่วไป", kind: "simple", hasPhoto: true },
     { no: 2, key: "r2", label: "2) ตรวจสอบดักซีล, ซิลิโคนกันซึม", kind: "simple", hasPhoto: true },
     { no: 3, key: "r3", label: "3) ตรวจสอบ Power Meter", kind: "simple", hasPhoto: true },
@@ -135,7 +136,19 @@ const QUESTIONS: Question[] = [
     { no: 6, key: "r6", label: "6) ตรวจสอบแรงดันไฟฟ้า Breaker Charger  ตัวที่ 2", kind: "measure", hasPhoto: true },
     { no: 7, key: "r7", label: "7) ตรวจสอบแรงดันไฟฟ้า Breaker Charger  ตัวที่ 3", kind: "measure", hasPhoto: true },
     { no: 8, key: "r8", label: "8) ตรวจสอบแรงดันไฟฟ้า Breaker CCB ", kind: "measure", hasPhoto: true },
-    { no: 9, key: "r9", label: "9) ทดสอบปุ่ม Trip Test", kind: "simple", hasPhoto: true },
+    {
+        no: 9,
+        key: "r9",
+        label: "9) ทดสอบปุ่ม Trip Test",
+        kind: "group",
+        hasPhoto: true,
+        items: [
+            { key: "r9_1", label: "RCD" },
+            { key: "r9_2", label: "Breaker CCB" },
+            { key: "r9_3", label: "Brekaer Charger" },
+            { key: "r9_4", label: "Breaker Main" },
+        ],
+    },
     { no: 10, key: "r10", label: "10) ตรวจสอบจุดต่อทางไฟฟ้า", kind: "simple", hasPhoto: true },
     { no: 11, key: "r11", label: "11) ทำความสะอาดตู้ MDB", kind: "simple", hasPhoto: true },
 ];
@@ -148,6 +161,10 @@ function getQuestionLabel(q: Question, mode: TabId): string {
     // mode === "post"
     return q.labelPost ?? `${q.label} (หลัง PM)`;
 }
+
+const QUESTIONS: Question[] = QUESTIONS_RAW.filter(
+    (q) => q.kind === "simple" || q.kind === "group" || q.kind === "measure"
+) as Question[];
 
 const FIELD_GROUPS: Record<number, { keys: readonly string[]; unitType: "voltage"; note?: string } | undefined> = {
     4: { keys: VOLTAGE_FIELDS, unitType: "voltage" },
@@ -200,7 +217,8 @@ function PassFailRow({
     remark,
     onRemarkChange,
     labels,
-    aboveRemark,              // 👈 เพิ่มตรงนี้
+    aboveRemark,
+    belowRemark,
     inlineLeft,
 }: {
     label: string;
@@ -209,7 +227,8 @@ function PassFailRow({
     remark?: string;
     onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-    aboveRemark?: React.ReactNode;   // 👈 และเพิ่มใน type ตรงนี้
+    aboveRemark?: React.ReactNode;
+    belowRemark?: React.ReactNode;
     inlineLeft?: React.ReactNode;
 }) {
     const text = {
@@ -281,6 +300,9 @@ function PassFailRow({
                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }}
                         className="!tw-w-full"
                     />
+
+                    {/* Input อื่น ๆ อยู่ล่างหมายเหตุ */}
+                    {belowRemark}
                 </div>
             ) : (
                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">
@@ -683,14 +705,32 @@ export default function MDBPMMForm() {
 
     const action = searchParams.get("action");
     const isPostMode = action === "post";
-
+    const isPreMode = !isPostMode;
     const PM_PREFIX = "mdbpmreport";
 
     /* ---------- photos per question ---------- */
-    const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
-        QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
-    ) as Record<number, PhotoItem[]>;
-    const [photos, setPhotos] = useState<Record<number, PhotoItem[]>>(initialPhotos);
+    // const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
+    //     QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
+    // ) as Record<number, PhotoItem[]>;
+    const initialPhotos: Record<string | number, PhotoItem[]> = Object.fromEntries(
+        QUESTIONS.filter((q) => q.hasPhoto).flatMap((q) => {
+            const entries: [string | number, PhotoItem[]][] = [];
+
+            if (q.kind === "simple") {
+                entries.push([q.no, []]);
+            } else if (q.kind === "group") {
+                q.items.forEach((item) => {
+                    entries.push([item.key, []]);
+                });
+            } else if (q.kind === "measure") {
+                // Measure questions get their own photo entry
+                entries.push([q.no, []]);
+            }
+
+            return entries;
+        })
+    ) as Record<string | number, PhotoItem[]>;
+    const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>(initialPhotos);
 
     // ค่า CP ของข้อ 15 (ช่องเดียว หน่วย V)
     // const [cp, setCp] = useState<{ value: string; unit: UnitVoltage }>({ value: "", unit: "V" });
@@ -728,11 +768,29 @@ export default function MDBPMMForm() {
     }, []);
 
     /* ---------- PASS/FAIL + remark ---------- */
+    // const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
+    //     const initial: Record<string, { pf: PF; remark: string }> = {};
+    //     QUESTIONS.forEach((q) => {
+    //         initial[q.key] = { pf: "", remark: "" };
+    //     });
+    //     return initial;
+    // });
+
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
+
         QUESTIONS.forEach((q) => {
-            initial[q.key] = { pf: "", remark: "" };
+            if (q.kind === "simple" || q.kind === "measure") {
+                // ✅ ตั้งค่าเริ่มต้นสำหรับ simple และ measure
+                initial[q.key] = { pf: "", remark: "" };
+            } else if (q.kind === "group") {
+                // ✅ ตั้งค่าเริ่มต้นสำหรับทุก sub-item ใน group
+                q.items.forEach((item) => {
+                    initial[item.key] = { pf: "", remark: "" };
+                });
+            }
         });
+
         return initial;
     });
 
@@ -866,6 +924,37 @@ export default function MDBPMMForm() {
                 // 5) inspector
                 if (data.inspector) setInspector(data.inspector);
 
+                // 6) rows - initialize from post data if available, otherwise use defaults
+                if (data.rows) {
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        // Merge with existing to ensure all keys are present
+                        Object.entries(data.rows).forEach(([k, v]) => {
+                            next[k] = v as { pf: PF; remark: string };
+                        });
+                        return next;
+                    });
+                } else {
+                    // Ensure all keys are initialized with defaults
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        QUESTIONS.forEach((q) => {
+                            if (q.kind === "simple" || q.kind === "measure") {
+                                if (!next[q.key]) {
+                                    next[q.key] = { pf: "", remark: "" };
+                                }
+                            } else if (q.kind === "group") {
+                                q.items.forEach((item) => {
+                                    if (!next[item.key]) {
+                                        next[item.key] = { pf: "", remark: "" };
+                                    }
+                                });
+                            }
+                        });
+                        return next;
+                    });
+                }
+
             } catch (err) {
                 console.error("load report failed:", err);
             }
@@ -989,7 +1078,7 @@ export default function MDBPMMForm() {
     useEffect(() => {
         if (!stationId || !draftId) return;
         const draft = loadDraftLocal<{
-            job: typeof job;
+            // job: typeof job;
             rows: typeof rows;
             m4: typeof m4.state;
             m5: typeof m5.state;
@@ -997,35 +1086,41 @@ export default function MDBPMMForm() {
             m7: typeof m7.state;
             m8: typeof m8.state;
             summary: string;
-            inspector?: string;
             dustFilterChanged?: boolean;
-            photoRefs?: Record<number, PhotoRef[]>;
+            photoRefs?: Record<string | number, PhotoRef[]>;
         }>(key);
         if (!draft) return;
 
-        // const { issue_id, ...draftJobWithoutIssue } = draft.job;
-        const draftJob = draft?.job ?? {};           // ถ้าไม่มี job ให้เป็น object ว่าง
-        const { issue_id, ...draftJobWithoutIssue } = draftJob;
 
-        setJob((prev) => ({ ...prev, ...draft.job }));
         setRows(draft.rows);
         m4.setState(draft.m4 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
         m5.setState(draft.m5 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
         m6.setState(draft.m6 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
         m7.setState(draft.m7 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
         m8.setState(draft.m8 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
-        // setSummary(draft.summary);
-        setInspector(draft.inspector ?? "");
         setDustFilterChanged(draft.dustFilterChanged ?? false);
         (async () => {
             if (!draft.photoRefs) return;
 
-            const next: Record<number, PhotoItem[]> = Object.fromEntries(
-                QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
-            ) as Record<number, PhotoItem[]>;
+            const next: Record<string | number, PhotoItem[]> = Object.fromEntries(
+                QUESTIONS.filter((q) => q.hasPhoto).flatMap((q) => {
+                    const entries: [string | number, PhotoItem[]][] = [];
+                    if (q.kind === "simple") {
+                        entries.push([q.no, []]);
+                    } else if (q.kind === "group") {
+                        q.items.forEach((item) => {
+                            entries.push([item.key, []]);
+                        });
+                    } else if (q.kind === "measure") {
+                        entries.push([q.no, []]);
+                    }
+                    return entries;
+                })
+            ) as Record<string | number, PhotoItem[]>;
 
-            for (const [noStr, refs] of Object.entries(draft.photoRefs)) {
-                const no = Number(noStr);
+            for (const [keyStr, refs] of Object.entries(draft.photoRefs)) {
+                // keyStr could be a number (like "4") or a string (like "r9_1")
+                const photoKey = isNaN(Number(keyStr)) ? keyStr : Number(keyStr);
                 const items: PhotoItem[] = [];
 
                 for (const ref of refs || []) {
@@ -1040,7 +1135,7 @@ export default function MDBPMMForm() {
                         ref,
                     });
                 }
-                next[no] = items;
+                next[photoKey] = items;
             }
 
             setPhotos(next);
@@ -1062,15 +1157,70 @@ export default function MDBPMMForm() {
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
 
-    const makePhotoSetter =
-        (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> =>
-            (action) => {
-                setPhotos((prev) => {
-                    const current = prev[no] || [];
-                    const next = typeof action === "function" ? (action as (x: PhotoItem[]) => PhotoItem[])(current) : action;
-                    return { ...prev, [no]: next };
-                });
-            };
+    // const makePhotoSetter =
+    //     (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> =>
+    //         (action) => {
+    //             setPhotos((prev) => {
+    //                 const current = prev[no] || [];
+    //                 const next = typeof action === "function" ? (action as (x: PhotoItem[]) => PhotoItem[])(current) : action;
+    //                 return { ...prev, [no]: next };
+    //             });
+    //         };
+
+    const makePhotoSetter = (
+        key: string | number
+    ): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
+        return (action: React.SetStateAction<PhotoItem[]>) => {
+            setPhotos((prev) => {
+                const current = prev[key] ?? [];
+                const next =
+                    typeof action === "function"
+                        ? (action as (x: PhotoItem[]) => PhotoItem[])(current)
+                        : action;
+
+                return { ...prev, [key]: next };
+            });
+        };
+    };
+
+
+    const REQUIRED_PHOTO_KEYS_PRE = useMemo(
+        () => {
+            const keys: (string | number)[] = [];
+            QUESTIONS.filter((q) => q.hasPhoto && q.no !== 11).forEach((q) => {
+                if (q.kind === "group") {
+                    // สำหรับ group ต้องมีรูปสำหรับ sub-items
+                    q.items.forEach((item) => {
+                        keys.push(item.key);
+                    });
+                } else {
+                    // สำหรับ simple/measure ใช้หมายเลขข้อ
+                    keys.push(q.no);
+                }
+            });
+            return keys;
+        },
+        []
+    );
+
+    const REQUIRED_PHOTO_KEYS_POST = useMemo(
+        () => {
+            const keys: (string | number)[] = [];
+            QUESTIONS.filter((q) => q.hasPhoto).forEach((q) => {
+                if (q.kind === "group") {
+                    // สำหรับ group ต้องมีรูปสำหรับ sub-items
+                    q.items.forEach((item) => {
+                        keys.push(item.key);
+                    });
+                } else {
+                    // สำหรับ simple/measure ใช้หมายเลขข้อ
+                    keys.push(q.no);
+                }
+            });
+            return keys;
+        },
+        []
+    );
 
     const REQUIRED_PHOTO_ITEMS_PRE = useMemo(
         () =>
@@ -1089,20 +1239,45 @@ export default function MDBPMMForm() {
     );
 
     const missingPhotoItemsPre = useMemo(
-        () =>
-            REQUIRED_PHOTO_ITEMS_PRE.filter(
-                (no) => (photos[no]?.length ?? 0) < 1
-            ),
+        () => {
+            const missing: number[] = [];
+            REQUIRED_PHOTO_ITEMS_PRE.forEach((no) => {
+                const q = QUESTIONS.find(q => q.no === no);
+                if (!q) return;
+
+                if (q.kind === "group") {
+                    // ตรวจสอบ sub-items
+                    const allHavePhotos = q.items.every(
+                        (item) => (photos[item.key]?.length ?? 0) > 0
+                    );
+                    if (!allHavePhotos) {
+                        missing.push(no);
+                    }
+                } else {
+                    // ตรวจสอบ simple/measure ด้วยเลขข้อ (numeric key)
+                    if ((photos[no]?.length ?? 0) < 1) {
+                        missing.push(no);
+                    }
+                }
+            });
+            return missing;
+        },
         [REQUIRED_PHOTO_ITEMS_PRE, photos]
     );
 
     const missingPhotoItemsPost = useMemo(
-        () =>
-            REQUIRED_PHOTO_ITEMS_POST.filter(
-                (no) => (photos[no]?.length ?? 0) < 1
-            ),
-        [REQUIRED_PHOTO_ITEMS_POST, photos]
+        () => {
+            const missing: (string | number)[] = [];
+            REQUIRED_PHOTO_KEYS_POST.forEach((keyStr) => {
+                if ((photos[keyStr]?.length ?? 0) < 1) {
+                    missing.push(keyStr);
+                }
+            });
+            return missing;
+        },
+        [REQUIRED_PHOTO_KEYS_POST, photos]
     );
+
 
     const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
     const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
@@ -1120,7 +1295,19 @@ export default function MDBPMMForm() {
     );
 
     const PF_KEYS_ALL = useMemo(
-        () => QUESTIONS.map((q) => q.key),
+        () => {
+            const keys: string[] = [];
+            QUESTIONS.forEach((q) => {
+                if (q.kind === "simple" || q.kind === "measure") {
+                    keys.push(q.key);
+                } else if (q.kind === "group") {
+                    q.items.forEach((item) => {
+                        keys.push(item.key);
+                    });
+                }
+            });
+            return keys;
+        },
         []
     );
 
@@ -1145,8 +1332,8 @@ export default function MDBPMMForm() {
     const missingPFItemsAll = useMemo(
         () =>
             PF_KEYS_ALL.filter((k) => !rows[k]?.pf)
-                .map((k) => Number(k.replace("r", "")))
-                .sort((a, b) => a - b),
+                .map((k) => k.replace(/^r(\d+)_?(\d+)?$/, (_, a, b) => (b ? `${a}.${b}` : a)))
+                .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0])),
         [rows, PF_KEYS_ALL]
     );
 
@@ -1161,25 +1348,58 @@ export default function MDBPMMForm() {
     /* ---------- validations ---------- */
     // ต้องตอบ PASS/FAIL ครบทุกข้อยกเว้น r4 (เป็นชุดวัดค่า)
     // const PF_REQUIRED_KEYS = useMemo(() => QUESTIONS.filter((q) => q.key !== "r4").map((q) => q.key), []);
-    const PF_REQUIRED_KEYS = useMemo(
-        () => QUESTIONS
-            .filter((q) => !(q.kind === "measure" && FIELD_GROUPS[q.no])) // ตัด 4–7 ออก
-            .map((q) => q.key),
-        []
-    );
+    // const PF_REQUIRED_KEYS = useMemo(
+    //     () => QUESTIONS
+    //         .filter((q) => !(q.kind === "measure" && FIELD_GROUPS[q.no])) // ตัด 4–7 ออก
+    //         .map((q) => q.key),
+    //     []
+    // );
+    const PF_REQUIRED_KEYS = useMemo(() => {
+        const keys: string[] = [];
+        QUESTIONS.forEach((q) => {
+            if (q.kind === "simple") {
+                keys.push(q.key); // ✅ เพิ่ม simple
+            }
+            if (q.kind === "measure") {
+                keys.push(q.key);
+            } else if (q.kind === "group") {
+                q.items.forEach((item) => {
+                    keys.push(item.key); // ✅ เพิ่ม group items
+                });
+            }
+
+        });
+        return keys;
+    }, []);
 
     // ตอบอะไรก็ได้ที่ไม่ว่าง: PASS/FAIL/NA
-    const allPFAnswered = useMemo(
-        () => PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== ""),
-        [rows, PF_REQUIRED_KEYS]
-    );
-    const missingPFItems = useMemo(
-        () =>
-            PF_REQUIRED_KEYS.filter((k) => !rows[k]?.pf)
-                .map((k) => Number(k.replace("r", "")))
-                .sort((a, b) => a - b),
-        [rows, PF_REQUIRED_KEYS]
-    );
+    // const allPFAnswered = useMemo(
+    //     () => PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== ""),
+    //     [rows, PF_REQUIRED_KEYS]
+    // );
+    // const missingPFItems = useMemo(
+    //     () =>
+    //         PF_REQUIRED_KEYS.filter((k) => !rows[k]?.pf)
+    //             .map((k) => Number(k.replace("r", "")))
+    //             .sort((a, b) => a - b),
+    //     [rows, PF_REQUIRED_KEYS]
+    // );
+    const allPFAnswered = useMemo(() => {
+        if (isPreMode) return true;
+        // ✅ ตรวจสอบว่ามี default value สำหรับทุก key หรือไม่
+        return PF_REQUIRED_KEYS.every((k) => {
+            const rowData = rows[k];
+            return rowData && rowData.pf !== "";
+        });
+    }, [isPreMode, rows, PF_REQUIRED_KEYS]);
+
+    const missingPFItems = useMemo(() => {
+        if (isPreMode) return [];
+        return PF_REQUIRED_KEYS
+            .filter((k) => !rows[k] || !rows[k].pf) // ✅ เพิ่ม null check
+            .map((k) => k.replace(/^r(\d+)_?(\d+)?$/, (_, a, b) => (b ? `${a}.${b}` : a)))
+            .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0]));
+    }, [isPreMode, rows, PF_REQUIRED_KEYS]);
 
 
     const missingInputs = useMemo(() => {
@@ -1294,6 +1514,8 @@ export default function MDBPMMForm() {
                         />
                     ))}
                 </div>
+
+
             </div>
         );
     };
@@ -1305,128 +1527,425 @@ export default function MDBPMMForm() {
         if (!cfg || !m) return null;
 
         return (
-            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
-                {cfg.keys.map((k) => (
-                    <InputWithUnit<UnitVoltage>
-                        key={`${no}-${k}`}
-                        label={(LABELS[k] ?? k) as string}
-                        value={m.state[k]?.value || ""}
-                        unit={(m.state[k]?.unit as UnitVoltage) || "V"}
-                        units={UNITS.voltage}
-                        onValueChange={(v) => m.patch(k, { value: v })}
-                        onUnitChange={(u) => handleUnitChange(no, k, u)}
-                    />
-                ))}
+            <div className="tw-space-y-3">
+                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                    {cfg.keys.map((k) => (
+                        <InputWithUnit<UnitVoltage>
+                            key={`${no}-${k}`}
+                            label={(LABELS[k] ?? k) as string}
+                            value={m.state[k]?.value || ""}
+                            unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+                            units={UNITS.voltage}
+                            onValueChange={(v) => m.patch(k, { value: v })}
+                            onUnitChange={(u) => handleUnitChange(no, k, u)}
+                        />
+                    ))}
+                </div>
+
+
             </div>
         );
     };
 
+    // const renderQuestionBlock = (q: Question, mode: TabId) => {
+    //     const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
+    //     const subtitle = FIELD_GROUPS[q.no]?.note;
+
+    //     if (mode === "pre") {
+    //         return (
+    //             // <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+    //             <SectionCard
+    //                 key={q.key}
+    //                 title={getQuestionLabel(q, mode)}
+    //             // subtitle={subtitle}
+    //             >
+    //                 {q.kind === "simple" && q.hasPhoto && (
+    //                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                         <PhotoMultiInput
+    //                             label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                             photos={photos[q.no] || []}
+    //                             setPhotos={makePhotoSetter(q.no)}
+    //                             max={10}
+    //                             draftKey={key}
+    //                             qNo={q.no}
+    //                         />
+    //                     </div>
+    //                 )}
+
+
+    //                 {hasMeasure && q.hasPhoto && (
+    //                     <div className="tw-space-y-3">
+    //                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                             <PhotoMultiInput
+    //                                 label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                 photos={photos[q.no] || []}
+    //                                 setPhotos={makePhotoSetter(q.no)}
+    //                                 max={10}
+    //                                 draftKey={key}
+    //                                 qNo={q.no}
+    //                             />
+    //                         </div>
+    //                         {renderMeasureGrid(q.no)}
+    //                     </div>
+    //                 )}
+
+    //                 {q.kind === "group" && q.hasPhoto && (
+    //                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                         {q.items.map((item) => (
+    //                             <div key={item.key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+    //                                 <Typography variant="small" className="tw-font-medium tw-mb-2">
+    //                                     {item.label}
+    //                                 </Typography>
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (${item.label})`}
+    //                                     photos={photos[item.key] || []}
+    //                                     setPhotos={makePhotoSetter(item.key)}
+    //                                     max={10}
+    //                                     draftKey={key}
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                         ))}
+    //                     </div>
+    //                 )}
+    //             </SectionCard>
+    //         );
+    //     }
+
+    //     // const hasMeasure = q.kind === "measure" && FIELD_GROUPS[q.no];
+
+    //     const inlineLeft =
+    //         q.no === 11 ? (
+    //             <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
+    //                 <input
+    //                     type="checkbox"
+    //                     className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+    //                     checked={dustFilterChanged}
+    //                     onChange={(e) => setDustFilterChanged(e.target.checked)}
+    //                 />
+    //                 <span>เปลี่ยนแผ่นกรองระบายอากาศ</span>
+    //             </label>
+    //         ) : null;
+
+
+
+    //     return (
+    //         <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+    //             {q.kind === "simple" && (
+    //                 <PassFailRow
+    //                     label="ผลการทดสอบ"
+    //                     value={rows[q.key]?.pf ?? ""}
+    //                     onChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+    //                     }
+    //                     remark={rows[q.key]?.remark ?? ""}
+    //                     onRemarkChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+    //                     }
+    //                     aboveRemark={
+    //                         q.hasPhoto && (
+    //                             <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-8 tw-border-blue-gray-50">
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                     photos={photos[q.no] || []}
+    //                                     setPhotos={makePhotoSetter(q.no)}
+    //                                     max={10}
+    //                                     draftKey={key}   // ✅ เพิ่ม
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                         )
+    //                     }
+    //                     inlineLeft={inlineLeft}
+    //                 />
+    //             )}
+
+    //             {/* {hasMeasure && renderMeasureGrid(q.no)} */}
+    //             {/* group */}
+    //             {q.kind === "group" &&
+    //                 q.items.map((it, idx) => (
+    //                     <PassFailRow
+    //                         key={it.key}
+    //                         label={it.label}
+    //                         value={rows[it.key]?.pf ?? ""}
+    //                         onChange={(v) =>
+    //                             setRows({
+    //                                 ...rows,
+    //                                 [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
+    //                             })
+    //                         }
+    //                         remark={rows[it.key]?.remark ?? ""}
+    //                         onRemarkChange={(v) =>
+    //                             setRows({
+    //                                 ...rows,
+    //                                 [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
+    //                             })
+    //                         }
+    //                         // แนบรูปสำหรับแต่ละ sub-item
+    //                         aboveRemark={
+    //                             q.hasPhoto && (
+    //                                 <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                     <PhotoMultiInput
+    //                                         label={`แนบรูปประกอบ (${it.label})`}
+    //                                         photos={photos[it.key] || []}
+    //                                         setPhotos={makePhotoSetter(it.key)}
+    //                                         max={3}
+    //                                         draftKey={key}
+    //                                         qNo={q.no}
+    //                                     />
+    //                                 </div>
+    //                             )
+    //                         }
+    //                     />
+    //                 ))}
+    //             {q.kind === "measure" && hasMeasure && (
+    //                 <PassFailRow
+    //                     label="ผลการทดสอบ"
+    //                     value={rows[q.key]?.pf ?? ""}
+    //                     onChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+    //                     }
+    //                     remark={rows[q.key]?.remark ?? ""}
+    //                     onRemarkChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+    //                     }
+    //                     aboveRemark={
+    //                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                             <PhotoMultiInput
+    //                                 label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                 photos={photos[q.no] || []}
+    //                                 setPhotos={makePhotoSetter(q.no)}
+    //                                 max={10}
+    //                                 draftKey={key}
+    //                                 qNo={q.no}
+    //                             />
+    //                         </div>
+    //                     }
+    //                     belowRemark={
+    //                         (q.no === 4 || q.no === 5 || q.no === 6 || q.no === 7 || q.no === 8
+    //                             ? renderMeasureGridWithPre(q.no)
+    //                             : renderMeasureGrid(q.no))
+    //                     }
+    //                 />
+    //             )}
+
+
+    //         </SectionCard>
+    //     );
+    // };
+
+    // debounce ง่าย ๆ ในไฟล์นี้เลยก็ได้
+
     const renderQuestionBlock = (q: Question, mode: TabId) => {
-        // const hasMeasure = q.kind === "measure" && FIELD_GROUPS[q.no];
-        const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
-        const subtitle = FIELD_GROUPS[q.no]?.note;
+    const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
+    const subtitle = FIELD_GROUPS[q.no]?.note;
 
-        const inlineLeft =
-            q.no === 11 ? (
-                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
-                    <input
-                        type="checkbox"
-                        className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                        checked={dustFilterChanged}
-                        onChange={(e) => setDustFilterChanged(e.target.checked)}
-                    />
-                    <span>เปลี่ยนแผ่นกรองระบายอากาศ</span>
-                </label>
-            ) : null;
+    if (mode === "pre") {
+        return (
+            <SectionCard
+                key={q.key}
+                title={getQuestionLabel(q, mode)}
+            >
+                {q.kind === "simple" && q.hasPhoto && (
+                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                        <PhotoMultiInput
+                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                            photos={photos[q.no] || []}
+                            setPhotos={makePhotoSetter(q.no)}
+                            max={10}
+                            draftKey={key}
+                            qNo={q.no}
+                        />
+                    </div>
+                )}
 
-        if (mode === "pre") {
-            return (
-                // <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
-                <SectionCard
-                    key={q.key}
-                    title={getQuestionLabel(q, mode)}
-                    subtitle={subtitle}
-                >
-                    {q.hasPhoto && (
+                {hasMeasure && q.hasPhoto && (
+                    <div className="tw-space-y-3">
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                             <PhotoMultiInput
                                 label={`แนบรูปประกอบ (ข้อ ${q.no})`}
                                 photos={photos[q.no] || []}
                                 setPhotos={makePhotoSetter(q.no)}
                                 max={10}
-                                draftKey={key}   // ✅ เพิ่ม
+                                draftKey={key}
                                 qNo={q.no}
                             />
                         </div>
-                    )}
+                        {renderMeasureGrid(q.no)}
+                    </div>
+                )}
 
-                    {/* ข้อที่เป็น measure (ตอนนี้คือข้อ 17) */}
-                    {hasMeasure && renderMeasureGrid(q.no)}
-
-                    {/* ข้อ 15: CP */}
-                    {/* {q.no === 15 && (
-                        <div className="tw-pt-1 tw-space-y-2">
-                            <div className="tw-max-w-xs">
-                                <InputWithUnit<UnitVoltage>
-                                    label="CP"
-                                    value={cp.value}
-                                    unit={cp.unit}
-                                    units={["V"] as const}
-                                    onValueChange={(v) => setCp((s) => ({ ...s, value: v }))}
-                                    onUnitChange={(u) => setCp((s) => ({ ...s, unit: u }))}
+                {q.kind === "group" && q.hasPhoto && (
+                    <div className="tw-pt-2 tw-pb-4 tw-space-y-4">
+                        {q.items.map((item, idx) => (
+                            <div
+                                key={item.key}
+                                className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100"
+                            >
+                                <Typography
+                                    variant="small"
+                                    className="tw-font-medium tw-mb-3 tw-text-sm md:tw-text-base"
+                                >
+                                    {item.label}
+                                </Typography>
+                                <PhotoMultiInput
+                                    label={`แนบรูปประกอบ (${item.label})`}
+                                    photos={photos[item.key] || []}
+                                    setPhotos={makePhotoSetter(item.key)}
+                                    max={10}
+                                    draftKey={key}
+                                    qNo={q.no}
                                 />
-
-
                             </div>
-                        </div>
-                    )} */}
-                </SectionCard>
-            );
-        }
+                        ))}
+                    </div>
+                )}
+            </SectionCard>
+        );
+    }
 
-        return (
-            <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
-                <PassFailRow
-                    label="ผลการทดสอบ"
-                    value={rows[q.key]?.pf ?? ""}
-                    onChange={(v) =>
-                        setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
-                    }
-                    remark={rows[q.key]?.remark ?? ""}
-                    onRemarkChange={(v) =>
-                        setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
-                    }
-                    aboveRemark={
-                        q.hasPhoto && (
-                            <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-8 tw-border-blue-gray-50">
+    // ✅ Checkbox สำหรับข้อ 11 - แยกออกมาเป็น element ตัวเอง
+    const checkboxElement = q.no === 11 ? (
+        <label className="tw-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700 tw-py-2">
+            <input
+                type="checkbox"
+                className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                checked={dustFilterChanged}
+                onChange={(e) => setDustFilterChanged(e.target.checked)}
+            />
+            <span className="tw-leading-tight">เปลี่ยนแผ่นกรองระบายอากาศ</span>
+        </label>
+    ) : null;
+
+    return (
+        <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+            {q.kind === "simple" && (
+                <div className="tw-space-y-3">
+                    <PassFailRow
+                        label="ผลการทดสอบ"
+                        value={rows[q.key]?.pf ?? ""}
+                        onChange={(v) =>
+                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+                        }
+                        remark={rows[q.key]?.remark ?? ""}
+                        onRemarkChange={(v) =>
+                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+                        }
+                        aboveRemark={
+                            <>
+                                {q.hasPhoto && (
+                                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                                        <PhotoMultiInput
+                                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                            photos={photos[q.no] || []}
+                                            setPhotos={makePhotoSetter(q.no)}
+                                            max={10}
+                                            draftKey={key}
+                                            qNo={q.no}
+                                        />
+                                    </div>
+                                )}
+                                {/* ✅ Checkbox อยู่ด้านบน (mobile) */}
+                                {checkboxElement && (
+                                    <div className="sm:tw-hidden tw-mb-3">
+                                        {checkboxElement}
+                                    </div>
+                                )}
+                            </>
+                        }
+                        inlineLeft={
+                            /* ✅ Checkbox อยู่ข้างซ้าย (desktop) */
+                            checkboxElement && (
+                                <div className="tw-hidden sm:tw-flex">
+                                    {checkboxElement}
+                                </div>
+                            )
+                        }
+                    />
+                </div>
+            )}
+
+            {q.kind === "group" && (
+                <div className="tw-space-y-4 md:tw-space-y-6">
+                    {q.items.map((it, idx) => (
+                        <div
+                            key={it.key}
+                            className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100"
+                        >
+                            <PassFailRow
+                                label={it.label}
+                                value={rows[it.key]?.pf ?? ""}
+                                onChange={(v) =>
+                                    setRows({
+                                        ...rows,
+                                        [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
+                                    })
+                                }
+                                remark={rows[it.key]?.remark ?? ""}
+                                onRemarkChange={(v) =>
+                                    setRows({
+                                        ...rows,
+                                        [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
+                                    })
+                                }
+                                aboveRemark={
+                                    q.hasPhoto && (
+                                        <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                            <PhotoMultiInput
+                                                label={`แนบรูปประกอบ (${it.label})`}
+                                                photos={photos[it.key] || []}
+                                                setPhotos={makePhotoSetter(it.key)}
+                                                max={3}
+                                                draftKey={key}
+                                                qNo={q.no}
+                                            />
+                                        </div>
+                                    )
+                                }
+                            />
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {q.kind === "measure" && hasMeasure && (
+                <div className="tw-space-y-3">
+                    <PassFailRow
+                        label="ผลการทดสอบ"
+                        value={rows[q.key]?.pf ?? ""}
+                        onChange={(v) =>
+                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+                        }
+                        remark={rows[q.key]?.remark ?? ""}
+                        onRemarkChange={(v) =>
+                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+                        }
+                        aboveRemark={
+                            <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                                 <PhotoMultiInput
                                     label={`แนบรูปประกอบ (ข้อ ${q.no})`}
                                     photos={photos[q.no] || []}
                                     setPhotos={makePhotoSetter(q.no)}
                                     max={10}
-                                    draftKey={key}   // ✅ เพิ่ม
+                                    draftKey={key}
                                     qNo={q.no}
                                 />
                             </div>
-                        )
-                    }
-                    inlineLeft={inlineLeft}
-                />
+                        }
+                        belowRemark={
+                            <div className="tw-mt-4">
+                                {(q.no === 4 || q.no === 5 || q.no === 6 || q.no === 7 || q.no === 8
+                                    ? renderMeasureGridWithPre(q.no)
+                                    : renderMeasureGrid(q.no))}
+                            </div>
+                        }
+                    />
+                </div>
+            )}
+        </SectionCard>
+    );
+};
 
-                {/* {hasMeasure && renderMeasureGrid(q.no)} */}
-
-                {hasMeasure &&
-                    (q.no === 4 || q.no === 5 || q.no === 6 || q.no === 7 || q.no === 8
-                        ? renderMeasureGridWithPre(q.no)
-                        : renderMeasureGrid(q.no))
-                }
-
-
-            </SectionCard>
-        );
-    };
-
-    // debounce ง่าย ๆ ในไฟล์นี้เลยก็ได้
     function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
         useEffect(() => {
             const h = setTimeout(effect, delay);
@@ -1434,10 +1953,10 @@ export default function MDBPMMForm() {
         }, deps); // eslint-disable-line react-hooks/exhaustive-deps
     }
     const photoRefs = useMemo(() => {
-        const out: Record<number, PhotoRef[]> = {};
-        Object.entries(photos).forEach(([noStr, list]) => {
-            const no = Number(noStr);
-            out[no] = (list || []).map(p => p.ref).filter(Boolean) as PhotoRef[];
+        const out: Record<string | number, PhotoRef[]> = {};
+        Object.entries(photos).forEach(([keyStr, list]) => {
+            const photoKey = isNaN(Number(keyStr)) ? keyStr : Number(keyStr);
+            out[photoKey] = (list || []).map(p => p.ref).filter(Boolean) as PhotoRef[];
         });
         return out;
     }, [photos]);
@@ -1515,6 +2034,8 @@ export default function MDBPMMForm() {
         if (!res.ok) throw new Error(await res.text());
     }
 
+
+
     const onPreSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
         if (!allRequiredInputsFilled) {
@@ -1525,26 +2046,21 @@ export default function MDBPMMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
+            const pm_date = job.date?.trim() || "";
 
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
             const payload = {
                 station_id: stationId,
-                issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
-                job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
+                issue_id: issueIdFromJob,
+                job: jobWithoutIssueId,
                 inspector,
-                // rows,
                 measures_pre: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state, },
-                // summary,
                 pm_date,
                 doc_name: docName,
                 side: "pre" as TabId,
-
             };
 
-            // 1) สร้างรายงาน (submit)
             const res = await fetch(`${API_BASE}/mdbpmreport/pre/submit`, {
-                // const res = await apiFetch(`${API_BASE}/mdbpmreport/pre/submit`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -1554,27 +2070,45 @@ export default function MDBPMMForm() {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            // const { report_id } = await res.json();
+
             const { report_id, doc_name } = await res.json() as {
                 report_id: string;
                 doc_name?: string;
             };
-            if (doc_name) {
-                setDocName(doc_name);
-            }
+            if (doc_name) setDocName(doc_name);
 
-            // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group "g{no}"
-            const photoNos = Object.keys(photos).map(n => Number(n));
-            for (const no of photoNos) {
-                const list = photos[no] || [];
-                if (list.length === 0) continue;
-                const files = list.map(p => p.file!).filter(Boolean) as File[];
-                if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre");
+
+            // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
+            const uploadPromises: Promise<void>[] = [];
+            const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+            for (const qNo of orderedQuestions) {
+                if (qNo === 9) {
+                    const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+                    subKeys.forEach(subKey => {
+                        const list = photos[subKey];
+                        if (list?.length) {
+                            const files = list.map(p => p.file!).filter(Boolean) as File[];
+                            if (files.length) {
+                                uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "pre"));
+                            }
+                        }
+                    });
+                } else {
+                    const list = photos[qNo];
+                    if (list?.length) {
+                        const files = list.map(p => p.file!).filter(Boolean) as File[];
+                        if (files.length) {
+                            uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${qNo}`, files, "pre"));
+                        }
+                    }
+                }
             }
-            await Promise.all(
-                Object.values(photos).flat().map(p => delPhoto(key, p.id))
-            );
+            await Promise.all(uploadPromises);
+
+            // ลบไฟล์ทั้งหมดแบบ parallel (เร็วกว่า)
+            const allPhotos = Object.values(photos).flat();
+            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
 
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
@@ -1584,6 +2118,172 @@ export default function MDBPMMForm() {
             setSubmitting(false);
         }
     };
+    // const onPreSave = async () => {
+    //     if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    //     if (!allRequiredInputsFilled) {
+    //         alert("กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก");
+    //         return;
+    //     }
+    //     if (submitting) return;
+    //     setSubmitting(true);
+    //     try {
+    //         const token = localStorage.getItem("access_token");
+    //         const pm_date = job.date?.trim() || "";
+
+    //         const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+    //         const payload = {
+    //             station_id: stationId,
+    //             issue_id: issueIdFromJob,
+    //             job: jobWithoutIssueId,
+    //             inspector,
+    //             measures_pre: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state, },
+    //             pm_date,
+    //             doc_name: docName,
+    //             side: "pre" as TabId,
+    //         };
+
+    //         // 1) สร้างรายงาน (submit)
+    //         const res = await fetch(`${API_BASE}/mdbpmreport/pre/submit`, {
+    //             method: "POST",
+    //             headers: {
+    //                 "Content-Type": "application/json",
+    //                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    //             },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error(await res.text());
+
+    //         const { report_id, doc_name } = await res.json() as {
+    //             report_id: string;
+    //             doc_name?: string;
+    //         };
+    //         if (doc_name) {
+    //             setDocName(doc_name);
+    //         }
+
+    //         // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group key
+    //         const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    //         const uploadPromises: Promise<void>[] = [];
+
+    //         for (const qNo of orderedQuestions) {
+    //             // ข้อ 9 เป็น group (r9_1, r9_2, r9_3, r9_4)
+    //             if (qNo === 9) {
+    //                 const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+    //                 for (const subKey of subKeys) {
+    //                     const list = photos[subKey];
+    //                     if (!list || list.length === 0) continue;
+    //                     const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //                     if (files.length === 0) continue;
+    //                     uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "pre"));
+    //                 }
+    //             } else {
+    //                 // ข้อธรรมดา (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
+    //                 const list = photos[qNo];
+    //                 if (!list || list.length === 0) continue;
+    //                 const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //                 if (files.length === 0) continue;
+    //                 const groupKey = `g${qNo}`;
+    //                 uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "pre"));
+    //             }
+    //         }
+
+    //         // รอให้ทุก upload เสร็จ
+    //         await Promise.all(uploadPromises);
+
+    //         await Promise.all(
+    //             Object.values(photos).flat().map(p => delPhoto(key, p.id))
+    //         );
+
+    //         clearDraftLocal(key);
+    //         router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+    //     } catch (err: any) {
+    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    //     } finally {
+    //         setSubmitting(false);
+    //     }
+    // };
+
+    // const onFinalSave = async () => {
+    //     if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    //     if (submitting) return;
+    //     setSubmitting(true);
+    //     try {
+    //         const token = localStorage.getItem("access_token");
+
+    //         const payload = {
+    //             station_id: stationId,
+    //             rows,
+    //             measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
+    //             summary,
+    //             ...(summaryCheck ? { summaryCheck } : {}),
+    //             dust_filter: dustFilterChanged ? "yes" : "no",
+    //             side: "post" as TabId,
+    //             report_id: editId,
+    //         };
+
+    //         // 1) สร้างรายงาน (submit)
+    //         const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
+    //             method: "POST",
+    //             headers: {
+    //                 "Content-Type": "application/json",
+    //                 ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    //             },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error(await res.text());
+
+    //         const { report_id, doc_name } = await res.json() as {
+    //             report_id: string;
+    //             doc_name?: string;
+    //         };
+
+    //         // 2) อัปโหลดรูปทั้งหมด (แบบ parallel) แปลงเลขข้อเป็น group key
+    //         const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    //         const uploadPromises: Promise<void>[] = [];
+
+    //         for (const qNo of orderedQuestions) {
+    //             // ข้อ 9 เป็น group (r9_1, r9_2, r9_3, r9_4)
+    //             if (qNo === 9) {
+    //                 const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+    //                 for (const subKey of subKeys) {
+    //                     const list = photos[subKey];
+    //                     if (!list || list.length === 0) continue;
+    //                     const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //                     if (files.length === 0) continue;
+    //                     uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "post"));
+    //                 }
+    //             } else {
+    //                 // ข้อธรรมดา (1, 2, 3, 4, 5, 6, 7, 8, 10, 11)
+    //                 const list = photos[qNo];
+    //                 if (!list || list.length === 0) continue;
+    //                 const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //                 if (files.length === 0) continue;
+    //                 const groupKey = `g${qNo}`;
+    //                 uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "post"));
+    //             }
+    //         }
+
+    //         // รอให้ทุก upload เสร็จ
+    //         await Promise.all(uploadPromises);
+
+    //         // 3) finalize (ออปชัน)
+    //         const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
+    //             method: "POST",
+    //             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    //             credentials: "include",
+    //             body: new URLSearchParams({ station_id: stationId }),
+    //         });
+    //         if (!fin.ok) throw new Error(await fin.text());
+    //         clearDraftLocal(key);
+    //         router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+    //     } catch (err: any) {
+    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    //     } finally {
+    //         setSubmitting(false);
+    //     }
+    // };
 
     const onFinalSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
@@ -1591,26 +2291,18 @@ export default function MDBPMMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            // const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
 
-            // const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
             const payload = {
                 station_id: stationId,
-                // issue_id: issueIdFromJob,
-                // job: jobWithoutIssueId,
-                // inspector,
                 rows,
                 measures: { m4: m4.state, m5: m5.state, m6: m6.state, m7: m7.state, m8: m8.state },
                 summary,
-                // pm_date,
-                // doc_name: docName,
                 ...(summaryCheck ? { summaryCheck } : {}),
                 dust_filter: dustFilterChanged ? "yes" : "no",
                 side: "post" as TabId,
                 report_id: editId,
             };
-            // 1) สร้างรายงาน (submit)
-            // const res = await fetch(`${API_BASE}/mdbpmreport/submit`, {
+
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
                 method: "POST",
                 headers: {
@@ -1621,35 +2313,49 @@ export default function MDBPMMForm() {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            // const { report_id } = await res.json();
-            const { report_id, doc_name } = await res.json() as {
-                report_id: string;
-                doc_name?: string;
-            };
-            // if (doc_name) {
-            //     setDocName(doc_name);
-            // }
 
-            // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group "g{no}"
-            const photoNos = Object.keys(photos).map(n => Number(n));
-            for (const no of photoNos) {
-                const list = photos[no] || [];
-                if (list.length === 0) continue;
-                const files = list.map(p => p.file!).filter(Boolean) as File[];
-                if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post");
+            const { report_id } = await res.json() as { report_id: string; doc_name?: string };
+
+
+            // 2) สร้าง upload promises ทั้งหมดพร้อมกัน
+            const uploadPromises: Promise<void>[] = [];
+            const orderedQuestions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+            for (const qNo of orderedQuestions) {
+                if (qNo === 9) {
+                    const subKeys = ["r9_1", "r9_2", "r9_3", "r9_4"];
+                    subKeys.forEach(subKey => {
+                        const list = photos[subKey];
+                        if (list?.length) {
+                            const files = list.map(p => p.file!).filter(Boolean) as File[];
+                            if (files.length) {
+                                uploadPromises.push(uploadGroupPhotos(report_id, stationId, subKey, files, "post"));
+                            }
+                        }
+                    });
+                } else {
+                    const list = photos[qNo];
+                    if (list?.length) {
+                        const files = list.map(p => p.file!).filter(Boolean) as File[];
+                        if (files.length) {
+                            uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${qNo}`, files, "post"));
+                        }
+                    }
+                }
             }
 
-            // 3) finalize (ออปชัน)
-            // const fin = await fetch(`${API_BASE}/mdbpmreport/${report_id}/finalize`, {
+            await Promise.all(uploadPromises);
+
             const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
                 method: "POST",
                 headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 credentials: "include",
-                body: new URLSearchParams({ station_id: stationId }), // endpoint นี้รับ Form-encoded
+                body: new URLSearchParams({ station_id: stationId }),
             });
             if (!fin.ok) throw new Error(await fin.text());
+
             clearDraftLocal(key);
+
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
@@ -1657,7 +2363,6 @@ export default function MDBPMMForm() {
             setSubmitting(false);
         }
     };
-
     const active: TabId = useMemo(
         () => slugToTab(searchParams.get("pmtab")),
         [searchParams]
@@ -1921,7 +2626,7 @@ export default function MDBPMMForm() {
                         <CardBody key={`${start}-${end}`} className="tw-space-y-2">
                             {QUESTIONS
                                 .filter((q) => q.no >= start && q.no <= end)
-                                .filter((q) => !(displayTab === "pre" && q.no === 11))
+                                .filter((q) => !(displayTab === "pre" && (q.no === 11)))
                                 .map((q) => renderQuestionBlock(q, displayTab))}
                         </CardBody>
                     ))}

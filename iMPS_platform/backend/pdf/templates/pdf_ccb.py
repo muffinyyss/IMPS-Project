@@ -138,7 +138,7 @@ def _norm_result(val: str) -> str:
 
 def _r_idx(k: str) -> int:
     m = re.match(r"r(\d+)$", k.lower())
-    return int(m.group(1)) if m else ""
+    return int(m.group(1)) if m else 999
 
 
 # -------------------- Font / Text layout helpers --------------------
@@ -1270,11 +1270,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         row_num = int(match_row.group(1)) if match_row else 0
 
         if row_num in [3, 4, 5, 7, 8]:
-            remark_h = max(remark_h_raw, LINE_H * 4)
+            remark_h = max(remark_h_raw, LINE_H * 3.5)
         elif row_num == 6:
-            remark_h = max(remark_h_raw, LINE_H * 6)
+            remark_h = max(remark_h_raw, LINE_H * 5.5)
         elif row_num == 9:
-            remark_h = max(remark_h_raw, LINE_H * 15)
+            remark_h = max(remark_h_raw, LINE_H * 13.5)
         else:
             if not remark or remark.strip() == "":
                 remark_h = ROW_MIN_H
@@ -1376,8 +1376,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_line_width(LINE_W_INNER)
 
     col_widths = [item_w, result_w, remark_w]
-    row_h_header = 7
-    row_h_sig = 15
+    row_h_header = 5
+    row_h_sig = 14
     row_h_name = 5
     row_h_date = 5
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date

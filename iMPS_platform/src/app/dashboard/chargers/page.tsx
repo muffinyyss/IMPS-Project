@@ -40,6 +40,8 @@ export default function ChargersPage() {
     station_name: "-",
     model: "-",
     status: null as boolean | null,
+    commit_date: null as string | null,
+    warranty_year: null as string | null,
   });
 
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -116,6 +118,8 @@ export default function ChargersPage() {
           ...prev,
           station_name: info?.station_name ?? "-",
           model: info?.model ?? "-",
+          commit_date: info?.commit_date ?? null,
+          warranty_year: info?.warranty_year ?? null,
         }));
       } catch (e) {
         console.error("station/info error", e);
@@ -271,6 +275,8 @@ export default function ChargersPage() {
                   station_name={stationDetail?.station_name ?? "-"}
                   model={stationDetail?.model}
                   status={stationDetail?.status}
+                  commit_date={stationDetail?.commit_date}
+                  warranty_year={stationDetail?.warranty_year}
                 />
               </CardBody>
             </Card>

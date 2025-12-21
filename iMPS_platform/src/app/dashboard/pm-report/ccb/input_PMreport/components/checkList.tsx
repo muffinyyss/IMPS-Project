@@ -12,7 +12,8 @@ import {
     Textarea,
 } from "@material-tailwind/react";
 import Image from "next/image";
-import { draftKeyCCB, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/ccb/input_PMreport/lib/draft";
+import { draftKeyCCB, } from "@/app/dashboard/pm-report/ccb/input_PMreport/lib/draft";
+import { saveDraftLocal, loadDraftLocal, clearDraftLocal, hasDraft, getDraftInfo } from "../lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
@@ -39,8 +40,8 @@ function tabToSlug(tab: TabId): "pre" | "post" {
 }
 
 /* =========================
- *        API (เดิม)
- * ========================= */
+*        API (เดิม)
+* ========================= */
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
 
@@ -73,8 +74,8 @@ async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
 }
 
 /* =========================
- *        CONSTANTS
- * ========================= */
+*        CONSTANTS
+* ========================= */
 const UNITS = { voltage: ["V"] as const };
 type UnitVoltage = (typeof UNITS.voltage)[number];
 
@@ -197,8 +198,8 @@ const QUESTIONS: Question[] = QUESTIONS_RAW.filter(
 
 
 /* =========================
- *        TYPES & HOOKS
- * ========================= */
+*        TYPES & HOOKS
+* ========================= */
 type MeasureRow<U extends string> = { value: string; unit: U };
 type MeasureState<U extends string> = Record<string, MeasureRow<U>>;
 
@@ -223,8 +224,8 @@ function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
 }
 
 /* =========================
- *       UI ATOMS
- * ========================= */
+*       UI ATOMS
+* ========================= */
 function SectionCard({
     title,
     subtitle,
@@ -331,41 +332,26 @@ function InputWithUnit<U extends string>({
 
             <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
                 {/* <Input
-                    type="number"
-                    inputMode="decimal"
-                    step="any"
-                    label={labelOnTop ? undefined : label}
-                    value={value}
-                    onChange={(e) => onValueChange(e.target.value)}
-                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                    crossOrigin=""
-                    containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
-                    className={`!tw-w-full ${disabled ? "!tw-bg-blue-gray-50" : ""
-                        }`}
-                    readOnly={readOnly}
-                    disabled={disabled}
-                    required={required}          // 👈 ใช้ค่าจาก prop
-                /> */}
+                        type="number"
+                        inputMode="decimal"
+                        step="any"
+                        label={labelOnTop ? undefined : label}
+                        value={value}
+                        onChange={(e) => onValueChange(e.target.value)}
+                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                        crossOrigin=""
+                        containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
+                        className={`!tw-w-full ${disabled ? "!tw-bg-blue-gray-50" : ""
+                            }`}
+                        readOnly={readOnly}
+                        disabled={disabled}
+                        required={required}          // 👈 ใช้ค่าจาก prop
+                    /> */}
                 <Input
                     type="text"
                     inputMode="decimal"
                     label={labelOnTop ? undefined : label}
-                    value={value}
-                    onChange={(e) => {
-                        const newValue = e.target.value;
-
-                        // อนุญาต:
-                        // 1. ค่าว่าง ""
-                        // 2. เฉพาะ "-" (ขีดกลางตัวเดียว)
-                        // 3. ตัวเลข + จุดทศนิยม + เครื่องหมายลบหน้าตัวเลข (เช่น -123.45)
-                        if (
-                            newValue === "" ||                           // ค่าว่าง
-                            newValue === "-" ||                          // ขีดกลางตัวเดียว
-                            /^-?\d*\.?\d*$/.test(newValue)              // ตัวเลข (มีหรือไม่มีลบข้างหน้า)
-                        ) {
-                            onValueChange(newValue);
-                        }
-                    }}
+                    value={value === null ? "-" : value}
                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                     crossOrigin=""
                     containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
@@ -550,10 +536,10 @@ function PhotoMultiInput({
             {/* แถวบน: label + ปุ่มแนบรูป */}
             <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
                 {/* {label && (
-              <Typography className="tw-font-medium">
-                {label}
-              </Typography>
-            )} */}
+                <Typography className="tw-font-medium">
+                    {label}
+                </Typography>
+                )} */}
 
                 <Button
                     size="sm"
@@ -704,8 +690,8 @@ function getTodayLocalStr() {
     return `${y}-${m}-${day}`;
 }
 /* =========================
- *        MAIN
- * ========================= */
+*        MAIN
+* ========================= */
 // export default function CheckList({ onComplete, onNext, onPrev }: CheckListProps) {
 export default function CCBPMReport() {
     const [me, setMe] = useState<Me | null>(null);
@@ -722,6 +708,9 @@ export default function CCBPMReport() {
     const isPreMode = !isPostMode;
     const PM_PREFIX = "ccbpmreport";
 
+    const [draftStatus, setDraftStatus] = useState<string>("");
+    const [showDraftBadge, setShowDraftBadge] = useState(false);
+    const saveDraftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     /* ---------- photos per question ---------- */
     // const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(
     //     QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])
@@ -800,11 +789,18 @@ export default function CCBPMReport() {
 
         QUESTIONS.forEach((q) => {
             if (q.kind === "simple") {
+                // ✅ เพิ่ม simple questions (ข้อ 1, 2, 10)
                 initial[q.key] = { pf: "", remark: "" };
             } else if (q.kind === "group") {
+                // ✅ เพิ่ม group items
                 q.items.forEach((item) => {
                     initial[item.key] = { pf: "", remark: "" };
                 });
+            } else if (q.kind === "measure9") {
+                // ✅ เพิ่ม measure9 breakers
+                for (let i = 0; i <= 5; i++) {
+                    initial[`r9_${i}`] = { pf: "", remark: "" };
+                }
             }
         });
 
@@ -984,7 +980,10 @@ export default function CCBPMReport() {
         }>(key);
         if (!draft) return;
 
-        setRows(draft.rows);
+        setRows(prev => ({
+            ...prev,  // เก็บ initial keys
+            ...draft.rows  // override ด้วยข้อมูลจาก draft
+        }));
         m9_0.setState(draft.m9_0 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         m9_1.setState(draft.m9_1 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         m9_2.setState(draft.m9_2 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
@@ -1067,7 +1066,28 @@ export default function CCBPMReport() {
 
                 // Load rows (PASS/FAIL) from database if available
                 if (report.rows) {
-                    setRows(report.rows);
+                    // Merge with current state to ensure all keys are present
+                    setRows(prev => ({
+                        ...prev,
+                        ...report.rows
+                    }));
+                } else {
+                    // Initialize all rows if not loaded from database
+                    const initializedRows: Record<string, { pf: PF; remark: string }> = {};
+                    QUESTIONS.forEach(q => {
+                        initializedRows[q.key] = { pf: "", remark: "" };
+                    });
+                    if (PF_KEYS_ALL) {
+                        PF_KEYS_ALL.forEach(key => {
+                            if (!initializedRows[key]) {
+                                initializedRows[key] = { pf: "", remark: "" };
+                            }
+                        });
+                    }
+                    setRows(prev => ({
+                        ...prev,
+                        ...initializedRows
+                    }));
                 }
 
                 // Load summary if available
@@ -1285,25 +1305,25 @@ export default function CCBPMReport() {
     );
 
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""), // ✅ เพิ่ม optional chaining
+        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
     const allPFAnsweredAll = useMemo(
-        () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""), // ✅ เพิ่ม optional chaining
+        () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_ALL]
     );
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => rows[k] && !rows[k].pf) // ✅ เพิ่มการตรวจสอบ
+            PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
     );
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => rows[k] && !rows[k].pf) // ✅ เพิ่มการตรวจสอบ
+            PF_KEYS_ALL.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_ALL]
@@ -1339,15 +1359,16 @@ export default function CCBPMReport() {
         QUESTIONS.forEach((q) => {
             if (q.kind === "simple") {
                 keys.push(q.key); // ✅ เพิ่ม simple
-            }
-            if (q.kind === "measure9") {
-                keys.push(q.key);
+            } else if (q.kind === "measure9") {
+                // ✅ แก้ตรงนี้: เพิ่ม key ของแต่ละ breaker (r9_0, r9_1, ... r9_5)
+                for (let i = 0; i <= 5; i++) {
+                    keys.push(`r9_${i}`);
+                }
             } else if (q.kind === "group") {
                 q.items.forEach((item) => {
                     keys.push(item.key); // ✅ เพิ่ม group items
                 });
             }
-
         });
         return keys;
     }, []);
@@ -1418,21 +1439,36 @@ export default function CCBPMReport() {
         return out;
     }, [photos]);
 
+    // 🔄 auto-save: เก็บ draft ทุกครั้งที่มีการเปลี่ยนแปลง (debounce 1500ms)
     useDebouncedEffect(() => {
         if (!stationId || !draftId) return;
-        saveDraftLocal(key, {
-            rows,
-            m9_0: m9_0.state,
-            m9_1: m9_1.state,
-            m9_2: m9_2.state,
-            m9_3: m9_3.state,
-            m9_4: m9_4.state,
-            m9_5: m9_5.state,
-            summary,
-            summary_pf: summaryCheck,
-            photoRefs,
-        });
-    }, [key, stationId, draftId, rows, m9_0.state, m9_1.state, m9_2.state, m9_3.state, m9_4.state, m9_5.state, summary,summaryCheck, photoRefs]);
+
+        try {
+            setDraftStatus("saving");
+            saveDraftLocal(key, {
+                rows,
+                m9_0: m9_0.state,
+                m9_1: m9_1.state,
+                m9_2: m9_2.state,
+                m9_3: m9_3.state,
+                m9_4: m9_4.state,
+                m9_5: m9_5.state,
+                summary,
+                summary_pf: summaryCheck,
+                photoRefs,
+            });
+            setDraftStatus("saved");
+            setShowDraftBadge(true);
+
+            // ซ่อน badge หลังจาก 3 วินาที
+            const timer = setTimeout(() => setShowDraftBadge(false), 3000);
+            return () => clearTimeout(timer);
+        } catch (err) {
+            console.error("auto-save failed:", err);
+            setDraftStatus("error");
+        }
+    }, [key, stationId, draftId, rows, m9_0.state, m9_1.state, m9_2.state, m9_3.state, m9_4.state, m9_5.state, summary, summaryCheck, photoRefs], 1500);
+
 
 
     /* ---------- actions (submit เหมือนเดิม) ---------- */
@@ -1465,6 +1501,113 @@ export default function CCBPMReport() {
     }
 
 
+    // const onPreSave = async () => {
+    //     if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    //     if (submitting) return;
+    //     setSubmitting(true);
+    //     try {
+    //         const token = localStorage.getItem("access_token");
+    //         const pm_date = job.date?.trim() || "";
+
+    //         // helper แปลง string → number (หรือ null ถ้าเว้นว่าง/ไม่ใช่ตัวเลข)
+    //         const toNum = (s: string) => {
+    //             const n = Number(s);
+    //             return Number.isFinite(n) ? n : null;
+    //         };
+
+    //         // ทำสำเนา state พร้อมแปลง value เป็น number
+    //         const normalizeMeasure = (state: typeof m9_0.state) =>
+    //             Object.fromEntries(
+    //                 Object.entries(state).map(([k, v]) => [
+    //                     k,
+    //                     { value: toNum(v.value), unit: v.unit },
+    //                 ])
+    //             );
+
+    //         // ✅ ส่งเป็น dict แทน โดยใช้ key เป็น "0".."5" (หรือจะใช้ชื่อ main/c1..c5 ก็ได้)
+    //         const r9 = {
+    //             "0": normalizeMeasure(m9_0.state), // เมนเบรกเกอร์
+    //             "1": normalizeMeasure(m9_1.state),
+    //             "2": normalizeMeasure(m9_2.state),
+    //             "3": normalizeMeasure(m9_3.state),
+    //             "4": normalizeMeasure(m9_4.state),
+    //             "5": normalizeMeasure(m9_5.state),
+    //         };
+
+    //         const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+    //         const payload = {
+    //             side: "pre",
+    //             station_id: stationId,
+    //             issue_id: issueIdFromJob,
+    //             doc_name: docName,
+    //             job: jobWithoutIssueId,
+    //             // rows,
+    //             measures_pre: { r9 },
+    //             // summary,
+    //             pm_date,
+    //             // ...(summaryCheck ? { summaryCheck } : {}),
+    //             inspector,
+    //         };
+
+    //         const res = await fetch(`${API_BASE}/${PM_PREFIX}/pre/submit`, {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error(await res.text());
+    //         // const { report_id } = await res.json();
+    //         const { report_id, doc_name } = await res.json() as {
+    //             report_id: string;
+    //             doc_name?: string;
+    //         };
+    //         if (doc_name) {
+    //             setDocName(doc_name);
+    //         }
+    //         const photoKeys = Object.keys(photos);
+    //         const uploadPromises: Promise<void>[] = [];
+    //         for (const photoKey of photoKeys) {
+    //             const list = photos[photoKey] || [];
+    //             if (list.length === 0) continue;
+    //             const files = list.map(p => p.file!).filter(Boolean) as File[];
+    //             if (files.length === 0) continue;
+
+    //             // ค้นหา question เพื่อให้ได้ question key (r1, r2, r7, etc)
+    //             let groupKey: string | null = null;
+
+    //             if (photoKey.startsWith("q")) {
+    //                 // simple question: q1 -> find question no 1 -> get r1
+    //                 const qNo = Number(photoKey.substring(1));
+    //                 const q = QUESTIONS.find(q => q.no === qNo);
+    //                 if (q) groupKey = q.key;
+    //             } else if (photoKey.includes("_")) {
+    //                 // group item: r7_1 or r7_2 -> find question no 7 -> get r7
+    //                 const match = photoKey.match(/r(\d+)/);
+    //                 if (match) {
+    //                     const qNo = Number(match[1]);
+    //                     const q = QUESTIONS.find(q => q.no === qNo);
+    //                     if (q) groupKey = q.key;
+    //                 }
+    //             }
+
+    //             if (!groupKey) continue;
+    //             uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "pre"));
+    //         }
+    //         await Promise.all(uploadPromises);
+
+    //         await Promise.all(
+    //             Object.values(photos).flat().map(p => delPhoto(key, p.id))
+    //         );
+
+    //         clearDraftLocal(key);
+    //         // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=ccb`);
+    //         router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=ccb`);
+    //     } catch (err: any) {
+    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    //     } finally {
+    //         setSubmitting(false);
+    //     }
+    // };
     const onPreSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
         if (submitting) return;
@@ -1505,29 +1648,17 @@ export default function CCBPMReport() {
                 issue_id: issueIdFromJob,
                 doc_name: docName,
                 job: jobWithoutIssueId,
-                // rows,
                 measures_pre: { r9 },
-                // summary,
                 pm_date,
-                // ...(summaryCheck ? { summaryCheck } : {}),
                 inspector,
             };
 
-            const res = await fetch(`${API_BASE}/${PM_PREFIX}/pre/submit`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                credentials: "include",
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            // const { report_id } = await res.json();
-            const { report_id, doc_name } = await res.json() as {
-                report_id: string;
-                doc_name?: string;
-            };
-            if (doc_name) {
-                setDocName(doc_name);
-            }
+            // 🚀 เตรียมข้อมูลรูปภาพก่อน submit
+            const photoUploadData: Array<{
+                groupKey: string;
+                files: File[];
+            }> = [];
+
             const photoKeys = Object.keys(photos);
             for (const photoKey of photoKeys) {
                 const list = photos[photoKey] || [];
@@ -1539,12 +1670,10 @@ export default function CCBPMReport() {
                 let groupKey: string | null = null;
 
                 if (photoKey.startsWith("q")) {
-                    // simple question: q1 -> find question no 1 -> get r1
                     const qNo = Number(photoKey.substring(1));
                     const q = QUESTIONS.find(q => q.no === qNo);
                     if (q) groupKey = q.key;
                 } else if (photoKey.includes("_")) {
-                    // group item: r7_1 or r7_2 -> find question no 7 -> get r7
                     const match = photoKey.match(/r(\d+)/);
                     if (match) {
                         const qNo = Number(match[1]);
@@ -1553,15 +1682,44 @@ export default function CCBPMReport() {
                     }
                 }
 
-                if (!groupKey) continue;
-                await uploadGroupPhotos(report_id, stationId, groupKey, files, "pre");
+                if (groupKey) {
+                    photoUploadData.push({ groupKey, files });
+                }
             }
+
+            // Submit ข้อมูลหลัก
+            const res = await fetch(`${API_BASE}/${PM_PREFIX}/pre/submit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                credentials: "include",
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error(await res.text());
+
+            const { report_id, doc_name } = await res.json() as {
+                report_id: string;
+                doc_name?: string;
+            };
+            if (doc_name) {
+                setDocName(doc_name);
+            }
+
+            // 🚀 อัปโหลดรูปทั้งหมดแบบ parallel พร้อมกัน
+            if (photoUploadData.length > 0) {
+                await Promise.all(
+                    photoUploadData.map(({ groupKey, files }) =>
+                        uploadGroupPhotos(report_id, stationId, groupKey, files, "pre")
+                    )
+                );
+            }
+
+            // ลบรูปจาก draft storage
             await Promise.all(
                 Object.values(photos).flat().map(p => delPhoto(key, p.id))
             );
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=ccb`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=ccb`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
@@ -1569,13 +1727,126 @@ export default function CCBPMReport() {
         }
     };
 
+    // const onFinalSave = async () => {
+    //     if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    //     if (submitting) return;
+    //     setSubmitting(true);
+    //     try {
+    //         const token = localStorage.getItem("access_token");
+    //         // const pm_date = job.date?.trim() || "";
+
+    //         // helper แปลง string → number (หรือ null ถ้าเว้นว่าง/ไม่ใช่ตัวเลข)
+    //         const toNum = (s: string) => {
+    //             const n = Number(s);
+    //             return Number.isFinite(n) ? n : null;
+    //         };
+
+    //         // ทำสำเนา state พร้อมแปลง value เป็น number
+    //         const normalizeMeasure = (state: typeof m9_0.state) =>
+    //             Object.fromEntries(
+    //                 Object.entries(state).map(([k, v]) => [
+    //                     k,
+    //                     { value: toNum(v.value), unit: v.unit },
+    //                 ])
+    //             );
+
+    //         // ✅ ส่งเป็น dict แทน โดยใช้ key เป็น "0".."5" (หรือจะใช้ชื่อ main/c1..c5 ก็ได้)
+    //         const r9 = {
+    //             "0": normalizeMeasure(m9_0.state), // เมนเบรกเกอร์
+    //             "1": normalizeMeasure(m9_1.state),
+    //             "2": normalizeMeasure(m9_2.state),
+    //             "3": normalizeMeasure(m9_3.state),
+    //             "4": normalizeMeasure(m9_4.state),
+    //             "5": normalizeMeasure(m9_5.state),
+    //         };
+
+    //         // const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+    //         const payload = {
+    //             side: "post" as TabId,
+    //             station_id: stationId,
+    //             // issue_id: issueIdFromJob,
+    //             // doc_name: docName,
+    //             // job: jobWithoutIssueId,
+    //             rows,
+    //             measures: { r9 },
+    //             summary,
+    //             // pm_date,
+    //             ...(summaryCheck ? { summaryCheck } : {}),
+    //             // inspector,
+    //             report_id: editId,
+    //         };
+
+    //         const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
+    //             method: "POST",
+    //             headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    //             credentials: "include",
+    //             body: JSON.stringify(payload),
+    //         });
+    //         if (!res.ok) throw new Error(await res.text());
+    //         // const { report_id } = await res.json();
+    //         const { report_id, doc_name } = await res.json() as {
+    //             report_id: string;
+    //             doc_name?: string;
+    //         };
+    //         // if (doc_name) {
+    //         //     setDocName(doc_name);
+    //         // }
+    //         // อัปโหลดรูปแยกกลุ่ม (แบบ parallel)
+    //         const photoKeys = Object.keys(photos);
+    //         const uploadPromises: Promise<void>[] = [];
+    //         for (const photoKey of photoKeys) {
+    //             const list = photos[photoKey] || [];
+    //             if (list.length === 0) continue;
+    //             const files = list.map((p) => p.file!).filter(Boolean) as File[];
+    //             if (files.length === 0) continue;
+
+    //             // ค้นหา question เพื่อให้ได้ question key (r1, r2, r7, etc)
+    //             let groupKey: string | null = null;
+
+    //             if (photoKey.startsWith("q")) {
+    //                 // simple question: q1 -> find question no 1 -> get r1
+    //                 const qNo = Number(photoKey.substring(1));
+    //                 const q = QUESTIONS.find(q => q.no === qNo);
+    //                 if (q) groupKey = q.key;
+    //             } else if (photoKey.includes("_")) {
+    //                 // group item: r7_1 or r7_2 -> find question no 7 -> get r7
+    //                 const match = photoKey.match(/r(\d+)/);
+    //                 if (match) {
+    //                     const qNo = Number(match[1]);
+    //                     const q = QUESTIONS.find(q => q.no === qNo);
+    //                     if (q) groupKey = q.key;
+    //                 }
+    //             }
+
+    //             if (!groupKey) continue;
+    //             uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "post"));
+    //         }
+    //         await Promise.all(uploadPromises);
+
+    //         const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
+    //             method: "POST",
+    //             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    //             credentials: "include",
+    //             body: new URLSearchParams({ station_id: stationId }),
+    //         });
+    //         if (!fin.ok) throw new Error(await fin.text());
+
+    //         clearDraftLocal(key);
+    //         // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=ccb`);
+    //         router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=ccb`);
+    //     } catch (err: any) {
+    //         alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    //     } finally {
+    //         setSubmitting(false);
+    //     }
+    // };
+
     const onFinalSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
         if (submitting) return;
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            // const pm_date = job.date?.trim() || "";
 
             // helper แปลง string → number (หรือ null ถ้าเว้นว่าง/ไม่ใช่ตัวเลข)
             const toNum = (s: string) => {
@@ -1602,46 +1873,22 @@ export default function CCBPMReport() {
                 "5": normalizeMeasure(m9_5.state),
             };
 
-            // const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
             const payload = {
                 side: "post" as TabId,
                 station_id: stationId,
-                // issue_id: issueIdFromJob,
-                // doc_name: docName,
-                // job: jobWithoutIssueId,
                 rows,
                 measures: { r9 },
                 summary,
-                // pm_date,
                 ...(summaryCheck ? { summaryCheck } : {}),
-                // inspector,
                 report_id: editId,
             };
 
-            const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-                credentials: "include",
-                body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            // const { report_id } = await res.json();
-            const { report_id, doc_name } = await res.json() as {
-                report_id: string;
-                doc_name?: string;
-            };
-            // if (doc_name) {
-            //     setDocName(doc_name);
-            // }
-            // อัปโหลดรูปแยกกลุ่ม g1..g9
-            // const photoNos = Object.keys(photos).map(Number);
-            // for (const no of photoNos) {
-            //     const list = photos[no] || [];
-            //     if (list.length === 0) continue;
-            //     const files = list.map((p) => p.file!).filter(Boolean) as File[];
-            //     if (files.length === 0) continue;
-            //     await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post");
-            // }
+            // 🚀 เตรียมข้อมูลรูปภาพก่อน submit
+            const photoUploadData: Array<{
+                groupKey: string;
+                files: File[];
+            }> = [];
+
             const photoKeys = Object.keys(photos);
             for (const photoKey of photoKeys) {
                 const list = photos[photoKey] || [];
@@ -1653,12 +1900,10 @@ export default function CCBPMReport() {
                 let groupKey: string | null = null;
 
                 if (photoKey.startsWith("q")) {
-                    // simple question: q1 -> find question no 1 -> get r1
                     const qNo = Number(photoKey.substring(1));
                     const q = QUESTIONS.find(q => q.no === qNo);
                     if (q) groupKey = q.key;
                 } else if (photoKey.includes("_")) {
-                    // group item: r7_1 or r7_2 -> find question no 7 -> get r7
                     const match = photoKey.match(/r(\d+)/);
                     if (match) {
                         const qNo = Number(match[1]);
@@ -1667,10 +1912,35 @@ export default function CCBPMReport() {
                     }
                 }
 
-                if (!groupKey) continue;
-                await uploadGroupPhotos(report_id, stationId, groupKey, files, "post");
+                if (groupKey) {
+                    photoUploadData.push({ groupKey, files });
+                }
             }
 
+            // Submit ข้อมูลหลัก
+            const res = await fetch(`${API_BASE}/${PM_PREFIX}/submit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                credentials: "include",
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error(await res.text());
+
+            const { report_id, doc_name } = await res.json() as {
+                report_id: string;
+                doc_name?: string;
+            };
+
+            // 🚀 อัปโหลดรูปทั้งหมดแบบ parallel พร้อมกัน
+            if (photoUploadData.length > 0) {
+                await Promise.all(
+                    photoUploadData.map(({ groupKey, files }) =>
+                        uploadGroupPhotos(report_id, stationId, groupKey, files, "post")
+                    )
+                );
+            }
+
+            // Finalize report
             const fin = await fetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
                 method: "POST",
                 headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -1679,8 +1949,13 @@ export default function CCBPMReport() {
             });
             if (!fin.ok) throw new Error(await fin.text());
 
+            // ลบรูปจาก draft storage
+            await Promise.all(
+                Object.values(photos).flat().map(p => delPhoto(key, p.id))
+            );
+
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1&tab=ccb`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=ccb`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
@@ -1688,26 +1963,6 @@ export default function CCBPMReport() {
         }
     };
 
-    // const renderMeasureGrid9 = (idx: number, title: string, m: ReturnType<typeof useMeasure<UnitVoltage>>) => {
-    //     return (
-    //         <div className="tw-space-y-2 tw-py-2 tw-border tw-rounded-lg tw-border-blue-gray-100 tw-px-3">
-    //             <Typography className="tw-font-medium">{title}</Typography>
-    //             <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-3">
-    //                 {VOLTAGE_FIELDS_CCB.map((k) => (
-    //                     <InputWithUnit<UnitVoltage>
-    //                         key={`${idx}-${k}`}
-    //                         label={LABELS[k]}
-    //                         value={m.state[k]?.value || ""}
-    //                         unit={(m.state[k]?.unit as UnitVoltage) || "V"}
-    //                         units={["V"] as const}
-    //                         onValueChange={(v) => m.patch(k, { value: v })}
-    //                         onUnitChange={(u) => m.syncUnits(u)}
-    //                     />
-    //                 ))}
-    //             </div>
-    //         </div>
-    //     );
-    // };
 
     const handleUnitChange = (no: number, key: string, u: UnitVoltage) => {
         const m = MEASURE_BY_NO[no];
@@ -1742,7 +1997,7 @@ export default function CCBPMReport() {
                         >
                             <InputWithUnit<UnitVoltage>
                                 label={LABELS[k] ?? k}          // มี label เหมือนหลัง PM
-                                value={pre[k]?.value || ""}
+                                value={pre[k]?.value === null || pre[k]?.value === undefined ? "-" : String(pre[k]?.value)}
                                 unit={(pre[k]?.unit as UnitVoltage) || "V"}
                                 units={UNITS.voltage}
                                 onValueChange={() => { }}        // ห้ามแก้
@@ -1767,7 +2022,7 @@ export default function CCBPMReport() {
                         <InputWithUnit<UnitVoltage>
                             key={`post-${no}-${k}`}
                             label={LABELS[k] ?? k}
-                            value={m.state[k]?.value || ""}
+                            value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
                             unit={(m.state[k]?.unit as UnitVoltage) || "V"}
                             units={UNITS.voltage}
                             onValueChange={(v) => m.patch(k, { value: v })}
@@ -1789,7 +2044,7 @@ export default function CCBPMReport() {
                         <InputWithUnit<UnitVoltage>
                             key={`${idx}-${k}`}
                             label={LABELS[k]}
-                            value={m.state[k]?.value || ""}
+                            value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
                             unit={(m.state[k]?.unit as UnitVoltage) || "V"}
                             units={["V"] as const}
                             onValueChange={(v) => m.patch(k, { value: v })}
@@ -1802,15 +2057,304 @@ export default function CCBPMReport() {
     };
 
 
+    // const renderQuestionBlock = (q: Question, mode: TabId) => {
+    //     if (mode === "pre") {
+    //         return (
+    //             // <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+    //             <SectionCard
+    //                 key={q.key}
+    //                 title={getQuestionLabel(q, mode)}
+    //             // subtitle={subtitle}
+    //             >
+    //                 {q.kind === "simple" && q.hasPhoto && (
+    //                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                         <PhotoMultiInput
+    //                             label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                             photos={photos[`q${q.no}`] || []}
+    //                             setPhotos={makePhotoSetter(`q${q.no}`)}
+    //                             max={10}
+    //                             draftKey={key}
+    //                             qNo={q.no}
+    //                         />
+    //                     </div>
+    //                 )}
+    //                 {q.kind === "group" && q.hasPhoto && (
+    //                     <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                         {q.items.map((item) => (
+    //                             <div key={item.key} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+    //                                 <Typography variant="small" className="tw-font-medium tw-mb-2">
+    //                                     {item.label}
+    //                                 </Typography>
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (${item.label})`}
+    //                                     photos={photos[item.key] || []}
+    //                                     setPhotos={makePhotoSetter(item.key)}
+    //                                     max={10}
+    //                                     draftKey={key}
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                         ))}
+    //                     </div>
+    //                 )}
+
+    //                 {/* {q.kind === "measure9" && q.hasPhoto && (
+    //                         <div>
+    //                             <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                     photos={photos[`q${q.no}`] || []}
+    //                                     setPhotos={makePhotoSetter(`q${q.no}`)}
+    //                                     max={10}
+    //                                     draftKey={key}
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                             <div className="tw-space-y-3">
+    //                                 {renderMeasureGrid9(0, BREAKERS[0], m9_0)}
+    //                                 {renderMeasureGrid9(1, BREAKERS[1], m9_1)}
+    //                                 {renderMeasureGrid9(2, BREAKERS[2], m9_2)}
+    //                                 {renderMeasureGrid9(3, BREAKERS[3], m9_3)}
+    //                                 {renderMeasureGrid9(4, BREAKERS[4], m9_4)}
+    //                                 {renderMeasureGrid9(5, BREAKERS[5], m9_5)}
+    //                             </div>
+    //                         </div>
+
+    //                     )} */}
+    //                 {q.kind === "measure9" && q.hasPhoto && (
+    //                     <div className="tw-space-y-3">
+    //                         {/* เบรกเกอร์แต่ละตัว */}
+    //                         {[
+    //                             { idx: 0, title: BREAKERS[0], m: m9_0, photoKey: 'r9_0' },
+    //                             { idx: 1, title: BREAKERS[1], m: m9_1, photoKey: 'r9_1' },
+    //                             { idx: 2, title: BREAKERS[2], m: m9_2, photoKey: 'r9_2' },
+    //                             { idx: 3, title: BREAKERS[3], m: m9_3, photoKey: 'r9_3' },
+    //                             { idx: 4, title: BREAKERS[4], m: m9_4, photoKey: 'r9_4' },
+    //                             { idx: 5, title: BREAKERS[5], m: m9_5, photoKey: 'r9_5' },
+    //                         ].map(({ idx, title, m, photoKey }) => (
+    //                             <div key={photoKey} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+    //                                 <Typography className="tw-font-medium tw-mb-3">{title}</Typography>
+
+    //                                 {/* แนบรูปของเบรกเกอร์นี้ */}
+    //                                 <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                     <PhotoMultiInput
+    //                                         label={`แนบรูปประกอบ (${title})`}
+    //                                         photos={photos[photoKey] || []}
+    //                                         setPhotos={makePhotoSetter(photoKey)}
+    //                                         max={3}
+    //                                         draftKey={key}
+    //                                         qNo={q.no}
+    //                                     />
+    //                                 </div>
+
+    //                                 {/* ฟอร์มวัดค่า */}
+    //                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4">
+    //                                     {VOLTAGE_FIELDS_CCB.map((k) => (
+    //                                         <InputWithUnit<UnitVoltage>
+    //                                             key={`${idx}-${k}`}
+    //                                             label={LABELS[k]}
+    //                                             value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
+    //                                             unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+    //                                             units={["V"] as const}
+    //                                             onValueChange={(v) => m.patch(k, { value: v })}
+    //                                             onUnitChange={(u) => m.syncUnits(u)}
+    //                                         />
+    //                                     ))}
+    //                                 </div>
+    //                             </div>
+    //                         ))}
+    //                     </div>
+    //                 )}
+
+
+
+
+    //             </SectionCard>
+    //         );
+    //     }
+    //     return (
+
+    //         <SectionCard key={q.key} title={q.label}>
+    //             {/* simple */}
+    //             {q.kind === "simple" && (
+    //                 <PassFailRow
+    //                     label="ผลการทดสอบ"
+    //                     value={rows[q.key]?.pf ?? ""}
+    //                     onChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+    //                     }
+    //                     remark={rows[q.key]?.remark ?? ""}
+    //                     onRemarkChange={(v) =>
+    //                         setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+    //                     }
+    //                     aboveRemark={
+    //                         q.hasPhoto && (
+    //                             <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                 <PhotoMultiInput
+    //                                     label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+    //                                     photos={photos[`q${q.no}`] || []}
+    //                                     setPhotos={makePhotoSetter(`q${q.no}`)}
+    //                                     max={3}
+    //                                     draftKey={key}
+    //                                     qNo={q.no}
+    //                                 />
+    //                             </div>
+    //                         )
+    //                     }
+    //                 />
+    //             )}
+
+    //             {/* group */}
+    //             {q.kind === "group" &&
+    //                 q.items.map((it, idx) => (
+    //                     <PassFailRow
+    //                         key={it.key}
+    //                         label={it.label}
+    //                         value={rows[it.key]?.pf ?? ""}
+    //                         onChange={(v) =>
+    //                             setRows({
+    //                                 ...rows,
+    //                                 [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
+    //                             })
+    //                         }
+    //                         remark={rows[it.key]?.remark ?? ""}
+    //                         onRemarkChange={(v) =>
+    //                             setRows({
+    //                                 ...rows,
+    //                                 [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
+    //                             })
+    //                         }
+    //                         // แนบรูปสำหรับแต่ละ sub-item
+    //                         aboveRemark={
+    //                             q.hasPhoto && (
+    //                                 <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                     <PhotoMultiInput
+    //                                         label={`แนบรูปประกอบ (${it.label})`}
+    //                                         photos={photos[it.key] || []}
+    //                                         setPhotos={makePhotoSetter(it.key)}
+    //                                         max={3}
+    //                                         draftKey={key}
+    //                                         qNo={q.no}
+    //                                     />
+    //                                 </div>
+    //                             )
+    //                         }
+    //                     />
+    //                 ))}
+    //             {q.kind === "measure9" && (
+    //                 <div className="tw-space-y-3">
+    //                     {[
+    //                         { idx: 0, title: BREAKERS[0], m: m9_0, mPre: m9_0Pre, photoKey: 'r9_0' },
+    //                         { idx: 1, title: BREAKERS[1], m: m9_1, mPre: m9_1Pre, photoKey: 'r9_1' },
+    //                         { idx: 2, title: BREAKERS[2], m: m9_2, mPre: m9_2Pre, photoKey: 'r9_2' },
+    //                         { idx: 3, title: BREAKERS[3], m: m9_3, mPre: m9_3Pre, photoKey: 'r9_3' },
+    //                         { idx: 4, title: BREAKERS[4], m: m9_4, mPre: m9_4Pre, photoKey: 'r9_4' },
+    //                         { idx: 5, title: BREAKERS[5], m: m9_5, mPre: m9_5Pre, photoKey: 'r9_5' },
+    //                     ].map(({ idx, title, m, mPre, photoKey }) => (
+    //                         <div key={photoKey} className="tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-50">
+    //                             <Typography className="tw-font-medium tw-mb-3">{title}</Typography>
+
+    //                             {/* แนบรูปของเบรกเกอร์นี้ */}
+    //                             {q.hasPhoto && (
+    //                                 <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
+    //                                     <PhotoMultiInput
+    //                                         label={`แนบรูปประกอบ (${title})`}
+    //                                         photos={photos[photoKey] || []}
+    //                                         setPhotos={makePhotoSetter(photoKey)}
+    //                                         max={3}
+    //                                         draftKey={key}
+    //                                         qNo={q.no}
+    //                                     />
+    //                                 </div>
+    //                             )}
+
+    //                             {/* PASS/FAIL + Remark สำหรับเบรกเกอร์นี้ */}
+    //                             <div className="tw-mb-4">
+    //                                 <PassFailRow
+    //                                     label="ผลการทดสอบ"
+    //                                     value={rows[photoKey]?.pf ?? ""}
+    //                                     onChange={(v) =>
+    //                                         setRows({
+    //                                             ...rows,
+    //                                             [photoKey]: { ...(rows[photoKey] ?? { remark: "" }), pf: v },
+    //                                         })
+    //                                     }
+    //                                     remark={rows[photoKey]?.remark ?? ""}
+    //                                     onRemarkChange={(v) =>
+    //                                         setRows({
+    //                                             ...rows,
+    //                                             [photoKey]: { ...(rows[photoKey] ?? { pf: "" }), remark: v },
+    //                                         })
+    //                                     }
+    //                                 />
+    //                             </div>
+
+    //                             {/* ฟอร์มวัดค่า - หลัง PM */}
+
+
+    //                             {/* ก่อน PM - อ้างอิง (ล่าง) */}
+    //                             <div>
+    //                                 <Typography
+    //                                     variant="small"
+    //                                     className="tw-font-medium tw-text-blue-gray-700 tw-mb-2"
+    //                                 >
+    //                                     ก่อน PM (อ้างอิง)
+    //                                 </Typography>
+    //                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4 tw-opacity-60 tw-pointer-events-none">
+    //                                     {VOLTAGE_FIELDS_CCB.map((k) => (
+    //                                         <InputWithUnit<UnitVoltage>
+    //                                             key={`pre-${idx}-${k}`}
+    //                                             label={LABELS[k]}
+    //                                             value={mPre[k]?.value === null || mPre[k]?.value === undefined ? "-" : String(mPre[k]?.value)}
+    //                                             unit={(mPre[k]?.unit as UnitVoltage) || "V"}
+    //                                             units={["V"] as const}
+    //                                             onValueChange={() => { }}
+    //                                             onUnitChange={() => { }}
+    //                                             readOnly
+    //                                             required={false}
+    //                                         />
+    //                                     ))}
+    //                                 </div>
+    //                             </div>
+    //                             <div className="tw-mb-4">
+    //                                 <Typography
+    //                                     variant="small"
+    //                                     className="tw-font-medium tw-text-blue-gray-700 tw-mb-2"
+    //                                 >
+    //                                     หลัง PM
+    //                                 </Typography>
+    //                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4">
+    //                                     {VOLTAGE_FIELDS_CCB.map((k) => (
+    //                                         <InputWithUnit<UnitVoltage>
+    //                                             key={`post-${idx}-${k}`}
+    //                                             label={LABELS[k]}
+    //                                             value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
+    //                                             unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+    //                                             units={["V"] as const}
+    //                                             onValueChange={(v) => m.patch(k, { value: v })}
+    //                                             onUnitChange={(u) => m.syncUnits(u)}
+    //                                         />
+    //                                     ))}
+    //                                 </div>
+    //                             </div>
+    //                         </div>
+    //                     ))}
+    //                 </div>
+    //             )}
+
+    //         </SectionCard>
+    //     );
+    // };
+
+
     const renderQuestionBlock = (q: Question, mode: TabId) => {
         if (mode === "pre") {
             return (
-                // <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
                 <SectionCard
                     key={q.key}
                     title={getQuestionLabel(q, mode)}
-                // subtitle={subtitle}
                 >
+                    {/* ✅ ข้อ Simple: แสดงเฉพาะรูปภาพ */}
                     {q.kind === "simple" && q.hasPhoto && (
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                             <PhotoMultiInput
@@ -1823,6 +2367,8 @@ export default function CCBPMReport() {
                             />
                         </div>
                     )}
+
+                    {/* ✅ ข้อ Group: แสดงเฉพาะรูปภาพ */}
                     {q.kind === "group" && q.hasPhoto && (
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                             {q.items.map((item) => (
@@ -1843,29 +2389,7 @@ export default function CCBPMReport() {
                         </div>
                     )}
 
-                    {/* {q.kind === "measure9" && q.hasPhoto && (
-                        <div>
-                            <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
-                                <PhotoMultiInput
-                                    label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                                    photos={photos[`q${q.no}`] || []}
-                                    setPhotos={makePhotoSetter(`q${q.no}`)}
-                                    max={10}
-                                    draftKey={key}
-                                    qNo={q.no}
-                                />
-                            </div>
-                            <div className="tw-space-y-3">
-                                {renderMeasureGrid9(0, BREAKERS[0], m9_0)}
-                                {renderMeasureGrid9(1, BREAKERS[1], m9_1)}
-                                {renderMeasureGrid9(2, BREAKERS[2], m9_2)}
-                                {renderMeasureGrid9(3, BREAKERS[3], m9_3)}
-                                {renderMeasureGrid9(4, BREAKERS[4], m9_4)}
-                                {renderMeasureGrid9(5, BREAKERS[5], m9_5)}
-                            </div>
-                        </div>
-
-                    )} */}
+                    {/* ✅ ข้อ Measure9: แสดงรูปภาพ + ฟอร์มวัดค่าเท่านั้น (ไม่มี PASS/FAIL) */}
                     {q.kind === "measure9" && q.hasPhoto && (
                         <div className="tw-space-y-3">
                             {/* เบรกเกอร์แต่ละตัว */}
@@ -1898,7 +2422,7 @@ export default function CCBPMReport() {
                                             <InputWithUnit<UnitVoltage>
                                                 key={`${idx}-${k}`}
                                                 label={LABELS[k]}
-                                                value={m.state[k]?.value || ""}
+                                                value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
                                                 unit={(m.state[k]?.unit as UnitVoltage) || "V"}
                                                 units={["V"] as const}
                                                 onValueChange={(v) => m.patch(k, { value: v })}
@@ -1911,14 +2435,12 @@ export default function CCBPMReport() {
                         </div>
                     )}
 
-
-
-
                 </SectionCard>
             );
         }
-        return (
 
+        // ✅ โหมด POST: แสดงทั้งรูป + PASS/FAIL + Remark
+        return (
             <SectionCard key={q.key} title={q.label}>
                 {/* simple */}
                 {q.kind === "simple" && (
@@ -1926,11 +2448,11 @@ export default function CCBPMReport() {
                         label="ผลการทดสอบ"
                         value={rows[q.key]?.pf ?? ""}
                         onChange={(v) =>
-                            setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
+                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
                         }
                         remark={rows[q.key]?.remark ?? ""}
                         onRemarkChange={(v) =>
-                            setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
+                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
                         }
                         aboveRemark={
                             q.hasPhoto && (
@@ -2034,9 +2556,6 @@ export default function CCBPMReport() {
                                     />
                                 </div>
 
-                                {/* ฟอร์มวัดค่า - หลัง PM */}
-
-
                                 {/* ก่อน PM - อ้างอิง (ล่าง) */}
                                 <div>
                                     <Typography
@@ -2050,7 +2569,7 @@ export default function CCBPMReport() {
                                             <InputWithUnit<UnitVoltage>
                                                 key={`pre-${idx}-${k}`}
                                                 label={LABELS[k]}
-                                                value={mPre[k]?.value || ""}
+                                                value={mPre[k]?.value === null || mPre[k]?.value === undefined ? "-" : String(mPre[k]?.value)}
                                                 unit={(mPre[k]?.unit as UnitVoltage) || "V"}
                                                 units={["V"] as const}
                                                 onValueChange={() => { }}
@@ -2073,7 +2592,7 @@ export default function CCBPMReport() {
                                             <InputWithUnit<UnitVoltage>
                                                 key={`post-${idx}-${k}`}
                                                 label={LABELS[k]}
-                                                value={m.state[k]?.value || ""}
+                                                value={m.state[k]?.value === "" || m.state[k]?.value === null || m.state[k]?.value === undefined ? "" : m.state[k]?.value}
                                                 unit={(m.state[k]?.unit as UnitVoltage) || "V"}
                                                 units={["V"] as const}
                                                 onValueChange={(v) => m.patch(k, { value: v })}
@@ -2090,8 +2609,6 @@ export default function CCBPMReport() {
             </SectionCard>
         );
     };
-
-
     const active: TabId = useMemo(
         () => slugToTab(searchParams.get("pmtab")),
         [searchParams]
@@ -2157,22 +2674,25 @@ export default function CCBPMReport() {
             ? missingPhotoItemsPre
             : missingPhotoItemsPost;
     /* =========================
-     *        RENDER
-     * ========================= */
+    *        RENDER
+    * ========================= */
     return (
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
-                {/* ซ้าย: ปุ่มย้อนกลับ (ลูกศร) */}
+                {/* ซ้าย: ปุ่มย้อนกลับ (ลูกศร) + ข้อมูล draft status */}
+                <div className="tw-flex tw-items-center tw-gap-3">
+                    <Button
+                        variant="outlined"
+                        size="sm"
+                        onClick={() => router.back()}
+                        // className="tw-py-2 tw-px-2"
+                        title="กลับไปหน้า List"
+                    >
+                        <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
+                    </Button>
 
-                <Button
-                    variant="outlined"
-                    size="sm"
-                    onClick={() => router.back()}
-                    // className="tw-py-2 tw-px-2"
-                    title="กลับไปหน้า List"
-                >
-                    <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-                </Button>
+
+                </div>
 
                 <Tabs value={displayTab}>
                     <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
@@ -2185,9 +2705,9 @@ export default function CCBPMReport() {
                                     <div
                                         key={t.id}
                                         className="
-                                                        tw-px-4 tw-py-2 tw-font-medium
-                                                        tw-opacity-50 tw-cursor-not-allowed tw-select-none
-                                                        "
+                                                            tw-px-4 tw-py-2 tw-font-medium
+                                                            tw-opacity-50 tw-cursor-not-allowed tw-select-none
+                                                            "
                                     >
                                         {t.label}
                                     </div>
@@ -2200,9 +2720,9 @@ export default function CCBPMReport() {
                                     <div
                                         key={t.id}
                                         className="
-                                                        tw-px-4 tw-py-2 tw-font-medium
-                                                        tw-opacity-50 tw-cursor-not-allowed tw-select-none
-                                                        "
+                                                            tw-px-4 tw-py-2 tw-font-medium
+                                                            tw-opacity-50 tw-cursor-not-allowed tw-select-none
+                                                            "
                                         onClick={() => {
                                             alert(
                                                 "กรุณากรอกข้อมูลในส่วน Pre ให้ครบ (ค่าที่วัด และรูปภาพทุกข้อ) ก่อน"
@@ -2243,9 +2763,9 @@ export default function CCBPMReport() {
                     <div className="tw-flex tw-items-start tw-justify-between tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-4">
                             <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md
-                                                            tw-h-16 tw-w-[76px]
-                                                            md:tw-h-20 md:tw-w-[108px]
-                                                            lg:tw-h-24 lg:tw-w-[152px]">
+                                                                tw-h-16 tw-w-[76px]
+                                                                md:tw-h-20 md:tw-w-[108px]
+                                                                lg:tw-h-24 lg:tw-w-[152px]">
                                 <Image
                                     src={LOGO_SRC}
                                     alt="Company logo"
