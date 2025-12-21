@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     Dialog,
     DialogHeader,
@@ -21,10 +21,16 @@ export type NewUserPayload = {
     company_name?: string;
     payment: "y" | "n";
     tel: string;
+    station_id?: string | string[];
 };
 
 type FormState = Omit<NewUserPayload, "station_id"> & {
-    station_id: string; // เก็บเป็น string เพื่อผูกกับ <Input />
+    station_id?: string;
+};
+
+type Station = {
+    station_id: string;
+    station_name: string;
 };
 
 
@@ -44,39 +50,57 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         company_name: "",
         payment: "y",
         tel: "",
+        station_id: undefined,
     });
-    const [stationInput, setStationInput] = useState("");
-    const [stationIds, setStationIds] = useState<string[]>([]);
+    const [stations, setStations] = useState<Station[]>([]);
+    const [loadingStations, setLoadingStations] = useState(false);
+    const [stationSearchValue, setStationSearchValue] = useState("");
+    const [showStationDropdown, setShowStationDropdown] = useState(false);
+    const [selectedStations, setSelectedStations] = useState<Station[]>([]);
 
     const onChange = (k: keyof NewUserPayload, v: any) =>
         setForm((s) => ({ ...s, [k]: v }));
-    // เพิ่ม station ลงลิสต์ (กันค่าว่าง/ซ้ำ)
-    const addStationId = () => {
-        const parts = stationInput
-            .split(",")                  // อนุญาตใส่หลายค่าแล้วคั่นด้วย comma ได้ทันที
-            .map((s) => s.trim())
-            .filter(Boolean);
 
-        if (parts.length === 0) return;
+    // โหลด stations เมื่อ modal เปิด
+    // ถ้า role เป็น admin → ดึง stations ทั้งหมด
+    // ถ้า role เป็น owner → ดึง stations ที่เป็นเจ้าของ
+    useEffect(() => {
+        if (!open) return;
 
-        setStationIds((prev) => {
-            const set = new Set(prev);
-            parts.forEach((p) => set.add(p));
-            return Array.from(set);
-        });
-        setStationInput("");
-    };
+        const fetchStations = async () => {
+            try {
+                setLoadingStations(true);
+                const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
+                
+                if (!token) {
+                    console.warn("No token found");
+                    return;
+                }
 
-    const removeStationId = (target: string) => {
-        setStationIds((prev) => prev.filter((s) => s !== target));
-    };
+                const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+                const res = await fetch(`${API_BASE}/my-stations/detail`, {
+                    method: "GET",
+                    headers: { Authorization: `Bearer ${token}` },
+                });
 
-    const handleStationKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            addStationId();
-        }
-    };
+                if (!res.ok) {
+                    console.error("Failed to fetch stations:", res.status);
+                    return;
+                }
+
+                const data = await res.json();
+                // API returns { stations: [...] }
+                const stationsList = data?.stations || (Array.isArray(data) ? data : []);
+                setStations(stationsList);
+            } catch (error) {
+                console.error("Error fetching stations:", error);
+            } finally {
+                setLoadingStations(false);
+            }
+        };
+
+        fetchStations();
+    }, [open]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -86,14 +110,15 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             username: form.username.trim(),
             email: form.email.trim(),
             company_name: form.company_name?.trim() || undefined,
-            // station_id: form.station_id?.trim() || undefined,
-
+            tel: form.tel.trim(),
+            ...(form.role === "technician" && selectedStations.length > 0 
+                ? { station_id: selectedStations.map(s => s.station_id) }
+                : {}),
         };
         try {
-            await onSubmit(payload); // ✅ ให้ parent ยิง API + โชว์ success
-            resetAndClose();         // ปิดโมดัล
+            await onSubmit(payload);
+            resetAndClose();
         } catch (error) {
-            // ถ้า parent โยน error มาก็จัดการเพิ่มได้ตามต้องการ
             console.error(error);
         }
     };
@@ -107,7 +132,11 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             tel: "",
             company_name: "",
             payment: "y",
+            station_id: undefined,
         });
+        setStationSearchValue("");
+        setShowStationDropdown(false);
+        setSelectedStations([]);
         onClose();
     };
 
@@ -162,7 +191,13 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                         <div>
                             <Select
                                 value={form.role}
-                                onChange={(v) => onChange("role", String(v ?? form.role) as "owner" | "technician" | "admin")}
+                                onChange={(v) => {
+                                    onChange("role", String(v ?? form.role) as "owner" | "technician" | "admin");
+                                    // รีเซ็ต station_id เมื่อเปลี่ยน role
+                                    if (v !== "technician") {
+                                        setForm((s) => ({ ...s, station_id: undefined }));
+                                    }
+                                }}
                                 label="Role"
                             >
                                 <Option value="owner">Owner</Option>
@@ -171,6 +206,112 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             </Select>
                         </div>
 
+                        {/* แสดง Station Search เฉพาะเมื่อ role = technician */}
+                        {form.role === "technician" && (
+                            <div className="tw-relative">
+                                <Input
+                                    label="Select Station"
+                                    placeholder="Type to search..."
+                                    value={stationSearchValue}
+                                    onChange={(e) => {
+                                        setStationSearchValue(e.target.value);
+                                        setShowStationDropdown(true);
+                                    }}
+                                    onFocus={() => setShowStationDropdown(true)}
+                                    disabled={loadingStations || stations.length === 0}
+                                    crossOrigin={undefined}
+                                />
+                                
+                                {/* Dropdown suggestions */}
+                                {showStationDropdown && (
+                                    <div className="tw-absolute tw-top-full tw-left-0 tw-right-0 tw-z-10 tw-mt-1 tw-max-h-48 tw-overflow-y-auto tw-bg-white tw-border tw-border-gray-300 tw-rounded-lg tw-shadow-lg">
+                                        {stations
+                                            .filter((station) =>
+                                                !selectedStations.find(s => s.station_id === station.station_id) &&
+                                                (station.station_name
+                                                    .toLowerCase()
+                                                    .includes(stationSearchValue.toLowerCase()) ||
+                                                station.station_id
+                                                    .toLowerCase()
+                                                    .includes(stationSearchValue.toLowerCase()))
+                                            )
+                                            .map((station) => (
+                                                <div
+                                                    key={station.station_id}
+                                                    onClick={() => {
+                                                        setSelectedStations([...selectedStations, station]);
+                                                        setStationSearchValue("");
+                                                        setShowStationDropdown(false);
+                                                    }}
+                                                    className="tw-px-4 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-50 tw-border-b tw-border-gray-100 last:tw-border-b-0"
+                                                >
+                                                    <Typography variant="small" className="tw-font-medium">
+                                                        {station.station_name}
+                                                    </Typography>
+                                                    <Typography variant="small" color="gray">
+                                                        {station.station_id}
+                                                    </Typography>
+                                                </div>
+                                            ))}
+                                        
+                                        {stationSearchValue && stations.filter((station) =>
+                                            !selectedStations.find(s => s.station_id === station.station_id) &&
+                                            (station.station_name
+                                                .toLowerCase()
+                                                .includes(stationSearchValue.toLowerCase()) ||
+                                            station.station_id
+                                                .toLowerCase()
+                                                .includes(stationSearchValue.toLowerCase()))
+                                        ).length === 0 && (
+                                            <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
+                                                No stations found
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                
+                                {loadingStations && (
+                                    <Typography variant="small" color="gray" className="tw-mt-1">
+                                        Loading stations...
+                                    </Typography>
+                                )}
+                                {!loadingStations && stations.length === 0 && (
+                                    <Typography variant="small" color="red" className="tw-mt-1">
+                                        No stations available
+                                    </Typography>
+                                )}
+                                
+                                {/* Selected Stations Tags */}
+                                {selectedStations.length > 0 && (
+                                    <div className="tw-mt-3">
+                                        <Typography variant="small" className="tw-font-semibold tw-mb-2">
+                                            Selected Stations ({selectedStations.length}):
+                                        </Typography>
+                                        <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                            {selectedStations.map((station) => (
+                                                <div
+                                                    key={station.station_id}
+                                                    className="tw-flex tw-items-center tw-gap-2 tw-bg-blue-100 tw-text-blue-700 tw-px-3 tw-py-1 tw-rounded-full tw-text-sm"
+                                                >
+                                                    <span>{station.station_name}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedStations(
+                                                                selectedStations.filter(s => s.station_id !== station.station_id)
+                                                            );
+                                                        }}
+                                                        className="tw-font-bold tw-cursor-pointer hover:tw-text-blue-900"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </DialogBody>
 

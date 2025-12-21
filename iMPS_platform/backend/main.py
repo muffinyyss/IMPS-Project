@@ -38,8 +38,10 @@ from contextlib import asynccontextmanager
 
 SECRET_KEY = "supersecret"  # ใช้จริงควรเก็บเป็น env
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-SESSION_IDLE_MINUTES = 15
+ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN = 1440  # 24 ชั่วโมง
+ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT = 1440  # 24 ชั่วโมง (user อื่น)
+SESSION_IDLE_MINUTES_TECHNICIAN = None  # technician ไม่มี idle timeout
+SESSION_IDLE_MINUTES_DEFAULT = 15  # user อื่น idle 15 นาที แล้วเด้ง
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 th_tz = ZoneInfo("Asia/Bangkok")
 
@@ -213,15 +215,6 @@ def _ensure_utc_iso(v):
         return v + 'Z'
     return v
 
-
-# def create_access_token(data: dict, expires_delta: int | timedelta = 15):
-#     if isinstance(expires_delta, int):
-#         expire = datetime.utcnow() + timedelta(minutes=expires_delta)
-#     else:
-#         expire = datetime.utcnow() + expires_delta
-#     data.update({"exp": expire})
-#     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
-
 def create_access_token(data: dict, expires_delta: int | timedelta = 15):
     to_encode = dict(data)
     expire = (datetime.now(timezone.utc) + (timedelta(minutes=expires_delta) if isinstance(expires_delta, int) else expires_delta))
@@ -231,14 +224,6 @@ def create_access_token(data: dict, expires_delta: int | timedelta = 15):
 class LoginRequest(BaseModel):
     email: str
     password: str
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["http://localhost:3001"],  # เปลี่ยนเป็น port 3001 ชั่วคราวครับ เชลซีกับพี่โจ้ รัน 3000 ไม่ได้
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
 
 app.add_middleware(
     CORSMiddleware,
@@ -436,16 +421,23 @@ def login(body: LoginRequest, response: Response):
     # 👇 สร้าง session id + ตีตราเวลา
     now = datetime.now(timezone.utc)
     sid = str(uuid.uuid4())
+    
+    # กำหนด token expire time ตามบทบาท
+    user_role = user.get("role", "user")
+    if user_role == "technician":
+        token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN  # 24 ชั่วโมง
+    else:
+        token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
 
     jwt_token = create_access_token({
         "sub": user["email"],
         "user_id": str(user["_id"]),
         "username": user.get("username"),
-        "role": user.get("role", "user"),
+        "role": user_role,
         "company": user.get("company"),
         "station_ids": station_ids,
         "sid": sid,  # ⬅️ แนบ session id ไว้ใน access token
-    }, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    }, expires_delta=timedelta(minutes=token_expire_minutes))
 
     refresh_token = create_access_token({"sub": user["email"]}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
 
@@ -469,7 +461,7 @@ def login(body: LoginRequest, response: Response):
         httponly=True,
         secure=False,
         samesite="lax",
-        max_age=int(timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES).total_seconds()),
+        max_age=int(timedelta(minutes=token_expire_minutes).total_seconds()),
         path="/",
     )
 
@@ -611,10 +603,23 @@ def refresh(body: RefreshIn, response: Response):
         if entry.get("expiresAt") and now > entry["expiresAt"]:
             raise HTTPException(status_code=401, detail="refresh_token_expired")
 
-        # optional: idle timeout
+        # กำหนด idle timeout ตามบทบาท
+        user_role = user.get("role", "user")
+        if user_role == "technician":
+            idle_timeout = SESSION_IDLE_MINUTES_TECHNICIAN  # None = ไม่มี idle timeout
+        else:
+            idle_timeout = SESSION_IDLE_MINUTES_DEFAULT  # 15 นาที
+        
+        # ตรวจสอบ idle timeout
         idle_at = entry.get("lastActiveAt")
-        if idle_at and (now - idle_at) > timedelta(minutes=SESSION_IDLE_MINUTES):
+        if idle_timeout is not None and idle_at and (now - idle_at) > timedelta(minutes=idle_timeout):
             raise HTTPException(status_code=401, detail="session_idle_timeout")
+
+        # กำหนด token expire time ตามบทบาท
+        if user_role == "technician":
+            token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN  # 24 ชั่วโมง
+        else:
+            token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
 
         # สร้าง access ใหม่ (คง sid เดิม)
         station_ids = user.get("station_id", [])
@@ -625,11 +630,11 @@ def refresh(body: RefreshIn, response: Response):
             "sub": user["email"],
             "user_id": str(user["_id"]),
             "username": user.get("username"),
-            "role": user.get("role", "user"),
+            "role": user_role,
             "company": user.get("company"),
             "station_ids": station_ids,
             "sid": entry.get("sid"),
-        }, expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+        }, expires_delta=timedelta(minutes=token_expire_minutes))
 
         # อัปเดต lastActiveAt
         users_collection.update_one(
@@ -644,7 +649,7 @@ def refresh(body: RefreshIn, response: Response):
             httponly=True,
             secure=False,          # โปรดดูข้อ 2 ด้านล่าง
             samesite="lax",        # โปรดดูข้อ 2 ด้านล่าง
-            max_age=int(timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES).total_seconds()),
+            max_age=int(timedelta(minutes=token_expire_minutes).total_seconds()),
             path="/",
         )
         return {"access_token": new_access}
