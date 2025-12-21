@@ -10,7 +10,7 @@ import {
     Typography,
     Textarea,
 } from "@material-tailwind/react";
-import { draftKeyStation, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/station/input_PMreport/lib/draft";
+import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../lib/draft";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -527,7 +527,11 @@ export default function StationPMReport() {
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
-    const key = useMemo(() => draftKeyStation(stationId), [stationId]);
+    // const key = useMemo(() => draftKey(stationId), [stationId]);
+    const key = useMemo(
+        () => `${draftKey(stationId)}:${draftId ?? "default"}`,
+        [stationId, draftId]
+    );
     const [inspector, setInspector] = useState<string>("");
     /* ---------- job info ---------- */
     const [job, setJob] = useState({
@@ -620,28 +624,42 @@ export default function StationPMReport() {
                 if (data.inspector) setInspector(data.inspector);
 
                 // 6) Load rows (PASS/FAIL) from database if available
+                // if (data.rows) {
+                //     // Merge with current state to ensure all keys are present
+                //     setRows(prev => ({
+                //         ...prev,
+                //         ...data.rows
+                //     }));
                 if (data.rows) {
-                    // Merge with current state to ensure all keys are present
-                    setRows(prev => ({
-                        ...prev,
-                        ...data.rows
-                    }));
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        // Merge with existing to ensure all keys are present
+                        Object.entries(data.rows).forEach(([k, v]) => {
+                            next[k] = v as { pf: PF; remark: string };
+                        });
+                        return next;
+                    });
                 } else {
                     // Initialize all rows if not loaded from database
-                    const initializedRows: Record<string, { pf: PF; remark: string }> = {};
-                    QUESTIONS.forEach(q => {
-                        if (q.kind === "simple") {
-                            initializedRows[q.key] = { pf: "", remark: "" };
-                        } else if (q.kind === "group") {
-                            q.items.forEach((item) => {
-                                initializedRows[item.key] = { pf: "", remark: "" };
-                            });
-                        }
+                    // ✅ ใช้วิธี: เฉพาะ key ที่ยังไม่มี ถึงเพิ่มค่าเริ่มต้น
+                    // เพื่อไม่ให้ค่า draft ที่โหลดมาถูกทับ
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        QUESTIONS.forEach((q) => {
+                            if (q.kind === "simple") {
+                                if (!next[q.key]) {
+                                    next[q.key] = { pf: "", remark: "" };
+                                }
+                            } else if (q.kind === "group") {
+                                q.items.forEach((item) => {
+                                    if (!next[item.key]) {
+                                        next[item.key] = { pf: "", remark: "" };
+                                    }
+                                });
+                            }
+                        });
+                        return next;
                     });
-                    setRows(prev => ({
-                        ...prev,
-                        ...initializedRows
-                    }));
                 }
 
             } catch (err) {
@@ -736,20 +754,20 @@ export default function StationPMReport() {
     }, []);
 
     /* ---------- draft id (ยังคงเดิม) ---------- */
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        let d = params.get("draft_id");
-        if (!d) {
-            d = (typeof crypto !== "undefined" && "randomUUID" in crypto) ? crypto.randomUUID() : String(Date.now());
-            params.set("draft_id", d);
-            const url = `${window.location.pathname}?${params.toString()}`;
-            window.history.replaceState({}, "", url);
-        }
-        setDraftId(d);
-    }, []);
+    // useEffect(() => {
+    //     const params = new URLSearchParams(window.location.search);
+    //     let d = params.get("draft_id");
+    //     if (!d) {
+    //         d = (typeof crypto !== "undefined" && "randomUUID" in crypto) ? crypto.randomUUID() : String(Date.now());
+    //         params.set("draft_id", d);
+    //         const url = `${window.location.pathname}?${params.toString()}`;
+    //         window.history.replaceState({}, "", url);
+    //     }
+    //     setDraftId(d);
+    // }, []);
     /* ---------- load draft (อัปเดตสำหรับ key-based photos) ---------- */
     useEffect(() => {
-        if (!stationId || !draftId) return;
+        if (!stationId) return;
         const draft = loadDraftLocal<{
             // job: typeof job & { inspector?: string };
             rows: typeof rows;
@@ -796,7 +814,7 @@ export default function StationPMReport() {
 
             setPhotos(prev => ({ ...prev, ...next }));
         })();
-    }, [stationId, draftId, key]);
+    }, [stationId, key]);
     useEffect(() => {
         const onInfo = (e: Event) => {
             const detail = (e as CustomEvent).detail as { info?: StationPublic; station?: StationPublic };
@@ -958,8 +976,20 @@ export default function StationPMReport() {
     const missingPFItems = useMemo(
         () =>
             PF_REQUIRED_KEYS.filter((k) => !rows[k]?.pf)
-                .map((k) => k.replace(/^r(\d+)_?(\d+)?$/, (_, a, b) => (b ? `${a}.${b}` : a)))
-                .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0])),
+                .map((k) => {
+                    // ถ้าเป็น r7_1 -> แสดงเป็น "7.1"
+                    // ถ้าเป็น r1 -> แสดงเป็น "1"
+                    const match = k.match(/^r(\d+)(?:_(\d+))?$/);
+                    if (!match) return k;
+                    const [, qNo, subNo] = match;
+                    return subNo ? `${qNo}.${subNo}` : qNo;
+                })
+                .sort((a, b) => {
+                    const aParts = a.split(".").map(Number);
+                    const bParts = b.split(".").map(Number);
+                    if (aParts[0] !== bParts[0]) return aParts[0] - bParts[0];
+                    return (aParts[1] ?? 0) - (bParts[1] ?? 0);
+                }),
         [rows, PF_REQUIRED_KEYS]
     );
     const missingInputs = useMemo(() => {
@@ -981,14 +1011,14 @@ export default function StationPMReport() {
         return out;
     }, [photos]);
     useDebouncedEffect(() => {
-        if (!stationId || !draftId) return;
+        if (!stationId) return;
         saveDraftLocal(key, {
             rows,
             summary,
             summary_pf: summaryCheck,
             photoRefs,
         });
-    }, [key, stationId, draftId, rows, summary, summaryCheck, photoRefs,]);
+    }, [key, stationId, rows, summary, summaryCheck, photoRefs,]);
     /* ---------- actions (submit ยังคงเดิม) ---------- */
     async function uploadGroupPhotos(
         reportId: string,
@@ -1061,7 +1091,7 @@ export default function StationPMReport() {
                 if (list.length === 0) continue;
                 const files = list.map(p => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-                
+
                 // ค้นหา question เพื่อให้ได้ question key (r1, r2, r7, etc)
                 let groupKey: string | null = null;
 
@@ -1360,10 +1390,11 @@ export default function StationPMReport() {
         ? "post" // ถ้าเป็นหน้า post ให้โชว์แท็บ post เสมอ
         : (active === "post" && !canGoAfter ? "pre" : active);
 
-    const allPFAnsweredForUI =
-        displayTab === "pre" ? allPFAnsweredPre : allPFAnsweredAll;
-    const missingPFItemsForUI =
-        displayTab === "pre" ? missingPFItemsPre : missingPFItemsAll;
+    // ✅ ใช้ allPFAnswered แทน (ตรวจสอบทั้ง simple และ group items)
+    const allPFAnsweredForUI = allPFAnswered;
+    
+    // ✅ ใช้ missingPFItems แทน (ที่รวม sub-items ด้วย)
+    const missingPFItemsForUI = missingPFItems;
 
     const allPhotosAttachedForUI =
         displayTab === "pre"
@@ -1487,7 +1518,7 @@ export default function StationPMReport() {
                             </div>
                         </div>
                         {/* ขวาสุด: ชื่อเอกสาร / เลขที่เอกสาร (ซ่อนใน post mode) */}
-                        {!isPostMode && (
+                        {/* {!isPostMode && ( */}
                             <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
                                 <div className="tw-font-semibold">
                                     Document Name.
@@ -1496,7 +1527,7 @@ export default function StationPMReport() {
                                     {docName || "-"}
                                 </div>
                             </div>
-                        )}
+                        {/* )} */}
                     </div>
                     {/* BODY */}
                     <div className="tw-mt-8 tw-space-y-8">
@@ -1608,7 +1639,7 @@ export default function StationPMReport() {
                             {/* บล็อก 3 & 4 แสดงเฉพาะหลัง (post) */}
                             {isPostMode && (
                                 <>
-                                    <Section title="2) สถานะ PASS / FAIL / N/A ทั้ง 18 ข้อ" ok={allPFAnsweredForUI}>
+                                    <Section title="2) สถานะ PASS / FAIL / N/A ทั้ง 10 ข้อ" ok={allPFAnsweredForUI}>
                                         <Typography variant="small" className="!tw-text-amber-700">
                                             ยังไม่ได้เลือกข้อ: {missingPFItemsForUI.join(", ")}
                                         </Typography>
