@@ -93,6 +93,7 @@ const DCContactorsTimesCard: React.FC<DCContactorsTimesCardProps> = ({
     items,
     className,
 }) => {
+    return null;
     return (
         <section
             className={`tw-h-full tw-flex tw-flex-col tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 ${className ?? ""}`}

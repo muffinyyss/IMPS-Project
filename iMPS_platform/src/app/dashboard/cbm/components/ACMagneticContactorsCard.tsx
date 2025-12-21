@@ -35,7 +35,7 @@ function toneFor(value: StatusItem["value"]) {
             bg: "tw-bg-green-100",
             ring: "tw-ring-green-200",
             text: "tw-text-green-800",
-            label: "Active",
+            label: "Open",
             dot: "tw-bg-green-500",
         };
 
@@ -44,7 +44,7 @@ function toneFor(value: StatusItem["value"]) {
             bg: "tw-bg-red-100",
             ring: "tw-ring-red-200",
             text: "tw-text-red-800",
-            label: "Inactive",
+            label: "Close",
             dot: "tw-bg-red-500",
         };
 

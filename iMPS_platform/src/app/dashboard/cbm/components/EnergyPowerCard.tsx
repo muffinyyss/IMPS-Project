@@ -62,6 +62,7 @@ const EnergyPowerCard: React.FC<EnergyPowerCardProps> = ({
     unit = "kWh",
     decimals = 0, // ค่าเป็น int ตามสเปค
 }) => {
+    return null;
     return (
         <section className="tw-h-full tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-space-y-4">
             <div className="tw-flex tw-items-baseline tw-justify-between">
