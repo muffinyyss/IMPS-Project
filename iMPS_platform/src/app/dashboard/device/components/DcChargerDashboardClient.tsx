@@ -507,14 +507,14 @@ export default function DCChargerDashboard() {
             { id: "charge-ctl1", name: "Charging Controller1", value: parseTimes(p.chargingController1), status: "ok", metricType: "hour" },
             { id: "iso1", name: "Insulation Monitoring1", value: parseTimes(p.insulationMonitoring1), status: "ok", metricType: "hour" },
         ];
-         const extraFans: Device[] = Array.from({ length: 8 }, (_, i) => ({
-            id: `Fan-${i + 1}`,
-            name: `Fan${i + 1}`,
-            value: "0",
-            status: "error" as Status,
-            metricType: "times" as MetricType,
-        }));
-        left.push(...extraFans);
+        //  const extraFans: Device[] = Array.from({ length: 8 }, (_, i) => ({
+        //     id: `Fan-${i + 1}`,
+        //     name: `Fan${i + 1}`,
+        //     value: "0",
+        //     status: "error" as Status,
+        //     metricType: "times" as MetricType,
+        // }));
+        // left.push(...extraFans);
 
         const right: Device[] = [
             { id: "dc-contact-3", name: "DC Power Contactor3", value: String(p.DC_power_contractor3 ?? ""), status: pickStatus(p.DC_power_contractor3, p.DC_power_contractor3+(20/100), p.DC_power_contractor3+(50/100)), metricType: "times" },
