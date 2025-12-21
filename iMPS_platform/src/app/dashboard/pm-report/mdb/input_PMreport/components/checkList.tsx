@@ -1086,6 +1086,7 @@ export default function MDBPMMForm() {
             m7: typeof m7.state;
             m8: typeof m8.state;
             summary: string;
+            summary_pf?: PF;
             dustFilterChanged?: boolean;
             photoRefs?: Record<string | number, PhotoRef[]>;
         }>(key);
@@ -1099,6 +1100,9 @@ export default function MDBPMMForm() {
         m7.setState(draft.m7 ?? initMeasureState(VOLTAGE_FIELDS, "V"));
         m8.setState(draft.m8 ?? initMeasureState(VOLTAGE_FIELDS_CCB, "V"));
         setDustFilterChanged(draft.dustFilterChanged ?? false);
+        setSummary(draft.summary);
+        if (draft.summary_pf) setSummaryCheck(draft.summary_pf);
+
         (async () => {
             if (!draft.photoRefs) return;
 
@@ -1737,30 +1741,16 @@ export default function MDBPMMForm() {
     // debounce ง่าย ๆ ในไฟล์นี้เลยก็ได้
 
     const renderQuestionBlock = (q: Question, mode: TabId) => {
-    const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
-    const subtitle = FIELD_GROUPS[q.no]?.note;
+        const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
+        const subtitle = FIELD_GROUPS[q.no]?.note;
 
-    if (mode === "pre") {
-        return (
-            <SectionCard
-                key={q.key}
-                title={getQuestionLabel(q, mode)}
-            >
-                {q.kind === "simple" && q.hasPhoto && (
-                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
-                        <PhotoMultiInput
-                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                            photos={photos[q.no] || []}
-                            setPhotos={makePhotoSetter(q.no)}
-                            max={10}
-                            draftKey={key}
-                            qNo={q.no}
-                        />
-                    </div>
-                )}
-
-                {hasMeasure && q.hasPhoto && (
-                    <div className="tw-space-y-3">
+        if (mode === "pre") {
+            return (
+                <SectionCard
+                    key={q.key}
+                    title={getQuestionLabel(q, mode)}
+                >
+                    {q.kind === "simple" && q.hasPhoto && (
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                             <PhotoMultiInput
                                 label={`แนบรูปประกอบ (ข้อ ${q.no})`}
@@ -1771,156 +1761,10 @@ export default function MDBPMMForm() {
                                 qNo={q.no}
                             />
                         </div>
-                        {renderMeasureGrid(q.no)}
-                    </div>
-                )}
+                    )}
 
-                {q.kind === "group" && q.hasPhoto && (
-                    <div className="tw-pt-2 tw-pb-4 tw-space-y-4">
-                        {q.items.map((item, idx) => (
-                            <div
-                                key={item.key}
-                                className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100"
-                            >
-                                <Typography
-                                    variant="small"
-                                    className="tw-font-medium tw-mb-3 tw-text-sm md:tw-text-base"
-                                >
-                                    {item.label}
-                                </Typography>
-                                <PhotoMultiInput
-                                    label={`แนบรูปประกอบ (${item.label})`}
-                                    photos={photos[item.key] || []}
-                                    setPhotos={makePhotoSetter(item.key)}
-                                    max={10}
-                                    draftKey={key}
-                                    qNo={q.no}
-                                />
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </SectionCard>
-        );
-    }
-
-    // ✅ Checkbox สำหรับข้อ 11 - แยกออกมาเป็น element ตัวเอง
-    const checkboxElement = q.no === 11 ? (
-        <label className="tw-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700 tw-py-2">
-            <input
-                type="checkbox"
-                className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
-                checked={dustFilterChanged}
-                onChange={(e) => setDustFilterChanged(e.target.checked)}
-            />
-            <span className="tw-leading-tight">เปลี่ยนแผ่นกรองระบายอากาศ</span>
-        </label>
-    ) : null;
-
-    return (
-        <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
-            {q.kind === "simple" && (
-                <div className="tw-space-y-3">
-                    <PassFailRow
-                        label="ผลการทดสอบ"
-                        value={rows[q.key]?.pf ?? ""}
-                        onChange={(v) =>
-                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
-                        }
-                        remark={rows[q.key]?.remark ?? ""}
-                        onRemarkChange={(v) =>
-                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
-                        }
-                        aboveRemark={
-                            <>
-                                {q.hasPhoto && (
-                                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
-                                        <PhotoMultiInput
-                                            label={`แนบรูปประกอบ (ข้อ ${q.no})`}
-                                            photos={photos[q.no] || []}
-                                            setPhotos={makePhotoSetter(q.no)}
-                                            max={10}
-                                            draftKey={key}
-                                            qNo={q.no}
-                                        />
-                                    </div>
-                                )}
-                                {/* ✅ Checkbox อยู่ด้านบน (mobile) */}
-                                {checkboxElement && (
-                                    <div className="sm:tw-hidden tw-mb-3">
-                                        {checkboxElement}
-                                    </div>
-                                )}
-                            </>
-                        }
-                        inlineLeft={
-                            /* ✅ Checkbox อยู่ข้างซ้าย (desktop) */
-                            checkboxElement && (
-                                <div className="tw-hidden sm:tw-flex">
-                                    {checkboxElement}
-                                </div>
-                            )
-                        }
-                    />
-                </div>
-            )}
-
-            {q.kind === "group" && (
-                <div className="tw-space-y-4 md:tw-space-y-6">
-                    {q.items.map((it, idx) => (
-                        <div
-                            key={it.key}
-                            className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100"
-                        >
-                            <PassFailRow
-                                label={it.label}
-                                value={rows[it.key]?.pf ?? ""}
-                                onChange={(v) =>
-                                    setRows({
-                                        ...rows,
-                                        [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
-                                    })
-                                }
-                                remark={rows[it.key]?.remark ?? ""}
-                                onRemarkChange={(v) =>
-                                    setRows({
-                                        ...rows,
-                                        [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
-                                    })
-                                }
-                                aboveRemark={
-                                    q.hasPhoto && (
-                                        <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
-                                            <PhotoMultiInput
-                                                label={`แนบรูปประกอบ (${it.label})`}
-                                                photos={photos[it.key] || []}
-                                                setPhotos={makePhotoSetter(it.key)}
-                                                max={3}
-                                                draftKey={key}
-                                                qNo={q.no}
-                                            />
-                                        </div>
-                                    )
-                                }
-                            />
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {q.kind === "measure" && hasMeasure && (
-                <div className="tw-space-y-3">
-                    <PassFailRow
-                        label="ผลการทดสอบ"
-                        value={rows[q.key]?.pf ?? ""}
-                        onChange={(v) =>
-                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
-                        }
-                        remark={rows[q.key]?.remark ?? ""}
-                        onRemarkChange={(v) =>
-                            setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
-                        }
-                        aboveRemark={
+                    {hasMeasure && q.hasPhoto && (
+                        <div className="tw-space-y-3">
                             <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
                                 <PhotoMultiInput
                                     label={`แนบรูปประกอบ (ข้อ ${q.no})`}
@@ -1931,20 +1775,180 @@ export default function MDBPMMForm() {
                                     qNo={q.no}
                                 />
                             </div>
-                        }
-                        belowRemark={
-                            <div className="tw-mt-4">
-                                {(q.no === 4 || q.no === 5 || q.no === 6 || q.no === 7 || q.no === 8
-                                    ? renderMeasureGridWithPre(q.no)
-                                    : renderMeasureGrid(q.no))}
+                            {renderMeasureGrid(q.no)}
+                        </div>
+                    )}
+
+                    {q.kind === "group" && q.hasPhoto && (
+                        <div className="tw-pt-2 tw-pb-4 tw-space-y-4">
+                            {q.items.map((item, idx) => (
+                                <div
+                                    key={item.key}
+                                    className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100"
+                                >
+                                    <Typography
+                                        variant="small"
+                                        className="tw-font-medium tw-mb-3 tw-text-sm md:tw-text-base"
+                                    >
+                                        {item.label}
+                                    </Typography>
+                                    <PhotoMultiInput
+                                        label={`แนบรูปประกอบ (${item.label})`}
+                                        photos={photos[item.key] || []}
+                                        setPhotos={makePhotoSetter(item.key)}
+                                        max={10}
+                                        draftKey={key}
+                                        qNo={q.no}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </SectionCard>
+            );
+        }
+
+        // ✅ Checkbox สำหรับข้อ 11 - แยกออกมาเป็น element ตัวเอง
+        const checkboxElement = q.no === 11 ? (
+            <label className="tw-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700 tw-py-2">
+                <input
+                    type="checkbox"
+                    className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                    checked={dustFilterChanged}
+                    onChange={(e) => setDustFilterChanged(e.target.checked)}
+                />
+                <span className="tw-leading-tight">เปลี่ยนแผ่นกรองระบายอากาศ</span>
+            </label>
+        ) : null;
+
+        return (
+            <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
+                {q.kind === "simple" && (
+                    <div className="tw-space-y-3">
+                        <PassFailRow
+                            label="ผลการทดสอบ"
+                            value={rows[q.key]?.pf ?? ""}
+                            onChange={(v) =>
+                                setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+                            }
+                            remark={rows[q.key]?.remark ?? ""}
+                            onRemarkChange={(v) =>
+                                setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+                            }
+                            aboveRemark={
+                                <>
+                                    {q.hasPhoto && (
+                                        <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                                            <PhotoMultiInput
+                                                label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                                photos={photos[q.no] || []}
+                                                setPhotos={makePhotoSetter(q.no)}
+                                                max={10}
+                                                draftKey={key}
+                                                qNo={q.no}
+                                            />
+                                        </div>
+                                    )}
+                                    {/* ✅ Checkbox อยู่ด้านบน (mobile) */}
+                                    {checkboxElement && (
+                                        <div className="sm:tw-hidden tw-mb-3">
+                                            {checkboxElement}
+                                        </div>
+                                    )}
+                                </>
+                            }
+                            inlineLeft={
+                                /* ✅ Checkbox อยู่ข้างซ้าย (desktop) */
+                                checkboxElement && (
+                                    <div className="tw-hidden sm:tw-flex">
+                                        {checkboxElement}
+                                    </div>
+                                )
+                            }
+                        />
+                    </div>
+                )}
+
+                {q.kind === "group" && (
+                    <div className="tw-space-y-4 md:tw-space-y-6">
+                        {q.items.map((it, idx) => (
+                            <div
+                                key={it.key}
+                                className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100"
+                            >
+                                <PassFailRow
+                                    label={it.label}
+                                    value={rows[it.key]?.pf ?? ""}
+                                    onChange={(v) =>
+                                        setRows({
+                                            ...rows,
+                                            [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v },
+                                        })
+                                    }
+                                    remark={rows[it.key]?.remark ?? ""}
+                                    onRemarkChange={(v) =>
+                                        setRows({
+                                            ...rows,
+                                            [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v },
+                                        })
+                                    }
+                                    aboveRemark={
+                                        q.hasPhoto && (
+                                            <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                                <PhotoMultiInput
+                                                    label={`แนบรูปประกอบ (${it.label})`}
+                                                    photos={photos[it.key] || []}
+                                                    setPhotos={makePhotoSetter(it.key)}
+                                                    max={3}
+                                                    draftKey={key}
+                                                    qNo={q.no}
+                                                />
+                                            </div>
+                                        )
+                                    }
+                                />
                             </div>
-                        }
-                    />
-                </div>
-            )}
-        </SectionCard>
-    );
-};
+                        ))}
+                    </div>
+                )}
+
+                {q.kind === "measure" && hasMeasure && (
+                    <div className="tw-space-y-3">
+                        <PassFailRow
+                            label="ผลการทดสอบ"
+                            value={rows[q.key]?.pf ?? ""}
+                            onChange={(v) =>
+                                setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
+                            }
+                            remark={rows[q.key]?.remark ?? ""}
+                            onRemarkChange={(v) =>
+                                setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
+                            }
+                            aboveRemark={
+                                <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                                    <PhotoMultiInput
+                                        label={`แนบรูปประกอบ (ข้อ ${q.no})`}
+                                        photos={photos[q.no] || []}
+                                        setPhotos={makePhotoSetter(q.no)}
+                                        max={10}
+                                        draftKey={key}
+                                        qNo={q.no}
+                                    />
+                                </div>
+                            }
+                            belowRemark={
+                                <div className="tw-mt-4">
+                                    {(q.no === 4 || q.no === 5 || q.no === 6 || q.no === 7 || q.no === 8
+                                        ? renderMeasureGridWithPre(q.no)
+                                        : renderMeasureGrid(q.no))}
+                                </div>
+                            }
+                        />
+                    </div>
+                )}
+            </SectionCard>
+        );
+    };
 
     function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
         useEffect(() => {
@@ -1974,10 +1978,10 @@ export default function MDBPMMForm() {
             m7: m7.state,
             m8: m8.state,
             summary,
-            // inspector,
+            summary_pf: summaryCheck,
             photoRefs,
         });
-    }, [key, stationId, rows, m4.state, m5.state, m6.state, m7.state, summary, photoRefs,]);
+    }, [key, stationId, rows, m4.state, m5.state, m6.state, m7.state, summary, summaryCheck, photoRefs,]);
 
     /* ---------- actions ---------- */
     // const onSave = () => {
@@ -2610,18 +2614,7 @@ export default function MDBPMMForm() {
                         </div>
                     </div>
                     {[
-                        // [1, 5],
-                        // [6, 10],
-                        // [11, 16],
-                        // [17, 17], // มีกริดวัดค่า
-                        // [18, 19],
                         [1, 11]
-                        // ].map(([start, end]) => (
-                        //     <CardBody className="tw-space-y-2">
-                        //         {QUESTIONS.filter((q) => q.no >= start && q.no <= end).map(renderQuestionBlock)}
-                        //     </CardBody>
-
-                        // ))}
                     ].map(([start, end]) => (
                         <CardBody key={`${start}-${end}`} className="tw-space-y-2">
                             {QUESTIONS

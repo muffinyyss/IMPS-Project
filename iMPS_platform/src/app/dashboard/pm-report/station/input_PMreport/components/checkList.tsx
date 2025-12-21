@@ -940,11 +940,6 @@ export default function StationPMReport() {
     );
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
-    const canFinalSave =
-        allPhotosAttachedPost &&
-        allPFAnsweredAll &&
-        isSummaryFilled &&
-        isSummaryCheckFilled;
 
     /* ---------- validation ---------- */
     // ต้องตอบ PASS/FAIL/N/A สำหรับ: หัวข้อเดี่ยว + หัวข้อย่อยทั้งหมด
@@ -972,6 +967,12 @@ export default function StationPMReport() {
     }, []);
 
     const allPFAnswered = useMemo(() => PF_REQUIRED_KEYS.every((k) => rows[k]?.pf !== ""), [rows, PF_REQUIRED_KEYS]);
+
+    const canFinalSave =
+        allPhotosAttachedPost &&
+        allPFAnswered &&
+        isSummaryFilled &&
+        isSummaryCheckFilled;
 
     const missingPFItems = useMemo(
         () =>
