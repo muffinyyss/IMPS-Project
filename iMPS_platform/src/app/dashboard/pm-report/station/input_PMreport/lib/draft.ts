@@ -20,7 +20,7 @@ function safeStorage() {
 }
 
 // เพิ่มฟังก์ชันใหม่สำหรับรายงาน PM ประเภทใหม่ (สมมติว่าเป็น "General" หรือ "Station")
-export function draftKeyStation(stationId: string | null | undefined, draftId = "default") {
+export function draftKey(stationId: string | null | undefined, draftId = "default") {
   // เช่น 'pmDraft:v2:station-general:ST-001:UUID'
   return `pmDraft:v2:station:${stationId ?? "unknown"}:${draftId}`;
 }

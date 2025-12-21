@@ -121,7 +121,7 @@ def _fmt_date_thai_like_sample(val) -> str:
 
 def _r_idx(k: str) -> int:
     m = re.match(r"r(\d+)$", k.lower())
-    return int(m.group(1)) if m else ""
+    return int(m.group(1)) if m else 10_000
 
 
 # -------------------- Font / Text layout helpers --------------------
@@ -446,7 +446,7 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     out: List[dict] = []
 
     # ---------- 1) ใช้ข้อมูลจาก doc.photos ถ้ามี ----------
-    photos = (doc.get("photos") or {}).get(f"g{idx}") or []
+    photos = (doc.get("photos") or {}).get(f"r{idx}") or []
     for p in photos:
         if isinstance(p, dict) and p.get("url"):
             out.append({"url": p["url"]})
@@ -461,7 +461,7 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
         return []
 
     backend_root = Path(__file__).resolve().parents[2]   # backend/
-    folder = backend_root / "uploads" / "stationpm" / station_id / doc_id / f"g{idx}"
+    folder = backend_root / "uploads" / "stationpm" / station_id / doc_id / f"r{idx}"
 
     _log(f"[PHOTO] try folder: {folder}")
     if not folder.exists():
@@ -474,7 +474,7 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
             if len(out) >= PHOTO_MAX_PER_ROW:
                 break
 
-    _log(f"[PHOTO] found {len(out)} files for g{idx}")
+    _log(f"[PHOTO] found {len(out)} files for r{idx}")
     return out
 
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
@@ -482,7 +482,7 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
     out: List[dict] = []
 
     # ---------- 1) ใช้ข้อมูลจาก doc.photos_pre ถ้ามี ----------
-    photos = (doc.get("photos_pre") or {}).get(f"g{idx}") or []
+    photos = (doc.get("photos_pre") or {}).get(f"r{idx}") or []
     for p in photos:
         if isinstance(p, dict) and p.get("url"):
             out.append({"url": p["url"]})
@@ -497,7 +497,7 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
         return []
 
     backend_root = Path(__file__).resolve().parents[2]   # backend/
-    folder = backend_root / "uploads" / "stationpm" / station_id / doc_id / f"g{idx}"
+    folder = backend_root / "uploads" / "stationpm" / station_id / doc_id / f"r{idx}"
 
     _log(f"[PHOTO] try folder: {folder}")
     if not folder.exists():
@@ -510,7 +510,7 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
             if len(out) >= PHOTO_MAX_PER_ROW:
                 break
 
-    _log(f"[PHOTO] found {len(out)} files for g{idx}")
+    _log(f"[PHOTO] found {len(out)} files for r{idx}")
     return out
 
 
@@ -1161,7 +1161,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
         # กำหนดความสูงขั้นต่ำของ remark ตามหมายเลขข้อที่แท้จริงเท่านั้น
         if row_num in [7, 8, 9]:
-            remark_h = max(remark_h, LINE_H * 4)
+            remark_h = max(remark_h, LINE_H * 3.5)
 
         result_block_h = max(ROW_MIN_H, len(result_lines) * LINE_H)
         row_h_eff = max(ROW_MIN_H, item_h, remark_h, result_block_h)
@@ -1261,8 +1261,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     # ใช้ความกว้างของแต่ละคอลัมน์จริงแทน col_w
     col_widths = [item_w, result_w, remark_w]
-    row_h_header = 7
-    row_h_sig = 15
+    row_h_header = 5
+    row_h_sig = 14
     row_h_name = 5
     row_h_date = 5
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
@@ -1354,6 +1354,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         
         for it in checks:
             idx = int(it.get("idx") or 0)
+            
+            if idx == 10:
+                continue
             
             question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
             question_text_pre = f"{question_text} (Pre-PM)"

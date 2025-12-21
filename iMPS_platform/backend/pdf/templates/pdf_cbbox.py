@@ -40,7 +40,7 @@ ROW_TITLES = {
     "r2": "ตรวจสอบอุปกรณ์ตัดวงจรไฟฟ้า",
     "r3": "ตรวจสอบสภาพทั่วไป",
     "r4": "ตรวจสอบสภาพดักซีล,ซิลิโคนกันซึม",
-    "r5": "อุปกรณ์ตัดวงจรไฟฟ้า (Safety Switch / Circuit Breaker)",
+    "r5": "อุปกรณ์ตัดวงจรไฟฟ้า \n(Safety Switch / Circuit Breaker)",
     "r6": "ทดสอบปุ่ม Trip Test (Circuit Breaker)",
     "r7": "ตรวจสอบจุดต่อทางไฟฟ้าและขันแน่น",
     "r8": "ทำความสะอาดตู้ MDB"
@@ -117,7 +117,7 @@ def _norm_result(val: str) -> str:
 
 def _r_idx(k: str) -> int:
     m = re.match(r"r(\d+)$", k.lower())
-    return int(m.group(1)) if m else 0
+    return int(m.group(1)) if m else 999
 
 
 # -------------------- Font / Text layout helpers --------------------
@@ -1044,11 +1044,7 @@ def _draw_photos_row(
     return row_h
 
 def _build_photo_questions(row_titles: dict) -> List[dict]:
-    """
-    สร้างรายการคำถามสำหรับหน้า Photos โดย
-    - แสดงเฉพาะหัวข้อหลัก r{n}
-    - รวมหัวข้อย่อย r{n}_sub* ต่อท้ายในช่องเดียวกัน (คนละบรรทัด)
-    """
+
     out: List[dict] = []
     # ใช้ลำดับตามการประกาศใน ROW_TITLES
     for key, title in row_titles.items():
@@ -1205,7 +1201,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         
         is_row_5 = "5." in text
         if is_row_5:
-            remark_h = max(remark_h, LINE_H * 6)
+            remark_h = max(remark_h, LINE_H * 7)
         
         row_h_eff = max(ROW_MIN_H, item_h, remark_h)
         _ensure_space(row_h_eff)
@@ -1216,7 +1212,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         
         if idx == 1:
             # ข้อ 1: แสดงค่าจาก dropdownQ1
-            result_text = str(doc.get("dropdownQ1", "") or "555")
+            result_text = str(doc.get("dropdownQ1", "") or "-")
             _draw_result_cell(pdf, base_font, x, y, result_w, row_h_eff, result_text, mode="text")
             x += result_w
             # Remark column ยังคงแสดงค่า remark ปกติ
@@ -1316,8 +1312,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     # ใช้ความกว้างของแต่ละคอลัมน์จริงแทน col_w
     col_widths = [item_w, result_w, remark_w]
-    row_h_header = 7
-    row_h_sig = 15
+    row_h_header = 5
+    row_h_sig = 14
     row_h_name = 5
     row_h_date = 5
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
@@ -1490,9 +1486,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         question_text = f"{idx}. {ROW_TITLES.get(f'r{idx}', it.get('text', f'รายการที่ {idx}'))}"
         img_items = _get_photo_items_for_idx(doc, idx)
 
+        # คำนวณความสูงจริงของแถว (เหมือน Pre-PM)
         _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
-        est_row_h = max(ROW_MIN_H, text_h, PHOTO_IMG_MAX_H + 2 * PADDING_Y)
-        _ensure_space_photo_post(est_row_h)
+        total_images = len(img_items)
+        num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
+        img_h = PHOTO_IMG_MAX_H
+        images_total_h = (num_rows * img_h + (num_rows - 1) * PHOTO_GAP + 2 * PADDING_Y) if num_rows > 0 else 0
+        actual_row_h = max(PHOTO_ROW_MIN_H, text_h + 2 * PADDING_Y, images_total_h + 4)
+        
+        # เช็คพื้นที่ด้วยความสูงจริง
+        _ensure_space_photo_post(actual_row_h)
 
         row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
                                      question_text, img_items)

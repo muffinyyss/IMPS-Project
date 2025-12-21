@@ -11,7 +11,7 @@ import {
     Typography,
     Textarea,
 } from "@material-tailwind/react";
-import { draftKeyCB_BOX, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
+import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Image from "next/image";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -692,7 +692,7 @@ export default function CBBOXPMForm() {
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
 
-    const key = useMemo(() => draftKeyCB_BOX(stationId), [stationId]);
+    const key = useMemo(() => draftKey(stationId), [stationId]);
     // const [audio, setAudio] = useState<PF>("");
     // const [สรุปผล, setสรุปผล] = useState<PF>("");
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
@@ -727,9 +727,21 @@ export default function CBBOXPMForm() {
         return base;
     }, []);
 
-    const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
-        Object.fromEntries(ALL_KEYS.map((k) => [k, { pf: "", remark: "" }])) as Record<string, { pf: PF; remark: string }>
-    );
+    // const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
+    //     Object.fromEntries(ALL_KEYS.map((k) => [k, { pf: "", remark: "" }])) as Record<string, { pf: PF; remark: string }>
+    // );
+     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
+            const initial: Record<string, { pf: PF; remark: string }> = {};
+    
+            QUESTIONS.forEach((q) => {
+                if (q.kind === "simple" || q.kind === "measure") {
+                    // ✅ ตั้งค่าเริ่มต้นสำหรับ simple และ measure
+                    initial[q.key] = { pf: "", remark: "" };
+                } 
+            });
+    
+            return initial;
+        });
 
     /* ---------- Dropdowns สำหรับข้อ 1 และ 2 ---------- */
     const [dropdownQ1, setDropdownQ1] = useState<string>("");
@@ -794,6 +806,32 @@ export default function CBBOXPMForm() {
                 // 6) dropdowns
                 if (data.dropdownQ1) setDropdownQ1(data.dropdownQ1);
                 if (data.dropdownQ2) setDropdownQ2(data.dropdownQ2);
+
+                // 7) Load rows (PASS/FAIL) from database if available
+                if (data.rows) {
+                    // Merge with current state to ensure all keys are present
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        // Merge with existing to ensure all keys are present
+                        Object.entries(data.rows).forEach(([k, v]) => {
+                            next[k] = v as { pf: PF; remark: string };
+                        });
+                        return next;
+                    });
+                } else {
+                    // Initialize all rows if not loaded from database
+                   setRows((prev) => {
+                        const next = { ...prev };
+                        QUESTIONS.forEach((q) => {
+                            if (q.kind === "simple" || q.kind === "measure") {
+                                if (!next[q.key]) {
+                                    next[q.key] = { pf: "", remark: "" };
+                                }
+                            } 
+                        });
+                        return next;
+                    });
+                }
 
             } catch (err) {
                 console.error("load report failed:", err);
@@ -1056,18 +1094,18 @@ export default function CBBOXPMForm() {
     );
 
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k].pf !== ""),
+        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
     const allPFAnsweredAll = useMemo(
-        () => PF_KEYS_ALL.filter((k) => k !== "r1" && k !== "r2").every((k) => rows[k].pf !== ""),
+        () => PF_KEYS_ALL.filter((k) => k !== "r1" && k !== "r2").every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_ALL]
     );
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => !rows[k].pf)
+            PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
@@ -1075,7 +1113,7 @@ export default function CBBOXPMForm() {
 
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => !rows[k].pf && k !== "r1" && k !== "r2")
+            PF_KEYS_ALL.filter((k) => !rows[k]?.pf && k !== "r1" && k !== "r2")
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_ALL]
@@ -1415,11 +1453,12 @@ export default function CBBOXPMForm() {
             <SectionCard key={q.key} title={getQuestionLabel(q, mode)} subtitle={subtitle}>
                 <PassFailRow
                     label="ผลการทดสอบ"
-                    value={rows[q.key].pf}
+                    value={rows[q.key]?.pf ?? ""}
                     onChange={(v) =>
                         setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
                     }
-                    remark={rows[q.key].remark}
+                    // remark={rows[q.key].remark}
+                    remark={rows[q.key]?.remark || ""} 
                     onRemarkChange={(v) =>
                         setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
                     }
@@ -1472,11 +1511,10 @@ export default function CBBOXPMForm() {
             summary,
             summary_pf: summaryCheck, // ⬅️ เก็บเป็นคีย์ใหม่
             photoRefs,
-            inspector,
             dropdownQ1,
             dropdownQ2,
         });
-    }, [key, stationId, draftId, rows, m5.state, inspector, summary, summaryCheck, dropdownQ1, dropdownQ2, photoRefs]); // ⬅️ เพิ่ม photoRefs
+    }, [key, stationId, draftId, rows, m5.state,  summary, summaryCheck, dropdownQ1, dropdownQ2, photoRefs]); // ⬅️ เพิ่ม photoRefs
 
 
     /* ---------- actions (submit เหมือนเดิม) ---------- */
@@ -1556,15 +1594,17 @@ export default function CBBOXPMForm() {
                 setDocName(doc_name);
             }
 
-            // อัปโหลดรูปแยกกลุ่ม g1..g8 (map ตาม photos ที่มีจาก QUESTIONS)
+            // อัปโหลดรูปแยกกลุ่ม (แบบ parallel) g1..g8 (map ตาม photos ที่มีจาก QUESTIONS)
             const photoNos = Object.keys(photos).map(Number);
+            const uploadPromises: Promise<void>[] = [];
             for (const no of photoNos) {
                 const list = photos[no] || [];
                 if (list.length === 0) continue;
                 const files = list.map((p) => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre");
+                uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
             }
+            await Promise.all(uploadPromises);
 
             await Promise.all(
                 Object.values(photos).flat().map(p => delPhoto(key, p.id))
@@ -1578,7 +1618,8 @@ export default function CBBOXPMForm() {
             // if (!fin.ok) throw new Error(await fin.text());
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {
@@ -1632,15 +1673,17 @@ export default function CBBOXPMForm() {
             //     setDocName(doc_name);
             // }
 
-            // อัปโหลดรูปแยกกลุ่ม g1..g8 (map ตาม photos ที่มีจาก QUESTIONS)
+            // อัปโหลดรูปแยกกลุ่ม (แบบ parallel) g1..g8 (map ตาม photos ที่มีจาก QUESTIONS)
             const photoNos = Object.keys(photos).map(Number);
+            const uploadPromises: Promise<void>[] = [];
             for (const no of photoNos) {
                 const list = photos[no] || [];
                 if (list.length === 0) continue;
                 const files = list.map((p) => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-                await uploadGroupPhotos(finalReportId, stationId, `g${no}`, files, "post");
+                uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, `g${no}`, files, "post"));
             }
+            await Promise.all(uploadPromises);
 
             const fin = await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, {
                 method: "POST",
@@ -1651,7 +1694,8 @@ export default function CBBOXPMForm() {
             if (!fin.ok) throw new Error(await fin.text());
 
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
+            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
         } catch (err: any) {
             alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
         } finally {

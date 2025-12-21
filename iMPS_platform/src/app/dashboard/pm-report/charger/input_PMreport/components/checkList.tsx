@@ -151,12 +151,11 @@ const QUESTIONS: Question[] = [
 
     { no: 8, key: "r8", label: "8) ป้ายเตือนต้องการระบายอากาศ", kind: "simple", hasPhoto: true },
     { no: 9, key: "r9", label: "9) ป้ายเตือนปุ่มฉุกเฉิน", kind: "simple", hasPhoto: true },
-    // { no: 10, key: "r10", label: "10) วัดแรงดันวงจรควบคุมการอัดประจุ", kind: "simple", hasPhoto: true },
-    { no: 10, key: "r10", label: "10) ตรวจสอบแผ่นกรองระบายอากาศ", kind: "simple", hasPhoto: true },
-    { no: 11, key: "r11", label: "11) ตรวจสอบจุดต่อทางไฟฟ้า", kind: "simple", hasPhoto: true },
-    { no: 12, key: "r12", label: "12) ตรวจสอบคอนแทคเตอร์", kind: "simple", hasPhoto: true },
-    { no: 13, key: "r13", label: "14) ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก", kind: "simple", hasPhoto: true },
-    { no: 14, key: "r14", label: "14) ตรวจสอบแรงดันไฟฟ้าที่พิน CP", kind: "simple", hasPhoto: true },
+    { no: 10, key: "r10", label: "10) ตรวจสอบแรงดันไฟฟ้าที่พิน CP", kind: "simple", hasPhoto: true },
+    { no: 11, key: "r11", label: "11) ตรวจสอบแผ่นกรองระบายอากาศ", kind: "simple", hasPhoto: true },
+    { no: 12, key: "r12", label: "12) ตรวจสอบจุดต่อทางไฟฟ้า", kind: "simple", hasPhoto: true },
+    { no: 13, key: "r13", label: "13) ตรวจสอบคอนแทคเตอร์", kind: "simple", hasPhoto: true },
+    { no: 14, key: "r14", label: "14) ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก", kind: "simple", hasPhoto: true },
     { no: 15, key: "r15", label: "15) ตรวจสอบลำดับเฟส", kind: "simple", hasPhoto: true },
     { no: 16, key: "r16", label: "16) วัดแรงดันไฟฟ้าด้านเข้า", kind: "measure", hasPhoto: true },
 
@@ -863,6 +862,29 @@ export default function ChargerPMForm() {
                 // 5) inspector
                 if (data.inspector) setInspector(data.inspector);
 
+                // 6) rows - initialize from post data if available, otherwise use defaults
+                if (data.rows) {
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        // Merge with existing to ensure all keys are present
+                        Object.entries(data.rows).forEach(([k, v]) => {
+                            next[k] = v as { pf: PF; remark: string };
+                        });
+                        return next;
+                    });
+                } else {
+                    // Ensure all keys are initialized with defaults
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        QUESTIONS.forEach((q) => {
+                            if (!next[q.key]) {
+                                next[q.key] = { pf: "", remark: "" };
+                            }
+                        });
+                        return next;
+                    });
+                }
+
             } catch (err) {
                 console.error("load report failed:", err);
             }
@@ -1123,18 +1145,18 @@ export default function ChargerPMForm() {
     );
 
     const allPFAnsweredPre = useMemo(
-        () => PF_KEYS_PRE.every((k) => rows[k].pf !== ""),
+        () => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_PRE]
     );
 
     const allPFAnsweredAll = useMemo(
-        () => PF_KEYS_ALL.every((k) => rows[k].pf !== ""),
+        () => PF_KEYS_ALL.every((k) => rows[k]?.pf !== ""),
         [rows, PF_KEYS_ALL]
     );
 
     const missingPFItemsPre = useMemo(
         () =>
-            PF_KEYS_PRE.filter((k) => !rows[k].pf)
+            PF_KEYS_PRE.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_PRE]
@@ -1142,7 +1164,7 @@ export default function ChargerPMForm() {
 
     const missingPFItemsAll = useMemo(
         () =>
-            PF_KEYS_ALL.filter((k) => !rows[k].pf)
+            PF_KEYS_ALL.filter((k) => !rows[k]?.pf)
                 .map((k) => Number(k.replace("r", "")))
                 .sort((a, b) => a - b),
         [rows, PF_KEYS_ALL]
@@ -1171,7 +1193,7 @@ export default function ChargerPMForm() {
     // อินพุตที่บังคับ: เฉพาะข้อ 17
     const missingInputs = useMemo(() => {
         const r: Record<number, string[]> = {};
-        r[14] = cp.value.trim() ? [] : ["CP"];
+        r[10] = cp.value.trim() ? [] : ["CP"];
         r[16] = VOLTAGE1_FIELDS.filter((k) => !m16.state[k]?.value?.toString().trim());
         // r[16] = VOLTAGE1_FIELDS.filter((k) => !m16.state?.[k]?.value?.toString().trim());
 
@@ -1218,7 +1240,7 @@ export default function ChargerPMForm() {
     const renderMeasureGridWithPre = (no: number) => {
         const cfg = FIELD_GROUPS[no];
         const m = MEASURE_BY_NO[no];
-        
+
         if (!cfg || !m) return null;
 
         return (
@@ -1307,7 +1329,7 @@ export default function ChargerPMForm() {
         const subtitle = FIELD_GROUPS[q.no]?.note;
 
         const inlineLeft =
-            q.no === 10 ? (
+            q.no === 11 ? (
                 <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-700">
                     <input
                         type="checkbox"
@@ -1345,7 +1367,7 @@ export default function ChargerPMForm() {
                     {hasMeasure && renderMeasureGrid(q.no)}
 
                     {/* ข้อ 15: CP */}
-                    {q.no === 14 && (
+                    {q.no === 10 && (
                         <div className="tw-pt-1 tw-space-y-2">
                             <div className="tw-max-w-xs">
                                 <InputWithUnit<UnitVoltage>
@@ -1370,13 +1392,13 @@ export default function ChargerPMForm() {
             <SectionCard key={q.key} title={q.label} subtitle={subtitle}>
                 <PassFailRow
                     label="ผลการทดสอบ"
-                    value={rows[q.key].pf}
+                    value={rows[q.key]?.pf ?? ""}
                     onChange={(v) =>
-                        setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
+                        setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })
                     }
-                    remark={rows[q.key].remark}
+                    remark={rows[q.key]?.remark ?? ""}
                     onRemarkChange={(v) =>
-                        setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })
+                        setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })
                     }
                     aboveRemark={
                         q.hasPhoto && (
@@ -1404,7 +1426,7 @@ export default function ChargerPMForm() {
 
 
 
-                {q.no === 14 && (
+                {q.no === 10 && (
                     <div className="tw-pt-1 tw-space-y-2">
                         {/* ค่า CP ก่อน PM – disable + ไม่ required + label ด้านบน */}
                         <div className="tw-max-w-xs tw-pointer-events-none tw-opacity-60">
@@ -1513,36 +1535,36 @@ export default function ChargerPMForm() {
         if (!res.ok) throw new Error(await res.text());
     }
 
-    const onPreSave = async () => {
-        if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
-        if (!allRequiredInputsFilled) {
-            alert("กรุณากรอกค่าข้อ 14 (CP) และข้อ 16 ให้ครบก่อนบันทึก");
-            return;
-        }
-        if (submitting) return;
-        setSubmitting(true);
-        try {
-            const token = localStorage.getItem("access_token");
-            const pm_date = job.date?.trim() || ""; // เก็บเป็น YYYY-MM-DD ตามที่กรอก
+   
 
-            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-            const payload = {
-                station_id: stationId,
-                issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
-                job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
-                inspector,
-                // rows,
-                measures_pre: { m16: m16.state, cp },
-                // summary,
-                pm_date,
-                doc_name: docName,
-                side: "pre" as TabId,
+   const onPreSave = async () => {
+    if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    if (!allRequiredInputsFilled) {
+        alert("กรุณากรอกค่าข้อ 10 (CP) และข้อ 16 ให้ครบก่อนบันทึก");
+        return;
+    }
+    if (submitting) return;
+    setSubmitting(true);
+    
+    try {
+        const token = localStorage.getItem("access_token");
+        const pm_date = job.date?.trim() || "";
 
-            };
+        const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+        const payload = {
+            station_id: stationId,
+            issue_id: issueIdFromJob,
+            job: jobWithoutIssueId,
+            inspector,
+            measures_pre: { m16: m16.state, cp },
+            pm_date,
+            doc_name: docName,
+            side: "pre" as TabId,
+        };
 
-            // 1) สร้างรายงาน (submit)
-            const res = await fetch(`${API_BASE}/pmreport/pre/submit`, {
-                // const res = await apiFetch(`${API_BASE}/pmreport/pre/submit`, {
+        // 1) Submit report และ upload รูป + ลบรูปแบบ parallel
+        const [submitRes] = await Promise.all([
+            fetch(`${API_BASE}/pmreport/pre/submit`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -1550,66 +1572,70 @@ export default function ChargerPMForm() {
                 },
                 credentials: "include",
                 body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            // const { report_id } = await res.json();
-            const { report_id, doc_name } = await res.json() as {
-                report_id: string;
-                doc_name?: string;
-            };
-            if (doc_name) {
-                setDocName(doc_name);
-            }
+            }),
+            // เริ่มลบรูปพร้อมกับการ submit (ไม่ต้องรอ)
+            (async () => {
+                const allPhotos = Object.values(photos).flat();
+                await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+            })()
+        ]);
 
-            // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group "g{no}"
-            const photoNos = Object.keys(photos).map(n => Number(n));
-            for (const no of photoNos) {
-                const list = photos[no] || [];
-                if (list.length === 0) continue;
+        if (!submitRes.ok) throw new Error(await submitRes.text());
+
+        const { report_id, doc_name } = await submitRes.json() as {
+            report_id: string;
+            doc_name?: string;
+        };
+        if (doc_name) setDocName(doc_name);
+
+        // 2) Upload รูปภาพทั้งหมดพร้อมกัน (ไม่ต้องรอลบรูปเสร็จ)
+        const uploadPromises: Promise<void>[] = [];
+        Object.entries(photos).forEach(([no, list]) => {
+            if (list?.length) {
                 const files = list.map(p => p.file!).filter(Boolean) as File[];
-                if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre");
+                if (files.length) {
+                    uploadPromises.push(
+                        uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre")
+                    );
+                }
             }
-            await Promise.all(
-                Object.values(photos).flat().map(p => delPhoto(key, p.id))
-            );
+        });
 
-            clearDraftLocal(key);
-            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
-        } catch (err: any) {
-            alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
-        } finally {
-            setSubmitting(false);
-        }
-    };
+        await Promise.all(uploadPromises);
+
+        // 3) Clear draft และ redirect
+        clearDraftLocal(key);
+        router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
+        
+    } catch (err: any) {
+        alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    } finally {
+        setSubmitting(false);
+    }
+};
 
     const onFinalSave = async () => {
-        if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
-        if (submitting) return;
-        setSubmitting(true);
-        try {
-            const token = localStorage.getItem("access_token");
-            const payload = {
-                station_id: stationId,
-                // issue_id: issueIdFromJob,                // authoritative (ระดับบนสุด)
-                // job: jobWithoutIssueId,                  // ไม่มี issue_id แล้ว
-                // inspector,
-                rows,
-                measures: { m16: m16.state, cp },
-                summary,
-                // pm_date,
-                // doc_name: docName,
-                ...(summaryCheck ? { summaryCheck } : {}), // จากเคสก่อนหน้า
-                // ...(dustFilterChanged ? { dustFilterChanged } : {}),
-                dust_filter: dustFilterChanged ? "yes" : "no",
-                side: "after" as TabId,
-                report_id: editId,
-            };
+    if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
+    if (submitting) return;
+    setSubmitting(true);
+    
+    try {
+        const token = localStorage.getItem("access_token");
 
-            // 1) สร้างรายงาน (submit)
-            const res = await fetch(`${API_BASE}/pmreport/submit`, {
-                // const res = await apiFetch(`${API_BASE}/pmreport/submit`, {
+        const payload = {
+            station_id: stationId,
+            rows,
+            measures: { m16: m16.state, cp },
+            summary,
+            ...(summaryCheck ? { summaryCheck } : {}),
+            dust_filter: dustFilterChanged ? "yes" : "no",
+            side: "after" as TabId,
+            report_id: editId,
+        };
+
+        // 1) Submit report พร้อมกับลบรูปจาก IndexedDB แบบ parallel
+        const [submitRes] = await Promise.all([
+            fetch(`${API_BASE}/pmreport/submit`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -1617,46 +1643,55 @@ export default function ChargerPMForm() {
                 },
                 credentials: "include",
                 body: JSON.stringify(payload),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            // const { report_id } = await res.json();
-            const { report_id, doc_name } = await res.json() as {
-                report_id: string;
-                doc_name?: string;
-            };
-            // if (doc_name) {
-            //     setDocName(doc_name);
-            // }
+            }),
+            // ลบรูปพร้อมกับการ submit
+            (async () => {
+                const allPhotos = Object.values(photos).flat();
+                await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+            })()
+        ]);
 
-            // 2) อัปโหลดรูปทั้งหมด แปลงเลขข้อเป็น group "g{no}"
-            const photoNos = Object.keys(photos).map(n => Number(n));
-            for (const no of photoNos) {
-                const list = photos[no] || [];
-                if (list.length === 0) continue;
+        if (!submitRes.ok) throw new Error(await submitRes.text());
+
+        const { report_id } = await submitRes.json() as { report_id: string; doc_name?: string };
+
+        // 2) Upload รูปภาพและ finalize แบบ parallel
+        const uploadPromises: Promise<void>[] = [];
+        
+        Object.entries(photos).forEach(([no, list]) => {
+            if (list?.length) {
                 const files = list.map(p => p.file!).filter(Boolean) as File[];
-                if (files.length === 0) continue;
-                await uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post");
+                if (files.length) {
+                    uploadPromises.push(
+                        uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post")
+                    );
+                }
             }
+        });
 
-            // 3) finalize (ออปชัน)
-            const fin = await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
-                // const fin = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+        // Upload รูปและ finalize พร้อมกัน (ถ้า finalize ไม่ต้องรอรูป)
+        await Promise.all([
+            ...uploadPromises,
+            fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
                 method: "POST",
                 headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 credentials: "include",
-                body: new URLSearchParams({ station_id: stationId }), // endpoint นี้รับ Form-encoded
-            });
-            if (!fin.ok) throw new Error(await fin.text());
+                body: new URLSearchParams({ station_id: stationId }),
+            }).then(fin => {
+                if (!fin.ok) throw new Error("Finalize failed");
+            })
+        ]);
 
-            clearDraftLocal(key);
-            // router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&saved=1`);
-            router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
-        } catch (err: any) {
-            alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
-        } finally {
-            setSubmitting(false);
-        }
-    };
+        // 3) Clear draft และ redirect
+        clearDraftLocal(key);
+        router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
+        
+    } catch (err: any) {
+        alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+    } finally {
+        setSubmitting(false);
+    }
+};
 
 
     const active: TabId = useMemo(
@@ -2026,7 +2061,7 @@ export default function ChargerPMForm() {
                             </div>
                         )}
                     </CardBody>
-                    
+
                     <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
                         <div className="tw-p-3 tw-flex tw-flex-col tw-gap-3">
                             {/* ข้อ 1 (ใช้ค่าที่เลือกตาม tab) */}
@@ -2037,7 +2072,7 @@ export default function ChargerPMForm() {
                             </Section>
 
                             {/* ข้อ 2 */}
-                            <Section title="2) อินพุตข้อ 14 และ 16" ok={allRequiredInputsFilled}>
+                            <Section title="2) อินพุตข้อ 10 และ 16" ok={allRequiredInputsFilled}>
                                 <div className="tw-space-y-1">
                                     <Typography variant="small" className="!tw-text-amber-700">
                                         ยังขาด:
@@ -2091,7 +2126,7 @@ export default function ChargerPMForm() {
                                         !allPhotosAttachedPre
                                             ? "กรุณาแนบรูปในส่วน Pre ให้ครบก่อนบันทึก"
                                             : !allRequiredInputsFilled
-                                                ? "กรุณากรอกค่าข้อ 14 (CP) และข้อ 16 ให้ครบก่อนบันทึก"
+                                                ? "กรุณากรอกค่าข้อ 10 (CP) และข้อ 16 ให้ครบก่อนบันทึก"
                                                 : undefined
                                     }
                                 >
@@ -2120,4 +2155,3 @@ export default function ChargerPMForm() {
         </section >
     );
 }
-
