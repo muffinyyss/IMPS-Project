@@ -11,7 +11,7 @@ import {
     Typography,
     Textarea,
 } from "@material-tailwind/react";
-import { draftKeyCB_BOX, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
+import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Image from "next/image";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -692,7 +692,7 @@ export default function CBBOXPMForm() {
     const [stationId, setStationId] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
 
-    const key = useMemo(() => draftKeyCB_BOX(stationId), [stationId]);
+    const key = useMemo(() => draftKey(stationId), [stationId]);
     // const [audio, setAudio] = useState<PF>("");
     // const [สรุปผล, setสรุปผล] = useState<PF>("");
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
@@ -727,9 +727,21 @@ export default function CBBOXPMForm() {
         return base;
     }, []);
 
-    const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
-        Object.fromEntries(ALL_KEYS.map((k) => [k, { pf: "", remark: "" }])) as Record<string, { pf: PF; remark: string }>
-    );
+    // const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(
+    //     Object.fromEntries(ALL_KEYS.map((k) => [k, { pf: "", remark: "" }])) as Record<string, { pf: PF; remark: string }>
+    // );
+     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
+            const initial: Record<string, { pf: PF; remark: string }> = {};
+    
+            QUESTIONS.forEach((q) => {
+                if (q.kind === "simple" || q.kind === "measure") {
+                    // ✅ ตั้งค่าเริ่มต้นสำหรับ simple และ measure
+                    initial[q.key] = { pf: "", remark: "" };
+                } 
+            });
+    
+            return initial;
+        });
 
     /* ---------- Dropdowns สำหรับข้อ 1 และ 2 ---------- */
     const [dropdownQ1, setDropdownQ1] = useState<string>("");
@@ -798,27 +810,27 @@ export default function CBBOXPMForm() {
                 // 7) Load rows (PASS/FAIL) from database if available
                 if (data.rows) {
                     // Merge with current state to ensure all keys are present
-                    setRows(prev => ({
-                        ...prev,
-                        ...data.rows
-                    }));
+                    setRows((prev) => {
+                        const next = { ...prev };
+                        // Merge with existing to ensure all keys are present
+                        Object.entries(data.rows).forEach(([k, v]) => {
+                            next[k] = v as { pf: PF; remark: string };
+                        });
+                        return next;
+                    });
                 } else {
                     // Initialize all rows if not loaded from database
-                    const initializedRows: Record<string, { pf: PF; remark: string }> = {};
-                    QUESTIONS.forEach(q => {
-                        initializedRows[q.key] = { pf: "", remark: "" };
-                    });
-                    if (PF_KEYS_ALL) {
-                        PF_KEYS_ALL.forEach(key => {
-                            if (!initializedRows[key]) {
-                                initializedRows[key] = { pf: "", remark: "" };
-                            }
+                   setRows((prev) => {
+                        const next = { ...prev };
+                        QUESTIONS.forEach((q) => {
+                            if (q.kind === "simple" || q.kind === "measure") {
+                                if (!next[q.key]) {
+                                    next[q.key] = { pf: "", remark: "" };
+                                }
+                            } 
                         });
-                    }
-                    setRows(prev => ({
-                        ...prev,
-                        ...initializedRows
-                    }));
+                        return next;
+                    });
                 }
 
             } catch (err) {
@@ -1441,7 +1453,6 @@ export default function CBBOXPMForm() {
             <SectionCard key={q.key} title={getQuestionLabel(q, mode)} subtitle={subtitle}>
                 <PassFailRow
                     label="ผลการทดสอบ"
-                    // value={rows[q.key].pf}
                     value={rows[q.key]?.pf ?? ""}
                     onChange={(v) =>
                         setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })
