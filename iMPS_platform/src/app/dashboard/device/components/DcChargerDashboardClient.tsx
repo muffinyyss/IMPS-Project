@@ -306,24 +306,13 @@ function SideList({
 }) {
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        const originalItems = items.filter((d) => {
+         return items.filter((d) => {
             const matchText = d.name.toLowerCase().includes(q);
             const matchStatus = filter === "all" ? true : d.status === filter;
             return matchText && matchStatus;
         });
-        if (title.includes("Left")) {
-        const extraItems: Device[] = Array.from({ length: 8 }, (_, i) => ({
-            id: `Fan-${i + 1}`,
-            name: `Fan${i + 1}`,        // ชื่อตามรูปภาพ
-            value: "0",                // ค่าสมมติในรูปภาพ
-            status: "error" as Status,              // สถานะสมมติในรูปภาพ
-            metricType: "times" as MetricType,    // ไอคอนนาฬิกาทราย/เวลา
-        }));
-        
-        return [...originalItems, ...extraItems];
-        }
-        return originalItems;
-    }, [items, filter, search, title]);
+
+    }, [items, filter, search]);
 
     return (
         <aside className="tw-rounded-3xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-p-4 sm:tw-p-5">
@@ -518,6 +507,14 @@ export default function DCChargerDashboard() {
             { id: "charge-ctl1", name: "Charging Controller1", value: parseTimes(p.chargingController1), status: "ok", metricType: "hour" },
             { id: "iso1", name: "Insulation Monitoring1", value: parseTimes(p.insulationMonitoring1), status: "ok", metricType: "hour" },
         ];
+         const extraFans: Device[] = Array.from({ length: 8 }, (_, i) => ({
+            id: `Fan-${i + 1}`,
+            name: `Fan${i + 1}`,
+            value: "0",
+            status: "error" as Status,
+            metricType: "times" as MetricType,
+        }));
+        left.push(...extraFans);
 
         const right: Device[] = [
             { id: "dc-contact-3", name: "DC Power Contactor3", value: String(p.DC_power_contractor3 ?? ""), status: pickStatus(p.DC_power_contractor3, p.DC_power_contractor3+(20/100), p.DC_power_contractor3+(50/100)), metricType: "times" },
