@@ -30,7 +30,7 @@ function safeStorage() {
 // export function draftKeyCCB(stationId?: string | null, draftId = "default") {
 //   return `pmDraft:v2:ccb:${stationId ?? "unknown"}:${draftId}`;
 // }
-export function draftKeyCB_BOX(stationId: string | null | undefined, draftId = "default") {
+export function draftKey(stationId: string | null | undefined, draftId = "default") {
   // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
   return `pmDraft:v2:cb-box:${stationId ?? "unknown"}:${draftId}`;
 }
