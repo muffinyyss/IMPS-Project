@@ -71,7 +71,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             try {
                 setLoadingStations(true);
                 const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-                
+
                 if (!token) {
                     console.warn("No token found");
                     return;
@@ -117,7 +117,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             email: form.email.trim(),
             company_name: form.company_name?.trim() || undefined,
             tel: form.tel.trim(),
-            ...(form.role === "technician" && selectedStations.length > 0 
+            ...(form.role === "technician" && selectedStations.length > 0
                 ? { station_id: selectedStations.map(s => s.station_id) }
                 : {}),
         };
@@ -211,7 +211,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     <Option value="admin">Admin</Option>
                                     <Option value="technician">Technician</Option>
                                 </Select>
-                                <span className="tw-text-red-500 tw-mt-4">*</span>
+                                {/* <span className="tw-text-red-500 tw-mt-4">*</span> */}
                             </div>
                         </div>
 
@@ -220,7 +220,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             <div className="tw-relative">
                                 <div className="tw-flex tw-items-center tw-gap-1">
                                     <Input
-                                        label="Select Station"
+                                        label={<span>Select Station <span className="tw-text-red-500">*</span></span>}
                                         placeholder="Type to search..."
                                         value={stationSearchValue}
                                         onChange={(e) => {
@@ -231,9 +231,9 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                         disabled={loadingStations || stations.length === 0}
                                         crossOrigin={undefined}
                                     />
-                                    <span className="tw-text-red-500 tw-mt-4">*</span>
                                 </div>
                                 
+
                                 {/* Dropdown suggestions */}
                                 {showStationDropdown && (
                                     <div className="tw-absolute tw-top-full tw-left-0 tw-right-0 tw-z-10 tw-mt-1 tw-max-h-48 tw-overflow-y-auto tw-bg-white tw-border tw-border-gray-300 tw-rounded-lg tw-shadow-lg">
@@ -243,9 +243,9 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                                 (station.station_name
                                                     .toLowerCase()
                                                     .includes(stationSearchValue.toLowerCase()) ||
-                                                station.station_id
-                                                    .toLowerCase()
-                                                    .includes(stationSearchValue.toLowerCase()))
+                                                    station.station_id
+                                                        .toLowerCase()
+                                                        .includes(stationSearchValue.toLowerCase()))
                                             )
                                             .map((station) => (
                                                 <div
@@ -265,23 +265,23 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                                     </Typography>
                                                 </div>
                                             ))}
-                                        
+
                                         {stationSearchValue && stations.filter((station) =>
                                             !selectedStations.find(s => s.station_id === station.station_id) &&
                                             (station.station_name
                                                 .toLowerCase()
                                                 .includes(stationSearchValue.toLowerCase()) ||
-                                            station.station_id
-                                                .toLowerCase()
-                                                .includes(stationSearchValue.toLowerCase()))
+                                                station.station_id
+                                                    .toLowerCase()
+                                                    .includes(stationSearchValue.toLowerCase()))
                                         ).length === 0 && (
-                                            <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
-                                                No stations found
-                                            </div>
-                                        )}
+                                                <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
+                                                    No stations found
+                                                </div>
+                                            )}
                                     </div>
                                 )}
-                                
+
                                 {loadingStations && (
                                     <Typography variant="small" color="gray" className="tw-mt-1">
                                         Loading stations...
@@ -292,7 +292,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                         No stations available
                                     </Typography>
                                 )}
-                                
+
                                 {/* Selected Stations Tags */}
                                 {selectedStations.length > 0 && (
                                     <div className="tw-mt-3">

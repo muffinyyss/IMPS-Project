@@ -200,15 +200,6 @@ export default function SearchDataTables() {
           const json = await res.json();
           const stations = json?.stations || (Array.isArray(json) ? json : []);
           setAvailableStations(stations);
-          
-          // อัปเดต station names ถ้า selected stations มีข้อมูล
-          if (selectedStations.length > 0) {
-            const updated = selectedStations.map((selected: any) => {
-              const found = stations.find((s: any) => s.station_id === selected.station_id);
-              return found ? found : selected;
-            });
-            setSelectedStations(updated);
-          }
         }
       } catch (e) {
         console.error("Failed to fetch stations", e);
@@ -216,7 +207,18 @@ export default function SearchDataTables() {
         setLoadingStations(false);
       }
     })();
-  }, [openEdit]);
+  }, [openEdit, editingRow]);
+
+  // อัปเดต station names เมื่อ availableStations เปลี่ยน
+  useEffect(() => {
+    if (selectedStations.length > 0 && availableStations.length > 0) {
+      const updated = selectedStations.map((selected: any) => {
+        const found = availableStations.find((s: any) => s.station_id === selected.station_id);
+        return found ? found : selected;
+      });
+      setSelectedStations(updated);
+    }
+  }, [availableStations]);
 
   /* -------------------- Handlers -------------------- */
   const handleEdit = (row: UserRow) => {
@@ -308,6 +310,7 @@ export default function SearchDataTables() {
               company: updated.company ?? u.company,
               role: updated.role ?? u.role,
               tel: updated.tel ?? u.tel,
+              station_id: updated.station_id ?? u.station_id,
             }
           : u
       )
@@ -612,8 +615,11 @@ export default function SearchDataTables() {
             };
 
             if (isAdmin) payload.role = roleValue;
+            // Always send station_id (empty array if technician with no stations, or if not technician)
             if (roleValue === "technician") {
               payload.station_id = selectedStations.map((s) => s.station_id);
+            } else {
+              payload.station_id = [];
             }
 
             const newPw = form.password?.value?.trim();
