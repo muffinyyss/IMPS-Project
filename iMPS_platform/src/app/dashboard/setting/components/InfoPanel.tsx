@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Card from "./chargerSetting-card";
 import { useSearchParams } from "next/navigation";
 
@@ -12,7 +12,7 @@ type SettingDoc = {
     insulation_fault2?: boolean;  // ใช้ boolean แทน string
 };
 
-const InfoPanel = () => {
+const InfoPanel = ({ head }: { head: 1 | 2 }) => {
     const searchParams = useSearchParams();
     const [stationId, setStationId] = useState<string | null>(null);
     const [data, setData] = useState<SettingDoc | null>(null);
@@ -67,16 +67,27 @@ const InfoPanel = () => {
         return status === true ? "Fault" : status === false ? "No Fault" : "N/A";
     };
 
-    const rows = [
-        { label: "IMD Status Head 1", value: data?.insulation_monitoring1 ?? "N/A" },
-        { label: "IMD Status Head 2", value: data?.insulation_monitoring2 ?? "N/A" },
-        { label: "Insulation (kohm) Head 1", value: data?.insulation_kohm1 ?? "N/A" },
-        { label: "Insulation (kohm) Head 2", value: data?.insulation_kohm2 ?? "N/A" },
-        { label: "Isolation Status Head 1", value: formatFaultStatus(data?.insulation_fault1) },
-        { label: "Isolation Status Head 2", value: formatFaultStatus(data?.insulation_fault2) },
-    ];
+        const rows = useMemo(() => {
+            // ตรวจสอบความปลอดภัย: ถ้า data เป็น null ให้ส่งอาร์เรย์ว่างกลับไปก่อ
+
+            if (head === 1) {
+                // แสดงเฉพาะข้อมูลของ Head 1
+                return [
+                    { label: "IMD Status Head 1", value: data?.insulation_monitoring1 ?? "N/A" },
+                    { label: "Insulation (kohm) Head 1", value: data?.insulation_kohm1 ?? "N/A" },
+                    { label: "Isolation Status Head 1", value: formatFaultStatus(data?.insulation_fault1) },
+                ];
+            } else {
+                // แสดงเฉพาะข้อมูลของ Head 2
+                return [
+                    { label: "IMD Status Head 2", value: data?.insulation_monitoring2 ?? "N/A" },
+                    { label: "Insulation (kohm) Head 2", value: data?.insulation_kohm2 ?? "N/A" },
+                    { label: "Isolation Status Head 2", value: formatFaultStatus(data?.insulation_fault2) },
+                ];
+            }
+        }, [data, head]);
     return (
-        <Card title="Info">
+        <Card title={`Info (Head ${head})`}>
             {/* แสดงสถานะการโหลดหรือข้อผิดพลาด */}
             {(loading || err) && (
                 <div className="tw-px-3 tw-py-2">
