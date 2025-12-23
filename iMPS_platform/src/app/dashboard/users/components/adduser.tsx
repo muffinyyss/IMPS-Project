@@ -105,6 +105,12 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // Validation: if technician, must select at least one station
+        if (form.role === "technician" && selectedStations.length === 0) {
+            alert("Please select at least one station for technician role");
+            return;
+        }
+
         const payload: NewUserPayload = {
             ...form,
             username: form.username.trim(),
@@ -189,38 +195,44 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             crossOrigin={undefined}
                         />
                         <div>
-                            <Select
-                                value={form.role}
-                                onChange={(v) => {
-                                    onChange("role", String(v ?? form.role) as "owner" | "technician" | "admin");
-                                    // รีเซ็ต station_id เมื่อเปลี่ยน role
-                                    if (v !== "technician") {
-                                        setForm((s) => ({ ...s, station_id: undefined }));
-                                    }
-                                }}
-                                label="Role"
-                            >
-                                <Option value="owner">Owner</Option>
-                                <Option value="admin">Admin</Option>
-                                <Option value="technician">Technician</Option>
-                            </Select>
+                            <div className="tw-flex tw-items-center tw-gap-1">
+                                <Select
+                                    value={form.role}
+                                    onChange={(v) => {
+                                        onChange("role", String(v ?? form.role) as "owner" | "technician" | "admin");
+                                        // รีเซ็ต station_id เมื่อเปลี่ยน role
+                                        if (v !== "technician") {
+                                            setForm((s) => ({ ...s, station_id: undefined }));
+                                        }
+                                    }}
+                                    label="Role"
+                                >
+                                    <Option value="owner">Owner</Option>
+                                    <Option value="admin">Admin</Option>
+                                    <Option value="technician">Technician</Option>
+                                </Select>
+                                <span className="tw-text-red-500 tw-mt-4">*</span>
+                            </div>
                         </div>
 
                         {/* แสดง Station Search เฉพาะเมื่อ role = technician */}
                         {form.role === "technician" && (
                             <div className="tw-relative">
-                                <Input
-                                    label="Select Station"
-                                    placeholder="Type to search..."
-                                    value={stationSearchValue}
-                                    onChange={(e) => {
-                                        setStationSearchValue(e.target.value);
-                                        setShowStationDropdown(true);
-                                    }}
-                                    onFocus={() => setShowStationDropdown(true)}
-                                    disabled={loadingStations || stations.length === 0}
-                                    crossOrigin={undefined}
-                                />
+                                <div className="tw-flex tw-items-center tw-gap-1">
+                                    <Input
+                                        label="Select Station"
+                                        placeholder="Type to search..."
+                                        value={stationSearchValue}
+                                        onChange={(e) => {
+                                            setStationSearchValue(e.target.value);
+                                            setShowStationDropdown(true);
+                                        }}
+                                        onFocus={() => setShowStationDropdown(true)}
+                                        disabled={loadingStations || stations.length === 0}
+                                        crossOrigin={undefined}
+                                    />
+                                    <span className="tw-text-red-500 tw-mt-4">*</span>
+                                </div>
                                 
                                 {/* Dropdown suggestions */}
                                 {showStationDropdown && (
@@ -317,7 +329,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
 
                 <DialogFooter className="tw-gap-2">
                     <Button variant="outlined" onClick={resetAndClose} type="button">Cancel</Button>
-                    <Button type="submit" className="tw-bg-blue-600" disabled={loading}>
+                    <Button type="submit" className="tw-bg-blue-600" disabled={loading || (form.role === "technician" && selectedStations.length === 0)}>
                         {loading ? "Saving..." : "Create User"}
                     </Button>
                 </DialogFooter>
