@@ -1559,12 +1559,13 @@ class UserUpdate(BaseModel):
     role: str | None = None       # admin เท่านั้นที่แก้ได้
     is_active: bool | None = None # admin เท่านั้นที่แก้ได้
     password: str | None = None   # จะถูกแฮชเสมอถ้ามีค่า
+    station_id: Optional[List[str]] = None  # สำหรับ technician
 
 def hash_password(raw: str) -> str:
     return bcrypt.hashpw(raw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 # ฟิลด์ที่อนุญาต
-ALLOW_FIELDS_ADMIN_USER = {"username", "email", "tel", "company", "role", "is_active", "password"}
+ALLOW_FIELDS_ADMIN_USER = {"username", "email", "tel", "company", "role", "is_active", "password", "station_id"}
 ALLOW_FIELDS_SELF_USER  = {"username", "email", "tel", "company", "password"}
 
 
@@ -1596,7 +1597,7 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
 
     # ── จำกัดฟิลด์ตามบทบาท
     # แนะนำให้ประกาศสองชุดนี้ไว้ด้านบนไฟล์หรือไฟล์ settings:
-    ALLOW_FIELDS_ADMIN_USER = {"username","email","password","role","company","tel","is_active"}
+    ALLOW_FIELDS_ADMIN_USER = {"username","email","password","role","company","tel","is_active","station_id"}
     ALLOW_FIELDS_SELF_OWNER = {"username","email","password","tel"}  # ปรับตามที่อยากให้แก้เองได้
     if current.role == "admin":
         allowed = ALLOW_FIELDS_ADMIN_USER
@@ -1610,6 +1611,17 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     # ── แฮชรหัสผ่านถ้ามี
     if "password" in payload:
         payload["password"] = hash_password(payload["password"])
+
+    # ── validate station_id (ต้องเป็น list of strings)
+    if "station_id" in payload:
+        if payload["station_id"] is None:
+            payload["station_id"] = []
+        elif not isinstance(payload["station_id"], list):
+            raise HTTPException(status_code=400, detail="station_id must be a list of strings")
+        else:
+            # ตรวจสอบว่าทั้งหมดเป็น string
+            if not all(isinstance(s, str) for s in payload["station_id"]):
+                raise HTTPException(status_code=400, detail="station_id must contain only strings")
 
     # ── validate is_active (admin เท่านั้นที่เข้ามาถึงบรรทัดนี้ได้อยู่แล้ว)
     if "is_active" in payload and not isinstance(payload["is_active"], bool):
