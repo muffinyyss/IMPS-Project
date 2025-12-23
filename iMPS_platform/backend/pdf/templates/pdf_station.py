@@ -607,9 +607,9 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         items.append({
             "idx": idx,
             "text": text,
-            "results": result_lines,           # ✅ เปลี่ยนเป็น list
-            "result_offset": result_offset,    # ✅ เพิ่ม offset
-            "result_step": result_step,        # ✅ เพิ่ม step
+            "results": result_lines,        
+            "result_offset": result_offset, 
+            "result_step": result_step,       
             "remark": remark,
         })
 

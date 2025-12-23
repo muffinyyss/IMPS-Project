@@ -311,6 +311,17 @@ def _fmt_date_thai_like_sample(val) -> str:
     year_be_2 = (d.year + 543) % 100
     return d.strftime(f"%d-%b-{year_be_2:02d}")
 
+def _fmt_date_thai_full(val) -> str:
+    """แปลงวันที่เป็นรูปแบบ DD/MM/YYYY (ปีพุทธศักราช)
+    เช่น: 21/12/2568"""
+    if isinstance(val, (datetime, date)):
+        d = datetime(val.year, val.month, val.day)
+    else:
+        d = _parse_date_flex(str(val)) if val is not None else None
+    if not d:
+        return str(val) if val else ""
+    year_be = d.year + 543  # แปลงเป็นปีพุทธศักราช
+    return d.strftime(f"%d/%m/{year_be}")
 
 def _resolve_logo_path() -> Optional[Path]:
     names = [
@@ -944,6 +955,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     model = job.get("model", "-")
     sn = job.get("sn", "-")
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
+    pm_date_th = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
     charger_no = doc.get("job", {}).get("chargerNo", "-")
 
@@ -1137,10 +1149,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     x_pos = x_table
     for i in range(3):
         pdf.rect(x_pos, y, col_widths[i], row_h_date)
-        date_text = "Date : " + " " * 9
-        margin_left = 5
-        pdf.set_xy(x_pos + margin_left, y)
-        pdf.cell(col_widths[i] - margin_left, row_h_date, date_text, border=0, align="L")
+        date_text = "Date :  " + pm_date_th
+        pdf.set_xy(x_pos, y)
+        pdf.cell(col_widths[i], row_h_date, date_text, border=0, align="C")
         x_pos += col_widths[i]
     y += row_h_date
 
