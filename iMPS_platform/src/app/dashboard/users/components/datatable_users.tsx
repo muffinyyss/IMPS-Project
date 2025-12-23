@@ -128,6 +128,11 @@ export default function SearchDataTables() {
   const [openEdit, setOpenEdit] = useState(false);
   const [editingRow, setEditingRow] = useState<UserRow | null>(null);
   const [roleValue, setRoleValue] = useState<string>("user");
+  const [availableStations, setAvailableStations] = useState<any[]>([]);
+  const [loadingStations, setLoadingStations] = useState(false);
+  const [stationSearchValue, setStationSearchValue] = useState("");
+  const [showStationDropdown, setShowStationDropdown] = useState(false);
+  const [selectedStations, setSelectedStations] = useState<any[]>([]);
 
   // ดึงข้อมูลผู้ใช้หลัง auth ผ่านเท่านั้น
   useEffect(() => {
@@ -168,8 +173,50 @@ export default function SearchDataTables() {
 
   // ตั้งค่า default role ตอนเปิด dialog แก้ไข
   useEffect(() => {
-    if (openEdit && editingRow) setRoleValue(editingRow.role ?? "user");
+    if (openEdit && editingRow) {
+      setRoleValue(editingRow.role ?? "user");
+      // ตั้งค่า selected stations จากข้อมูล editing row
+      if (editingRow.station_id && editingRow.station_id.length > 0) {
+        setSelectedStations(
+          editingRow.station_id.map((id: string) => ({
+            station_id: id,
+            station_name: id, // จะถูก update เมื่อโหลด stations
+          }))
+        );
+      } else {
+        setSelectedStations([]);
+      }
+    }
   }, [openEdit, editingRow]);
+
+  // ดึงข้อมูล stations เมื่อเปิด edit dialog
+  useEffect(() => {
+    if (!openEdit) return;
+    (async () => {
+      try {
+        setLoadingStations(true);
+        const res = await apiFetch(`/my-stations/detail`);
+        if (res.ok) {
+          const json = await res.json();
+          const stations = json?.stations || (Array.isArray(json) ? json : []);
+          setAvailableStations(stations);
+          
+          // อัปเดต station names ถ้า selected stations มีข้อมูล
+          if (selectedStations.length > 0) {
+            const updated = selectedStations.map((selected: any) => {
+              const found = stations.find((s: any) => s.station_id === selected.station_id);
+              return found ? found : selected;
+            });
+            setSelectedStations(updated);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch stations", e);
+      } finally {
+        setLoadingStations(false);
+      }
+    })();
+  }, [openEdit]);
 
   /* -------------------- Handlers -------------------- */
   const handleEdit = (row: UserRow) => {
@@ -230,6 +277,7 @@ export default function SearchDataTables() {
     if (payload.company !== undefined) body.company = (payload.company || "").trim();
     if (payload.role !== undefined) body.role = payload.role;
     if (payload.tel !== undefined) body.tel = payload.tel?.trim();
+    if ((payload as any).station_id !== undefined) body.station_id = (payload as any).station_id;
     if ((payload as any).password) body.password = String((payload as any).password);
 
     const res = await apiFetch(`/user_update/${id}`, {
@@ -528,7 +576,12 @@ export default function SearchDataTables() {
       <AddUser open={openAdd} onClose={() => setOpenAdd(false)} onSubmit={handleCreateUser} loading={saving} />
 
       {/* Dialog: Edit */}
-      <Dialog open={openEdit} handler={() => setOpenEdit(false)} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
+      <Dialog open={openEdit} handler={() => {
+        setOpenEdit(false);
+        setStationSearchValue("");
+        setShowStationDropdown(false);
+        setSelectedStations([]);
+      }} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
         <DialogHeader className="tw-flex tw-items-center tw-justify-between">
           <Typography variant="h5" color="blue-gray">
             Edit User
@@ -559,6 +612,9 @@ export default function SearchDataTables() {
             };
 
             if (isAdmin) payload.role = roleValue;
+            if (roleValue === "technician") {
+              payload.station_id = selectedStations.map((s) => s.station_id);
+            }
 
             const newPw = form.password?.value?.trim();
             if (newPw) payload.password = newPw;
@@ -580,11 +636,123 @@ export default function SearchDataTables() {
               {/* <Input name="password" label="New Password (optional)" type="password" /> */}
 
               {isAdmin && (
-                <Select label="Role" value={roleValue} onChange={(v) => setRoleValue(v ?? "user")}>
+                <Select label="Role" value={roleValue} onChange={(v) => {
+                  setRoleValue(v ?? "user");
+                  // รีเซ็ต stations เมื่อเปลี่ยน role
+                  if (v !== "technician") {
+                    setSelectedStations([]);
+                  }
+                }}>
                   <Option value="admin">admin</Option>
                   <Option value="owner">owner</Option>
                   <Option value="technician">Technician</Option>
                 </Select>
+              )}
+
+              {roleValue === "technician" && (
+                <div className="tw-relative">
+                  <Input
+                    label="Select Station"
+                    placeholder="Type to search..."
+                    value={stationSearchValue}
+                    onChange={(e) => {
+                      setStationSearchValue(e.target.value);
+                      setShowStationDropdown(true);
+                    }}
+                    onFocus={() => setShowStationDropdown(true)}
+                    disabled={loadingStations || availableStations.length === 0}
+                    crossOrigin={undefined}
+                  />
+                  
+                  {/* Dropdown suggestions */}
+                  {showStationDropdown && (
+                    <div className="tw-absolute tw-top-full tw-left-0 tw-right-0 tw-z-10 tw-mt-1 tw-max-h-48 tw-overflow-y-auto tw-bg-white tw-border tw-border-gray-300 tw-rounded-lg tw-shadow-lg">
+                      {availableStations
+                        .filter((station) =>
+                          !selectedStations.find(s => s.station_id === station.station_id) &&
+                          (station.station_name
+                            .toLowerCase()
+                            .includes(stationSearchValue.toLowerCase()) ||
+                          station.station_id
+                            .toLowerCase()
+                            .includes(stationSearchValue.toLowerCase()))
+                        )
+                        .map((station) => (
+                          <div
+                            key={station.station_id}
+                            onClick={() => {
+                              setSelectedStations([...selectedStations, station]);
+                              setStationSearchValue("");
+                              setShowStationDropdown(false);
+                            }}
+                            className="tw-px-4 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-50 tw-border-b tw-border-gray-100 last:tw-border-b-0"
+                          >
+                            <Typography variant="small" className="tw-font-medium">
+                              {station.station_name}
+                            </Typography>
+                            <Typography variant="small" color="gray">
+                              {station.station_id}
+                            </Typography>
+                          </div>
+                        ))}
+                      
+                      {stationSearchValue && availableStations.filter((station) =>
+                        !selectedStations.find(s => s.station_id === station.station_id) &&
+                        (station.station_name
+                          .toLowerCase()
+                          .includes(stationSearchValue.toLowerCase()) ||
+                        station.station_id
+                          .toLowerCase()
+                          .includes(stationSearchValue.toLowerCase()))
+                      ).length === 0 && (
+                        <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
+                          No stations found
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {loadingStations && (
+                    <Typography variant="small" color="gray" className="tw-mt-1">
+                      Loading stations...
+                    </Typography>
+                  )}
+                  {!loadingStations && availableStations.length === 0 && (
+                    <Typography variant="small" color="red" className="tw-mt-1">
+                      No stations available
+                    </Typography>
+                  )}
+                  
+                  {/* Selected Stations Tags */}
+                  {selectedStations.length > 0 && (
+                    <div className="tw-mt-3">
+                      <Typography variant="small" className="tw-font-semibold tw-mb-2">
+                        Selected Stations ({selectedStations.length}):
+                      </Typography>
+                      <div className="tw-flex tw-flex-wrap tw-gap-2">
+                        {selectedStations.map((station) => (
+                          <div
+                            key={station.station_id}
+                            className="tw-flex tw-items-center tw-gap-2 tw-bg-blue-100 tw-text-blue-700 tw-px-3 tw-py-1 tw-rounded-full tw-text-sm"
+                          >
+                            <span>{station.station_name}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedStations(
+                                  selectedStations.filter(s => s.station_id !== station.station_id)
+                                );
+                              }}
+                              className="tw-font-bold tw-cursor-pointer hover:tw-text-blue-900"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </DialogBody>
