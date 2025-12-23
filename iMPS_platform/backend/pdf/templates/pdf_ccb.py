@@ -128,6 +128,18 @@ def _fmt_date_thai_like_sample(val) -> str:
     year_be_2 = (d.year + 543) % 100
     return d.strftime(f"%d-%b-{year_be_2:02d}")
 
+def _fmt_date_thai_full(val) -> str:
+    """แปลงวันที่เป็นรูปแบบ DD/MM/YYYY (ปีพุทธศักราช)
+    เช่น: 21/12/2568"""
+    if isinstance(val, (datetime, date)):
+        d = datetime(val.year, val.month, val.day)
+    else:
+        d = _parse_date_flex(str(val)) if val is not None else None
+    if not d:
+        return str(val) if val else ""
+    year_be = d.year + 543  # แปลงเป็นปีพุทธศักราช
+    return d.strftime(f"%d/%m/{year_be}")
+
 def _norm_result(val: str) -> str:
     s = (str(val) if val is not None else "").strip().lower()
     if s in ("pass", "p", "true", "ok", "1", "✔", "✓"):
@@ -289,10 +301,9 @@ def _load_image_source_from_urlpath(
     if not url_path:
         return None, None
 
-    # 🔥 เพิ่ม debug ที่นี่
-    print(f"\n{'='*80}")
-    print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
-    print(f"{'='*80}")
+    # print(f"\n{'='*80}")
+    # print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
+    # print(f"{'='*80}")
 
     # case: data URL
     if url_path.startswith("data:image/"):
@@ -321,9 +332,9 @@ def _load_image_source_from_urlpath(
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
         
-        print(f"[DEBUG]   📍 backend_root = {backend_root}")
-        print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
-        print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
+        # print(f"[DEBUG]   📍 backend_root = {backend_root}")
+        # print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
+        # print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
         
         if uploads_root.exists():
             clean_path = url_path.lstrip("/")
@@ -344,8 +355,8 @@ def _load_image_source_from_urlpath(
             else:
                 print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
 
-    print(f"[DEBUG] ❌ ไม่เจอรูปจากทุกวิธี!")
-    print(f"{'='*80}\n")
+    # print(f"[DEBUG] ❌ ไม่เจอรูปจากทุกวิธี!")
+    # print(f"{'='*80}\n")
     return None, None
 
 def load_image_autorotate(path_or_bytes):
@@ -421,7 +432,7 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
 
 # -------------------- Photo data helpers --------------------
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-    items_in = (doc.get("photos") or {}).get(f"r{idx}") or []
+    items_in = (doc.get("photos") or {}).get(f"g{idx}") or []
     out: List[dict] = []
 
     def _normalize(s: str) -> str:
@@ -477,7 +488,7 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     return out[:PHOTO_MAX_PER_ROW]
 
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
-    items_in = (doc.get("photos_pre") or {}).get(f"r{idx}") or []
+    items_in = (doc.get("photos_pre") or {}).get(f"g{idx}") or []
     out: List[dict] = []
 
     def _normalize(s: str) -> str:
@@ -1190,7 +1201,15 @@ class ReportPDF(HTML2PDF):
 
 
 def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
-    pdf = ReportPDF(unit="mm", format="A4")
+    job = doc.get("job", {}) or {}
+    station_name = job.get("station_name", "-")
+    pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
+    pm_date_th = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))
+    issue_id = str(doc.get("issue_id", "-"))
+    # print(f"[DEBUG] 🔍 issue_id (raw): {repr(pm_date)}")
+    # print(f"[DEBUG] 🔍 issue_id (display): {pm_date}")
+    
+    pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id)
     pdf.alias_nb_pages()
 
     pdf.set_margins(left=10, top=10, right=10)
@@ -1200,11 +1219,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     setattr(pdf, "_base_font_name", base_font)
     pdf.set_font(base_font, size=FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
-
-    job = doc.get("job", {}) or {}
-    station_name = job.get("station_name", "-")
-    pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
-    issue_id = str(doc.get("issue_id", "-"))
 
     checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
 
@@ -1348,7 +1362,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
 
     # ========== แถว Inspection Results (ความสูงคงที่) ==========
-    summary_check = str(doc.get("summaryCheck", "")).strip().upper() or "-"
+    summary_check_raw = str(doc.get("summaryCheck", "")).strip()
+    # Normalize ให้เป็น PASS, FAIL, N/A
+    if summary_check_raw.upper() in ("PASS", "P", "TRUE", "OK", "1"):
+        summary_check = "PASS"
+    elif summary_check_raw.upper() in ("FAIL", "F", "FALSE", "0", "X"):
+        summary_check = "FAIL"
+    elif summary_check_raw.upper() in ("NA", "N/A", "N / A", "-"):
+        summary_check = "N/A"
+    else:
+        summary_check = "-"
 
     pdf.set_xy(comment_x, y)
     pdf.set_font(base_font, "B", 11)
@@ -1413,10 +1436,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     x_pos = x_table
     for i in range(3):
         pdf.rect(x_pos, y, col_widths[i], row_h_date)
-        date_text = "Date : " + " " * 9
-        margin_left = 5
-        pdf.set_xy(x_pos + margin_left, y)
-        pdf.cell(col_widths[i] - margin_left, row_h_date, date_text, border=0, align="L")
+        date_text = "Date :  " + pm_date_th
+        pdf.set_xy(x_pos, y)
+        pdf.cell(col_widths[i], row_h_date, date_text, border=0, align="C")
         x_pos += col_widths[i]
     y += row_h_date
 
