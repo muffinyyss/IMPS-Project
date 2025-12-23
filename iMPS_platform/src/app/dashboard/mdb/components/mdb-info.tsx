@@ -51,6 +51,15 @@ export type MDBType = {
     className?: string;
     main_breaker: boolean;
     breaker_charger: boolean;
+    VL1N_loss?: number ;
+    VL2N_loss?: number ;
+    VL3N_loss?: number ;
+    VL123_loss?: number ;
+    PL1N_peak?: number | string;
+    PL2N_peak?: number | string;
+    PL3N_peak?: number | string;
+    PL123N_peak?: number | string ;
+
 };
 
 /** ===== Component ===== */
@@ -92,7 +101,15 @@ export default function MDBInfo({
     thdiL3,
     className = "",
     main_breaker,
-    breaker_charger
+    breaker_charger,
+    VL1N_loss,
+    VL2N_loss,
+    VL3N_loss,
+    VL123_loss,
+    PL1N_peak,
+    PL2N_peak,
+    PL3N_peak,
+    PL123N_peak,
 }: MDBType) {
     return (
         <div className={`tw-w-full tw-space-y-6 ${className}`}>
@@ -198,61 +215,62 @@ export default function MDBInfo({
                  {/* v */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        Voltage (%)
+                        Voltage
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="VL1N" value={VL1N} />
-                        <Row label="VL1N" value={VL2N} />
-                        <Row label="VL1N" value={VL3N} />
+                        <Row label="L1" value={<span className="tw-opacity-70">{VL1N} V</span>} />
+                        <Row label="L2" value={<span className="tw-opacity-70">{VL2N} V</span>} />
+                        <Row label="L3" value={<span className="tw-opacity-70">{VL3N} V</span>} />
                     </div>
                 </div>
 
                 {/* I */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        Current (A)
+                        Current
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="I1" value={I1} />
-                        <Row label="I2" value={I2} />
-                        <Row label="I3" value={I3} />
+                        <Row label="I1" value={<span className="tw-opacity-70">{I1} A</span>} />
+                        <Row label="I2" value={<span className="tw-opacity-70">{I2} A</span>} />
+                        <Row label="I3" value={<span className="tw-opacity-70">{I3} A</span>} />
+                        <Row label="Total" value={<span className="tw-opacity-70">{} A</span>} />
                     </div>
                 </div>
 
                 {/* VL */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        Voltage Phase (V)
+                        Voltage Phase
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="VL1L2" value={VL1L2} />
-                        <Row label="VL2L3" value={VL2L3} />
-                        <Row label="VL1L3" value={VL1L3} />
+                        <Row label="L1 L2" value={<span className="tw-opacity-70">{VL1L2} V</span>} />
+                        <Row label="L2 L3" value={<span className="tw-opacity-70">{VL2L3} V</span>} />
+                        <Row label="L1 L3" value={<span className="tw-opacity-70">{VL1L3} V</span>} />
                     </div>
                 </div>
 
                 {/* PLN */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        Power Active (kW)
+                        Power Active
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="PL1N" value={PL1N} />
-                        <Row label="PL2N" value={PL2N} />
-                        <Row label="PL3N" value={PL3N} />
-                        <Row label="PL123N" value={PL123N} />
+                        <Row label="P1" value={<span className="tw-opacity-70">{PL1N} kW</span>} />
+                        <Row label="P2" value={<span className="tw-opacity-70">{PL2N} kW</span>} />
+                        <Row label="P3" value={<span className="tw-opacity-70">{PL3N} kW</span>} />
+                        <Row label="Total" value={<span className="tw-opacity-70">{PL123N} kW</span>} />
                     </div>
                 </div>
 
                  {/* THDI */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        THDI (%)
+                        THDI 
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1" value={thdiL1} />
-                        <Row label="L2" value={thdiL2} />
-                        <Row label="L3" value={thdiL3} />
+                        <Row label="L1" value={<span className="tw-opacity-70">{thdiL1} %</span>} />
+                        <Row label="L2" value={<span className="tw-opacity-70">{thdiL2} %</span>} />
+                        <Row label="L3" value={<span className="tw-opacity-70">{thdiL3} %</span>} />
                     </div>
                 </div>
 
@@ -262,25 +280,53 @@ export default function MDBInfo({
                         Power Factor
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="pf–L1" value={Number(pfL1)} />
-                        <Row label="pf–L2" value={Number(pfL2)} />
-                        <Row label="pf–L3" value={Number(pfL3)} />
+                        <Row label="pf–L1" value={<span className="tw-opacity-70">{Number(pfL1)}</span>} />
+                        <Row label="pf–L2" value={<span className="tw-opacity-70">{Number(pfL2)}</span>} />
+                        <Row label="pf–L3" value={<span className="tw-opacity-70">{Number(pfL3)}</span>} />
                     </div>
                 </div>
 
                 {/* EL */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        Energy Total (kWh)
+                        Energy Total 
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="EL1" value={EL1} />
-                        <Row label="EL2" value={EL2} />
-                        <Row label="EL3" value={EL3} />
-                        <Row label="EL123" value={EL123} />
+                        <Row label="EL1" value={<span className="tw-opacity-70">{EL1} kWh</span>} />
+                        <Row label="EL2" value={<span className="tw-opacity-70">{EL2} kWh</span>} />
+                        <Row label="EL3" value={<span className="tw-opacity-70">{EL3} kWh</span>} />
+                        <Row label="Total" value={<span className="tw-opacity-70">{EL123} kWh</span>} />
 
                     </div>
                 </div>
+
+                  {/* Counter Voltage loss */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        Counter Voltage loss
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="L1 Loss" value={VL1N_loss} />
+                        <Row label="L2 Loss" value={VL2N_loss} />
+                        <Row label="L3 Loss" value={VL3N_loss} />
+                        <Row label="Total Loss" value={VL123_loss} />
+                    </div>
+                </div>
+
+                  {/* Power Active Peak */}
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                    <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
+                        Power Active peak
+                    </Typography>
+                    <div className="tw-space-y-1">
+                        <Row label="P1" value={PL1N_peak} />
+                        <Row label="P2" value={PL2N_peak} />
+                        <Row label="P3" value={PL3N_peak} />
+                        <Row label="Total Peak" value={PL123N_peak} />
+                    </div>
+                </div>
+
+
 
                 
 
