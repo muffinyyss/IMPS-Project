@@ -64,7 +64,7 @@ export function DashboardNavbar() {
   if (segs[1] === "mdb") title = "Main Distribution Board (MDB)";
   else if (segs[1] === "chargers") title = "My Charger Station";
   else if (segs[1] === "device") title = "Device";
-  else if (segs[1] === "setting") title = "Charger Setting";
+  else if (segs[1] === "setting") title = "Configuration";
   else if (segs[1] === "ai") title = "Ai Module";
   else if (segs[2] === "settings") title = "My Profile";
   else if (segs[1] === "pm-report") title = "PM Report";
