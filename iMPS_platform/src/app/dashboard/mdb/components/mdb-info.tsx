@@ -13,67 +13,67 @@ import { CpuChipIcon } from "@heroicons/react/24/outline";
 
 /** ===== Props ===== */
 export type MDBType = {
-    tempc: number ;
-    humidity: number ;
+    tempc: number;
+    humidity: number;
     fanOn: boolean;
-    rssiDb: number ;
+    rssiDb: number;
     // signalLevel?: 0 | 1 | 2 | 3 | 4;
-    I1: number ;
-    I2: number ;
-    I3: number ;
-    totalCurrentA: number ;
-    powerKW: number | string ;
-    totalEnergyKWh: number | string ;
+    I1: number;
+    I2: number;
+    I3: number;
+    totalCurrentA: number;
+    powerKW: number | string;
+    totalEnergyKWh: number | string;
     frequencyHz: number;
-    pfL1: number ;
-    pfL2: number ;
-    pfL3: number ;
+    pfL1: number;
+    pfL2: number;
+    pfL3: number;
     PL1N: number | string;
     PL2N: number | string;
     PL3N: number | string;
-    PL123N: number | string ;
-    EL1: number | string ;
-    EL2: number | string ;
-    EL3: number | string ;
-    EL123: number | string ;
+    PL123N: number | string;
+    EL1: number | string;
+    EL2: number | string;
+    EL3: number | string;
+    EL123: number | string;
     VL1N: number;
-    VL2N: number ;
-    VL3N: number ;
+    VL2N: number;
+    VL3N: number;
     VL1L2: number;
-    VL2L3: number ;
-    VL1L3: number ;
-    thdvL1: number ;
+    VL2L3: number;
+    VL1L3: number;
+    thdvL1: number;
     thdvL2: number;
-    thdvL3: number ;
-    thdiL1: number ;
-    thdiL2: number ;
-    thdiL3: number ;
+    thdvL3: number;
+    thdiL1: number;
+    thdiL2: number;
+    thdiL3: number;
     className?: string;
     main_breaker: boolean;
     breaker_charger: boolean;
-    VL1N_loss?: number ;
-    VL2N_loss?: number ;
-    VL3N_loss?: number ;
-    VL123_loss?: number ;
+    VL1N_loss?: number;
+    VL2N_loss?: number;
+    VL3N_loss?: number;
+    VL123_loss?: number;
     PL1N_peak?: number | string;
     PL2N_peak?: number | string;
     PL3N_peak?: number | string;
-    PL123N_peak?: number | string ;
+    PL123N_peak?: number | string;
 
 };
-    /** ฟังก์ชันเติมลูกน้ำคั่น */
-    const formatComma = (val: number | string | undefined) => {
-        if (val === null || val === undefined || val === "") return "0";
-        const num = typeof val === "string" ? parseFloat(val) : val;
-        if (isNaN(num)) return "0";
-        return num.toLocaleString("en-US");
-        };
+/** ฟังก์ชันเติมลูกน้ำคั่น */
+const formatComma = (val: number | string | undefined) => {
+    if (val === null || val === undefined || val === "") return "0";
+    const num = typeof val === "string" ? parseFloat(val) : val;
+    if (isNaN(num)) return "0";
+    return num.toLocaleString("en-US");
+};
 /** ===== Component ===== */
 export default function MDBInfo({
     tempc,
     humidity,
     fanOn,
-    rssiDb ,
+    rssiDb,
     // signalLevel = 3,
     I1,
     I2,
@@ -218,15 +218,15 @@ export default function MDBInfo({
             {/* Quality Section */}
             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
 
-                 {/* v */}
+                {/* v */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Voltage
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1" value={<span className="tw-opacity-70">{formatComma(VL1N)} V</span>} />
-                        <Row label="L2" value={<span className="tw-opacity-70">{formatComma(VL2N)} V</span>} />
-                        <Row label="L3" value={<span className="tw-opacity-70">{formatComma(VL3N)} V</span>} />
+                        <Row label="L1" value={formatComma(VL1N)} unit="V" />
+                        <Row label="L2" value={formatComma(VL2N)} unit="V" />
+                        <Row label="L3" value={formatComma(VL3N)} unit="V" />
                     </div>
                 </div>
 
@@ -236,9 +236,9 @@ export default function MDBInfo({
                         Current
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="I1" value={<span className="tw-opacity-70">{formatComma(I1)} A</span>} />
-                        <Row label="I2" value={<span className="tw-opacity-70">{formatComma(I2)} A</span>} />
-                        <Row label="I3" value={<span className="tw-opacity-70">{formatComma(I3)} A</span>} />
+                        <Row label="I1" value={formatComma(I1)} unit="A" />
+                        <Row label="I2" value={formatComma(I2)} unit="A" />
+                        <Row label="I3" value={formatComma(I3)} unit="A" />
                     </div>
                 </div>
 
@@ -248,9 +248,9 @@ export default function MDBInfo({
                         Voltage Phase
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1 L2" value={<span className="tw-opacity-70">{formatComma(VL1L2)} V</span>} />
-                        <Row label="L2 L3" value={<span className="tw-opacity-70">{formatComma(VL2L3)} V</span>} />
-                        <Row label="L1 L3" value={<span className="tw-opacity-70">{formatComma(VL1L3)} V</span>} />
+                        <Row label="L1 L2" value={formatComma(VL1L2)} unit="V" />
+                        <Row label="L2 L3" value={formatComma(VL2L3)} unit="V" />
+                        <Row label="L1 L3" value={formatComma(VL1L3)} unit="V" />
                     </div>
                 </div>
 
@@ -260,22 +260,22 @@ export default function MDBInfo({
                         Power Active
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="P1" value={<span className="tw-opacity-70">{formatComma(PL1N)} kW</span>} />
-                        <Row label="P2" value={<span className="tw-opacity-70">{formatComma(PL2N)} kW</span>} />
-                        <Row label="P3" value={<span className="tw-opacity-70">{formatComma(PL3N)} kW</span>} />
-                        <Row label="Total" value={<span className="tw-opacity-70">{formatComma(PL123N)} kW</span>} />
+                        <Row label="P1" value={formatComma(PL1N)} unit="kW" />
+                        <Row label="P2" value={formatComma(PL2N)} unit="kW" />
+                        <Row label="P3" value={formatComma(PL3N)} unit="kW" />
+                        {/* <Row label="Total" value={<span className="tw-opacity-70">{formatComma(PL123N)} kW</span>} /> */}
                     </div>
                 </div>
 
-                 {/* THDI */}
+                {/* THDI */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        THDI 
+                        THDI
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1" value={<span className="tw-opacity-70">{formatComma(thdiL1)} %</span>} />
-                        <Row label="L2" value={<span className="tw-opacity-70">{formatComma(thdiL2)} %</span>} />
-                        <Row label="L3" value={<span className="tw-opacity-70">{formatComma(thdiL3)} %</span>} />
+                        <Row label="L1" value={formatComma(thdiL1)} unit="%" />
+                        <Row label="L2" value={formatComma(thdiL2)} unit="%" />
+                        <Row label="L3" value={formatComma(thdiL3)} unit="%" />
                     </div>
                 </div>
 
@@ -285,61 +285,61 @@ export default function MDBInfo({
                         Power Factor
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="pf–L1" value={<span className="tw-opacity-70">{formatComma(Number(pfL1))}</span>} />
-                        <Row label="pf–L2" value={<span className="tw-opacity-70">{formatComma(Number(pfL2))}</span>} />
-                        <Row label="pf–L3" value={<span className="tw-opacity-70">{formatComma(Number(pfL3))}</span>} />
+                        <Row label="pf–L1" value={formatComma(Number(pfL1))} />
+                        <Row label="pf–L2" value={formatComma(Number(pfL2))} />
+                        <Row label="pf–L3" value={formatComma(Number(pfL3))} />
                     </div>
                 </div>
 
                 {/* EL */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
-                        Energy Total 
+                        Energy Total
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="EL1" value={<span className="tw-opacity-70">{formatComma(EL1)} kWh</span>} />
-                        <Row label="EL2" value={<span className="tw-opacity-70">{formatComma(EL2)} kWh</span>} />
-                        <Row label="EL3" value={<span className="tw-opacity-70">{formatComma(EL3)} kWh</span>} />
-                        <Row label="Total" value={<span className="tw-opacity-70">{formatComma(EL123)} kWh</span>} />
+                        <Row label="EL1" value={formatComma(EL1)} unit="kWh" />
+                        <Row label="EL2" value={formatComma(EL2)} unit="kWh" />
+                        <Row label="EL3" value={formatComma(EL3)} unit="kWh" />
+                        <Row label="Total" value={formatComma(EL123)} unit="kWh" />
 
                     </div>
                 </div>
 
-                  {/* Counter Voltage loss */}
+                {/* Counter Voltage loss */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Counter Voltage loss
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1 Loss" value={<span className="tw-opacity-70">{formatComma(VL1N_loss)}</span>} />
-                        <Row label="L2 Loss" value={<span className="tw-opacity-70">{formatComma(VL2N_loss)}</span>} />
-                        <Row label="L3 Loss" value={<span className="tw-opacity-70">{formatComma(VL3N_loss)}</span>} />
-                        <Row label="Total Loss" value={<span className="tw-opacity-70">{formatComma(VL123_loss)}</span>} />
+                        <Row label="L1 Loss" value={formatComma(VL1N_loss)} />
+                        <Row label="L2 Loss" value={formatComma(VL2N_loss)} />
+                        <Row label="L3 Loss" value={formatComma(VL3N_loss)} />
+                        <Row label="Total Loss" value={formatComma(VL123_loss)} />
                     </div>
                 </div>
 
-                  {/* Power Active Peak */}
+                {/* Power Active Peak */}
                 <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Power Active peak
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="P1" value={<span className="tw-opacity-70">{formatComma(PL1N_peak)}</span>} />
-                        <Row label="P2" value={<span className="tw-opacity-70">{formatComma(PL2N_peak)}</span>} />
-                        <Row label="P3" value={<span className="tw-opacity-70">{formatComma(PL3N_peak)}</span>} />
-                        <Row label="Total Peak" value={<span className="tw-opacity-70">{formatComma(PL123N_peak)}</span>} />
+                        <Row label="P1" value={formatComma(PL1N_peak)} unit="kW" />
+                        <Row label="P2" value={formatComma(PL2N_peak)} unit="kW" />
+                        <Row label="P3" value={formatComma(PL3N_peak)} unit="kW" />
+                        <Row label="Total Peak" value={formatComma(PL123N_peak)} unit="kW"/>
                     </div>
                 </div>
 
 
 
-                
 
-                
 
-               
 
-                
+
+
+
+
             </div>
         </div>
     );
@@ -440,19 +440,31 @@ function Row({
     label,
     value,
     highlight = false,
+    unit,
 }: {
     label: string;
     value: React.ReactNode;
     highlight?: boolean;
+    unit?: string;
 }) {
     return (
         <div className="tw-flex tw-justify-between">
             <Typography variant="small" color="blue-gray" className="tw-opacity-70">
                 {label}
             </Typography>
-            <Typography color="blue-gray" className={highlight ? "tw-font-bold tw-text-red-500" : "tw-font-semibold"}>
+            {/* <Typography color="blue-gray" className={highlight ? "tw-font-bold tw-text-red-500" : "tw-font-semibold"}>
                 {value}
-            </Typography>
+            </Typography> */}
+            <div className="tw-ml-auto tw-flex tw-items-baseline tw-gap-1">
+                <Typography color="blue-gray" className="tw-font-semibold">
+                    {value}
+                </Typography>
+                {unit ? (
+                    <Typography variant="small" color="blue-gray" className="tw-opacity-70">
+                        {unit}
+                    </Typography>
+                ) : null}
+            </div>
         </div>
     );
 }
