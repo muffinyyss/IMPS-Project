@@ -61,7 +61,13 @@ export type MDBType = {
     PL123N_peak?: number | string ;
 
 };
-
+    /** ฟังก์ชันเติมลูกน้ำคั่น */
+    const formatComma = (val: number | string | undefined) => {
+        if (val === null || val === undefined || val === "") return "0";
+        const num = typeof val === "string" ? parseFloat(val) : val;
+        if (isNaN(num)) return "0";
+        return num.toLocaleString("en-US");
+        };
 /** ===== Component ===== */
 export default function MDBInfo({
     tempc,
@@ -138,17 +144,17 @@ export default function MDBInfo({
                             </svg>
                         }
                         label="Total Current"
-                        value={totalCurrentA}
+                        value={formatComma(totalCurrentA)}
                         unit="A"
                     />
                     <MetricRow
                         icon={<i className="fa-solid fa-bolt tw-text-yellow-600 tw-h-5 tw-w-5"></i>}
-                        label="Power Energy" value={powerKW}
+                        label="Power Energy" value={formatComma(powerKW)}
                         unit="kW" />
                     <MetricRow
                         icon={<i className="fas fa-gas-pump tw-text-yellow-600 tw-h-5 tw-w-5"></i>}
                         label="Total Energy"
-                        value={totalEnergyKWh}
+                        value={formatComma(totalEnergyKWh)}
                         unit="kWh" />
                     <MetricRow
                         icon={
@@ -158,7 +164,7 @@ export default function MDBInfo({
                             </svg>
                         }
                         label="Frequency"
-                        value={frequencyHz}
+                        value={formatComma(frequencyHz)}
                         unit="Hz" />
                 </div>
 
@@ -218,9 +224,9 @@ export default function MDBInfo({
                         Voltage
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1" value={<span className="tw-opacity-70">{VL1N} V</span>} />
-                        <Row label="L2" value={<span className="tw-opacity-70">{VL2N} V</span>} />
-                        <Row label="L3" value={<span className="tw-opacity-70">{VL3N} V</span>} />
+                        <Row label="L1" value={<span className="tw-opacity-70">{formatComma(VL1N)} V</span>} />
+                        <Row label="L2" value={<span className="tw-opacity-70">{formatComma(VL2N)} V</span>} />
+                        <Row label="L3" value={<span className="tw-opacity-70">{formatComma(VL3N)} V</span>} />
                     </div>
                 </div>
 
@@ -230,10 +236,9 @@ export default function MDBInfo({
                         Current
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="I1" value={<span className="tw-opacity-70">{I1} A</span>} />
-                        <Row label="I2" value={<span className="tw-opacity-70">{I2} A</span>} />
-                        <Row label="I3" value={<span className="tw-opacity-70">{I3} A</span>} />
-                        <Row label="Total" value={<span className="tw-opacity-70">{} A</span>} />
+                        <Row label="I1" value={<span className="tw-opacity-70">{formatComma(I1)} A</span>} />
+                        <Row label="I2" value={<span className="tw-opacity-70">{formatComma(I2)} A</span>} />
+                        <Row label="I3" value={<span className="tw-opacity-70">{formatComma(I3)} A</span>} />
                     </div>
                 </div>
 
@@ -243,9 +248,9 @@ export default function MDBInfo({
                         Voltage Phase
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1 L2" value={<span className="tw-opacity-70">{VL1L2} V</span>} />
-                        <Row label="L2 L3" value={<span className="tw-opacity-70">{VL2L3} V</span>} />
-                        <Row label="L1 L3" value={<span className="tw-opacity-70">{VL1L3} V</span>} />
+                        <Row label="L1 L2" value={<span className="tw-opacity-70">{formatComma(VL1L2)} V</span>} />
+                        <Row label="L2 L3" value={<span className="tw-opacity-70">{formatComma(VL2L3)} V</span>} />
+                        <Row label="L1 L3" value={<span className="tw-opacity-70">{formatComma(VL1L3)} V</span>} />
                     </div>
                 </div>
 
@@ -255,10 +260,10 @@ export default function MDBInfo({
                         Power Active
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="P1" value={<span className="tw-opacity-70">{PL1N} kW</span>} />
-                        <Row label="P2" value={<span className="tw-opacity-70">{PL2N} kW</span>} />
-                        <Row label="P3" value={<span className="tw-opacity-70">{PL3N} kW</span>} />
-                        <Row label="Total" value={<span className="tw-opacity-70">{PL123N} kW</span>} />
+                        <Row label="P1" value={<span className="tw-opacity-70">{formatComma(PL1N)} kW</span>} />
+                        <Row label="P2" value={<span className="tw-opacity-70">{formatComma(PL2N)} kW</span>} />
+                        <Row label="P3" value={<span className="tw-opacity-70">{formatComma(PL3N)} kW</span>} />
+                        <Row label="Total" value={<span className="tw-opacity-70">{formatComma(PL123N)} kW</span>} />
                     </div>
                 </div>
 
@@ -268,9 +273,9 @@ export default function MDBInfo({
                         THDI 
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1" value={<span className="tw-opacity-70">{thdiL1} %</span>} />
-                        <Row label="L2" value={<span className="tw-opacity-70">{thdiL2} %</span>} />
-                        <Row label="L3" value={<span className="tw-opacity-70">{thdiL3} %</span>} />
+                        <Row label="L1" value={<span className="tw-opacity-70">{formatComma(thdiL1)} %</span>} />
+                        <Row label="L2" value={<span className="tw-opacity-70">{formatComma(thdiL2)} %</span>} />
+                        <Row label="L3" value={<span className="tw-opacity-70">{formatComma(thdiL3)} %</span>} />
                     </div>
                 </div>
 
@@ -280,9 +285,9 @@ export default function MDBInfo({
                         Power Factor
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="pf–L1" value={<span className="tw-opacity-70">{Number(pfL1)}</span>} />
-                        <Row label="pf–L2" value={<span className="tw-opacity-70">{Number(pfL2)}</span>} />
-                        <Row label="pf–L3" value={<span className="tw-opacity-70">{Number(pfL3)}</span>} />
+                        <Row label="pf–L1" value={<span className="tw-opacity-70">{formatComma(Number(pfL1))}</span>} />
+                        <Row label="pf–L2" value={<span className="tw-opacity-70">{formatComma(Number(pfL2))}</span>} />
+                        <Row label="pf–L3" value={<span className="tw-opacity-70">{formatComma(Number(pfL3))}</span>} />
                     </div>
                 </div>
 
@@ -292,10 +297,10 @@ export default function MDBInfo({
                         Energy Total 
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="EL1" value={<span className="tw-opacity-70">{EL1} kWh</span>} />
-                        <Row label="EL2" value={<span className="tw-opacity-70">{EL2} kWh</span>} />
-                        <Row label="EL3" value={<span className="tw-opacity-70">{EL3} kWh</span>} />
-                        <Row label="Total" value={<span className="tw-opacity-70">{EL123} kWh</span>} />
+                        <Row label="EL1" value={<span className="tw-opacity-70">{formatComma(EL1)} kWh</span>} />
+                        <Row label="EL2" value={<span className="tw-opacity-70">{formatComma(EL2)} kWh</span>} />
+                        <Row label="EL3" value={<span className="tw-opacity-70">{formatComma(EL3)} kWh</span>} />
+                        <Row label="Total" value={<span className="tw-opacity-70">{formatComma(EL123)} kWh</span>} />
 
                     </div>
                 </div>
@@ -306,10 +311,10 @@ export default function MDBInfo({
                         Counter Voltage loss
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="L1 Loss" value={VL1N_loss} />
-                        <Row label="L2 Loss" value={VL2N_loss} />
-                        <Row label="L3 Loss" value={VL3N_loss} />
-                        <Row label="Total Loss" value={VL123_loss} />
+                        <Row label="L1 Loss" value={<span className="tw-opacity-70">{formatComma(VL1N_loss)}</span>} />
+                        <Row label="L2 Loss" value={<span className="tw-opacity-70">{formatComma(VL2N_loss)}</span>} />
+                        <Row label="L3 Loss" value={<span className="tw-opacity-70">{formatComma(VL3N_loss)}</span>} />
+                        <Row label="Total Loss" value={<span className="tw-opacity-70">{formatComma(VL123_loss)}</span>} />
                     </div>
                 </div>
 
@@ -319,10 +324,10 @@ export default function MDBInfo({
                         Power Active peak
                     </Typography>
                     <div className="tw-space-y-1">
-                        <Row label="P1" value={PL1N_peak} />
-                        <Row label="P2" value={PL2N_peak} />
-                        <Row label="P3" value={PL3N_peak} />
-                        <Row label="Total Peak" value={PL123N_peak} />
+                        <Row label="P1" value={<span className="tw-opacity-70">{formatComma(PL1N_peak)}</span>} />
+                        <Row label="P2" value={<span className="tw-opacity-70">{formatComma(PL2N_peak)}</span>} />
+                        <Row label="P3" value={<span className="tw-opacity-70">{formatComma(PL3N_peak)}</span>} />
+                        <Row label="Total Peak" value={<span className="tw-opacity-70">{formatComma(PL123N_peak)}</span>} />
                     </div>
                 </div>
 
