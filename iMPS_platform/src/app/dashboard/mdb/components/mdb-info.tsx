@@ -118,7 +118,7 @@ export default function MDBInfo({
     PL123N_peak,
 }: MDBType) {
     return (
-        <div className={`tw-w-full tw-space-y-6 ${className}`}>
+        <div className={`tw-w-full tw-space-y-6 tw-shadow-sm${className}`}>
             {/* ===== Top quick stats ===== */}
             {/* Power Block Section */}
             {/* <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 md:tw-gap-6"> */}
@@ -128,7 +128,7 @@ export default function MDBInfo({
                         icon={
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
-                                className="icon icon-tabler icon-tabler-wave-saw-tool tw-text-yellow-600"
+                                className="icon icon-tabler icon-tabler-wave-saw-tool tw-text-yellow-600 tw-shadow-sm"
                                 width="25"
                                 height="25"
                                 viewBox="0 0 24 24"
@@ -148,17 +148,17 @@ export default function MDBInfo({
                         unit="A"
                     />
                     <MetricRow
-                        icon={<i className="fa-solid fa-bolt tw-text-yellow-600 tw-h-5 tw-w-5"></i>}
+                        icon={<i className="fa-solid fa-bolt tw-text-yellow-600 tw-h-5 tw-w-5 tw-shadow-sm"></i>}
                         label="Power Energy" value={formatComma(powerKW)}
                         unit="kW" />
                     <MetricRow
-                        icon={<i className="fas fa-gas-pump tw-text-yellow-600 tw-h-5 tw-w-5"></i>}
+                        icon={<i className="fas fa-gas-pump tw-text-yellow-600 tw-h-5 tw-w-5 tw-shadow-sm"></i>}
                         label="Total Energy"
                         value={formatComma(totalEnergyKWh)}
                         unit="kWh" />
                     <MetricRow
                         icon={
-                            <svg xmlns="http://www.w3.org/2000/svg" className="icon icon-tabler icon-tabler-waveform tw-text-yellow-600" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="tw-shadow-sm icon icon-tabler icon-tabler-waveform tw-text-yellow-600" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                                 <path stroke="none" d="M0 0h24v24H0z" fill="none" />
                                 <path d="M3 12h18m-6 0l-3 5l-3 -10l-3 5" />
                             </svg>
@@ -169,11 +169,11 @@ export default function MDBInfo({
                 </div>
 
                 {/* Status Cards */}
-                <div className="tw-grid tw-grid-cols-1 md:tw-max-w-[250px] tw-gap-10 ">
+                <div className="tw-grid tw-grid-cols-1 md:tw-max-w-[250px] tw-gap-10 tw-shadow-sm">
                     <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm tw-space-y-5">
 
                         {/* Mainbreaker */}
-                        <div className="tw-flex tw-items-center tw-gap-3 tw-mt-3">
+                        <div className="tw-flex tw-items-center tw-gap-3 tw-mt-3 ">
                             <div className="tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-xl tw-bg-gray-100">
                                 {/* <BoltIcon className="tw-h-6 tw-w-6 tw-text-gray-700" /> */}
                                 <PowerIcon className="tw-h-6 tw-w-6 tw-text-gray-700" />
@@ -219,7 +219,7 @@ export default function MDBInfo({
             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
 
                 {/* v */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-shadow-sm">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Voltage
                     </Typography>
@@ -231,7 +231,7 @@ export default function MDBInfo({
                 </div>
 
                 {/* I */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-shadow-sm">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Current
                     </Typography>
@@ -243,7 +243,7 @@ export default function MDBInfo({
                 </div>
 
                 {/* VL */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-shadow-sm">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Voltage Phase
                     </Typography>
@@ -255,7 +255,7 @@ export default function MDBInfo({
                 </div>
 
                 {/* PLN */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-shadow-sm">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Power Active
                     </Typography>
@@ -268,7 +268,7 @@ export default function MDBInfo({
                 </div>
 
                 {/* THDI */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-shadow-sm">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         THDI
                     </Typography>
@@ -280,7 +280,7 @@ export default function MDBInfo({
                 </div>
 
                 {/* PF */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-shadow-sm">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Power Factor
                     </Typography>
@@ -292,7 +292,7 @@ export default function MDBInfo({
                 </div>
 
                 {/* EL */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-shadow-sm">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Energy Total
                     </Typography>
@@ -306,7 +306,7 @@ export default function MDBInfo({
                 </div>
 
                 {/* Counter Voltage loss */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-shadow-sm">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Counter Voltage loss
                     </Typography>
@@ -319,7 +319,7 @@ export default function MDBInfo({
                 </div>
 
                 {/* Power Active Peak */}
-                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+                <div className="tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-shadow-sm">
                     <Typography variant="small" color="blue-gray" className="tw-mb-2 tw-font-medium">
                         Power Active peak
                     </Typography>
@@ -357,7 +357,7 @@ function QuickStat({
     value: React.ReactNode;
 }) {
     return (
-        <div className="tw-flex tw-items-center tw-gap-3 tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-px-3 tw-py-2">
+        <div className="tw-flex tw-items-center tw-gap-3 tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-px-3 tw-py-2 tw-shadow-sm">
             <div className="tw-shrink-0">{icon}</div>
             <Typography variant="small" color="blue-gray" className="tw-opacity-70">
                 {label}
@@ -383,7 +383,7 @@ function MetricRow({
     unit?: string;
 }) {
     return (
-        <div className="tw-flex tw-items-center tw-gap-3 tw-rounded-md tw-border tw-border-blue-gray-50 tw-bg-white tw-px-3 tw-py-2">
+        <div className="tw-flex tw-items-center tw-gap-3 tw-rounded-md tw-border tw-border-blue-gray-50 tw-bg-white tw-px-3 tw-py-2 tw-shadow-sm">
             {icon ? <div>{icon}</div> : null}
             <Typography variant="small" color="blue-gray" className="tw-opacity-80">
                 {label}
@@ -423,7 +423,7 @@ function MiniRow({
             <Typography color="blue-gray" className="tw-font-semibold">
                 {mid}
             </Typography>
-            <div className="tw-flex tw-justify-between">
+            <div className="tw-flex tw-justify-between tw-shadow-sm">
                 <Typography variant="small" color="blue-gray" className="tw-opacity-70">
                     {rightLabel}
                 </Typography>
