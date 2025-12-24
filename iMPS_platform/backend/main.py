@@ -1240,11 +1240,78 @@ async def mdb_peak_power(station_id: str, current_user: UserClaims = Depends(get
     """
     ดึงค่า PL1N, PL2N, PL3N, PL123N ที่สูงที่สุด (peak) จากข้อมูล database ทั้งหมด
     ข้อมูลเข้า database เรื่อย ๆ ดังนั้นจะหาค่าสูงสุดตั้งแต่เริ่มต้น
+    กรองเฉพาะข้อมูลที่ไม่เกิน 150000
     """
     coll = get_mdb_collection_for(station_id)
     
     # Pipeline aggregation หาค่า max จากข้อมูลทั้งหมด
     pipeline = [
+        {
+            "$match": {
+                "$and": [
+                    {
+                        "$expr": {
+                            "$lte": [
+                                {
+                                    "$convert": {
+                                        "input": "$PL1N",
+                                        "to": "double",
+                                        "onError": None,
+                                        "onNull": 150001
+                                    }
+                                },
+                                150000
+                            ]
+                        }
+                    },
+                    {
+                        "$expr": {
+                            "$lte": [
+                                {
+                                    "$convert": {
+                                        "input": "$PL2N",
+                                        "to": "double",
+                                        "onError": None,
+                                        "onNull": 150001
+                                    }
+                                },
+                                150000
+                            ]
+                        }
+                    },
+                    {
+                        "$expr": {
+                            "$lte": [
+                                {
+                                    "$convert": {
+                                        "input": "$PL3N",
+                                        "to": "double",
+                                        "onError": None,
+                                        "onNull": 150001
+                                    }
+                                },
+                                150000
+                            ]
+                        }
+                    },
+                    {
+                        "$expr": {
+                            "$lte": [
+                                {
+                                    "$convert": {
+                                        "input": "$PL123N",
+                                        "to": "double",
+                                        "onError": None,
+                                        "onNull": 150001
+                                    }
+                                },
+                                150000
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
         {
             "$group": {
                 "_id": None,
