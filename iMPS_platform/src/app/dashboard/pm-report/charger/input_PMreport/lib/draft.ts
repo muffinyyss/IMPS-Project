@@ -8,7 +8,7 @@ type DraftData = {
   summary: string;
   // inspector?: string;
   dustFilterChanged?: boolean;
-  photoRefs?: Record<number, PhotoRef[]>;
+  photoRefs?: Record<number, (PhotoRef | { isNA: true })[]>;
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
 };
