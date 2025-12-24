@@ -16,15 +16,19 @@ try:
     import requests  # optional
 except Exception:
     requests = None
+    
 
 # -------------------- ตั้งค่าทั่วไป --------------------
-DOCUMENT_TITLE_MAIN = "Preventive Maintenance Checklist - CCB"
-DOCUMENT_TITLE_MAIN_CONT = "Preventive Maintenance Checklist - CCB (Continued)"
+DOCUMENT_TITLE_POST = "Preventive Maintenance Checklist - CCB (POST)"
+DOCUMENT_TITLE_PRE = "Preventive Maintenance Checklist - CCB (PRE)"
+DOCUMENT_TITLE_POST_CONT = "Preventive Maintenance Checklist - CCB (POST Continued)"
+DOCUMENT_TITLE_PRE_CONT = "Preventive Maintenance Checklist - CCB (PRE Continued)"
 DOCUMENT_TITLE_PHOTO_CONT = "Photos (Continued)"
-DOCUMENT_TITLE_PHOTO_PRE_PM = "Photos (Pre-PM)"
-DOCUMENT_TITLE_PHOTO_POST_PM = "Photos (POST-PM)"
+DOCUMENT_TITLE_PHOTO_PRE = "Photos (PRE)"
+DOCUMENT_TITLE_PHOTO_POST = "Photos (POST)"
 
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
+
 
 # -------------------- ฟอนต์ไทย --------------------
 FONT_CANDIDATES: Dict[str, List[str]] = {
@@ -34,6 +38,8 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
     "BI":["THSarabunNew-BoldItalic.ttf", "THSarabunNew BoldItalic.ttf", "TH Sarabun New BoldItalic.ttf", "THSarabun BoldItalic.ttf"],
 }
 
+
+# -------------------- Helpers / Layout constants --------------------
 LINE_W_OUTER = 0.45
 LINE_W_INNER = 0.22
 PADDING_X = 2.0
@@ -44,6 +50,12 @@ LINE_H = 5.0
 ROW_MIN_H = 7
 CHECKBOX_SIZE = 3.5
 SIG_H = 28
+TITLE_H = 5.5
+PHOTO_CONTINUE_H = 6
+EDGE_ALIGN_FIX = (LINE_W_OUTER - LINE_W_INNER) / 2.0
+ITEM_W = 65
+RESULT_W = 64
+PHOTO_Q_W = 85.0
 
 
 # -------------------- รายการหัวข้อ CCB --------------------
@@ -90,9 +102,6 @@ ROW_TITLES = {
 def _log(msg: str):
     if PDF_DEBUG:
         print(msg)
-        
-def _is_http_url(s: str) -> bool:
-    return s.startswith("http://") or s.startswith("https://")
 
 def _guess_img_type_from_ext(path_or_url: str) -> str:
     ext = os.path.splitext(str(path_or_url).lower())[1]
@@ -552,7 +561,7 @@ def _format_voltage_measurement(measures: dict, key: str, sub_index: Optional[in
     if not ms:
         return ""
 
-    # ✅ ถ้ามี sub_index ให้ดึงข้อมูลจาก index นั้น
+    # ถ้ามี sub_index ให้ดึงข้อมูลจาก index นั้น
     if sub_index is not None and str(sub_index) in ms:
         ms = ms[str(sub_index)]
     
@@ -818,7 +827,7 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-") -> float:
     return y_top + h_all
 
 def _draw_items_table_header(pdf: FPDF, base_font: str, x: float, y: float, item_w: float, result_w: float, remark_w: float):
-    header_h = 6.0
+    header_h = 5.5
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_xy(x, y)
@@ -858,11 +867,11 @@ def _draw_signature_block(
 
     pdf.set_line_width(LINE_W_INNER)
 
-    # ✅ ถ้ากำหนด y_bottom ให้วาดลายเซ็นที่ด้านล่างสุด
+    # ถ้ากำหนด y_bottom ให้วาดลายเซ็นที่ด้านล่างสุด
     if y_bottom is not None:
         y = y_bottom - total_sig_h
 
-    # ✅ วาดเส้นบน (ต่อจากตาราง)
+    # วาดเส้นบน (ต่อจากตาราง)
     pdf.line(x_table, y, x_table + item_w + result_w + remark_w, y)
 
     # ===== Header (สีเหลือง) =====
@@ -904,36 +913,6 @@ def _draw_signature_block(
 
     return y
 
-# def _draw_signature_footer(
-#     pdf: FPDF,
-#     base_font: str,
-#     pm_date_th: str,
-# ):
-#     left = pdf.l_margin
-#     page_w = pdf.w - pdf.l_margin - pdf.r_margin
-
-#     item_w = 65
-#     result_w = 64
-#     remark_w = page_w - item_w - result_w
-
-#     sig_total_h = 5 + 13 + 5 + 5  # รวมความสูงทั้งหมด
-
-#     # 🔥 ย้ายไปล่างสุดของหน้า
-#     y = pdf.h - pdf.b_margin - sig_total_h
-
-#     _draw_signature_block(
-#         pdf,
-#         base_font,
-#         left,
-#         y,
-#         item_w,
-#         result_w,
-#         remark_w,
-#         pm_date_th,
-#     )
-
-
-
 
 # -------------------------------------
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
@@ -949,7 +928,7 @@ PHOTO_FONT_SMALL  = 10
 PHOTO_LINE_H      = 5
 
 def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float) -> float:
-    header_h = 6.0
+    header_h = 5.5
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_xy(x, y)
@@ -1051,56 +1030,56 @@ def _extract_row_result(row: dict) -> str:
 
     return ""
 
-def _get_uploads_root() -> Path:
-    """เลือก root ของ uploads: ENV(PHOTOS_UPLOADS_DIR) > <backend>/uploads"""
-    override = os.getenv("PHOTOS_UPLOADS_DIR")
-    if override:
-        p = Path(override)
-        if p.exists():
-            return p
-    backend_root = Path(__file__).resolve().parents[2]  # .../backend
-    return backend_root / "uploads"
+# def _get_uploads_root() -> Path:
+#     """เลือก root ของ uploads: ENV(PHOTOS_UPLOADS_DIR) > <backend>/uploads"""
+#     override = os.getenv("PHOTOS_UPLOADS_DIR")
+#     if override:
+#         p = Path(override)
+#         if p.exists():
+#             return p
+#     backend_root = Path(__file__).resolve().parents[2]  # .../backend
+#     return backend_root / "uploads"
 
 
-def _split_upload_url_parts(url_path: str):
+# def _split_upload_url_parts(url_path: str):
     
-    clean = url_path.lstrip("/").replace("\\", "/")
-    parts = clean.split("/")
-    if len(parts) >= 5 and parts[0] == "uploads":
-        type_part = parts[1]
-        station = parts[2]
-        doc_id = parts[3]
-        group = parts[4]
-        filename = parts[5] if len(parts) >= 6 else ""
-        return type_part, station, doc_id, group, filename
-    return None
+#     clean = url_path.lstrip("/").replace("\\", "/")
+#     parts = clean.split("/")
+#     if len(parts) >= 5 and parts[0] == "uploads":
+#         type_part = parts[1]
+#         station = parts[2]
+#         doc_id = parts[3]
+#         group = parts[4]
+#         filename = parts[5] if len(parts) >= 6 else ""
+#         return type_part, station, doc_id, group, filename
+#     return None
 
-IMAGE_EXTS = [
-    ".jpg", ".jpeg", ".png", ".jfif",
-    ".webp", ".bmp", ".gif", ".tiff", ".tif"
-]
+# IMAGE_EXTS = [
+#     ".jpg", ".jpeg", ".png", ".jfif",
+#     ".webp", ".bmp", ".gif", ".tiff", ".tif"
+# ]
 
-def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
-    # 1) ถ้าเป็นไฟล์อยู่แล้ว
-    if p.is_file():
-        return p.as_posix(), _guess_img_type_from_ext(p.as_posix())
+# def _pick_image_from_path(p: Path) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
+#     # 1) ถ้าเป็นไฟล์อยู่แล้ว
+#     if p.is_file():
+#         return p.as_posix(), _guess_img_type_from_ext(p.as_posix())
 
-    # 2) ถ้าไม่มีนามสกุล ลองเติม
-    if not p.suffix and p.parent.exists():
-        for ext in _IMAGE_EXTS:
-            cand = p.with_suffix(ext)
-            if cand.exists() and cand.is_file():
-                return cand.as_posix(), _guess_img_type_from_ext(cand.as_posix())
+#     # 2) ถ้าไม่มีนามสกุล ลองเติม
+#     if not p.suffix and p.parent.exists():
+#         for ext in _IMAGE_EXTS:
+#             cand = p.with_suffix(ext)
+#             if cand.exists() and cand.is_file():
+#                 return cand.as_posix(), _guess_img_type_from_ext(cand.as_posix())
 
-    # 3) ถ้าเป็นโฟลเดอร์: เลือกไฟล์รูปแรก
-    if p.is_dir():
-        for ext in _IMAGE_EXTS:
-            files = sorted(p.glob(f"*{ext}"))
-            for f in files:
-                if f.is_file():
-                    return f.as_posix(), _guess_img_type_from_ext(f.as_posix())
+#     # 3) ถ้าเป็นโฟลเดอร์: เลือกไฟล์รูปแรก
+#     if p.is_dir():
+#         for ext in _IMAGE_EXTS:
+#             files = sorted(p.glob(f"*{ext}"))
+#             for f in files:
+#                 if f.is_file():
+#                     return f.as_posix(), _guess_img_type_from_ext(f.as_posix())
 
-    return None, None
+#     return None, None
 
 
 # -------------------- data helpers --------------------
@@ -1294,15 +1273,15 @@ class ReportPDF(HTML2PDF):
         self.ln(10)  # เว้นจากหัวเอกสารลงมา
 
     def footer(self):
-        # ❌ Photos ไม่ต้องมีลายเซ็น
+        # Photos ไม่ต้องมีลายเซ็น
         if self._section == "photos":
             return
 
         left = self.l_margin
         page_w = self.w - self.l_margin - self.r_margin
 
-        item_w = 65
-        result_w = 64
+        item_w = ITEM_W
+        result_w = RESULT_W
         remark_w = page_w - item_w - result_w
 
         # sig_h = SIG_H
@@ -1319,23 +1298,22 @@ class ReportPDF(HTML2PDF):
             self._pm_date_th,
         )
 
-
-
-
 def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
+    # data
     job = doc.get("job", {}) or {}
     station_name = job.get("station_name", "-")
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
     pm_date_th = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
+    checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
+    
     # print(f"[DEBUG] 🔍 issue_id (raw): {repr(pm_date)}")
     # print(f"[DEBUG] 🔍 issue_id (display): {pm_date}")
     
     pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id)
     pdf._pm_date_th = pm_date_th
     pdf._section = "checklist"
-
-
+    
     pdf.set_margins(left=10, top=10, right=10)
     pdf.set_auto_page_break(auto=True, margin=12)
 
@@ -1344,36 +1322,32 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_font(base_font, size=FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
 
-    checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
-
     left = pdf.l_margin
     right = pdf.r_margin
     page_w = pdf.w - left - right
     x0 = left
-    EDGE_ALIGN_FIX = (LINE_W_OUTER - LINE_W_INNER) / 2.0
 
     # หน้าแรก
     pdf.add_page()
     y = _draw_header(pdf, base_font, issue_id)
 
-    TITLE_H = 5.5
-
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 12)
     pdf.set_fill_color(255, 230, 100)
-    pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_MAIN, border=1, ln=1, align="C", fill=True)
+    pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_POST, border=1, ln=1, align="C", fill=True)
 
     y += TITLE_H
 
-    y = _draw_job_info_block(
-        pdf, base_font, x0, y, page_w, station_name, pm_date
-    )
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date)
 
+    # ========== ตารางรายการ ==========
     x_table = x0 + EDGE_ALIGN_FIX
     table_total_w = page_w - 2 * EDGE_ALIGN_FIX
-    item_w = 65
-    result_w = 64
+    
+    item_w = ITEM_W
+    result_w = RESULT_W
     remark_w = page_w - item_w - result_w
+    
     in_checklist = True
     signature_drawn_on_page = False
     
@@ -1385,14 +1359,14 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             pdf.add_page()
             y = _draw_header(pdf, base_font, issue_id)
             
-            # ✅ เพิ่มหัวเอกสาร continued
+            # เพิ่มหัวเอกสาร continued
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
             pdf.cell(
                 page_w,
                 TITLE_H,
-                DOCUMENT_TITLE_MAIN_CONT,
+                DOCUMENT_TITLE_POST_CONT,
                 border=1,
                 ln=1,
                 align="C",
@@ -1400,67 +1374,18 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             )
             y += TITLE_H
             
-            # ✅ เพิ่มหัวตาราง
+            # เพิ่มหัวตาราง
             y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
             pdf.set_font(base_font, "", FONT_MAIN)
-
-
-    # def _ensure_space(height_needed: float):
-    #     nonlocal y, signature_drawn_on_page
-
-    #     # page_bottom = pdf.h - pdf.b_margin
-    #     page_bottom = pdf.h - pdf.b_margin - SIG_H
-
-
-    #     if y + height_needed > page_bottom:
-
-    #         # วาดลายเซ็นก่อนจบหน้า checklist ทุกครั้ง
-    #         if pdf._section == "checklist" and not signature_drawn_on_page:
-    #             y = _draw_signature_block(
-    #                 pdf,
-    #                 base_font,
-    #                 x_table,
-    #                 y,
-    #                 item_w,
-    #                 result_w,
-    #                 remark_w,
-    #                 pm_date_th,
-    #             )
-    #             signature_drawn_on_page = True
-
-    #         # 🔹 ขึ้นหน้าใหม่
-    #         pdf.add_page()
-    #         y = _draw_header(pdf, base_font, issue_id)
-
-    #         pdf.set_xy(x0, y)
-    #         pdf.set_font(base_font, "B", 13)
-    #         pdf.set_fill_color(255, 230, 100)
-    #         pdf.cell(
-    #             page_w,
-    #             TITLE_H,
-    #             DOCUMENT_TITLE_MAIN_CONT,
-    #             border=1,
-    #             ln=1,
-    #             align="C",
-    #             fill=True,
-    #         )
-    #         y += TITLE_H
-
-    #         y = _draw_items_table_header(
-    #             pdf, base_font, x_table, y, item_w, result_w, remark_w
-    #         )
-
-    #         pdf.set_font(base_font, "", FONT_MAIN)
-    #         signature_drawn_on_page = False
-
 
     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w)
     pdf.set_font(base_font, "", FONT_MAIN)
 
-    # ✅ บันทึกจุดเริ่มต้นของตาราง rows (สำหรับวาดเส้นรอบนอก)
+    # บันทึกจุดเริ่มต้นของตาราง rows (สำหรับวาดเส้นรอบนอก)
     y_table_start = y
+    y_last_row_end = y  # บันทึกจุดสิ้นสุดของ row สุดท้ายบนหน้าแรก
     
-    # ✅ ก่อนเริ่มลูป ให้คำนวณข้อมูลทั้งหมด เพื่อรู้ว่า row ไหนเป็นสุดท้าย
+    # ก่อนเริ่มลูป ให้คำนวณข้อมูลทั้งหมด เพื่อรู้ว่า row ไหนเป็นสุดท้าย
     checks_list = list(checks)
     
     for idx, it in enumerate(checks_list):
@@ -1493,7 +1418,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         elif row_num == 6:
             remark_h = max(remark_h, LINE_H * 5.5)
         elif row_num == 9:
-            remark_h = max(remark_h, LINE_H * 13.5)
+            # ถ้าเป็นหน้าแรก ไม่ต้องกำหนดความสูงขั้นต่ำเพราะจะขยายให้เต็มพื้นที่
+            if pdf.page != 1:
+                remark_h = max(remark_h, LINE_H * 13.5)
 
         result_block_h = max(ROW_MIN_H, len(result_lines) * LINE_H)
 
@@ -1504,34 +1431,39 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             result_block_h
         )
 
-        # ✅ เช็คว่า row นี้เป็นสุดท้ายของหน้าหรือไม่
+        # เช็คว่า row นี้เป็นสุดท้ายของหน้าหรือไม่
         is_last_row = (idx == len(checks_list) - 1)
+        
+        # บันทึก y ของ row นี้ ก่อน _ensure_space (เพราะ _ensure_space อาจขึ้นหน้าใหม่)
+        if pdf.page == 1:
+            y_last_row_end = y + row_h_eff
         
         _ensure_space(row_h_eff)
 
-        # ✅ ถ้า row นี้เป็นสุดท้าย และอยู่บนหน้าแรก ให้ขยายความสูงให้ชิดลายเซ็น
+        # ถ้า row นี้เป็นสุดท้าย และอยู่บนหน้าแรก ให้ขยายความสูงให้ชิดลายเซ็น
         if is_last_row and pdf.page == 1:
             # คำนวณพื้นที่ที่เหลือจนถึงลายเซ็น
             page_bottom = pdf.h - pdf.b_margin - SIG_H
             available_h = page_bottom - y
             
-            # ✅ ใช้พื้นที่ที่เหลือทั้งหมด (เพื่อให้ชิดกับลายเซ็น)
+            # ใช้พื้นที่ที่เหลือทั้งหมด (เพื่อให้ชิดกับลายเซ็น)
             if available_h > row_h_eff:
                 row_h_eff = available_h
-        # ✅ ถ้าเป็น row ที่อื่น (ไม่ใช่สุดท้าย) แต่เป็นสุดท้ายของหน้าแรก ก็ต้องขยายด้วย
+        # ถ้าเป็น row ที่อื่น (ไม่ใช่สุดท้าย) แต่เป็นสุดท้ายของหน้าแรก ก็ต้องขยายด้วย
         elif pdf.page == 1:
             # คำนวณว่า rows ที่เหลือต้องใช้ space เท่าไหร่
             page_bottom = pdf.h - pdf.b_margin - SIG_H
             remaining_rows = checks_list[idx + 1:]
             
-            # ✅ ประมาณ minimum height สำหรับ rows ที่เหลือ (อย่างน้อย ROW_MIN_H ต่อ row)
+            # ประมาณ minimum height สำหรับ rows ที่เหลือ (อย่างน้อย ROW_MIN_H ต่อ row)
             estimated_remaining_h = len(remaining_rows) * ROW_MIN_H
             
             available_h = page_bottom - y
             
-            # ✅ ถ้า space ไม่พอสำหรับ rows ที่เหลือ + row นี้ ให้ขยาย row นี้ให้เต็ม
+            # ถ้า space ไม่พอสำหรับ rows ที่เหลือ ให้ขยาย row นี้ให้เต็มพื้นที่
+            # (rows ที่เหลือจะขึ้นหน้าใหม่)
             if available_h < row_h_eff + estimated_remaining_h:
-                # ขยายให้เต็มพื้นที่ที่เหลือ (rows ที่เหลือจะขึ้นหน้าใหม่)
+                # ขยายให้เต็มพื้นที่ที่เหลือ จนถึงลายเซ็น
                 row_h_eff = available_h
 
         x = x_table
@@ -1570,19 +1502,19 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     # 5. คำนวณ total_h ใหม่ (ตามความสูงของ comment)
     total_h = h_comment + h_checklist
-    
-    # ✅ เพิ่มความสูง Signature เข้าด้วย
+
+    # เพิ่มความสูง Signature เข้าด้วย
     sig_h = 5 + 14 + 5 + 5  # header + box + name + date
     total_h_with_sig = total_h + sig_h
 
-    # ✅ เช็คพื้นที่สำหรับ Comment + Inspection + Signature ทั้งหมด
+    # เช็คพื้นที่สำหรับ Comment + Inspection + Signature ทั้งหมด
     page_bottom = pdf.h - pdf.b_margin
-    
-    # ✅ ตรวจสอบว่าจะขึ้นหน้าใหม่หรือไม่ก่อนวาด Comment
+
+    # ตรวจสอบว่าจะขึ้นหน้าใหม่หรือไม่ก่อนวาด Comment
     # (ถ้าอยู่บนหน้าแรก และ row สุดท้ายขยายแล้ว ไม่ต้องมี Comment)
     is_new_page_for_comment = False
     if pdf.page == 1:
-        # ✅ บนหน้าแรก: ไม่มี Comment (row สุดท้ายขยายแล้ว)
+        # บนหน้าแรก: ไม่มี Comment (row สุดท้ายขยายแล้ว)
         is_new_page_for_comment = True
         pdf.add_page()
         y = _draw_header(pdf, base_font, issue_id)
@@ -1593,20 +1525,21 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         pdf.cell(
             page_w,
             TITLE_H,
-            DOCUMENT_TITLE_MAIN_CONT,
+            DOCUMENT_TITLE_POST_CONT,
             border=1,
             ln=1,
             align="C",
+            fill=True,
         )
         y += TITLE_H
-        
-        # ✅ เพิ่มเส้นซ้าย-ขวาของตารางต่อลงเมื่อขึ้นหน้าใหม่
+
+        # เพิ่มเส้นซ้าย-ขวาของตารางต่อลงเมื่อขึ้นหน้าใหม่
         page_bottom = pdf.h - pdf.b_margin
         pdf.line(comment_x, y, comment_x, page_bottom)  # เส้นซ้าย
         pdf.line(comment_x + comment_item_w + comment_result_w + comment_remark_w, y, 
                  comment_x + comment_item_w + comment_result_w + comment_remark_w, page_bottom)  # เส้นขวา
     elif y + total_h_with_sig > page_bottom:
-        # ✅ บนหน้า continued: ตรวจสอบพื้นที่ Comment + Inspection + Signature
+        # บนหน้า continued: ตรวจสอบพื้นที่ Comment + Inspection + Signature
         is_new_page_for_comment = True
         pdf.add_page()
         y = _draw_header(pdf, base_font, issue_id)
@@ -1617,14 +1550,15 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         pdf.cell(
             page_w,
             TITLE_H,
-            DOCUMENT_TITLE_MAIN_CONT,
+            DOCUMENT_TITLE_POST_CONT,
             border=1,
             ln=1,
             align="C",
+            fill=True
         )
         y += TITLE_H
-        
-        # ✅ เพิ่มเส้นซ้าย-ขวาของตารางต่อลงเมื่อขึ้นหน้าใหม่
+
+        # เพิ่มเส้นซ้าย-ขวาของตารางต่อลงเมื่อขึ้นหน้าใหม่
         page_bottom = pdf.h - pdf.b_margin
         pdf.line(comment_x, y, comment_x, page_bottom)  # เส้นซ้าย
         pdf.line(comment_x + comment_item_w + comment_result_w + comment_remark_w, y, 
@@ -1650,95 +1584,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     # เส้นคั่นระหว่าง Comment และ Inspection Results
     pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
-
-    # ========== แถว Inspection Results (ความสูงคงที่) ==========
-    # ... (วาด Inspection Results ตามเดิม)
-
-    # y += h_checklist
-
-    # === ✅ เพิ่มส่วนนี้: วาดลายเซ็นสำหรับหน้าแรก (ชิดกับเนื้อหา) ===
-    # if not pdf._is_first_page_complete:
-    #     y = _draw_signature_block(
-    #         pdf,
-    #         base_font,
-    #         x_table,
-    #         y,  # ✅ ใช้ y ปัจจุบัน (ไม่ fixed ล่างสุด)
-    #         item_w,
-    #         result_w,
-    #         remark_w,
-    #         pm_date_th,
-    #     )
-    #     pdf._is_first_page_complete = True  # ✅ ทำเครื่องหมายว่าหน้าแรกเสร็จแล้ว
-
-    # # ========== Comment & Summary ==========
-    # comment_x = x_table
-    # comment_item_w = item_w
-    # comment_result_w = result_w
-    # comment_remark_w = remark_w
-
-    # # 1. ดึงข้อความ comment ก่อน
-    # comment_text = str(doc.get("summary", "") or "-")
-
-    # # 2. คำนวณความสูงจริงของ comment text
-    # _, comment_h_calculated = _split_lines(pdf, comment_result_w + comment_remark_w - 2 * PADDING_X, comment_text, LINE_H)
-
-    # # 3. ใช้ความสูงที่มากกว่า (7mm ขั้นต่ำ หรือความสูงที่คำนวณได้ + padding)
-    # h_comment = max(7, comment_h_calculated + 2 * PADDING_Y)
-
-    # # 4. h_checklist ยังคงเดิม
-    # h_checklist = 7
-
-    # # 5. คำนวณ total_h ใหม่ (ตามความสูงของ comment)
-    # total_h = h_comment + h_checklist
-
-    # # ตรวจสอบพื้นที่ก่อนวาดส่วน Comment
-    # # _ensure_space(total_h + 5)
-    # # ===== เช็คพื้นที่สำหรับ Comment + Inspection + Signature ทั้งก้อน =====
-    # sig_block_h = (
-    #     5   # header
-    #     + 13  # signature box
-    #     + 5   # name
-    #     + 5   # date
-    # )
-
-    # total_block_h = h_comment + h_checklist + sig_block_h
-
-    # page_bottom = pdf.h - pdf.b_margin
-
-    # if y + total_block_h > page_bottom:
-    #     pdf.add_page()
-    #     y = _draw_header(pdf, base_font, issue_id)
-
-    #     pdf.set_xy(x0, y)
-    #     pdf.set_font(base_font, "B", 13)
-    #     pdf.cell(
-    #         page_w,
-    #         TITLE_H,
-    #         DOCUMENT_TITLE_MAIN_CONT,
-    #         border=1,
-    #         ln=1,
-    #         align="C",
-    #     )
-    #     y += TITLE_H
-
-
-    # # วาดกรอบนอกทั้งหมด (ความสูงขยายแล้ว)
-    # pdf.rect(comment_x, y, comment_item_w + comment_result_w + comment_remark_w, total_h)
-
-    # # ========== แถว Comment (ขยายตามความสูง) ==========
-    # pdf.set_font(base_font, "B", 11)
-    # pdf.set_xy(comment_x, y)
-    # pdf.cell(comment_item_w, h_comment, "Comment :", border=0, align="L")
-
-    # # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ (สูงเต็ม h_comment)
-    # pdf.line(comment_x + comment_item_w, y, comment_x + comment_item_w, y + h_comment)
-
-    # # ใช้ _cell_text_in_box สำหรับ comment text (ขยายตามความสูง)
-    # pdf.set_font(base_font, "", 11)
-    # _cell_text_in_box(pdf, comment_x + comment_item_w, y, comment_result_w + comment_remark_w, h_comment, 
-    #                 comment_text, align="L", lh=LINE_H, valign="top")
-
-    # y += h_comment
 
     # เส้นคั่นระหว่าง Comment และ Inspection Results
     pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
@@ -1776,23 +1621,22 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     y += h_checklist
     
-    # ✅ คำนวณตำแหน่งลายเซ็นให้ติดด้านล่างสุด (หลังลบ b_margin)
+    # คำนวณตำแหน่งลายเซ็นให้ติดด้านล่างสุด (หลังลบ b_margin)
     page_bottom = pdf.h - pdf.b_margin
     
-    # ✅ ถ้าเป็นหน้าแรก: ไม่มี Comment/Inspection section
-    # ต้องวาดเส้นซ้าย-ขวาต่อเชื่อมจาก rows ไปถึงลายเซ็นโดยตรง
+    # ถ้าเป็นหน้าแรก: วาดเส้นซ้าย-ขวา จากจุดสิ้นสุดของ row สุดท้าย ลงไปถึงลายเซ็น
     if pdf.page == 1:
-        # ✅ วาดเส้นซ้าย-ขวาของตารางจากจุดเริ่มต้นของ rows ลงไปถึงลายเซ็น
-        pdf.line(x_table, y_table_start, x_table, page_bottom)  # เส้นซ้าย
-        pdf.line(x_table + item_w + result_w + remark_w, y_table_start, 
+        # วาดเส้นซ้าย-ขวาของตารางจากจุดสิ้นสุดของ row สุดท้าย ลงไปถึงลายเซ็น
+        pdf.line(x_table, y_last_row_end, x_table, page_bottom)  # เส้นซ้าย
+        pdf.line(x_table + item_w + result_w + remark_w, y_last_row_end, 
                  x_table + item_w + result_w + remark_w, page_bottom)  # เส้นขวา
     else:
-        # ✅ บนหน้า continued: เหมือนเดิม (ไม่มีการวาดเส้นซ้าย-ขวาพิเศษ)
+        # บนหน้า continued: เหมือนเดิม (ไม่มีการวาดเส้นซ้าย-ขวาพิเศษ)
         # ถ้าไม่ขึ้นหน้าใหม่ ต้องวาดเส้นบน (ต่อจาก rows)
         if not is_new_page_for_comment:
             pdf.line(comment_x, y, comment_x + comment_item_w + comment_result_w + comment_remark_w, y)
         
-        # ✅ วาดเส้นซ้าย-ขวาของตารางต่อลงถึงลายเซ็น (ไม่มีช่องว่าง)
+        # วาดเส้นซ้าย-ขวาของตารางต่อลงถึงลายเซ็น (ไม่มีช่องว่าง)
         pdf.line(comment_x, y, comment_x, page_bottom)  # เส้นซ้าย
         pdf.line(comment_x + comment_item_w + comment_result_w + comment_remark_w, y, 
                  comment_x + comment_item_w + comment_result_w + comment_remark_w, page_bottom)  # เส้นขวา
@@ -1807,75 +1651,83 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         result_w,
         remark_w,
         pm_date_th,
-        y_bottom=page_bottom,  # ✅ บอกให้วาดลายเซ็นติดด้านล่างสุด
+        y_bottom=page_bottom,  # บอกให้วาดลายเซ็นติดด้านล่างสุด
     )
 
-
-    # # ช่องเซ็นชื่อ
-    # signer_labels = ["Performed by", "Approved by", "Witnessed by"]
-    # pdf.set_line_width(LINE_W_INNER)
-
-    # col_widths = [item_w, result_w, remark_w]
-    # row_h_header = 5
-    # row_h_sig = 14
-    # row_h_name = 5
-    # row_h_date = 5
-    # total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
-
-    # _ensure_space(total_sig_h + 5)
-
-    # pdf.set_font(base_font, "B", FONT_MAIN)
-    # pdf.set_fill_color(255, 230, 100)
-
-    # x_pos = x_table
-    # for i, label in enumerate(signer_labels):
-    #     pdf.set_xy(x_pos, y)
-    #     pdf.cell(col_widths[i], row_h_header, label, border=1, align="C", fill=True)
-    #     x_pos += col_widths[i]
-    # y += row_h_header
-
-    # x_pos = x_table
-    # for i in range(3):
-    #     pdf.rect(x_pos, y, col_widths[i], row_h_sig)
-    #     x_pos += col_widths[i]
-    # y += row_h_sig
-
-    # pdf.set_font(base_font, "", FONT_MAIN)
-    # x_pos = x_table
-    # for i in range(3):
-    #     pdf.rect(x_pos, y, col_widths[i], row_h_name)
-    #     name_text = f"( {' ' * 40} )"
-    #     pdf.set_xy(x_pos, y)
-    #     pdf.cell(col_widths[i], row_h_name, name_text, border=0, align="C")
-    #     x_pos += col_widths[i]
-    # y += row_h_name
-
-    # x_pos = x_table
-    # for i in range(3):
-    #     pdf.rect(x_pos, y, col_widths[i], row_h_date)
-    #     date_text = "Date :  " + pm_date_th
-    #     pdf.set_xy(x_pos, y)
-    #     pdf.cell(col_widths[i], row_h_date, date_text, border=0, align="C")
-    #     x_pos += col_widths[i]
-    # y += row_h_date
-
-    # ======================= ส่วนที่ 1: Pre-PM Photos =======================
-    has_pre_photos = bool(doc.get("photos_pre"))
+    # ======================= ส่วนที่ 1: Post-PM Photos (ต่อหลัง Checklist) =======================
+    pdf._section = "photos"
     
+    # เพิ่มหน้าใหม่ก็ต่อเมื่อมีพื้นที่ไม่พอ (ไม่ต้อง add_page ทันที)
+    page_bottom = pdf.h - pdf.b_margin
+    if y > page_bottom - 50:  # ถ้าพื้นที่เหลือน้อย ให้ขึ้นหน้าใหม่
+        pdf.add_page()
+        y = _draw_header(pdf, base_font, issue_id)
+
+    pdf.set_xy(x0, y)
+    pdf.set_font(base_font, "B", 13)
+    pdf.set_fill_color(255, 230, 100)
+    
+    # ตรวจสอบว่ามี Pre-PM Photos หรือไม่
+    has_pre_photos = bool(doc.get("photos_pre"))
+    title_text = DOCUMENT_TITLE_PHOTO_POST if has_pre_photos else "Photos"
+    pdf.cell(page_w, TITLE_H, title_text, border=1, ln=1, align="C", fill=True)
+    y += TITLE_H
+
+    x_table = x0 + EDGE_ALIGN_FIX
+    q_w = PHOTO_Q_W
+    g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
+
+    def _ensure_space_photo_post(height_needed: float):
+        nonlocal y
+        if y + height_needed > (pdf.h - pdf.b_margin):
+            pdf.add_page()
+            y = _draw_header(pdf, base_font, issue_id)
+            pdf.set_xy(x0, y)
+            pdf.set_font(base_font, "B", 13)
+            pdf.set_fill_color(255, 230, 100)
+            pdf.cell(page_w, PHOTO_CONTINUE_H, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
+            y += PHOTO_CONTINUE_H
+            y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+            pdf.set_font(base_font, "", FONT_MAIN)
+
+    y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+    pdf.set_font(base_font, "", FONT_MAIN)
+
+    # Post-PM photos: ใช้ measures สำหรับแสดง voltage measurements
+    photo_rows = _build_photo_rows_grouped(ROW_TITLES, doc.get("measures") or {})
+
+    for it in photo_rows:
+        idx = int(it.get("idx") or 0)
+        question_text = it.get("text", "")  # ใช้ text ที่มี subitems แล้ว
+        img_items = _get_photo_items_for_idx(doc, idx)
+
+        # คำนวณความสูงจริงของแถวรูป
+        _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
+        total_images = len(img_items)
+        num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
+        images_total_h = (num_rows * PHOTO_IMG_MAX_H + (num_rows - 1) * PHOTO_GAP + 2 * PHOTO_PAD_Y) if num_rows > 0 else 0
+        actual_row_h = max(text_h + 2 * PADDING_Y, images_total_h)
+        
+        _ensure_space_photo_post(actual_row_h)
+
+        row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
+                                     question_text, img_items)
+        y += row_h_used
+
+    # ======================= ส่วนที่ 2: Pre-PM Photos (ท้ายสุด) =======================
     if has_pre_photos:
         pdf._section = "photos"
         pdf.add_page()
         y = _draw_header(pdf, base_font, issue_id)
 
-        TITLE_H = 7
         pdf.set_xy(x0, y)
         pdf.set_font(base_font, "B", 13)
         pdf.set_fill_color(255, 230, 100)
-        pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_PHOTO_PRE_PM, border=1, ln=1, align="C", fill=True)
+        pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_PHOTO_PRE, border=1, ln=1, align="C", fill=True)
         y += TITLE_H
 
         x_table = x0 + EDGE_ALIGN_FIX
-        q_w = 85.0
+        q_w = PHOTO_Q_W
         g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
 
         def _ensure_space_photo_pre(height_needed: float):
@@ -1886,9 +1738,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
                 pdf.set_xy(x0, y)
                 pdf.set_font(base_font, "B", 13)
                 pdf.set_fill_color(255, 230, 100)
-                photo_continue_h = 6
-                pdf.cell(page_w, photo_continue_h, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
-                y += photo_continue_h
+                pdf.cell(page_w, PHOTO_CONTINUE_H, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
+                y += PHOTO_CONTINUE_H
                 y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
                 pdf.set_font(base_font, "", FONT_MAIN)
 
@@ -1922,60 +1773,6 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
                 pdf, base_font, x_table, y, q_w, g_w, question_text_pre, img_items
             )
             y += row_h_used
-
-    # ======================= ส่วนที่ 2: Post-PM Photos =======================
-    pdf.add_page()
-    y = _draw_header(pdf, base_font, issue_id)
-
-    TITLE_H = 7
-    pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 13)
-    pdf.set_fill_color(255, 230, 100)
-    title_text = DOCUMENT_TITLE_PHOTO_POST_PM if has_pre_photos else "Photos"
-    pdf.cell(page_w, TITLE_H, title_text, border=1, ln=1, align="C", fill=True)
-    y += TITLE_H
-
-    x_table = x0 + EDGE_ALIGN_FIX
-    q_w = 85.0
-    g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
-
-    def _ensure_space_photo_post(height_needed: float):
-        nonlocal y
-        if y + height_needed > (pdf.h - pdf.b_margin):
-            pdf.add_page()
-            y = _draw_header(pdf, base_font, issue_id)
-            pdf.set_xy(x0, y)
-            pdf.set_font(base_font, "B", 13)
-            pdf.set_fill_color(255, 230, 100)
-            photo_continue_h = 6
-            pdf.cell(page_w, photo_continue_h, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
-            y += photo_continue_h
-            y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-            pdf.set_font(base_font, "", FONT_MAIN)
-
-    y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
-    pdf.set_font(base_font, "", FONT_MAIN)
-
-    # Post-PM photos: ใช้ measures สำหรับแสดง voltage measurements
-    photo_rows = _build_photo_rows_grouped(ROW_TITLES, doc.get("measures") or {})
-
-    for it in photo_rows:
-        idx = int(it.get("idx") or 0)
-        question_text = it.get("text", "")  # ใช้ text ที่มี subitems แล้ว
-        img_items = _get_photo_items_for_idx(doc, idx)
-
-        # คำนวณความสูงจริงของแถวรูป
-        _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
-        total_images = len(img_items)
-        num_rows = math.ceil(total_images / PHOTO_PER_LINE) if total_images > 0 else 0
-        images_total_h = (num_rows * PHOTO_IMG_MAX_H + (num_rows - 1) * PHOTO_GAP + 2 * PHOTO_PAD_Y) if num_rows > 0 else 0
-        actual_row_h = max(text_h + 2 * PADDING_Y, images_total_h)
-        
-        _ensure_space_photo_post(actual_row_h)
-
-        row_h_used = _draw_photos_row(pdf, base_font, x_table, y, q_w, g_w, 
-                                     question_text, img_items)
-        y += row_h_used
 
     return _output_pdf_bytes(pdf)
 
