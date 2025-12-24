@@ -71,7 +71,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             try {
                 setLoadingStations(true);
                 const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-                
+
                 if (!token) {
                     console.warn("No token found");
                     return;
@@ -105,13 +105,19 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // Validation: if technician, must select at least one station
+        if (form.role === "technician" && selectedStations.length === 0) {
+            alert("Please select at least one station for technician role");
+            return;
+        }
+
         const payload: NewUserPayload = {
             ...form,
             username: form.username.trim(),
             email: form.email.trim(),
             company_name: form.company_name?.trim() || undefined,
             tel: form.tel.trim(),
-            ...(form.role === "technician" && selectedStations.length > 0 
+            ...(form.role === "technician" && selectedStations.length > 0
                 ? { station_id: selectedStations.map(s => s.station_id) }
                 : {}),
         };
@@ -189,39 +195,45 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             crossOrigin={undefined}
                         />
                         <div>
-                            <Select
-                                value={form.role}
-                                onChange={(v) => {
-                                    onChange("role", String(v ?? form.role) as "owner" | "technician" | "admin");
-                                    // รีเซ็ต station_id เมื่อเปลี่ยน role
-                                    if (v !== "technician") {
-                                        setForm((s) => ({ ...s, station_id: undefined }));
-                                    }
-                                }}
-                                label="Role"
-                            >
-                                <Option value="owner">Owner</Option>
-                                <Option value="admin">Admin</Option>
-                                <Option value="technician">Technician</Option>
-                            </Select>
+                            <div className="tw-flex tw-items-center tw-gap-1">
+                                <Select
+                                    value={form.role}
+                                    onChange={(v) => {
+                                        onChange("role", String(v ?? form.role) as "owner" | "technician" | "admin");
+                                        // รีเซ็ต station_id เมื่อเปลี่ยน role
+                                        if (v !== "technician") {
+                                            setForm((s) => ({ ...s, station_id: undefined }));
+                                        }
+                                    }}
+                                    label="Role"
+                                >
+                                    <Option value="owner">Owner</Option>
+                                    <Option value="admin">Admin</Option>
+                                    <Option value="technician">Technician</Option>
+                                </Select>
+                                {/* <span className="tw-text-red-500 tw-mt-4">*</span> */}
+                            </div>
                         </div>
 
                         {/* แสดง Station Search เฉพาะเมื่อ role = technician */}
                         {form.role === "technician" && (
                             <div className="tw-relative">
-                                <Input
-                                    label="Select Station"
-                                    placeholder="Type to search..."
-                                    value={stationSearchValue}
-                                    onChange={(e) => {
-                                        setStationSearchValue(e.target.value);
-                                        setShowStationDropdown(true);
-                                    }}
-                                    onFocus={() => setShowStationDropdown(true)}
-                                    disabled={loadingStations || stations.length === 0}
-                                    crossOrigin={undefined}
-                                />
+                                <div className="tw-flex tw-items-center tw-gap-1">
+                                    <Input
+                                        label={<span>Select Station <span className="tw-text-red-500">*</span></span>}
+                                        placeholder="Type to search..."
+                                        value={stationSearchValue}
+                                        onChange={(e) => {
+                                            setStationSearchValue(e.target.value);
+                                            setShowStationDropdown(true);
+                                        }}
+                                        onFocus={() => setShowStationDropdown(true)}
+                                        disabled={loadingStations || stations.length === 0}
+                                        crossOrigin={undefined}
+                                    />
+                                </div>
                                 
+
                                 {/* Dropdown suggestions */}
                                 {showStationDropdown && (
                                     <div className="tw-absolute tw-top-full tw-left-0 tw-right-0 tw-z-10 tw-mt-1 tw-max-h-48 tw-overflow-y-auto tw-bg-white tw-border tw-border-gray-300 tw-rounded-lg tw-shadow-lg">
@@ -231,9 +243,9 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                                 (station.station_name
                                                     .toLowerCase()
                                                     .includes(stationSearchValue.toLowerCase()) ||
-                                                station.station_id
-                                                    .toLowerCase()
-                                                    .includes(stationSearchValue.toLowerCase()))
+                                                    station.station_id
+                                                        .toLowerCase()
+                                                        .includes(stationSearchValue.toLowerCase()))
                                             )
                                             .map((station) => (
                                                 <div
@@ -253,23 +265,23 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                                     </Typography>
                                                 </div>
                                             ))}
-                                        
+
                                         {stationSearchValue && stations.filter((station) =>
                                             !selectedStations.find(s => s.station_id === station.station_id) &&
                                             (station.station_name
                                                 .toLowerCase()
                                                 .includes(stationSearchValue.toLowerCase()) ||
-                                            station.station_id
-                                                .toLowerCase()
-                                                .includes(stationSearchValue.toLowerCase()))
+                                                station.station_id
+                                                    .toLowerCase()
+                                                    .includes(stationSearchValue.toLowerCase()))
                                         ).length === 0 && (
-                                            <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
-                                                No stations found
-                                            </div>
-                                        )}
+                                                <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
+                                                    No stations found
+                                                </div>
+                                            )}
                                     </div>
                                 )}
-                                
+
                                 {loadingStations && (
                                     <Typography variant="small" color="gray" className="tw-mt-1">
                                         Loading stations...
@@ -280,7 +292,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                         No stations available
                                     </Typography>
                                 )}
-                                
+
                                 {/* Selected Stations Tags */}
                                 {selectedStations.length > 0 && (
                                     <div className="tw-mt-3">
@@ -317,7 +329,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
 
                 <DialogFooter className="tw-gap-2">
                     <Button variant="outlined" onClick={resetAndClose} type="button">Cancel</Button>
-                    <Button type="submit" className="tw-bg-blue-600" disabled={loading}>
+                    <Button type="submit" className="tw-bg-blue-600" disabled={loading || (form.role === "technician" && selectedStations.length === 0)}>
                         {loading ? "Saving..." : "Create User"}
                     </Button>
                 </DialogFooter>

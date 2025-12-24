@@ -42,7 +42,7 @@ function Row({
     );
 }
 
-export default function EvPanel() {
+export default function EvPanel({ head }: { head: 1 | 2 }) {
     const searchParams = useSearchParams();
     const [stationId, setStationId] = useState<string | null>(null);
     const [err, setErr] = useState<string | null>(null);
@@ -131,22 +131,29 @@ export default function EvPanel() {
 
     // 3) เตรียม rows จาก data จริง
     const rows = useMemo(
-        () => [
-            { label: "CP State Head 1", value: data?.CP_status1 },
-            { label: "CP State Head 2", value: data?.CP_status2 },
-            { label: "Target Voltage Head 1 (V)", value: fmtNum(data?.target_voltage1) },
-            { label: "Target Voltage Head 2 (V)", value: fmtNum(data?.target_voltage2) },
-            { label: "Target Current Head 1 (A)", value: fmtNum(data?.target_current1) },
-            { label: "Target Current Head 2 (A)", value: fmtNum(data?.target_current2) },
+            () => {
+                if (head === 1) {
+                    return [
+                        { label: "CP State Head 1", value: mapCP(data?.CP_status1) },
+                        { label: "Target Voltage Head 1 (V)", value: fmtNum(data?.target_voltage1) },
+                        { label: "Target Current Head 1 (A)", value: fmtNum(data?.target_current1) },
+                    ];
+                } else {
+                    return [
+                        { label: "CP State Head 2", value: mapCP(data?.CP_status2) },
+                        { label: "Target Voltage Head 2 (V)", value: fmtNum(data?.target_voltage2) },
+                        { label: "Target Current Head 2 (A)", value: fmtNum(data?.target_current2) },
+                    ];
+                }
+                // ถ้าอยากโชว์ค่าที่วัดจริงด้วย (แถม)
 
-            // ถ้าอยากโชว์ค่าที่วัดจริงด้วย (แถม)
-            // { label: "Measured Voltage H1 (V)", value: fmtNum(data?.measured_voltage1) },
-            // { label: "Measured Voltage H2 (V)", value: fmtNum(data?.measured_voltage2) },
-            // { label: "Measured Current H1 (A)", value: fmtNum(data?.measured_current1) },
-            // { label: "Measured Current H2 (A)", value: fmtNum(data?.measured_current2) },
-        ],
-        [data]
-    );
+                    // { label: "Measured Voltage H1 (V)", value: fmtNum(data?.measured_voltage1) },
+                    // { label: "Measured Voltage H2 (V)", value: fmtNum(data?.measured_voltage2) },
+                    // { label: "Measured Current H1 (A)", value: fmtNum(data?.measured_current1) },
+                    // { label: "Measured Current H2 (A)", value: fmtNum(data?.measured_current2) },
+            },
+            [data, head]
+        );
 
     // return (
     //     <Card title="EV">
@@ -185,7 +192,7 @@ export default function EvPanel() {
             // ✅ แก้เฉพาะ title ให้เป็นแถวเดียว: ซ้าย "EV" ขวา timestamp
             title={
                 <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
-                    <span>EV</span>
+                    <span>EV Head {head}</span> 
                     {lastUpdated && (
                         <span className="tw-text-xs !tw-text-blue-gray-500">
                             อัปเดตล่าสุด: {lastUpdated}
@@ -215,7 +222,7 @@ export default function EvPanel() {
                 ))}
             </div>
 
-            {/* ...ส่วนอื่น ๆ ของคุณคงเดิมทั้งหมด... */}
+            
         </Card>
     );
 

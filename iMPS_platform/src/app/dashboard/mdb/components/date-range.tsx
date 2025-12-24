@@ -20,8 +20,8 @@ export default function DateRangePicker({
   endDate,
   onStartChange,
   onEndChange,
-  title = "เลือกช่วงวันที่สำหรับกราฟ",
-  subtitle = "ใช้กับกราฟด้านล่างทั้งสาม",
+  title = "Select Date Range",
+  subtitle = "For all three charts below",
   maxEndDate,
   onApply,
 }: Props) {

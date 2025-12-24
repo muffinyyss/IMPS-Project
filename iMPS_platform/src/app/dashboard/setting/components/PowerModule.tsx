@@ -51,7 +51,7 @@ function Row({
     );
 }
 
-export default function EvPanel() {
+export default function EvPanel({ head }: { head: 1 | 2 }) {
     const searchParams = useSearchParams();
     const [stationId, setStationId] = useState<string | null>(null);
     const [err, setErr] = useState<string | null>(null);
@@ -156,31 +156,37 @@ export default function EvPanel() {
     };
 
     // 3) เตรียม rows จาก data จริง
-    const rows = useMemo(
-        () => [
-            { label: "Measured Voltage Head 1 (V)", value: data?.measured_voltage1 },
-            { label: "Measured Voltage Head 2 (V)", value: data?.measured_voltage2 },
-            { label: "Max Voltage Head 1 (V)", value: data?.max_voltage1 },
-            { label: "Max Voltage Head 2 (V)", value: data?.max_voltage2 },
-            { label: "Measured Current Head 1 (A)", value: data?.measured_current1 },
-            { label: "Measured Current Head 2 (A)", value: data?.measured_current2 },
-            { label: "Max Current Head 1 (A)", value: data?.max_current1 },
-            { label: "Max Current Head 2 (A)", value: data?.max_current2 },
-            { label: "Power Head 1 (W)", value: data?.energy_power_kWh1 },
-            { label: "Power Head 2 (W)", value: data?.energy_power_kWh2 },
-            { label: "Max Power Head 1 (W)", value: data?.max_power1 },
-            { label: "Max Power Head 2 (W)", value: data?.max_power2 },
-            { label: "Power H1 limit (kWh)", value: data?.power_limit1 },
-            { label: "Power H2 limit (kWh)", value: data?.power_limit2 },
-            { label: "Power H0 limit (kWh)", value: data?.power_limit0 },
-            // ถ้าอยากโชว์ค่าที่วัดจริงด้วย (แถม)
-            // { label: "Measured Voltage H1 (V)", value: fmtNum(data?.measured_voltage1) },
-            // { label: "Measured Voltage H2 (V)", value: fmtNum(data?.measured_voltage2) },
-            // { label: "Measured Current H1 (A)", value: fmtNum(data?.measured_current1) },
-            // { label: "Measured Current H2 (A)", value: fmtNum(data?.measured_current2) },
-        ],
-        [data]
-    );
+    const rows = useMemo(() => {
+        if (head === 1) {
+            // รายการข้อมูลสำหรับ Head 1
+            return [
+                { label: "Measured Voltage Head 1 (V)", value: fmtNum(data?.measured_voltage1) },
+                { label: "Max Voltage Head 1 (V)", value: fmtNum(data?.max_voltage1) },
+                { label: "Measured Current Head 1 (A)", value: fmtNum(data?.measured_current1) },
+                { label: "Max Current Head 1 (A)", value: fmtNum(data?.max_current1) },
+                { label: "Power Head 1 (W)", value: fmtNum(data?.energy_power_kWh1) },
+                { label: "Max Power Head 1 (W)", value: fmtNum(data?.max_power1) },
+                { label: "Power H1 limit (kWh)", value: fmtNum(data?.power_limit1) },
+                { label: "Power H0 limit (kWh) (Shared)", value: fmtNum(data?.power_limit0) },
+            ];
+        } else {
+            // รายการข้อมูลสำหรับ Head 2
+            return [
+                { label: "Measured Voltage Head 2 (V)", value: fmtNum(data?.measured_voltage2) },
+                { label: "Max Voltage Head 2 (V)", value: fmtNum(data?.max_voltage2) },
+                { label: "Measured Current Head 2 (A)", value: fmtNum(data?.measured_current2) },
+                { label: "Max Current Head 2 (A)", value: fmtNum(data?.max_current2) },
+                { label: "Power Head 2 (W)", value: fmtNum(data?.energy_power_kWh2) },
+                { label: "Max Power Head 2 (W)", value: fmtNum(data?.max_power2) },
+                { label: "Power H2 limit (kWh)", value: fmtNum(data?.power_limit2) },
+            ];
+        }
+                // ถ้าอยากโชว์ค่าที่วัดจริงด้วย (แถม)
+                    // { label: "Measured Voltage H1 (V)", value: fmtNum(data?.measured_voltage1) },
+                    // { label: "Measured Voltage H2 (V)", value: fmtNum(data?.measured_voltage2) },
+                    // { label: "Measured Current H1 (A)", value: fmtNum(data?.measured_current1) },
+                    // { label: "Measured Current H2 (A)", value: fmtNum(data?.measured_current2) },
+    }, [data, head]);
 
     // ⬇️ ใช้ในหัวการ์ด
     const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
@@ -190,7 +196,7 @@ export default function EvPanel() {
             // ✅ ใส่ timestamp ชิดขวาใน title บรรทัดเดียวกับ "PowerModule"
             title={
                 <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
-                    <span>PowerModule</span>
+                    <span>PowerModule (Head {head})</span>
                     {lastUpdated && (
                         <span className="tw-ml-auto tw-text-xs !tw-text-blue-gray-500 tw-whitespace-nowrap">
                             อัปเดตล่าสุด: {lastUpdated}

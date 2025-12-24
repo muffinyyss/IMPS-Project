@@ -64,7 +64,7 @@ export function DashboardNavbar() {
   if (segs[1] === "mdb") title = "Main Distribution Board (MDB)";
   else if (segs[1] === "chargers") title = "My Charger Station";
   else if (segs[1] === "device") title = "Device";
-  else if (segs[1] === "setting") title = "Charger Setting";
+  else if (segs[1] === "setting") title = "Configuration";
   else if (segs[1] === "ai") title = "Ai Module";
   else if (segs[2] === "settings") title = "My Profile";
   else if (segs[1] === "pm-report") title = "PM Report";
@@ -95,7 +95,6 @@ export function DashboardNavbar() {
     (async () => {
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-        // const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
         console.log("[Stations] API_BASE =", API_BASE);
         console.log("[Stations] has token? =", !!token);
 
@@ -111,17 +110,19 @@ export function DashboardNavbar() {
           if (decoded?.exp && decoded.exp <= nowSec) {
             console.warn("[Stations] token expired");
             localStorage.removeItem("access_token");
-            // localStorage.removeItem("access_token");
             return;
           }
+          // เก็บ role สำหรับการจัดการแสดง stations
+          const userRole = decoded?.role;
+          console.log("[Stations] user role =", userRole);
         } catch (e) {
           console.warn("[Stations] token decode failed", e);
           localStorage.removeItem("access_token");
-          // localStorage.removeItem("access_token");
           return;
         }
 
-        // 1) ลอง /my-stations/detail (id+name)
+        // ดึงสถานีที่เชื่อมกับผู้ใช้ (สำหรับ technician จะได้เฉพาะ stations ที่กำหนดให้)
+        // สำหรับ owner/admin จะได้สถานีที่เป็นเจ้าของ
         let res = await fetch(`${API_BASE}/my-stations/detail`, {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
@@ -130,7 +131,6 @@ export function DashboardNavbar() {
 
         if (res.status === 401) {
           localStorage.removeItem("access_token");
-          // localStorage.removeItem("access_token");
           return;
         }
 
@@ -154,14 +154,16 @@ export function DashboardNavbar() {
         console.log("[Stations] response =", data);
 
         // รองรับทั้งแบบ detail และแบบ id ล้วน
+        // สำหรับ technician จะได้เฉพาะสถานีที่กำหนดให้จากการแมพ station_id ใน user profile
         let list: Station[] = [];
         if (Array.isArray(data?.stations) && data.stations.length && typeof data.stations[0] === "object") {
-          list = data.stations as Station[]; // มี station_id + station_name
+          list = data.stations as Station[]; // มี station_id + station_name (สำหรับ technician ได้เฉพาะ assigned stations)
         } else if (Array.isArray(data?.stations)) {
           list = data.stations.map((id: string) => ({ station_id: id, station_name: id }));
         }
 
         setStations(list);
+        console.log("[Stations] loaded stations count =", list.length);
 
         // auto-select ถ้ามีสถานีเดียว หรือ restore ค่าเดิม
         if (list.length === 1) {

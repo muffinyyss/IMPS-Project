@@ -1,30 +1,95 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardBody, Typography } from "@/components/MaterialTailwind";
 import { Switch } from "@material-tailwind/react";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api";
+
 type Props = {
   title?: string;
-  initialValue?: number;
+  // initialValue?: number;
   initialOn?: boolean;
-  className?: string;
+  // stationId?: string;
+  // className?: string;
 };
 
 export default function HealthIndex({
-  initialValue = 72,
+  // initialValue = 44,
   initialOn = true,
-  className,
+  // stationId = "",
+  // className,
 }: Props) {
+  const searchParams = useSearchParams();
+  const [stationId, setStationId] = useState("");
   const [on, setOn] = useState(initialOn);
-  const v = Math.max(0, Math.min(100, Math.round(initialValue)));
-  const segments = 10;
-  const filled = Math.floor((v / 100) * segments);
+  // const v = Math.max(0, Math.min(100, Math.round(initialValue)));
+  // const segments = 10;
+  // const filled = on ? Math.floor((v / 100) * segments) : 0;
   const [isActive, setIsActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [calculatedValue, setCalculatedValue] = useState(0);
 
   const handleToggle = () => setIsActive(!isActive);
 
+  // ดึง stationId จาก URL search params หรือ localStorage
+  useEffect(() => {
+    const sid = searchParams.get("station_id") || localStorage.getItem("selected_station_id");
+    if (sid) {
+      setStationId(sid);
+    } else {
+      setIsLoading(false);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    // ถ้าไม่มี stationId ให้หยุด
+    if (!stationId) {
+      console.log("HealthIndex: stationId not provided");
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchProgress = async () => {
+      try {
+        console.log(`HealthIndex: fetching progress for station: ${stationId}`);
+        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
+        const res = await fetch(`${API_BASE}/modules/progress?station_id=${encodeURIComponent(stationId)}`, {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          console.warn("fetch /modules/progress failed:", res.status);
+          setIsLoading(false);
+          return;
+        }
+
+        const data = await res.json();
+        console.log("HealthIndex: API response data:", data);
+        // ดึงค่า overall health index จาก API
+        if (data.overall !== undefined) {
+          console.log(`HealthIndex: setting calculatedValue to ${data.overall}`);
+          setCalculatedValue(data.overall);
+        }
+      } catch (err) {
+        console.error("fetch /modules/progress error:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProgress();
+  }, [stationId]);
+
+  const v = Math.max(0, Math.min(100, Math.round(calculatedValue)));
+  const segments = 10;
+  const filled = on ? Math.floor((v / 100) * segments) : 0;
+
+
   return (
-    <Card className={`tw-border tw-border-blue-gray-100 tw-shadow-sm ${className ?? ""}`}>
+    <Card className={`tw-border tw-border-blue-gray-100 tw-shadow-sm `}>
       <CardHeader floated={false} shadow={false} color="transparent" className="tw-overflow-visible tw-rounded-none">
         <div className="tw-flex tw-items-center tw-justify-between">
           <div className="tw-flex tw-items-center tw-gap-3">

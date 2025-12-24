@@ -486,7 +486,7 @@ def me(current: UserClaims = Depends(get_current_user)):
 
     u = users_collection.find_one(
         {"_id": ObjectId(current.user_id)},
-        {"_id": 1, "username": 1, "email": 1, "role": 1, "company": 1, "tel": 1}
+        {"_id": 1, "username": 1, "email": 1, "role": 1, "company": 1, "tel": 1,"station_id":1},
     )
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
@@ -498,6 +498,7 @@ def me(current: UserClaims = Depends(get_current_user)):
         "role": u.get("role") or "",
         "company": u.get("company") or "",
         "tel": u.get("tel") or "",
+        "station_id": u.get("station_id") or [],
     }
 
 @app.get("/my-stations/detail")
@@ -508,7 +509,20 @@ def my_stations_detail(current: UserClaims = Depends(get_current_user)):
         docs = list(station_collection.find({}, proj))
         return {"stations": docs}
 
-    # non-admin → หา station ที่เป็นของ user นี้ (รองรับทั้ง str และ ObjectId)
+    # Technician → ดึง stations จาก station_id ใน user profile
+    if current.role == "technician":
+        # station_ids มาจาก JWT token ของผู้ใช้
+        if not current.station_ids or len(current.station_ids) == 0:
+            return {"stations": []}
+        
+        # ค้นหา stations ที่มี station_id ตรงกับ station_ids ของ user
+        docs = list(station_collection.find(
+            {"station_id": {"$in": current.station_ids}},
+            proj
+        ))
+        return {"stations": docs}
+
+    # Owner/Other roles → หา station ที่เป็นของ user นี้ (รองรับทั้ง str และ ObjectId)
     conds = [{"user_id": current.user_id}]
     try:
         conds.append({"user_id": ObjectId(current.user_id)})
@@ -1165,6 +1179,7 @@ def extract_token(authorization: str | None, access_token: str | None):
 #             await asyncio.sleep(1)
 
 #     return StreamingResponse(event_generator(), headers=headers)
+
 @app.get("/MDB/{station_id}")
 async def mdb(request: Request, station_id: str, current: UserClaims = Depends(get_current_user)):
     headers = {
@@ -1219,6 +1234,146 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
                 await asyncio.sleep(1)
 
     return StreamingResponse(event_generator(), headers=headers)
+
+@app.get("/MDB/{station_id}/peak-power")
+async def mdb_peak_power(station_id: str, current_user: UserClaims = Depends(get_current_user)):
+    """
+    ดึงค่า PL1N, PL2N, PL3N, PL123N ที่สูงที่สุด (peak) จากข้อมูล database ทั้งหมด
+    ข้อมูลเข้า database เรื่อย ๆ ดังนั้นจะหาค่าสูงสุดตั้งแต่เริ่มต้น
+    กรองเฉพาะข้อมูลที่ไม่เกิน 150000
+    """
+    coll = get_mdb_collection_for(station_id)
+    
+    # Pipeline aggregation หาค่า max จากข้อมูลทั้งหมด
+    pipeline = [
+        {
+            "$match": {
+                "$and": [
+                    {
+                        "$expr": {
+                            "$lte": [
+                                {
+                                    "$convert": {
+                                        "input": "$PL1N",
+                                        "to": "double",
+                                        "onError": None,
+                                        "onNull": 150001
+                                    }
+                                },
+                                150000
+                            ]
+                        }
+                    },
+                    {
+                        "$expr": {
+                            "$lte": [
+                                {
+                                    "$convert": {
+                                        "input": "$PL2N",
+                                        "to": "double",
+                                        "onError": None,
+                                        "onNull": 150001
+                                    }
+                                },
+                                150000
+                            ]
+                        }
+                    },
+                    {
+                        "$expr": {
+                            "$lte": [
+                                {
+                                    "$convert": {
+                                        "input": "$PL3N",
+                                        "to": "double",
+                                        "onError": None,
+                                        "onNull": 150001
+                                    }
+                                },
+                                150000
+                            ]
+                        }
+                    },
+                    {
+                        "$expr": {
+                            "$lte": [
+                                {
+                                    "$convert": {
+                                        "input": "$PL123N",
+                                        "to": "double",
+                                        "onError": None,
+                                        "onNull": 150001
+                                    }
+                                },
+                                150000
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "$group": {
+                "_id": None,
+                "PL1N_peak": {
+                    "$max": {
+                        "$convert": {
+                            "input": "$PL1N",
+                            "to": "double",
+                            "onError": None,
+                            "onNull": None
+                        }
+                    }
+                },
+                "PL2N_peak": {
+                    "$max": {
+                        "$convert": {
+                            "input": "$PL2N",
+                            "to": "double",
+                            "onError": None,
+                            "onNull": None
+                        }
+                    }
+                },
+                "PL3N_peak": {
+                    "$max": {
+                        "$convert": {
+                            "input": "$PL3N",
+                            "to": "double",
+                            "onError": None,
+                            "onNull": None
+                        }
+                    }
+                },
+                "PL123N_peak": {
+                    "$max": {
+                        "$convert": {
+                            "input": "$PL123N",
+                            "to": "double",
+                            "onError": None,
+                            "onNull": None
+                        }
+                    }
+                },
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "PL1N_peak": {"$round": ["$PL1N_peak", 2]},
+                "PL2N_peak": {"$round": ["$PL2N_peak", 2]},
+                "PL3N_peak": {"$round": ["$PL3N_peak", 2]},
+                "PL123N_peak": {"$round": ["$PL123N_peak", 2]},
+            }
+        }
+    ]
+    
+    result = await coll.aggregate(pipeline).to_list(length=1)
+    
+    if result:
+        return result[0]
+    else:
+        return {"PL1N_peak": None, "PL2N_peak": None, "PL3N_peak": None, "PL123N_peak": None}
 
 async def _resolve_user_id_by_chargebox(chargebox_id: Optional[str]) -> Optional[str]:
     if not chargebox_id:
@@ -1559,12 +1714,13 @@ class UserUpdate(BaseModel):
     role: str | None = None       # admin เท่านั้นที่แก้ได้
     is_active: bool | None = None # admin เท่านั้นที่แก้ได้
     password: str | None = None   # จะถูกแฮชเสมอถ้ามีค่า
+    station_id: Optional[List[str]] = None  # สำหรับ technician
 
 def hash_password(raw: str) -> str:
     return bcrypt.hashpw(raw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 # ฟิลด์ที่อนุญาต
-ALLOW_FIELDS_ADMIN_USER = {"username", "email", "tel", "company", "role", "is_active", "password"}
+ALLOW_FIELDS_ADMIN_USER = {"username", "email", "tel", "company", "role", "is_active", "password", "station_id"}
 ALLOW_FIELDS_SELF_USER  = {"username", "email", "tel", "company", "password"}
 
 
@@ -1596,7 +1752,7 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
 
     # ── จำกัดฟิลด์ตามบทบาท
     # แนะนำให้ประกาศสองชุดนี้ไว้ด้านบนไฟล์หรือไฟล์ settings:
-    ALLOW_FIELDS_ADMIN_USER = {"username","email","password","role","company","tel","is_active"}
+    ALLOW_FIELDS_ADMIN_USER = {"username","email","password","role","company","tel","is_active","station_id"}
     ALLOW_FIELDS_SELF_OWNER = {"username","email","password","tel"}  # ปรับตามที่อยากให้แก้เองได้
     if current.role == "admin":
         allowed = ALLOW_FIELDS_ADMIN_USER
@@ -1610,6 +1766,17 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
     # ── แฮชรหัสผ่านถ้ามี
     if "password" in payload:
         payload["password"] = hash_password(payload["password"])
+
+    # ── validate station_id (ต้องเป็น list of strings)
+    if "station_id" in payload:
+        if payload["station_id"] is None:
+            payload["station_id"] = []
+        elif not isinstance(payload["station_id"], list):
+            raise HTTPException(status_code=400, detail="station_id must be a list of strings")
+        else:
+            # ตรวจสอบว่าทั้งหมดเป็น string
+            if not all(isinstance(s, str) for s in payload["station_id"]):
+                raise HTTPException(status_code=400, detail="station_id must contain only strings")
 
     # ── validate is_active (admin เท่านั้นที่เข้ามาถึงบรรทัดนี้ได้อยู่แล้ว)
     if "is_active" in payload and not isinstance(payload["is_active"], bool):
@@ -8023,6 +8190,11 @@ async def get_all_modules_progress(
         result["module7"] = doc7.get("health_index",0) if doc7 else 0
     except:
         result["module7"] = 0
+    
+    # คำนวณ overall health index (ค่าเฉลี่ยของทุก modules)
+    module_values = list(result.values())
+    overall_health = round(sum(module_values) / len(module_values), 2) if module_values else 0
+    result["overall"] = overall_health
     
     resp = JSONResponse(content=result)
     resp.headers["Cache-Control"] = "private, max-age=60"
