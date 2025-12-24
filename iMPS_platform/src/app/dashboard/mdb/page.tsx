@@ -156,6 +156,7 @@ export default function MDBPage() {
     const [loading2, setLoading2] = useState(true);
     const [err, setErr] = useState<string | null>(null);
     const [err2, setErr2] = useState<string | null>(null);
+    const [peakPower, setPeakPower] = useState<{ PL1N_peak?: number, PL2N_peak?: number, PL3N_peak?: number } | null>(null);
 
     // default: ล่าสุด 30 วัน
     const today = useMemo(() => new Date(), []);
@@ -437,6 +438,26 @@ export default function MDBPage() {
         };
     }, [stationId, startDate, endDate]);
 
+    // ✅ NEW: Fetch peak power values (หาจากข้อมูล database ทั้งหมด)
+    useEffect(() => {
+        if (!stationId) return;
+
+        const fetchPeakPower = async () => {
+            try {
+                const url = `${API_BASE}/MDB/${encodeURIComponent(stationId)}/peak-power`;
+                const response = await fetch(url, { credentials: 'include' });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    setPeakPower(data);
+                }
+            } catch (error) {
+                console.error("Error fetching peak power:", error);
+            }
+        };
+
+        fetchPeakPower();
+    }, [stationId]);
 
     const station = mdb;
 
@@ -455,7 +476,10 @@ export default function MDBPage() {
         I3: digit2(station?.I3),
         totalCurrentA: digit2(station?.I1 + station?.I2 + station?.I3),
 
-        powerKW: intDiv(station?.PL123N, 1000),
+        // ✅ PL123N = PL1N + PL2N + PL3N (ถ้าไม่มีใน database)
+        // powerKW: intDiv((station?.PL123N ?? (Number(station?.PL1N || 0) + Number(station?.PL2N || 0) + Number(station?.PL3N || 0))), 1000),
+        powerKW: intDiv((station?.PL123N ), 1000),
+
         totalEnergyKWh: intDiv(station?.EL123, 1000),
 
         frequencyHz: num0(station?.frequency),
@@ -466,8 +490,8 @@ export default function MDBPage() {
         PL1N: intDiv(station?.PL1N, 1000),
         PL2N: intDiv(station?.PL2N, 1000),
         PL3N: intDiv(station?.PL3N, 1000),
-        PL123N: intDiv(station?.PL123N, 1000),
-        // PL123N: num0Str(station?.PL123N),
+        // ✅ PL123N = PL1N + PL2N + PL3N (ถ้าไม่มีใน database)
+        PL123N: intDiv((station?.PL123N ?? (Number(station?.PL1N || 0) + Number(station?.PL2N || 0) + Number(station?.PL3N || 0))), 1000),
 
         EL1: intDiv(station?.EL1, 1000),
         EL2: intDiv(station?.EL2, 1000),
@@ -500,6 +524,15 @@ export default function MDBPage() {
         breakChargerStatus: Boolean(station?.breakChargerStatus),
         // mainBreakerStatus: false,
         // breakChargerStatus: true,
+        
+        // ✅ NEW: Add peak power values
+        PL1N_peak: peakPower?.PL1N_peak != null ? intDiv(peakPower.PL1N_peak, 1000) : undefined,
+        PL2N_peak: peakPower?.PL2N_peak != null ? intDiv(peakPower.PL2N_peak, 1000) : undefined,
+        PL3N_peak: peakPower?.PL3N_peak != null ? intDiv(peakPower.PL3N_peak, 1000) : undefined,
+        // ✅ PL123N_peak = PL1N_peak + PL2N_peak + PL3N_peak
+        PL123N_peak: (peakPower?.PL1N_peak != null && peakPower?.PL2N_peak != null && peakPower?.PL3N_peak != null) 
+            ? intDiv((peakPower.PL1N_peak + peakPower.PL2N_peak + peakPower.PL3N_peak), 1000)
+            : undefined,
     };
     const applyRange = () => {
         setHistory([]);
