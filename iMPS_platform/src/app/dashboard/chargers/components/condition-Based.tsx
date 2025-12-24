@@ -20,7 +20,7 @@ import {
 const EVENTS_CARD_DATA = [
     {
         icon: AdjustmentsHorizontalIcon,
-        title: "CBM",
+        title: "Condition-Base",
         description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
     },
     {
