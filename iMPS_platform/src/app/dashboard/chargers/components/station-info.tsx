@@ -33,12 +33,16 @@ export default function StationInfo({
       if (diffDays < 0) return "-";
 
       const years = Math.floor(diffDays / 365);
-      const remainingDays = diffDays % 365;
+      const months = Math.floor((diffDays % 365) / 30);
+      const days = Math.floor((diffDays % 365) % 30);
 
       if (years > 0) {
-        return `${years} year${years > 1 ? "s" : ""} ${remainingDays} day${remainingDays !== 1 ? "s" : ""}`;
+        return `${years} year${years > 1 ? "s" : ""} ${months} month${months !== 1 ? "s" : ""}`;
       }
-      return `${remainingDays} day${remainingDays !== 1 ? "s" : ""}`;
+      if (months > 0) {
+        return `${months} month${months !== 1 ? "s" : ""} ${days} day${days !== 1 ? "s" : ""}`;
+      }
+      return `${days} day${days !== 1 ? "s" : ""}`;
     } catch {
       return "-";
     }
@@ -66,12 +70,16 @@ export default function StationInfo({
       if (diffDays <= 0) return "Expired";
 
       const years = Math.floor(diffDays / 365);
-      const remainingDays = diffDays % 365;
+      const months = Math.floor((diffDays % 365) / 30);
+      const days = Math.floor((diffDays % 365) % 30);
 
       if (years > 0) {
-        return `${years} year${years > 1 ? "s" : ""} ${remainingDays} day${remainingDays !== 1 ? "s" : ""}`;
+        return `${years} year${years > 1 ? "s" : ""} ${months} month${months !== 1 ? "s" : ""}`;
       }
-      return `${remainingDays} day${remainingDays !== 1 ? "s" : ""}`;
+      if (months > 0) {
+        return `${months} month${months !== 1 ? "s" : ""} ${days} day${days !== 1 ? "s" : ""}`;
+      }
+      return `${days} day${days !== 1 ? "s" : ""}`;
     } catch {
       return "-";
     }
@@ -126,11 +134,11 @@ export default function StationInfo({
     if (warrantyDaysStr === "Expired") {
       return "tw-bg-red-50 tw-text-red-700"; // แดง - หมดแล้ว
     }
-    
+
     // แยกเอาจำนวนวันทั้งหมด
     const parts = warrantyDaysStr.split(" ");
     let totalDays = 0;
-    
+
     for (let i = 0; i < parts.length; i++) {
       if (parts[i + 1]?.includes("year")) {
         totalDays += parseInt(parts[i]) * 365;
@@ -138,7 +146,7 @@ export default function StationInfo({
         totalDays += parseInt(parts[i]);
       }
     }
-    
+
     // กำหนดสีตามจำนวนวัน
     if (totalDays > 365) {
       return "tw-bg-green-50 tw-text-green-700"; // เขียว - เหลือมากกว่า 1 ปี
@@ -158,7 +166,7 @@ export default function StationInfo({
           {/* Station Information Section */}
           <div className="tw-border-b tw-border-blue-gray-200 tw-pb-4">
             <h3 className="tw-text-sm tw-font-semibold tw-text-blue-gray-700 tw-mb-4">Station Information</h3>
-            
+
             {/* Station Name */}
             <div className="tw-grid tw-grid-cols-3 tw-gap-4 tw-mb-3">
               <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left tw-font-medium">
@@ -197,7 +205,7 @@ export default function StationInfo({
           {/* Service Period Section */}
           <div className="tw-border-b tw-border-blue-gray-200 tw-pb-4">
             <h3 className="tw-text-sm tw-font-semibold tw-text-blue-gray-700 tw-mb-4">Service Period</h3>
-            
+
             {/* Commit Date */}
             <div className="tw-grid tw-grid-cols-3 tw-gap-4 tw-mb-3">
               <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left tw-font-medium">
@@ -224,7 +232,7 @@ export default function StationInfo({
           {/* Warranty Section */}
           <div className="tw-pb-4">
             <h3 className="tw-text-sm tw-font-semibold tw-text-blue-gray-700 tw-mb-4">Warranty Information</h3>
-            
+
             {/* Remaining Warranty */}
             <div className="tw-grid tw-grid-cols-3 tw-gap-4 tw-mb-3">
               <dt className="tw-col-span-1 tw-text-sm tw-text-blue-gray-500 tw-text-left tw-whitespace-nowrap tw-font-medium">
