@@ -24,10 +24,12 @@ function Row({
     label,
     value,
     zebra = false,
+    unit
 }: {
     label: string;
     value: string | number;
     zebra?: boolean;
+    unit?: string;
 }) {
     return (
         <div
@@ -36,18 +38,18 @@ function Row({
         >
             <span className="tw-text-sm tw-text-blue-gray-700">{label}</span>
             <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-900 tw-text-right tw-tabular-nums">
-                {value}
+                {value}{unit && (<span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-blue-gray-400">{unit}</span>)}
             </span>
         </div>
     );
 }
 
-export default function EvPanel({ head }: { head: 1 | 2 }) {
-    const searchParams = useSearchParams();
-    const [stationId, setStationId] = useState<string | null>(null);
-    const [err, setErr] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [data, setData] = useState<SettingDoc | null>(null);
+export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
+    // const searchParams = useSearchParams();
+    // const [stationId, setStationId] = useState<string | null>(null);
+    // const [err, setErr] = useState<string | null>(null);
+    // const [loading, setLoading] = useState(true);
+    // const [data, setData] = useState<SettingDoc | null>(null);
 
     // helper format
     const toNum = (v: any): number | null => {
@@ -63,63 +65,64 @@ export default function EvPanel({ head }: { head: 1 | 2 }) {
 
 
     // 1) ดึง station_id จาก URL → ถ้าไม่มีค่อย fallback localStorage
-    useEffect(() => {
-        const sidFromUrl = searchParams.get("station_id");
-        if (sidFromUrl) {
-            setStationId(sidFromUrl);
-            localStorage.setItem("selected_station_id", sidFromUrl);
-            return;
-        }
-        const sidLocal = localStorage.getItem("selected_station_id");
-        setStationId(sidLocal);
-    }, [searchParams]);
+    // useEffect(() => {
+    //     const sidFromUrl = searchParams.get("station_id");
+    //     if (sidFromUrl) {
+    //         setStationId(sidFromUrl);
+    //         localStorage.setItem("selected_station_id", sidFromUrl);
+    //         return;
+    //     }
+    //     const sidLocal = localStorage.getItem("selected_station_id");
+    //     console.log("SID from LocalStorage:", sidLocal); // <--- เพิ่มตรงนี้
+    //     setStationId(sidLocal);
+    // }, [searchParams]);
 
-    // 2) เปิด SSE ไปที่ /setting
-    useEffect(() => {
-        if (!stationId) return;
-        setLoading(true);
-        setErr(null);
+    // // 2) เปิด SSE ไปที่ /setting
+    // useEffect(() => {
+    //     if (!stationId) return;
+    //     setLoading(true);
+    //     setErr(null);
 
-        const es = new EventSource(
-            `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
-            { withCredentials: true } // สำคัญสำหรับ cookie-auth
-        );
-        const onInit = (e: MessageEvent) => {
-            try {
-                setData(JSON.parse(e.data));
-                setLoading(false);
-                setErr(null);
-            } catch {
-                setErr("ผิดรูปแบบข้อมูล init");
-                setLoading(false);
-            }
-        };
-        es.addEventListener("init", (e: MessageEvent) => {
-            try {
-                const obj = JSON.parse(e.data);
-                setData(obj);
-                setLoading(false);
-            } catch { }
-        });
-        es.onopen = () => setErr(null);
-        es.onmessage = (e) => {
-            // console.log("MSG raw:", e.data);
-            try {
-                const obj = JSON.parse(e.data);
-                // console.log("MSG parsed:", obj);
-                setData(obj);
-            } catch { }
-        };
-        es.onerror = () => {
-            setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
-            setLoading(false);
-            // ไม่ปิด es เพื่อให้ browser retry ตาม retry: 3000 ที่ server ส่งมา
-        };
-        return () => {
-            es.removeEventListener("init", onInit);
-            es.close();
-        };
-    }, [stationId]);
+    //     const es = new EventSource(
+    //         `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
+    //         { withCredentials: true } // สำคัญสำหรับ cookie-auth
+    //     );
+    //     const onInit = (e: MessageEvent) => {
+    //         try {
+    //             setData(JSON.parse(e.data));
+    //             setLoading(false);
+    //             setErr(null);
+    //         } catch {
+    //             setErr("ผิดรูปแบบข้อมูล init");
+    //             setLoading(false);
+    //         }
+    //     };
+    //     es.addEventListener("init", (e: MessageEvent) => {
+    //         try {
+    //             const obj = JSON.parse(e.data);
+    //             setData(obj);
+    //             setLoading(false);
+    //         } catch { }
+    //     });
+    //     es.onopen = () => setErr(null);
+    //     es.onmessage = (e) => {
+    //         // console.log("MSG raw:", e.data);
+    //         try {
+    //             const obj = JSON.parse(e.data);
+    //             // console.log("MSG parsed:", obj);
+    //             setData(obj);
+    //         } catch { }
+    //     };
+    //     es.onerror = () => {
+    //         setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
+    //         setLoading(false);
+    //         // ไม่ปิด es เพื่อให้ browser retry ตาม retry: 3000 ที่ server ส่งมา
+    //     };
+    //     return () => {
+    //         es.removeEventListener("init", onInit);
+    //         es.close();
+    //     };
+    // }, [stationId]);
 
     // ถ้าต้องการแปลง CP code -> ตัวอักษร/คำอธิบาย (ปรับตามโปรโตคอลของคุณ)
     const mapCP = (code: any) => {
@@ -132,28 +135,27 @@ export default function EvPanel({ head }: { head: 1 | 2 }) {
     // 3) เตรียม rows จาก data จริง
     const rows = useMemo(
             () => {
-                if (head === 1) {
-                    return [
-                        { label: "CP State Head 1", value: mapCP(data?.CP_status1) },
-                        { label: "Target Voltage Head 1 (V)", value: fmtNum(data?.target_voltage1) },
-                        { label: "Target Current Head 1 (A)", value: fmtNum(data?.target_current1) },
+                const config1 = [
+                        { label: "CP State Head 1", value: (data?.CP_status1) },
+                        { label: "Target Voltage Head 1 ", value: fmtNum(data?.target_voltage1), unit: "V" },
+                        { label: "Target Current Head 1 ", value: fmtNum(data?.target_current1), unit: "A" },
                     ];
-                } else {
-                    return [
-                        { label: "CP State Head 2", value: mapCP(data?.CP_status2) },
-                        { label: "Target Voltage Head 2 (V)", value: fmtNum(data?.target_voltage2) },
-                        { label: "Target Current Head 2 (A)", value: fmtNum(data?.target_current2) },
+                const config2 = [
+            // รายการข้อมูลสำหรับ Head 2
+                        { label: "CP State Head 2", value: (data?.CP_status2) },
+                        { label: "Target Voltage Head 2 ", value: fmtNum(data?.target_voltage2), unit: "V" },
+                        { label: "Target Current Head 2 ", value: fmtNum(data?.target_current2), unit: "A" },
                     ];
-                }
+                return head === 1 ? config1 : config2;
                 // ถ้าอยากโชว์ค่าที่วัดจริงด้วย (แถม)
 
                     // { label: "Measured Voltage H1 (V)", value: fmtNum(data?.measured_voltage1) },
                     // { label: "Measured Voltage H2 (V)", value: fmtNum(data?.measured_voltage2) },
                     // { label: "Measured Current H1 (A)", value: fmtNum(data?.measured_current1) },
                     // { label: "Measured Current H2 (A)", value: fmtNum(data?.measured_current2) },
-            },
-            [data, head]
-        );
+            }, [data , head]);
+            
+        
 
     // return (
     //     <Card title="EV">
@@ -200,14 +202,22 @@ export default function EvPanel({ head }: { head: 1 | 2 }) {
                     )}
                 </div>
             }
+                
         >
+             {/* แถบสถานะแบบใหม่ที่จำเป็น */}
+            {!data && (
+                <div className="tw-px-3 tw-py-2">
+                    <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลดข้อมูล...</div>
+                </div>
+            )}
+
             {/* แถบสถานะ */}
-            {(loading || err) && (
+            {/* {(loading || err) && (
                 <div className="tw-px-3 tw-py-2">
                     {loading && <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลด...</div>}
                     {err && <div className="tw-text-sm tw-text-red-600">{err}</div>}
                 </div>
-            )}
+            )} */}
 
             {/* timestamp ล่าสุด (ถ้ามี) — ❗คงโค้ดเดิมไว้ ไม่ลบ เพียงซ่อนด้วย tw-hidden
             {data?.timestamp && (
@@ -218,7 +228,7 @@ export default function EvPanel({ head }: { head: 1 | 2 }) {
 
             <div className="tw-rounded-lg tw-overflow-hidden">
                 {rows.map((r, i) => (
-                    <Row key={i} label={r.label} value={r.value} zebra={i % 2 === 1} />
+                    <Row key={i} label={r.label} value={r.value} unit={r.unit} zebra={i % 2 === 1} />
                 ))}
             </div>
 
