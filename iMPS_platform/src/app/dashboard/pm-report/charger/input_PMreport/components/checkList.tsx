@@ -1171,17 +1171,69 @@ export default function ChargerPMForm() {
 
     const allRemarksFilledPost = missingRemarksPost.length === 0;
 
+    const GROUP_QUESTION_NOS = [3, 4, 5, 6, 7, 10, 11, 17];
     const PF_KEYS_POST = useMemo(() => {
-        return QUESTIONS.map((q) => q.key).filter((k) => rowsPre[k]?.pf !== "NA");
-    }, [rowsPre]);
+        const keys: string[] = [];
 
-    const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every((k) => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
+        QUESTIONS.forEach((q) => {
+            // Simple/Measure - ใช้ข้อหลัก
+            if (q.kind === "simple" || q.kind === "measure") {
+                if (rowsPre[q.key]?.pf !== "NA") {
+                    keys.push(q.key);
+                }
+                return;
+            }
 
+            // Group - ใช้ข้อย่อย (ไม่ใช่ข้อหลัก)
+            if (q.no === 5) {
+                q5Items.forEach((item) => {
+                    if (rowsPre[item.key]?.pf !== "NA") {
+                        keys.push(item.key);
+                    }
+                });
+            } else if (q.no === 7) {
+                q7Items.forEach((item) => {
+                    if (rowsPre[item.key]?.pf !== "NA") {
+                        keys.push(item.key);
+                    }
+                });
+            } else if ([3, 4, 6, 10, 11, 17].includes(q.no)) {
+                const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
+                if (fixedItems) {
+                    fixedItems.forEach((item) => {
+                        if (rowsPre[item.key]?.pf !== "NA") {
+                            keys.push(item.key);
+                        }
+                    });
+                }
+            }
+        });
+
+        return keys;
+    }, [q5Items, q7Items, fixedItemsMap, rowsPre]);
+
+    const allPFAnsweredPost = useMemo(() => {
+        return PF_KEYS_POST.every((k) => rows[k]?.pf !== "");
+    }, [rows, PF_KEYS_POST]);
     const missingPFItemsPost = useMemo(() => {
         return PF_KEYS_POST
             .filter((k) => !rows[k]?.pf)
-            .map((k) => Number(k.replace("r", "")))
-            .sort((a, b) => a - b);
+            .map((k) => {
+                // แปลง r3_1 → "3.1", r1 → "1"
+                const match = k.match(/^r(\d+)(?:_(\d+))?$/);
+                if (match) {
+                    const qNo = match[1];
+                    const subNo = match[2];
+                    return subNo ? `${qNo}.${subNo}` : qNo;
+                }
+                return k;
+            })
+            .sort((a, b) => {
+                const [aMain, aSub] = a.split('.').map(Number);
+                const [bMain, bSub] = b.split('.').map(Number);
+                if (aMain !== bMain) return aMain - bMain;
+                return (aSub || 0) - (bSub || 0);
+            });
     }, [rows, PF_KEYS_POST]);
 
     const allRequiredInputsFilled = useMemo(() => Object.values(missingInputs).every((arr) => arr.length === 0), [missingInputs]);
