@@ -1784,29 +1784,87 @@ export default function ChargerPMForm() {
         saveDraftLocal(key, { rows, cp, m16: m16.state, summary, dustFilterChanged, photoRefs });
     }, [key, stationId, rows, cp, m16.state, summary, dustFilterChanged, photoRefs]);
 
-    // Upload photos
+    // ===== เพิ่มฟังก์ชัน compress รูปภาพ =====
+    async function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
+        // ถ้าไม่ใช่รูป หรือเล็กกว่า 500KB ไม่ต้อง compress
+        if (!file.type.startsWith("image/") || file.size < 500 * 1024) {
+            return file;
+        }
+
+        return new Promise((resolve) => {
+            const img = document.createElement("img");  // ใช้ document.createElement แทน
+            img.onload = () => {
+                URL.revokeObjectURL(img.src);
+
+                let { width, height } = img;
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+
+                const canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext("2d")!;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob && blob.size < file.size) {
+                            resolve(new File([blob], file.name, { type: "image/jpeg" }));
+                        } else {
+                            resolve(file);
+                        }
+                    },
+                    "image/jpeg",
+                    quality
+                );
+            };
+            img.onerror = () => resolve(file);
+            img.src = URL.createObjectURL(file);
+        });
+    }
+
+    // ===== แก้ไข uploadGroupPhotos - compress ก่อนอัพ =====
     async function uploadGroupPhotos(reportId: string, stationId: string, group: string, files: File[], side: TabId) {
+        if (files.length === 0) return;
+
+        // Compress รูปทั้งหมดก่อน
+        const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
+
         const form = new FormData();
         form.append("station_id", stationId);
         form.append("group", group);
         form.append("side", side);
-        files.forEach((f) => form.append("files", f));
+        compressedFiles.forEach((f) => form.append("files", f));
+
         const token = localStorage.getItem("access_token");
-        const url = side === "pre" ? `${API_BASE}/pmreport/${reportId}/pre/photos` : `${API_BASE}/pmreport/${reportId}/post/photos`;
-        const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
+        const url = side === "pre"
+            ? `${API_BASE}/pmreport/${reportId}/pre/photos`
+            : `${API_BASE}/pmreport/${reportId}/post/photos`;
+
+        const res = await fetch(url, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            body: form,
+            credentials: "include"
+        });
         if (!res.ok) throw new Error(await res.text());
     }
-
+    // ===== แก้ไข onPreSave - เพิ่ม progress และ optimize =====
     const onPreSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
         if (!allRequiredInputsFilled) { alert("กรุณากรอกค่าข้อ 10 (CP) และข้อ 16 ให้ครบก่อนบันทึก"); return; }
         if (!allRemarksFilledPre) { alert(`กรุณากรอกหมายเหตุข้อ: ${missingRemarksPre.join(", ")}`); return; }
         if (submitting) return;
         setSubmitting(true);
+
         try {
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || "";
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+
+            // 1. Submit form data ก่อน
             const payload = {
                 station_id: stationId,
                 issue_id: issueIdFromJob,
@@ -1819,58 +1877,106 @@ export default function ChargerPMForm() {
                 side: "pre" as TabId
             };
 
-            const [submitRes] = await Promise.all([
-                fetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) }),
-                (async () => { const allPhotos = Object.values(photos).flat(); await Promise.all(allPhotos.map(p => delPhoto(key, p.id))); })()
-            ]);
+            const submitRes = await fetch(`${API_BASE}/pmreport/pre/submit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                credentials: "include",
+                body: JSON.stringify(payload)
+            });
+
             if (!submitRes.ok) throw new Error(await submitRes.text());
             const { report_id, doc_name } = await submitRes.json() as { report_id: string; doc_name?: string };
             if (doc_name) setDocName(doc_name);
 
+            // 2. อัพโหลดรูปทั้งหมดพร้อมกัน (parallel)
             const uploadPromises: Promise<void>[] = [];
             Object.entries(photos).forEach(([no, list]) => {
-                if (list?.length) {
-                    const files = list.map(p => p.file!).filter(Boolean) as File[];
-                    if (files.length) uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
+                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
+                if (files.length > 0) {
+                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
                 }
             });
-            await Promise.all(uploadPromises);
+
+            if (uploadPromises.length > 0) {
+                await Promise.all(uploadPromises);
+            }
+
+            // 3. ลบ draft หลังจากอัพโหลดสำเร็จ
+            const allPhotos = Object.values(photos).flat();
+            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
-        } catch (err: any) { alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`); }
-        finally { setSubmitting(false); }
+        } catch (err: any) {
+            alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+        } finally {
+            setSubmitting(false);
+        }
     };
 
+    // ===== แก้ไข onFinalSave - เหมือนกัน =====
     const onFinalSave = async () => {
         if (!stationId) { alert("ยังไม่ทราบ station_id"); return; }
         if (submitting) return;
         setSubmitting(true);
+
         try {
             const token = localStorage.getItem("access_token");
-            const payload = { station_id: stationId, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
 
-            const [submitRes] = await Promise.all([
-                fetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) }),
-                (async () => { const allPhotos = Object.values(photos).flat(); await Promise.all(allPhotos.map(p => delPhoto(key, p.id))); })()
-            ]);
+            // 1. Submit form data ก่อน
+            const payload = {
+                station_id: stationId,
+                rows,
+                measures: { m16: m16.state, cp },
+                summary,
+                ...(summaryCheck ? { summaryCheck } : {}),
+                dust_filter: dustFilterChanged,
+                side: "post" as TabId,
+                report_id: editId
+            };
+
+            const submitRes = await fetch(`${API_BASE}/pmreport/submit`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                credentials: "include",
+                body: JSON.stringify(payload)
+            });
+
             if (!submitRes.ok) throw new Error(await submitRes.text());
-            const { report_id } = await submitRes.json() as { report_id: string; doc_name?: string };
+            const { report_id } = await submitRes.json() as { report_id: string };
 
+            // 2. อัพโหลดรูปทั้งหมดพร้อมกัน
             const uploadPromises: Promise<void>[] = [];
             Object.entries(photos).forEach(([no, list]) => {
-                if (list?.length) {
-                    const files = list.map(p => p.file!).filter(Boolean) as File[];
-                    if (files.length) uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post"));
+                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
+                if (files.length > 0) {
+                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "post"));
                 }
             });
-            await Promise.all([
-                ...uploadPromises,
-                fetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ station_id: stationId }) }).then(fin => { if (!fin.ok) throw new Error("Finalize failed"); })
-            ]);
+
+            if (uploadPromises.length > 0) {
+                await Promise.all(uploadPromises);
+            }
+
+            // 3. Finalize
+            await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, {
+                method: "POST",
+                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                credentials: "include",
+                body: new URLSearchParams({ station_id: stationId })
+            });
+
+            // 4. ลบ draft
+            const allPhotos = Object.values(photos).flat();
+            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}`);
-        } catch (err: any) { alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`); }
-        finally { setSubmitting(false); }
+        } catch (err: any) {
+            alert(`บันทึกไม่สำเร็จ: ${err?.message ?? err}`);
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     useEffect(() => {
