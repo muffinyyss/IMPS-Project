@@ -2111,7 +2111,7 @@ export default function ChargerPMForm() {
                             <div className="lg:tw-col-span-2"><Input label="Inspector / ผู้ตรวจสอบ " value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
                             <div className="lg:tw-col-span-2"><Input label="Brand / ยี่ห้อ" value={job.brand} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
                             <div className="lg:tw-col-span-2"><Input label="Model / รุ่น" value={job.model} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
-                            <div className="lg:tw-col-span-2"><Input label="Power / กำลังไฟ" value={job.model} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
+                            <div className="lg:tw-col-span-2"><Input label="Power / กำลังไฟ"  value={job.model} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
                             <div className="lg:tw-col-span-2"><Input label="SN / หมายเลขเครื่อง" value={job.sn} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
                         </div>
                         <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
