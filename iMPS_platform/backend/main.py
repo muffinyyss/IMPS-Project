@@ -1735,14 +1735,14 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
         raise HTTPException(status_code=404, detail="user not found")
 
     # ── Permission: admin ทำได้ทั้งหมด, owner ได้เฉพาะของตัวเอง, อื่น ๆ ห้าม
-    if current.role == "admin":
-        pass  # ผ่าน
-    elif current.role == "owner":
-        if current.user_id != str(oid):
-            raise HTTPException(status_code=403, detail="forbidden")
-    else:
-        # กันบทบาทอื่น ๆ (เช่น user) ไม่ให้เข้ามาอัปเดต
-        raise HTTPException(status_code=403, detail="forbidden")
+    # if current.role == "admin":
+    #     pass  # ผ่าน
+    # elif current.role == "owner":
+    #     if current.user_id != str(oid):
+    #         raise HTTPException(status_code=403, detail="forbidden")
+    # else:
+    #     # กันบทบาทอื่น ๆ (เช่น user) ไม่ให้เข้ามาอัปเดต
+    #     raise HTTPException(status_code=403, detail="forbidden")
 
     # ── เตรียม incoming fields
     incoming = {
