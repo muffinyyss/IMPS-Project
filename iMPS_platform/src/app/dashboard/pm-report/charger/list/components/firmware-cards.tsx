@@ -82,25 +82,27 @@ export default function StatisticsCards() {
       title: "PLC Firmware",
       value: shorten(pm.firmware.plc),
       icon: pm.icons?.firmware ?? WrenchScrewdriverIcon,
-      footer: { color: "tw-text-green-600", value: "+OK", label: "เวอร์ชันล่าสุด" },
+      footer: { color: "tw-text-green-600", value: "", label: "" },
     },
     {
       title: "Raspberry Pi Firmware",
       value: shorten(pm.firmware.rpi),
       icon: CpuChipIcon,
-      footer: { color: "tw-text-green-600", value: "+OK", label: "เวอร์ชันล่าสุด" },
+      footer: { color: "tw-text-green-600", value: "", label: "" },
     },
     {
       title: "Router Firmware",
       value: shorten(pm.firmware.router),
       icon: pm.icons?.firmware ?? WrenchScrewdriverIcon,
-      footer: { color: "tw-text-green-600", value: "+OK", label: "เวอร์ชันล่าสุด" },
+      footer: { color: "tw-text-green-600", value: "", label: "" },
     },
     {
       title: "PM Schedule",
       value: `ถัดไป: ${pm.pm.next}`,
       icon: pm.icons?.date ?? CalendarDaysIcon,
-      footer: { color: "tw-text-blue-700", value: "Just updated", label: pm.pm.next_day },
+      // footer: { color: "tw-text-blue-700", value: "Just updated", label: pm.pm.next_day },
+      footer: { color: "tw-text-blue-700", value: "", label: "" },
+
     },
   ];
 

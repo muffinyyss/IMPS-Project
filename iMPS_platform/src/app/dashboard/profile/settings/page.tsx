@@ -1,683 +1,156 @@
-/* eslint-disable @next/next/no-img-element */
-import React from "react";
+"use client";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-// @material-tailwind/react
 import {
-  Tabs,
-  TabsHeader,
-  Tab,
   Card,
   CardBody,
   CardFooter,
   Button,
   Input,
   Typography,
-  Switch,
-  Chip,
   CardHeader,
+  Dialog,
+  DialogHeader,
+  DialogBody,
+  DialogFooter,
+  Spinner,
 } from "@/components/MaterialTailwind";
 
-// @heroicons/react
-import {
-  ChevronUpIcon,
-  ComputerDesktopIcon,
-  DevicePhoneMobileIcon,
-} from "@heroicons/react/24/solid";
-import { ArrowRightIcon } from "@heroicons/react/24/outline";
-
-// components
-// import Sidebar from "./components/sidebar";
-import ProfileHeader from "./components/profile-header";
 import Profile from "./components/profile";
 
-// export default function Settings() {
-//   return (
-//     <div className="tw-mb-6 !tw-w-full">
-//       {/* Tabs */}
-//       {/* <div className="tw-mt-10">
-//         <div className="tw-flex tw-items-center tw-justify-between tw-gap-6">
-//           <div className="tw-w-full tw-min-w-max xl:tw-w-4/12">
-//             <Tabs id="settings-tab" value="message">
-//               <TabsHeader>
-//                 <Tab value="message">Message</Tab>
-//                 <Tab value="social">Social</Tab>
-//                 <Tab value="notifications">Notifications</Tab>
-//                 <Tab value="backup">Backup</Tab>
-//               </TabsHeader>
-//             </Tabs>
-//           </div>
-//         </div>
-//       </div> */}
-
-//       {/* Side Menu */}
-//       {/* <div className="tw-mt-8 tw-grid tw-grid-cols-1 tw-gap-y-6 lg:tw-grid-cols-12 lg:tw-gap-6"> */}
-//         {/* <Sidebar /> */}
-
-//         <div className="!tw-col-span-10">
-//           {/* Profile Header */}
-//           <ProfileHeader />
-//           {/* Basic Info */}
-//           <BasicInfo />
-//           {/* Change Password */}
-//           <Card
-//             className="tw-mb-6 tw-scroll-mt-4 tw-border tw-border-blue-gray-100 tw-shadow-sm"
-//             id="Change Password"
-//           >
-//             <CardHeader floated={false} shadow={false}>
-//               <Typography variant="h5" color="blue-gray">
-//                 Change Password
-//               </Typography>
-//             </CardHeader>
-//             <CardBody className="tw-flex tw-flex-col tw-gap-6">
-//               <Input label="Current Password" />
-//               <Input label="New Password" />
-//               <Input label="Confirm New Password" />
-//             </CardBody>
-//             <CardFooter>
-//               <Typography variant="h5" color="blue-gray">
-//                 Password Requirement
-//               </Typography>
-//               <Typography className="tw-my-2 !tw-font-normal !tw-text-blue-gray-500">
-//                 Please follow this guide for a strong password
-//               </Typography>
-//               <div className="tw-flex tw-flex-col tw-justify-between lg:tw-items-end md:tw-items-end tw-gap-8 md:tw-flex-row">
-//                 <div>
-//                   <div className="tw-flex tw-items-center tw-gap-2">
-//                     <span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-blue-gray-500" />
-//                     <Typography
-//                       className="!tw-font-normal !tw-text-blue-gray-500"
-//                       variant="small"
-//                     >
-//                       One special characters
-//                     </Typography>
-//                   </div>
-//                   <div className="tw-flex tw-items-center tw-gap-2">
-//                     <span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-blue-gray-500" />
-//                     <Typography
-//                       className="!tw-font-normal !tw-text-blue-gray-500"
-//                       variant="small"
-//                     >
-//                       Min 6 characters
-//                     </Typography>
-//                   </div>
-//                   <div className="tw-flex tw-items-center tw-gap-2">
-//                     <span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-blue-gray-500" />
-//                     <Typography
-//                       className="!tw-font-normal !tw-text-blue-gray-500"
-//                       variant="small"
-//                     >
-//                       One number (2 are recommended)
-//                     </Typography>
-//                   </div>
-//                   <div className="tw-flex tw-items-center tw-gap-2">
-//                     <span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-blue-gray-500" />
-//                     <Typography
-//                       className="!tw-font-normal !tw-text-blue-gray-500"
-//                       variant="small"
-//                     >
-//                       Change it often
-//                     </Typography>
-//                   </div>
-//                 </div>
-//                 <Button
-//                   variant="gradient"
-//                   className="tw-py-2 tw-px-4 tw-ml-auto"
-//                   size="sm"
-//                 >
-//                   Update Password
-//                 </Button>
-//               </div>
-//             </CardFooter>
-//           </Card>
-//           {/* Two-factor authentication */}
-//           {/* <Card
-//             className="tw-mb-6 tw-border tw-border-blue-gray-100 tw-shadow-sm"
-//             id="2FA"
-//           >
-//             <CardHeader
-//               shadow={false}
-//               floated={false}
-//               className="tw-flex tw-justify-between tw-rounded-none"
-//             >
-//               <Typography variant="h5" color="blue-gray">
-//                 Two-factor authentication
-//               </Typography>
-//               <Chip value="enabled" size="sm" color="green" variant="ghost" />
-//             </CardHeader>
-//             <CardBody>
-//               <div className="tw-flex tw-items-center tw-justify-between tw-border-b tw-border-b-gray-200 tw-py-4">
-//                 <Typography className="!tw-font-normal !tw-text-blue-gray-500">
-//                   Security keys
-//                 </Typography>
-//                 <div className="tw-flex tw-items-center tw-gap-3">
-//                   <Typography
-//                     variant="small"
-//                     className="!tw-font-normal !tw-text-blue-gray-500 tw-ml-auto"
-//                   >
-//                     No Security keys
-//                   </Typography>
-//                   <Button size="sm" color="gray" variant="outlined">
-//                     add
-//                   </Button>
-//                 </div>
-//               </div>
-//               <div className="tw-flex tw-items-center tw-justify-between tw-border-b tw-border-b-gray-200 tw-py-4">
-//                 <Typography className="!tw-font-normal !tw-text-blue-gray-500">
-//                   SMS number
-//                 </Typography>
-//                 <div className="tw-flex tw-items-center tw-gap-3">
-//                   <Typography
-//                     variant="small"
-//                     className="!tw-font-normal !tw-text-blue-gray-500 tw-ml-auto"
-//                   >
-//                     +3012374423
-//                   </Typography>
-//                   <Button size="sm" color="gray" variant="outlined">
-//                     edit
-//                   </Button>
-//                 </div>
-//               </div>
-//               <div className="tw-flex tw-items-center tw-justify-between tw-pt-4">
-//                 <Typography className="!tw-font-normal !tw-text-blue-gray-500">
-//                   Authenticator app
-//                 </Typography>
-//                 <div className="tw-flex tw-items-center tw-gap-3">
-//                   <Typography
-//                     variant="small"
-//                     className="!tw-font-normal !tw-text-blue-gray-500 tw-ml-auto"
-//                   >
-//                     Not Configured
-//                   </Typography>
-//                   <Button size="sm" color="gray" variant="outlined">
-//                     set up
-//                   </Button>
-//                 </div>
-//               </div>
-//             </CardBody>
-//           </Card> */}
-//           {/* Accounts */}
-//           {/* <Card
-//             className="tw-mb-6 tw-scroll-mt-4 tw-border tw-border-blue-gray-100 tw-shadow-sm"
-//             id="Accounts"
-//           >
-//             <CardHeader shadow={false} floated={false}>
-//               <Typography variant="h5" color="blue-gray">
-//                 Accounts
-//               </Typography>
-//               <Typography
-//                 className="tw-my-2 !tw-font-normal !tw-text-blue-gray-500"
-//                 variant="small"
-//               >
-//                 Here you can setup and manage your integration settings.
-//               </Typography>
-//             </CardHeader>
-//             <CardBody>
-//               <div className="tw-flex tw-items-center tw-justify-between tw-gap-6">
-//                 <div className="tw-flex tw-items-center tw-gap-4">
-//                   <img
-//                     src="https://demos.creative-tim.com/material-dashboard-pro-react/static/media/logo-slack.7c47c5aa474b5c4fb39fcf05ffb8e4e7.svg"
-//                     alt="slack"
-//                     className="tw-w-12"
-//                   />
-//                   <div>
-//                     <Typography variant="h5" color="blue-gray" className="mb-1">
-//                       Slack
-//                     </Typography>
-//                     <div className="tw-flex tw-items-center tw-gap-1">
-//                       <Typography
-//                         variant="small"
-//                         className="!tw-text-blue-gray-500 tw-font-normal"
-//                       >
-//                         Show less
-//                       </Typography>
-//                       <ChevronUpIcon className="tw-h-4 tw-w-4" />
-//                     </div>
-//                   </div>
-//                 </div>
-//                 <div className="tw-flex tw-gap-6">
-//                   <Typography
-//                     className="!tw-font-normal !tw-text-blue-gray-500"
-//                     variant="small"
-//                   >
-//                     Enabled
-//                   </Typography>
-//                   <Switch id="switch2" defaultChecked color="gray" />
-//                 </div>
-//               </div>
-//               <div className="tw-mt-4 tw-border-b tw-border-b-gray-200 tw-pl-16 tw-pb-6">
-//                 <Typography
-//                   className="tw-my-2 !tw-font-normal !tw-text-blue-gray-500"
-//                   variant="small"
-//                 >
-//                   You haven&apos;t added your Slack yet or you aren&apos;t
-//                   authorized. Please add our Slack Bot to your account by
-//                   clicking on here. When you&apos;ve added the bot, send your
-//                   verification code that you have received.
-//                 </Typography>
-//                 <div className="tw-mt-6 tw-rounded-lg tw-bg-blue-gray-200/20 tw-p-2">
-//                   <div className="tw-flex tw-flex-col tw-justify-between tw-gap-4 sm:tw-flex-row sm:tw-items-center">
-//                     <Typography
-//                       variant="small"
-//                       className="tw-pl-1 !tw-font-bold !tw-text-blue-gray-600"
-//                     >
-//                       Verification Code
-//                     </Typography>
-//                     <Input
-//                       label="Code"
-//                       containerProps={{
-//                         className: "tw-w-full sm:tw-w-36 tw-min-w-[144px]",
-//                       }}
-//                     />
-//                   </div>
-//                 </div>
-//                 <div className="tw-mt-6 tw-rounded-lg tw-bg-blue-gray-200/20 tw-p-2">
-//                   <div className="tw-flex tw-flex-col tw-gap-4 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
-//                     <Typography
-//                       variant="small"
-//                       className="tw-pl-1 !tw-font-bold !tw-text-blue-gray-600 lg:tw-pl-2"
-//                     >
-//                       Connected account
-//                     </Typography>
-//                     <div className="tw-flex tw-items-center tw-justify-between tw-gap-4 sm:tw-justify-start">
-//                       <Typography
-//                         variant="small"
-//                         className="tw-pl-1 !tw-font-bold"
-//                         color="blue-gray"
-//                       >
-//                         hello@creative-tim.com
-//                       </Typography>
-//                       <Button variant="gradient" size="sm">
-//                         delete
-//                       </Button>
-//                     </div>
-//                   </div>
-//                 </div>
-//               </div>
-
-//               <div className="tw-flex tw-items-center tw-justify-between tw-gap-6 tw-border-b tw-border-b-gray-200 tw-py-4">
-//                 <div className="tw-flex tw-items-center tw-gap-6">
-//                   <img
-//                     src="https://demos.creative-tim.com/material-dashboard-pro-react/static/media/logo-spotify.e83cf56c9d99a1fdf59e8deb58bbe470.svg"
-//                     alt="spotify"
-//                     className="tw-w-12"
-//                   />
-//                   <div>
-//                     <Typography
-//                       variant="h5"
-//                       color="blue-gray"
-//                       className="tw-mb-1"
-//                     >
-//                       Spotify
-//                     </Typography>
-//                     <Typography
-//                       variant="small"
-//                       className="!tw-text-blue-gray-500 tw-font-normal"
-//                     >
-//                       Music
-//                     </Typography>
-//                   </div>
-//                 </div>
-//                 <div className="tw-flex tw-gap-6">
-//                   <Typography
-//                     className="!tw-font-normal !tw-text-blue-gray-500"
-//                     variant="small"
-//                   >
-//                     Enabled
-//                   </Typography>
-//                   <Switch id="switch3" defaultChecked color="gray" />
-//                 </div>
-//               </div>
-
-//               <div className="tw-flex tw-items-center tw-justify-between tw-gap-6 tw-border-b tw-border-b-gray-200 tw-py-4">
-//                 <div className="tw-flex tw-items-center tw-gap-6">
-//                   <img
-//                     src="https://demos.creative-tim.com/material-dashboard-pro-react/static/media/logo-atlassian.f2b0e8570a4b4ce768854ff3dad1a6e1.svg"
-//                     alt="atlassian"
-//                     className="tw-w-12"
-//                   />
-//                   <div>
-//                     <Typography
-//                       variant="h5"
-//                       color="blue-gray"
-//                       className="tw-mb-1"
-//                     >
-//                       Atlassian
-//                     </Typography>
-//                     <Typography
-//                       variant="small"
-//                       className="!tw-text-blue-gray-500 tw-font-normal"
-//                     >
-//                       Payment vendor
-//                     </Typography>
-//                   </div>
-//                 </div>
-//                 <div className="tw-flex tw-gap-6">
-//                   <Typography
-//                     className="!tw-font-normal !tw-text-blue-gray-500"
-//                     variant="small"
-//                   >
-//                     Enabled
-//                   </Typography>
-//                   <Switch id="switch4" defaultChecked color="gray" />
-//                 </div>
-//               </div>
-
-//               <div className="tw-flex tw-items-center tw-justify-between tw-gap-6 tw-pt-4">
-//                 <div className="tw-flex tw-items-center tw-gap-6">
-//                   <img
-//                     src="https://demos.creative-tim.com/material-dashboard-pro-react/static/media/logo-asana.d758f410d82760a61d1eabcb03409de6.svg"
-//                     alt="asana"
-//                     className="tw-w-12"
-//                   />
-//                   <div>
-//                     <Typography
-//                       variant="h5"
-//                       color="blue-gray"
-//                       className="tw-mb-1"
-//                     >
-//                       Asana
-//                     </Typography>
-//                     <Typography
-//                       variant="small"
-//                       className="!tw-text-blue-gray-500 tw-font-normal"
-//                     >
-//                       Organize your team
-//                     </Typography>
-//                   </div>
-//                 </div>
-//                 <div className="tw-flex tw-gap-6">
-//                   <Typography
-//                     className="!tw-font-normal !tw-text-blue-gray-500"
-//                     variant="small"
-//                   >
-//                     Enabled
-//                   </Typography>
-//                   <Switch id="switch5" />
-//                 </div>
-//               </div>
-//             </CardBody>
-//           </Card> */}
-//           {/* Notifications */}
-//           {/* <Card
-//             className="tw-mb-6 tw-scroll-mt-4 tw-border tw-border-blue-gray-100 tw-shadow-sm"
-//             id="Notifications"
-//           >
-//             <CardHeader floated={false} shadow={false}>
-//               <Typography variant="h5" color="blue-gray">
-//                 Notifications
-//               </Typography>
-//               <Typography
-//                 className="tw-my-2 !tw-font-normal !tw-text-blue-gray-500"
-//                 variant="small"
-//               >
-//                 Choose how you receive notifications. These notification
-//                 settings apply to the things you&apos;re watching.
-//               </Typography>
-//             </CardHeader>
-//             <CardBody className="tw-overflow-x-scroll">
-//               <table className="tw-w-full tw-min-w-[600px] tw-table-auto">
-//                 <tbody className="tw-border-blue-gray-50">
-//                   <tr className="tw-border-b tw-border-blue-gray-50">
-//                     <td className="tw-py-4">Activity</td>
-//                     <td>Email</td>
-//                     <td>Push</td>
-//                     <td>SMS</td>
-//                   </tr>
-//                   <tr className="tw-border-b tw-border-blue-gray-50">
-//                     <td className="tw-py-3">
-//                       <div className="tw-grid">
-//                         <Typography className="tw-font-normal">
-//                           Mentions
-//                         </Typography>
-//                         <Typography className="tw-text-xs tw-font-normal !tw-text-blue-gray-500">
-//                           Notify when another user mentions you in a comment
-//                         </Typography>
-//                       </div>
-//                     </td>
-//                     <td>
-//                       <Switch id="switch6" defaultChecked color="gray" />
-//                     </td>
-//                     <td>
-//                       <Switch id="switch7" color="gray" />
-//                     </td>
-//                     <td>
-//                       <Switch id="switch8" color="gray" />
-//                     </td>
-//                   </tr>
-//                   <tr className="tw-border-b tw-border-blue-gray-50">
-//                     <td className="tw-py-3">
-//                       <div className="tw-grid">
-//                         <Typography className="tw-font-normal">
-//                           Comments
-//                         </Typography>
-//                         <Typography className="tw-text-xs tw-font-normal !tw-text-blue-gray-500">
-//                           Notify when another user comments your item.
-//                         </Typography>
-//                       </div>
-//                     </td>
-//                     <td>
-//                       <Switch id="switch9" defaultChecked color="gray" />
-//                     </td>
-//                     <td>
-//                       <Switch id="switch10" defaultChecked color="gray" />
-//                     </td>
-//                     <td>
-//                       <Switch id="switch11" color="gray" />
-//                     </td>
-//                   </tr>
-//                   <tr className="tw-border-b tw-border-blue-gray-50">
-//                     <td className="tw-py-3">
-//                       <div className="tw-grid">
-//                         <Typography className="tw-font-normal">
-//                           Follows
-//                         </Typography>
-//                         <Typography className="tw-text-xs tw-font-normal !tw-text-blue-gray-500">
-//                           Notify when another user follows you.
-//                         </Typography>
-//                       </div>
-//                     </td>
-//                     <td>
-//                       <Switch id="switch12" defaultChecked color="gray" />
-//                     </td>
-//                     <td>
-//                       <Switch id="switch13" defaultChecked color="gray" />
-//                     </td>
-//                     <td>
-//                       <Switch id="switch14" defaultChecked color="gray" />
-//                     </td>
-//                   </tr>
-//                   <tr className="">
-//                     <td className="tw-py-5">
-//                       <div className="tw-grid">
-//                         <Typography
-//                           className="!tw-font-normal !tw-text-blue-gray-500"
-//                           variant="small"
-//                         >
-//                           Log in from a new device
-//                         </Typography>
-//                       </div>
-//                     </td>
-//                     <td>
-//                       <Switch id="switch15" defaultChecked color="gray" />
-//                     </td>
-//                     <td>
-//                       <Switch id="switch16" defaultChecked color="gray" />
-//                     </td>
-//                     <td>
-//                       <Switch id="switch17" defaultChecked color="gray" />
-//                     </td>
-//                   </tr>
-//                 </tbody>
-//               </table>
-//             </CardBody>
-//           </Card> */}
-//           {/* Sessions */}
-//           {/* <Card
-//             className="tw-mb-6 tw-scroll-mt-4 tw-border tw-border-blue-gray-100 tw-shadow-sm"
-//             id="Sessions"
-//           >
-//             <CardHeader shadow={false} floated={false}>
-//               <Typography variant="h5" color="blue-gray">
-//                 Sessions
-//               </Typography>
-//               <Typography
-//                 className="tw-mt-2 !tw-font-normal !tw-text-blue-gray-500"
-//                 variant="small"
-//               >
-//                 This is a list of devices that have logged into your account.
-//                 Remove those that you do not recognize.
-//               </Typography>
-//             </CardHeader>
-//             <CardBody>
-//               <div className="tw-flex tw-flex-col tw-gap-4 tw-border-b tw-border-b-gray-200 tw-pb-4 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
-//                 <div className="tw-flex tw-items-center tw-gap-6">
-//                   <ComputerDesktopIcon className="tw-h-7 tw-w-7 tw-text-blue-gray-900/40" />
-//                   <div>
-//                     <Typography
-//                       variant="small"
-//                       className="tw-mb-1 !tw-text-blue-gray-500 !tw-font-normal"
-//                     >
-//                       Bucharest 68.133.163.201
-//                     </Typography>
-//                     <Typography className="tw-text-xs !tw-text-blue-gray-500">
-//                       Your current session
-//                     </Typography>
-//                   </div>
-//                 </div>
-//                 <div className="tw-flex tw-items-center tw-gap-4">
-//                   <Chip
-//                     value="active"
-//                     size="sm"
-//                     color="green"
-//                     variant="ghost"
-//                   />
-//                   <Typography
-//                     className="!tw-font-normal !tw-text-blue-gray-500"
-//                     variant="small"
-//                   >
-//                     EU
-//                   </Typography>
-//                   <div className="tw-ml-auto tw-flex tw-items-center tw-gap-2 sm:tw-ml-0">
-//                     <Button
-//                       size="sm"
-//                       variant="text"
-//                       className="tw-flex !tw-text-blue-gray-500 tw-items-center tw-gap-2 !tw-font-normal tw-capitalize"
-//                     >
-//                       See more{" "}
-//                       <ArrowRightIcon
-//                         className="tw-h-3 tw-w-3 tw-text-gray-900"
-//                         strokeWidth={2.5}
-//                       />
-//                     </Button>
-//                   </div>
-//                 </div>
-//               </div>
-
-//               <div className="tw-flex tw-flex-col tw-gap-4 tw-border-b tw-border-b-gray-200 tw-py-4 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
-//                 <div className="tw-flex tw-items-center tw-gap-6">
-//                   <ComputerDesktopIcon className="tw-h-7 tw-w-7 tw-text-blue-gray-900/40" />
-//                   <Typography className="!tw-text-blue-gray-500 !tw-font-normal">
-//                     Chrome on macOS
-//                   </Typography>
-//                 </div>
-//                 <div className="tw-flex tw-items-center tw-gap-4">
-//                   <Typography
-//                     className="!tw-font-normal !tw-text-blue-gray-500"
-//                     variant="small"
-//                   >
-//                     US
-//                   </Typography>
-//                   <div className="tw-ml-auto tw-flex tw-items-center tw-gap-2 sm:tw-ml-0">
-//                     <Button
-//                       size="sm"
-//                       variant="text"
-//                       className="tw-flex !tw-text-blue-gray-500 tw-items-center tw-gap-2 !tw-font-normal tw-capitalize"
-//                     >
-//                       See more{" "}
-//                       <ArrowRightIcon
-//                         className="tw-h-3 tw-w-3 tw-text-gray-900"
-//                         strokeWidth={2.5}
-//                       />
-//                     </Button>
-//                   </div>
-//                 </div>
-//               </div>
-
-//               <div className="tw-flex tw-flex-col tw-gap-4 tw-pt-4 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
-//                 <div className="tw-flex tw-items-center tw-gap-6">
-//                   <DevicePhoneMobileIcon className="tw-h-7 tw-w-7 tw-text-blue-gray-900/40" />
-//                   <Typography className="!tw-text-blue-gray-500 !tw-font-normal">
-//                     Safari on iPhone
-//                   </Typography>
-//                 </div>
-//                 <div className="tw-flex tw-items-center tw-gap-4">
-//                   <Typography
-//                     className="!tw-font-normal !tw-text-blue-gray-500"
-//                     variant="small"
-//                   >
-//                     US
-//                   </Typography>
-//                   <div className="tw-ml-auto tw-flex tw-items-center tw-gap-2 sm:tw-ml-0">
-//                     <Button
-//                       size="sm"
-//                       variant="text"
-//                       className="tw-flex !tw-text-blue-gray-500 tw-items-center tw-gap-2 !tw-font-normal tw-capitalize"
-//                     >
-//                       See more{" "}
-//                       <ArrowRightIcon
-//                         className="tw-h-3 tw-w-3 tw-text-gray-900"
-//                         strokeWidth={2.5}
-//                       />
-//                     </Button>
-//                   </div>
-//                 </div>
-//               </div>
-//             </CardBody>
-//           </Card> */}
-//           {/* Delete Account */}
-//           {/* <Card
-//             id="Delete Account"
-//             className="tw-scroll-mt-4 tw-border tw-border-blue-gray-100 tw-shadow-sm"
-//           >
-//             <CardHeader
-//               floated={false}
-//               shadow={false}
-//               className="tw-rounded-none"
-//             >
-//               <Typography variant="h5" color="blue-gray">
-//                 Delete Account
-//               </Typography>
-//             </CardHeader>
-//             <CardBody className="tw-flex tw-flex-col tw-gap-4 tw-px-4 tw-pb-4 tw-pt-2 md:tw-flex-row md:tw-items-center">
-//               <Typography
-//                 className="!tw-font-normal !tw-text-blue-gray-500"
-//                 variant="small"
-//               >
-//                 Once you delete your account, there is no going back. Please be
-//                 certain.
-//               </Typography>
-//               <div className="tw-flex tw-items-center tw-gap-2 md:tw-ml-auto">
-//                 <Button variant="outlined">deactivate</Button>
-//                 <Button color="blue-gray" className="tw-bg-red-600">
-//                   delete account
-//                 </Button>
-//               </div>
-//             </CardBody>
-//           </Card> */}
-//         </div>
-//       {/* </div> */}
-//     </div>
-//   );
-// }
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export default function Settings() {
+  const router = useRouter();
+
+  // ===== State สำหรับ User Info =====
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // ===== State สำหรับ Change Password =====
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  // ===== State สำหรับ Confirm Dialog =====
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  // ===== State สำหรับ Redirecting (ล็อกหน้าจอ) =====
+  const [redirecting, setRedirecting] = useState(false);
+
+  // ===== ดึง user id จาก /me =====
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+
+    fetch(`${API_BASE}/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.id) setUserId(data.id);
+      })
+      .catch(console.error);
+  }, []);
+
+  // ===== Validation =====
+  const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
+  const hasMinLength = newPassword.length >= 6;
+  const hasNumber = /\d/.test(newPassword);
+  const passwordsMatch = newPassword === confirmPassword && newPassword.length > 0;
+
+  const isFormValid = 
+    currentPassword.length > 0 && 
+    hasSpecialChar && 
+    hasMinLength && 
+    hasNumber && 
+    passwordsMatch;
+
+  // ===== Handle Submit =====
+  const handleChangePassword = async () => {
+    if (!isFormValid || !userId) return;
+    
+    setShowConfirm(false);
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const token = localStorage.getItem("access_token");
+      
+      const res = await fetch(`${API_BASE}/user_update/${userId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          password: newPassword,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || "เปลี่ยนรหัสผ่านไม่สำเร็จ");
+      }
+
+      // ===== เปิด Overlay ล็อกหน้าจอ =====
+      setRedirecting(true);
+      
+      setTimeout(() => {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        router.push("/auth/signin/basic");
+      }, 2000);
+
+    } catch (err: any) {
+      setError(err.message || "เกิดข้อผิดพลาด");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ===== Requirement Check Item =====
+  const RequirementItem = ({ met, text }: { met: boolean; text: string }) => (
+    <div className="tw-flex tw-items-center tw-gap-2">
+      <span className={`tw-h-1.5 tw-w-1.5 tw-rounded-full ${met ? "tw-bg-green-500" : "tw-bg-blue-gray-500"}`} />
+      <Typography
+        className={`!tw-font-normal ${met ? "!tw-text-green-600" : "!tw-text-blue-gray-500"}`}
+        variant="small"
+      >
+        {text} {met && "✓"}
+      </Typography>
+    </div>
+  );
+
   return (
     <div className="tw-mb-6 !tw-w-full">
-      <div className="!tw-col-span-10">
-        {/* Profile Header */}
-        {/* <ProfileHeader /> */}
+      {/* ===== Overlay ล็อกหน้าจอ ===== */}
+      {redirecting && (
+        <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-bg-black/60 tw-backdrop-blur-sm tw-flex tw-items-center tw-justify-center">
+          <div className="tw-bg-white tw-rounded-xl tw-p-8 tw-shadow-2xl tw-flex tw-flex-col tw-items-center tw-gap-4 tw-max-w-sm tw-mx-4">
+            <div className="tw-w-16 tw-h-16 tw-rounded-full tw-bg-green-100 tw-flex tw-items-center tw-justify-center">
+              <svg className="tw-w-8 tw-h-8 tw-text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <Typography variant="h5" color="blue-gray" className="tw-text-center">
+              เปลี่ยนรหัสผ่านสำเร็จ!
+            </Typography>
+            <Typography className="tw-text-center !tw-text-blue-gray-600">
+              กำลังนำคุณไปหน้าเข้าสู่ระบบ...
+            </Typography>
+            <Spinner className="tw-h-8 tw-w-8" color="blue" />
+          </div>
+        </div>
+      )}
 
-        {/* ===== 2-Column Layout (Profile | Change Password) ===== */}
+      <div className="!tw-col-span-10">
         <div className="tw-grid tw-grid-cols-1 lg:tw-grid-cols-2 tw-gap-6 tw-mt-8">
           {/* Profile / Basic Info (ซ้าย) */}
           <div className="tw-h-full">
@@ -695,9 +168,51 @@ export default function Settings() {
               </Typography>
             </CardHeader>
             <CardBody className="tw-flex tw-flex-col tw-gap-6">
-              <Input label="Current Password" />
-              <Input label="New Password" />
-              <Input label="Confirm New Password" />
+              {/* Error Message */}
+              {error && (
+                <div className="tw-p-3 tw-bg-red-50 tw-border tw-border-red-200 tw-rounded-lg">
+                  <Typography variant="small" className="!tw-text-red-600">
+                    {error}
+                  </Typography>
+                </div>
+              )}
+
+              {/* Success Message */}
+              {success && (
+                <div className="tw-p-3 tw-bg-green-50 tw-border tw-border-green-200 tw-rounded-lg">
+                  <Typography variant="small" className="!tw-text-green-600">
+                    {success}
+                  </Typography>
+                </div>
+              )}
+
+              <Input 
+                label="Current Password" 
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                crossOrigin=""
+              />
+              <Input 
+                label="New Password" 
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                crossOrigin=""
+              />
+              <Input 
+                label="Confirm New Password" 
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                error={confirmPassword.length > 0 && !passwordsMatch}
+                crossOrigin=""
+              />
+              {confirmPassword.length > 0 && !passwordsMatch && (
+                <Typography variant="small" className="!tw-text-red-500 tw--mt-4">
+                  รหัสผ่านไม่ตรงกัน
+                </Typography>
+              )}
             </CardBody>
             <CardFooter>
               <Typography variant="h5" color="blue-gray">
@@ -708,56 +223,60 @@ export default function Settings() {
               </Typography>
               <div className="tw-flex tw-flex-col tw-justify-between lg:tw-items-end md:tw-items-end tw-gap-8 md:tw-flex-row">
                 <div>
-                  <div className="tw-flex tw-items-center tw-gap-2">
-                    <span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-blue-gray-500" />
-                    <Typography
-                      className="!tw-font-normal !tw-text-blue-gray-500"
-                      variant="small"
-                    >
-                      One special characters
-                    </Typography>
-                  </div>
-                  <div className="tw-flex tw-items-center tw-gap-2">
-                    <span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-blue-gray-500" />
-                    <Typography
-                      className="!tw-font-normal !tw-text-blue-gray-500"
-                      variant="small"
-                    >
-                      Min 6 characters
-                    </Typography>
-                  </div>
-                  <div className="tw-flex tw-items-center tw-gap-2">
-                    <span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-blue-gray-500" />
-                    <Typography
-                      className="!tw-font-normal !tw-text-blue-gray-500"
-                      variant="small"
-                    >
-                      One number (2 are recommended)
-                    </Typography>
-                  </div>
-                  <div className="tw-flex tw-items-center tw-gap-2">
-                    <span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-blue-gray-500" />
-                    <Typography
-                      className="!tw-font-normal !tw-text-blue-gray-500"
-                      variant="small"
-                    >
-                      Change it often
-                    </Typography>
-                  </div>
+                  <RequirementItem met={hasSpecialChar} text="One special character" />
+                  <RequirementItem met={hasMinLength} text="Min 6 characters" />
+                  <RequirementItem met={hasNumber} text="One number (2 are recommended)" />
+                  <RequirementItem met={passwordsMatch} text="Passwords match" />
                 </div>
                 <Button
                   variant="gradient"
                   className="tw-py-2 tw-px-4 tw-ml-auto"
                   size="sm"
+                  onClick={() => setShowConfirm(true)}
+                  disabled={!isFormValid || loading || !userId}
                 >
-                  Update Password
+                  {loading ? "Updating..." : "Update Password"}
                 </Button>
               </div>
             </CardFooter>
           </Card>
         </div>
-        {/* ===== end 2-Column ===== */}
       </div>
+
+      {/* ===== Confirm Dialog ===== */}
+      <Dialog open={showConfirm} handler={() => setShowConfirm(false)} size="xs">
+        <DialogHeader className="tw-flex tw-flex-col tw-items-start tw-gap-1">
+          <Typography variant="h5" color="blue-gray">
+            ยืนยันการเปลี่ยนรหัสผ่าน
+          </Typography>
+        </DialogHeader>
+        <DialogBody divider>
+          <Typography className="!tw-text-blue-gray-700">
+            คุณต้องการเปลี่ยนรหัสผ่านใช่หรือไม่?
+          </Typography>
+          <Typography variant="small" className="!tw-text-blue-gray-500 tw-mt-2">
+            หลังจากเปลี่ยนรหัสผ่านแล้ว ระบบจะนำคุณไปหน้าเข้าสู่ระบบเพื่อ Login ใหม่
+          </Typography>
+        </DialogBody>
+        <DialogFooter className="tw-flex tw-gap-2">
+          <Button 
+            variant="outlined" 
+            color="blue-gray" 
+            onClick={() => setShowConfirm(false)}
+            disabled={loading}
+          >
+            ยกเลิก
+          </Button>
+          <Button 
+            variant="gradient" 
+            color="green" 
+            onClick={handleChangePassword}
+            disabled={loading}
+          >
+            {loading ? "กำลังบันทึก..." : "ยืนยัน"}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }

@@ -32,10 +32,12 @@ type SettingDoc = {
 function Row({
     label,
     value,
+    unit,
     zebra = false,
 }: {
     label: string;
     value: string | number | undefined | null;
+    unit?: string;
     zebra?: boolean;
 }) {
     return (
@@ -45,18 +47,15 @@ function Row({
         >
             <span className="tw-text-sm tw-text-blue-gray-700">{label}</span>
             <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-900 tw-text-right tw-tabular-nums">
-                {value}
+                {value}{unit && (<span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-blue-gray-400">{unit}</span>)}
             </span>
         </div>
     );
 }
 
-export default function EvPanel({ head }: { head: 1 | 2 }) {
-    const searchParams = useSearchParams();
-    const [stationId, setStationId] = useState<string | null>(null);
-    const [err, setErr] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [data, setData] = useState<SettingDoc | null>(null);
+export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
+
+
 
     // helper format
     const toNum = (v: any): number | null => {
@@ -71,51 +70,51 @@ export default function EvPanel({ head }: { head: 1 | 2 }) {
     const fmtStr = (v: any) => (v ?? "-");
 
     // 1) ดึง station_id จาก URL → ถ้าไม่มีค่อย fallback localStorage
-    useEffect(() => {
-        const sidFromUrl = searchParams.get("station_id");
-        if (sidFromUrl) {
-            setStationId(sidFromUrl);
-            localStorage.setItem("selected_station_id", sidFromUrl);
-            return;
-        }
-        const sidLocal = localStorage.getItem("selected_station_id");
-        setStationId(sidLocal);
-    }, [searchParams]);
+    // useEffect(() => {
+    //     const sidFromUrl = searchParams.get("station_id");
+    //     if (sidFromUrl) {
+    //         setStationId(sidFromUrl);
+    //         localStorage.setItem("selected_station_id", sidFromUrl);
+    //         return;
+    //     }
+    //     const sidLocal = localStorage.getItem("selected_station_id");
+    //     setStationId(sidLocal);
+    // }, [searchParams]);
 
     // 2) เปิด SSE ไปที่ /setting
-    useEffect(() => {
-        if (!stationId) return;
-        setLoading(true);
-        setErr(null);
+    // useEffect(() => {
+    //     if (!stationId) return;
+    //     setLoading(true);
+    //     setErr(null);
 
-        const es = new EventSource(
-            `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
-            { withCredentials: true } // สำคัญสำหรับ cookie-auth
-        );
+    //     const es = new EventSource(
+    //         `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
+    //         { withCredentials: true } // สำคัญสำหรับ cookie-auth
+    //     );
 
-        const onInit = (e: MessageEvent) => {
-            try {
-                setData(JSON.parse(e.data));
-                setLoading(false);
-                setErr(null);
-            } catch {
-                setErr("ผิดรูปแบบข้อมูล init");
-                setLoading(false);
-            }
-        };
+    //     const onInit = (e: MessageEvent) => {
+    //         try {
+    //             setData(JSON.parse(e.data));
+    //             setLoading(false);
+    //             setErr(null);
+    //         } catch {
+    //             setErr("ผิดรูปแบบข้อมูล init");
+    //             setLoading(false);
+    //         }
+    //     };
 
         // es.addEventListener("init", onInit);
-        es.addEventListener("init", (e: MessageEvent) => {
+    //     es.addEventListener("init", (e: MessageEvent) => {
             // console.log("INIT raw:", e.data);
-            try {
-                const obj = JSON.parse(e.data);
+    //         try {
+    //             const obj = JSON.parse(e.data);
                 // console.log("INIT parsed:", obj);
-                setData(obj);
-                setLoading(false);
-            } catch { }
-        });
+    //             setData(obj);
+    //             setLoading(false);
+    //         } catch { }
+    //     });
 
-        es.onopen = () => setErr(null);
+    //     es.onopen = () => setErr(null);
 
         // es.onmessage = (e) => {
         //   try {
@@ -126,77 +125,76 @@ export default function EvPanel({ head }: { head: 1 | 2 }) {
         //   }
         // };
 
-        es.onmessage = (e) => {
+    //     es.onmessage = (e) => {
             // console.log("MSG raw:", e.data);
-            try {
-                const obj = JSON.parse(e.data);
+    //         try {
+    //             const obj = JSON.parse(e.data);
                 // console.log("MSG parsed:", obj);
-                setData(obj);
-            } catch { }
-        };
+    //             setData(obj);
+    //         } catch { }
+    //     };
 
-        es.onerror = () => {
-            setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
-            setLoading(false);
-            // ไม่ปิด es เพื่อให้ browser retry ตาม retry: 3000 ที่ server ส่งมา
-        };
+    //     es.onerror = () => {
+    //         setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
+    //         setLoading(false);
+    //         // ไม่ปิด es เพื่อให้ browser retry ตาม retry: 3000 ที่ server ส่งมา
+    //     };
 
-        return () => {
-            es.removeEventListener("init", onInit);
-            es.close();
-        };
-    }, [stationId]);
+    //     return () => {
+    //         es.removeEventListener("init", onInit);
+    //         es.close();
+    //     };
+    // }, [stationId]);
 
     // ถ้าต้องการแปลง CP code -> ตัวอักษร/คำอธิบาย (ปรับตามโปรโตคอลของคุณ)
-    const mapCP = (code: any) => {
-        const c = String(code ?? "");
+    // const mapCP = (code: any) => {
+    //     const c = String(code ?? "");
         // ตัวอย่าง mapping: 1=A, 2=B, 3=C, 7=F (ปรับตามจริง)
-        const table: Record<string, string> = { "1": "A", "2": "B", "3": "C", "4": "D", "5": "E", "6": "F", "7": "F" };
-        return table[c] ?? "-";
-    };
+    //     const table: Record<string, string> = { "1": "A", "2": "B", "3": "C", "4": "D", "5": "E", "6": "F", "7": "F" };
+    //     return table[c] ?? "-";
+    // };
 
     // 3) เตรียม rows จาก data จริง
     const rows = useMemo(() => {
-        if (head === 1) {
+      const config1 = [
             // รายการข้อมูลสำหรับ Head 1
-            return [
-                { label: "Measured Voltage Head 1 (V)", value: fmtNum(data?.measured_voltage1) },
-                { label: "Max Voltage Head 1 (V)", value: fmtNum(data?.max_voltage1) },
-                { label: "Measured Current Head 1 (A)", value: fmtNum(data?.measured_current1) },
-                { label: "Max Current Head 1 (A)", value: fmtNum(data?.max_current1) },
-                { label: "Power Head 1 (W)", value: fmtNum(data?.energy_power_kWh1) },
-                { label: "Max Power Head 1 (W)", value: fmtNum(data?.max_power1) },
-                { label: "Power H1 limit (kWh)", value: fmtNum(data?.power_limit1) },
-                { label: "Power H0 limit (kWh) (Shared)", value: fmtNum(data?.power_limit0) },
+                { label: "Measured Voltage Head 1", value: fmtNum(data?.measured_voltage1), unit: "V" },
+                { label: "Max Voltage Head 1 ", value: fmtNum(data?.max_voltage1), unit: "V" },
+                { label: "Measured Current Head 1 ", value: fmtNum(data?.measured_current1), unit: "A" },
+                { label: "Max Current Head 1 ", value: fmtNum(data?.max_current1), unit: "A" },
+                { label: "Power Head 1 ", value: fmtNum(data?.energy_power_kWh1), unit: "W" },
+                { label: "Max Power Head 1 ", value: fmtNum(data?.max_power1), unit: "W" },
+                { label: "Power H1 limit ", value: fmtNum(data?.power_limit1), unit: "kW" },
+                { label: "Power H0 limit (Shared)", value: fmtNum(data?.power_limit0), unit: "kW" },
             ];
-        } else {
+    const config2 = [
             // รายการข้อมูลสำหรับ Head 2
-            return [
-                { label: "Measured Voltage Head 2 (V)", value: fmtNum(data?.measured_voltage2) },
-                { label: "Max Voltage Head 2 (V)", value: fmtNum(data?.max_voltage2) },
-                { label: "Measured Current Head 2 (A)", value: fmtNum(data?.measured_current2) },
-                { label: "Max Current Head 2 (A)", value: fmtNum(data?.max_current2) },
-                { label: "Power Head 2 (W)", value: fmtNum(data?.energy_power_kWh2) },
-                { label: "Max Power Head 2 (W)", value: fmtNum(data?.max_power2) },
-                { label: "Power H2 limit (kWh)", value: fmtNum(data?.power_limit2) },
+
+                { label: "Measured Voltage Head 2", value: fmtNum(data?.measured_voltage2) , unit: "V" },
+                { label: "Max Voltage Head 2 ", value: fmtNum(data?.max_voltage2), unit: "V" },
+                { label: "Measured Current Head 2 ", value: fmtNum(data?.measured_current2), unit: "A" },
+                { label: "Max Current Head 2 ", value: fmtNum(data?.max_current2), unit: "A" },
+                { label: "Power Head 2 ", value: fmtNum(data?.energy_power_kWh2), unit: "W" },
+                { label: "Max Power Head 2 ", value: fmtNum(data?.max_power2), unit: "W" },
+                { label: "Power H2 limit ", value: fmtNum(data?.power_limit2) , unit: "kW" },
             ];
-        }
+        return head === 1 ? config1 : config2;
                 // ถ้าอยากโชว์ค่าที่วัดจริงด้วย (แถม)
                     // { label: "Measured Voltage H1 (V)", value: fmtNum(data?.measured_voltage1) },
                     // { label: "Measured Voltage H2 (V)", value: fmtNum(data?.measured_voltage2) },
                     // { label: "Measured Current H1 (A)", value: fmtNum(data?.measured_current1) },
                     // { label: "Measured Current H2 (A)", value: fmtNum(data?.measured_current2) },
-    }, [data, head]);
+    }, [data , head]);
 
     // ⬇️ ใช้ในหัวการ์ด
     const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
 
     return (
         <Card
-            // ✅ ใส่ timestamp ชิดขวาใน title บรรทัดเดียวกับ "PowerModule"
+            //  ใส่ timestamp ชิดขวาใน title บรรทัดเดียวกับ "PowerModule"
             title={
                 <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
-                    <span>PowerModule (Head {head})</span>
+                    <span>PowerModule Head {head}</span>
                     {lastUpdated && (
                         <span className="tw-ml-auto tw-text-xs !tw-text-blue-gray-500 tw-whitespace-nowrap">
                             อัปเดตล่าสุด: {lastUpdated}
@@ -205,11 +203,17 @@ export default function EvPanel({ head }: { head: 1 | 2 }) {
                 </div>
             }
         >
-            {/* แถบสถานะ */}
+            {/* แถบสถานะ
             {(loading || err) && (
                 <div className="tw-px-3 tw-py-2">
                     {loading && <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลด...</div>}
                     {err && <div className="tw-text-sm tw-text-red-600">{err}</div>}
+                </div>
+            )} */}
+            {/* แถบสถานะแบบใหม่ที่จำเป็น */}
+            {!data && (
+                <div className="tw-px-3 tw-py-2">
+                    <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลดข้อมูล...</div>
                 </div>
             )}
 
@@ -222,7 +226,7 @@ export default function EvPanel({ head }: { head: 1 | 2 }) {
 
             <div className="tw-rounded-lg tw-overflow-hidden">
                 {rows.map((r, i) => (
-                    <Row key={i} label={r.label} value={r.value} zebra={i % 2 === 1} />
+                    <Row key={i} label={r.label} value={r.value} unit={r.unit} zebra={i % 2 === 1} />
                 ))}
             </div>
 
