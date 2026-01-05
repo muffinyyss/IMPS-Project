@@ -69,92 +69,8 @@ export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
     };
     const fmtStr = (v: any) => (v ?? "-");
 
-    // 1) ดึง station_id จาก URL → ถ้าไม่มีค่อย fallback localStorage
-    // useEffect(() => {
-    //     const sidFromUrl = searchParams.get("station_id");
-    //     if (sidFromUrl) {
-    //         setStationId(sidFromUrl);
-    //         localStorage.setItem("selected_station_id", sidFromUrl);
-    //         return;
-    //     }
-    //     const sidLocal = localStorage.getItem("selected_station_id");
-    //     setStationId(sidLocal);
-    // }, [searchParams]);
 
-    // 2) เปิด SSE ไปที่ /setting
-    // useEffect(() => {
-    //     if (!stationId) return;
-    //     setLoading(true);
-    //     setErr(null);
-
-    //     const es = new EventSource(
-    //         `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
-    //         { withCredentials: true } // สำคัญสำหรับ cookie-auth
-    //     );
-
-    //     const onInit = (e: MessageEvent) => {
-    //         try {
-    //             setData(JSON.parse(e.data));
-    //             setLoading(false);
-    //             setErr(null);
-    //         } catch {
-    //             setErr("ผิดรูปแบบข้อมูล init");
-    //             setLoading(false);
-    //         }
-    //     };
-
-        // es.addEventListener("init", onInit);
-    //     es.addEventListener("init", (e: MessageEvent) => {
-            // console.log("INIT raw:", e.data);
-    //         try {
-    //             const obj = JSON.parse(e.data);
-                // console.log("INIT parsed:", obj);
-    //             setData(obj);
-    //             setLoading(false);
-    //         } catch { }
-    //     });
-
-    //     es.onopen = () => setErr(null);
-
-        // es.onmessage = (e) => {
-        //   try {
-        //     setData(JSON.parse(e.data));
-        //     setErr(null);
-        //   } catch {
-        //     setErr("ผิดรูปแบบข้อมูล message");
-        //   }
-        // };
-
-    //     es.onmessage = (e) => {
-            // console.log("MSG raw:", e.data);
-    //         try {
-    //             const obj = JSON.parse(e.data);
-                // console.log("MSG parsed:", obj);
-    //             setData(obj);
-    //         } catch { }
-    //     };
-
-    //     es.onerror = () => {
-    //         setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
-    //         setLoading(false);
-    //         // ไม่ปิด es เพื่อให้ browser retry ตาม retry: 3000 ที่ server ส่งมา
-    //     };
-
-    //     return () => {
-    //         es.removeEventListener("init", onInit);
-    //         es.close();
-    //     };
-    // }, [stationId]);
-
-    // ถ้าต้องการแปลง CP code -> ตัวอักษร/คำอธิบาย (ปรับตามโปรโตคอลของคุณ)
-    // const mapCP = (code: any) => {
-    //     const c = String(code ?? "");
-        // ตัวอย่าง mapping: 1=A, 2=B, 3=C, 7=F (ปรับตามจริง)
-    //     const table: Record<string, string> = { "1": "A", "2": "B", "3": "C", "4": "D", "5": "E", "6": "F", "7": "F" };
-    //     return table[c] ?? "-";
-    // };
-
-    // 3) เตรียม rows จาก data จริง
+    //  เตรียม rows จาก data จริง
     const rows = useMemo(() => {
       const config1 = [
             // รายการข้อมูลสำหรับ Head 1
@@ -203,14 +119,8 @@ export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
                 </div>
             }
         >
-            {/* แถบสถานะ
-            {(loading || err) && (
-                <div className="tw-px-3 tw-py-2">
-                    {loading && <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลด...</div>}
-                    {err && <div className="tw-text-sm tw-text-red-600">{err}</div>}
-                </div>
-            )} */}
-            {/* แถบสถานะแบบใหม่ที่จำเป็น */}
+          
+            {/* แถบสถานะ */}
             {!data && (
                 <div className="tw-px-3 tw-py-2">
                     <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลดข้อมูล...</div>

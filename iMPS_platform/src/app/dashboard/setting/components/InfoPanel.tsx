@@ -13,54 +13,6 @@ type SettingDoc = {
 };
 
 export default function InfoPanel({ head, data }: { head: 1 | 2; data: any }) {
-    // const searchParams = useSearchParams();
-    // const [stationId, setStationId] = useState<string | null>(null);
-    // const [data, setData] = useState<SettingDoc | null>(null);
-    // const [err, setErr] = useState<string | null>(null);
-    // const [loading, setLoading] = useState(true);
-
-    // ดึง station_id จาก URL หรือ localStorage
-    // useEffect(() => {
-    //     const sidFromUrl = searchParams.get("station_id");
-    //     if (sidFromUrl) {
-    //         setStationId(sidFromUrl);
-    //         localStorage.setItem("selected_station_id", sidFromUrl);
-    //         return;
-    //     }
-    //     const sidLocal = localStorage.getItem("selected_station_id");
-    //     setStationId(sidLocal);
-    // }, [searchParams]);
-
-    // useEffect(() => {
-    //     if (!stationId) return;
-
-    //     setLoading(true);
-    //     setErr(null);
-
-    //     const es = new EventSource(
-    //         `${process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000"}/setting?station_id=${encodeURIComponent(stationId)}`,
-    //         { withCredentials: true } // สำหรับ cookie-auth
-    //     );
-
-    //     es.onopen = () => setErr(null);
-    //     es.onmessage = (e) => {
-    //         try {
-    //             const obj = JSON.parse(e.data);
-    //             setData(obj);
-    //             setLoading(false);
-    //         } catch {
-    //             setErr("ผิดรูปแบบข้อมูล");
-    //             setLoading(false);
-    //         }
-    //     };
-
-    //     es.onerror = () => {
-    //         setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
-    //         setLoading(false);
-    //     };
-
-    //     return () => es.close();
-    // }, [stationId]);
 
     // ฟังก์ชันแปลงค่าจาก true/false เป็นข้อความที่เหมาะสม
     const formatFaultStatus = (status?: boolean): string => {
@@ -68,7 +20,6 @@ export default function InfoPanel({ head, data }: { head: 1 | 2; data: any }) {
     };
 
         const rows = useMemo(() => {
-            // ตรวจสอบความปลอดภัย: ถ้า data เป็น null ให้ส่งอาร์เรย์ว่างกลับไปก่อ
 
             const config1 = [
             // รายการข้อมูลสำหรับ Head 1
