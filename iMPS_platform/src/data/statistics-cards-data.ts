@@ -161,25 +161,64 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 
 
 // --- ฟังก์ชันเรียก backend แล้ว map ให้เป็น PMReportData ---
-export async function loadPmReport(stationId: string, token?: string): Promise<PMReportData> {
-  const res = await fetch(`${BASE_URL}/pmreport/latest/${encodeURIComponent(stationId)}`, {
+// export async function loadPmReport(stationId: string, token?: string): Promise<PMReportData> {
+//   const res = await fetch(`${BASE_URL}/pmreport/latest/${encodeURIComponent(stationId)}`, {
+//     headers: {
+//       "Content-Type": "application/json",
+//       ...(token ? { Authorization: `Bearer ${token}` } : {}), // ← ถ้าใช้ cookie ให้ลบบรรทัดนี้
+//     },
+//     // ถ้าใช้ cookie httpOnly แทน header:
+//     // credentials: "include",
+//     cache: "no-store",
+//   });
+//   if (!res.ok) throw new Error(await res.text());
+
+//   const api = (await res.json()) as {
+//     pi_firmware?: string; plc_firmware?: string; rt_firmware?: string;
+//     timestamp?: string; timestamp_utc?: string; timestamp_th?: string;
+//   };
+
+//   const latestISO = api.timestamp_th ?? api.timestamp_utc ?? api.timestamp ?? "";
+//   const nextISO = latestISO ? addMonthsISO(latestISO, 6) : undefined;
+
+//   return {
+//     firmware: {
+//       plc: api.plc_firmware ?? "-",
+//       rpi: api.pi_firmware ?? "-",
+//       router: api.rt_firmware ?? "-",
+//     },
+//     pm: { latest: thDate(latestISO), next: thDate(nextISO), next_day:  renderDaysLeft(nextISO)},
+//     icons: { firmware: WrenchScrewdriverIcon, date: CalendarDaysIcon },
+//   };
+// }
+
+export async function loadPmReport(sn: string, token?: string): Promise<PMReportData> {
+  const res = await fetch(`${BASE_URL}/pmreport/latest/${encodeURIComponent(sn)}`, {
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}), // ← ถ้าใช้ cookie ให้ลบบรรทัดนี้
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    // ถ้าใช้ cookie httpOnly แทน header:
-    // credentials: "include",
+    credentials: "include",
     cache: "no-store",
   });
   if (!res.ok) throw new Error(await res.text());
 
   const api = (await res.json()) as {
-    pi_firmware?: string; plc_firmware?: string; rt_firmware?: string;
-    timestamp?: string; timestamp_utc?: string; timestamp_th?: string;
+    sn?: string;
+    station_id?: string;
+    chargeBoxID?: string;
+    pi_firmware?: string;
+    plc_firmware?: string;
+    rt_firmware?: string;
+    pm_date?: string;
+    pm_next_date?: string;
+    timestamp?: string;
+    timestamp_utc?: string;
+    timestamp_th?: string;
   };
 
   const latestISO = api.timestamp_th ?? api.timestamp_utc ?? api.timestamp ?? "";
-  const nextISO = latestISO ? addMonthsISO(latestISO, 6) : undefined;
+  const nextISO = api.pm_next_date ?? (latestISO ? addMonthsISO(latestISO, 6) : undefined);
 
   return {
     firmware: {
@@ -187,7 +226,11 @@ export async function loadPmReport(stationId: string, token?: string): Promise<P
       rpi: api.pi_firmware ?? "-",
       router: api.rt_firmware ?? "-",
     },
-    pm: { latest: thDate(latestISO), next: thDate(nextISO), next_day:  renderDaysLeft(nextISO)},
+    pm: {
+      latest: thDate(api.pm_date ?? latestISO),
+      next: thDate(nextISO),
+      next_day: renderDaysLeft(nextISO),
+    },
     icons: { firmware: WrenchScrewdriverIcon, date: CalendarDaysIcon },
   };
 }
