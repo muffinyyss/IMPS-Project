@@ -31,13 +31,14 @@ import { ArrowUpTrayIcon, DocumentArrowDownIcon, EyeIcon } from "@heroicons/reac
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
+
 type TData = {
   id?: string;
   doc_name?: string;
-  issue_id?: string; // ทำเป็น optional และเติมค่าจาก id หรือ regex ใน url
-  pm_date: string; // วันที่แบบไทย แสดงผลในตาราง 
-  position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
-  office: string; // URL ไฟล์
+  issue_id?: string;
+  pm_date: string;
+  position: string;
+  office: string;
   inspector?: string;
   side?: string;
 };
@@ -52,13 +53,13 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const REPORT_PREFIX = "pmreport";
 const URL_PREFIX = "pmurl";
 
-const PM_TYPE_CODE = "CG"; // ใช้รหัสเดียวกับ MDB
+const PM_TYPE_CODE = "CG";
 
 function makePrefix(typeCode: string, dateISO: string) {
   const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
   const yy = String(d.getFullYear()).slice(2);
   const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `PM-${typeCode}-${yy}${mm}-`; // เช่น PM-MB-2511-
+  return `PM-${typeCode}-${yy}${mm}-`;
 }
 
 function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
@@ -71,11 +72,11 @@ function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string
   return `${prefix}${n.toString().padStart(pad, "0")}`;
 }
 
-// หา issue_id ล่าสุดจากทั้ง 2 ลิสต์ (รายงานจริง + URL) แล้วออกเลขถัดไป
-async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string, apiBase: string, fetchOpts: RequestInit) {
+// Find latest issue_id from both lists (reports + URLs) then generate next
+async function fetchLatestIssueIdAcrossLists(sn: string, dateISO: string, apiBase: string, fetchOpts: RequestInit) {
   const build = (path: string) => {
     const u = new URL(`${apiBase}${path}`);
-    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("sn", sn);
     u.searchParams.set("page", "1");
     u.searchParams.set("pageSize", "50");
     u.searchParams.set("_ts", String(Date.now()));
@@ -107,25 +108,23 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   return same.reduce((acc, cur) => (toTail(cur) > toTail(acc) ? cur : acc), same[0]);
 }
 
-/* ---------- NEW: helper สำหรับ doc_name ---------- */
-function makeDocNameParts(stationId: string, dateISO: string) {
+/* ---------- Helper for doc_name ---------- */
+function makeDocNameParts(sn: string, dateISO: string) {
   const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
   const year = d.getFullYear();
-  const prefix = `${stationId}_`;
+  const prefix = `${sn}_`;
   const suffix = `/${year}`;
   return { year, prefix, suffix };
 }
 
-function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
-  const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
+function nextDocNameFor(sn: string, dateISO: string, latestFromDb?: string) {
+  const { prefix, suffix } = makeDocNameParts(sn, dateISO);
   const s = String(latestFromDb || "").trim();
 
-  // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
   if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
     return `${prefix}1${suffix}`;
   }
 
-  // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
   const inside = s.slice(prefix.length, s.length - suffix.length);
   const cur = parseInt(inside, 10);
   const nextIndex = isNaN(cur) ? 1 : cur + 1;
@@ -134,11 +133,11 @@ function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: strin
 }
 
 async function fetchPreviewDocName(
-  stationId: string,
+  sn: string,
   pmDate: string
 ): Promise<string | null> {
   const u = new URL(`${BASE}/pmreport/preview-docname`);
-  u.searchParams.set("station_id", stationId);
+  u.searchParams.set("sn", sn);
   u.searchParams.set("pm_date", pmDate);
 
   const token =
@@ -147,7 +146,6 @@ async function fetchPreviewDocName(
       : "";
 
   const r = await apiFetch(u.toString(), {
-    // const r = await fetch(u.toString(), {
     credentials: "include",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
@@ -160,12 +158,13 @@ async function fetchPreviewDocName(
   const j = await r.json();
   return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
+
 async function fetchLatestDocName(
-  stationId: string,
+  sn: string,
   dateISO: string
 ): Promise<string | null> {
   const u = new URL(`${BASE}/pmreport/latest-docname`);
-  u.searchParams.set("station_id", stationId);
+  u.searchParams.set("sn", sn);
   u.searchParams.set("pm_date", dateISO);
   u.searchParams.set("_ts", String(Date.now()));
 
@@ -205,7 +204,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [filtering, setFiltering] = useState("");
   const [issueId, setIssueId] = useState<string>("");
   const searchParams = useSearchParams();
-  const [stationId, setStationId] = useState<string | null>(null);
+  const [sn, setSn] = useState<string | null>(null);
   const [docName, setDocName] = useState<string>("");
   const [me, setMe] = useState<Me | null>(null);
   const [inspector, setInspector] = useState<string>("");
@@ -215,18 +214,18 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;   // YYYY-MM-DD ตามวันที่เครื่องผู้ใช้
+    return `${y}-${m}-${day}`;
   }, []);
 
   useEffect(() => {
-    const sidFromUrl = searchParams.get("station_id");
-    if (sidFromUrl) {
-      setStationId(sidFromUrl);
-      localStorage.setItem("selected_station_id", sidFromUrl);
+    const snFromUrl = searchParams.get("sn");
+    if (snFromUrl) {
+      setSn(snFromUrl);
+      localStorage.setItem("selected_sn", snFromUrl);
       return;
     }
-    const sidLocal = localStorage.getItem("selected_station_id");
-    setStationId(sidLocal);
+    const snLocal = localStorage.getItem("selected_sn");
+    setSn(snLocal);
   }, [searchParams]);
 
   useEffect(() => {
@@ -255,7 +254,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const data: Me = await res.json();
         setMe(data);
 
-        // ให้ inspector default เป็น username ถ้ายังว่างอยู่
         setInspector((prev) => prev || data.username || "");
       } catch (err) {
         console.error("fetch /me error:", err);
@@ -301,7 +299,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   function thDate(iso?: string) {
     if (!iso) return "-";
 
-    // บังคับให้ตีความเป็นเวลา UTC
     const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
       ? new Date(iso + "T00:00:00Z")
       : new Date(iso);
@@ -365,7 +362,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       it?.timestamp,
       it?.createdAt,
       it?.updatedAt,
-      it?.date, // เผื่อบาง API ใช้ key นี้
+      it?.date,
     ];
     for (const v of cands) {
       const d = normalizeAnyDate(v);
@@ -375,7 +372,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   }
 
   const fetchRows = async (signal?: AbortSignal) => {
-    if (!stationId) {
+    if (!sn) {
       setData([]);
       return;
     }
@@ -383,7 +380,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
-        u.searchParams.set("station_id", stationId);
+        u.searchParams.set("sn", sn);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
         u.searchParams.set("_ts", String(Date.now()));
@@ -452,7 +449,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const href = resolveFileHref(raw, apiBase);
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
-        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
+        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string;
         const side = (it.side ?? it.job?.side ?? "") as string;
         return {
           issue_id: issueId,
@@ -471,13 +468,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         if (!da && !db) return 0;
         if (!da) return 1;
         if (!db) return -1;
-        return da < db ? 1 : da > db ? -1 : 0; // desc
+        return da < db ? 1 : da > db ? -1 : 0;
       });
 
       if (!allRows.length) { setData([]); return; }
       setData(allRows);
     } catch (err: any) {
-      if (err?.name === "AbortError") return; // ignore abort
+      if (err?.name === "AbortError") return;
       console.error("fetch both lists error:", err);
       setData([]);
     } finally {
@@ -490,7 +487,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     let alive = true;
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
-  }, [apiBase, stationId]);
+  }, [apiBase, sn]);
 
   function appendParam(u: string, key: string, val: string) {
     const url = new URL(u, apiBase);
@@ -502,33 +499,29 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const u = (baseUrl || "").trim();
     if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
 
-    // ตรวจจับ endpoint ใหม่ เช่น /pdf/charger/<id>/export
     const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
 
     if (isPdfEndpoint) {
       const finalUrl = u;
-      const withStation = appendParam(finalUrl, "station_id", stationId || "");
+      const withSn = appendParam(finalUrl, "sn", sn || "");
       return {
-        previewHref: appendParam(withStation, "dl", "0"),
-        downloadHref: appendParam(withStation, "dl", "1"),
+        previewHref: appendParam(withSn, "dl", "0"),
+        downloadHref: appendParam(withSn, "dl", "1"),
         isPdfEndpoint: true,
       };
     }
 
-    // fallback เดิม
     return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
   }
 
   function extractDocIdFromAnything(x: any): string {
     if (!x) return "";
-    // ลองอ่านจาก field id/_id ก่อน
     const raw = (x._id !== undefined ? x._id : x.id) ?? "";
     let id = "";
     if (raw && typeof raw === "object") id = raw.$oid || raw.oid || raw.$id || "";
     else id = String(raw || "");
     if (/^[a-fA-F0-9]{24}$/.test(id)) return id;
 
-    // สุดท้ายลองดึงจากสตริง URL
     const s = typeof x === "string" ? x : JSON.stringify(x);
     const m = s.match(/[A-Fa-f0-9]{24}/);
     return m ? m[0] : "";
@@ -538,7 +531,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const ac = new AbortController();
     fetchRows(ac.signal);
     return () => ac.abort();
-  }, [apiBase, stationId, searchParams.toString()]);
+  }, [apiBase, sn, searchParams.toString()]);
 
   // Table columns
   const columns: ColumnDef<TData, unknown>[] = [
@@ -558,7 +551,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.doc_name || "—",
       id: "name",
-      header: () => "document name",
+      header: () => "Document Name",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
       minSize: 80,
@@ -568,7 +561,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
-      header: () => "issue id",
+      header: () => "Issue ID",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
       minSize: 80,
@@ -578,7 +571,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.pm_date,
       id: "date",
-      header: () => "pm date",
+      header: () => "PM Date",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
@@ -588,7 +581,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.inspector || "-",
       id: "inspector",
-      header: () => "inspector",
+      header: () => "Inspector",
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
@@ -608,11 +601,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           return <span className="tw-text-blue-gray-300" title="No file">—</span>;
         }
 
-        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
+        const { previewHref } = buildHtmlLinks(url);
 
         const rowSide = info.row.original.side;
 
-        // console.log("side = ", (side))
         if (rowSide == "pre") {
           return (
             <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
@@ -623,13 +615,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   variant="outlined"
                   className="tw-shrink-0"
                   onClick={() => {
-                    // เอา query param เดิมมาต่อ ไม่ให้หาย
                     const params = new URLSearchParams(searchParams.toString());
-                    // ลบ tab parameter ที่ใช้สำหรับ list page
                     params.delete("tab");
-                    // บังคับให้เปลี่ยนเป็นหน้า form (ChargerPMForm)
                     params.set("view", "form");
-                    // ส่งคำว่า "post" ไปด้วยใน query string
                     params.set("action", "post");
                     params.set("edit_id", info.row.original.id || "");
                     params.set("pmtab", "post");
@@ -657,10 +645,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               </a>
             </div>
           )
-
         }
-
-
       },
       size: 150,
       minSize: 120,
@@ -676,19 +661,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const visibleData = useMemo(() => {
     const username = me?.username;
     return data.filter((row) => {
-      // แถวปกติ แสดงได้ทั้งหมด
       if (row.side !== "pre") return true;
-
-      // แถว pre: ถ้ายังไม่รู้ว่า login เป็นใคร -> ซ่อนไว้ก่อน
       if (!username) return false;
-
-      // แถว pre: แสดงเฉพาะ inspector ตรงกับ username
       return sameUser(row.inspector, username);
     });
   }, [data, me?.username]);
 
   const table = useReactTable({
-    // data,
     data: visibleData,
     columns,
     state: { globalFilter: filtering, sorting },
@@ -706,7 +685,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  // const [urlText, setUrlText] = useState("");
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -717,7 +695,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
     );
     if (!pdfs.length) {
-      alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
+      alert("Only PDF files are supported");
       return;
     }
     setPendingFiles(pdfs);
@@ -726,8 +704,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   async function uploadPdfs() {
     try {
-      if (!stationId) {
-        alert("กรุณาเลือกสถานีก่อน");
+      if (!sn) {
+        alert("Please select a charger first");
         return;
       }
       if (!pendingFiles.length) {
@@ -735,12 +713,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return;
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
-        alert("รูปแบบวันที่ไม่ถูกต้อง");
+        alert("Invalid date format");
         return;
       }
 
       const fd = new FormData();
-      fd.append("station_id", stationId);
+      fd.append("sn", sn);
       fd.append("reportDate", reportDate);
       fd.append("issue_id", issueId);
       fd.append("doc_name", docName || "");
@@ -748,7 +726,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await apiFetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
-        // const res = await fetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
         method: "POST",
         body: fd,
         credentials: "include",
@@ -756,46 +733,43 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
       if (!res.ok) {
         const txt = await res.text();
-        alert("อัปโหลดไม่สำเร็จ: " + txt);
+        alert("Upload failed: " + txt);
         return;
       }
 
       await res.json();
-      alert("อัปโหลดสำเร็จ");
+      alert("Upload successful");
       setPendingFiles([]);
       setDateOpen(false);
       await fetchRows();
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
+      alert("An error occurred during upload");
     }
   }
 
   useEffect(() => {
-    if (!dateOpen || !stationId || !reportDate) return;
+    if (!dateOpen || !sn || !reportDate) return;
 
     let canceled = false;
 
     (async () => {
       try {
-        // 1) ลองขอชื่อจาก preview endpoint ก่อน
-        const preview = await fetchPreviewDocName(stationId, reportDate);
+        const preview = await fetchPreviewDocName(sn, reportDate);
         if (!canceled && preview) {
           setDocName(preview);
           return;
         }
 
-        // 2) ถ้าไม่มี preview → ดึง latest แล้วคำนวณชื่อถัดไป
-        const latest = await fetchLatestDocName(stationId, reportDate);
+        const latest = await fetchLatestDocName(sn, reportDate);
         if (!canceled) {
-          const next = nextDocNameFor(stationId, reportDate, latest || undefined);
+          const next = nextDocNameFor(sn, reportDate, latest || undefined);
           setDocName(next);
         }
       } catch (e) {
         console.error("auto doc_name error:", e);
         if (!canceled) {
-          // 3) กรณี error → fallback เป็นชื่อแรกของปีนั้น ๆ
-          const fallback = nextDocNameFor(stationId, reportDate);
+          const fallback = nextDocNameFor(sn, reportDate);
           setDocName(fallback);
         }
       }
@@ -804,15 +778,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return () => {
       canceled = true;
     };
-  }, [dateOpen, stationId, reportDate]);
+  }, [dateOpen, sn, reportDate]);
 
   useEffect(() => {
-    if (!dateOpen || !stationId || !reportDate) return;
+    if (!dateOpen || !sn || !reportDate) return;
 
     let canceled = false;
     (async () => {
       try {
-        const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, FetchOpts);
+        const latest = await fetchLatestIssueIdAcrossLists(sn, reportDate, apiBase, FetchOpts);
         const next = nextIssueIdFor(PM_TYPE_CODE, reportDate, latest || "");
         if (!canceled) setIssueId(next);
       } catch {
@@ -821,38 +795,26 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     })();
 
     return () => { canceled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateOpen, stationId, reportDate]);
+  }, [dateOpen, sn, reportDate]);
 
   const goAdd = () => setView("form");
   const goList = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
-    params.delete("edit_id"); // 👈 ลบด้วย
+    params.delete("edit_id");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
   function goEdit(row: TData) {
     if (!row?.id) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
-    params.set("edit_id", row.id);       // 👈 ให้ฟอร์มใช้โหลดข้อมูล
+    params.set("edit_id", row.id);
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
   if (mode === "form") {
     return (
       <div className="tw-mt-6">
-        {/* <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
-          <Button
-            variant="outlined"
-            size="sm"
-            onClick={goList}
-            // className="tw-py-2 tw-px-2"
-            title="กลับไปหน้า List"
-          >
-            <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-          </Button>
-        </div> */}
         <ChargerPMForm />
       </div>
     );
@@ -868,7 +830,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 Preventive Maintenance Checklist
               </Typography>
               <Typography variant="small" className="tw-text-blue-gray-500 tw-mt-1">
-                ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM Report)
+                Search and download PM Report documents
               </Typography>
             </div>
 
@@ -885,10 +847,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 <Button
                   variant="text"
                   size="lg"
-                  disabled={!stationId}
+                  disabled={!sn}
                   onClick={() => pdfInputRef.current?.click()}
                   className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
-                  title="อัปโหลด PDF (demo)">
+                  title="Upload PDF">
 
                   <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
                   <span className="tw-text-sm">Upload</span>
@@ -896,17 +858,17 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 <Button
                   size="lg"
                   onClick={goAdd}
-                  disabled={!stationId}
+                  disabled={!sn}
                   className={`
                                   !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
                                   tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                                  ${!stationId
+                                  ${!sn
                       ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
                       : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
                                   tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
                                   focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
                                 `}
-                  title={stationId ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
+                  title={sn ? "" : "Please select a charger from the top bar first"}
                 >
                   <span className="tw-w-full tw-text-center">+Add</span>
                 </Button>
@@ -983,7 +945,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 {loading ? (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      กำลังโหลด…
+                      Loading...
                     </td>
                   </tr>
                 ) : table.getRowModel().rows.length ? (
@@ -1011,7 +973,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 ) : (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!stationId ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
+                      {!sn ? "Please select a charger from the top bar first" : "No data"}
                     </td>
                   </tr>
                 )}
@@ -1037,11 +999,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       </Card>
 
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
-        <DialogHeader>เลือกวันที่รายงาน</DialogHeader>
+        <DialogHeader>Select Report Date</DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
             <Input
-              label="Document Name / ชื่อเอกสาร"
+              label="Document Name"
               value={docName}
               onChange={(e) => setDocName(e.target.value)}
               crossOrigin=""
@@ -1052,7 +1014,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
           <div className="tw-space-y-2">
             <Input
-              label="Issue id / รหัสเอกสาร"
+              label="Issue ID"
               value={issueId}
               onChange={(e) => setIssueId(e.target.value)}
               crossOrigin=""
@@ -1063,7 +1025,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
           <div className="tw-space-y-2">
             <Input
-              label="Inspector / ผู้ตรวจสอบ"
+              label="Inspector"
               value={inspector}
               onChange={(e) => setInspector(e.target.value)}
               crossOrigin=""
@@ -1072,17 +1034,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               readOnly
             />
           </div>
-          {/* <Input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} label="วันที่" crossOrigin="" /> */}
           <Input
             type="date"
             value={reportDate}
-            max={todayStr}  // ⬅️ จำกัดไม่ให้เลือกเกินวันนี้
+            max={todayStr}
             onChange={(e) => setReportDate(e.target.value)}
-            label="PM Date / วันที่ตรวจสอบ"
+            label="PM Date"
             crossOrigin=""
           />
           <Typography variant="small" className="tw-text-blue-gray-500">
-            ไฟล์ที่เลือก: <strong>{pendingFiles.length}</strong> ไฟล์
+            Selected files: <strong>{pendingFiles.length}</strong> file(s)
           </Typography>
         </DialogBody>
         <DialogFooter className="tw-gap-2">
@@ -1093,10 +1054,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               setDateOpen(false);
             }}
           >
-            ยกเลิก
+            Cancel
           </Button>
           <Button onClick={uploadPdfs} className="tw-bg-black">
-            อัปโหลด
+            Upload
           </Button>
         </DialogFooter>
       </Dialog>
