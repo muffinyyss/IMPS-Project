@@ -5074,36 +5074,36 @@ async def pmurl_list(
 #     inspector: Optional[str] = None 
 #     # dust_filter: Optional[str] = None
 
-# @app.get("/mdbpmreport/preview-issueid")
-# async def mdbpmreport_preview_issueid(
-#     station_id: str = Query(...),
-#     pm_date: str = Query(...),
-#     current: UserClaims = Depends(get_current_user),
-# ):
-#     """
-#     ดู issue_id ถัดไป (PM-CG-YYMM-XX) โดยไม่ออกเลขจริง
-#     ใช้หาเลขไปโชว์บนฟอร์มเฉย ๆ
-#     """
-#     try:
-#         d = datetime.strptime(pm_date, "%Y-%m-%d").date()
-#     except ValueError:
-#         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+@app.get("/mdbpmreport/preview-issueid")
+async def mdbpmreport_preview_issueid(
+    station_id: str = Query(...),
+    pm_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดู issue_id ถัดไป (PM-CG-YYMM-XX) โดยไม่ออกเลขจริง
+    ใช้หาเลขไปโชว์บนฟอร์มเฉย ๆ
+    """
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
 
-#     pm_type = "MB"
+    pm_type = "MB"
 
-#     latest = await _latest_issue_id_anywhere(station_id, pm_type, d,source="mdb")
+    latest = await _latest_issue_id_anywhere(station_id, pm_type, d,source="mdb")
 
-#     yymm = f"{d.year % 100:02d}{d.month:02d}"
-#     prefix = f"PM-{pm_type}-{yymm}-"
+    yymm = f"{d.year % 100:02d}{d.month:02d}"
+    prefix = f"PM-{pm_type}-{yymm}-"
 
-#     if not latest:
-#         next_issue = f"{prefix}01"
-#     else:
-#         m = re.search(r"(\d+)$", latest)
-#         cur = int(m.group(1)) if m else 0
-#         next_issue = f"{prefix}{cur+1:02d}"
+    if not latest:
+        next_issue = f"{prefix}01"
+    else:
+        m = re.search(r"(\d+)$", latest)
+        cur = int(m.group(1)) if m else 0
+        next_issue = f"{prefix}{cur+1:02d}"
 
-#     return {"issue_id": next_issue}
+    return {"issue_id": next_issue}
 
 # @app.get("/mdbpmreport/latest-docname")
 # async def mdbpmreport_latest_docname(
@@ -5127,30 +5127,30 @@ async def pmurl_list(
 #         "pm_date": pm_date
 #     }
 
-# @app.get("/mdbpmreport/preview-docname")
-# async def preview_docname(
-#     station_id: str = Query(...),
-#     pm_date: str = Query(...),
-#     current: UserClaims = Depends(get_current_user),
-# ):
-#     try:
-#         d = datetime.strptime(pm_date, "%Y-%m-%d").date()
-#     except ValueError:
-#         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+@app.get("/mdbpmreport/preview-docname")
+async def preview_docname(
+    station_id: str = Query(...),
+    pm_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
 
-#     year = d.year
+    year = d.year
 
-#     latest = await _latest_doc_name_anywhere(station_id, year,source="mdb")
+    latest = await _latest_doc_name_anywhere(station_id, year,source="mdb")
 
-#     if not latest:
-#         next_doc = f"{station_id}_1/{year}"
-#     else:
-#         import re
-#         m = re.search(r"_(\d+)/\d{4}$", latest)
-#         current_num = int(m.group(1)) if m else 0
-#         next_doc = f"{station_id}_{current_num + 1}/{year}"
+    if not latest:
+        next_doc = f"{station_id}_1/{year}"
+    else:
+        import re
+        m = re.search(r"_(\d+)/\d{4}$", latest)
+        current_num = int(m.group(1)) if m else 0
+        next_doc = f"{station_id}_{current_num + 1}/{year}"
 
-#     return {"doc_name": next_doc}
+    return {"doc_name": next_doc}
 
 # @app.post("/mdbpmreport/pre/submit")
 # async def mdbpmreport_submit(body: MDBPMSubmitIn, current: UserClaims = Depends(get_current_user)):
