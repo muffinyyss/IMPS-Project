@@ -1,207 +1,3 @@
-// "use client";
-
-// import { useEffect, useState } from "react";
-// import {
-//     Dialog,
-//     DialogHeader,
-//     DialogBody,
-//     DialogFooter,
-//     Button,
-//     Input,
-//     Typography,
-//     Select,
-//     Option,
-// } from "@material-tailwind/react";
-
-// export type NewStationForm = {
-//     station_id: string;
-//     station_name: string;
-//     brand: string;
-//     model: string;
-//     SN: string;
-//     WO: string;
-//     PLCFirmware: string;
-//     PIFirmware: string;
-//     RTFirmware: string;
-//     chargeBoxID: string;
-//     owner: string;
-//     is_active: boolean;
-//     // is_active: boolean;
-// };
-
-// type Props = {
-//     open: boolean;
-//     onClose: () => void;
-//     onSubmit: (payload: NewStationForm) => Promise<void> | void;
-//     loading?: boolean;
-
-//     // ใหม่
-//     currentUser: string;       // ชื่อ username ของคนที่ล็อกอิน
-//     isAdmin: boolean;          // true = admin
-//     allOwners?: string[];      // รายชื่อ owner ทั้งหมด (ใช้เมื่อ isAdmin = true)
-// };
-
-// export default function AddUserModal({
-//     open,
-//     onClose,
-//     onSubmit,
-//     loading,
-//     currentUser,
-//     isAdmin,
-//     allOwners = [],
-// }: Props) {
-//     const [form, setForm] = useState<NewStationForm>({
-//         station_id: "",
-//         station_name: "",
-//         brand: "",
-//         model: "",
-//         SN: "",
-//         WO: "",
-//         PLCFirmware: "",
-//         PIFirmware: "",
-//         RTFirmware: "",
-//         chargeBoxID: "",
-//         owner: "",
-//         is_active: true,
-//     });
-
-//     // ตั้ง owner อัตโนมัติเป็น currentUser เมื่อ modal เปิด หรือเมื่อ currentUser เปลี่ยน
-//     useEffect(() => {
-//         if (open) {
-//             setForm((s) => ({ ...s, owner: currentUser || s.owner }));
-//         }
-//     }, [open, currentUser]);
-
-//     const onChange = (k: keyof NewStationForm, v: any) =>
-//         setForm((s) => ({ ...s, [k]: v }));
-//     const [submitting, setSubmitting] = useState(false);
-//     const handleSubmit = async (e: React.FormEvent) => {
-//         e.preventDefault();
-//         if (submitting) return;
-//         setSubmitting(true);
-//         const payload: NewStationForm = {
-//             ...form,
-//             station_id: form.station_id.trim(),
-//             station_name: form.station_name.trim(),
-//             brand: form.brand.trim(),
-//             model: form.model.trim(),
-//             SN: form.SN.trim(),
-//             WO: form.WO.trim(),
-//             PLCFirmware: form.PLCFirmware.trim(),
-//             PIFirmware: form.PIFirmware.trim(),
-//             RTFirmware: form.RTFirmware.trim(),
-//             chargeBoxID: form.chargeBoxID.trim(),
-//             owner: (form.owner || currentUser).trim(),
-//             is_active: form.is_active
-//             // status เป็น boolean อยู่แล้ว
-//         };
-
-//         try {
-//             await onSubmit(payload);
-//             resetAndClose();
-//         } catch (err) {
-//             console.error(err);
-//         } finally {
-//             setSubmitting(false);
-//         }
-//     };
-
-//     const resetAndClose = () => {
-//         setForm({
-//             station_id: "",
-//             station_name: "",
-//             brand: "",
-//             model: "",
-//             SN: "",
-//             WO: "",
-//             PLCFirmware: "",
-//             PIFirmware: "",
-//             RTFirmware: "",
-//             chargeBoxID: "",
-//             owner: "",
-//             is_active: false,
-//         });
-//         onClose();
-//     };
-
-//     return (
-//         <Dialog
-//             open={open}
-//             handler={resetAndClose}
-//             size="md"
-//             dismiss={{ outsidePress: !loading, escapeKey: !loading }}
-//             className="tw-flex tw-flex-col tw-max-h-[90vh] tw-overflow-hidden tw-px-0 tw-py-0"
-//         >
-//             <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-white tw-px-6 tw-py-4 tw-border-b">
-//                 <div className="tw-flex tw-items-center tw-justify-between">
-//                     <Typography variant="h5" color="blue-gray">Add New Station</Typography>
-//                     <Button variant="text" onClick={resetAndClose}>✕</Button>
-//                 </div>
-//             </DialogHeader>
-
-//             <form onSubmit={handleSubmit} className="tw-flex tw-flex-col tw-min-h-0">
-//                 <DialogBody className="tw-flex-1 tw-min-h-0 tw-overflow-y-auto tw-space-y-6 tw-px-6 tw-py-4">
-//                     <div className="tw-flex tw-flex-col tw-gap-4">
-//                         <Input label="Station ID" required value={form.station_id}
-//                             onChange={(e) => onChange("station_id", e.target.value)} crossOrigin={undefined} />
-//                         <Input label="Station Name" required value={form.station_name}
-//                             onChange={(e) => onChange("station_name", e.target.value)} crossOrigin={undefined} />
-//                         <Input label="Brand" required value={form.brand}
-//                             onChange={(e) => onChange("brand", e.target.value)} crossOrigin={undefined} />
-//                         <Input label="Model" required value={form.model}
-//                             onChange={(e) => onChange("model", e.target.value)} crossOrigin={undefined} />
-//                         <Input label="Serial Number (S/N)" required value={form.SN}
-//                             onChange={(e) => onChange("SN", e.target.value)} crossOrigin={undefined} />
-//                         <Input label="Work Order (WO)" required value={form.WO}
-//                             onChange={(e) => onChange("WO", e.target.value)} crossOrigin={undefined} />
-//                         <Input label="PLC Firmware" required value={form.PLCFirmware}
-//                             onChange={(e) => onChange("PLCFirmware", e.target.value)} crossOrigin={undefined} />
-//                         <Input label="Raspberry pi Firmware" required value={form.PIFirmware}
-//                             onChange={(e) => onChange("PIFirmware", e.target.value)} crossOrigin={undefined} />
-//                         <Input label="Router Firmware" required value={form.RTFirmware}
-//                             onChange={(e) => onChange("RTFirmware", e.target.value)} crossOrigin={undefined} />
-//                         <Input label="Charger Box ID" required value={form.chargeBoxID}
-//                             onChange={(e) => onChange("chargeBoxID", e.target.value)} crossOrigin={undefined} />
-
-//                         {isAdmin ? (
-//                             <Select
-//                                 label="Owner"
-//                                 value={form.owner || ""}
-//                                 onChange={(v) => onChange("owner", v || "")}
-//                             >
-//                                 {(allOwners.length ? allOwners : [currentUser]).map((name) => (
-//                                     <Option key={name} value={name}>{name}</Option>
-//                                 ))}
-//                             </Select>
-//                         ) : (
-//                             <Input label="Owner" value={form.owner || currentUser || ""} readOnly disabled crossOrigin={undefined} />
-//                         )}
-
-//                         <Select
-//                             label="Is_active"
-//                             value={String(form.is_active)}
-//                             onChange={(v) => onChange("is_active", v === "true")}
-//                         >
-//                             <Option value="true">Active</Option>
-//                             <Option value="false">Inactive</Option>
-//                         </Select>
-//                     </div>
-//                 </DialogBody>
-
-//                 <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-6 tw-py-3 tw-border-t">
-//                     <div className="tw-flex tw-w-full tw-justify-end tw-gap-2">
-//                         <Button variant="outlined" onClick={resetAndClose} type="button">Cancel</Button>
-//                         <Button type="submit" className="tw-bg-blue-600" disabled={loading || submitting}>
-//                             {loading || submitting ? "Saving..." : "Create Station"}
-//                         </Button>
-//                     </div>
-//                 </DialogFooter>
-//             </form>
-//         </Dialog>
-
-//     );
-// }
-
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -215,35 +11,60 @@ import {
     Typography,
     Select,
     Option,
+    Card,
+    IconButton,
 } from "@material-tailwind/react";
 
-export type NewStationForm = {
-    station_id: string;
-    station_name: string;
+// ===== Types =====
+export type ChargerForm = {
+    id: string; // unique id for React key (not sent to backend)
+    chargerNo: number;
     brand: string;
     model: string;
     SN: string;
     WO: string;
+    power: string;
     PLCFirmware: string;
     PIFirmware: string;
     RTFirmware: string;
     chargeBoxID: string;
+    commissioningDate: string;
+    warrantyYears: number;
+    numberOfCables: number;
+    is_active: boolean;
+};
+
+export type StationForm = {
+    station_id: string;
+    station_name: string;
     owner: string;
     is_active: boolean;
+    // Images
+    stationImage: File | null;
+    mdbImage: File | null;
+    chargerImage: File | null;
+    deviceImage: File | null;
+};
+
+export type NewStationPayload = {
+    station: Omit<StationForm, "stationImage" | "mdbImage" | "chargerImage" | "deviceImage">;
+    chargers: Omit<ChargerForm, "id">[];
 };
 
 type Props = {
     open: boolean;
     onClose: () => void;
-    onSubmit: (payload: NewStationForm) => Promise<void> | void;
+    onSubmit: (payload: NewStationPayload) => Promise<void> | void;
     loading?: boolean;
 
-    // ใหม่: ถ้าอยากอัปโหลดรูปด้วย ให้ส่ง prop นี้มา (ออปชัน)
-    // สามารถรับ file = null เพื่อเคสไม่เลือกรูปได้
-    // onSubmitImage?: (file: File | null, payload: NewStationForm) => Promise<void> | void;
     onSubmitImages?: (
         stationId: string,
-        files: { station?: File | null; mdb?: File | null; charger?: File | null; device?: File | null }
+        images: {
+            station: File | null;
+            mdb: File | null;
+            charger: File | null;
+            device: File | null;
+        }
     ) => Promise<void> | void;
 
     currentUser: string;
@@ -251,9 +72,54 @@ type Props = {
     allOwners?: string[];
 };
 
+// ===== Helper: Generate Station ID from Station Name =====
+const generateStationId = (stationName: string): string => {
+    // Convert station name to ID-friendly format
+    // - Remove special characters (keep Thai, English, numbers)
+    // - Replace spaces with underscores
+    const nameSlug = stationName
+        .trim()
+        .replace(/[^\u0E00-\u0E7FA-Za-z0-9\s]/g, "") // Keep Thai, English, numbers, spaces
+        .replace(/\s+/g, "_");                       // Replace spaces with underscore
+
+    // If name is empty, generate random ID
+    if (!nameSlug) {
+        const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+        return `STATION_${random}`;
+    }
+
+    return nameSlug;
+};
+
+// ===== Helper: Get today's date in YYYY-MM-DD format =====
+const getTodayDate = (): string => {
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+};
+
+// ===== Helper: Create empty Charger =====
+const createEmptyCharger = (chargerNo: number): ChargerForm => ({
+    id: crypto.randomUUID(),
+    chargerNo,
+    brand: "",
+    model: "",
+    SN: "",
+    WO: "",
+    power: "",
+    PLCFirmware: "",
+    PIFirmware: "",
+    RTFirmware: "",
+    chargeBoxID: "",
+    commissioningDate: getTodayDate(),
+    warrantyYears: 1,
+    numberOfCables: 1,
+    is_active: true,
+});
+
 type ImageKind = "station" | "mdb" | "charger" | "device";
 
-export default function AddUserModal({
+// ===== Component =====
+export default function AddStationModal({
     open,
     onClose,
     onSubmit,
@@ -261,30 +127,21 @@ export default function AddUserModal({
     currentUser,
     isAdmin,
     allOwners = [],
-    onSubmitImages, // <- เพิ่มเข้ามา
+    onSubmitImages,
 }: Props) {
-    const [form, setForm] = useState<NewStationForm>({
+    // Station form
+    const [station, setStation] = useState<StationForm>({
         station_id: "",
         station_name: "",
-        brand: "",
-        model: "",
-        SN: "",
-        WO: "",
-        PLCFirmware: "",
-        PIFirmware: "",
-        RTFirmware: "",
-        chargeBoxID: "",
         owner: "",
         is_active: true,
+        stationImage: null,
+        mdbImage: null,
+        chargerImage: null,
+        deviceImage: null,
     });
 
-    // ====== ใหม่: รูปภาพ 4 ช่อง ======
-    const [images, setImages] = useState<Record<ImageKind, File | null>>({
-        station: null,
-        mdb: null,
-        charger: null,
-        device: null,
-    });
+    // Image previews
     const [previews, setPreviews] = useState<Record<ImageKind, string>>({
         station: "",
         mdb: "",
@@ -292,95 +149,148 @@ export default function AddUserModal({
         device: "",
     });
 
-    // refs สำหรับเคลียร์ชื่อไฟล์ของแต่ละช่อง
-    const fileInputRefs = useRef<Record<ImageKind, HTMLInputElement | null>>({
-        station: null,
-        mdb: null,
-        charger: null,
-        device: null,
-    });
-    // ==== ใหม่: รูปภาพ ====
-    // const [imageFile, setImageFile] = useState<File | null>(null);
-    // const [imagePreview, setImagePreview] = useState<string>(""); // objectURL
-
-
-
-    // ลิมิตขนาดไฟล์ (ปรับได้)
-    const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB
-    const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-    const handlePick =
-        (kind: ImageKind): React.ChangeEventHandler<HTMLInputElement> =>
-            (e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                if (!f.type.startsWith("image/")) {
-                    alert("กรุณาเลือกรูปภาพเท่านั้น");
-                    return;
-                }
-                if (f.size > MAX_IMAGE_BYTES) {
-                    alert("ไฟล์รูปใหญ่เกินไป (จำกัด 3MB)");
-                    return;
-                }
-                // เคลียร์ URL เก่า
-                if (previews[kind]) URL.revokeObjectURL(previews[kind]);
-
-                setImages((s) => ({ ...s, [kind]: f }));
-                setPreviews((s) => ({ ...s, [kind]: URL.createObjectURL(f) }));
-            };
-
-
-    const clearImage = (kind: ImageKind) => {
-        if (previews[kind]) URL.revokeObjectURL(previews[kind]);
-        setImages((s) => ({ ...s, [kind]: null }));
-        setPreviews((s) => ({ ...s, [kind]: "" }));
-        const el = fileInputRefs.current[kind];
-        if (el) el.value = ""; // ล้างชื่อไฟล์ใน input จริง ๆ
-    };
-
-    // ตั้ง owner อัตโนมัติเมื่อเปิด
-    useEffect(() => {
-        if (open) {
-            setForm((s) => ({ ...s, owner: currentUser || s.owner }));
-        }
-    }, [open, currentUser]);
-
-    const onChange = (k: keyof NewStationForm, v: any) =>
-        setForm((s) => ({ ...s, [k]: v }));
+    // Chargers array
+    const [chargers, setChargers] = useState<ChargerForm[]>([createEmptyCharger(1)]);
 
     const [submitting, setSubmitting] = useState(false);
 
+    // ===== Effects =====
+    useEffect(() => {
+        if (open) {
+            // Set owner when modal opens
+            setStation((s) => ({
+                ...s,
+                owner: currentUser || s.owner,
+            }));
+        }
+    }, [open, currentUser]);
+
+    // ===== Auto-generate station_id when station_name changes =====
+    useEffect(() => {
+        if (station.station_name.trim()) {
+            const newId = generateStationId(station.station_name);
+            setStation((s) => ({ ...s, station_id: newId }));
+        } else {
+            setStation((s) => ({ ...s, station_id: "" }));
+        }
+    }, [station.station_name]);
+
+    // ===== Station handlers =====
+    const onStationChange = (key: keyof StationForm, value: any) => {
+        setStation((s) => ({ ...s, [key]: value }));
+    };
+
+    // ===== Image handlers =====
+    const handleImage = (kind: ImageKind, e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith("image/")) {
+            alert("Please select an image file only");
+            return;
+        }
+        if (file.size > 3 * 1024 * 1024) {
+            alert("File is too large (max 3MB)");
+            return;
+        }
+
+        // Cleanup old preview
+        if (previews[kind]) URL.revokeObjectURL(previews[kind]);
+
+        // Update state
+        const imageKey = `${kind}Image` as keyof StationForm;
+        setStation((s) => ({ ...s, [imageKey]: file }));
+        setPreviews((p) => ({ ...p, [kind]: URL.createObjectURL(file) }));
+    };
+
+    const clearImage = (kind: ImageKind) => {
+        if (previews[kind]) URL.revokeObjectURL(previews[kind]);
+        const imageKey = `${kind}Image` as keyof StationForm;
+        setStation((s) => ({ ...s, [imageKey]: null }));
+        setPreviews((p) => ({ ...p, [kind]: "" }));
+    };
+
+    // ===== Charger handlers =====
+    const addCharger = () => {
+        const nextChargerNo = chargers.length + 1;
+        setChargers((prev) => [...prev, createEmptyCharger(nextChargerNo)]);
+    };
+
+    const removeCharger = (id: string) => {
+        if (chargers.length <= 1) {
+            alert("At least 1 Charger is required");
+            return;
+        }
+        setChargers((prev) => {
+            const filtered = prev.filter((c) => c.id !== id);
+            // Re-number chargers
+            return filtered.map((c, index) => ({ ...c, chargerNo: index + 1 }));
+        });
+    };
+
+    const onChargerChange = (id: string, key: keyof ChargerForm, value: any) => {
+        setChargers((prev) =>
+            prev.map((c) => (c.id === id ? { ...c, [key]: value } : c))
+        );
+    };
+
+    // ===== Submit =====
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (submitting) return;
         setSubmitting(true);
 
-        const payload: NewStationForm = {
-            ...form,
-            station_id: form.station_id.trim(),
-            station_name: form.station_name.trim(),
-            brand: form.brand.trim(),
-            model: form.model.trim(),
-            SN: form.SN.trim(),
-            WO: form.WO.trim(),
-            PLCFirmware: form.PLCFirmware.trim(),
-            PIFirmware: form.PIFirmware.trim(),
-            RTFirmware: form.RTFirmware.trim(),
-            chargeBoxID: form.chargeBoxID.trim(),
-            owner: (form.owner || currentUser).trim(),
-            is_active: form.is_active,
+        // Validate station name
+        if (!station.station_name.trim()) {
+            alert("Please enter Station Name");
+            setSubmitting(false);
+            return;
+        }
+
+        // Validate chargers
+        if (chargers.some((c) => !c.chargeBoxID.trim())) {
+            alert("Please fill in Charger Box ID for all chargers");
+            setSubmitting(false);
+            return;
+        }
+
+        const payload: NewStationPayload = {
+            station: {
+                station_id: station.station_id.trim(),
+                station_name: station.station_name.trim(),
+                owner: (station.owner || currentUser).trim(),
+                is_active: station.is_active,
+            },
+            chargers: chargers.map((c) => ({
+                chargerNo: c.chargerNo,
+                brand: c.brand.trim(),
+                model: c.model.trim(),
+                SN: c.SN.trim(),
+                WO: c.WO.trim(),
+                power: c.power.trim(),
+                PLCFirmware: c.PLCFirmware.trim(),
+                PIFirmware: c.PIFirmware.trim(),
+                RTFirmware: c.RTFirmware.trim(),
+                chargeBoxID: c.chargeBoxID.trim(),
+                commissioningDate: c.commissioningDate,
+                warrantyYears: c.warrantyYears,
+                numberOfCables: c.numberOfCables,
+                is_active: c.is_active,
+            })),
         };
 
         try {
             await onSubmit(payload);
+
+            // Submit images
             if (onSubmitImages) {
-                await onSubmitImages(payload.station_id, {
-                    station: images.station,
-                    mdb: images.mdb,
-                    charger: images.charger,
-                    device: images.device,
+                await onSubmitImages(payload.station.station_id, {
+                    station: station.stationImage,
+                    mdb: station.mdbImage,
+                    charger: station.chargerImage,
+                    device: station.deviceImage,
                 });
             }
+
             resetAndClose();
         } catch (err) {
             console.error(err);
@@ -390,188 +300,396 @@ export default function AddUserModal({
     };
 
     const resetAndClose = () => {
-        setForm({
+        // Cleanup all previews
+        Object.values(previews).forEach((url) => {
+            if (url) URL.revokeObjectURL(url);
+        });
+
+        setStation({
             station_id: "",
             station_name: "",
-            brand: "",
-            model: "",
-            SN: "",
-            WO: "",
-            PLCFirmware: "",
-            PIFirmware: "",
-            RTFirmware: "",
-            chargeBoxID: "",
             owner: "",
-            is_active: false,
+            is_active: true,
+            stationImage: null,
+            mdbImage: null,
+            chargerImage: null,
+            deviceImage: null,
         });
-        (["station", "mdb", "charger", "device"] as ImageKind[]).forEach((k) => clearImage(k));
+        setPreviews({ station: "", mdb: "", charger: "", device: "" });
+        setChargers([createEmptyCharger(1)]);
         onClose();
     };
 
+    // ===== Render =====
     return (
         <Dialog
             open={open}
             handler={resetAndClose}
-            size="md"
+            size="lg"
             dismiss={{ outsidePress: !loading, escapeKey: !loading }}
             className="tw-flex tw-flex-col tw-max-h-[90vh] tw-overflow-hidden tw-px-0 tw-py-0"
         >
             <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-white tw-px-6 tw-py-4 tw-border-b">
-                <div className="tw-flex tw-items-center tw-justify-between">
+                <div className="tw-flex tw-items-center tw-justify-between tw-w-full">
                     <Typography variant="h5" color="blue-gray">
                         Add New Station
                     </Typography>
-                    <Button variant="text" onClick={resetAndClose}>✕</Button>
+                    <Button variant="text" onClick={resetAndClose}>
+                        ✕
+                    </Button>
                 </div>
             </DialogHeader>
 
             <form onSubmit={handleSubmit} className="tw-flex tw-flex-col tw-min-h-0">
                 <DialogBody className="tw-flex-1 tw-min-h-0 tw-overflow-y-auto tw-space-y-6 tw-px-6 tw-py-4">
-                    <div className="tw-flex tw-flex-col tw-gap-4">
-                        <Input label="Station ID" required value={form.station_id}
-                            onChange={(e) => onChange("station_id", e.target.value)} crossOrigin={undefined} />
-                        <Input label="Station Name" required value={form.station_name}
-                            onChange={(e) => onChange("station_name", e.target.value)} crossOrigin={undefined} />
-                        <Input label="Brand" required value={form.brand}
-                            onChange={(e) => onChange("brand", e.target.value)} crossOrigin={undefined} />
-                        <Input label="Model" required value={form.model}
-                            onChange={(e) => onChange("model", e.target.value)} crossOrigin={undefined} />
-                        <Input label="Serial Number (S/N)" required value={form.SN}
-                            onChange={(e) => onChange("SN", e.target.value)} crossOrigin={undefined} />
-                        <Input label="Work Order (WO)" required value={form.WO}
-                            onChange={(e) => onChange("WO", e.target.value)} crossOrigin={undefined} />
-                        <Input label="PLC Firmware" required value={form.PLCFirmware}
-                            onChange={(e) => onChange("PLCFirmware", e.target.value)} crossOrigin={undefined} />
-                        <Input label="Raspberry pi Firmware" required value={form.PIFirmware}
-                            onChange={(e) => onChange("PIFirmware", e.target.value)} crossOrigin={undefined} />
-                        <Input label="Router Firmware" required value={form.RTFirmware}
-                            onChange={(e) => onChange("RTFirmware", e.target.value)} crossOrigin={undefined} />
-                        <Input label="Charger Box ID" required value={form.chargeBoxID}
-                            onChange={(e) => onChange("chargeBoxID", e.target.value)} crossOrigin={undefined} />
+                    {/* ========== STATION INFO ========== */}
+                    <Card className="tw-p-4 tw-bg-blue-gray-50/50">
+                        <Typography variant="h6" color="blue-gray" className="tw-mb-4">
+                            📍 Station Information
+                        </Typography>
+                        <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                            {/* Station Name with auto-generated ID shown below */}
+                            <div className="tw-space-y-1">
+                                <Input
+                                    label="Station Name"
+                                    required
+                                    value={station.station_name}
+                                    onChange={(e) => onStationChange("station_name", e.target.value)}
+                                    crossOrigin={undefined}
+                                />
+                                {/* {station.station_id && (
+                                    <Typography variant="small" className="!tw-text-blue-gray-500 tw-text-xs tw-pl-1">
+                                        ID: <span className="tw-font-mono tw-bg-blue-gray-50 tw-px-1 tw-rounded">{station.station_id}</span>
+                                    </Typography>
+                                )} */}
+                            </div>
 
-                        {isAdmin ? (
+                            {isAdmin ? (
+                                <Select
+                                    label="Owner"
+                                    value={station.owner || ""}
+                                    onChange={(v) => onStationChange("owner", v || "")}
+                                >
+                                    {(allOwners.length ? allOwners : [currentUser]).map((name) => (
+                                        <Option key={name} value={name}>
+                                            {name}
+                                        </Option>
+                                    ))}
+                                </Select>
+                            ) : (
+                                <Input
+                                    label="Owner"
+                                    value={station.owner || currentUser || ""}
+                                    readOnly
+                                    disabled
+                                    crossOrigin={undefined}
+                                />
+                            )}
+
                             <Select
-                                label="Owner"
-                                value={form.owner || ""}
-                                onChange={(v) => onChange("owner", v || "")}
+                                label="Status"
+                                value={String(station.is_active)}
+                                onChange={(v) => onStationChange("is_active", v === "true")}
                             >
-                                {(allOwners.length ? allOwners : [currentUser]).map((name) => (
-                                    <Option key={name} value={name}>{name}</Option>
-                                ))}
+                                <Option value="true">Active</Option>
+                                <Option value="false">Inactive</Option>
                             </Select>
-                        ) : (
-                            <Input label="Owner" value={form.owner || currentUser || ""} readOnly disabled crossOrigin={undefined} />
-                        )}
+                        </div>
 
-                        <Select
-                            label="Is_active"
-                            value={String(form.is_active)}
-                            onChange={(v) => onChange("is_active", v === "true")}
-                        >
-                            <Option value="true">Active</Option>
-                            <Option value="false">Inactive</Option>
-                        </Select>
-
-                        {/* === รูปภาพ 4 ช่อง === */}
-                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-4">
-                            {/* Station */}
-                            <div className="tw-space-y-2">
-                                <Typography variant="small" className="!tw-text-blue-gray-600">Station Image</Typography>
-                                <div className="tw-flex tw-items-center tw-gap-3">
+                        {/* Station Images (4 types) */}
+                        <div className="tw-mt-4">
+                            <Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-semibold tw-mb-3">
+                                📷 Station Images
+                            </Typography>
+                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-4 tw-gap-4">
+                                {/* Station Image */}
+                                <div className="tw-space-y-2">
+                                    <Typography variant="small" className="!tw-text-blue-gray-500 tw-text-xs">
+                                        Station
+                                    </Typography>
                                     <input
-                                        ref={(el) => (fileInputRefs.current.station = el)}
                                         type="file"
                                         accept="image/*"
-                                        onChange={handlePick("station")}
-                                        className="tw-block tw-w-full tw-text-sm file:tw-mr-3 file:tw-px-3 file:tw-py-2 file:tw-rounded-lg file:tw-border file:tw-border-blue-gray-100 file:tw-bg-white file:hover:tw-bg-gray-50"
+                                        onChange={(e) => handleImage("station", e)}
+                                        className="tw-block tw-w-full tw-text-xs file:tw-mr-2 file:tw-px-2 file:tw-py-1 file:tw-rounded file:tw-border file:tw-border-blue-gray-100 file:tw-bg-white file:hover:tw-bg-gray-50 file:tw-cursor-pointer"
                                     />
-                                    {images.station && (
-                                        <Button variant="text" onClick={() => clearImage("station")} className="tw-text-red-600">
-                                            ล้างรูป
-                                        </Button>
+                                    {previews.station && (
+                                        <div className="tw-relative tw-inline-block">
+                                            <img
+                                                src={previews.station}
+                                                alt="station"
+                                                className="tw-h-20 tw-w-20 tw-object-cover tw-rounded-lg tw-border"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => clearImage("station")}
+                                                className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-5 tw-h-5 tw-text-xs tw-leading-none tw-shadow-md hover:tw-bg-red-600"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
-                                {previews.station && (
-                                    <img src={previews.station} alt="station" className="tw-h-28 tw-w-28 tw-object-cover tw-rounded-lg tw-border tw-border-blue-gray-100" />
-                                )}
-                            </div>
 
-                            {/* MDB */}
-                            <div className="tw-space-y-2">
-                                <Typography variant="small" className="!tw-text-blue-gray-600">MDB Image</Typography>
-                                <div className="tw-flex tw-items-center tw-gap-3">
+                                {/* MDB Image */}
+                                <div className="tw-space-y-2">
+                                    <Typography variant="small" className="!tw-text-blue-gray-500 tw-text-xs">
+                                        MDB
+                                    </Typography>
                                     <input
-                                        ref={(el) => (fileInputRefs.current.mdb = el)}
                                         type="file"
                                         accept="image/*"
-                                        onChange={handlePick("mdb")}
-                                        className="tw-block tw-w-full tw-text-sm file:tw-mr-3 file:tw-px-3 file:tw-py-2 file:tw-rounded-lg file:tw-border file:tw-border-blue-gray-100 file:tw-bg-white file:hover:tw-bg-gray-50"
+                                        onChange={(e) => handleImage("mdb", e)}
+                                        className="tw-block tw-w-full tw-text-xs file:tw-mr-2 file:tw-px-2 file:tw-py-1 file:tw-rounded file:tw-border file:tw-border-blue-gray-100 file:tw-bg-white file:hover:tw-bg-gray-50 file:tw-cursor-pointer"
                                     />
-                                    {images.mdb && (
-                                        <Button variant="text" onClick={() => clearImage("mdb")} className="tw-text-red-600">
-                                            ล้างรูป
-                                        </Button>
+                                    {previews.mdb && (
+                                        <div className="tw-relative tw-inline-block">
+                                            <img
+                                                src={previews.mdb}
+                                                alt="mdb"
+                                                className="tw-h-20 tw-w-20 tw-object-cover tw-rounded-lg tw-border"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => clearImage("mdb")}
+                                                className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-5 tw-h-5 tw-text-xs tw-leading-none tw-shadow-md hover:tw-bg-red-600"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
-                                {previews.mdb && (
-                                    <img src={previews.mdb} alt="mdb" className="tw-h-28 tw-w-28 tw-object-cover tw-rounded-lg tw-border tw-border-blue-gray-100" />
-                                )}
-                            </div>
 
-                            {/* Charger */}
-                            <div className="tw-space-y-2">
-                                <Typography variant="small" className="!tw-text-blue-gray-600">Charger Image</Typography>
-                                <div className="tw-flex tw-items-center tw-gap-3">
+                                {/* Charger Image */}
+                                <div className="tw-space-y-2">
+                                    <Typography variant="small" className="!tw-text-blue-gray-500 tw-text-xs">
+                                        Charger
+                                    </Typography>
                                     <input
-                                        ref={(el) => (fileInputRefs.current.charger = el)}
                                         type="file"
                                         accept="image/*"
-                                        onChange={handlePick("charger")}
-                                        className="tw-block tw-w-full tw-text-sm file:tw-mr-3 file:tw-px-3 file:tw-py-2 file:tw-rounded-lg file:tw-border file:tw-border-blue-gray-100 file:tw-bg-white file:hover:tw-bg-gray-50"
+                                        onChange={(e) => handleImage("charger", e)}
+                                        className="tw-block tw-w-full tw-text-xs file:tw-mr-2 file:tw-px-2 file:tw-py-1 file:tw-rounded file:tw-border file:tw-border-blue-gray-100 file:tw-bg-white file:hover:tw-bg-gray-50 file:tw-cursor-pointer"
                                     />
-                                    {images.charger && (
-                                        <Button variant="text" onClick={() => clearImage("charger")} className="tw-text-red-600">
-                                            ล้างรูป
-                                        </Button>
+                                    {previews.charger && (
+                                        <div className="tw-relative tw-inline-block">
+                                            <img
+                                                src={previews.charger}
+                                                alt="charger"
+                                                className="tw-h-20 tw-w-20 tw-object-cover tw-rounded-lg tw-border"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => clearImage("charger")}
+                                                className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-5 tw-h-5 tw-text-xs tw-leading-none tw-shadow-md hover:tw-bg-red-600"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
-                                {previews.charger && (
-                                    <img src={previews.charger} alt="charger" className="tw-h-28 tw-w-28 tw-object-cover tw-rounded-lg tw-border tw-border-blue-gray-100" />
-                                )}
-                            </div>
 
-                            {/* Device */}
-                            <div className="tw-space-y-2">
-                                <Typography variant="small" className="!tw-text-blue-gray-600">Device Image</Typography>
-                                <div className="tw-flex tw-items-center tw-gap-3">
+                                {/* Device Image */}
+                                <div className="tw-space-y-2">
+                                    <Typography variant="small" className="!tw-text-blue-gray-500 tw-text-xs">
+                                        Device
+                                    </Typography>
                                     <input
-                                        ref={(el) => (fileInputRefs.current.device = el)}
                                         type="file"
                                         accept="image/*"
-                                        onChange={handlePick("device")}
-                                        className="tw-block tw-w-full tw-text-sm file:tw-mr-3 file:tw-px-3 file:tw-py-2 file:tw-rounded-lg file:tw-border file:tw-border-blue-gray-100 file:tw-bg-white file:hover:tw-bg-gray-50"
+                                        onChange={(e) => handleImage("device", e)}
+                                        className="tw-block tw-w-full tw-text-xs file:tw-mr-2 file:tw-px-2 file:tw-py-1 file:tw-rounded file:tw-border file:tw-border-blue-gray-100 file:tw-bg-white file:hover:tw-bg-gray-50 file:tw-cursor-pointer"
                                     />
-                                    {images.device && (
-                                        <Button variant="text" onClick={() => clearImage("device")} className="tw-text-red-600">
-                                            ล้างรูป
-                                        </Button>
+                                    {previews.device && (
+                                        <div className="tw-relative tw-inline-block">
+                                            <img
+                                                src={previews.device}
+                                                alt="device"
+                                                className="tw-h-20 tw-w-20 tw-object-cover tw-rounded-lg tw-border"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => clearImage("device")}
+                                                className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-5 tw-h-5 tw-text-xs tw-leading-none tw-shadow-md hover:tw-bg-red-600"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
-                                {previews.device && (
-                                    <img src={previews.device} alt="device" className="tw-h-28 tw-w-28 tw-object-cover tw-rounded-lg tw-border tw-border-blue-gray-100" />
-                                )}
                             </div>
                         </div>
-                        {/* === จบชุดรูปภาพ === */}
+                    </Card>
+
+                    {/* ========== CHARGERS ========== */}
+                    <div className="tw-space-y-4">
+                        <div className="tw-flex tw-items-center tw-justify-between">
+                            <Typography variant="h6" color="blue-gray">
+                                ⚡ Chargers ({chargers.length})
+                            </Typography>
+                            <Button
+                                variant="outlined"
+                                size="sm"
+                                onClick={addCharger}
+                                className="tw-flex tw-items-center tw-gap-1"
+                            >
+                                + Add Charger
+                            </Button>
+                        </div>
+
+                        {chargers.map((charger, index) => (
+                            <Card key={charger.id} className="tw-p-4 tw-border tw-border-blue-gray-100">
+                                <div className="tw-flex tw-items-center tw-justify-between tw-mb-4">
+                                    <Typography variant="small" className="tw-font-semibold tw-text-blue-gray-700">
+                                        Charger #{index + 1}
+                                    </Typography>
+                                    {chargers.length > 1 && (
+                                        <IconButton
+                                            variant="text"
+                                            size="sm"
+                                            onClick={() => removeCharger(charger.id)}
+                                            className="tw-text-red-500 hover:tw-bg-red-50"
+                                        >
+                                            🗑️
+                                        </IconButton>
+                                    )}
+                                </div>
+
+                                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-3">
+                                    <Input
+                                        label="Charger Box ID"
+                                        required
+                                        value={charger.chargeBoxID}
+                                        onChange={(e) => onChargerChange(charger.id, "chargeBoxID", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    
+                                    {/* Charger No - Auto-generated, readonly */}
+                                    <div className="tw-relative">
+                                        <Input
+                                            label="Charger No. (Auto)"
+                                            type="number"
+                                            value={charger.chargerNo}
+                                            readOnly
+                                            className="!tw-bg-gray-100 !tw-cursor-not-allowed"
+                                            crossOrigin={undefined}
+                                        />
+                                        <span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-xs tw-text-blue-gray-400">
+                                            (Auto)
+                                        </span>
+                                    </div>
+
+                                    <Input
+                                        label="Brand"
+                                        required
+                                        value={charger.brand}
+                                        onChange={(e) => onChargerChange(charger.id, "brand", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="Model"
+                                        required
+                                        value={charger.model}
+                                        onChange={(e) => onChargerChange(charger.id, "model", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="Serial Number (S/N)"
+                                        required
+                                        value={charger.SN}
+                                        onChange={(e) => onChargerChange(charger.id, "SN", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="Work Order (WO)"
+                                        required
+                                        value={charger.WO}
+                                        onChange={(e) => onChargerChange(charger.id, "WO", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="Power (kW)"
+                                        required
+                                        value={charger.power}
+                                        onChange={(e) => onChargerChange(charger.id, "power", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="PLC Firmware"
+                                        required
+                                        value={charger.PLCFirmware}
+                                        onChange={(e) => onChargerChange(charger.id, "PLCFirmware", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="Raspberry Pi Firmware"
+                                        required
+                                        value={charger.PIFirmware}
+                                        onChange={(e) => onChargerChange(charger.id, "PIFirmware", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="Router Firmware"
+                                        required
+                                        value={charger.RTFirmware}
+                                        onChange={(e) => onChargerChange(charger.id, "RTFirmware", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="Commissioning Date"
+                                        type="date"
+                                        required
+                                        value={charger.commissioningDate}
+                                        onChange={(e) => onChargerChange(charger.id, "commissioningDate", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="Warranty (Years)"
+                                        type="number"
+                                        min={1}
+                                        max={10}
+                                        required
+                                        value={charger.warrantyYears}
+                                        onChange={(e) => onChargerChange(charger.id, "warrantyYears", parseInt(e.target.value) || 1)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Input
+                                        label="Number of Cables"
+                                        type="number"
+                                        min={1}
+                                        max={10}
+                                        required
+                                        value={charger.numberOfCables}
+                                        onChange={(e) => onChargerChange(charger.id, "numberOfCables", parseInt(e.target.value) || 1)}
+                                        crossOrigin={undefined}
+                                    />
+                                    <Select
+                                        label="Status"
+                                        value={String(charger.is_active)}
+                                        onChange={(v) => onChargerChange(charger.id, "is_active", v === "true")}
+                                    >
+                                        <Option value="true">Active</Option>
+                                        <Option value="false">Inactive</Option>
+                                    </Select>
+                                </div>
+                            </Card>
+                        ))}
                     </div>
                 </DialogBody>
 
                 <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-6 tw-py-3 tw-border-t">
-                    <div className="tw-flex tw-w-full tw-justify-end tw-gap-2">
-                        <Button variant="outlined" onClick={resetAndClose} type="button">Cancel</Button>
-                        <Button type="submit" className="tw-bg-blue-600" disabled={loading || submitting}>
-                            {loading || submitting ? "Saving..." : "Create Station"}
-                        </Button>
+                    <div className="tw-flex tw-w-full tw-justify-between tw-items-center">
+                        <Typography variant="small" className="tw-text-blue-gray-500">
+                            {chargers.length} Charger(s)
+                        </Typography>
+                        <div className="tw-flex tw-gap-2">
+                            <Button variant="outlined" onClick={resetAndClose} type="button">
+                                Cancel
+                            </Button>
+                            <Button type="submit" className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black" disabled={loading || submitting}>
+                                {loading || submitting ? "Saving..." : "Create Station"}
+                            </Button>
+                        </div>
                     </div>
                 </DialogFooter>
             </form>
