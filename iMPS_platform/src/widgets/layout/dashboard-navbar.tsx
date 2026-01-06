@@ -7,7 +7,6 @@ import {
   Navbar, Typography, IconButton, Breadcrumbs, Input, Button,
 } from "@material-tailwind/react";
 
-
 import {
   UserCircleIcon,
   Cog6ToothIcon,
@@ -18,6 +17,8 @@ import {
   EnvelopeIcon,
   MicrophoneIcon,
   ShoppingCartIcon,
+  BoltIcon,
+  LanguageIcon,
 } from "@heroicons/react/24/solid";
 
 // @context
@@ -28,6 +29,13 @@ import {
 } from "@/context";
 
 type Station = { station_id: string; station_name: string };
+type Charger = {
+  id: string;
+  chargeBoxID: string;
+  SN: string;
+  chargerNo?: number;  // เลขตู้
+  status?: boolean;
+};
 type StationInfo = {
   station_id: string;
   station_name: string;
@@ -36,7 +44,10 @@ type StationInfo = {
   model?: string;
   status?: boolean;
 };
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"; // e.g. "http://localhost:8000"
+
+type Lang = "th" | "en";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export function DashboardNavbar() {
   const [controller, dispatch] = useMaterialTailwindController();
@@ -51,12 +62,16 @@ export function DashboardNavbar() {
   const view = searchParams.get("view") ?? "";
   const tab = searchParams.get("tab") ?? "";
   const isFormView = view === "form";
-  const isChargerTab = tab === "charger" || "mdb";
 
-  // ซ่อน topbar บางหน้า
+  // Check if current tab requires charger selection
+  const isChargerTab = tab === "charger";
+  const isMdbTab = tab === "mdb";
+  const isPmReportPage = pathname.startsWith("/dashboard/pm-report");
+
+  // Hide topbar on some pages
   const HIDE_TOPBAR = ["/pages", "/mainpages"];
   const hideTopbar = HIDE_TOPBAR.some((p) => pathname === p || pathname.startsWith(p + "/"));
-  const isAuthPage = pathname.startsWith("/auth"); // กัน redirect loop บนหน้า auth
+  const isAuthPage = pathname.startsWith("/auth");
 
   // Title
   const segs = pathname.split("/").filter(Boolean);
@@ -72,13 +87,36 @@ export function DashboardNavbar() {
   else if (segs[1] === "cm-report") title = "CM Report";
   else if (segs[1] === "cbm") title = "Conditio-base";
 
-  // ล็อก dropdown
-  // const lockStationDropdown = pathname.startsWith("/dashboard/input_PMreport");
-  // const lockStationDropdown = pathname.startsWith("/dashboard/pm-report/mdb/input_PMreport");
-  const lockStationDropdown =
-  pathname.startsWith("/dashboard/pm-report") && isChargerTab && isFormView;
+  // Lock station dropdown when in form view (any tab)
+  const lockStationDropdown = isPmReportPage && isFormView;
 
-  // Dropdown state
+  // Hide charger dropdown on PM Report page when tab is NOT "charger"
+  const hideChargerDropdown = isPmReportPage && !isChargerTab;
+
+  // ===== Language State =====
+  const [lang, setLang] = useState<Lang>("th");
+
+  // Load language from localStorage on mount
+  useEffect(() => {
+    const savedLang = localStorage.getItem("app_language") as Lang | null;
+    if (savedLang === "th" || savedLang === "en") {
+      setLang(savedLang);
+    }
+  }, []);
+
+  // Toggle language
+  const toggleLanguage = () => {
+    const newLang: Lang = lang === "th" ? "en" : "th";
+    setLang(newLang);
+    localStorage.setItem("app_language", newLang);
+
+    // Dispatch event for other components to listen
+    window.dispatchEvent(new CustomEvent("language:change", {
+      detail: { lang: newLang }
+    }));
+  };
+
+  // ===== Station Dropdown State =====
   const [query, setQuery] = useState("");
   const [stations, setStations] = useState<Station[]>([]);
   const [open, setOpen] = useState(false);
@@ -88,9 +126,28 @@ export function DashboardNavbar() {
   const [searching, setSearching] = useState(false);
   const [stationInfo, setStationInfo] = useState<StationInfo | null>(null);
 
-  // โหลดสถานีของผู้ใช้ที่ล็อกอิน (JWT only)
+  // ===== Charger Dropdown State =====
+  const [chargerQuery, setChargerQuery] = useState("");
+  const [chargers, setChargers] = useState<Charger[]>([]);
+  const [chargerOpen, setChargerOpen] = useState(false);
+  const [chargerActive, setChargerActive] = useState(-1);
+  const [selectedCharger, setSelectedCharger] = useState<Charger | null>(null);
+  const chargerContainerRef = useRef<HTMLDivElement>(null);
+  const [loadingChargers, setLoadingChargers] = useState(false);
+
+  // Track if initial restore from URL is done
+  const initialStationRestoreRef = useRef(false);
+  const initialChargerRestoreRef = useRef(false);
+
+  // Helper function to format charger display text
+  const formatChargerDisplay = (c: Charger): string => {
+    const chargerNo = c.chargerNo ? String(c.chargerNo) : c.chargeBoxID || "?";
+    return lang === "th" ? `ตู้ที่ ${chargerNo} - ${c.SN}` : `Box ${chargerNo} - ${c.SN}`;
+  };
+
+  // Load user's stations (JWT only)
   useEffect(() => {
-    if (isAuthPage) return; // กัน loop บนหน้า /auth
+    if (isAuthPage) return;
 
     (async () => {
       try {
@@ -98,12 +155,8 @@ export function DashboardNavbar() {
         console.log("[Stations] API_BASE =", API_BASE);
         console.log("[Stations] has token? =", !!token);
 
-        if (!token) {
-          // ยังไม่มี token -> ให้ page guard ตัดสินใจ redirect เอง
-          return;
-        }
+        if (!token) return;
 
-        // เช็คหมดอายุแบบเร็ว ๆ
         try {
           const decoded: any = jwtDecode(token);
           const nowSec = Math.floor(Date.now() / 1000);
@@ -112,7 +165,6 @@ export function DashboardNavbar() {
             localStorage.removeItem("access_token");
             return;
           }
-          // เก็บ role สำหรับการจัดการแสดง stations
           const userRole = decoded?.role;
           console.log("[Stations] user role =", userRole);
         } catch (e) {
@@ -121,8 +173,6 @@ export function DashboardNavbar() {
           return;
         }
 
-        // ดึงสถานีที่เชื่อมกับผู้ใช้ (สำหรับ technician จะได้เฉพาะ stations ที่กำหนดให้)
-        // สำหรับ owner/admin จะได้สถานีที่เป็นเจ้าของ
         let res = await fetch(`${API_BASE}/my-stations/detail`, {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
@@ -134,7 +184,6 @@ export function DashboardNavbar() {
           return;
         }
 
-        // ถ้าไม่มี endpoint นี้ (404) ลอง fallback ไป /my-stations (เฉพาะ id)
         if (res.status === 404) {
           console.warn("[Stations] /detail 404 -> fallback /my-stations");
           res = await fetch(`${API_BASE}/my-stations`, {
@@ -153,11 +202,9 @@ export function DashboardNavbar() {
         const data = await res.json();
         console.log("[Stations] response =", data);
 
-        // รองรับทั้งแบบ detail และแบบ id ล้วน
-        // สำหรับ technician จะได้เฉพาะสถานีที่กำหนดให้จากการแมพ station_id ใน user profile
         let list: Station[] = [];
         if (Array.isArray(data?.stations) && data.stations.length && typeof data.stations[0] === "object") {
-          list = data.stations as Station[]; // มี station_id + station_name (สำหรับ technician ได้เฉพาะ assigned stations)
+          list = data.stations as Station[];
         } else if (Array.isArray(data?.stations)) {
           list = data.stations.map((id: string) => ({ station_id: id, station_name: id }));
         }
@@ -165,7 +212,6 @@ export function DashboardNavbar() {
         setStations(list);
         console.log("[Stations] loaded stations count =", list.length);
 
-        // auto-select ถ้ามีสถานีเดียว หรือ restore ค่าเดิม
         if (list.length === 1) {
           setSelectedStation(list[0]);
           setQuery(list[0].station_name);
@@ -188,7 +234,81 @@ export function DashboardNavbar() {
     })();
   }, [isAuthPage]);
 
-  // filter
+  // ===== Load Chargers when Station is selected =====
+  useEffect(() => {
+    if (!selectedStation) {
+      setChargers([]);
+      setSelectedCharger(null);
+      setChargerQuery("");
+      return;
+    }
+
+    (async () => {
+      setLoadingChargers(true);
+      try {
+        const token = localStorage.getItem("access_token") ?? "";
+        if (!token) return;
+
+        const res = await fetch(`${API_BASE}/chargers/${selectedStation.station_id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!res.ok) {
+          console.error("[Chargers] fetch failed:", res.status);
+          setChargers([]);
+          return;
+        }
+
+        const data = await res.json();
+        const list: Charger[] = Array.isArray(data?.chargers)
+          ? data.chargers.map((c: any) => ({
+            id: c.id,
+            chargeBoxID: c.chargeBoxID,
+            SN: c.SN || c.sn || "",
+            chargerNo: c.chargerNo || "",  // Map chargerNo field
+            status: c.status,
+          }))
+          : [];
+        setChargers(list);
+        console.log("[Chargers] loaded chargers count =", list.length);
+
+        // Auto-select if only one charger or restore previous selection
+        if (list.length === 1) {
+          setSelectedCharger(list[0]);
+          setChargerQuery(formatChargerDisplay(list[0]));
+          localStorage.setItem("selected_sn", list[0].SN);
+        } else {
+          const sn = localStorage.getItem("selected_sn");
+          if (sn) {
+            const found = list.find((c) => c.SN === sn);
+            if (found) {
+              setSelectedCharger(found);
+              setChargerQuery(formatChargerDisplay(found));
+            } else {
+              // Reset if previous charger not in new station
+              setSelectedCharger(null);
+              setChargerQuery("");
+              localStorage.removeItem("selected_sn");
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[Chargers] exception:", err);
+        setChargers([]);
+      } finally {
+        setLoadingChargers(false);
+      }
+    })();
+  }, [selectedStation]);
+
+  // Update charger display when language changes
+  useEffect(() => {
+    if (selectedCharger) {
+      setChargerQuery(formatChargerDisplay(selectedCharger));
+    }
+  }, [lang, selectedCharger]);
+
+  // filter stations
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return stations;
@@ -197,7 +317,18 @@ export function DashboardNavbar() {
     );
   }, [stations, query]);
 
-  // click outside -> close
+  // filter chargers
+  const filteredChargers = useMemo(() => {
+    const q = chargerQuery.trim().toLowerCase();
+    if (!q) return chargers;
+    return chargers.filter(
+      (c) => c.chargeBoxID.toLowerCase().includes(q) ||
+        c.SN.toLowerCase().includes(q) ||
+        (c.chargerNo && String(c.chargerNo).toLowerCase().includes(q))
+    );
+  }, [chargers, chargerQuery]);
+
+  // click outside -> close station dropdown
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) {
@@ -209,40 +340,71 @@ export function DashboardNavbar() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  // choose
+  // click outside -> close charger dropdown
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (!chargerContainerRef.current?.contains(e.target as Node)) {
+        setChargerOpen(false);
+        setChargerActive(-1);
+      }
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  // choose station
   const choose = (s: Station) => {
     setSelectedStation(s);
     setQuery(s.station_name);
     setOpen(false);
     localStorage.setItem("selected_station_id", s.station_id);
     localStorage.setItem("selected_station_name", s.station_name);
-    // ที่นี่ค่อย trigger refetch อื่น ๆ ถ้าต้องการ
+    // Reset charger when changing station
+    setSelectedCharger(null);
+    setChargerQuery("");
+    localStorage.removeItem("selected_sn");
   };
+
+  // choose charger - NOW USES SN
+  const chooseCharger = (c: Charger) => {
+    setSelectedCharger(c);
+    setChargerQuery(formatChargerDisplay(c));
+    setChargerOpen(false);
+    localStorage.setItem("selected_sn", c.SN);
+  };
+
+  // onSearch - NOW USES SN INSTEAD OF charger_id/chargeBoxID
   const onSearch = async () => {
     if (!selectedStation) { setOpen(true); return; }
 
-    // 1) อัปเดต URL ปัจจุบันด้วย station_id
-    // const params = new URLSearchParams(window.location.search);
-    // params.set("station_id", selectedStation.station_id);
-    // router.push(`${pathname}?${params.toString()}`, { scroll: false });
-
-    // อัปเดต query เดิม + set station_id ใหม่
     const params = new URLSearchParams(searchParams?.toString() ?? "");
+
+    // Keep station_id for reference
     params.set("station_id", selectedStation.station_id);
 
-    // ✅ อยู่หน้าเดิม แต่เปลี่ยน query (ไม่เด้งไปหน้าอื่น)
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    // Only include SN if charger tab is active and charger is selected
+    // Remove sn for other tabs (like mdb)
+    if (isChargerTab && selectedCharger && selectedCharger.SN) {
+      params.set("sn", selectedCharger.SN);
+      // Remove old params if they exist
+      params.delete("charger_id");
+      params.delete("chargeBoxID");
+    } else {
+      // Remove charger-related params when not charger tab
+      params.delete("sn");
+      params.delete("charger_id");
+      params.delete("chargeBoxID");
+    }
 
-    // 2) ยิง API ดึงข้อมูลสถานี (ของคุณมีอยู่แล้ว)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     await handleSearchClick();
   };
-  // ✅ ดึง "ข้อมูลสถานี" เท่านั้น
+
   const handleSearchClick = async () => {
     if (!selectedStation) { setOpen(true); return; }
     setSearching(true);
     try {
-      const token =
-        localStorage.getItem("access_token");
+      const token = localStorage.getItem("access_token");
       if (!token) return;
 
       const url = `${API_BASE}/station/info?station_id=${encodeURIComponent(selectedStation.station_id)}`;
@@ -253,32 +415,75 @@ export function DashboardNavbar() {
       if (!res.ok) { console.error("Fetch station info failed:", res.status, await res.text()); return; }
 
       const data = await res.json();
-      setStationInfo(data.station ?? data); // รองรับทั้ง {station:{...}} หรือ {...}
+      setStationInfo(data.station ?? data);
 
-      // broadcast ให้คอมโพเนนต์อื่นใช้ต่อได้ (ถ้าต้องการ)
       window.dispatchEvent(new CustomEvent("station:info", {
-        detail: { station: selectedStation, info: data.station ?? data },
+        detail: {
+          station: selectedStation,
+          info: data.station ?? data,
+          charger: selectedCharger,
+          sn: selectedCharger?.SN,
+        },
       }));
     } finally {
       setSearching(false);
     }
   };
 
+  // Remove sn from URL when switching to non-charger tab
   useEffect(() => {
-    const sid = searchParams.get("station_id");
-    if (!sid) return;
+    if (!isPmReportPage) return;
 
-    const found = stations.find(s => s.station_id === sid);
-    if (found) {
-      setSelectedStation(found);
-      setQuery(found.station_name);
+    // If tab is not charger and sn exists in URL, remove it
+    if (!isChargerTab && searchParams.get("sn")) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("sn");
+      params.delete("charger_id");
+      params.delete("chargeBoxID");
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     }
-    handleSearchClick();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stations, searchParams]); // ✅ ไม่ต้องอิง window.location อีก
+  }, [tab, isPmReportPage, isChargerTab, searchParams, pathname, router]);
 
+  // Restore station selection from URL params - ONLY ON INITIAL LOAD
+  useEffect(() => {
+    // Skip if already restored or stations not loaded yet
+    if (initialStationRestoreRef.current || stations.length === 0) return;
 
-  // keyboard nav
+    const sid = searchParams.get("station_id");
+    if (sid) {
+      const found = stations.find(s => s.station_id === sid);
+      if (found) {
+        setSelectedStation(found);
+        setQuery(found.station_name);
+        console.log("[Restore] Station restored from URL:", sid);
+      }
+    }
+
+    // Mark station restore as done
+    initialStationRestoreRef.current = true;
+  }, [stations, searchParams]);
+
+  // Restore charger selection from URL params - ONLY ON INITIAL LOAD
+  useEffect(() => {
+    // Skip if already restored or chargers not loaded yet
+    if (initialChargerRestoreRef.current || chargers.length === 0) return;
+
+    const sn = searchParams.get("sn");
+    if (sn) {
+      const foundCharger = chargers.find(c => c.SN === sn);
+      if (foundCharger) {
+        setSelectedCharger(foundCharger);
+        setChargerQuery(formatChargerDisplay(foundCharger));
+        localStorage.setItem("selected_sn", sn);
+        console.log("[Restore] Charger restored from URL:", sn);
+      }
+    }
+
+    // Mark charger restore as done
+    initialChargerRestoreRef.current = true;
+  }, [chargers, searchParams]);
+
+  // keyboard nav for station
   const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
     if (!open && (e.key === "ArrowDown" || e.key === "Enter")) {
       setOpen(true);
@@ -300,17 +505,39 @@ export function DashboardNavbar() {
     }
   };
 
-  const goToCurrentPage = () => {
-    if (!selectedStation) {          // ยังไม่ได้เลือกจาก dropdown
-      setOpen(true);
+  // keyboard nav for charger
+  const onChargerKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
+    if (!chargerOpen && (e.key === "ArrowDown" || e.key === "Enter")) {
+      setChargerOpen(true);
       return;
     }
+    if (!chargerOpen) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setChargerActive((p) => Math.min(p + 1, filteredChargers.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setChargerActive((p) => Math.max(p - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (chargerActive >= 0 && chargerActive < filteredChargers.length) chooseCharger(filteredChargers[chargerActive]);
+    } else if (e.key === "Escape") {
+      setChargerOpen(false);
+      setChargerActive(-1);
+    }
+  };
 
-    const params = new URLSearchParams(window.location.search);
-    params.set("station_id", selectedStation.station_id);  // อัปเดต/เพิ่มพารามิเตอร์
-
-    // push ไป path ปัจจุบัน พร้อมพารามิเตอร์ใหม่
-    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  // Localized text
+  const t = {
+    searchStation: lang === "th" ? "ค้นหาสถานี" : "Search station",
+    selectCharger: lang === "th" ? "เลือกตู้ชาร์จ" : "Select Charger",
+    loading: lang === "th" ? "กำลังโหลด..." : "Loading...",
+    selectStationFirst: lang === "th" ? "เลือกสถานีก่อน" : "Select station first",
+    noChargersFound: lang === "th" ? "ไม่พบตู้ชาร์จ" : "No chargers found",
+    searchCharger: lang === "th" ? "ค้นหาตู้ชาร์จ" : "Search charger",
+    noStationsFound: lang === "th" ? "ไม่พบสถานี" : "No stations found",
+    noChargersInStation: lang === "th" ? "ไม่มีตู้ชาร์จในสถานีนี้" : "No chargers in this station",
+    search: lang === "th" ? "ค้นหา" : "SEARCH",
   };
 
   return (
@@ -327,8 +554,7 @@ export function DashboardNavbar() {
         <div className="tw-capitalize">
           {!hideTopbar && (
             <Breadcrumbs
-              className={`tw-bg-transparent !tw-p-0 tw-transition-all ${fixedNavbar ? "tw-mt-1" : ""
-                }`}
+              className={`tw-bg-transparent !tw-p-0 tw-transition-all ${fixedNavbar ? "tw-mt-1" : ""}`}
             >
               <Link href="/">
                 <IconButton size="sm" variant="text">
@@ -357,24 +583,18 @@ export function DashboardNavbar() {
           )}
         </div>
 
-        {/* Dropdown เลือกสถานี */}
-        <div ref={containerRef} className="tw-mb-3 tw-relative tw-flex tw-flex-col md:tw-flex-row md:tw-items-center tw-gap-2">
-          <Typography
-            variant="small"
-            color="blue-gray"
-            className="-tw-mb-3 !tw-font-medium tw-whitespace-nowrap md:tw-mr-2 tw-shrink-0"
-          >
-            เลือกสถานี
-          </Typography>
+        {/* ===== Dropdown: Station + Charger ===== */}
+        <div className="tw-mb-3 tw-flex tw-flex-col lg:tw-flex-row lg:tw-items-end tw-gap-3">
 
-          {/* กลุ่ม input + button (ให้อยู่บรรทัดเดียวกันเสมอ) */}
-          <div className="tw-flex tw-w-full tw-items-center tw-gap-2 tw-flex-nowrap tw-mt-3">
+          {/* Station Dropdown */}
+          <div ref={containerRef} className="tw-relative tw-flex tw-flex-col">
+
             <Input
               size="lg"
-              label="พิมพ์เพื่อค้นหา / เลือกสถานี"
+              label={t.searchStation}
               type="text"
-              placeholder="พิมพ์เพื่อค้นหา / เลือกสถานี"
-              className="tw-w-full tw-min-w-0 tw-flex-1 tw-border tw-p-2 tw-rounded tw-text-black"
+              placeholder={t.searchStation}
+              className="tw-min-w-[200px] tw-border tw-p-2 tw-rounded tw-text-black"
               value={query}
               onChange={(e) => {
                 if (lockStationDropdown) return;
@@ -383,7 +603,7 @@ export function DashboardNavbar() {
               }}
               onFocus={() => {
                 if (lockStationDropdown) return;
-                setOpen(true)
+                setOpen(true);
               }}
               onKeyDown={(e) => {
                 if (lockStationDropdown) return;
@@ -392,6 +612,109 @@ export function DashboardNavbar() {
               crossOrigin=""
               disabled={lockStationDropdown}
             />
+
+            {open && !lockStationDropdown && (
+              <div
+                className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-1 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
+                role="listbox"
+                onMouseLeave={() => setActive(-1)}
+              >
+                {filtered.length > 0 ? (
+                  filtered.map((item, idx) => (
+                    <button
+                      type="button"
+                      key={item.station_id}
+                      role="option"
+                      className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-between ${idx === active ? "tw-bg-blue-gray-50" : ""}`}
+                      onMouseEnter={() => setActive(idx)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => choose(item)}
+                    >
+                      <span className="tw-flex tw-flex-col">
+                        <span className="tw-font-medium">{item.station_name}</span>
+                        <span className="tw-text-xs tw-text-blue-gray-400">{item.station_id}</span>
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="tw-px-3 tw-py-2 tw-text-gray-500">{t.noStationsFound}</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Charger Dropdown - Hidden when PM Report tab is not "charger" */}
+          {!hideChargerDropdown && (
+            <div ref={chargerContainerRef} className="tw-relative tw-flex tw-flex-col">
+
+              <Input
+                size="lg"
+                label={t.selectCharger}
+                type="text"
+                placeholder={
+                  loadingChargers
+                    ? t.loading
+                    : !selectedStation
+                      ? t.selectStationFirst
+                      : chargers.length === 0
+                        ? t.noChargersFound
+                        : t.searchCharger
+                }
+                className="tw-min-w-[220px] tw-border tw-p-2 tw-rounded tw-text-black"
+                value={chargerQuery}
+                onChange={(e) => {
+                  if (lockStationDropdown || !selectedStation) return;
+                  setChargerQuery(e.target.value);
+                  setChargerOpen(true);
+                }}
+                onFocus={() => {
+                  if (lockStationDropdown || !selectedStation) return;
+                  setChargerOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (lockStationDropdown || !selectedStation) return;
+                  onChargerKeyDown(e);
+                }}
+                crossOrigin=""
+                disabled={lockStationDropdown || !selectedStation || loadingChargers}
+              />
+
+              {chargerOpen && !lockStationDropdown && selectedStation && (
+                <div
+                  className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-1 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
+                  role="listbox"
+                  onMouseLeave={() => setChargerActive(-1)}
+                >
+                  {filteredChargers.length > 0 ? (
+                    filteredChargers.map((item, idx) => (
+                      <button
+                        type="button"
+                        key={item.id}
+                        role="option"
+                        className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-between ${idx === chargerActive ? "tw-bg-blue-gray-50" : ""}`}
+                        onMouseEnter={() => setChargerActive(idx)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => chooseCharger(item)}
+                      >
+                        <span className="tw-font-medium">
+                          {formatChargerDisplay(item)}
+                        </span>
+                        <span className={`tw-inline-block tw-h-2 tw-w-2 tw-rounded-full ${item.status ? "tw-bg-green-500" : "tw-bg-red-500"}`} />
+                      </button>
+                    ))
+                  ) : (
+                    <div className="tw-px-3 tw-py-2 tw-text-gray-500">
+                      {chargers.length === 0 ? t.noChargersInStation : t.noChargersFound}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Search Button + Language Toggle + Menu Toggle */}
+          <div className="tw-flex tw-items-end tw-gap-2">
+
 
             <Button
               className="
@@ -403,12 +726,11 @@ export function DashboardNavbar() {
                 focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50
                 tw-shrink-0 tw-whitespace-nowrap
               "
-              // onClick={goToCurrentPage}
               onClick={onSearch}
               disabled={lockStationDropdown}
-              title={lockStationDropdown ? "ล็อกการเลือกสถานีบนหน้านี้" : ""}
+              title={lockStationDropdown ? "Selection locked on this page" : ""}
             >
-              search
+              {t.search}
             </Button>
             <IconButton
               variant="text"
@@ -417,45 +739,35 @@ export function DashboardNavbar() {
               onClick={() => setOpenSidenav(dispatch, !openSidenav)}
             >
               {openSidenav ? (
-                <Bars3Icon
-                  strokeWidth={3}
-                  className="tw-h-6 tw-w-6 tw-text-gray-900"
-                />
+                <Bars3Icon strokeWidth={3} className="tw-h-6 tw-w-6 tw-text-gray-900" />
               ) : (
-                <Bars3CenterLeftIcon
-                  strokeWidth={3}
-                  className="tw-h-6 tw-w-6 tw-text-gray-900"
-                />
+                <Bars3CenterLeftIcon strokeWidth={3} className="tw-h-6 tw-w-6 tw-text-gray-900" />
               )}
             </IconButton>
-          </div>
 
-          {open && !lockStationDropdown && (
-            <div
-              className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-2 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
-              role="listbox"
-              onMouseLeave={() => setActive(-1)}
+            {/* Language Toggle Button */}
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              className="
+                tw-h-11 tw-px-3 tw-rounded-xl
+                tw-bg-white tw-border tw-border-blue-gray-200
+                hover:tw-bg-blue-gray-50
+                tw-text-blue-gray-700
+                tw-shadow-sm
+                tw-flex tw-items-center tw-gap-1.5
+                tw-transition-all tw-duration-200
+                focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50
+              "
+              title={lang === "th" ? "Switch to English" : "เปลี่ยนเป็นภาษาไทย"}
             >
-              {filtered.length > 0 ? (
-                filtered.map((item, idx) => (
-                  <button
-                    type="button"
-                    key={item.station_id}
-                    role="option"
-                    className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 ${idx === active ? "tw-bg-blue-gray-50" : ""
-                      }`}
-                    onMouseEnter={() => setActive(idx)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => choose(item)}
-                  >
-                    {item.station_name}
-                  </button>
-                ))
-              ) : (
-                <div className="tw-px-3 tw-py-2 tw-text-gray-500">ไม่พบสถานีที่ค้นหา</div>
-              )}
-            </div>
-          )}
+              <LanguageIcon className="tw-h-4 tw-w-4" />
+              <span className="tw-font-medium tw-text-sm">
+                {lang === "th" ? "TH" : "EN"}
+              </span>
+            </button>
+
+          </div>
         </div>
       </div>
     </Navbar>
