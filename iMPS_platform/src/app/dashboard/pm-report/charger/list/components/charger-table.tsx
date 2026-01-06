@@ -31,6 +31,66 @@ import { ArrowUpTrayIcon, DocumentArrowDownIcon, EyeIcon } from "@heroicons/reac
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
+import { useLanguage, type Lang } from "@/utils/useLanguage";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+  // Page Header
+  pageTitle: { th: "Preventive Maintenance Checklist", en: "Preventive Maintenance Checklist" },
+  pageSubtitle: { th: "ค้นหาและดาวน์โหลดเอกสาร PM Report", en: "Search and download PM Report documents" },
+
+  // Buttons
+  upload: { th: "อัพโหลด", en: "Upload" },
+  add: { th: "+เพิ่ม", en: "+Add" },
+  postPm: { th: "Post-PM", en: "Post-PM" },
+  cancel: { th: "ยกเลิก", en: "Cancel" },
+  uploadBtn: { th: "อัพโหลด", en: "Upload" },
+
+  // Table Headers
+  colNo: { th: "ลำดับ", en: "No." },
+  colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
+  colIssueId: { th: "Issue ID", en: "Issue ID" },
+  colPmDate: { th: "วันที่ PM", en: "PM Date" },
+  colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
+  colPdf: { th: "PDF", en: "PDF" },
+
+  // Pagination
+  entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
+  page: { th: "หน้า", en: "Page" },
+  of: { th: "จาก", en: "of" },
+
+  // Search
+  search: { th: "ค้นหา", en: "Search" },
+
+  // Loading / Empty States
+  loading: { th: "กำลังโหลด...", en: "Loading..." },
+  noData: { th: "ไม่มีข้อมูล", en: "No data" },
+  selectChargerFirst: { th: "กรุณาเลือก Charger จากแถบด้านบนก่อน", en: "Please select a charger from the top bar first" },
+  noFile: { th: "ไม่มีไฟล์", en: "No file" },
+
+  // Dialog
+  dialogTitle: { th: "เลือกวันที่รายงาน", en: "Select Report Date" },
+  docNameLabel: { th: "ชื่อเอกสาร", en: "Document Name" },
+  issueIdLabel: { th: "Issue ID", en: "Issue ID" },
+  inspectorLabel: { th: "ผู้ตรวจสอบ", en: "Inspector" },
+  pmDateLabel: { th: "วันที่ PM", en: "PM Date" },
+  filesSelected: { th: "ไฟล์ที่เลือก:", en: "Selected files:" },
+  filesUnit: { th: "ไฟล์", en: "file(s)" },
+
+  // Alerts
+  alertSelectCharger: { th: "กรุณาเลือก Charger ก่อน", en: "Please select a charger first" },
+  alertPdfOnly: { th: "รองรับเฉพาะไฟล์ PDF เท่านั้น", en: "Only PDF files are supported" },
+  alertInvalidDate: { th: "รูปแบบวันที่ไม่ถูกต้อง", en: "Invalid date format" },
+  alertUploadFailed: { th: "อัพโหลดไม่สำเร็จ:", en: "Upload failed:" },
+  alertUploadSuccess: { th: "อัพโหลดสำเร็จ", en: "Upload successful" },
+  alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัพโหลด", en: "An error occurred during upload" },
+
+  // Tooltips
+  uploadPdf: { th: "อัพโหลด PDF", en: "Upload PDF" },
+  preview: { th: "ดูตัวอย่าง", en: "Preview" },
+};
+
+const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 
 type TData = {
   id?: string;
@@ -198,6 +258,7 @@ type Me = {
 };
 
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
+  const { lang } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -296,7 +357,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     cache: "no-store",
   };
 
-  function thDate(iso?: string) {
+  // Date formatting with language support
+  function formatDate(iso?: string, currentLang: Lang = lang) {
     if (!iso) return "-";
 
     const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
@@ -305,12 +367,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
     if (isNaN(d.getTime())) return "-";
 
-    return d.toLocaleDateString("th-TH-u-ca-gregory", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      timeZone: "UTC",
-    });
+    return d.toLocaleDateString(
+      currentLang === "en" ? "en-GB" : "th-TH-u-ca-gregory",
+      {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        timeZone: "UTC",
+      }
+    );
   }
 
   function toISODateOnly(s?: string) {
@@ -432,7 +497,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           id,
           issue_id: issueId,
           doc_name: doc_name,
-          pm_date: thDate(isoDay),
+          pm_date: isoDay,
           position: isoDay,
           office: fileUrl,
           inspector,
@@ -454,7 +519,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return {
           issue_id: issueId,
           doc_name: doc_name,
-          pm_date: thDate(isoDay),
+          pm_date: isoDay,
           position: isoDay,
           office: href,
           inspector,
@@ -502,11 +567,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
 
     if (isPdfEndpoint) {
-      const finalUrl = u;
-      const withSn = appendParam(finalUrl, "sn", sn || "");
+      let finalUrl = u;
+      finalUrl = appendParam(finalUrl, "sn", sn || "");
+      finalUrl = appendParam(finalUrl, "lang", lang);
       return {
-        previewHref: appendParam(withSn, "dl", "0"),
-        downloadHref: appendParam(withSn, "dl", "1"),
+        previewHref: appendParam(finalUrl, "dl", "0"),
+        downloadHref: appendParam(finalUrl, "dl", "1"),
         isPdfEndpoint: true,
       };
     }
@@ -533,11 +599,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     return () => ac.abort();
   }, [apiBase, sn, searchParams.toString()]);
 
-  // Table columns
-  const columns: ColumnDef<TData, unknown>[] = [
+  // Table columns with language support
+  const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
       id: "no",
-      header: () => "No.",
+      header: () => t("colNo", lang),
       enableSorting: false,
       size: 25,
       minSize: 10,
@@ -551,7 +617,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.doc_name || "—",
       id: "name",
-      header: () => "Document Name",
+      header: () => t("colDocName", lang),
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
       minSize: 80,
@@ -561,7 +627,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
-      header: () => "Issue ID",
+      header: () => t("colIssueId", lang),
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
       minSize: 80,
@@ -571,8 +637,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.pm_date,
       id: "date",
-      header: () => "PM Date",
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
+      header: () => t("colPmDate", lang),
+      cell: (info: CellContext<TData, unknown>) => formatDate(info.getValue() as string, lang),
       size: 100,
       minSize: 80,
       maxSize: 140,
@@ -581,7 +647,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.inspector || "-",
       id: "inspector",
-      header: () => "Inspector",
+      header: () => t("colInspector", lang),
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
@@ -591,14 +657,14 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.office,
       id: "pdf",
-      header: () => "PDF",
+      header: () => t("colPdf", lang),
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
 
         if (!hasUrl) {
-          return <span className="tw-text-blue-gray-300" title="No file">—</span>;
+          return <span className="tw-text-blue-gray-300" title={t("noFile", lang)}>—</span>;
         }
 
         const { previewHref } = buildHtmlLinks(url);
@@ -625,7 +691,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                     router.push(`${pathname}?${params.toString()}`, { scroll: false });
                   }}
                 >
-                  post-pm
+                  {t("postPm", lang)}
                 </Button>
               </div>
             </div>
@@ -634,12 +700,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           return (
             <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
               <a
-                aria-label="Preview"
+                aria-label={t("preview", lang)}
                 href={previewHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-                title="Preview"
+                title={t("preview", lang)}
               >
                 <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
               </a>
@@ -652,7 +718,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-  ];
+  ], [lang, searchParams, pathname, router, sn]);
 
   function sameUser(a?: string, b?: string) {
     return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
@@ -695,7 +761,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
     );
     if (!pdfs.length) {
-      alert("Only PDF files are supported");
+      alert(t("alertPdfOnly", lang));
       return;
     }
     setPendingFiles(pdfs);
@@ -705,7 +771,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   async function uploadPdfs() {
     try {
       if (!sn) {
-        alert("Please select a charger first");
+        alert(t("alertSelectCharger", lang));
         return;
       }
       if (!pendingFiles.length) {
@@ -713,7 +779,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return;
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
-        alert("Invalid date format");
+        alert(t("alertInvalidDate", lang));
         return;
       }
 
@@ -733,18 +799,18 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
       if (!res.ok) {
         const txt = await res.text();
-        alert("Upload failed: " + txt);
+        alert(`${t("alertUploadFailed", lang)} ${txt}`);
         return;
       }
 
       await res.json();
-      alert("Upload successful");
+      alert(t("alertUploadSuccess", lang));
       setPendingFiles([]);
       setDateOpen(false);
       await fetchRows();
     } catch (err) {
       console.error(err);
-      alert("An error occurred during upload");
+      alert(t("alertUploadError", lang));
     }
   }
 
@@ -827,10 +893,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-4">
             <div className="tw-flex-1">
               <Typography variant="h5" color="blue-gray">
-                Preventive Maintenance Checklist
+                {t("pageTitle", lang)}
               </Typography>
               <Typography variant="small" className="tw-text-blue-gray-500 tw-mt-1">
-                Search and download PM Report documents
+                {t("pageSubtitle", lang)}
               </Typography>
             </div>
 
@@ -850,10 +916,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   disabled={!sn}
                   onClick={() => pdfInputRef.current?.click()}
                   className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
-                  title="Upload PDF">
+                  title={t("uploadPdf", lang)}>
 
                   <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
-                  <span className="tw-text-sm">Upload</span>
+                  <span className="tw-text-sm">{t("upload", lang)}</span>
                 </Button>
                 <Button
                   size="lg"
@@ -868,9 +934,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                                   tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
                                   focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
                                 `}
-                  title={sn ? "" : "Please select a charger from the top bar first"}
+                  title={sn ? "" : t("selectChargerFirst", lang)}
                 >
-                  <span className="tw-w-full tw-text-center">+Add</span>
+                  <span className="tw-w-full tw-text-center">{t("add", lang)}</span>
                 </Button>
               </div>
             </div>
@@ -891,11 +957,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               ))}
             </select>
             <Typography variant="small" className="tw-text-blue-gray-500">
-              entries per page
+              {t("entriesPerPage", lang)}
             </Typography>
           </div>
           <div className="tw-ml-auto tw-w-64">
-            <Input value={filtering} onChange={(e) => setFiltering(e.target.value)} label="Search" crossOrigin={undefined} />
+            <Input value={filtering} onChange={(e) => setFiltering(e.target.value)} label={t("search", lang)} crossOrigin={undefined} />
           </div>
         </CardBody>
 
@@ -945,7 +1011,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 {loading ? (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      Loading...
+                      {t("loading", lang)}
                     </td>
                   </tr>
                 ) : table.getRowModel().rows.length ? (
@@ -973,7 +1039,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 ) : (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!sn ? "Please select a charger from the top bar first" : "No data"}
+                      {!sn ? t("selectChargerFirst", lang) : t("noData", lang)}
                     </td>
                   </tr>
                 )}
@@ -985,7 +1051,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
         <div className="tw-flex tw-items-center tw-justify-between tw-p-4">
           <Typography variant="small">
-            Page <strong>{table.getState().pagination.pageIndex + 1}</strong> of <strong>{table.getPageCount()}</strong>
+            {t("page", lang)} <strong>{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)} <strong>{table.getPageCount()}</strong>
           </Typography>
           <div className="tw-flex tw-gap-2">
             <Button size="sm" variant="outlined" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
@@ -999,11 +1065,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       </Card>
 
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
-        <DialogHeader>Select Report Date</DialogHeader>
+        <DialogHeader>{t("dialogTitle", lang)}</DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
             <Input
-              label="Document Name"
+              label={t("docNameLabel", lang)}
               value={docName}
               onChange={(e) => setDocName(e.target.value)}
               crossOrigin=""
@@ -1014,7 +1080,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
           <div className="tw-space-y-2">
             <Input
-              label="Issue ID"
+              label={t("issueIdLabel", lang)}
               value={issueId}
               onChange={(e) => setIssueId(e.target.value)}
               crossOrigin=""
@@ -1025,7 +1091,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
           <div className="tw-space-y-2">
             <Input
-              label="Inspector"
+              label={t("inspectorLabel", lang)}
               value={inspector}
               onChange={(e) => setInspector(e.target.value)}
               crossOrigin=""
@@ -1039,11 +1105,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
             value={reportDate}
             max={todayStr}
             onChange={(e) => setReportDate(e.target.value)}
-            label="PM Date"
+            label={t("pmDateLabel", lang)}
             crossOrigin=""
           />
           <Typography variant="small" className="tw-text-blue-gray-500">
-            Selected files: <strong>{pendingFiles.length}</strong> file(s)
+            {t("filesSelected", lang)} <strong>{pendingFiles.length}</strong> {t("filesUnit", lang)}
           </Typography>
         </DialogBody>
         <DialogFooter className="tw-gap-2">
@@ -1054,10 +1120,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               setDateOpen(false);
             }}
           >
-            Cancel
+            {t("cancel", lang)}
           </Button>
           <Button onClick={uploadPdfs} className="tw-bg-black">
-            Upload
+            {t("uploadBtn", lang)}
           </Button>
         </DialogFooter>
       </Dialog>
