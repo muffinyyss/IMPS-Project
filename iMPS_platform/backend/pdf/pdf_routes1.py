@@ -39,6 +39,7 @@ async def export_pdf_redirect(
     id: str,
     station_id: str = Query(...),
     dl: bool = Query(False),
+    lang: str = Query("th", description="Language: 'th' or 'en'"),  # เพิ่ม lang parameter
     photos_base_url: str | None = Query(None),
     public_dir: str | None = Query(None),
     photos_headers: str | None = Query(None),
@@ -78,6 +79,7 @@ async def export_pdf_redirect(
 
     # สร้าง URL ใหม่พร้อม query parameters
     query_params = f"?station_id={station_id}"
+    query_params += f"&lang={lang}"  # เพิ่ม lang ใน redirect URL
     if dl:
         query_params += "&dl=true"
     if photos_base_url:
@@ -99,13 +101,14 @@ async def export_pdf(
     filename: str,
     station_id: str = Query(...),
     dl: bool = Query(False),
+    lang: str = Query("th", description="Language: 'th' or 'en'"),  # เพิ่ม lang parameter
     photos_base_url: str | None = Query(None, description="เช่น http://localhost:3000"),
     public_dir: str | None = Query(None, description="absolute path ไปยังโฟลเดอร์ public"),
     photos_headers: str | None = Query(None, description="เช่น 'Authorization: Bearer XXX|Cookie: sid=YYY'"),
 ):
     """
     Export PDF with photo support:
-      /pdf/charger/{id}/PM-CG-2407-01.pdf?station_id=Klongluang3
+      /pdf/charger/{id}/PM-CG-2407-01.pdf?station_id=Klongluang3&lang=en
     """
 
     # ตรวจสอบว่า template มีใน mapping ไหม
@@ -141,8 +144,11 @@ async def export_pdf(
         base_url = str(request.base_url).rstrip('/')
         os.environ["APP_BASE_URL"] = base_url
 
-    # สร้าง PDF
+    # สร้าง PDF - ส่ง lang ไปด้วย
     try:
+        pdf_bytes = db_info["func"](data, lang=lang)
+    except TypeError:
+        # Fallback: ถ้า function ยังไม่รองรับ lang parameter
         pdf_bytes = db_info["func"](data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"เกิดข้อผิดพลาดในการสร้าง PDF: {str(e)}")
