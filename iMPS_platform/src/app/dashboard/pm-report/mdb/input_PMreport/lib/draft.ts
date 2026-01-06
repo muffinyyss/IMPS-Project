@@ -2,22 +2,45 @@ import type { PhotoRef } from "./draftPhotos";
 
 type PF = "PASS" | "FAIL" | "NA" | "";
 
+type MeasureRow = { value: string; unit: string };
+type MeasureState = Record<string, MeasureRow>;
+
 type DraftData = {
-  rows: any;
-  m4: any;
-  m5: any;
-  m6: any;
-  m7: any;
-  m8: any;
-  m4Pre?: any;
-  m5Pre?: any;
-  m6Pre?: any;
-  m7Pre?: any;
-  m8Pre?: any;
+  rows: Record<string, { pf: PF; remark: string }>;
+  
+  // === NEW STRUCTURE (MDB v2) ===
+  // Q4: Dynamic Breaker Main - Record of item keys to measure states
+  m4?: Record<string, MeasureState>;
+  // Q5: Charger Breakers - Record of item keys to measure states  
+  m5?: Record<string, MeasureState>;
+  // Q6: CCB - Single measure state
+  m6?: MeasureState;
+  
+  // Pre values for dynamic items
+  m4Pre?: Record<string, MeasureState>;
+  m5Pre?: Record<string, MeasureState>;
+  m6Pre?: MeasureState;
+  
+  // Dynamic items configuration
+  q4_items?: { key: string; label: string }[];
+  charger_count?: number;
+  
+  // === LEGACY STRUCTURE (for backward compatibility) ===
+  m7?: MeasureState;
+  m8?: MeasureState;
+  m7Pre?: MeasureState;
+  m8Pre?: MeasureState;
+  
+  // === COMMON ===
   summary: string;
   summary_pf?: PF;
-  dustFilterChanged?: boolean;
-  photoRefs?: Record<number | string, PhotoRef[]>;
+  dustFilterChanged?: boolean | Record<string, boolean>;
+  photoRefs?: Record<number | string, (PhotoRef | { isNA: true })[]>;
+  
+  // Charger PM specific
+  cp?: Record<string, { value: string; unit: string }>;
+  m16?: MeasureState;
+  inspector?: string;
 };
 
 function safeStorage() {
@@ -30,17 +53,10 @@ function safeStorage() {
 }
 
 export function draftKey(stationId: string | null | undefined) {
-  // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
   return `pmDraft:${stationId ?? "unknown"}`;
 }
-// export function draftKey(
-//   stationId: string | null | undefined,
-//   draftId: string = "default"
-// ) {
-//   return `pmDraft:v2:${stationId ?? "unknown"}:${draftId}`;
-// }
 
-export function saveDraftLocal(key: string, data: DraftData) {
+export function saveDraftLocal<T = DraftData>(key: string, data: T) {
   const ls = safeStorage();
   if (!ls) return;
   try {
