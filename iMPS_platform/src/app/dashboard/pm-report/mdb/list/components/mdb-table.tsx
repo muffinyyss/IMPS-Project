@@ -26,6 +26,68 @@ import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outl
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import MDBPMForm from "@/app/dashboard/pm-report/mdb/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
+import { useLanguage, type Lang } from "@/utils/useLanguage";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+  // Page header
+  pageTitle: { th: "Preventive Maintenance Checklist - MDB", en: "Preventive Maintenance Checklist - MDB" },
+  pageSubtitle: { th: "ค้นหาและพรีวิวเอกสารรายงานการบำรุงรักษา (PM Report)", en: "Search and preview maintenance reports (PM Report)" },
+  
+  // Buttons
+  upload: { th: "อัปโหลด", en: "Upload" },
+  add: { th: "+เพิ่ม", en: "+Add" },
+  postPm: { th: "post-pm", en: "post-pm" },
+  cancel: { th: "ยกเลิก", en: "Cancel" },
+  uploadBtn: { th: "อัปโหลด", en: "Upload" },
+  
+  // Table headers
+  colNo: { th: "ลำดับ", en: "No." },
+  colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
+  colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
+  colPmDate: { th: "วันที่ PM", en: "PM Date" },
+  colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
+  colPdf: { th: "PDF", en: "PDF" },
+  
+  // Pagination
+  entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
+  page: { th: "หน้า", en: "Page" },
+  of: { th: "จาก", en: "of" },
+  
+  // Search
+  search: { th: "ค้นหา", en: "Search" },
+  
+  // Loading/Empty states
+  loading: { th: "กำลังโหลด…", en: "Loading…" },
+  noData: { th: "ไม่มีข้อมูล", en: "No data" },
+  selectStationFirst: { th: "กรุณาเลือกสถานีจากแถบบนก่อน", en: "Please select a station first" },
+  noFile: { th: "ไม่มีไฟล์", en: "No file" },
+  
+  // Dialog
+  dialogTitle: { th: "เลือกวันที่รายงาน", en: "Select Report Date" },
+  docNameLabel: { th: "Document Name / ชื่อเอกสาร", en: "Document Name" },
+  issueIdLabel: { th: "Issue id / รหัสเอกสาร", en: "Issue ID" },
+  inspectorLabel: { th: "Inspector / ผู้ตรวจสอบ", en: "Inspector" },
+  pmDateLabel: { th: "PM Date / วันที่ตรวจสอบ", en: "PM Date" },
+  filesSelected: { th: "ไฟล์ที่เลือก:", en: "Files selected:" },
+  filesUnit: { th: "ไฟล์", en: "file(s)" },
+  
+  // Alerts
+  alertSelectStation: { th: "กรุณาเลือกสถานีก่อน", en: "Please select a station first" },
+  alertPdfOnly: { th: "รองรับเฉพาะไฟล์ PDF เท่านั้น", en: "Only PDF files are supported" },
+  alertInvalidDate: { th: "รูปแบบวันที่ไม่ถูกต้อง", en: "Invalid date format" },
+  alertUploadFailed: { th: "อัปโหลดไม่สำเร็จ:", en: "Upload failed:" },
+  alertUploadSuccess: { th: "อัปโหลดสำเร็จ", en: "Upload successful" },
+  alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัปโหลด", en: "Error during upload" },
+  
+  // Tooltips
+  backToList: { th: "กลับไปหน้า List", en: "Back to list" },
+  uploadPdf: { th: "อัปโหลด PDF", en: "Upload PDF" },
+  preview: { th: "พรีวิว", en: "Preview" },
+};
+
+const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
+
 type TData = {
   id?: string;
   doc_name?: string;
@@ -141,7 +203,6 @@ async function fetchPreviewDocName(
       : "";
 
   const r = await apiFetch(u.toString(), {
-    // const r = await fetch(u.toString(), {
     credentials: "include",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
@@ -154,6 +215,7 @@ async function fetchPreviewDocName(
   const j = await r.json();
   return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
+
 async function fetchLatestDocName(
   stationId: string,
   dateISO: string
@@ -193,6 +255,7 @@ type Me = {
 };
 
 export default function MDBTable({ token, apiBase = BASE }: Props) {
+  const { lang } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -291,7 +354,8 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     cache: "no-store",
   };
 
-  function thDate(iso?: string) {
+  // Date formatting with language support
+  function thDate(iso?: string, currentLang: Lang = lang) {
     if (!iso) return "-";
 
     // บังคับให้ตีความเป็นเวลา UTC
@@ -301,7 +365,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
 
     if (isNaN(d.getTime())) return "-";
 
-    return d.toLocaleDateString("th-TH-u-ca-gregory", {
+    return d.toLocaleDateString(currentLang === "en" ? "en-GB" : "th-TH-u-ca-gregory", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -449,7 +513,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
 
         const doc_name = (it.doc_name ? String(it.doc_name) : "")
-        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
+        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string;
         const side = (it.side ?? it.job?.side ?? "") as string;
         return {
           issue_id: issueId,
@@ -487,7 +551,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     let alive = true;
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
-  }, [apiBase, stationId]);
+  }, [apiBase, stationId, lang]);
 
   function appendParam(u: string, key: string, val?: string) {
     if (!val) return u; // ❗️อย่าใส่ param ว่าง ๆ กัน 422
@@ -495,6 +559,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     if (!url.searchParams.has(key)) url.searchParams.set(key, val);
     return url.toString();
   }
+
   function buildHtmlLinks(baseUrl?: string) {
     const u = (baseUrl || "").trim();
     if (!u) return { previewHref: "", isPdfEndpoint: false };
@@ -505,6 +570,8 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     if (isPdfEndpoint) {
       let finalUrl = u;
       if (stationId) finalUrl = appendParam(finalUrl, "station_id", stationId);
+
+      finalUrl = appendParam(finalUrl, "lang", lang);
 
       // ใส่ photos_base_url ช่วยให้รูปใน PDF โหลดได้
       const photosBase =
@@ -540,11 +607,11 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     return () => ac.abort();
   }, [apiBase, stationId, searchParams.toString()]);
 
-  // ---- Table ----
-  const columns: ColumnDef<TData, unknown>[] = [
+  // ---- Table columns with i18n ----
+  const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
       id: "no",
-      header: () => "No.",
+      header: () => t("colNo", lang),
       enableSorting: false,
       size: 25,
       minSize: 10,
@@ -558,7 +625,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.doc_name || "—",
       id: "name",
-      header: () => "document name",
+      header: () => t("colDocName", lang),
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
       minSize: 80,
@@ -568,7 +635,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
-      header: () => "issue id",
+      header: () => t("colIssueId", lang),
       cell: (info) => info.getValue() as React.ReactNode,
       size: 140,
       minSize: 100,
@@ -578,7 +645,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.pm_date,
       id: "date",
-      header: () => "pm date",
+      header: () => t("colPmDate", lang),
       cell: (info) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
@@ -588,7 +655,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.inspector,
       id: "inspector",
-      header: () => "inspector",
+      header: () => t("colInspector", lang),
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
@@ -598,17 +665,17 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.office,
       id: "pdf",
-      header: () => "PDF",
+      header: () => t("colPdf", lang),
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
 
         if (!hasUrl) {
-          return <span className="tw-text-blue-gray-300" title="No file">—</span>;
+          return <span className="tw-text-blue-gray-300" title={t("noFile", lang)}>—</span>;
         }
 
-        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
+        const { previewHref } = buildHtmlLinks(url);
 
         const rowSide = info.row.original.side;
 
@@ -622,12 +689,8 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                   variant="outlined"
                   className="tw-shrink-0"
                   onClick={() => {
-                    // เอา query param เดิมมาต่อ ไม่ให้หาย
                     const params = new URLSearchParams(searchParams.toString());
-                    // ลบ tab parameter ที่ใช้สำหรับ list page
-                    // บังคับให้เปลี่ยนเป็นหน้า form (ChargerPMForm)
                     params.set("view", "form");
-                    // ส่งคำว่า "post" ไปด้วยใน query string
                     params.set("action", "post");
                     params.set("edit_id", info.row.original.id || "");
                     params.set("pmtab", "post");
@@ -635,7 +698,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                     router.push(`${pathname}?${params.toString()}`, { scroll: false });
                   }}
                 >
-                  post-pm
+                  {t("postPm", lang)}
                 </Button>
               </div>
             </div>
@@ -644,18 +707,17 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
           return (
             <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
               <a
-                aria-label="Preview"
+                aria-label={t("preview", lang)}
                 href={previewHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-                title="Preview"
+                title={t("preview", lang)}
               >
                 <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
               </a>
             </div>
           )
-
         }
       },
       size: 150,
@@ -663,7 +725,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-  ];
+  ], [lang, searchParams, pathname, router, stationId]);
 
   function sameUser(a?: string, b?: string) {
     return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
@@ -684,7 +746,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   }, [data, me?.username]);
 
   const table = useReactTable({
-    // data,
     data: visibleData,
     columns,
     state: { globalFilter: filtering, sorting },
@@ -716,7 +777,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
     );
     if (!pdfs.length) {
-      alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
+      alert(t("alertPdfOnly", lang));
       return;
     }
     setPendingFiles(pdfs);
@@ -725,9 +786,9 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
 
   async function uploadPdfs() {
     try {
-      if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
+      if (!stationId) { alert(t("alertSelectStation", lang)); return; }
       if (!pendingFiles.length) { setDateOpen(false); return; }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("รูปแบบวันที่ไม่ถูกต้อง"); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert(t("alertInvalidDate", lang)); return; }
 
       const fd = new FormData();
       fd.append("station_id", stationId);
@@ -744,17 +805,17 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       });
       if (!res.ok) {
         const txt = await res.text();
-        alert("อัปโหลดไม่สำเร็จ: " + txt);
+        alert(`${t("alertUploadFailed", lang)} ${txt}`);
         return;
       }
       await res.json();
-      alert("อัปโหลดสำเร็จ");
+      alert(t("alertUploadSuccess", lang));
       setPendingFiles([]);
       setDateOpen(false);
       await fetchRows();
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
+      alert(t("alertUploadError", lang));
     }
   }
 
@@ -817,14 +878,14 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     params.delete("view");
     params.delete("edit_id");
     params.delete("pmtab");
-    // ไม่ต้องลบ tab เพราะต้องการให้กลับไปที่ tab เดิม
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
+
   function goEdit(row: TData) {
     if (!row?.id) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
-    params.set("edit_id", row.id);       // 👈 ให้ฟอร์มใช้โหลดข้อมูล
+    params.set("edit_id", row.id);
     params.set("pmtab", "pre");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
@@ -832,17 +893,6 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
   if (mode === "form") {
     return (
       <div className="tw-mt-6">
-        {/* <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
-          <Button
-            variant="outlined"
-            size="sm"
-            onClick={goList}
-            className="tw-py-2 tw-px-2"
-            title="กลับไปหน้า List"
-          >
-            <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-          </Button>
-        </div> */}
         <MDBPMForm />
       </div>
     );
@@ -855,10 +905,10 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
           <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-4">
             <div className="tw-flex-1">
               <Typography variant="h5" color="blue-gray">
-                Preventive Maintenance Checklist - MDB
+                {t("pageTitle", lang)}
               </Typography>
               <Typography variant="small" className="tw-text-blue-gray-500 tw-mt-1">
-                ค้นหาและพรีวิวเอกสารรายงานการบำรุงรักษา (PM Report)
+                {t("pageSubtitle", lang)}
               </Typography>
             </div>
 
@@ -878,13 +928,12 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                   disabled={!stationId}
                   onClick={() => pdfInputRef.current?.click()}
                   className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
-                  title="อัปโหลด PDF"
+                  title={t("uploadPdf", lang)}
                 >
                   <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
-                  <span className="tw-text-sm">Upload</span>
+                  <span className="tw-text-sm">{t("upload", lang)}</span>
                 </Button>
 
-                {/* <Link href={addHref} onClick={(e) => { if (!stationId) e.preventDefault(); }}> */}
                 <Button
                   size="lg"
                   onClick={goAdd}
@@ -899,9 +948,8 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                       focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
                     `}
                 >
-                  +Add
+                  {t("add", lang)}
                 </Button>
-                {/* </Link> */}
               </div>
             </div>
           </div>
@@ -919,11 +967,11 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
               ))}
             </select>
             <Typography variant="small" className="tw-text-blue-gray-500">
-              entries per page
+              {t("entriesPerPage", lang)}
             </Typography>
           </div>
           <div className="tw-ml-auto tw-w-64">
-            <Input value={filtering} onChange={(e) => setFiltering(e.target.value)} label="Search" crossOrigin={undefined} />
+            <Input value={filtering} onChange={(e) => setFiltering(e.target.value)} label={t("search", lang)} crossOrigin={undefined} />
           </div>
         </CardBody>
 
@@ -972,7 +1020,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                 {loading ? (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      กำลังโหลด…
+                      {t("loading", lang)}
                     </td>
                   </tr>
                 ) : table.getRowModel().rows.length ? (
@@ -1000,7 +1048,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
                 ) : (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!stationId ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
+                      {!stationId ? t("selectStationFirst", lang) : t("noData", lang)}
                     </td>
                   </tr>
                 )}
@@ -1011,7 +1059,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
 
         <div className="tw-flex tw-items-center tw-justify-between tw-p-4">
           <Typography variant="small">
-            Page <strong>{table.getState().pagination.pageIndex + 1}</strong> of <strong>{table.getPageCount()}</strong>
+            {t("page", lang)} <strong>{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)} <strong>{table.getPageCount()}</strong>
           </Typography>
           <div className="tw-flex tw-gap-2">
             <Button size="sm" variant="outlined" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
@@ -1025,11 +1073,11 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       </Card>
 
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
-        <DialogHeader>เลือกวันที่รายงาน</DialogHeader>
+        <DialogHeader>{t("dialogTitle", lang)}</DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
             <Input
-              label="Document Name / ชื่อเอกสาร"
+              label={t("docNameLabel", lang)}
               value={docName}
               onChange={(e) => setDocName(e.target.value)}
               crossOrigin=""
@@ -1040,7 +1088,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
           </div>
           <div className="tw-space-y-2">
             <Input
-              label="Issue id / รหัสเอกสาร"
+              label={t("issueIdLabel", lang)}
               value={issueId}
               onChange={(e) => setIssueId(e.target.value)}
               crossOrigin=""
@@ -1051,7 +1099,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
           </div>
           <div className="tw-space-y-2">
             <Input
-              label="Inspector / ผู้ตรวจสอบ"
+              label={t("inspectorLabel", lang)}
               value={inspector}
               onChange={(e) => setInspector(e.target.value)}
               crossOrigin=""
@@ -1065,11 +1113,11 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
             value={reportDate}
             max={todayStr}
             onChange={(e) => setReportDate(e.target.value)}
-            label="PM Date / วันที่ตรวจสอบ"
+            label={t("pmDateLabel", lang)}
             crossOrigin=""
           />
           <Typography variant="small" className="tw-text-blue-gray-500">
-            ไฟล์ที่เลือก: <strong>{pendingFiles.length}</strong> ไฟล์
+            {t("filesSelected", lang)} <strong>{pendingFiles.length}</strong> {t("filesUnit", lang)}
           </Typography>
         </DialogBody>
         <DialogFooter className="tw-gap-2">
@@ -1080,10 +1128,10 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
               setDateOpen(false);
             }}
           >
-            ยกเลิก
+            {t("cancel", lang)}
           </Button>
           <Button onClick={uploadPdfs} className="tw-bg-black">
-            อัปโหลด
+            {t("uploadBtn", lang)}
           </Button>
         </DialogFooter>
       </Dialog>
