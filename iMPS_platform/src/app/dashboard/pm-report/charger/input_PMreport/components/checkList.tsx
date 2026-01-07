@@ -76,6 +76,9 @@ const T = {
 
     // Remarks
     remark: { th: "หมายเหตุ *", en: "Remark *" },
+    remarkLabel: { th: "หมายเหตุ", en: "Remark" },
+    testResult: { th: "ผลการทดสอบ", en: "Test Result" },
+    preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
     comment: { th: "Comment", en: "Comment" },
 
     // Pre/Post Labels
@@ -217,8 +220,8 @@ const QUESTIONS: Question[] = [
             { label: { th: "11.4) แผ่นกรองระบายอากาศ (ด้านหลัง)", en: "11.4) Air filter (back)" }, key: "r11_4" },
         ]
     },
-    { no: 12, key: "r12", label: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check contact condition, coil operation and abnormal sounds" } },
-    { no: 13, key: "r13", label: { th: "13) ตรวจสอบคอนแทคเตอร์", en: "13) Check contactor" }, kind: "simple", hasPhoto: true, tooltip: {  th: "ตรวจสอบสภาพหน้าสัมผัส, การทำงานของคอยล์และเสียงผิดปกติขณะทำงาน", en: "Check contact condition, coil operation and abnormal sounds" } },
+    { no: 12, key: "r12", label: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at cable connection points and inspect for burn marks using thermal imaging camera" } },
+    { no: 13, key: "r13", label: { th: "13) ตรวจสอบคอนแทคเตอร์", en: "13) Check contactor" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพหน้าสัมผัส, การทำงานของคอยล์และเสียงผิดปกติขณะทำงาน", en: "Check contact condition, coil operation and abnormal sounds" } },
     { no: 14, key: "r14", label: { th: "14) ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก", en: "14) Check surge protection device" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบหน้าต่างแสดงสถานะและตรวจสอบสายกราวด์ที่ต่อเข้ากับ Surge Protective Devices", en: "Check status window and ground wire to SPD" } },
     { no: 15, key: "r15", label: { th: "15) ตรวจสอบลำดับเฟส", en: "15) Check phase sequence" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบทิศทางการเรียงเฟส", en: "Check phase sequence direction" } },
     { no: 16, key: "r16", label: { th: "16) วัดแรงดันไฟฟ้าด้านเข้า", en: "16) Measure input voltage" }, kind: "measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าระหว่างเฟส และระหว่างเฟสกับนิวทรัล/กราวด์", en: "Measure phase-to-phase and phase-to-neutral/ground voltage" } },
@@ -342,7 +345,7 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
 
 // ==================== UI COMPONENTS ====================
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, inlineLeft, onlyNA = false, onClear, lang,
+    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, onlyNA = false, onClear, lang,
 }: {
     label: string;
     value: PF;
@@ -351,6 +354,8 @@ function PassFailRow({
     onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
     aboveRemark?: React.ReactNode;
+    beforeRemark?: React.ReactNode;
+    belowRemark?: React.ReactNode;
     inlineLeft?: React.ReactNode;
     onlyNA?: boolean;
     onClear?: () => void;
@@ -387,8 +392,10 @@ function PassFailRow({
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
                     {aboveRemark}
                     {buttonsRow}
+                    {beforeRemark}
                     <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
+                    {belowRemark}
                 </div>
             ) : (
                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
@@ -541,9 +548,25 @@ function PhotoMultiInput({
     );
 }
 
+// Component for displaying skipped N/A items in Post mode
+function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
+    return (
+        <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-amber-50 tw-border-amber-200">
+            <div className="tw-flex tw-items-center tw-justify-between">
+                <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{label}</Typography>
+                {remark && (
+                    <Typography variant="small" className="tw-text-blue-gray-600">
+                        {t("remarkLabel", lang)} - {remark}
+                    </Typography>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function DynamicItemsSection({
     qNo, items, addItem, removeItem, addButtonLabel, renderAdditionalFields, editable = true,
-    photos, setPhotos, rows, setRows, draftKey, lang,
+    photos, setPhotos, rows, setRows, rowsPre, draftKey, lang, isPostMode = false,
     showDustFilterCheckbox = false,
     dustFilterChanged,
     setDustFilterChanged,
@@ -559,12 +582,106 @@ function DynamicItemsSection({
     setPhotos: React.Dispatch<React.SetStateAction<Record<number | string, PhotoItem[]>>>;
     rows: Record<string, { pf: PF; remark: string }>;
     setRows: React.Dispatch<React.SetStateAction<Record<string, { pf: PF; remark: string }>>>;
+    rowsPre?: Record<string, { pf: PF; remark: string }>;
     draftKey: string;
     lang: Lang;
+    isPostMode?: boolean;
     showDustFilterCheckbox?: boolean;
     dustFilterChanged?: Record<string, boolean>;
     setDustFilterChanged?: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 }) {
+    const makePhotoSetter = (photoKey: string): React.Dispatch<React.SetStateAction<PhotoItem[]>> => (action) => {
+        setPhotos((prev) => {
+            const current = prev[photoKey] || [];
+            const next = typeof action === "function" ? action(current) : action;
+            return { ...prev, [photoKey]: next };
+        });
+    };
+
+    // POST MODE - use PassFailRow like MDBPMForm.tsx
+    if (isPostMode) {
+        return (
+            <div className="tw-space-y-4">
+                {/* Render items in original order, check if skipped or active per item */}
+                {items.map((item, idx) => {
+                    const isSkipped = rowsPre?.[item.key]?.pf === "NA";
+                    const preRemark = rowsPre?.[item.key]?.remark;
+                    
+                    // Show skipped N/A item as yellow card
+                    if (isSkipped) {
+                        return (
+                            <SkippedNAItem
+                                key={item.key}
+                                label={item.label}
+                                remark={preRemark}
+                                lang={lang}
+                            />
+                        );
+                    }
+                    
+                    // Show active item with PassFailRow
+                    const checkboxElement = showDustFilterCheckbox && dustFilterChanged !== undefined && setDustFilterChanged ? (
+                        <label className="tw-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700 tw-py-2">
+                            <input type="checkbox" className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500"
+                                checked={dustFilterChanged[item.key] || false}
+                                onChange={(e) => setDustFilterChanged(prev => ({ ...prev, [item.key]: e.target.checked }))} />
+                            <span className="tw-leading-tight">{t("replaceAirFilter", lang)}</span>
+                        </label>
+                    ) : null;
+
+                    // Pre-PM remark display element
+                    const preRemarkElement = preRemark ? (
+                        <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
+                            <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
+                                <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                </svg>
+                                <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
+                            </div>
+                            <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{preRemark}</Typography>
+                        </div>
+                    ) : null;
+
+                    return (
+                        <div key={item.key} className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100">
+                            <PassFailRow
+                                label={item.label}
+                                value={rows[item.key]?.pf ?? ""}
+                                onChange={(v) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { remark: "" }), pf: v } }))}
+                                remark={rows[item.key]?.remark ?? ""}
+                                onRemarkChange={(v) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: v } }))}
+                                lang={lang}
+                                aboveRemark={
+                                    <>
+                                        <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                            <PhotoMultiInput
+                                                photos={photos[`${qNo}_${idx}`] || []}
+                                                setPhotos={makePhotoSetter(`${qNo}_${idx}`)}
+                                                max={10}
+                                                draftKey={draftKey}
+                                                qNo={qNo}
+                                                lang={lang}
+                                            />
+                                        </div>
+                                        {checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}
+                                    </>
+                                }
+                                inlineLeft={checkboxElement && <div className="tw-hidden sm:tw-flex">{checkboxElement}</div>}
+                                beforeRemark={preRemarkElement}
+                                belowRemark={renderAdditionalFields ? (
+                                    <div className="tw-mt-4">
+                                        {renderAdditionalFields(item, idx, false)}
+                                    </div>
+                                ) : undefined}
+                            />
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    }
+
+    // PRE MODE - original layout
     return (
         <div className="tw-space-y-4">
             {editable && addItem && addButtonLabel && (
@@ -637,16 +754,18 @@ function DynamicItemsSection({
 }
 
 function PhotoRemarkSection({
-    qKey, qNo, label, middleContent, photos, setPhotos, rows, setRows, draftKey, lang
+    qKey, qNo, label, middleContent, photos, setPhotos, rows, setRows, rowsPre, draftKey, lang, isPostMode = false
 }: {
     qKey: string; qNo: number; label?: string; middleContent?: React.ReactNode;
     photos: Record<number | string, PhotoItem[]>;
     setPhotos: React.Dispatch<React.SetStateAction<Record<number | string, PhotoItem[]>>>;
     rows: Record<string, { pf: PF; remark: string }>;
     setRows: React.Dispatch<React.SetStateAction<Record<string, { pf: PF; remark: string }>>>;
-    draftKey: string; lang: Lang;
+    rowsPre?: Record<string, { pf: PF; remark: string }>;
+    draftKey: string; lang: Lang; isPostMode?: boolean;
 }) {
     const isNA = rows[qKey]?.pf === "NA";
+    const preRemark = rowsPre?.[qKey]?.remark;
     const makePhotoSetter = (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> => (action) => {
         setPhotos((prev) => {
             const current = prev[no] || [];
@@ -655,6 +774,43 @@ function PhotoRemarkSection({
         });
     };
 
+    // Pre-PM remark display element
+    const preRemarkElement = isPostMode && preRemark ? (
+        <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
+            <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
+                <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
+            </div>
+            <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{preRemark}</Typography>
+        </div>
+    ) : null;
+
+    // POST MODE - use PassFailRow like MDBPMForm.tsx
+    if (isPostMode) {
+        return (
+            <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100">
+                <PassFailRow
+                    label={t("testResult", lang)}
+                    value={rows[qKey]?.pf ?? ""}
+                    onChange={(v) => setRows(prev => ({ ...prev, [qKey]: { ...(prev[qKey] ?? { remark: "" }), pf: v } }))}
+                    remark={rows[qKey]?.remark ?? ""}
+                    onRemarkChange={(v) => setRows(prev => ({ ...prev, [qKey]: { ...(prev[qKey] ?? { pf: "" }), remark: v } }))}
+                    lang={lang}
+                    aboveRemark={
+                        <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                            <PhotoMultiInput photos={photos[qNo] || []} setPhotos={makePhotoSetter(qNo)} max={10} draftKey={draftKey} qNo={qNo} lang={lang} />
+                        </div>
+                    }
+                    beforeRemark={preRemarkElement}
+                    belowRemark={middleContent ? <div className="tw-mt-4">{middleContent}</div> : undefined}
+                />
+            </div>
+        );
+    }
+
+    // PRE MODE - original layout
     return (
         <div className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
             {label && <div className="tw-flex tw-items-center tw-justify-between tw-mb-3"><Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{label}</Typography></div>}
@@ -697,7 +853,10 @@ export default function ChargerPMForm() {
     const [sn, setSn] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
+    // Separate draft keys for Pre and Post mode
     const key = useMemo(() => `${draftKey(sn)}:${draftId ?? "default"}`, [sn, draftId]);
+    const postKey = useMemo(() => `${draftKey(sn)}:${editId}:post`, [sn, editId]);
+    const currentDraftKey = isPostMode ? postKey : key;
     const [inspector, setInspector] = useState<string>("");
     const [dustFilterChanged, setDustFilterChanged] = useState<Record<string, boolean>>({});
 
@@ -846,6 +1005,40 @@ export default function ChargerPMForm() {
         })();
     }, [isPostMode, editId, sn]);
 
+    // Load draft for Post mode (after API data loaded)
+    useEffect(() => {
+        if (!isPostMode || !sn || !editId) return;
+        const postDraft = loadDraftLocal<{
+            rows: typeof rows; cp: typeof cp; m16: typeof m16.state; summary: string; summaryCheck?: PF;
+            dustFilterChanged?: Record<string, boolean>; photoRefs?: Record<string, (PhotoRef | { isNA: true })[]>;
+        }>(postKey);
+        if (!postDraft) return;
+        // Override with draft data
+        if (postDraft.rows) setRows(prev => ({ ...prev, ...postDraft.rows }));
+        if (postDraft.cp) setCp(postDraft.cp);
+        if (postDraft.m16) m16.setState(postDraft.m16);
+        if (postDraft.summary) setSummary(postDraft.summary);
+        if (postDraft.summaryCheck) setSummaryCheck(postDraft.summaryCheck);
+        if (postDraft.dustFilterChanged) setDustFilterChanged(postDraft.dustFilterChanged);
+        // Load photos from draft
+        (async () => {
+            if (!postDraft.photoRefs) return;
+            const next: Record<string, PhotoItem[]> = {};
+            for (const [photoKey, refs] of Object.entries(postDraft.photoRefs)) {
+                const items: PhotoItem[] = [];
+                for (const ref of refs || []) {
+                    if ('isNA' in ref && ref.isNA) { items.push({ id: `${photoKey}-NA-restored`, isNA: true, preview: undefined }); continue; }
+                    if (!('id' in ref) || !ref.id) continue;
+                    const file = await getPhoto(postKey, ref.id);
+                    if (!file) continue;
+                    items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
+                }
+                if (items.length > 0) next[photoKey] = items;
+            }
+            if (Object.keys(next).length > 0) setPhotos(prev => ({ ...prev, ...next }));
+        })();
+    }, [isPostMode, sn, editId, postKey]);
+
     useEffect(() => {
         const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
         if (!token) return;
@@ -902,8 +1095,9 @@ export default function ChargerPMForm() {
             .catch((err) => console.error("load charger info failed:", err));
     }, [isPostMode]);
 
+    // Load draft for Pre mode only
     useEffect(() => {
-        if (!sn) return;
+        if (!sn || isPostMode) return;
         const draft = loadDraftLocal<{
             rows: typeof rows; cp: typeof cp; m16: typeof m16.state; summary: string; inspector?: string;
             dustFilterChanged?: boolean | Record<string, boolean>; photoRefs?: Record<string, (PhotoRef | { isNA: true })[]>;
@@ -939,7 +1133,7 @@ export default function ChargerPMForm() {
             }
             setPhotos(next);
         })();
-    }, [sn, key]);
+    }, [sn, key, isPostMode]);
 
     useEffect(() => {
         const onInfo = (e: Event) => {
@@ -1067,7 +1261,7 @@ export default function ChargerPMForm() {
             const val = rows[key];
             if (!val?.remark?.trim()) {
                 const match = key.match(/^r(\d+)(?:_(\d+))?$/);
-                if (match) { const qNo = parseInt(match[1], 10); const subNo = match[2]; missing.push(subNo ? `${qNo}.${subNo}` : `${qNo}`); }
+                if (match) { const qNo = parseInt(match[1], 10); const subNo = match[2]; missing.push(subNo ? `${qNo}.${subNo}` : qNo.toString()); }
             }
         });
         return missing.sort((a, b) => { const [aMain, aSub] = a.split('.').map(Number); const [bMain, bSub] = b.split('.').map(Number); if (aMain !== bMain) return aMain - bMain; return (aSub || 0) - (bSub || 0); });
@@ -1155,13 +1349,13 @@ export default function ChargerPMForm() {
             return (
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} subtitle={subtitle} tooltip={qTooltip}>
                     <div className="tw-space-y-4">
-                        {q.hasPhoto && q.kind === "simple" && <PhotoRemarkSection qKey={q.key} qNo={q.no} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                        {q.no === 16 && <PhotoRemarkSection qKey={q.key} qNo={q.no} middleContent={renderMeasureGrid(q.no)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                        {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} addItem={addQ5Item} removeItem={removeQ5Item} addButtonLabel={t("addEmergencyStop", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                        {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} addItem={addQ7Item} removeItem={removeQ7Item} addButtonLabel={t("addWarningSign", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                        {[3, 4, 6, 17].includes(q.no) && fixedItems && <DynamicItemsSection qNo={q.no} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
+                        {q.hasPhoto && q.kind === "simple" && <PhotoRemarkSection qKey={q.key} qNo={q.no} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 16 && <PhotoRemarkSection qKey={q.key} qNo={q.no} middleContent={renderMeasureGrid(q.no)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} addItem={addQ5Item} removeItem={removeQ5Item} addButtonLabel={t("addEmergencyStop", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} addItem={addQ7Item} removeItem={removeQ7Item} addButtonLabel={t("addWarningSign", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {[3, 4, 6, 17].includes(q.no) && fixedItems && <DynamicItemsSection qNo={q.no} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                         {q.no === 10 && fixedItems && (
-                            <DynamicItemsSection qNo={10} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang}
+                            <DynamicItemsSection qNo={10} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang}
                                 renderAdditionalFields={(item, idx, isNA) => (
                                     <div className="tw-max-w-xs">
                                         <InputWithUnit<UnitVoltage> label="CP" value={cp[item.key]?.value ?? ""} unit={cp[item.key]?.unit ?? "V"} units={["V"] as const}
@@ -1170,22 +1364,36 @@ export default function ChargerPMForm() {
                                     </div>
                                 )} />
                         )}
-                        {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
+                        {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                     </div>
                 </SectionCard>
             );
         }
-        // POST MODE - similar structure with additional post-mode specific fields
+
+        // ========== POST MODE ==========
+        // Show skipped card if Pre-PM was N/A for simple/measure questions
+        if ((q.kind === "simple" || q.kind === "measure") && rowsPre[q.key]?.pf === "NA") {
+            return (
+                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} subtitle={subtitle} tooltip={qTooltip}>
+                    <SkippedNAItem
+                        label={q.label[lang]}
+                        remark={rowsPre[q.key]?.remark}
+                        lang={lang}
+                    />
+                </SectionCard>
+            );
+        }
+
         return (
             <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} subtitle={subtitle} tooltip={qTooltip}>
                 <div className="tw-space-y-4">
-                    {q.hasPhoto && q.kind === "simple" && <PhotoRemarkSection qKey={q.key} qNo={q.no} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                    {q.no === 16 && <PhotoRemarkSection qKey={q.key} qNo={q.no} middleContent={renderMeasureGridWithPre(q.no)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                    {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                    {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                    {[3, 4, 6, 17].includes(q.no) && fixedItems && <DynamicItemsSection qNo={q.no} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                    {q.no === 10 && fixedItems && <DynamicItemsSection qNo={10} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />}
-                    {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} showDustFilterCheckbox dustFilterChanged={dustFilterChanged} setDustFilterChanged={setDustFilterChanged} />}
+                    {q.hasPhoto && q.kind === "simple" && <PhotoRemarkSection qKey={q.key} qNo={q.no} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 16 && <PhotoRemarkSection qKey={q.key} qNo={q.no} middleContent={renderMeasureGridWithPre(q.no)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {[3, 4, 6, 17].includes(q.no) && fixedItems && <DynamicItemsSection qNo={q.no} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 10 && fixedItems && <DynamicItemsSection qNo={10} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} showDustFilterCheckbox dustFilterChanged={dustFilterChanged} setDustFilterChanged={setDustFilterChanged} />}
                 </div>
             </SectionCard>
         );
@@ -1200,10 +1408,19 @@ export default function ChargerPMForm() {
         return out;
     }, [photos]);
 
+    // Save draft for Pre mode
     useDebouncedEffect(() => {
-        if (!sn) return;
+        if (!sn || isPostMode) return;
         saveDraftLocal(key, { rows, cp, m16: m16.state, summary, dustFilterChanged, photoRefs });
-    }, [key, sn, rows, cp, m16.state, summary, dustFilterChanged, photoRefs]);
+    }, [key, sn, rows, cp, m16.state, summary, dustFilterChanged, photoRefs, isPostMode]);
+
+    // Save draft for Post mode
+    useDebouncedEffect(() => {
+        if (!sn || !isPostMode || !editId) return;
+        saveDraftLocal(postKey, { 
+            rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs 
+        });
+    }, [postKey, sn, rows, cp, m16.state, summary, summaryCheck, dustFilterChanged, photoRefs, isPostMode, editId]);
 
     async function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
         if (!file.type.startsWith("image/") || file.size < 500 * 1024) return file;
@@ -1278,8 +1495,8 @@ export default function ChargerPMForm() {
             if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
             await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ sn: sn }) });
             const allPhotos = Object.values(photos).flat();
-            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
-            clearDraftLocal(key);
+            await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
+            clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };

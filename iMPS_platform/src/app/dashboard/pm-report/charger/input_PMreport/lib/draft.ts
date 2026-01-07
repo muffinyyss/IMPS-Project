@@ -1,14 +1,18 @@
 // app/pm-report/charger/input_PMreport/lib/draft.ts
 import type { PhotoRef } from "./draftPhotos";
+
+type PF = "PASS" | "FAIL" | "NA" | "";
+
 type DraftData = {
   // job: any;
   rows: any;
   cp: any;
   m16: any;
   summary: string;
+  summaryCheck?: PF;  // เพิ่มสำหรับ Post mode
   // inspector?: string;
   dustFilterChanged?: Record<string, boolean>;
-  photoRefs?: Record<number, (PhotoRef | { isNA: true })[]>;
+  photoRefs?: Record<number | string, (PhotoRef | { isNA: true })[]>;
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
 };
@@ -26,15 +30,6 @@ export function draftKey(stationId: string | null | undefined) {
   // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
   return `pmDraft:${stationId ?? "unknown"}`;
 }
-
-// app -report/charger/input_PMreport/lib/draft.ts
-// export function draftKey(
-//   stationId: string | null | undefined,
-//   draftId: string = "default"
-// ) {
-//   return `pmDraft:v2:${stationId ?? "unknown"}:${draftId}`;
-// }
-
 
 export function saveDraftLocal(key: string, data: DraftData) {
   const ls = safeStorage();
