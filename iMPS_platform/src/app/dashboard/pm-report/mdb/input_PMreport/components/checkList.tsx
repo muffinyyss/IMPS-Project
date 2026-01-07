@@ -68,6 +68,7 @@ const T = {
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
     prePM: { th: "ก่อน PM", en: "Pre-PM" },
     postPM: { th: "หลัง PM", en: "Post-PM" },
+    preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
     breakerMainCount: { th: "จำนวน Breaker Main:", en: "Breaker Main count:" },
     unit: { th: "ตัว", en: "units" },
     addBreakerMain: { th: "เพิ่ม Breaker Main", en: "Add Breaker Main" },
@@ -99,6 +100,8 @@ const T = {
     photoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre ให้ครบก่อนบันทึก", en: "Please attach all Pre-PM photos" },
     inputNotComplete: { th: "กรุณากรอกค่าข้อ 4-8 ให้ครบก่อนบันทึก", en: "Please fill items 4-8" },
     allNotComplete: { th: "กรุณากรอกข้อมูล / แนบรูป และสรุปผลให้ครบก่อนบันทึก", en: "Please complete all data" },
+    skippedNA: { th: "ข้ามเนื่องจาก Pre-PM เป็น N/A", en: "Skipped (Pre-PM was N/A)" },
+    remarkLabel: { th: "หมายเหตุ", en: "Remark" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -116,7 +119,7 @@ const QUESTIONS_DATA = [
     { no: 9, key: "r9", label: { th: "9) ทดสอบปุ่ม Trip Test Breaker CCB", en: "9) Test Breaker CCB Trip button" }, kind: "trip_ccb", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker CCB", en: "Press Test button to test Breaker CCB trip mechanism" } },
     { no: 10, key: "r10", label: { th: "10) ทดสอบปุ่ม Trip Test Breaker Charger", en: "10) Test Breaker Charger Trip button" }, kind: "trip_charger", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Charger", en: "Press Test button to test Breaker Charger trip mechanism" } },
     { no: 11, key: "r11", label: { th: "11) ทดสอบปุ่ม Trip Test Breaker Main", en: "11) Test Breaker Main Trip button" }, kind: "trip_main", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker Main", en: "Press Test button to test Breaker Main trip mechanism" } },
-    { no: 12, key: "r12", label: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness and inspect for burns with thermal camera" } },
+    { no: 12, key: "r12", label: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at cable connection points and inspect for burn marks using thermal imaging camera" } },
     { no: 13, key: "r13", label: { th: "13) ทำความสะอาดตู้ MDB", en: "13) Clean MDB cabinet" }, kind: "simple", hasPhoto: true, tooltip: { th: "ทำความสะอาดโดยการขจัดฝุ่นและสิ่งสกปรกภายในตู้ด้วยเครื่องดูดฝุ่นหรือเป่าลมแห้ง และตรวจสอบความสะอาดบริเวณหน้าสัมผัสไฟฟ้า", en: "Clean by removing dust inside cabinet with vacuum or dry air" } },
 ] as const;
 
@@ -226,12 +229,12 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
 }
 
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, belowRemark, inlineLeft, lang,
+    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, lang,
 }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void;
     remark?: string; onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
-    aboveRemark?: React.ReactNode; belowRemark?: React.ReactNode; inlineLeft?: React.ReactNode; lang: Lang;
+    aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; belowRemark?: React.ReactNode; inlineLeft?: React.ReactNode; lang: Lang;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
     const buttonGroup = (
@@ -254,6 +257,7 @@ function PassFailRow({
                 <div className="tw-w-full tw-min-w-0 tw-space-y-2">
                     {aboveRemark}
                     {buttonsRow}
+                    {beforeRemark}
                     <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
                         containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
                     {belowRemark}
@@ -472,6 +476,38 @@ function DynamicItemsSection({
     );
 }
 
+// Component for displaying skipped N/A items in Post mode
+function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
+    return (
+        <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-amber-50 tw-border-amber-200">
+            <div className="tw-flex tw-items-center tw-justify-between">
+                <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{label}</Typography>
+                {remark && (
+                    <Typography variant="small" className="tw-text-blue-gray-600">
+                        {t("remarkLabel", lang)} - {remark}
+                    </Typography>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// Pre-PM remark display element for Post mode
+function PreRemarkElement({ remark, lang }: { remark?: string; lang: Lang }) {
+    if (!remark) return null;
+    return (
+        <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
+            <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
+                <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
+            </div>
+            <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{remark}</Typography>
+        </div>
+    );
+}
+
 const PM_PREFIX = "mdbpmreport";
 
 async function fetchPreviewIssueId(stationId: string, pmDate: string): Promise<string | null> {
@@ -520,11 +556,17 @@ export default function MDBPMForm() {
     const action = searchParams.get("action");
     const isPostMode = action === "post";
 
+    const [postApiLoaded, setPostApiLoaded] = useState(false);
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
-    const [draftId, setDraftId] = useState<string | null>(null);
-    const key = useMemo(() => draftKey(stationId), [stationId]);
+    // const [draftId, setDraftId] = useState<string | null>(null);
+    // const key = useMemo(() => draftKey(stationId), [stationId]);
+
+    const key = useMemo(() => draftKey(stationId), [stationId]);  // Pre mode
+    const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);  // Post mode
+    const currentDraftKey = isPostMode ? postKey : key;
+
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
     const [inspector, setInspector] = useState<string>("");
     const [dustFilterChanged, setDustFilterChanged] = useState<boolean>(false);
@@ -676,7 +718,11 @@ export default function MDBPMForm() {
                 } else if (data.rows_pre) {
                     setRows((prev) => { const next = { ...prev }; Object.entries(data.rows_pre).forEach(([k, v]) => { const preRow = v as { pf: PF; remark: string }; next[k] = { pf: preRow.pf, remark: "" }; }); return next; });
                 }
-            } catch (err) { console.error("load report failed:", err); }
+                setPostApiLoaded(true);
+            } catch (err) {
+                console.error("load report failed:", err);
+                setPostApiLoaded(true);
+            }
         })();
     }, [isPostMode, editId, stationId, lang]);
 
@@ -731,20 +777,30 @@ export default function MDBPMForm() {
         getChargerCountByStation(sid).then((count) => { setChargerCount(count); }).catch((err) => console.error("load charger count failed:", err));
     }, [isPostMode]);
 
+    // useEffect(() => {
+    //     const params = new URLSearchParams(window.location.search);
+    //     let d = params.get("draft_id");
+    //     if (!d) {
+    //         d = (typeof crypto !== "undefined" && "randomUUID" in crypto) ? crypto.randomUUID() : String(Date.now());
+    //         params.set("draft_id", d);
+    //         const url = `${window.location.pathname}?${params.toString()}`;
+    //         window.history.replaceState({}, "", url);
+    //     }
+    //     setDraftId(d);
+    // }, []);
+
     useEffect(() => {
+        if (typeof window === "undefined") return;
         const params = new URLSearchParams(window.location.search);
-        let d = params.get("draft_id");
-        if (!d) {
-            d = (typeof crypto !== "undefined" && "randomUUID" in crypto) ? crypto.randomUUID() : String(Date.now());
-            params.set("draft_id", d);
+        if (params.has("draft_id")) {
+            params.delete("draft_id");
             const url = `${window.location.pathname}?${params.toString()}`;
             window.history.replaceState({}, "", url);
         }
-        setDraftId(d);
     }, []);
 
     useEffect(() => {
-        if (!stationId || !draftId) return;
+        if (!stationId || isPostMode) return;
         const draft = loadDraftLocal<{
             rows: typeof rows; m4: Record<string, MeasureState<UnitVoltage>>; m5: Record<string, MeasureState<UnitVoltage>>;
             m6: Record<string, MeasureState<UnitVoltage>>; m7: Record<string, MeasureState<UnitVoltage>>;
@@ -778,7 +834,7 @@ export default function MDBPMForm() {
             }
             setPhotos(next);
         })();
-    }, [stationId, key, lang]);
+    }, [stationId, key, lang, isPostMode]);
 
     useEffect(() => {
         const onInfo = (e: Event) => {
@@ -962,15 +1018,39 @@ export default function MDBPMForm() {
             .sort((a, b) => Number(a.split(".")[0]) - Number(b.split(".")[0]));
     }, [rows, PF_KEYS_POST]);
 
-    // Input validation
+    // Input validation - FIXED: check rowsPre for N/A
     const missingInputs = useMemo(() => {
         const r: Record<string, string[]> = {};
-        q4Items.forEach((item) => { if (rows[item.key]?.pf === "NA") return; const state = m4State[item.key]; if (!state) { r[item.label] = [...VOLTAGE_FIELDS]; } else { const missing = VOLTAGE_FIELDS.filter((k) => !String(state[k]?.value ?? "").trim()); if (missing.length > 0) r[item.label] = missing; } });
-        q5Items.forEach((item) => { if (rows[item.key]?.pf === "NA") return; const state = m5State[item.key]; if (!state) { r[item.label] = [...VOLTAGE_FIELDS]; } else { const missing = VOLTAGE_FIELDS.filter((k) => !String(state[k]?.value ?? "").trim()); if (missing.length > 0) r[item.label] = missing; } });
-        q6Items.forEach((item) => { if (rows[item.key]?.pf === "NA") return; const state = m6State[item.key]; if (!state) { r[item.label] = [...VOLTAGE_FIELDS_CCB]; } else { const missing = VOLTAGE_FIELDS_CCB.filter((k) => !String(state[k]?.value ?? "").trim()); if (missing.length > 0) r[item.label] = missing; } });
-        q7Items.forEach((item) => { if (rows[item.key]?.pf === "NA") return; const state = m7State[item.key]; if (!state) { r[item.label] = [...VOLTAGE_FIELDS_CCB]; } else { const missing = VOLTAGE_FIELDS_CCB.filter((k) => !String(state[k]?.value ?? "").trim()); if (missing.length > 0) r[item.label] = missing; } });
+        q4Items.forEach((item) => {
+            if (rowsPre[item.key]?.pf === "NA") return; // Skip if Pre is N/A
+            if (rows[item.key]?.pf === "NA") return;
+            const state = m4State[item.key];
+            if (!state) { r[item.label] = [...VOLTAGE_FIELDS]; }
+            else { const missing = VOLTAGE_FIELDS.filter((k) => !String(state[k]?.value ?? "").trim()); if (missing.length > 0) r[item.label] = missing; }
+        });
+        q5Items.forEach((item) => {
+            if (rowsPre[item.key]?.pf === "NA") return; // Skip if Pre is N/A
+            if (rows[item.key]?.pf === "NA") return;
+            const state = m5State[item.key];
+            if (!state) { r[item.label] = [...VOLTAGE_FIELDS]; }
+            else { const missing = VOLTAGE_FIELDS.filter((k) => !String(state[k]?.value ?? "").trim()); if (missing.length > 0) r[item.label] = missing; }
+        });
+        q6Items.forEach((item) => {
+            if (rowsPre[item.key]?.pf === "NA") return; // Skip if Pre is N/A
+            if (rows[item.key]?.pf === "NA") return;
+            const state = m6State[item.key];
+            if (!state) { r[item.label] = [...VOLTAGE_FIELDS_CCB]; }
+            else { const missing = VOLTAGE_FIELDS_CCB.filter((k) => !String(state[k]?.value ?? "").trim()); if (missing.length > 0) r[item.label] = missing; }
+        });
+        q7Items.forEach((item) => {
+            if (rowsPre[item.key]?.pf === "NA") return; // Skip if Pre is N/A
+            if (rows[item.key]?.pf === "NA") return;
+            const state = m7State[item.key];
+            if (!state) { r[item.label] = [...VOLTAGE_FIELDS_CCB]; }
+            else { const missing = VOLTAGE_FIELDS_CCB.filter((k) => !String(state[k]?.value ?? "").trim()); if (missing.length > 0) r[item.label] = missing; }
+        });
         return r;
-    }, [m4State, m5State, m6State, m7State, q4Items, q5Items, q6Items, q7Items, rows]);
+    }, [m4State, m5State, m6State, m7State, q4Items, q5Items, q6Items, q7Items, rows, rowsPre]);
 
     const allRequiredInputsFilled = useMemo(() => Object.values(missingInputs).every((arr) => arr.length === 0), [missingInputs]);
 
@@ -1084,7 +1164,7 @@ export default function MDBPMForm() {
         );
     };
 
-    // Render question block - simplified version
+    // Render question block
     const renderQuestionBlock = (q: Question, mode: TabId) => {
         const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
         const subtitle = FIELD_GROUPS[q.no]?.note;
@@ -1120,7 +1200,7 @@ export default function MDBPMForm() {
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={key} qNo={q.no} lang={lang} /></div>
+                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
                                         <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(4, item.key)}</div>
                                         <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                     </div>
@@ -1148,7 +1228,7 @@ export default function MDBPMForm() {
                                             <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{item.label}</Typography>
                                             <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={key} qNo={q.no} lang={lang} /></div>
+                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
                                         <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(5, item.key)}</div>
                                         <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                     </div>
@@ -1186,7 +1266,7 @@ export default function MDBPMForm() {
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={key} qNo={q.no} lang={lang} /></div>
+                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
                                         <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(6, item.key)}</div>
                                         <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                     </div>
@@ -1213,7 +1293,7 @@ export default function MDBPMForm() {
                                             <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{item.label}</Typography>
                                             <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={key} qNo={q.no} lang={lang} /></div>
+                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
                                         <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(7, item.key)}</div>
                                         <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                     </div>
@@ -1248,7 +1328,7 @@ export default function MDBPMForm() {
                                             <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{item.label}</Typography>
                                             <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={key} qNo={q.no} lang={lang} /></div>
+                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
                                         <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                     </div>
                                 );
@@ -1263,13 +1343,13 @@ export default function MDBPMForm() {
                 <SectionCard key={q.key} title={qLabel} subtitle={subtitle} tooltip={qTooltip}>
                     <div className="tw-space-y-4">
                         {q.kind === "simple" && q.hasPhoto && (
-                            <PhotoRemarkSection qKey={q.key} qNo={q.no} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />
+                            <PhotoRemarkSection qKey={q.key} qNo={q.no} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />
                         )}
                         {hasMeasure && q.hasPhoto && (
-                            <PhotoRemarkSection qKey={q.key} qNo={q.no} middleContent={renderMeasureGrid(q.no)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />
+                            <PhotoRemarkSection qKey={q.key} qNo={q.no} middleContent={renderMeasureGrid(q.no)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />
                         )}
                         {q.kind === "group" && q.hasPhoto && q.items && (
-                            <DynamicItemsSection qNo={q.no} items={q.items.map(it => ({ key: it.key, label: it.label[lang] }))} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={key} lang={lang} />
+                            <DynamicItemsSection qNo={q.no} items={q.items.map(it => ({ key: it.key, label: it.label[lang] }))} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />
                         )}
                     </div>
                 </SectionCard>
@@ -1277,6 +1357,19 @@ export default function MDBPMForm() {
         }
 
         // ========== POST MODE ==========
+        // Show skipped card if Pre-PM was N/A for simple questions
+        if ((q.kind === "simple" || q.kind === "measure") && rowsPre[q.key]?.pf === "NA") {
+            return (
+                <SectionCard key={q.key} title={q.label[lang]} subtitle={subtitle} tooltip={qTooltip}>
+                    <SkippedNAItem
+                        label={getQuestionLabel(q, "post", lang)}
+                        remark={rowsPre[q.key]?.remark}
+                        lang={lang}
+                    />
+                </SectionCard>
+            );
+        }
+
         const checkboxElement = q.no === 13 ? (
             <label className="tw-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-blue-gray-700 tw-py-2">
                 <input type="checkbox" className="tw-h-4 tw-w-4 tw-rounded tw-border-blue-gray-300 tw-text-blue-600 focus:tw-ring-blue-500" checked={dustFilterChanged} onChange={(e) => setDustFilterChanged(e.target.checked)} />
@@ -1284,7 +1377,7 @@ export default function MDBPMForm() {
             </label>
         ) : null;
 
-        // Dynamic measure POST
+        // Dynamic measure POST - filter out N/A items from Pre
         const postMeasureConfigs: Record<string, { items: typeof q4Items; qNo: number }> = {
             dynamic_measure: { items: q4Items, qNo: 4 },
             charger_measure: { items: q5Items, qNo: 5 },
@@ -1294,17 +1387,35 @@ export default function MDBPMForm() {
 
         if (postMeasureConfigs[q.kind]) {
             const cfg = postMeasureConfigs[q.kind];
+            const activeItems = cfg.items.filter(item => rowsPre[item.key]?.pf !== "NA");
+            const skippedItems = cfg.items.filter(item => rowsPre[item.key]?.pf === "NA");
+
             return (
                 <SectionCard key={q.key} title={q.label[lang]} subtitle={subtitle} tooltip={qTooltip}>
                     <div className="tw-space-y-4">
-                        {cfg.items.map((item) => (
+                        {/* Show skipped N/A items first */}
+                        {skippedItems.map((item) => (
+                            <SkippedNAItem
+                                key={item.key}
+                                label={item.label}
+                                remark={rowsPre[item.key]?.remark}
+                                lang={lang}
+                            />
+                        ))}
+                        {/* Then show active items */}
+                        {activeItems.map((item) => (
                             <div key={item.key} className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100">
                                 <PassFailRow label={item.label} value={rows[item.key]?.pf ?? ""} lang={lang}
                                     onChange={(v) => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { remark: "" }), pf: v } })}
                                     remark={rows[item.key]?.remark ?? ""}
                                     onRemarkChange={(v) => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
-                                    aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-blue-gray-50"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={key} qNo={q.no} lang={lang} /></div>}
-                                    belowRemark={<div className="tw-mt-4">{renderDynamicMeasureGridWithPre(cfg.qNo, item.key)}</div>}
+                                    aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-blue-gray-50"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
+                                    beforeRemark={
+                                        <>
+                                            <div className="tw-mb-3">{renderDynamicMeasureGridWithPre(cfg.qNo, item.key)}</div>
+                                            <PreRemarkElement remark={rowsPre[item.key]?.remark} lang={lang} />
+                                        </>
+                                    }
                                 />
                             </div>
                         ))}
@@ -1313,23 +1424,38 @@ export default function MDBPMForm() {
             );
         }
 
-        // Trip tests POST
+        // Trip tests POST - filter out N/A items from Pre
         const postTripConfigs: Record<string, typeof q8Items> = {
             trip_rcd: q8Items, trip_ccb: q9Items, trip_charger: q10Items, trip_main: q11Items,
+
         };
 
         if (postTripConfigs[q.kind]) {
             const items = postTripConfigs[q.kind];
+            const activeItems = items.filter(item => rowsPre[item.key]?.pf !== "NA");
+            const skippedItems = items.filter(item => rowsPre[item.key]?.pf === "NA");
+
             return (
                 <SectionCard key={q.key} title={q.label[lang]} subtitle={subtitle} tooltip={qTooltip}>
                     <div className="tw-space-y-4">
-                        {items.map((item) => (
+                        {/* Show skipped N/A items first */}
+                        {skippedItems.map((item) => (
+                            <SkippedNAItem
+                                key={item.key}
+                                label={item.label}
+                                remark={rowsPre[item.key]?.remark}
+                                lang={lang}
+                            />
+                        ))}
+                        {/* Then show active items */}
+                        {activeItems.map((item) => (
                             <div key={item.key} className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100">
                                 <PassFailRow label={item.label} value={rows[item.key]?.pf ?? ""} lang={lang}
                                     onChange={(v) => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { remark: "" }), pf: v } })}
                                     remark={rows[item.key]?.remark ?? ""}
                                     onRemarkChange={(v) => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
-                                    aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-blue-gray-50"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={key} qNo={q.no} lang={lang} /></div>}
+                                    aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-blue-gray-50"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
+                                    beforeRemark={<PreRemarkElement remark={rowsPre[item.key]?.remark} lang={lang} />}
                                 />
                             </div>
                         ))}
@@ -1342,43 +1468,63 @@ export default function MDBPMForm() {
         return (
             <SectionCard key={q.key} title={q.label[lang]} subtitle={subtitle} tooltip={qTooltip}>
                 {q.kind === "simple" && (
-                    <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang}
-                        onChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })}
-                        remark={rows[q.key]?.remark ?? ""}
-                        onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })}
-                        aboveRemark={
-                            <>
-                                {q.hasPhoto && <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={key} qNo={q.no} lang={lang} /></div>}
-                                {checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}
-                            </>
-                        }
-                        inlineLeft={checkboxElement && <div className="tw-hidden sm:tw-flex">{checkboxElement}</div>}
-                    />
-                )}
-                {q.kind === "group" && q.items && (
-                    <div className="tw-space-y-4 md:tw-space-y-6">
-                        {q.items.map((it) => (
-                            <div key={it.key} className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100">
-                                <PassFailRow label={it.label[lang]} value={rows[it.key]?.pf ?? ""} lang={lang}
-                                    onChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
-                                    remark={rows[it.key]?.remark ?? ""}
-                                    onRemarkChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
-                                    aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={3} draftKey={key} qNo={q.no} lang={lang} /></div>}
-                                />
-                            </div>
-                        ))}
+                    <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100">
+                        <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang}
+                            onChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })}
+                            remark={rows[q.key]?.remark ?? ""}
+                            onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })}
+                            aboveRemark={
+                                <>
+                                    {q.hasPhoto && <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
+                                    {checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}
+                                </>
+                            }
+                            inlineLeft={checkboxElement && <div className="tw-hidden sm:tw-flex">{checkboxElement}</div>}
+                            beforeRemark={<PreRemarkElement remark={rowsPre[q.key]?.remark} lang={lang} />}
+                        />
                     </div>
-                )}
-                {q.kind === "measure" && hasMeasure && (
-                    <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang}
-                        onChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })}
-                        remark={rows[q.key]?.remark ?? ""}
-                        onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })}
-                        aboveRemark={<div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={key} qNo={q.no} lang={lang} /></div>}
-                        belowRemark={<div className="tw-mt-4">{renderMeasureGridWithPre(q.no)}</div>}
-                    />
-                )}
-            </SectionCard>
+                )
+                }
+                {
+                    q.kind === "group" && q.items && (
+                        <div className="tw-space-y-4 md:tw-space-y-6">
+                            {/* Show skipped N/A items first */}
+                            {q.items.filter(it => rowsPre[it.key]?.pf === "NA").map((it) => (
+                                <SkippedNAItem
+                                    key={it.key}
+                                    label={it.label[lang]}
+                                    remark={rowsPre[it.key]?.remark}
+                                    lang={lang}
+                                />
+                            ))}
+                            {/* Then show active items */}
+                            {q.items.filter(it => rowsPre[it.key]?.pf !== "NA").map((it) => (
+                                <div key={it.key} className="tw-pb-4 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100">
+                                    <PassFailRow label={it.label[lang]} value={rows[it.key]?.pf ?? ""} lang={lang}
+                                        onChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
+                                        remark={rows[it.key]?.remark ?? ""}
+                                        onRemarkChange={(v) => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
+                                        aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={3} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
+                                        beforeRemark={<PreRemarkElement remark={rowsPre[q.key]?.remark} lang={lang} />}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )
+                }
+                {
+                    q.kind === "measure" && hasMeasure && (
+                        <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang}
+                            onChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { remark: "" }), pf: v } })}
+                            remark={rows[q.key]?.remark ?? ""}
+                            onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...(rows[q.key] ?? { pf: "" }), remark: v } })}
+                            aboveRemark={<div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
+                            belowRemark={<div className="tw-mt-4">{renderMeasureGridWithPre(q.no)}</div>}
+                            beforeRemark={<PreRemarkElement remark={rowsPre[q.key]?.remark} lang={lang} />}
+                        />
+                    )
+                }
+            </SectionCard >
         );
     };
 
@@ -1392,12 +1538,74 @@ export default function MDBPMForm() {
         return out;
     }, [photos]);
 
-    // Debounced save
-    useDebouncedEffect(() => {
-        if (!stationId || !draftId) return;
-        saveDraftLocal(key, { rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State, summary, summary_pf: summaryCheck, dustFilterChanged, photoRefs, q4_items: q4Items, q6_items: q6Items, charger_count: chargerCount });
-    }, [key, stationId, rows, m4State, m5State, m6State, m7State, summary, summaryCheck, dustFilterChanged, photoRefs, q4Items, q6Items, chargerCount]);
+    // // Debounced save
+    // useDebouncedEffect(() => {
+    //     if (!stationId || !draftId) return;
+    //     saveDraftLocal(key, { rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State, summary, summary_pf: summaryCheck, dustFilterChanged, photoRefs, q4_items: q4Items, q6_items: q6Items, charger_count: chargerCount });
+    // }, [key, stationId, rows, m4State, m5State, m6State, m7State, summary, summaryCheck, dustFilterChanged, photoRefs, q4Items, q6Items, chargerCount]);
 
+    // Save draft for Pre mode only
+    useDebouncedEffect(() => {
+        if (!stationId || isPostMode) return;
+        saveDraftLocal(key, {
+            rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
+            summary, dustFilterChanged, photoRefs,
+            q4_items: q4Items, q6_items: q6Items, charger_count: chargerCount
+        });
+    }, [key, stationId, rows, m4State, m5State, m6State, m7State, summary, dustFilterChanged, photoRefs, q4Items, q6Items, chargerCount, isPostMode]);
+
+    // Save draft for Post mode only
+    useDebouncedEffect(() => {
+        if (!stationId || !isPostMode || !editId) return;
+        saveDraftLocal(postKey, {
+            rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
+            summary, summaryCheck, dustFilterChanged, photoRefs
+        });
+    }, [postKey, stationId, rows, m4State, m5State, m6State, m7State, summary, summaryCheck, dustFilterChanged, photoRefs, isPostMode, editId]);
+
+    // Load draft for Post mode (AFTER API data loaded)
+    useEffect(() => {
+        if (!isPostMode || !postApiLoaded || !stationId || !editId) return;
+        const draft = loadDraftLocal<{
+            rows: typeof rows;
+            m4: Record<string, MeasureState<UnitVoltage>>;
+            m5: Record<string, MeasureState<UnitVoltage>>;
+            m6: Record<string, MeasureState<UnitVoltage>>;
+            m7: Record<string, MeasureState<UnitVoltage>>;
+            summary: string;
+            summaryCheck?: PF;
+            dustFilterChanged?: boolean;
+            photoRefs?: Record<string | number, PhotoRef[]>;
+        }>(postKey);
+        if (!draft) return;
+
+        // Override with draft data
+        if (draft.rows) setRows(prev => ({ ...prev, ...draft.rows }));
+        if (draft.m4) setM4State(prev => ({ ...prev, ...draft.m4 }));
+        if (draft.m5) setM5State(prev => ({ ...prev, ...draft.m5 }));
+        if (draft.m6) setM6State(prev => ({ ...prev, ...draft.m6 }));
+        if (draft.m7) setM7State(prev => ({ ...prev, ...draft.m7 }));
+        if (draft.summary) setSummary(draft.summary);
+        if (draft.summaryCheck) setSummaryCheck(draft.summaryCheck);
+        if (typeof draft.dustFilterChanged === "boolean") setDustFilterChanged(draft.dustFilterChanged);
+
+        // Load photos from draft
+        (async () => {
+            if (!draft.photoRefs) return;
+            const next: Record<string | number, PhotoItem[]> = {};
+            for (const [keyStr, refs] of Object.entries(draft.photoRefs)) {
+                const photoKey = isNaN(Number(keyStr)) ? keyStr : Number(keyStr);
+                const items: PhotoItem[] = [];
+                for (const ref of refs || []) {
+                    const file = await getPhoto(postKey, ref.id);
+                    if (!file) continue;
+                    items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: ref.remark ?? "", ref });
+                }
+                next[photoKey] = items;
+            }
+            setPhotos(prev => ({ ...prev, ...next }));
+        })();
+    }, [isPostMode, postApiLoaded, stationId, editId, postKey]);
     // Upload photos
     async function uploadGroupPhotos(reportId: string, stationId: string, group: string, files: File[], side: TabId) {
         if (files.length === 0) return;
@@ -1561,8 +1769,8 @@ export default function MDBPMForm() {
 
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
-                    <div className="tw-flex tw-items-start tw-justify-between tw-gap-4">
-                        <div className="tw-flex tw-items-start tw-gap-4 tw-flex-1">
+                    <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
+                        <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
                             <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-h-16 tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]">
                                 <Image src={LOGO_SRC} alt="Company logo" fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 152px, (min-width:768px) 108px, 76px" />
                             </div>
