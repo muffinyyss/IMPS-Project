@@ -475,7 +475,6 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
     return out[:PHOTO_MAX_PER_ROW]
 
 
-
 # -------------------- Measurement / Data formatting --------------------
 def _format_m16(measures: dict) -> str:
     if not measures:
@@ -697,21 +696,31 @@ def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
 
 
 # -------------------- Drawing – header / table header --------------------
-def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", doc_name: str = "-") -> float:
+def _draw_header(
+    pdf: FPDF, 
+    base_font: str, 
+    issue_id: str = "-", 
+    doc_name: str = "-",
+    label_page: str = "Page",
+    label_issue_id: str = "Issue ID",
+    label_doc_name: str = "Doc Name",
+    addr_line1: str = "Electricity Generating Authority of Thailand (EGAT)",  # เพิ่ม
+    addr_line2: str = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",  # เพิ่ม
+    addr_line3: str = "Call Center Tel. 02-114-3350",  # เพิ่ม
+) -> float:
     left = pdf.l_margin
     right = pdf.r_margin
     page_w = pdf.w - left - right
     x0 = left
     y_top = 10
 
-    col_left, col_mid = 35, 120  # ลด col_left เล็กน้อย
+    col_left, col_mid = 35, 120
     col_right = page_w - col_left - col_mid
 
-    # --- ปรับความสูง ---
     h_all = 22     
-    h_right_top = 5   # (Page)
-    h_right_mid = 9   # (Issue ID)
-    h_right_bot = h_all - h_right_top - h_right_mid  # Doc Name
+    h_right_top = 5
+    h_right_mid = 9
+    h_right_bot = h_all - h_right_top - h_right_mid
 
     pdf.set_line_width(LINE_W_INNER)
 
@@ -719,9 +728,9 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", doc_name: str =
     pdf.rect(x0, y_top, col_left, h_all)
     logo_path = _resolve_logo_path()
     if logo_path:
-        IMG_W = 24  # ลดจาก 28 เป็น 24
+        IMG_W = 24
         img_x = x0 + (col_left - IMG_W) / 2
-        img_y = y_top + (h_all - 12) / 2  # ปรับความสูงโลโก้
+        img_y = y_top + (h_all - 12) / 2
         try:
             pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
         except Exception:
@@ -731,16 +740,11 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", doc_name: str =
     box_x = x0 + col_left
     pdf.rect(box_x, y_top, col_mid, h_all)
 
-    addr_lines = [
-        "Electricity Generating Authority of Thailand (EGAT)",
-        "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand",
-        "Call Center Tel. 02-114-3350",
-    ]
+    addr_lines = [addr_line1, addr_line2, addr_line3]  # ใช้ parameters
 
     pdf.set_font(base_font, "B", FONT_MAIN)
-    line_h = 4.5  # ลดจาก 5.0 เป็น 4.5
+    line_h = 4.5
 
-    # จัดให้อยู่กึ่งกลางแนวตั้งในกล่อง
     start_y = y_top + (h_all - line_h * len(addr_lines)) / 2
 
     for i, line in enumerate(addr_lines):
@@ -758,19 +762,19 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", doc_name: str =
     pdf.rect(xr, y_top + h_right_top + h_right_mid, col_right, h_right_bot)
 
     # Page number
-    pdf.set_xy(xr, y_top + (h_right_top - 3.5) / 2)  # ปรับตำแหน่ง
+    pdf.set_xy(xr, y_top + (h_right_top - 3.5) / 2)
     pdf.set_font(base_font, "", FONT_MAIN - 1)
-    pdf.cell(col_right, 3.5, f"Page {pdf.page_no()}", align="C")
+    pdf.cell(col_right, 3.5, f"{label_page} {pdf.page_no()}", align="C")
 
     # Issue ID (2 บรรทัด)
-    pdf.set_xy(xr, y_top + h_right_top + 0.5)  # ปรับ padding
+    pdf.set_xy(xr, y_top + h_right_top + 0.5)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
-    pdf.multi_cell(col_right, 4.0, f"Issue ID\n{issue_id}", align="C")  # ลดความสูงบรรทัด
+    pdf.multi_cell(col_right, 4.0, f"{label_issue_id}\n{issue_id}", align="C")
     
     # Doc Name (2 บรรทัด)
-    pdf.set_xy(xr, y_top + h_right_top + h_right_mid + 0.5)  # ปรับ padding
+    pdf.set_xy(xr, y_top + h_right_top + h_right_mid + 0.5)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
-    pdf.multi_cell(col_right, 3.5, f"Doc Name\n{doc_name}", align="C")  # ลดความสูงบรรทัด
+    pdf.multi_cell(col_right, 3.5, f"{label_doc_name}\n{doc_name}", align="C")
 
     return y_top + h_all
 
@@ -782,7 +786,10 @@ def _draw_items_table_header(
     item_w: float,
     result_w: float,
     remark_w: float,
-    charger_no: str
+    charger_no: str,
+    header_item: str = "Item",     
+    header_result: str = "Result",  
+    header_remark: str = "Remark",  
 ):
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_font(base_font, "B", FONT_MAIN)
@@ -793,9 +800,9 @@ def _draw_items_table_header(
     header_h = 5.5
     pdf.set_fill_color(255, 255, 255)  # reset สีพื้น
     pdf.set_xy(x, y)
-    pdf.cell(item_w, header_h, "Item", border=1, align="C")
-    pdf.cell(result_w, header_h, "Result", border=1, align="C")
-    pdf.cell(remark_w, header_h, "Remark", border=1, ln=1, align="C")
+    pdf.cell(item_w, header_h, header_item, border=1, align="C")
+    pdf.cell(result_w, header_h, header_result, border=1, align="C")
+    pdf.cell(remark_w, header_h, header_remark, border=1, ln=1, align="C")
 
     return y + header_h
 
@@ -810,6 +817,10 @@ def _draw_signature_block(
     remark_w: float,
     pm_date_th: str,
     y_bottom: Optional[float] = None,
+    label_performed: str = "Performed by", 
+    label_approved: str = "Approved by",    
+    label_witnessed: str = "Witnessed by",  
+    label_date: str = "Date :",             
 ) -> float:
     """
     วาดช่องลายเซ็น
@@ -817,7 +828,7 @@ def _draw_signature_block(
     Args:
         y_bottom: ถ้ากำหนด ให้วาดโดยติดด้านล่านของค่านี้ (จัดตำแหน่งให้เต็มหน้า)
     """
-    signer_labels = ["Performed by", "Approved by", "Witnessed by"]
+    signer_labels = [label_performed, label_approved, label_witnessed]
     col_widths = [item_w, result_w, remark_w]
 
     row_h_header = 5
@@ -889,13 +900,23 @@ PHOTO_ROW_MIN_H = PHOTO_IMG_MAX_H + 4
 PHOTO_FONT_SMALL  = 10
 PHOTO_LINE_H      = 5
 
-def _draw_photos_table_header(pdf: FPDF, base_font: str, x: float, y: float, q_w: float, g_w: float) -> float:
+
+def _draw_photos_table_header(
+    pdf: FPDF, 
+    base_font: str, 
+    x: float, 
+    y: float, 
+    q_w: float, 
+    g_w: float,
+    header_question: str = "Item / Question",  # เพิ่ม
+    header_photos: str = "Reference Photos",   # เพิ่ม
+) -> float:
     header_h = 5.5
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
     pdf.set_xy(x, y)
-    pdf.cell(q_w, header_h, "Item / Question", border=1, align="C")
-    pdf.cell(g_w, header_h, "Reference Photos", border=1, ln=1, align="C")
+    pdf.cell(q_w, header_h, header_question, border=1, align="C")
+    pdf.cell(g_w, header_h, header_photos, border=1, ln=1, align="C")
     return y + header_h
 
 
@@ -1119,17 +1140,34 @@ def _draw_photos_row(
 
 
 # -------------------- Drawing – job / summary blocks --------------------
-def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float,
-                         station_name: str, model: str, power: str, charger_no: str, sn: str, pm_date: str) -> float:
+def _draw_job_info_block(
+    pdf: FPDF, 
+    base_font: str, 
+    x: float, 
+    y: float, 
+    w: float,
+    station_name: str,
+    model: str,
+    power: str,
+    charger_no: str,
+    sn: str,
+    pm_date: str,
+    label_station: str = "Station",         
+    label_charger_no: str = "Charger No.",  
+    label_model: str = "Model",           
+    label_serial: str = "Serial No.",    
+    label_pm_date: str = "PM Date",       
+    label_power: str = "Power", 
+) -> float:
     row_h = 6.5
     col_w = w / 2.0
     label_w = 30
     box_h = row_h * 3
     pdf.set_line_width(LINE_W_INNER)
     pdf.rect(x, y, w, box_h)
-    pdf.line(x + col_w, y, x + col_w, y + box_h)   # คอลัมน์
-    pdf.line(x, y + row_h, x + w, y + row_h)       # แถวที่ 1
-    pdf.line(x, y + row_h * 2, x + w, y + row_h * 2)       # แถวที่ 2
+    pdf.line(x + col_w, y, x + col_w, y + box_h)
+    pdf.line(x, y + row_h, x + w, y + row_h)
+    pdf.line(x, y + row_h * 2, x + w, y + row_h * 2)
 
     def _item(x0, y0, label, value):
         pdf.set_xy(x0 + 2, y0 + 1.5)
@@ -1139,12 +1177,12 @@ def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float
         pdf.set_xy(x0 + 2 + label_w, y0 + 1.5)
         pdf.cell(col_w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
 
-    _item(x, y, "Station", station_name)
-    _item(x + col_w, y, "Charger No.", charger_no)
-    _item(x, y + row_h, "Model", model)
-    _item(x + col_w, y + row_h, "Serial No.", sn)
-    _item(x, y + row_h * 2, "PM Date", pm_date)
-    _item(x + col_w, y + row_h * 2, "Power", power)
+    _item(x, y, label_station, station_name)
+    _item(x + col_w, y, label_charger_no, charger_no)
+    _item(x, y + row_h, label_model, model)
+    _item(x + col_w, y + row_h, label_serial, sn)
+    _item(x, y + row_h * 2, label_pm_date, pm_date)
+    _item(x + col_w, y + row_h * 2, label_power, power)
 
     return y + box_h
 
@@ -1207,7 +1245,7 @@ class ReportPDF(HTML2PDF):
         )
 
 
-def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
+def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     #data
     job = doc.get("job", {}) or {}
     station_name = job.get("station_name", "-")
@@ -1220,6 +1258,87 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     charger_no = doc.get("job", {}).get("chargerNo", "-")
     checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
     checks_pre = _rows_to_checks(doc.get("rows_pre") or {}, doc.get("measures_pre") or {})
+    
+    # ========== เลือกข้อความตามภาษา ==========
+    if lang == "en":
+        # English titles
+        doc_title_post = "Preventive Maintenance Checklist - Charger (POST)"
+        doc_title_post_cont = "Preventive Maintenance Checklist - Charger (POST Continued)"
+        doc_title_photo_cont = "Preventive Maintenance - Photos (Continued)"
+        doc_title_photo_pre = "Preventive Maintenance - Photos (PRE)"
+        doc_title_photo_post = "Preventive Maintenance - Photos (POST)"
+        
+        # Table headers
+        header_item = "Item"
+        header_result = "Result"
+        header_remark = "Remark"
+        header_question = "Item / Question"
+        header_photos = "Reference Photos"
+        
+        # Labels
+        label_comment = "Comment :"
+        label_inspection = "Inspection Results :"
+        label_performed = "Performed by"
+        label_approved = "Approved by"
+        label_witnessed = "Witnessed by"
+        label_date = "Date :"
+        label_pre_pm = "(Pre-PM)"
+        label_remark = "Remark"
+        
+        # Job info labels
+        label_station = "Station"
+        label_charger_no = "Charger No."
+        label_model = "Model"
+        label_serial = "Serial No."
+        label_pm_date = "PM Date"
+        label_power = "Power"
+        
+        label_page = "Page"
+        label_issue_id = "Issue ID"
+        label_doc_name = "Doc Name"
+        addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
+        addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
+        addr_line3 = "Call Center Tel. 02-114-3350"
+        
+    else:  # "th"
+        # Thai titles
+        doc_title_post = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - เครื่องชาร์จ (หลัง PM)"
+        doc_title_post_cont = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - เครื่องชาร์จ (หลัง PM ต่อ)"
+        doc_title_photo_cont = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ (ต่อ)"
+        doc_title_photo_pre = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ (ก่อน PM)"
+        doc_title_photo_post = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ (หลัง PM)"
+        
+        # Table headers
+        header_item = "รายการ"
+        header_result = "ผลการตรวจสอบ"
+        header_remark = "หมายเหตุ"
+        header_question = "รายการ / คำถาม"
+        header_photos = "รูปภาพอ้างอิง"
+        
+        # Labels
+        label_comment = "ความเห็นเพิ่มเติม :"
+        label_inspection = "สรุปผลการตรวจสอบ :"
+        label_performed = "ผู้ปฏิบัติงาน"
+        label_approved = "ผู้อนุมัติ"
+        label_witnessed = "ผู้เห็นชอบ"
+        label_date = "วันที่ :"
+        label_pre_pm = "(ก่อน PM)"
+        label_remark = "หมายเหตุ"
+        
+        # Job info labels
+        label_station = "สถานี"
+        label_charger_no = "หมายเลขเครื่องชาร์จ"
+        label_model = "รุ่น"
+        label_serial = "หมายเลขซีเรียล"
+        label_pm_date = "วันที่ PM"
+        label_power = "กำลังไฟฟ้า"
+        
+        label_page = "หน้า"
+        label_issue_id = "รหัสเอกสาร"
+        label_doc_name = "ชื่อเอกสาร"
+        addr_line1 = "การไฟฟ้าฝ่ายผลิตแห่งประเทศไทย (กฟผ.)"
+        addr_line2 = "เลขที่ 53 หมู่ 2 ถนนจรัญสนิทวงศ์ ตำบลบางกรวย อำเภอบางกรวย จังหวัดนนทบุรี 11130"
+        addr_line3 = "ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416"
     
     # สร้าง doc_name จาก sn และปี (เช่น F1500624011_2/2026)
     doc_name = str(doc.get("doc_name", ""))
@@ -1266,7 +1385,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
     # หน้าแรก
     pdf.add_page()
-    y = _draw_header(pdf, base_font, issue_id, doc_name)
+    y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
 
     # ========== ตรวจสอบว่ามีข้อมูล PRE หรือไม่ ==========
     has_pre_data = bool(doc.get("rows_pre"))
@@ -1282,11 +1401,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         pdf.set_xy(x0, y)
         pdf.set_font(base_font, "B", 13)
         pdf.set_fill_color(255, 230, 100)
-        pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_PHOTO_PRE, border=1, ln=1, align="C", fill=True)
+        pdf.cell(page_w, TITLE_H, doc_title_photo_pre, border=1, ln=1, align="C", fill=True)
         y += TITLE_H
         
         # ========== วาด Job Info Block ==========
-        y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date)
+        y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date, label_station, label_charger_no, label_model, label_serial, label_pm_date, label_power)
         
         x_table = x0 + EDGE_ALIGN_FIX
         q_w = PHOTO_Q_W
@@ -1297,16 +1416,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             if y + height_needed > (pdf.h - pdf.b_margin):
                 pdf.add_page()
                 
-                y = _draw_header(pdf, base_font, issue_id, doc_name)
+                y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
                 pdf.set_xy(x0, y)
                 pdf.set_font(base_font, "B", 13)
                 pdf.set_fill_color(255, 230, 100)
                 pdf.cell(page_w, PHOTO_CONTINUE_H, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
                 y += PHOTO_CONTINUE_H
-                y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+                y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
                 pdf.set_font(base_font, "", FONT_MAIN)
 
-        y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+        y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
         pdf.set_font(base_font, "", FONT_MAIN)
         
         for it in checks_pre:
@@ -1347,7 +1466,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
                     
                     if i == 0:
                         # หัวข้อหลัก - เพิ่ม (Pre-PM)
-                        result_lines.append(f"{line} (Pre-PM)")
+                        result_lines.append(f"{line} {label_pre_pm}")
                     else:
                         # ข้อย่อย - เพิ่มข้อย่อยก่อน
                         result_lines.append(f"   {line}")
@@ -1356,7 +1475,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
                         if sub_match:
                             sub_key = sub_match.group(1)
                             if sub_key in remark_dict and remark_dict[sub_key] and remark_dict[sub_key] != "-":
-                                result_lines.append(f"   หมายเหตุ: {remark_dict[sub_key]}")
+                                result_lines.append(f"   {label_remark}: {remark_dict[sub_key]}")
                 
                 question_text_pre = "\n".join(result_lines)
             else:
@@ -1418,7 +1537,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         # วาดข้อความ "Comment :"
         pdf.set_font(base_font, "B", 11)
         pdf.set_xy(comment_x, y)
-        pdf.cell(q_w, h_comment, "Comment :", border=0, align="L")
+        pdf.cell(q_w, h_comment, label_comment, border=0, align="L")
         
         # วาดเส้นคั่นระหว่าง "Comment :" และข้อความ
         pdf.line(comment_x + q_w, y, comment_x + q_w, y + h_comment)
@@ -1437,7 +1556,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         # ถ้ามี Photos PRE → ต้อง add_page() เพื่อขึ้นหน้าใหม่
         pdf.add_page()
         pdf._section = "checklist"
-        y = _draw_header(pdf, base_font, issue_id, doc_name)
+        y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
     else:
         # ถ้าไม่มี Photos PRE → ใช้หน้าแรกที่สร้างไว้แล้ว
         pdf._section = "checklist"
@@ -1449,7 +1568,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     
     y += TITLE_H
 
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date)
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date, label_station, label_charger_no, label_model, label_serial, label_pm_date, label_power)
+
 
     x_table = x0 + EDGE_ALIGN_FIX
     item_w = ITEM_W
@@ -1472,7 +1592,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
                 pdf.line(table_right, y, table_right, page_bottom)
             
             pdf.add_page()
-            y = _draw_header(pdf, base_font, issue_id, doc_name)
+            y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
             
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)
@@ -1640,7 +1760,7 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.add_page()  # footer() ของหน้า Checklist วาด signature ✅
     pdf._section = "photos"  # เปลี่ยนหลัง add_page() เพื่อให้หน้า Photos POST ไม่มี signature
     
-    y = _draw_header(pdf, base_font, issue_id, doc_name)
+    y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
     
     # ========== วาดหัว Photos POST ==========
     pdf.set_xy(x0, y)
@@ -1651,8 +1771,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     y += TITLE_H
     
     # ========== วาด Job Info Block ==========
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date)
-    
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date, label_station, label_charger_no, label_model, label_serial, label_pm_date, label_power)
+
     x_table = x0 + EDGE_ALIGN_FIX
     q_w = PHOTO_Q_W
     g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
@@ -1664,16 +1784,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             # ดังนั้น footer() จะ return ไม่วาด signature โดยอัตโนมัติ
             pdf.add_page()
             
-            y = _draw_header(pdf, base_font, issue_id, doc_name)
+            y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
             pdf.cell(page_w, PHOTO_CONTINUE_H, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
             y += PHOTO_CONTINUE_H
-            y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+            y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
             pdf.set_font(base_font, "", FONT_MAIN)
 
-    y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
+    y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
     pdf.set_font(base_font, "", FONT_MAIN)
 
     for it in checks:
@@ -1816,6 +1936,6 @@ def _precache_all_images(doc: dict):
     _log(f"[PRECACHE] Completed caching {len(all_urls)} images")
 
 
-# Public API expected by pdf_routes: generate_pdf(data) -> bytes
-def generate_pdf(data: dict) -> bytes:
-    return make_pm_report_html_pdf_bytes(data)
+# Public API expected by pdf_routes: generate_pdf(data, lang) -> bytes
+def generate_pdf(data: dict, lang: str = "th") -> bytes:
+    return make_pm_report_html_pdf_bytes(data, lang=lang)
