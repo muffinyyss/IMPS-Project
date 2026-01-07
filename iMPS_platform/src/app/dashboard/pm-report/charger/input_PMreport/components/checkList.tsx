@@ -667,12 +667,16 @@ function DynamicItemsSection({
                                     </>
                                 }
                                 inlineLeft={checkboxElement && <div className="tw-hidden sm:tw-flex">{checkboxElement}</div>}
-                                beforeRemark={preRemarkElement}
-                                belowRemark={renderAdditionalFields ? (
-                                    <div className="tw-mt-4">
-                                        {renderAdditionalFields(item, idx, false)}
-                                    </div>
-                                ) : undefined}
+                                beforeRemark={
+                                    <>
+                                        {renderAdditionalFields && (
+                                            <div className="tw-mb-3">
+                                                {renderAdditionalFields(item, idx, rows[item.key]?.pf === "NA")}
+                                            </div>
+                                        )}
+                                        {preRemarkElement}
+                                    </>
+                                }
                             />
                         </div>
                     );
@@ -803,8 +807,12 @@ function PhotoRemarkSection({
                             <PhotoMultiInput photos={photos[qNo] || []} setPhotos={makePhotoSetter(qNo)} max={10} draftKey={draftKey} qNo={qNo} lang={lang} />
                         </div>
                     }
-                    beforeRemark={preRemarkElement}
-                    belowRemark={middleContent ? <div className="tw-mt-4">{middleContent}</div> : undefined}
+                    beforeRemark={
+                        <>
+                            {middleContent && <div className="tw-mb-3">{middleContent}</div>}
+                            {preRemarkElement}
+                        </>
+                    }
                 />
             </div>
         );
@@ -974,7 +982,12 @@ export default function ChargerPMForm() {
         (async () => {
             try {
                 const data = await fetchReport(editId, sn);
-                if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id }));
+                if (data.job) setJob(prev => ({ 
+                    ...prev, 
+                    ...data.job, 
+                    issue_id: data.issue_id ?? prev.issue_id,
+                    chargingCables: data.job.chargingCables || prev.chargingCables || 1,
+                }));
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data?.measures_pre?.cp) {
                     const cpData: Record<string, { value: string; unit: UnitVoltage }> = {};
@@ -1110,7 +1123,7 @@ export default function ChargerPMForm() {
                     model: st.model ?? prev.model, brand: st.brand ?? prev.brand,
                     power: st.power ?? prev.model, station_name: st.station_name ?? prev.station_name,
                     date: prev.date || new Date().toISOString().slice(0, 10),
-                    chargingCables: st.chargingCables ?? prev.chargingCables ?? 1,
+                    chargingCables: st.chargingCables || prev.chargingCables || 1,
                 }));
             })
             .catch((err) => console.error("load charger info failed:", err));
@@ -1413,7 +1426,22 @@ export default function ChargerPMForm() {
                     {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
                     {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
                     {[3, 4, 6, 17].includes(q.no) && fixedItems && <DynamicItemsSection qNo={q.no} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
-                    {q.no === 10 && fixedItems && <DynamicItemsSection qNo={10} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 10 && fixedItems && (
+                        <DynamicItemsSection qNo={10} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true}
+                            renderAdditionalFields={(item, idx, isNA) => (
+                                <div className="tw-flex tw-flex-col tw-gap-3">
+                                    <div className="tw-max-w-xs">
+                                        <InputWithUnit<UnitVoltage> label={lang === "th" ? "CP (ก่อน PM)" : "CP (Pre PM)"} value={cpPre[item.key]?.value ?? ""} unit={cpPre[item.key]?.unit ?? "V"} units={["V"] as const}
+                                            onValueChange={() => {}} onUnitChange={() => {}} disabled={true} required={false} labelOnTop lang={lang} />
+                                    </div>
+                                    <div className="tw-max-w-xs">
+                                        <InputWithUnit<UnitVoltage> label={lang === "th" ? "CP (หลัง PM)" : "CP (Post PM)"} value={cp[item.key]?.value ?? ""} unit={cp[item.key]?.unit ?? "V"} units={["V"] as const}
+                                            onValueChange={(v) => setCp((s) => ({ ...s, [item.key]: { ...(s[item.key] ?? { unit: "V" }), value: v } }))}
+                                            onUnitChange={(u) => setCp((s) => ({ ...s, [item.key]: { ...(s[item.key] ?? { value: "" }), unit: u } }))} disabled={isNA} required lang={lang} />
+                                    </div>
+                                </div>
+                            )} />
+                    )}
                     {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} showDustFilterCheckbox dustFilterChanged={dustFilterChanged} setDustFilterChanged={setDustFilterChanged} />}
                 </div>
             </SectionCard>
