@@ -697,9 +697,9 @@ def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
 
 # -------------------- Drawing – header / table header --------------------
 def _draw_header(
-    pdf: FPDF, 
-    base_font: str, 
-    issue_id: str = "-", 
+    pdf: FPDF,
+    base_font: str,
+    issue_id: str = "-",
     doc_name: str = "-",
     label_page: str = "Page",
     label_issue_id: str = "Issue ID",
@@ -717,12 +717,19 @@ def _draw_header(
     col_left, col_mid = 35, 120
     col_right = page_w - col_left - col_mid
 
-    h_all = 22     
-    h_right_top = 5
-    h_right_mid = 9
-    h_right_bot = h_all - h_right_top - h_right_mid
+    h_all = 22
+    h_right_half = h_all / 2  # แบ่งกล่องขวาเป็น 2 ส่วนเท่าๆ กัน
 
     pdf.set_line_width(LINE_W_INNER)
+
+    # ========== Page number ที่มุมขวาบน ==========
+    page_text = f"{label_page} {pdf.page_no()}"
+    pdf.set_font(base_font, "", FONT_MAIN - 1)
+    page_text_w = pdf.get_string_width(page_text) + 4
+    page_x = pdf.w - right - page_text_w
+    page_y = 5  # ย้ายขึ้นไปด้านบนสุด
+    pdf.set_xy(page_x, page_y)
+    pdf.cell(page_text_w, 4, page_text, align="R")
 
     # โลโก้
     pdf.rect(x0, y_top, col_left, h_all)
@@ -751,30 +758,22 @@ def _draw_header(
         pdf.set_xy(box_x + 3, start_y + i * line_h)
         pdf.cell(col_mid - 6, line_h, line, align="C")
 
-    # กล่องขวา - Page
+    # กล่องขวา - Issue ID (ครึ่งบน)
     xr = x0 + col_left + col_mid
-    pdf.rect(xr, y_top, col_right, h_right_top)
-    
-    # กล่องขวา - Issue ID
-    pdf.rect(xr, y_top + h_right_top, col_right, h_right_mid)
-    
-    # กล่องขวา - Doc Name
-    pdf.rect(xr, y_top + h_right_top + h_right_mid, col_right, h_right_bot)
+    pdf.rect(xr, y_top, col_right, h_right_half)
 
-    # Page number
-    pdf.set_xy(xr, y_top + (h_right_top - 3.5) / 2)
-    pdf.set_font(base_font, "", FONT_MAIN - 1)
-    pdf.cell(col_right, 3.5, f"{label_page} {pdf.page_no()}", align="C")
+    # กล่องขวา - Doc Name (ครึ่งล่าง)
+    pdf.rect(xr, y_top + h_right_half, col_right, h_right_half)
 
     # Issue ID (2 บรรทัด)
-    pdf.set_xy(xr, y_top + h_right_top + 0.5)
+    pdf.set_xy(xr, y_top + 1)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
-    pdf.multi_cell(col_right, 4.0, f"{label_issue_id}\n{issue_id}", align="C")
-    
+    pdf.multi_cell(col_right, 4.5, f"{label_issue_id}\n{issue_id}", align="C")
+
     # Doc Name (2 บรรทัด)
-    pdf.set_xy(xr, y_top + h_right_top + h_right_mid + 0.5)
+    pdf.set_xy(xr, y_top + h_right_half + 1)
     pdf.set_font(base_font, "B", FONT_MAIN - 2)
-    pdf.multi_cell(col_right, 3.5, f"{label_doc_name}\n{doc_name}", align="C")
+    pdf.multi_cell(col_right, 4.5, f"{label_doc_name}\n{doc_name}", align="C")
 
     return y_top + h_all
 
@@ -1211,11 +1210,29 @@ class ReportPDF(HTML2PDF):
         self._table_start_y = None
         self._table_x = None
         self._table_width = None
+        # ตัวแปรสำหรับ header labels และ address
+        self._label_page = "Page"
+        self._label_issue_id = "Issue ID"
+        self._label_doc_name = "Doc Name"
+        self._addr_line1 = "Electricity Generating Authority of Thailand (EGAT)"
+        self._addr_line2 = "53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130, Thailand"
+        self._addr_line3 = "Call Center Tel. 02-114-3350"
 
     def header(self):
         # ทุกหน้าเรียกอัตโนมัติ
-        _draw_header(self, self._base_font_name, issue_id=self.issue_id, doc_name=self._doc_name)
-        self.ln(10)
+        _draw_header(
+            self,
+            self._base_font_name,
+            issue_id=self.issue_id,
+            doc_name=self._doc_name,
+            label_page=self._label_page,
+            label_issue_id=self._label_issue_id,
+            label_doc_name=self._label_doc_name,
+            addr_line1=self._addr_line1,
+            addr_line2=self._addr_line2,
+            addr_line3=self._addr_line3
+        )
+        # self.ln(10)
 
     def footer(self):
         # ⭐ Photos section ไม่ต้องมีลายเซ็น
@@ -1302,8 +1319,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         
     else:  # "th"
         # Thai titles
-        doc_title_post = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - เครื่องชาร์จ (หลัง PM)"
-        doc_title_post_cont = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - เครื่องชาร์จ (หลัง PM ต่อ)"
+        doc_title_post = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - เครื่องอัดประจุไฟฟ้า (หลัง PM)"
+        doc_title_post_cont = "รายการตรวจสอบการบำรุงรักษาเชิงป้องกัน - เครื่องอัดประจุไฟฟ้า (หลัง PM ต่อ)"
         doc_title_photo_cont = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ (ต่อ)"
         doc_title_photo_pre = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ (ก่อน PM)"
         doc_title_photo_post = "การบำรุงรักษาเชิงป้องกัน - รูปภาพ (หลัง PM)"
@@ -1369,7 +1386,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
     pdf._pm_date_th = pm_date_th
     pdf._section = "checklist"
-    
+
     pdf.set_margins(left=10, top=10, right=10)
     pdf.set_auto_page_break(auto=True, margin=12)
 
@@ -1378,6 +1395,14 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pdf.set_font(base_font, size=FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
 
+    # กำหนดค่า labels และ address ตามภาษา
+    pdf._label_page = label_page
+    pdf._label_issue_id = label_issue_id
+    pdf._label_doc_name = label_doc_name
+    pdf._addr_line1 = addr_line1
+    pdf._addr_line2 = addr_line2
+    pdf._addr_line3 = addr_line3
+
     left = pdf.l_margin
     right = pdf.r_margin
     page_w = pdf.w - left - right
@@ -1385,7 +1410,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
     # หน้าแรก
     pdf.add_page()
-    y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
+    # header() จะถูกเรียกอัตโนมัติโดย add_page()
+    y = pdf.get_y()
 
     # ========== ตรวจสอบว่ามีข้อมูล PRE หรือไม่ ==========
     has_pre_data = bool(doc.get("rows_pre"))
@@ -1415,8 +1441,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             nonlocal y
             if y + height_needed > (pdf.h - pdf.b_margin):
                 pdf.add_page()
-                
-                y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
+                # header() จะถูกเรียกอัตโนมัติโดย add_page()
+                y = pdf.get_y()
                 pdf.set_xy(x0, y)
                 pdf.set_font(base_font, "B", 13)
                 pdf.set_fill_color(255, 230, 100)
@@ -1556,7 +1582,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         # ถ้ามี Photos PRE → ต้อง add_page() เพื่อขึ้นหน้าใหม่
         pdf.add_page()
         pdf._section = "checklist"
-        y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
+        # header() จะถูกเรียกอัตโนมัติโดย add_page()
+        y = pdf.get_y()
     else:
         # ถ้าไม่มี Photos PRE → ใช้หน้าแรกที่สร้างไว้แล้ว
         pdf._section = "checklist"
@@ -1592,14 +1619,15 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                 pdf.line(table_right, y, table_right, page_bottom)
             
             pdf.add_page()
-            y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
-            
+            # header() จะถูกเรียกอัตโนมัติโดย add_page()
+            y = pdf.get_y()
+
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
             pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_POST_CONT, border=1, ln=1, align="C", fill=True)
             y += TITLE_H
-            
+
             y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
             pdf.set_font(base_font, "", FONT_MAIN)
             
@@ -1759,9 +1787,10 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     # เพราะ add_page() จะเรียก footer() ของหน้าก่อนหน้า (Checklist POST สุดท้าย)
     pdf.add_page()  # footer() ของหน้า Checklist วาด signature ✅
     pdf._section = "photos"  # เปลี่ยนหลัง add_page() เพื่อให้หน้า Photos POST ไม่มี signature
-    
-    y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
-    
+
+    # header() จะถูกเรียกอัตโนมัติโดย add_page()
+    y = pdf.get_y()
+
     # ========== วาดหัว Photos POST ==========
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 13)
@@ -1783,8 +1812,9 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             # ⭐ _section เป็น "photos" อยู่แล้ว (ถูกตั้งค่าหลังไปหน้า Photos แรก)
             # ดังนั้น footer() จะ return ไม่วาด signature โดยอัตโนมัติ
             pdf.add_page()
-            
-            y = _draw_header(pdf, base_font, issue_id, doc_name, label_page, label_issue_id, label_doc_name, addr_line1, addr_line2, addr_line3)
+
+            # header() จะถูกเรียกอัตโนมัติโดย add_page()
+            y = pdf.get_y()
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
