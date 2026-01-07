@@ -853,12 +853,28 @@ export default function ChargerPMForm() {
     const [sn, setSn] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
+    
     // Separate draft keys for Pre and Post mode
-    const key = useMemo(() => `${draftKey(sn)}:${draftId ?? "default"}`, [sn, draftId]);
+    // Pre mode: ใช้ stationId เท่านั้น (เหมือน CCBPMReport)
+    // Post mode: ใช้ stationId + editId
+    const key = useMemo(() => draftKey(sn), [sn]);  // Pre mode - ไม่ใช้ draftId
     const postKey = useMemo(() => `${draftKey(sn)}:${editId}:post`, [sn, editId]);
     const currentDraftKey = isPostMode ? postKey : key;
+    
+    // Remove draft_id from URL if present (especially in Post mode)
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        if (params.has("draft_id")) {
+            params.delete("draft_id");
+            const url = `${window.location.pathname}?${params.toString()}`;
+            window.history.replaceState({}, "", url);
+        }
+    }, []);
+    
     const [inspector, setInspector] = useState<string>("");
     const [dustFilterChanged, setDustFilterChanged] = useState<Record<string, boolean>>({});
+    const [postApiLoaded, setPostApiLoaded] = useState(false);  // Track when API data is loaded
 
     const [job, setJob] = useState({
         issue_id: "", chargerNo: "", sn: "", model: "", power: "", brand: "", station_name: "", date: "", chargingCables: 1,
@@ -954,6 +970,7 @@ export default function ChargerPMForm() {
     // Effects for loading data
     useEffect(() => {
         if (!isPostMode || !editId || !sn) return;
+        setPostApiLoaded(false);  // Reset flag when deps change
         (async () => {
             try {
                 const data = await fetchReport(editId, sn);
@@ -1001,13 +1018,17 @@ export default function ChargerPMForm() {
                         return next;
                     });
                 }
-            } catch (err) { console.error("load report failed:", err); }
+                setPostApiLoaded(true);  // Set flag when API data is loaded
+            } catch (err) { 
+                console.error("load report failed:", err); 
+                setPostApiLoaded(true);  // Still set flag even on error so draft can load
+            }
         })();
     }, [isPostMode, editId, sn]);
 
-    // Load draft for Post mode (after API data loaded)
+    // Load draft for Post mode (AFTER API data loaded)
     useEffect(() => {
-        if (!isPostMode || !sn || !editId) return;
+        if (!isPostMode || !sn || !editId || !postApiLoaded) return;
         const postDraft = loadDraftLocal<{
             rows: typeof rows; cp: typeof cp; m16: typeof m16.state; summary: string; summaryCheck?: PF;
             dustFilterChanged?: Record<string, boolean>; photoRefs?: Record<string, (PhotoRef | { isNA: true })[]>;
@@ -1037,7 +1058,7 @@ export default function ChargerPMForm() {
             }
             if (Object.keys(next).length > 0) setPhotos(prev => ({ ...prev, ...next }));
         })();
-    }, [isPostMode, sn, editId, postKey]);
+    }, [isPostMode, sn, editId, postKey, postApiLoaded]);
 
     useEffect(() => {
         const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
