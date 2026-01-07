@@ -37,7 +37,7 @@ async def export_pdf_redirect(
     request: Request,
     template: str,
     id: str,
-    station_id: str = Query(...),
+    sn: str = Query(...),
     dl: bool = Query(False),
     lang: str = Query("th", description="Language: 'th' or 'en'"),  # เพิ่ม lang parameter
     photos_base_url: str | None = Query(None),
@@ -60,7 +60,7 @@ async def export_pdf_redirect(
     # เลือก database และ collection ตามประเภท template
     db_info = TEMPLATE_MAP[template]
     db = pymongo_client[db_info["db"]]
-    coll = db[station_id]
+    coll = db[sn]
 
     # ดึงข้อมูลจาก MongoDB
     data = coll.find_one({"_id": oid})
@@ -75,10 +75,10 @@ async def export_pdf_redirect(
             issue_id = str(data.get("_id"))
         filename = f"{issue_id}.pdf"
     else:
-        filename = f"{template.upper()}-{station_id}.pdf"
+        filename = f"{template.upper()}-{sn}.pdf"
 
     # สร้าง URL ใหม่พร้อม query parameters
-    query_params = f"?station_id={station_id}"
+    query_params = f"?sn={sn}"
     query_params += f"&lang={lang}"  # เพิ่ม lang ใน redirect URL
     if dl:
         query_params += "&dl=true"
@@ -99,7 +99,7 @@ async def export_pdf(
     template: str,
     id: str,
     filename: str,
-    station_id: str = Query(...),
+    sn: str = Query(...),
     dl: bool = Query(False),
     lang: str = Query("th", description="Language: 'th' or 'en'"),  # เพิ่ม lang parameter
     photos_base_url: str | None = Query(None, description="เช่น http://localhost:3000"),
@@ -108,7 +108,7 @@ async def export_pdf(
 ):
     """
     Export PDF with photo support:
-      /pdf/charger/{id}/PM-CG-2407-01.pdf?station_id=Klongluang3&lang=en
+      /pdf/charger/{id}/PM-CG-2407-01.pdf?sn=F1500624011&lang=en
     """
 
     # ตรวจสอบว่า template มีใน mapping ไหม
@@ -124,7 +124,7 @@ async def export_pdf(
     # เลือก database และ collection ตามประเภท template
     db_info = TEMPLATE_MAP[template]
     db = pymongo_client[db_info["db"]]
-    coll = db[station_id]
+    coll = db[sn]
 
     # ดึงข้อมูลจาก MongoDB
     data = coll.find_one({"_id": oid})

@@ -448,23 +448,49 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
 
 
 # -------------------- Photo data helpers --------------------
-def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-    """ดึงรูปจาก photos (หลัง PM) - charger ใช้ key g{idx}"""
-    photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
+def _collect_photos_for_main_idx(photos: dict, idx: int) -> List[dict]:
+    """
+    รวมรูปของข้อหลัก เช่น idx=7 → g7, g7_1, g7_2, ...
+    """
     out = []
-    for p in photos:
-        if isinstance(p, dict) and p.get("url"):
-            out.append(p)
+    prefix = f"g{idx}"
+
+    for k, items in (photos or {}).items():
+        if k == prefix or k.startswith(prefix + "_"):
+            if isinstance(items, list):
+                for p in items:
+                    if isinstance(p, dict) and p.get("url"):
+                        out.append(p)
+
+    return out
+
+# def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
+#     """ดึงรูปจาก photos (หลัง PM) - charger ใช้ key g{idx}"""
+#     photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
+#     out = []
+#     for p in photos:
+#         if isinstance(p, dict) and p.get("url"):
+#             out.append(p)
+#     return out[:PHOTO_MAX_PER_ROW]
+def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
+    photos = doc.get("photos") or {}
+    out = _collect_photos_for_main_idx(photos, idx)
     return out[:PHOTO_MAX_PER_ROW]
 
+
+# def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
+#     """ดึงรูปจาก photos_pre (ก่อน PM) - charger ใช้ key g{idx}"""
+#     photos_pre = ((doc.get("photos_pre") or {}).get(f"g{idx}") or [])
+#     out = []
+#     for p in photos_pre:
+#         if isinstance(p, dict) and p.get("url"):
+#             out.append(p)
+#     return out[:PHOTO_MAX_PER_ROW]
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
-    """ดึงรูปจาก photos_pre (ก่อน PM) - charger ใช้ key g{idx}"""
-    photos_pre = ((doc.get("photos_pre") or {}).get(f"g{idx}") or [])
-    out = []
-    for p in photos_pre:
-        if isinstance(p, dict) and p.get("url"):
-            out.append(p)
+    photos_pre = doc.get("photos_pre") or {}
+    out = _collect_photos_for_main_idx(photos_pre, idx)
     return out[:PHOTO_MAX_PER_ROW]
+
 
 
 # -------------------- Measurement / Data formatting --------------------
@@ -580,6 +606,15 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         main_key = group["main"]
         subs = sorted(group["subs"], key=lambda x: x[0])  # เรียงตาม sub_idx
         
+        # 🔥 FIX: กรองเฉพาะข้อย่อยที่มีอยู่ใน FIXED_SUB_ROWS หรือ DYNAMIC_SUB_ROWS
+        if main_idx in FIXED_SUB_ROWS:
+            # ข้อที่มีจำนวนข้อย่อยคงที่ - เอาเท่าที่กำหนดไว้
+            expected_count = FIXED_SUB_ROWS[main_idx]
+            subs = subs[:expected_count]
+        elif main_idx not in DYNAMIC_SUB_ROWS:
+            # ถ้าไม่ใช่ข้อที่มีข้อย่อยทั้ง FIXED และ DYNAMIC ให้เคลียร์ subs
+            subs = []
+        
         # ดึงข้อมูลข้อหลัก
         main_data = rows.get(main_key, {}) if main_key else {}
         main_title = ROW_TITLES.get(f"r{main_idx}", f"รายการที่ {main_idx}")
@@ -617,12 +652,14 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             results = []
             remarks = []
             
+            sub_count = len(subs)
+            
             for sub_idx, sub_key in subs:
                 sub_data = rows.get(sub_key, {})
                 
                 # หาชื่อข้อย่อย
-                sub_title = SUB_ROW_TITLES.get(sub_key, f"หัวที่ {sub_idx}")
-                
+                sub_title = SUB_ROW_TITLES.get(sub_key)
+
                 # สำหรับข้อ 5, 7 ที่เป็น dynamic - ใช้ชื่อตามลำดับ
                 if main_idx in DYNAMIC_SUB_ROWS:
                     if main_idx == 5:
@@ -658,10 +695,10 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
                 "idx": main_idx,
                 "key": main_key,
                 "text": "\n".join(lines),
-                "result": results,  # list of results สำหรับแต่ละข้อย่อย
+                "result": results,
                 "remark": combined_remark if combined_remark else "-",
                 "has_subs": True,
-                "sub_count": len(subs),
+                "sub_count": sub_count,
             })
     
     return items
@@ -687,10 +724,10 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", doc_name: str =
     col_left, col_mid = 35, 120  # ลด col_left เล็กน้อย
     col_right = page_w - col_left - col_mid
 
-    # --- ปรับความสูงให้เล็กลง ---
-    h_all = 22        # ลดจาก 28 เป็น 22
-    h_right_top = 5   # ลดจาก 6 เป็น 5 (Page)
-    h_right_mid = 9   # ลดจาก 11 เป็น 9 (Issue ID)
+    # --- ปรับความสูง ---
+    h_all = 22     
+    h_right_top = 5   # (Page)
+    h_right_mid = 9   # (Issue ID)
     h_right_bot = h_all - h_right_top - h_right_mid  # Doc Name
 
     pdf.set_line_width(LINE_W_INNER)
@@ -1187,10 +1224,6 @@ class ReportPDF(HTML2PDF):
         )
 
 
-# ================================================================================
-# 🔥 ฟังก์ชันหลัก: สร้าง PDF ตามลำดับใหม่
-# ลำดับ: 1. Checklist PRE -> 2. Photos PRE -> 3. Checklist POST -> 4. Photos POST
-# ================================================================================
 def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     #data
     job = doc.get("job", {}) or {}
