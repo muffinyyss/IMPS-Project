@@ -464,28 +464,11 @@ def _collect_photos_for_main_idx(photos: dict, idx: int) -> List[dict]:
 
     return out
 
-# def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-#     """ดึงรูปจาก photos (หลัง PM) - charger ใช้ key g{idx}"""
-#     photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
-#     out = []
-#     for p in photos:
-#         if isinstance(p, dict) and p.get("url"):
-#             out.append(p)
-#     return out[:PHOTO_MAX_PER_ROW]
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     photos = doc.get("photos") or {}
     out = _collect_photos_for_main_idx(photos, idx)
     return out[:PHOTO_MAX_PER_ROW]
 
-
-# def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
-#     """ดึงรูปจาก photos_pre (ก่อน PM) - charger ใช้ key g{idx}"""
-#     photos_pre = ((doc.get("photos_pre") or {}).get(f"g{idx}") or [])
-#     out = []
-#     for p in photos_pre:
-#         if isinstance(p, dict) and p.get("url"):
-#             out.append(p)
-#     return out[:PHOTO_MAX_PER_ROW]
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
     photos_pre = doc.get("photos_pre") or {}
     out = _collect_photos_for_main_idx(photos_pre, idx)
