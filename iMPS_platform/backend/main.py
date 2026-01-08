@@ -5760,21 +5760,10 @@ class MDBPMSubmitIn(BaseModel):
     side: Literal["pre", "post"]
     station_id: str
     job: Dict[str, Any]
-    
-    # === NEW STRUCTURE ===
-    # measures_pre now contains:
-    # - m4: Dict[str, Dict[str, Any]]  -> {"r4_1": {...}, "r4_2": {...}}  (Dynamic Breaker Main)
-    # - m5: Dict[str, Dict[str, Any]]  -> {"r5_1": {...}, "r5_2": {...}}  (Charger Breakers)
-    # - m6: Dict[str, Any]             -> Single measure state (CCB)
     measures_pre: Dict[str, Any]
-    
-    # NEW: rows_pre for Pre-PM mode
-    rows_pre: Optional[Dict[str, Dict[str, Any]]] = None  # {"r1": {"pf": "NA", "remark": "..."}, "r4_1": {...}, ...}
-    
-    # NEW: Dynamic items configuration
-    q4_items: Optional[List[Dict[str, str]]] = None  # [{"key": "r4_1", "label": "4.1) Breaker Main ตัวที่ 1"}, ...]
-    charger_count: Optional[int] = None  # จำนวน charger ใน station
-    
+    rows_pre: Optional[Dict[str, Dict[str, Any]]] = None 
+    q4_items: Optional[List[Dict[str, str]]] = None  
+    charger_count: Optional[int] = None  
     pm_date: str
     issue_id: Optional[str] = None
     doc_name: Optional[str] = None
@@ -5789,19 +5778,11 @@ class MDBPMPostIn(BaseModel):
     report_id: Optional[str] = None
     station_id: str
     rows: Dict[str, Any]
-    
-    # === NEW STRUCTURE ===
-    # measures now contains:
-    # - m4: Dict[str, Dict[str, Any]]  -> Dynamic Breaker Main
-    # - m5: Dict[str, Dict[str, Any]]  -> Charger Breakers  
-    # - m6: Dict[str, Any]             -> CCB
     measures: Dict[str, Any]
-    
     summary: str
     summaryCheck: Optional[str] = None
     dust_filter: Optional[str] = None
     side: Literal["post", "after"]
-
 
 # ============================================
 # 3. UPDATE: Pre-PM Submit Endpoint
@@ -6069,9 +6050,10 @@ async def mdbpmreport_upload_photos_post(
         raise HTTPException(status_code=400, detail=f"Bad group key format: {group}")
 
     # Storage key mapping (same as pre)
+    # storage_key = group
+    # if re.match(r"r7_\d+", group):
+    #     storage_key = "g7"
     storage_key = group
-    if re.match(r"r7_\d+", group):
-        storage_key = "g7"
 
     coll = get_mdbpmreport_collection_for(station_id)
     try:
