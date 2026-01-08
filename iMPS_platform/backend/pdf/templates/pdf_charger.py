@@ -57,7 +57,8 @@ PHOTO_Q_W = 85.0
 
 
 # -------------------- รายการหัวข้อ Charger --------------------
-ROW_TITLES = {
+# Thai version
+ROW_TITLES_TH = {
     "r1": "ตรวจสอบสภาพทั่วไป",
     "r2": "ตรวจสอบดักซีล, ซิลิโคนกันซึม",
     "r3": "ตรวจสอบสายอัดประจุ",
@@ -78,8 +79,34 @@ ROW_TITLES = {
     "r18": "ทำความสะอาด"
 }
 
+# English version
+ROW_TITLES_EN = {
+    "r1": "Check General Condition",
+    "r2": "Check Seal, Silicone Waterproofing",
+    "r3": "Check Charging Cable",
+    "r4": "Check Charging Connector",
+    "r5": "Check Emergency Stop Button",
+    "r6": "Check QR CODE",
+    "r7": "Electric Shock Warning Sign",
+    "r8": "Ventilation Required Warning Sign",
+    "r9": "Emergency Button Warning Sign",
+    "r10": "Check CP Pin Voltage",
+    "r11": "Check Ventilation Filter",
+    "r12": "Check Electrical Connection Points",
+    "r13": "Check Contactor",
+    "r14": "Check Surge Protection Device",
+    "r15": "Check Phase Sequence",
+    "r16": "Measure Input Voltage",
+    "r17": "Test Charging",
+    "r18": "Cleaning"
+}
+
+# Default to Thai
+ROW_TITLES = ROW_TITLES_TH
+
 # ชื่อข้อย่อย (ข้อที่มี 2 ข้อย่อยคงที่)
-SUB_ROW_TITLES = {
+# Thai version
+SUB_ROW_TITLES_TH = {
     "r3_1": "สายอัดประจุ หัวที่ 1",
     "r3_2": "สายอัดประจุ หัวที่ 2",
     "r4_1": "หัวจ่ายอัดประจุ หัวที่ 1",
@@ -95,6 +122,27 @@ SUB_ROW_TITLES = {
     "r17_1": "สายที่ 1",
     "r17_2": "สายที่ 2",
 }
+
+# English version
+SUB_ROW_TITLES_EN = {
+    "r3_1": "Charging Cable Connector 1",
+    "r3_2": "Charging Cable Connector 2",
+    "r4_1": "Charging Connector 1",
+    "r4_2": "Charging Connector 2",
+    "r6_1": "QR CODE Connector 1",
+    "r6_2": "QR CODE Connector 2",
+    "r10_1": "CP Pin Voltage Cable 1",
+    "r10_2": "CP Pin Voltage Cable 2",
+    "r11_1": "Ventilation Filter (Left Side)",
+    "r11_2": "Ventilation Filter (Right Side)",
+    "r11_3": "Ventilation Filter (Front Side)",
+    "r11_4": "Ventilation Filter (Rear Side)",
+    "r17_1": "Cable 1",
+    "r17_2": "Cable 2",
+}
+
+# Default to Thai
+SUB_ROW_TITLES = SUB_ROW_TITLES_TH
 
 # ข้อที่มีข้อย่อย dynamic (5, 7)
 DYNAMIC_SUB_ROWS = {5, 7}
@@ -558,11 +606,17 @@ def _format_measures_pre_cp(cp: dict) -> str:
 
 
 # -------------------- Result / Row processing --------------------
-def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
+def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dict = None, sub_row_titles: dict = None, lang: str = "th") -> List[dict]:
     """แปลง rows dict เป็น list พร้อมจัดกลุ่มข้อหลักและข้อย่อย"""
     if not isinstance(rows, dict):
         return []
-    
+
+    # ใช้ค่า default ถ้าไม่ได้ส่งมา
+    if row_titles is None:
+        row_titles = ROW_TITLES
+    if sub_row_titles is None:
+        sub_row_titles = SUB_ROW_TITLES
+
     measures = measures or {}
     items: List[dict] = []
     
@@ -599,7 +653,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
         
         # ดึงข้อมูลข้อหลัก
         main_data = rows.get(main_key, {}) if main_key else {}
-        main_title = ROW_TITLES.get(f"r{main_idx}", f"รายการที่ {main_idx}")
+        main_title = row_titles.get(f"r{main_idx}", f"รายการที่ {main_idx}")
         
         # ========== ไม่มีข้อย่อย - แสดงปกติ ==========
         if not subs:
@@ -638,16 +692,22 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
             
             for sub_idx, sub_key in subs:
                 sub_data = rows.get(sub_key, {})
-                
+
                 # หาชื่อข้อย่อย
-                sub_title = SUB_ROW_TITLES.get(sub_key)
+                sub_title = sub_row_titles.get(sub_key)
 
                 # สำหรับข้อ 5, 7 ที่เป็น dynamic - ใช้ชื่อตามลำดับ
                 if main_idx in DYNAMIC_SUB_ROWS:
                     if main_idx == 5:
-                        sub_title = f"ปุ่มหยุดฉุกเฉินที่ {sub_idx}"
+                        if lang == "en":
+                            sub_title = f"Emergency Stop Button {sub_idx}"
+                        else:
+                            sub_title = f"ปุ่มหยุดฉุกเฉินที่ {sub_idx}"
                     elif main_idx == 7:
-                        sub_title = f"ป้ายเตือนระวังไฟฟ้าช็อกที่ {sub_idx}"
+                        if lang == "en":
+                            sub_title = f"Electric Shock Warning Sign {sub_idx}"
+                        else:
+                            sub_title = f"ป้ายเตือนระวังไฟฟ้าช็อกที่ {sub_idx}"
                 
                 # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc.
                 lines.append(f"   \t{main_idx}.{sub_idx}) {sub_title}")
@@ -1273,9 +1333,18 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pm_date_th = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
     charger_no = doc.get("job", {}).get("chargerNo", "-")
-    checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
-    checks_pre = _rows_to_checks(doc.get("rows_pre") or {}, doc.get("measures_pre") or {})
-    
+
+    # ========== เลือก row titles ตามภาษา ==========
+    if lang == "en":
+        row_titles = ROW_TITLES_EN
+        sub_row_titles = SUB_ROW_TITLES_EN
+    else:
+        row_titles = ROW_TITLES_TH
+        sub_row_titles = SUB_ROW_TITLES_TH
+
+    checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {}, row_titles, sub_row_titles, lang)
+    checks_pre = _rows_to_checks(doc.get("rows_pre") or {}, doc.get("measures_pre") or {}, row_titles, sub_row_titles, lang)
+
     # ========== เลือกข้อความตามภาษา ==========
     if lang == "en":
         # English titles
@@ -1446,7 +1515,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                 pdf.set_xy(x0, y)
                 pdf.set_font(base_font, "B", 13)
                 pdf.set_fill_color(255, 230, 100)
-                pdf.cell(page_w, PHOTO_CONTINUE_H, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
+                pdf.cell(page_w, PHOTO_CONTINUE_H, doc_title_photo_cont, border=1, ln=1, align="C", fill=True)
                 y += PHOTO_CONTINUE_H
                 y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
                 pdf.set_font(base_font, "", FONT_MAIN)
@@ -1506,12 +1575,14 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                 question_text_pre = "\n".join(result_lines)
             else:
                 # ไม่มีข้อย่อย - แสดงปกติ
-                main_title = ROW_TITLES.get(f"r{idx}", f"รายการที่ {idx}")
-                question_text_pre = f"{idx}) {main_title} (Pre-PM)"
-                
+                default_title = f"Item {idx}" if lang == "en" else f"รายการที่ {idx}"
+                main_title = row_titles.get(f"r{idx}", default_title)
+                question_text_pre = f"{idx}) {main_title} {label_pre_pm}"
+
                 # เพิ่ม remark ถ้ามี
+                remark_label_text = "Remark" if lang == "en" else "หมายเหตุ"
                 if item_remark and item_remark.strip() and item_remark.strip() != "-":
-                    question_text_pre += f"\nหมายเหตุ: {item_remark.strip()}"
+                    question_text_pre += f"\n{remark_label_text}: {item_remark.strip()}"
 
             # เพิ่มค่า measures สำหรับข้อ 16
             measures_pre = doc.get("measures_pre", {})
@@ -1591,7 +1662,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
-    pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_POST, border=1, ln=1, align="C", fill=True)
+    pdf.cell(page_w, TITLE_H, doc_title_post, border=1, ln=1, align="C", fill=True)
     
     y += TITLE_H
 
@@ -1625,7 +1696,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
-            pdf.cell(page_w, TITLE_H, DOCUMENT_TITLE_POST_CONT, border=1, ln=1, align="C", fill=True)
+            pdf.cell(page_w, TITLE_H, doc_title_post_cont, border=1, ln=1, align="C", fill=True)
             y += TITLE_H
 
             y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
@@ -1795,7 +1866,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pdf.set_xy(x0, y)
     pdf.set_font(base_font, "B", 13)
     pdf.set_fill_color(255, 230, 100)
-    title_text = DOCUMENT_TITLE_PHOTO_POST if has_pre_photos else "Photos"
+    title_text = doc_title_photo_post if has_pre_photos else ("Photos" if lang == "en" else "รูปภาพ")
     pdf.cell(page_w, TITLE_H, title_text, border=1, ln=1, align="C", fill=True)
     y += TITLE_H
     
@@ -1818,7 +1889,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)
             pdf.set_fill_color(255, 230, 100)
-            pdf.cell(page_w, PHOTO_CONTINUE_H, DOCUMENT_TITLE_PHOTO_CONT, border=1, ln=1, align="C", fill=True)
+            pdf.cell(page_w, PHOTO_CONTINUE_H, doc_title_photo_cont, border=1, ln=1, align="C", fill=True)
             y += PHOTO_CONTINUE_H
             y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
             pdf.set_font(base_font, "", FONT_MAIN)
@@ -1854,7 +1925,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             question_text = "\n".join(result_lines)
         else:
             # ไม่มีข้อย่อย - แสดงปกติ (ไม่มี remark)
-            main_title = ROW_TITLES.get(f"r{idx}", f"รายการที่ {idx}")
+            default_title = f"Item {idx}" if lang == "en" else f"รายการที่ {idx}"
+            main_title = row_titles.get(f"r{idx}", default_title)
             question_text = f"{idx}) {main_title}"
         
         # ========== เพิ่มค่า measures สำหรับข้อ 16 ==========
