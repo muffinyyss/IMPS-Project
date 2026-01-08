@@ -59,15 +59,15 @@ async def export_pdf_redirect(
         raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
 
     # กำหนด collection key ตามประเภท template
-    # mdb, station, cm ใช้ station_id แทน sn
-    if template in ["mdb", "station", "cm"]:
+    # เฉพาะ charger ใช้ sn, template อื่นๆ ทั้งหมดใช้ station_id
+    if template == "charger":
+        coll_key = sn
+        if not coll_key:
+            raise HTTPException(status_code=400, detail="ต้องระบุ sn สำหรับ template charger")
+    else:
         coll_key = station_id
         if not coll_key:
             raise HTTPException(status_code=400, detail="ต้องระบุ station_id สำหรับ template นี้")
-    else:
-        coll_key = sn
-        if not coll_key:
-            raise HTTPException(status_code=400, detail="ต้องระบุ sn สำหรับ template นี้")
 
     # เลือก database และ collection ตามประเภท template
     db_info = TEMPLATE_MAP[template]
@@ -80,7 +80,7 @@ async def export_pdf_redirect(
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
 
     # ตั้งชื่อไฟล์
-    pm_templates = ["charger", "mdb", "ccb", "cbbox", "station", "cm"]
+    pm_templates = ["charger", "mdb", "ccb", "cbbox", "station", "cm", "dc", "ac"]
     if template in pm_templates:
         issue_id = data.get("issue_id")
         if not issue_id:
@@ -91,10 +91,10 @@ async def export_pdf_redirect(
 
     # สร้าง URL ใหม่พร้อม query parameters
     query_params = ""
-    if template in ["mdb", "station", "cm"]:
-        query_params = f"?station_id={station_id}"
-    else:
+    if template == "charger":
         query_params = f"?sn={sn}"
+    else:
+        query_params = f"?station_id={station_id}"
     query_params += f"&lang={lang}"  # เพิ่ม lang ใน redirect URL
     if dl:
         query_params += "&dl=true"
@@ -140,15 +140,15 @@ async def export_pdf(
         raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
 
     # กำหนด collection key ตามประเภท template
-    # mdb, station, cm ใช้ station_id แทน sn
-    if template in ["mdb", "station", "cm"]:
+    # เฉพาะ charger ใช้ sn, template อื่นๆ ทั้งหมดใช้ station_id
+    if template == "charger":
+        coll_key = sn
+        if not coll_key:
+            raise HTTPException(status_code=400, detail="ต้องระบุ sn สำหรับ template charger")
+    else:
         coll_key = station_id
         if not coll_key:
             raise HTTPException(status_code=400, detail="ต้องระบุ station_id สำหรับ template นี้")
-    else:
-        coll_key = sn
-        if not coll_key:
-            raise HTTPException(status_code=400, detail="ต้องระบุ sn สำหรับ template นี้")
 
     # เลือก database และ collection ตามประเภท template
     db_info = TEMPLATE_MAP[template]
