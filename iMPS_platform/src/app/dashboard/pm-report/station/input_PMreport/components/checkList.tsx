@@ -797,7 +797,7 @@ export default function StationPMReport() {
     // Save draft for Pre mode
     useDebouncedEffect(() => {
         if (!stationId || isPostMode) return;
-        saveDraftLocal(key, { rows, summary, summary_pf: summaryCheck, photoRefs, inspector });
+        saveDraftLocal(key, { rows, summary, summary_pf: summaryCheck, photoRefs, });
     }, [key, stationId, rows, summary, summaryCheck, photoRefs, isPostMode, inspector]);
 
     // Save draft for Post mode
@@ -839,6 +839,60 @@ export default function StationPMReport() {
         if (!res.ok) throw new Error(await res.text());
     }
 
+    // Helper function to flatten rows and ensure correct structure
+    const flattenRows = (inputRows: Record<string, any>): Record<string, { pf: PF; remark: string }> => {
+        const result: Record<string, { pf: PF; remark: string }> = {};
+        
+        // Get all valid keys from QUESTIONS
+        const validKeys: string[] = [];
+        QUESTIONS.forEach((q) => {
+            if (q.kind === "simple") {
+                validKeys.push(q.key);
+            } else if (q.kind === "group") {
+                q.items.forEach((item) => {
+                    validKeys.push(item.key);
+                });
+            }
+        });
+        
+        // First, extract flat keys directly
+        for (const key of validKeys) {
+            if (inputRows[key] && typeof inputRows[key] === "object") {
+                result[key] = {
+                    pf: inputRows[key].pf ?? "",
+                    remark: inputRows[key].remark ?? "",
+                };
+            }
+        }
+        
+        // Then, check for nested keys (e.g., r10.r10_1) and extract them
+        for (const [parentKey, parentValue] of Object.entries(inputRows)) {
+            if (typeof parentValue === "object" && parentValue !== null) {
+                for (const [childKey, childValue] of Object.entries(parentValue)) {
+                    // Check if childKey is a valid sub-item key (e.g., r10_1, r10_2)
+                    if (validKeys.includes(childKey) && typeof childValue === "object" && childValue !== null) {
+                        // Only overwrite if we haven't already got this key
+                        if (!result[childKey] || (!result[childKey].pf && !result[childKey].remark)) {
+                            result[childKey] = {
+                                pf: (childValue as any).pf ?? "",
+                                remark: (childValue as any).remark ?? "",
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Ensure all valid keys exist with default values
+        for (const key of validKeys) {
+            if (!result[key]) {
+                result[key] = { pf: "", remark: "" };
+            }
+        }
+        
+        return result;
+    };
+
     const onPreSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
         if (!allPhotosAttachedPre) { alert(t("alertFillPhoto", lang)); return; }
@@ -849,9 +903,13 @@ export default function StationPMReport() {
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || "";
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+            
+            // Flatten rows to ensure correct structure (no nested keys)
+            const flatRows = flattenRows(rows);
+            
             const payload = {
                 station_id: stationId, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector,
-                rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId,
+                rows_pre: flatRows, pm_date, doc_name: docName, side: "pre" as TabId,
                 comment_pre: summary,
             };
             const res = await fetch(`${API_BASE}/stationpmreport/pre/submit`, {
@@ -909,8 +967,12 @@ export default function StationPMReport() {
             const token = localStorage.getItem("access_token");
             const finalReportId = reportId || editId;
             if (!finalReportId) throw new Error(t("noReportId", lang));
+            
+            // Flatten rows to ensure correct structure (no nested keys)
+            const flatRows = flattenRows(rows);
+            
             const payload = {
-                station_id: stationId, rows, summary,
+                station_id: stationId, rows: flatRows, summary,
                 ...(summaryCheck ? { summaryCheck } : {}), side: "post" as TabId, report_id: finalReportId,
             };
             const res = await fetch(`${API_BASE}/stationpmreport/submit`, {
