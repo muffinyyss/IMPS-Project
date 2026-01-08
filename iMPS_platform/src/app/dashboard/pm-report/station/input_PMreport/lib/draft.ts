@@ -7,7 +7,8 @@ type DraftData = {
   rows: any;
   summary: string;
   summary_pf?: PF;
-  photoRefs?: Record<number, PhotoRef[]>;
+  summaryCheck?: any;
+  photoRefs?: Record<string | number, (PhotoRef | { isNA: true })[]>;
 };
 
 function safeStorage() {
