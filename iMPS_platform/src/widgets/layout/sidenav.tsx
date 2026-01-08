@@ -1,5 +1,3 @@
-
-
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
@@ -17,8 +15,8 @@ import {
   AccordionBody,
   IconButton,
 } from "@material-tailwind/react";
-// ใช้ getRoutes ถ้ายังไม่มี AuthContext (ถ้ามีอยากใช้ role จาก context ค่อยเปลี่ยนเป็น useRoutes ได้)
-import { getRoutes } from "@/routes";
+// ใช้ useRoutes hook เพื่อให้เมนูอัปเดตตาม URL params (sn, station_id)
+import { useRoutes } from "@/routes";
 import {
   ChevronDownIcon,
   XMarkIcon,
@@ -67,8 +65,8 @@ export default function Sidenav({}: PropTypes) {
   const [controller, dispatch] = useMaterialTailwindController();
   const { sidenavType, sidenavColor, openSidenav } = controller as any;
 
-  // ✅ เมนูคำนวณในคอมโพเนนต์ (จะอ่าน role จาก localStorage ผ่าน getRoutes ภายใน)
-  const menu: RouteItem[] = React.useMemo(() => getRoutes(), []);
+  // ✅ ใช้ useRoutes hook - เมนูจะอัปเดตอัตโนมัติเมื่อ URL params เปลี่ยน
+  const menu: RouteItem[] = useRoutes();
 
   const [collapsed, setCollapsed] = React.useState(false);
 

@@ -43,6 +43,8 @@ import {
   PhotoIcon,
 } from "@heroicons/react/24/solid";
 
+import { useRouter } from "next/navigation";
+
 import AddStation, {
   type NewStationPayload,
 } from "@/app/dashboard/stations/components/addstations";
@@ -142,6 +144,7 @@ function getTodayDate(): string {
 }
 
 export function SearchDataTables() {
+  const router = useRouter();
   const [me, setMe] = useState<{ user_id: string; username: string; role: string } | null>(null);
   const [usernames, setUsernames] = useState<string[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -238,6 +241,15 @@ export function SearchDataTables() {
     setEditStationImage(null);
     setEditStationPreview("");
   };
+
+  // Clear selected_sn when visiting Stations page (for admin menu state)
+  useEffect(() => {
+    // Clear charger selection so admin menu shows Users/Stations
+    localStorage.removeItem("selected_sn");
+    localStorage.removeItem("selected_charger_no");
+    // Dispatch event to notify routes.jsx
+    window.dispatchEvent(new CustomEvent("charger:deselected"));
+  }, []);
 
   // Sync edit station form
   useEffect(() => {
@@ -445,9 +457,27 @@ export function SearchDataTables() {
     setOpenEditStation(true);
   };
 
-  const handleEditCharger = (stationId: string, charger: ChargerData) => {
+  const handleEditCharger = (stationId: string, charger: ChargerData, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click navigation
     setEditingCharger({ stationId, charger });
     setOpenEditCharger(true);
+  };
+
+  const handleChargerCardClick = (charger: ChargerData, stationId: string) => {
+    // Navigate to /dashboard/chargers with SN and station_id as query parameters
+    const sn = charger.SN && charger.SN !== "-" ? charger.SN : "";
+    
+    // Save to localStorage for menu state persistence
+    if (sn) localStorage.setItem("selected_sn", sn);
+    if (stationId) localStorage.setItem("selected_station_id", stationId);
+    if (charger.chargerNo) localStorage.setItem("selected_charger_no", String(charger.chargerNo));
+    
+    const params = new URLSearchParams();
+    if (sn) params.set("sn", sn);
+    if (stationId) params.set("station_id", stationId);
+    
+    const queryString = params.toString();
+    router.push(`/dashboard/chargers${queryString ? `?${queryString}` : ""}`);
   };
 
   const handleUpdateStation = async () => {
@@ -577,7 +607,8 @@ export function SearchDataTables() {
     }
   };
 
-  const handleDeleteCharger = async (stationId: string, charger: ChargerData) => {
+  const handleDeleteCharger = async (stationId: string, charger: ChargerData, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click navigation
     if (!charger.id) return alert("Charger ID not found");
     if (!confirm(`Are you sure you want to delete charger "${charger.chargeBoxID}"?`)) return;
 
@@ -1001,7 +1032,8 @@ export function SearchDataTables() {
 
     return (
       <div
-        className="tw-relative tw-overflow-hidden tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-all tw-duration-200"
+        onClick={() => handleChargerCardClick(charger, stationId)}
+        className="tw-relative tw-overflow-hidden tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-all tw-duration-200 tw-cursor-pointer hover:tw-border-blue-300"
         style={{ animationDelay: `${index * 50}ms` }}
       >
         <div className="tw-p-4">
@@ -1036,7 +1068,7 @@ export function SearchDataTables() {
             <div className="tw-flex tw-items-center tw-gap-1 tw-flex-shrink-0">
               {canEdit && (
                 <button
-                  onClick={() => handleEditCharger(stationId, charger)}
+                  onClick={(e) => handleEditCharger(stationId, charger, e)}
                   className="tw-p-1.5 tw-rounded tw-text-blue-gray-400 hover:tw-text-blue-600 hover:tw-bg-blue-50 tw-transition-colors"
                   title="Edit"
                 >
@@ -1045,7 +1077,7 @@ export function SearchDataTables() {
               )}
               {isAdmin && (
                 <button
-                  onClick={() => handleDeleteCharger(stationId, charger)}
+                  onClick={(e) => handleDeleteCharger(stationId, charger, e)}
                   className="tw-p-1.5 tw-rounded tw-text-blue-gray-400 hover:tw-text-red-500 hover:tw-bg-red-50 tw-transition-colors"
                   title="Delete"
                 >
@@ -1189,7 +1221,7 @@ export function SearchDataTables() {
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5">Station Management</Typography>
             <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1">
-              Manage Stations and Chargers. Click on a row to view chargers.
+              Manage Stations and Chargers. Click on a row to view chargers, click on a charger card to view details.
             </Typography>
           </div>
 

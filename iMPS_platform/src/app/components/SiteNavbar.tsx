@@ -11,7 +11,7 @@ const navItems: NavItem[] = [
   { label: "Home", href: "/pages/mainpages/home", requireAuth: false },
   { label: "About", href: "/pages/mainpages/about", requireAuth: false },
   { label: "Contact", href: "/pages/mainpages/contact", requireAuth: false },
-  { label: "Dashboard", href: "/dashboard/chargers", requireAuth: true },
+  { label: "Dashboard", href: "/dashboard/stations", requireAuth: true },
 ];
 
 export default function SiteNavbar() {
@@ -32,45 +32,6 @@ export default function SiteNavbar() {
     }
   };
 
-  // useEffect(() => {
-  //   loadUserFromStorage();
-  //   const onStorage = () => loadUserFromStorage();
-  //   const onAuth = () => loadUserFromStorage();
-  //   const onFocus = () => loadUserFromStorage();
-
-  //   window.addEventListener("storage", onStorage); // ข้ามแท็บ
-  //   window.addEventListener("auth", onAuth);       // แท็บเดียวกัน
-  //   window.addEventListener("focus", onFocus);     // กลับมาโฟกัส
-
-  //   return () => {
-  //     window.removeEventListener("storage", onStorage);
-  //     window.removeEventListener("auth", onAuth);
-  //     window.removeEventListener("focus", onFocus);
-  //   };
-  // }, []);
-
-  //  useEffect(() => {
-  //   setMobileOpen(false);
-  //   loadUserFromStorage();
-  // }, [pathname]);
-
-
-  // โหลดสถานะจาก localStorage + sync เมื่อมีการเปลี่ยนแปลงจากแท็บอื่น
-  // useEffect(() => {
-  //   const load = () => {
-  //     try {
-  //       const token = localStorage.getItem("access_token");
-  //       const rawUser = localStorage.getItem("user");
-  //       console.log("rawUser",rawUser)
-  //       setUser(token && rawUser ? JSON.parse(rawUser) : null);
-  //     } catch {
-  //       setUser(null);
-  //     }
-  //   };
-  //   load();
-  //   window.addEventListener("storage", load);
-  //   return () => window.removeEventListener("storage", load);
-  // }, []);
   useEffect(() => {
     const load = () => {
       try {
@@ -133,6 +94,25 @@ export default function SiteNavbar() {
     return item.href;
   };
 
+  // Handle Dashboard click - clear charger selection for admin
+  const handleNavClick = (item: NavItem, href: string, e: React.MouseEvent) => {
+    if (item.label === "Dashboard" && user) {
+      const role = user.role?.toLowerCase() ?? "";
+      // Admin: clear selected_sn so menu shows Users/Stations
+      if (role === "admin") {
+        e.preventDefault();
+        // Clear only charger selection, keep station_id for reference
+        localStorage.removeItem("selected_sn");
+        localStorage.removeItem("selected_charger_no");
+        window.dispatchEvent(new CustomEvent("charger:deselected"));
+        // Small delay to ensure state updates
+        setTimeout(() => {
+          router.push(href);
+        }, 50);
+      }
+    }
+  };
+
   const handleLogout = async () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
@@ -161,30 +141,17 @@ export default function SiteNavbar() {
 
         {/* Center nav — แสดงเฉพาะจอใหญ่ */}
         <ul className="tw-hidden md:tw-flex tw-items-center tw-space-x-10">
-          {/* {navItems.map((item) => (
-            <li key={item.href}>
-              {!item.requireAuth || user ? (
-                <Link href={item.href} className={linkClass(item.href)} prefetch={false}>
-                  {item.label}
-                </Link>
-              ) : (
-                <span
-                  role="link"
-                  aria-disabled="true"
-                  className="tw-text-gray-400 tw-cursor-not-allowed tw-select-none tw-pointer-events-none"
-                  title="Please login first"
-                >
-                  {item.label}
-                </span>
-              )}
-            </li>
-          ))} */}
           {navItems.map((item) => {
             const href = resolveHref(item);
             return (
               <li key={item.href}>
                 {!item.requireAuth || user ? (
-                  <Link href={href} className={linkClass(href)} prefetch={false}>
+                  <Link 
+                    href={href} 
+                    className={linkClass(href)} 
+                    prefetch={false}
+                    onClick={(e) => handleNavClick(item, href, e)}
+                  >
                     {item.label}
                   </Link>
                 ) : (
@@ -272,28 +239,6 @@ export default function SiteNavbar() {
       >
         <div className="tw-px-4 tw-pt-3 tw-pb-4">
           <ul className="tw-space-y-2">
-            {/* {navItems.map((item) => (
-              <li key={item.href}>
-                {!item.requireAuth || user ? (
-                  <Link
-                    href={item.href}
-                    className={`tw-block tw-py-2 ${linkClass(item.href)}`}
-                    prefetch={false}
-                  >
-                    {item.label}
-                  </Link>
-                ) : (
-                  <span
-                    role="link"
-                    aria-disabled="true"
-                    className="tw-block tw-py-2 tw-text-gray-400 tw-cursor-not-allowed tw-select-none tw-pointer-events-none"
-                    title="Please login first"
-                  >
-                    {item.label}
-                  </span>
-                )}
-              </li>
-            ))} */}
             {navItems.map((item) => {
               const href = resolveHref(item);
               return (
@@ -303,6 +248,7 @@ export default function SiteNavbar() {
                       href={href}
                       className={`tw-block tw-py-2 ${linkClass(href)}`}
                       prefetch={false}
+                      onClick={(e) => handleNavClick(item, href, e)}
                     >
                       {item.label}
                     </Link>

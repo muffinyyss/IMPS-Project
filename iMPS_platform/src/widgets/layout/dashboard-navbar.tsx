@@ -19,6 +19,9 @@ import {
   ShoppingCartIcon,
   BoltIcon,
   LanguageIcon,
+  ArrowLeftIcon,
+  UserIcon,
+  MapPinIcon,
 } from "@heroicons/react/24/solid";
 
 // @context
@@ -33,7 +36,7 @@ type Charger = {
   id: string;
   chargeBoxID: string;
   SN: string;
-  chargerNo?: number;  // เลขตู้
+  chargerNo?: number;
   status?: boolean;
 };
 type StationInfo = {
@@ -53,8 +56,6 @@ export function DashboardNavbar() {
   const [controller, dispatch] = useMaterialTailwindController();
   const { fixedNavbar, openSidenav } = controller;
 
-  const toggleSidenav = () => setOpenSidenav(dispatch, !openSidenav);
-
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -67,6 +68,7 @@ export function DashboardNavbar() {
   const isChargerTab = tab === "charger";
   const isMdbTab = tab === "mdb";
   const isPmReportPage = pathname.startsWith("/dashboard/pm-report");
+  const isStationsPage = pathname.startsWith("/dashboard/stations");
 
   // Hide topbar on some pages
   const HIDE_TOPBAR = ["/pages", "/mainpages"];
@@ -85,7 +87,8 @@ export function DashboardNavbar() {
   else if (segs[1] === "pm-report") title = "PM Report";
   else if (segs[1] === "input_PMreport") title = "Add PM Report";
   else if (segs[1] === "cm-report") title = "CM Report";
-  else if (segs[1] === "cbm") title = "Conditio-base";
+  else if (segs[1] === "cbm") title = "Condition-base";
+  else if (segs[1] === "stations") title = "Stations";
 
   // Lock station dropdown when in form view (any tab)
   const lockStationDropdown = isPmReportPage && isFormView;
@@ -96,7 +99,6 @@ export function DashboardNavbar() {
   // ===== Language State =====
   const [lang, setLang] = useState<Lang>("th");
 
-  // Load language from localStorage on mount
   useEffect(() => {
     const savedLang = localStorage.getItem("app_language") as Lang | null;
     if (savedLang === "th" || savedLang === "en") {
@@ -104,19 +106,27 @@ export function DashboardNavbar() {
     }
   }, []);
 
-  // Toggle language
   const toggleLanguage = () => {
     const newLang: Lang = lang === "th" ? "en" : "th";
     setLang(newLang);
     localStorage.setItem("app_language", newLang);
-
-    // Dispatch event for other components to listen
-    window.dispatchEvent(new CustomEvent("language:change", {
-      detail: { lang: newLang }
-    }));
+    window.dispatchEvent(new CustomEvent("language:change", { detail: { lang: newLang } }));
   };
 
-  // ===== Station Dropdown State =====
+  // ===== User Role State =====
+  const [userRole, setUserRole] = useState<string>("");
+  const [userId, setUserId] = useState<string>("");
+  const isAdmin = userRole === "admin";
+
+  // ===== Admin: Selected Station/Charger from localStorage =====
+  const [adminSelectedSN, setAdminSelectedSN] = useState<string>("");
+  const [adminSelectedStationId, setAdminSelectedStationId] = useState<string>("");
+  const [adminSelectedStationName, setAdminSelectedStationName] = useState<string>("");
+  const [adminSelectedChargerNo, setAdminSelectedChargerNo] = useState<string>("");
+
+  const adminHasChargerSelected = !!adminSelectedSN;
+
+  // ===== Non-Admin: Station/Charger Dropdown State =====
   const [query, setQuery] = useState("");
   const [stations, setStations] = useState<Station[]>([]);
   const [open, setOpen] = useState(false);
@@ -126,7 +136,6 @@ export function DashboardNavbar() {
   const [searching, setSearching] = useState(false);
   const [stationInfo, setStationInfo] = useState<StationInfo | null>(null);
 
-  // ===== Charger Dropdown State =====
   const [chargerQuery, setChargerQuery] = useState("");
   const [chargers, setChargers] = useState<Charger[]>([]);
   const [chargerOpen, setChargerOpen] = useState(false);
@@ -135,7 +144,6 @@ export function DashboardNavbar() {
   const chargerContainerRef = useRef<HTMLDivElement>(null);
   const [loadingChargers, setLoadingChargers] = useState(false);
 
-  // Track if initial restore from URL is done
   const initialStationRestoreRef = useRef(false);
   const initialChargerRestoreRef = useRef(false);
 
@@ -145,30 +153,70 @@ export function DashboardNavbar() {
     return lang === "th" ? `ตู้ที่ ${chargerNo} - ${c.SN}` : `Box ${chargerNo} - ${c.SN}`;
   };
 
-  // Load user's stations (JWT only)
+  // ===== Fetch User Role from JWT =====
   useEffect(() => {
     if (isAuthPage) return;
+    try {
+      const token = localStorage.getItem("access_token") ?? "";
+      if (!token) return;
+      const decoded: any = jwtDecode(token);
+      setUserRole(decoded?.role ?? "");
+      setUserId(decoded?.user_id ?? "");
+    } catch (e) {
+      console.warn("[JWT] decode failed", e);
+    }
+  }, [isAuthPage]);
+
+  // ===== Admin: Load selected station/charger from localStorage =====
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const loadAdminSelection = () => {
+      const sn = localStorage.getItem("selected_sn") ?? "";
+      const stationId = localStorage.getItem("selected_station_id") ?? "";
+      const stationName = localStorage.getItem("selected_station_name") ?? stationId;
+      const chargerNo = localStorage.getItem("selected_charger_no") ?? "";
+
+      setAdminSelectedSN(sn);
+      setAdminSelectedStationId(stationId);
+      setAdminSelectedStationName(stationName);
+      setAdminSelectedChargerNo(chargerNo);
+    };
+
+    loadAdminSelection();
+
+    // Listen for changes
+    window.addEventListener("storage", loadAdminSelection);
+    window.addEventListener("charger:selected", loadAdminSelection);
+    window.addEventListener("charger:deselected", loadAdminSelection);
+
+    const interval = setInterval(loadAdminSelection, 500);
+
+    return () => {
+      window.removeEventListener("storage", loadAdminSelection);
+      window.removeEventListener("charger:selected", loadAdminSelection);
+      window.removeEventListener("charger:deselected", loadAdminSelection);
+      clearInterval(interval);
+    };
+  }, [isAdmin]);
+
+  // ===== Non-Admin: Load user's stations =====
+  useEffect(() => {
+    if (isAuthPage || isAdmin) return;
 
     (async () => {
       try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-        console.log("[Stations] API_BASE =", API_BASE);
-        console.log("[Stations] has token? =", !!token);
-
+        const token = localStorage.getItem("access_token") ?? "";
         if (!token) return;
 
         try {
           const decoded: any = jwtDecode(token);
           const nowSec = Math.floor(Date.now() / 1000);
           if (decoded?.exp && decoded.exp <= nowSec) {
-            console.warn("[Stations] token expired");
             localStorage.removeItem("access_token");
             return;
           }
-          const userRole = decoded?.role;
-          console.log("[Stations] user role =", userRole);
         } catch (e) {
-          console.warn("[Stations] token decode failed", e);
           localStorage.removeItem("access_token");
           return;
         }
@@ -177,7 +225,6 @@ export function DashboardNavbar() {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
         });
-        console.log("[Stations] /detail status =", res.status);
 
         if (res.status === 401) {
           localStorage.removeItem("access_token");
@@ -185,7 +232,6 @@ export function DashboardNavbar() {
         }
 
         if (res.status === 404) {
-          console.warn("[Stations] /detail 404 -> fallback /my-stations");
           res = await fetch(`${API_BASE}/my-stations`, {
             method: "GET",
             headers: { Authorization: `Bearer ${token}` },
@@ -193,15 +239,11 @@ export function DashboardNavbar() {
         }
 
         if (!res.ok) {
-          const txt = await res.text();
-          console.error("[Stations] fetch failed:", res.status, txt);
           setStations([]);
           return;
         }
 
         const data = await res.json();
-        console.log("[Stations] response =", data);
-
         let list: Station[] = [];
         if (Array.isArray(data?.stations) && data.stations.length && typeof data.stations[0] === "object") {
           list = data.stations as Station[];
@@ -210,7 +252,6 @@ export function DashboardNavbar() {
         }
 
         setStations(list);
-        console.log("[Stations] loaded stations count =", list.length);
 
         if (list.length === 1) {
           setSelectedStation(list[0]);
@@ -228,14 +269,14 @@ export function DashboardNavbar() {
           }
         }
       } catch (err) {
-        console.error("[Stations] exception:", err);
         setStations([]);
       }
     })();
-  }, [isAuthPage]);
+  }, [isAuthPage, isAdmin]);
 
-  // ===== Load Chargers when Station is selected =====
+  // ===== Non-Admin: Load Chargers when Station is selected =====
   useEffect(() => {
+    if (isAdmin) return;
     if (!selectedStation) {
       setChargers([]);
       setSelectedCharger(null);
@@ -254,7 +295,6 @@ export function DashboardNavbar() {
         });
 
         if (!res.ok) {
-          console.error("[Chargers] fetch failed:", res.status);
           setChargers([]);
           return;
         }
@@ -265,14 +305,12 @@ export function DashboardNavbar() {
             id: c.id,
             chargeBoxID: c.chargeBoxID,
             SN: c.SN || c.sn || "",
-            chargerNo: c.chargerNo || "",  // Map chargerNo field
+            chargerNo: c.chargerNo || "",
             status: c.status,
           }))
           : [];
         setChargers(list);
-        console.log("[Chargers] loaded chargers count =", list.length);
 
-        // Auto-select if only one charger or restore previous selection
         if (list.length === 1) {
           setSelectedCharger(list[0]);
           setChargerQuery(formatChargerDisplay(list[0]));
@@ -285,7 +323,6 @@ export function DashboardNavbar() {
               setSelectedCharger(found);
               setChargerQuery(formatChargerDisplay(found));
             } else {
-              // Reset if previous charger not in new station
               setSelectedCharger(null);
               setChargerQuery("");
               localStorage.removeItem("selected_sn");
@@ -293,13 +330,12 @@ export function DashboardNavbar() {
           }
         }
       } catch (err) {
-        console.error("[Chargers] exception:", err);
         setChargers([]);
       } finally {
         setLoadingChargers(false);
       }
     })();
-  }, [selectedStation]);
+  }, [selectedStation, isAdmin]);
 
   // Update charger display when language changes
   useEffect(() => {
@@ -352,20 +388,19 @@ export function DashboardNavbar() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  // choose station
+  // choose station (non-admin)
   const choose = (s: Station) => {
     setSelectedStation(s);
     setQuery(s.station_name);
     setOpen(false);
     localStorage.setItem("selected_station_id", s.station_id);
     localStorage.setItem("selected_station_name", s.station_name);
-    // Reset charger when changing station
     setSelectedCharger(null);
     setChargerQuery("");
     localStorage.removeItem("selected_sn");
   };
 
-  // choose charger - NOW USES SN
+  // choose charger (non-admin)
   const chooseCharger = (c: Charger) => {
     setSelectedCharger(c);
     setChargerQuery(formatChargerDisplay(c));
@@ -373,24 +408,26 @@ export function DashboardNavbar() {
     localStorage.setItem("selected_sn", c.SN);
   };
 
-  // onSearch - NOW USES SN INSTEAD OF charger_id/chargeBoxID
+  // ===== Admin: Back to Stations =====
+  const handleBackToStations = () => {
+    localStorage.removeItem("selected_sn");
+    localStorage.removeItem("selected_charger_no");
+    window.dispatchEvent(new CustomEvent("charger:deselected"));
+    router.push("/dashboard/stations");
+  };
+
+  // onSearch (non-admin)
   const onSearch = async () => {
     if (!selectedStation) { setOpen(true); return; }
 
     const params = new URLSearchParams(searchParams?.toString() ?? "");
-
-    // Keep station_id for reference
     params.set("station_id", selectedStation.station_id);
 
-    // Only include SN if charger tab is active and charger is selected
-    // Remove sn for other tabs (like mdb)
     if (isChargerTab && selectedCharger && selectedCharger.SN) {
       params.set("sn", selectedCharger.SN);
-      // Remove old params if they exist
       params.delete("charger_id");
       params.delete("chargeBoxID");
     } else {
-      // Remove charger-related params when not charger tab
       params.delete("sn");
       params.delete("charger_id");
       params.delete("chargeBoxID");
@@ -411,8 +448,8 @@ export function DashboardNavbar() {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
 
       if (res.status === 401) { localStorage.removeItem("access_token"); return; }
-      if (res.status === 403) { console.warn("Forbidden station_id"); return; }
-      if (!res.ok) { console.error("Fetch station info failed:", res.status, await res.text()); return; }
+      if (res.status === 403) { return; }
+      if (!res.ok) { return; }
 
       const data = await res.json();
       setStationInfo(data.station ?? data);
@@ -430,23 +467,9 @@ export function DashboardNavbar() {
     }
   };
 
-  // Remove sn from URL when switching to non-charger tab
+  // Restore from URL (non-admin)
   useEffect(() => {
-    if (!isPmReportPage) return;
-
-    // If tab is not charger and sn exists in URL, remove it
-    if (!isChargerTab && searchParams.get("sn")) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete("sn");
-      params.delete("charger_id");
-      params.delete("chargeBoxID");
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-    }
-  }, [tab, isPmReportPage, isChargerTab, searchParams, pathname, router]);
-
-  // Restore station selection from URL params - ONLY ON INITIAL LOAD
-  useEffect(() => {
-    // Skip if already restored or stations not loaded yet
+    if (isAdmin) return;
     if (initialStationRestoreRef.current || stations.length === 0) return;
 
     const sid = searchParams.get("station_id");
@@ -455,17 +478,13 @@ export function DashboardNavbar() {
       if (found) {
         setSelectedStation(found);
         setQuery(found.station_name);
-        console.log("[Restore] Station restored from URL:", sid);
       }
     }
-
-    // Mark station restore as done
     initialStationRestoreRef.current = true;
-  }, [stations, searchParams]);
+  }, [stations, searchParams, isAdmin]);
 
-  // Restore charger selection from URL params - ONLY ON INITIAL LOAD
   useEffect(() => {
-    // Skip if already restored or chargers not loaded yet
+    if (isAdmin) return;
     if (initialChargerRestoreRef.current || chargers.length === 0) return;
 
     const sn = searchParams.get("sn");
@@ -475,13 +494,10 @@ export function DashboardNavbar() {
         setSelectedCharger(foundCharger);
         setChargerQuery(formatChargerDisplay(foundCharger));
         localStorage.setItem("selected_sn", sn);
-        console.log("[Restore] Charger restored from URL:", sn);
       }
     }
-
-    // Mark charger restore as done
     initialChargerRestoreRef.current = true;
-  }, [chargers, searchParams]);
+  }, [chargers, searchParams, isAdmin]);
 
   // keyboard nav for station
   const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
@@ -538,6 +554,10 @@ export function DashboardNavbar() {
     noStationsFound: lang === "th" ? "ไม่พบสถานี" : "No stations found",
     noChargersInStation: lang === "th" ? "ไม่มีตู้ชาร์จในสถานีนี้" : "No chargers in this station",
     search: lang === "th" ? "ค้นหา" : "SEARCH",
+    // backToStations: lang === "th" ? "กลับไปเลือกสถานี" : "Back to Stations",
+    currentStation: lang === "th" ? "สถานี:" : "Station:",
+    currentCharger: lang === "th" ? "ตู้ชาร์จ:" : "Charger:",
+    pleaseSelectCharger: lang === "th" ? "กรุณาเลือกตู้ชาร์จที่หน้า Stations" : "Please select a charger from Stations page",
   };
 
   return (
@@ -583,155 +603,211 @@ export function DashboardNavbar() {
           )}
         </div>
 
-        {/* ===== Dropdown: Station + Charger ===== */}
+        {/* ===== Dropdown/Info Section ===== */}
         <div className="tw-mb-3 tw-flex tw-flex-col lg:tw-flex-row lg:tw-items-end tw-gap-3">
 
-          {/* Station Dropdown */}
-          <div ref={containerRef} className="tw-relative tw-flex tw-flex-col">
+          {/* ===== ADMIN: Show info box or nothing (no dropdown) ===== */}
+          {isAdmin && !isStationsPage && (
+            <>
+              {adminHasChargerSelected ? (
+                /* Admin has charger selected - show info box + back button */
+                <div className="tw-flex tw-items-center tw-gap-3">
+                  {/* <Button
+                    variant="outlined"
+                    size="sm"
+                    onClick={handleBackToStations}
+                    className="tw-flex tw-items-center tw-gap-2 tw-border-blue-gray-200 tw-text-blue-gray-700 tw-normal-case"
+                  >
+                    <ArrowLeftIcon className="tw-h-4 tw-w-4" />
+                    {t.backToStations}
+                  </Button> */}
 
-            <Input
-              size="lg"
-              label={t.searchStation}
-              type="text"
-              placeholder={t.searchStation}
-              className="tw-min-w-[200px] tw-border tw-p-2 tw-rounded tw-text-black"
-              value={query}
-              onChange={(e) => {
-                if (lockStationDropdown) return;
-                setQuery(e.target.value);
-                setOpen(true);
-              }}
-              onFocus={() => {
-                if (lockStationDropdown) return;
-                setOpen(true);
-              }}
-              onKeyDown={(e) => {
-                if (lockStationDropdown) return;
-                onKeyDown(e);
-              }}
-              crossOrigin=""
-              disabled={lockStationDropdown}
-            />
-
-            {open && !lockStationDropdown && (
-              <div
-                className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-1 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
-                role="listbox"
-                onMouseLeave={() => setActive(-1)}
-              >
-                {filtered.length > 0 ? (
-                  filtered.map((item, idx) => (
-                    <button
-                      type="button"
-                      key={item.station_id}
-                      role="option"
-                      className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-between ${idx === active ? "tw-bg-blue-gray-50" : ""}`}
-                      onMouseEnter={() => setActive(idx)}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => choose(item)}
-                    >
-                      <span className="tw-flex tw-flex-col">
-                        <span className="tw-font-medium">{item.station_name}</span>
-                        <span className="tw-text-xs tw-text-blue-gray-400">{item.station_id}</span>
+                  {/* Current Station & Charger Info */}
+                  <div className="tw-flex tw-items-center tw-gap-4 tw-px-4 tw-py-2 tw-bg-blue-gray-50 tw-rounded-lg tw-border tw-border-blue-gray-100">
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                      <i className="fa fa-map-marker-alt tw-text-blue-gray-500" />
+                      <span className="tw-text-xs tw-text-blue-gray-500">{t.currentStation}</span>
+                      <span className="tw-font-medium tw-text-blue-gray-800">{adminSelectedStationName || adminSelectedStationId}</span>
+                    </div>
+                    <div className="tw-w-px tw-h-5 tw-bg-blue-gray-200" />
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                      <i className="fa fa-charging-station tw-text-amber-500" />
+                      <span className="tw-text-xs tw-text-blue-gray-500">{t.currentCharger}</span>
+                      <span className="tw-font-medium tw-text-blue-gray-800">
+                        {adminSelectedChargerNo ? `${lang === "th" ? "ตู้ที่" : "Box"} ${adminSelectedChargerNo} - ` : ""}
+                        {adminSelectedSN}
                       </span>
-                    </button>
-                  ))
-                ) : (
-                  <div className="tw-px-3 tw-py-2 tw-text-gray-500">{t.noStationsFound}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Admin has NO charger selected - show message */
+                <div className="tw-flex tw-items-center tw-gap-3">
+                  <div className="tw-px-4 tw-py-2 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-200">
+                    <span className="tw-text-sm tw-text-amber-700">{t.pleaseSelectCharger}</span>
+                  </div>
+                  <Button
+                    variant="filled"
+                    size="sm"
+                    onClick={() => router.push("/dashboard/stations")}
+                    className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-normal-case"
+                  >
+                    {lang === "th" ? "ไปหน้า Stations" : "Go to Stations"}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ===== NON-ADMIN: Show dropdowns ===== */}
+          {!isAdmin && (
+            <>
+              {/* Station Dropdown */}
+              <div ref={containerRef} className="tw-relative tw-flex tw-flex-col">
+                <Input
+                  size="lg"
+                  label={t.searchStation}
+                  type="text"
+                  placeholder={t.searchStation}
+                  className="tw-min-w-[200px] tw-border tw-p-2 tw-rounded tw-text-black"
+                  value={query}
+                  onChange={(e) => {
+                    if (lockStationDropdown) return;
+                    setQuery(e.target.value);
+                    setOpen(true);
+                  }}
+                  onFocus={() => {
+                    if (lockStationDropdown) return;
+                    setOpen(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (lockStationDropdown) return;
+                    onKeyDown(e);
+                  }}
+                  crossOrigin=""
+                  disabled={lockStationDropdown}
+                />
+
+                {open && !lockStationDropdown && (
+                  <div
+                    className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-1 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
+                    role="listbox"
+                    onMouseLeave={() => setActive(-1)}
+                  >
+                    {filtered.length > 0 ? (
+                      filtered.map((item, idx) => (
+                        <button
+                          type="button"
+                          key={item.station_id}
+                          role="option"
+                          className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-between ${idx === active ? "tw-bg-blue-gray-50" : ""}`}
+                          onMouseEnter={() => setActive(idx)}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => choose(item)}
+                        >
+                          <span className="tw-flex tw-flex-col">
+                            <span className="tw-font-medium">{item.station_name}</span>
+                            <span className="tw-text-xs tw-text-blue-gray-400">{item.station_id}</span>
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="tw-px-3 tw-py-2 tw-text-gray-500">{t.noStationsFound}</div>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* Charger Dropdown - Hidden when PM Report tab is not "charger" */}
-          {!hideChargerDropdown && (
-            <div ref={chargerContainerRef} className="tw-relative tw-flex tw-flex-col">
+              {/* Charger Dropdown - Hidden when PM Report tab is not "charger" */}
+              {!hideChargerDropdown && (
+                <div ref={chargerContainerRef} className="tw-relative tw-flex tw-flex-col">
+                  <Input
+                    size="lg"
+                    label={t.selectCharger}
+                    type="text"
+                    placeholder={
+                      loadingChargers
+                        ? t.loading
+                        : !selectedStation
+                          ? t.selectStationFirst
+                          : chargers.length === 0
+                            ? t.noChargersFound
+                            : t.searchCharger
+                    }
+                    className="tw-min-w-[220px] tw-border tw-p-2 tw-rounded tw-text-black"
+                    value={chargerQuery}
+                    onChange={(e) => {
+                      if (lockStationDropdown || !selectedStation) return;
+                      setChargerQuery(e.target.value);
+                      setChargerOpen(true);
+                    }}
+                    onFocus={() => {
+                      if (lockStationDropdown || !selectedStation) return;
+                      setChargerOpen(true);
+                    }}
+                    onKeyDown={(e) => {
+                      if (lockStationDropdown || !selectedStation) return;
+                      onChargerKeyDown(e);
+                    }}
+                    crossOrigin=""
+                    disabled={lockStationDropdown || !selectedStation || loadingChargers}
+                  />
 
-              <Input
-                size="lg"
-                label={t.selectCharger}
-                type="text"
-                placeholder={
-                  loadingChargers
-                    ? t.loading
-                    : !selectedStation
-                      ? t.selectStationFirst
-                      : chargers.length === 0
-                        ? t.noChargersFound
-                        : t.searchCharger
-                }
-                className="tw-min-w-[220px] tw-border tw-p-2 tw-rounded tw-text-black"
-                value={chargerQuery}
-                onChange={(e) => {
-                  if (lockStationDropdown || !selectedStation) return;
-                  setChargerQuery(e.target.value);
-                  setChargerOpen(true);
-                }}
-                onFocus={() => {
-                  if (lockStationDropdown || !selectedStation) return;
-                  setChargerOpen(true);
-                }}
-                onKeyDown={(e) => {
-                  if (lockStationDropdown || !selectedStation) return;
-                  onChargerKeyDown(e);
-                }}
-                crossOrigin=""
-                disabled={lockStationDropdown || !selectedStation || loadingChargers}
-              />
-
-              {chargerOpen && !lockStationDropdown && selectedStation && (
-                <div
-                  className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-1 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
-                  role="listbox"
-                  onMouseLeave={() => setChargerActive(-1)}
-                >
-                  {filteredChargers.length > 0 ? (
-                    filteredChargers.map((item, idx) => (
-                      <button
-                        type="button"
-                        key={item.id}
-                        role="option"
-                        className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-between ${idx === chargerActive ? "tw-bg-blue-gray-50" : ""}`}
-                        onMouseEnter={() => setChargerActive(idx)}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => chooseCharger(item)}
-                      >
-                        <span className="tw-font-medium">
-                          {formatChargerDisplay(item)}
-                        </span>
-                        <span className={`tw-inline-block tw-h-2 tw-w-2 tw-rounded-full ${item.status ? "tw-bg-green-500" : "tw-bg-red-500"}`} />
-                      </button>
-                    ))
-                  ) : (
-                    <div className="tw-px-3 tw-py-2 tw-text-gray-500">
-                      {chargers.length === 0 ? t.noChargersInStation : t.noChargersFound}
+                  {chargerOpen && !lockStationDropdown && selectedStation && (
+                    <div
+                      className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-1 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto tw-text-black"
+                      role="listbox"
+                      onMouseLeave={() => setChargerActive(-1)}
+                    >
+                      {filteredChargers.length > 0 ? (
+                        filteredChargers.map((item, idx) => (
+                          <button
+                            type="button"
+                            key={item.id}
+                            role="option"
+                            className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-between ${idx === chargerActive ? "tw-bg-blue-gray-50" : ""}`}
+                            onMouseEnter={() => setChargerActive(idx)}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => chooseCharger(item)}
+                          >
+                            <span className="tw-font-medium">
+                              {formatChargerDisplay(item)}
+                            </span>
+                            <span className={`tw-inline-block tw-h-2 tw-w-2 tw-rounded-full ${item.status ? "tw-bg-green-500" : "tw-bg-red-500"}`} />
+                          </button>
+                        ))
+                      ) : (
+                        <div className="tw-px-3 tw-py-2 tw-text-gray-500">
+                          {chargers.length === 0 ? t.noChargersInStation : t.noChargersFound}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
-            </div>
+
+              {/* Search Button (non-admin only) */}
+              <Button
+                className="
+                  tw-h-11 tw-min-w-[90px] tw-rounded-xl tw-px-4
+                  tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
+                  hover:tw-to-black
+                  tw-text-white
+                  tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                  focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50
+                  tw-shrink-0 tw-whitespace-nowrap
+                "
+                onClick={onSearch}
+                disabled={lockStationDropdown}
+                title={lockStationDropdown ? "Selection locked on this page" : ""}
+              >
+                {t.search}
+              </Button>
+            </>
           )}
 
-          {/* Search Button + Language Toggle + Menu Toggle */}
+          {/* Menu Toggle + Language Toggle (always visible) */}
           <div className="tw-flex tw-items-end tw-gap-2">
-
-
-            <Button
-              className="
-                tw-h-11 tw-min-w-[90px] tw-rounded-xl tw-px-4
-                tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900
-                hover:tw-to-black
-                tw-text-white
-                tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50
-                tw-shrink-0 tw-whitespace-nowrap
-              "
-              onClick={onSearch}
-              disabled={lockStationDropdown}
-              title={lockStationDropdown ? "Selection locked on this page" : ""}
-            >
-              {t.search}
-            </Button>
             <IconButton
               variant="text"
               color="blue-gray"
@@ -766,7 +842,6 @@ export function DashboardNavbar() {
                 {lang === "th" ? "TH" : "EN"}
               </span>
             </button>
-
           </div>
         </div>
       </div>
