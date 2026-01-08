@@ -59,6 +59,15 @@ ROW_TITLES = {
     "r11": "ทำความสะอาดตู้ MDB",
 }
 
+# รายการข้อย่อย (sub-items) - ถ้ามี
+SUB_ROW_TITLES = {}
+
+# ข้อที่มีจำนวน sub-items แน่นอน (ไม่เปลี่ยนแปลง)
+FIXED_SUB_ROWS = {}
+
+# ข้อที่มี sub-items แบบ dynamic (จำนวนไม่แน่นอน)
+DYNAMIC_SUB_ROWS = []
+
 # -------------------- Utilities / Core helpers --------------------
 def _log(msg: str):
     if PDF_DEBUG:
@@ -109,9 +118,21 @@ def _norm_result(val: str) -> str:
         return "fail"
     return "na"
 
-def _r_idx(k: str) -> int:
-    m = re.match(r"r(\d+)$", k.lower())
-    return int(m.group(1)) if m else 10_000
+def _r_idx(k: str) -> Tuple[int, int]:
+    """แยก key เป็น (main_idx, sub_idx) เช่น 'r3' -> (3, 0), 'r3_1' -> (3, 1)"""
+    k = str(k).lower().strip()
+    
+    # รูปแบบ r{num}_{sub} เช่น r3_1, r10_2
+    m = re.match(r"r(\d+)_(\d+)$", k)
+    if m:
+        return (int(m.group(1)), int(m.group(2)))
+    
+    # รูปแบบ r{num} เช่น r3, r10
+    m = re.match(r"r(\d+)$", k)
+    if m:
+        return (int(m.group(1)), 0)
+    
+    return (10_000, 0)
 
 # -------------------- Font / Text layout helpers --------------------
 def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
@@ -599,66 +620,130 @@ def _format_voltage_pre_measurement(measures: dict, key: str) -> str:
 
 # -------------------- Result / Row processing --------------------
 def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
+    """แปลง rows dict เป็น list พร้อมจัดกลุ่มข้อหลักและข้อย่อย"""
     if not isinstance(rows, dict):
         return []
-    items: List[dict] = []
+    
     measures = measures or {}
-
-    for key in sorted(rows.keys(), key=_r_idx):
-        idx = _r_idx(key)
-        
-        # ข้ามรายการที่ไม่ถูกต้อง (fallback value)
-        if idx == 10_000:
+    items: List[dict] = []
+    
+    # จัดกลุ่ม keys ตามข้อหลัก
+    grouped = {}  # {main_idx: {"main": key, "subs": [(sub_idx, key), ...]}}
+    
+    for key in rows.keys():
+        main_idx, sub_idx = _r_idx(key)
+        if main_idx == 10_000:
             continue
-        
-        data = rows.get(key) or {}
-
-        title = ROW_TITLES.get(key, f"รายการที่ {idx}")
-        remark = (data.get("remark") or "").strip()
-
-        item_text = f"{idx}. {title}"
-
-        # 🔸 ข้อ 4-8: เพิ่มค่าแรงดันไฟฟ้า
-        if key.lower() in ["r4", "r5", "r6", "r7", "r8"]:
-            measure_key = f"m{idx}"
-            voltage_text = _format_voltage_measurement(measures, measure_key)
-            if voltage_text:
-                item_text = f"{item_text}\n{voltage_text}"
-        
-        # 🔸 ข้อ 9: มีข้อย่อย
-        if key.lower() == "r9":
-            subitems_data = data.get("subitems") or {}
-            subitems = []
-            for sub_key in ["RCD", "Breaker CCB", "Breaker Charger", "Breaker Main"]:
-                sub_result = subitems_data.get(sub_key, {}).get("pf", "na")
-                subitems.append({
-                    "label": sub_key,
-                    "result": _norm_result(sub_result)
-                })
             
-            # ข้อ 9: ข้อความหลัก + รายการข้อย่อย
-            subitem_lines = [f"       {s['label']}" for s in subitems]
-            item_text = f"{item_text}\n" + "\n".join(subitem_lines)
-            
-            items.append({
-                "idx": idx,
-                "text": item_text,
-                # result หลักของข้อ 9 ไม่ได้ใช้แล้ว แต่เก็บไว้เฉย ๆ
-                "result": _norm_result(data.get("pf", "")),
-                "remark": remark,
-                "has_subitems": True,
-                "subitems": subitems,
-            })
-
+        if main_idx not in grouped:
+            grouped[main_idx] = {"main": None, "subs": []}
+        
+        if sub_idx == 0:
+            grouped[main_idx]["main"] = key
         else:
+            grouped[main_idx]["subs"].append((sub_idx, key))
+    
+    # เรียงลำดับข้อหลัก
+    for main_idx in sorted(grouped.keys()):
+        group = grouped[main_idx]
+        main_key = group["main"]
+        subs = sorted(group["subs"], key=lambda x: x[0])  # เรียงตาม sub_idx
+        
+        # 🔥 FIX: กรองเฉพาะข้อย่อยที่มีอยู่ใน FIXED_SUB_ROWS หรือ DYNAMIC_SUB_ROWS
+        if main_idx in FIXED_SUB_ROWS:
+            # ข้อที่มีจำนวนข้อย่อยคงที่ - เอาเท่าที่กำหนดไว้
+            expected_count = FIXED_SUB_ROWS[main_idx]
+            subs = subs[:expected_count]
+        elif main_idx not in DYNAMIC_SUB_ROWS:
+            # ถ้าไม่ใช่ข้อที่มีข้อย่อยทั้ง FIXED และ DYNAMIC ให้เคลียร์ subs
+            subs = []
+        
+        # ดึงข้อมูลข้อหลัก
+        main_data = rows.get(main_key, {}) if main_key else {}
+        main_title = ROW_TITLES.get(f"r{main_idx}", f"รายการที่ {main_idx}")
+        
+        # ========== ไม่มีข้อย่อย - แสดงปกติ ==========
+        if not subs:
+            title = f"{main_idx}) {main_title}"
+            remark_user = (main_data.get("remark") or "").strip()
+            
+            # เพิ่มค่า measures สำหรับข้อ 10
+            if main_idx == 10:
+                cp_data = measures.get("cp", {})
+                cp_value = cp_data.get("value", "-")
+                cp_unit = cp_data.get("unit", "")
+                title += f"\nCP = {cp_value}{cp_unit}"
+            
+            # เพิ่มค่า measures สำหรับข้อ 16
+            elif main_idx == 16:
+                mtxt = _format_m16(measures)
+                if mtxt:
+                    title += f"\n{mtxt}"
+            
             items.append({
-                "idx": idx,
-                "text": item_text,
-                "result": _norm_result(data.get("pf", "")),
-                "remark": remark,
-                "has_subitems": False
+                "idx": main_idx,
+                "key": main_key,
+                "text": title,
+                "result": _norm_result(main_data.get("pf", "")),
+                "remark": remark_user,
+                "has_subs": False,
             })
+        
+        # ========== มีข้อย่อย - สร้าง combined item ==========
+        else:
+            lines = [f"{main_idx}) {main_title}"]
+            results = []
+            remarks = []
+            
+            sub_count = len(subs)
+            
+            for sub_idx, sub_key in subs:
+                sub_data = rows.get(sub_key, {})
+                
+                # หาชื่อข้อย่อย
+                sub_title = SUB_ROW_TITLES.get(sub_key)
 
+                # สำหรับข้อ 5, 7 ที่เป็น dynamic - ใช้ชื่อตามลำดับ
+                if main_idx in DYNAMIC_SUB_ROWS:
+                    if main_idx == 5:
+                        sub_title = f"ปุ่มหยุดฉุกเฉินที่ {sub_idx}"
+                    elif main_idx == 7:
+                        sub_title = f"ป้ายเตือนระวังไฟฟ้าช็อกที่ {sub_idx}"
+                
+                # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc.
+                lines.append(f"   \t{main_idx}.{sub_idx}) {sub_title}")
+                results.append(_norm_result(sub_data.get("pf", "")))
+                remarks.append((sub_data.get("remark") or "").strip())
+            
+            # เพิ่มค่า measures สำหรับข้อ 10 (CP แต่ละหัว)
+            if main_idx == 10:
+                cp_data = measures.get("cp", {})
+                for i, (sub_idx, sub_key) in enumerate(subs):
+                    cp_sub = cp_data.get(sub_key, {})
+                    cp_val = cp_sub.get("value", "-")
+                    cp_unit = cp_sub.get("unit", "V")
+                    if cp_val and cp_val != "-":
+                        lines[i + 1] += f": {cp_val}{cp_unit}"
+            
+            remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
+            for i, r in enumerate(remarks):
+                sub_idx = subs[i][0]
+                # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
+                remark_text = r if (r and r != "-") else "-"
+                remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
+            
+            combined_remark = "\n".join(remark_lines)
+            
+            items.append({
+                "idx": main_idx,
+                "key": main_key,
+                "text": "\n".join(lines),
+                "result": results,
+                "remark": combined_remark if combined_remark else "-",
+                "has_subs": True,
+                "sub_count": sub_count,
+            })
+    
     return items
 
 def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
@@ -1289,6 +1374,16 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w)
         pdf.set_font(base_font, "", FONT_MAIN)
         
+        # ดึง remark จาก rows_pre
+        rows_pre = doc.get("rows_pre", {})
+        checks_pre = _rows_to_checks(rows_pre, doc.get("measures_pre", {}))
+        
+        # สร้าง dict เพื่อหา remark ง่าย
+        remark_map = {}
+        for pre_it in checks_pre:
+            pre_idx = pre_it.get("idx", 0)
+            remark_map[pre_idx] = pre_it.get("remark", "")
+        
         for it in checks:
             idx = int(it.get("idx") or 0)
             
@@ -1310,6 +1405,11 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
             # append เฉพาะกรณีที่มีค่า
             if measures_text:
                 question_text_pre += "\n" + measures_text
+            
+            # เพิ่ม remark จาก rows_pre
+            pre_remark = remark_map.get(idx, "").strip()
+            if pre_remark and pre_remark != "-":
+                question_text_pre += f"\nหมายเหตุ: {pre_remark}"
 
             # ดึงรูป Pre-PM (ถ้าไม่มีจะได้ list ว่าง)
             img_items_pre = _get_photo_items_for_idx_pre(doc, idx)

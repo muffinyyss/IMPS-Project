@@ -37,7 +37,8 @@ async def export_pdf_redirect(
     request: Request,
     template: str,
     id: str,
-    sn: str = Query(...),
+    sn: str = Query(None),  # ทำให้เป็น optional
+    station_id: str = Query(None),  # เพิ่ม station_id parameter
     dl: bool = Query(False),
     lang: str = Query("th", description="Language: 'th' or 'en'"),  # เพิ่ม lang parameter
     photos_base_url: str | None = Query(None),
@@ -57,10 +58,21 @@ async def export_pdf_redirect(
     except InvalidId:
         raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
 
+    # กำหนด collection key ตามประเภท template
+    # mdb, station, cm ใช้ station_id แทน sn
+    if template in ["mdb", "station", "cm"]:
+        coll_key = station_id
+        if not coll_key:
+            raise HTTPException(status_code=400, detail="ต้องระบุ station_id สำหรับ template นี้")
+    else:
+        coll_key = sn
+        if not coll_key:
+            raise HTTPException(status_code=400, detail="ต้องระบุ sn สำหรับ template นี้")
+
     # เลือก database และ collection ตามประเภท template
     db_info = TEMPLATE_MAP[template]
     db = pymongo_client[db_info["db"]]
-    coll = db[sn]
+    coll = db[coll_key]
 
     # ดึงข้อมูลจาก MongoDB
     data = coll.find_one({"_id": oid})
@@ -78,7 +90,11 @@ async def export_pdf_redirect(
         filename = f"{template.upper()}-{sn}.pdf"
 
     # สร้าง URL ใหม่พร้อม query parameters
-    query_params = f"?sn={sn}"
+    query_params = ""
+    if template in ["mdb", "station", "cm"]:
+        query_params = f"?station_id={station_id}"
+    else:
+        query_params = f"?sn={sn}"
     query_params += f"&lang={lang}"  # เพิ่ม lang ใน redirect URL
     if dl:
         query_params += "&dl=true"
@@ -99,7 +115,8 @@ async def export_pdf(
     template: str,
     id: str,
     filename: str,
-    sn: str = Query(...),
+    sn: str = Query(None),  # ทำให้เป็น optional
+    station_id: str = Query(None),  # เพิ่ม station_id parameter
     dl: bool = Query(False),
     lang: str = Query("th", description="Language: 'th' or 'en'"),  # เพิ่ม lang parameter
     photos_base_url: str | None = Query(None, description="เช่น http://localhost:3000"),
@@ -109,6 +126,7 @@ async def export_pdf(
     """
     Export PDF with photo support:
       /pdf/charger/{id}/PM-CG-2407-01.pdf?sn=F1500624011&lang=en
+      /pdf/mdb/{id}/PM-MB-2601-01.pdf?station_id=Klongluang3&lang=en
     """
 
     # ตรวจสอบว่า template มีใน mapping ไหม
@@ -121,10 +139,21 @@ async def export_pdf(
     except InvalidId:
         raise HTTPException(status_code=400, detail="รูปแบบ id ไม่ถูกต้อง")
 
+    # กำหนด collection key ตามประเภท template
+    # mdb, station, cm ใช้ station_id แทน sn
+    if template in ["mdb", "station", "cm"]:
+        coll_key = station_id
+        if not coll_key:
+            raise HTTPException(status_code=400, detail="ต้องระบุ station_id สำหรับ template นี้")
+    else:
+        coll_key = sn
+        if not coll_key:
+            raise HTTPException(status_code=400, detail="ต้องระบุ sn สำหรับ template นี้")
+
     # เลือก database และ collection ตามประเภท template
     db_info = TEMPLATE_MAP[template]
     db = pymongo_client[db_info["db"]]
-    coll = db[sn]
+    coll = db[coll_key]
 
     # ดึงข้อมูลจาก MongoDB
     data = coll.find_one({"_id": oid})
