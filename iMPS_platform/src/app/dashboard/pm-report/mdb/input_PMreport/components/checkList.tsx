@@ -1607,11 +1607,70 @@ export default function MDBPMForm() {
         })();
     }, [isPostMode, postApiLoaded, stationId, editId, postKey]);
     // Upload photos
+    // async function uploadGroupPhotos(reportId: string, stationId: string, group: string, files: File[], side: TabId) {
+    //     if (files.length === 0) return;
+    //     const form = new FormData();
+    //     form.append("station_id", stationId);
+    //     form.append("group", group);
+    //     form.append("side", side);
+    //     files.forEach((f) => form.append("files", f));
+    //     const token = localStorage.getItem("access_token");
+    //     const url = side === "pre" ? `${API_BASE}/mdbpmreport/${reportId}/pre/photos` : `${API_BASE}/mdbpmreport/${reportId}/post/photos`;
+    //     const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
+    //     if (!res.ok) throw new Error(await res.text());
+    // }
+
+    const flattenRows = (inputRows: Record<string, any>): Record<string, { pf: PF; remark: string }> => {
+        const result: Record<string, { pf: PF; remark: string }> = {};
+
+        // Simple questions (ไม่มีข้อย่อย): r1, r2, r3, r12, r13
+        const simpleKeys = QUESTIONS
+            .filter(q => q.kind === "simple" || q.kind === "measure")
+            .map(q => q.key);
+
+        // Dynamic items keys: r4_1, r4_2, r5_1, r5_2, ...
+        const dynamicKeys = [
+            ...q4Items.map(i => i.key),
+            ...q5Items.map(i => i.key),
+            ...q6Items.map(i => i.key),
+            ...q7Items.map(i => i.key),
+            ...q8Items.map(i => i.key),
+            ...q9Items.map(i => i.key),
+            ...q10Items.map(i => i.key),
+            ...q11Items.map(i => i.key),
+        ];
+
+        const validKeys = [...simpleKeys, ...dynamicKeys];
+
+        for (const key of validKeys) {
+            if (inputRows[key] && typeof inputRows[key] === "object") {
+                result[key] = { pf: inputRows[key].pf ?? "", remark: inputRows[key].remark ?? "" };
+            }
+        }
+
+        for (const key of validKeys) {
+            if (!result[key]) result[key] = { pf: "", remark: "" };
+        }
+
+        return result;
+    };
+
     async function uploadGroupPhotos(reportId: string, stationId: string, group: string, files: File[], side: TabId) {
         if (files.length === 0) return;
+
+        // ✅ แปลง key เป็น g format ก่อนส่ง
+        const normalizedGroup = (() => {
+            const k = String(group);
+            if (/^\d+$/.test(k)) return `g${k}`;  // 1, 2, 3 -> g1, g2, g3
+            const match = k.match(/^r(\d+)(_\d+)?$/);
+            if (match) return `g${match[1]}`;  // r4_1 -> g4, r5_2 -> g5
+            if (k.startsWith("g")) return k;  // g1 -> g1
+            return `g${k}`;
+        })();
+
         const form = new FormData();
         form.append("station_id", stationId);
-        form.append("group", group);
+        form.append("group", normalizedGroup);  // ✅ ใช้ normalized group
         form.append("side", side);
         files.forEach((f) => form.append("files", f));
         const token = localStorage.getItem("access_token");
@@ -1619,6 +1678,8 @@ export default function MDBPMForm() {
         const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
     }
+
+
 
     // Pre-PM Save
     const onPreSave = async () => {
@@ -1632,11 +1693,11 @@ export default function MDBPMForm() {
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || "";
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-
+            const flatRows = flattenRows(rows);
             const payload = {
                 station_id: stationId, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector,
                 measures_pre: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
-                rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId,
+                rows_pre: flatRows, pm_date, doc_name: docName, side: "pre" as TabId,
                 q4_items: q4Items, q6_items: q6Items, charger_count: chargerCount,
             };
 
@@ -1682,8 +1743,9 @@ export default function MDBPMForm() {
 
         try {
             const token = localStorage.getItem("access_token");
+            const flatRows = flattenRows(rows);
             const payload = {
-                station_id: stationId, rows, measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
+                station_id: stationId, rows: flatRows, measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
                 summary, ...(summaryCheck ? { summaryCheck } : {}),
                 dust_filter: dustFilterChanged ? "yes" : "no", side: "post" as TabId, report_id: editId,
             };
