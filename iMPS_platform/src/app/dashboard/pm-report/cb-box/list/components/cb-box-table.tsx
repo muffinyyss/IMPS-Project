@@ -27,19 +27,64 @@ import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outl
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import CBBOXPMForm from "@/app/dashboard/pm-report/cb-box/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
+import { useLanguage, type Lang } from "@/utils/useLanguage";
+
+// ==================== TRANSLATIONS ====================
+const T = {
+    pageTitle: { th: "Preventive Maintenance Checklist - CB-BOX", en: "Preventive Maintenance Checklist - CB-BOX" },
+    pageSubtitle: { th: "ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM report)", en: "Search and download PM reports" },
+    entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
+    search: { th: "ค้นหา", en: "Search" },
+    loading: { th: "กำลังโหลด…", en: "Loading…" },
+    noData: { th: "ไม่มีข้อมูล", en: "No data" },
+    selectStation: { th: "กรุณาเลือกสถานีจากแถบบนก่อน", en: "Please select a station first" },
+    page: { th: "หน้า", en: "Page" },
+    of: { th: "จาก", en: "of" },
+    upload: { th: "อัปโหลด", en: "Upload" },
+    add: { th: "+เพิ่ม", en: "+Add" },
+    postPm: { th: "Post-PM", en: "Post-PM" },
+    preview: { th: "ดูตัวอย่าง", en: "Preview" },
+    // Dialog
+    dialogTitle: { th: "เลือกวันที่รายงาน (PM Report)", en: "Select Report Date (PM Report)" },
+    docName: { th: "Document Name / ชื่อเอกสาร", en: "Document Name" },
+    issueId: { th: "Issue ID / รหัสเอกสาร", en: "Issue ID" },
+    inspector: { th: "Inspector / ผู้ตรวจสอบ", en: "Inspector" },
+    pmDate: { th: "PM Date / วันที่ตรวจสอบ", en: "PM Date" },
+    filesSelected: { th: "ไฟล์ที่เลือก:", en: "Files selected:" },
+    filesUnit: { th: "ไฟล์", en: "files" },
+    cancel: { th: "ยกเลิก", en: "Cancel" },
+    uploadBtn: { th: "อัปโหลด", en: "Upload" },
+    // Alerts
+    alertSelectStation: { th: "กรุณาเลือกสถานีก่อน", en: "Please select a station first" },
+    alertPdfOnly: { th: "รองรับเฉพาะไฟล์ PDF เท่านั้น", en: "Only PDF files are supported" },
+    alertInvalidDate: { th: "รูปแบบวันที่ไม่ถูกต้อง (ควรเป็น YYYY-MM-DD)", en: "Invalid date format (should be YYYY-MM-DD)" },
+    alertUploadFailed: { th: "อัปโหลดไม่สำเร็จ:", en: "Upload failed:" },
+    alertUploadSuccess: { th: "อัปโหลดสำเร็จ", en: "Upload successful" },
+    alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัปโหลด", en: "Error during upload" },
+    // Column headers
+    colNo: { th: "ลำดับ", en: "No." },
+    colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
+    colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
+    colPmDate: { th: "วันที่ PM", en: "PM Date" },
+    colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
+    colPdf: { th: "PDF", en: "PDF" },
+};
+
+const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
+
 type TData = {
   id?: string;
   doc_name?: string;
-  issue_id?: string; // ทำเป็น optional และเติมค่าจาก id หรือ regex ใน url
-  pm_date: string; // วันที่แบบไทย แสดงผลในตาราง
-  position: string; // ISO YYYY-MM-DD ใช้สำหรับ sort
-  office: string; // URL ไฟล์
+  issue_id?: string;
+  pm_date: string;
+  position: string;
+  office: string;
   inspector?: string;
   side?: string;
 };
 
 type Props = {
-  token?: string;        // ใช้ได้ ถ้าจะส่ง Bearer แทนคุกกี้
+  token?: string;
   apiBase?: string;
 };
 
@@ -48,14 +93,13 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const REPORT_PREFIX = "cbboxpmreport";
 const URL_PREFIX = "cbboxpmurl";
 
-
-const PM_TYPE_CODE = "CB"; // ใช้รหัสเดียวกับ MDB
+const PM_TYPE_CODE = "CB";
 
 function makePrefix(typeCode: string, dateISO: string) {
   const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
   const yy = String(d.getFullYear()).slice(2);
   const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `PM-${typeCode}-${yy}${mm}-`; // เช่น PM-MB-2511-
+  return `PM-${typeCode}-${yy}${mm}-`;
 }
 
 function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
@@ -68,7 +112,6 @@ function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string
   return `${prefix}${n.toString().padStart(pad, "0")}`;
 }
 
-// หา issue_id ล่าสุดจากทั้ง 2 ลิสต์ (รายงานจริง + URL) แล้วออกเลขถัดไป
 async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string, apiBase: string, fetchOpts: RequestInit) {
   const build = (path: string) => {
     const u = new URL(`${apiBase}${path}`);
@@ -80,8 +123,6 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   };
 
   const [a, b] = await Promise.allSettled([
-    // fetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
-    // fetch(build(`/${URL_PREFIX}/list`), fetchOpts),
     apiFetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
     apiFetch(build(`/${URL_PREFIX}/list`), fetchOpts),
   ]);
@@ -106,8 +147,6 @@ async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string,
   return same.reduce((acc, cur) => (toTail(cur) > toTail(acc) ? cur : acc), same[0]);
 }
 
-
-/* ---------- NEW: helper สำหรับ doc_name ---------- */
 function makeDocNameParts(stationId: string, dateISO: string) {
   const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
   const year = d.getFullYear();
@@ -120,12 +159,10 @@ function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: strin
   const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
   const s = String(latestFromDb || "").trim();
 
-  // ยังไม่มีของปีนี้เลย → เริ่มที่ 1
   if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
     return `${prefix}1${suffix}`;
   }
 
-  // ดึงเลขตรงกลาง เช่น "ST001_5/2025" → "5"
   const inside = s.slice(prefix.length, s.length - suffix.length);
   const cur = parseInt(inside, 10);
   const nextIndex = isNaN(cur) ? 1 : cur + 1;
@@ -133,21 +170,14 @@ function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: strin
   return `${prefix}${nextIndex}${suffix}`;
 }
 
-async function fetchPreviewDocName(
-  stationId: string,
-  pmDate: string
-): Promise<string | null> {
+async function fetchPreviewDocName(stationId: string, pmDate: string): Promise<string | null> {
   const u = new URL(`${BASE}/cbboxpmreport/preview-docname`);
   u.searchParams.set("station_id", stationId);
   u.searchParams.set("pm_date", pmDate);
 
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("access_token") ?? ""
-      : "";
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
 
   const r = await apiFetch(u.toString(), {
-    // const r = await fetch(u.toString(), {
     credentials: "include",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
@@ -160,21 +190,15 @@ async function fetchPreviewDocName(
   const j = await r.json();
   return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
-async function fetchLatestDocName(
-  stationId: string,
-  dateISO: string
-): Promise<string | null> {
+
+async function fetchLatestDocName(stationId: string, dateISO: string): Promise<string | null> {
   const u = new URL(`${BASE}/cbboxpmreport/latest-docname`);
   u.searchParams.set("station_id", stationId);
   u.searchParams.set("pm_date", dateISO);
   u.searchParams.set("_ts", String(Date.now()));
 
-  const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("access_token") ?? ""
-      : "";
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
 
-  // const r = await fetch(u.toString(), {
   const r = await apiFetch(u.toString(), {
     credentials: "include",
     cache: "no-store",
@@ -200,6 +224,7 @@ type Me = {
 };
 
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
+  const { lang } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -216,7 +241,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;   // YYYY-MM-DD ตามวันที่เครื่องผู้ใช้
+    return `${y}-${m}-${day}`;
   }, []);
 
   useEffect(() => {
@@ -231,21 +256,17 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   }, [searchParams]);
 
   useEffect(() => {
-    // ถ้าใช้ httpOnly cookie เป็นหลัก ก็ไม่ต้องพึ่ง localStorage มาก
     const useHttpOnlyCookie = true;
 
     (async () => {
       try {
         const headers: Record<string, string> = {};
         if (!useHttpOnlyCookie) {
-          const t = typeof window !== "undefined"
-            ? localStorage.getItem("access_token") ?? ""
-            : "";
+          const t = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
           if (t) headers.Authorization = `Bearer ${t}`;
         }
 
         const res = await apiFetch(`${apiBase}/me`, {
-          // const res = await fetch(`${apiBase}/me`, {
           method: "GET",
           headers,
           credentials: "include",
@@ -258,8 +279,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
         const data: Me = await res.json();
         setMe(data);
-
-        // ให้ inspector default เป็น username ถ้ายังว่างอยู่
         setInspector((prev) => prev || data.username || "");
       } catch (err) {
         console.error("fetch /me error:", err);
@@ -270,13 +289,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const editId = searchParams.get("edit_id") ?? "";
-  const mode: "list" | "form" =
-    (searchParams.get("view") === "form" || !!editId) ? "form" : "list";
+  const mode: "list" | "form" = (searchParams.get("view") === "form" || !!editId) ? "form" : "list";
+  
   const setView = (view: "list" | "form", { replace = false } = {}) => {
     const params = new URLSearchParams(searchParams.toString());
     if (view === "form") {
       params.set("view", "form");
-      // params.delete("tab");
       params.set("pmtab", "pre");
     } else {
       params.delete("view");
@@ -286,7 +304,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
 
-  // เลือกโหมด auth: คุกกี้ httpOnly (credentials: "include") หรือ Bearer token
   const useHttpOnlyCookie = true;
   function makeHeaders(): Record<string, string> {
     const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -305,14 +322,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   function thDate(iso?: string) {
     if (!iso) return "-";
-
-    // บังคับให้ตีความเป็นเวลา UTC
-    const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
-      ? new Date(iso + "T00:00:00Z")
-      : new Date(iso);
-
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + "T00:00:00Z") : new Date(iso);
     if (isNaN(d.getTime())) return "-";
-
     return d.toLocaleDateString("th-TH-u-ca-gregory", {
       day: "2-digit",
       month: "2-digit",
@@ -338,7 +349,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   function resolveFileHref(v: any, apiBase: string) {
     if (!v) return "";
-    // ถ้าเป็น object เช่น { url: "..." }
     if (typeof v === "object") {
       const c = v.url ?? v.href ?? v.link ?? "";
       return resolveFileHref(c, apiBase);
@@ -346,22 +356,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const s = String(v).trim();
     if (!s) return "";
 
-    // ถ้าเป็น absolute URL อยู่แล้ว ก็ใช้ได้เลย
     try {
       const u = new URL(s);
       return u.toString();
     } catch { /* not absolute */ }
 
-    // ถ้าเป็น path เช่น /files/<id> → เติม apiBase
     if (s.startsWith("/")) return `${apiBase}${s}`;
-
-    // ถ้าเป็นแค่ id (เช่น GridFS id) → สร้างเป็น /files/<id>
     if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
-
-    // อื่น ๆ: ลองเติม apiBase เผื่อเป็น path แบบไม่ขึ้นต้นด้วย /
     return `${apiBase}/${s}`;
   }
-
 
   function normalizeAnyDate(v: any): string {
     if (!v) return "";
@@ -381,7 +384,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       it?.timestamp,
       it?.createdAt,
       it?.updatedAt,
-      it?.date, // เผื่อบาง API ใช้ key นี้
+      it?.date,
     ];
     for (const v of cands) {
       const d = normalizeAnyDate(v);
@@ -406,8 +409,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return u.toString();
       };
 
-      // const fetchOpts: RequestInit = { ...baseFetchOpts, signal };
-
       const [pmRes, urlRes] = await Promise.allSettled([
         fetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
         fetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
@@ -427,11 +428,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
       const pmRows: TData[] = pmItems.map((it: any) => {
         const isoDay = pickDateFromItem(it);
-        const rawUploaded =
-          it.file_url ??
-          (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
-          it.file ?? it.path;
-
+        const rawUploaded = it.file_url ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ?? it.file ?? it.path;
         const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
 
         function extractId(x: any): string {
@@ -443,16 +440,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         }
         const id = extractId(it);
         const generatedUrl = id ? `${apiBase}/pdf/cbbox/${encodeURIComponent(id)}/export` : "";
-        // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
-
-
         const fileUrl = uploadedUrl || generatedUrl;
-        // const issueId = id || extractDocIdFromAnything(fileUrl) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
-        const doc_name = (it.doc_name ? String(it.doc_name) : "")
-        const inspector =
-          (it.inspector ?? it.job?.inspector ?? "") as string;
+        const doc_name = (it.doc_name ? String(it.doc_name) : "");
+        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string;
         const side = (it.side ?? it.job?.side ?? "") as string;
+        
         return {
           id,
           issue_id: issueId,
@@ -467,17 +460,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
       const urlRows: TData[] = urlItems.map((it: any) => {
         const isoDay = pickDateFromItem(it);
-        const raw =
-          it.file_url ??
-          (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ??
-          it.file ?? it.path;
+        const raw = it.file_url ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ?? it.file ?? it.path;
         const href = resolveFileHref(raw, apiBase);
-        // const issueId = extractDocIdFromAnything(it) || extractDocIdFromAnything(href) || "";
         const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
-        const doc_name = (it.doc_name ? String(it.doc_name) : "")
-        const inspector =
-          (it.inspector ?? it.job?.inspector ?? "") as string; // 👈 จะว่างก็ได้
+        const doc_name = (it.doc_name ? String(it.doc_name) : "");
+        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string;
         const side = (it.side ?? it.job?.side ?? "") as string;
+        
         return {
           issue_id: issueId,
           doc_name: doc_name,
@@ -495,13 +484,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         if (!da && !db) return 0;
         if (!da) return 1;
         if (!db) return -1;
-        return da < db ? 1 : da > db ? -1 : 0; // desc
+        return da < db ? 1 : da > db ? -1 : 0;
       });
 
       if (!allRows.length) { setData([]); return; }
       setData(allRows);
     } catch (err: any) {
-      if (err?.name === "AbortError") return; // ignore abort
+      if (err?.name === "AbortError") return;
       console.error("fetch both lists error:", err);
       setData([]);
     } finally {
@@ -526,20 +515,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const u = (baseUrl || "").trim();
     if (!u) return { previewHref: "", isPdfEndpoint: false };
 
-    // รองรับ /pdf/mdb/<id>/export (รวม template อื่นไว้ด้วยก็ได้)
     const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
 
     if (isPdfEndpoint) {
       let finalUrl = u;
       if (stationId) finalUrl = appendParam(finalUrl, "station_id", stationId);
 
-      // ใส่ photos_base_url ช่วยให้รูปใน PDF โหลดได้
-      const photosBase =
-        (process.env.NEXT_PUBLIC_PHOTOS_BASE_URL as string) ||
-        (typeof window !== "undefined" ? window.location.origin : "");
+      const photosBase = (process.env.NEXT_PUBLIC_PHOTOS_BASE_URL as string) || (typeof window !== "undefined" ? window.location.origin : "");
       if (photosBase) finalUrl = appendParam(finalUrl, "photos_base_url", photosBase);
 
-      // พรีวิว ไม่ดาวน์โหลด
       finalUrl = appendParam(finalUrl, "dl", "0");
       return { previewHref: finalUrl, isPdfEndpoint: true };
     }
@@ -548,14 +532,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   function extractDocIdFromAnything(x: any): string {
     if (!x) return "";
-    // ลองอ่านจาก field id/_id ก่อน
     const raw = (x._id !== undefined ? x._id : x.id) ?? "";
     let id = "";
     if (raw && typeof raw === "object") id = raw.$oid || raw.oid || raw.$id || "";
     else id = String(raw || "");
     if (/^[a-fA-F0-9]{24}$/.test(id)) return id;
 
-    // สุดท้ายลองดึงจากสตริง URL
     const s = typeof x === "string" ? x : JSON.stringify(x);
     const m = s.match(/[A-Fa-f0-9]{24}/);
     return m ? m[0] : "";
@@ -568,10 +550,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId, searchParams.toString()]);
 
-  const columns: ColumnDef<TData, unknown>[] = [
+  const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
       id: "no",
-      header: () => "No.",
+      header: () => t("colNo", lang),
       enableSorting: false,
       size: 25,
       minSize: 10,
@@ -587,7 +569,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.doc_name || "—",
       id: "name",
-      header: () => "document name",
+      header: () => t("colDocName", lang),
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
       minSize: 80,
@@ -597,7 +579,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
-      header: () => "issue_id",
+      header: () => t("colIssueId", lang),
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 120,
       minSize: 80,
@@ -607,7 +589,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.pm_date,
       id: "date",
-      header: () => "pm date",
+      header: () => t("colPmDate", lang),
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 80,
       minSize: 60,
@@ -617,7 +599,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.inspector || "-",
       id: "inspector",
-      header: () => "inspector",
+      header: () => t("colInspector", lang),
       cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
       size: 100,
       minSize: 80,
@@ -627,7 +609,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {
       accessorFn: (row) => row.office,
       id: "pdf",
-      header: () => "PDF",
+      header: () => t("colPdf", lang),
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
         const url = info.getValue() as string | undefined;
@@ -637,7 +619,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           return <span className="tw-text-blue-gray-300" title="No file">—</span>;
         }
 
-        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
+        const { previewHref } = buildHtmlLinks(url);
         const rowSide = info.row.original.side;
 
         if (rowSide == "pre") {
@@ -650,21 +632,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   variant="outlined"
                   className="tw-shrink-0"
                   onClick={() => {
-                    // เอา query param เดิมมาต่อ ไม่ให้หาย
                     const params = new URLSearchParams(searchParams.toString());
-                    // ลบ tab parameter ที่ใช้สำหรับ list page
-                    // params.delete("tab");
-                    // บังคับให้เปลี่ยนเป็นหน้า form (ChargerPMForm)
                     params.set("view", "form");
-                    // ส่งคำว่า "post" ไปด้วยใน query string
                     params.set("action", "post");
                     params.set("edit_id", info.row.original.id || "");
                     params.set("pmtab", "post");
-
                     router.push(`${pathname}?${params.toString()}`, { scroll: false });
                   }}
                 >
-                  post-pm
+                  {t("postPm", lang)}
                 </Button>
               </div>
             </div>
@@ -673,18 +649,17 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           return (
             <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
               <a
-                aria-label="Preview"
+                aria-label={t("preview", lang)}
                 href={previewHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-                title="Preview"
+                title={t("preview", lang)}
               >
                 <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
               </a>
             </div>
-          )
-
+          );
         }
       },
       size: 150,
@@ -692,8 +667,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-
-  ];
+  ], [lang, searchParams, pathname, router, stationId]);
 
   const table = useReactTable({
     data,
@@ -708,43 +682,37 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     columnResizeMode: "onChange",
   });
 
-  // Upload: ตอนนี้ backend /pmurl/upload รับ URL ไม่ใช่ไฟล์จริง
   const pdfInputRef = useRef<HTMLInputElement>(null);
-
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.currentTarget.value = "";
     if (!files.length) return;
 
-    const pdfs = files.filter(
-      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
-    );
+    const pdfs = files.filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
     if (!pdfs.length) {
-      alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
+      alert(t("alertPdfOnly", lang));
       return;
     }
     setPendingFiles(pdfs);
-    setDateOpen(true);         // 👉 เปิด modal ให้เลือกวันที่รายงาน
+    setDateOpen(true);
   };
 
   async function uploadPdfs() {
     try {
       if (!stationId) {
-        alert("กรุณาเลือกสถานีก่อน");
+        alert(t("alertSelectStation", lang));
         return;
       }
       if (!pendingFiles.length) {
         setDateOpen(false);
         return;
       }
-      // ตรวจรูปแบบวันที่คร่าวๆ (YYYY-MM-DD)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
-        alert("รูปแบบวันที่ไม่ถูกต้อง (ควรเป็น YYYY-MM-DD)");
+        alert(t("alertInvalidDate", lang));
         return;
       }
 
@@ -759,34 +727,28 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
         method: "POST",
         body: fd,
-        // ถ้าใช้ cookie httpOnly: เปิดบรรทัดนี้แทน header Authorization
         credentials: "include",
       });
 
       if (!res.ok) {
         const txt = await res.text();
-        alert("อัปโหลดไม่สำเร็จ: " + txt);
+        alert(`${t("alertUploadFailed", lang)} ${txt}`);
         return;
       }
 
       const j = await res.json();
       console.log("uploaded:", j);
-      alert("อัปโหลดสำเร็จ");
+      alert(t("alertUploadSuccess", lang));
 
-      // เคลียร์สถานะ + ปิด dialog
       setPendingFiles([]);
       setDateOpen(false);
 
       await fetchRows();
-
-      // TODO: trigger reload ตาราง ถ้าคุณมีฟังก์ชัน fetchRows แยกไว้ ก็เรียกตรงนี้
-      // await fetchRows();
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
+      alert(t("alertUploadError", lang));
     }
   }
-
 
   useEffect(() => {
     if (!dateOpen || !stationId || !reportDate) return;
@@ -795,14 +757,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
     (async () => {
       try {
-        // 1) ลองขอชื่อจาก preview endpoint ก่อน
         const preview = await fetchPreviewDocName(stationId, reportDate);
         if (!canceled && preview) {
           setDocName(preview);
           return;
         }
 
-        // 2) ถ้าไม่มี preview → ดึง latest แล้วคำนวณชื่อถัดไป
         const latest = await fetchLatestDocName(stationId, reportDate);
         if (!canceled) {
           const next = nextDocNameFor(stationId, reportDate, latest || undefined);
@@ -811,16 +771,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       } catch (e) {
         console.error("auto doc_name error:", e);
         if (!canceled) {
-          // 3) กรณี error → fallback เป็นชื่อแรกของปีนั้น ๆ
           const fallback = nextDocNameFor(stationId, reportDate);
           setDocName(fallback);
         }
       }
     })();
 
-    return () => {
-      canceled = true;
-    };
+    return () => { canceled = true; };
   }, [dateOpen, stationId, reportDate]);
 
   useEffect(() => {
@@ -841,41 +798,21 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateOpen, stationId, reportDate]);
 
-
   const goAdd = () => setView("form");
   const goList = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
-    params.delete("edit_id"); // 👈 ลบด้วย
+    params.delete("edit_id");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
-  function goEdit(row: TData) {
-    if (!row?.id) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("view", "form");
-    params.set("edit_id", row.id);       // 👈 ให้ฟอร์มใช้โหลดข้อมูล
-    router.push(`${pathname}?${params.toString()}`, { scroll: false });
-  }
 
   if (mode === "form") {
     return (
       <div className="tw-mt-6">
-        {/* <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
-          <Button
-            variant="outlined"
-            size="sm"
-            onClick={goList}
-            className="tw-py-2 tw-px-2"
-            title="กลับไปหน้า List"
-          >
-            <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-          </Button>
-        </div> */}
         <CBBOXPMForm />
       </div>
     );
   }
-
 
   return (
     <>
@@ -887,10 +824,10 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         >
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
-              Preventive Maintenance Checklist - CB-BOX
+              {t("pageTitle", lang)}
             </Typography>
             <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm">
-              ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM report)
+              {t("pageSubtitle", lang)}
             </Typography>
           </div>
 
@@ -911,7 +848,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-bg-white tw-text-blue-gray-900 tw-border tw-border-blue-gray-100 tw-shadow-[0_1px_0_rgba(0,0,0,0.04)] hover:tw-bg-black hover:tw-text-black hover:tw-border-black hover:tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)] tw-transition-colors tw-duration-200 focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none"
               >
                 <ArrowUpTrayIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-200 group-hover:-tw-translate-y-0.5" />
-                <span className="tw-text-sm">Upload</span>
+                <span className="tw-text-sm">{t("upload", lang)}</span>
               </Button>
 
               <Button
@@ -919,23 +856,22 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 onClick={goAdd}
                 disabled={!stationId}
                 className={`
-                                               !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
-                                               tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                                               ${!stationId
+                  !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
+                  tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
+                  ${!stationId
                     ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
                     : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
-                                               tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                                               focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                                             `}
-                title={stationId ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
+                  tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
+                  focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
+                `}
+                title={stationId ? "" : t("selectStation", lang)}
               >
-                <span className="tw-w-full tw-text-center">+Add</span>
+                <span className="tw-w-full tw-text-center">{t("add", lang)}</span>
               </Button>
             </div>
           </div>
         </CardHeader>
 
-        {/* แถบ filter (ไม่มี dropdown แล้ว) */}
         <CardBody className="tw-flex tw-items-center tw-gap-3 tw-px-3 md:tw-px-4">
           <div className="tw-flex tw-items-center tw-gap-3">
             <select
@@ -946,7 +882,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               {[5, 10, 15, 20, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
             <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal">
-              entries per page
+              {t("entriesPerPage", lang)}
             </Typography>
           </div>
           <div className="tw-ml-auto tw-min-w-0 tw-flex-1 md:tw-flex-none md:tw-w-64">
@@ -954,7 +890,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               variant="outlined"
               value={filtering}
               onChange={(e) => setFiltering(e.target.value)}
-              label="Search"
+              label={t("search", lang)}
               crossOrigin={undefined}
               containerProps={{ className: "tw-min-w-0" }}
               className="tw-w-full"
@@ -965,12 +901,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         <CardFooter className="tw-p-0">
           <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
             <table className="tw-w-full tw-text-left tw-min-w-[720px] md:tw-min-w-0 md:tw-table-fixed">
-              {/* <colgroup>
-                {table.getFlatHeaders().map((header) => (
-                  <col key={header.id} style={{ width: header.getSize() }} />
-                ))}
-              </colgroup> */}
-
               <thead className="tw-bg-gray-50 tw-sticky tw-top-0">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
@@ -980,7 +910,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                       return (
                         <th
                           key={header.id}
-                          // style={{ width: header.getSize() }}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                           className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap
                           ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
@@ -1014,7 +943,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 {loading ? (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      กำลังโหลด…
+                      {t("loading", lang)}
                     </td>
                   </tr>
                 ) : table.getRowModel().rows.length ? (
@@ -1043,7 +972,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 ) : (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!stationId ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
+                      {!stationId ? t("selectStation", lang) : t("noData", lang)}
                     </td>
                   </tr>
                 )}
@@ -1054,8 +983,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
         <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4 tw-py-4">
           <span className="tw-text-sm">
-            <Typography className="!tw-font-bold tw-inline">Page</Typography>{" "}
-            <strong>{table.getState().pagination.pageIndex + 1} of {table.getPageCount()}</strong>
+            <Typography className="!tw-font-bold tw-inline">{t("page", lang)}</Typography>{" "}
+            <strong>{table.getState().pagination.pageIndex + 1} {t("of", lang)} {table.getPageCount()}</strong>
           </span>
           <div className="tw-flex tw-items-center tw-gap-2">
             <Button
@@ -1081,15 +1010,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
         </div>
       </Card>
-      {/* ⬇️ วาง Dialog นอกร่าง Card แต่ยังอยู่ใน component */}
+
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
         <DialogHeader className="tw-text-base sm:tw-text-lg">
-          เลือกวันที่รายงาน (PM Report)
+          {t("dialogTitle", lang)}
         </DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
             <Input
-              label="Document Name / ชื่อเอกสาร"
+              label={t("docName", lang)}
               value={docName}
               onChange={(e) => setDocName(e.target.value)}
               crossOrigin=""
@@ -1100,7 +1029,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
           <div className="tw-space-y-2">
             <Input
-              label="Issue id / รหัสเอกสาร"
+              label={t("issueId", lang)}
               value={issueId}
               onChange={(e) => setIssueId(e.target.value)}
               crossOrigin=""
@@ -1111,7 +1040,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
           <div className="tw-space-y-2">
             <Input
-              label="Inspector / ผู้ตรวจสอบ"
+              label={t("inspector", lang)}
               value={inspector}
               onChange={(e) => setInspector(e.target.value)}
               crossOrigin=""
@@ -1120,28 +1049,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               readOnly
             />
           </div>
-          {/* <div className="tw-space-y-2">
-            <Typography variant="small" className="!tw-text-blue-gray-600">
-              วันที่ (รูปแบบ YYYY-MM-DD)
-            </Typography>
-            <Input
-              type="date"
-              value={reportDate}
-              onChange={(e) => setReportDate(e.target.value)}
-              crossOrigin=""
-            />
-          </div> */}
           <Input
             type="date"
             value={reportDate}
-            max={todayStr}  // ⬅️ จำกัดไม่ให้เลือกเกินวันนี้
+            max={todayStr}
             onChange={(e) => setReportDate(e.target.value)}
-            label="PM Date / วันที่ตรวจสอบ"
+            label={t("pmDate", lang)}
             crossOrigin=""
           />
-
           <div className="tw-text-sm tw-text-blue-gray-500">
-            ไฟล์ที่เลือก: <strong>{pendingFiles.length}</strong> ไฟล์
+            {t("filesSelected", lang)} <strong>{pendingFiles.length}</strong> {t("filesUnit", lang)}
           </div>
         </DialogBody>
         <DialogFooter className="tw-gap-2">
@@ -1151,14 +1068,14 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
             onClick={() => { setPendingFiles([]); setDateOpen(false); }}
             className="tw-rounded-xl"
           >
-            ยกเลิก
+            {t("cancel", lang)}
           </Button>
           <Button
             color="gray"
             className="tw-rounded-xl tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black"
             onClick={uploadPdfs}
           >
-            อัปโหลด
+            {t("uploadBtn", lang)}
           </Button>
         </DialogFooter>
       </Dialog>

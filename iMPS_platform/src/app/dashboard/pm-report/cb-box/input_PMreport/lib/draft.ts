@@ -3,20 +3,16 @@ import type { PhotoRef } from "./draftPhotos";
 type PF = "PASS" | "FAIL" | "NA" | "";
 
 type DraftData = {
-  // job: any;
   rows: any;
   summary: string;
   summary_pf?: PF;
+  summaryCheck?: PF;  // เพิ่ม - ใช้ใน Post mode
   m5?: any;
-  photoRefs?: Record<number, PhotoRef[]>;
-  dropdownQ1?: any;  // เพิ่ม dropdownQ1
-  dropdownQ2?: any; 
-
-  // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
-  // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
+  photoRefs?: Record<number, (PhotoRef | { isNA: true })[]>;  // แก้ - รองรับ isNA
+  dropdownQ1?: any;
+  dropdownQ2?: any;
+  inspector?: string;  // เพิ่ม - เก็บชื่อผู้ตรวจสอบ
 };
-
-
 
 function safeStorage() {
   if (typeof window === "undefined") return null;
@@ -27,14 +23,10 @@ function safeStorage() {
   }
 }
 
-// export function draftKeyCCB(stationId?: string | null, draftId = "default") {
-//   return `pmDraft:v2:ccb:${stationId ?? "unknown"}:${draftId}`;
-// }
-export function draftKey(stationId: string | null | undefined, draftId = "default") {
-  // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
-  return `pmDraft:v2:cb-box:${stationId ?? "unknown"}:${draftId}`;
+// แก้ - ลบ draftId parameter ออก (Pre mode ไม่ใช้แล้ว)
+export function draftKey(stationId: string | null | undefined) {
+  return `pmDraft:v2:cb-box:${stationId ?? "unknown"}`;
 }
-
 
 export function saveDraftLocal(key: string, data: DraftData) {
   const ls = safeStorage();
