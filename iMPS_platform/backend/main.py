@@ -6195,6 +6195,648 @@ async def mdbpmreport_list(
 
 
 # -------------------------------------------------- PMReportPage (CCB)       
+# def get_ccbpmreport_collection_for(station_id: str):
+#     _validate_station_id(station_id)
+#     return CCBPMReportDB.get_collection(str(station_id))
+
+# def get_ccbpmurl_coll_upload(station_id: str):
+#     _validate_station_id(station_id)
+#     return CCBPMUrlDB.get_collection(str(station_id))
+
+# class CCBPMSubmitIn(BaseModel):
+#     side: Literal["pre", "post"]
+#     station_id: str
+#     job: Dict[str, Any]         # โครงงาน (location/date/inspector ฯลฯ)
+#     # rows: Dict[str, Dict[str, Any]]  # {"r1": {"pf": "...", "remark": "..."}, ...}
+#     measures_pre : Dict[str, Dict[str, Any]]  # {"m4": {...}, "m5": {...}, ..., "m8": {...}}
+#     # summary: str
+#     pm_date: str                # "YYYY-MM-DD"
+#     issue_id: Optional[str] = None
+#     doc_name: Optional[str] = None 
+#     # summaryCheck: Optional[Literal["PASS","FAIL","NA"]] = None
+#     inspector: Optional[str] = None
+
+# @app.get("/ccbpmreport/preview-issueid")
+# async def ccbpmreport_preview_issueid(
+#     station_id: str = Query(...),
+#     pm_date: str = Query(...),
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     """
+#     ดู issue_id ถัดไป (PM-CG-YYMM-XX) โดยไม่ออกเลขจริง
+#     ใช้หาเลขไปโชว์บนฟอร์มเฉย ๆ
+#     """
+#     try:
+#         d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+#     pm_type = "CC"
+
+#     latest = await _latest_issue_id_anywhere(station_id, pm_type, d,source="ccb")
+
+#     yymm = f"{d.year % 100:02d}{d.month:02d}"
+#     prefix = f"PM-{pm_type}-{yymm}-"
+
+#     if not latest:
+#         next_issue = f"{prefix}01"
+#     else:
+#         m = re.search(r"(\d+)$", latest)
+#         cur = int(m.group(1)) if m else 0
+#         next_issue = f"{prefix}{cur+1:02d}"
+
+#     return {"issue_id": next_issue}
+
+# @app.get("/ccbpmreport/latest-docname")
+# async def ccbpmreport_latest_docname(
+#     station_id: str = Query(...),
+#     pm_date: str = Query(...),
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     """
+#     ดึง doc_name ล่าสุดของสถานี (ปีเดียวกับ pm_date)
+#     เพื่อใช้คำนวณเลขถัดไปที่ frontend
+#     """
+#     # auth ถ้าต้องการ
+#     # if current.role != "admin" and station_id not in set(current.station_ids):
+#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+    
+#     latest = await _latest_doc_name_from_pmreport(station_id, pm_date, source="ccb")
+    
+#     return {
+#         "doc_name": latest.get("doc_name") if latest else None,
+#         "station_id": station_id,
+#         "pm_date": pm_date
+#     }
+
+# @app.get("/ccbpmreport/preview-docname")
+# async def preview_docname(
+#     station_id: str = Query(...),
+#     pm_date: str = Query(...),
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     try:
+#         d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+#     year = d.year
+
+#     latest = await _latest_doc_name_anywhere(station_id, year,source="ccb")
+
+#     if not latest:
+#         next_doc = f"{station_id}_1/{year}"
+#     else:
+#         import re
+#         m = re.search(r"_(\d+)/\d{4}$", latest)
+#         current_num = int(m.group(1)) if m else 0
+#         next_doc = f"{station_id}_{current_num + 1}/{year}"
+
+#     return {"doc_name": next_doc}
+
+# @app.post("/ccbpmreport/pre/submit")
+# async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(get_current_user)):
+#     station_id = body.station_id.strip()
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     db = coll.database
+
+#     pm_type = str(body.job.get("pm_type") or "CC").upper()
+#     body.job["pm_type"] = pm_type
+
+#     url_coll = get_ccbpmurl_coll_upload(station_id)
+
+#     try:
+#         d = datetime.strptime(body.pm_date, "%Y-%m-%d").date()
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+#     client_issue = body.issue_id 
+#     issue_id: str | None = None    
+
+#     if client_issue:
+#         yymm = f"{d.year % 100:02d}{d.month:02d}"
+#         prefix = f"PM-{pm_type}-{yymm}-"
+#         valid_fmt = client_issue.startswith(prefix)
+
+#         # ⭐ เช็คทั้ง PMReportDB + PMUrlDB
+#         # url_coll = get_pmurl_coll_upload(station_id)
+#         rep_exists = await coll.find_one({"station_id": station_id, "issue_id": client_issue})
+#         url_exists = await url_coll.find_one({"issue_id": client_issue})
+#         unique = not (rep_exists or url_exists)
+
+#         if valid_fmt and unique:
+#             issue_id = client_issue
+    
+#     # if not issue_id:
+#     #     issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
+#     if not issue_id:
+#         while True:
+#             candidate = await _next_issue_id(db, station_id, pm_type, d, pad=2)
+#             rep_exists = await coll.find_one({"issue_id": candidate})
+#             url_exists = await url_coll.find_one({"issue_id": candidate})
+#             if not rep_exists and not url_exists:
+#                 issue_id = candidate
+#                 break
+   
+#     client_docName = body.doc_name
+#     doc_name = None
+#     if client_docName:
+#         year = f"{d.year}"
+#         prefix = f"{station_id}_"
+#         valid_fmt = client_docName.startswith(prefix)
+
+#         url_coll = get_ccbpmurl_coll_upload(station_id)
+#         rep_exists = await coll.find_one({"station_id": station_id, "doc_name": client_docName})
+#         url_exists = await url_coll.find_one({"doc_name": client_docName})
+#         unique = not (rep_exists or url_exists)
+
+#         if valid_fmt and unique:
+#             doc_name = client_docName
+ 
+#     if not doc_name:
+#         year_seq = await _next_year_seq(db, station_id, pm_type, d)
+#         year = d.year
+#         doc_name = f"{station_id}_{year_seq}/{year}"
+
+#     inspector = body.inspector
+#     # เก็บเอกสารเป็น draft ก่อน
+#     doc = {
+#         "station_id": station_id,
+#         "doc_name": doc_name,
+#         "issue_id": issue_id,
+#         "job": body.job,
+#         # "rows": body.rows,
+#         "measures_pre": body.measures_pre,         # m4..m8
+#         # "summary": body.summary,
+#         # "summaryCheck": body.summaryCheck,
+#         "pm_date": body.pm_date,           # string YYYY-MM-DD (ตามฟรอนต์)
+#         "status": "draft",
+#         # "photos": {},                      # จะถูกเติมใน /photos
+#         "photos_pre": {},
+#         "inspector": inspector,
+#         "side": body.side,
+#         # "createdAt": datetime.now(timezone.utc),
+#         # "updatedAt": datetime.now(timezone.utc),
+#         "timestamp": datetime.now(timezone.utc),
+#     }
+
+#     res = await coll.insert_one(doc)
+#     return {
+#         "ok": True, 
+#         "report_id": str(res.inserted_id), 
+#         "issue_id": issue_id,
+#         "doc_name": doc_name,
+#     }
+
+# class CCBPMPostIn(BaseModel):
+#     report_id: str | None = None      # 👈 เพิ่ม
+#     station_id: str
+#     # issue_id: str | None = None
+#     # job: dict
+#     rows: dict
+#     measures: dict
+#     summary: str
+#     # pm_date: str
+#     # doc_name: str | None = None
+#     summaryCheck: str | None = None
+#     # dust_filter: str | None = None
+#     side: Literal["post", "after"]
+
+# @app.post("/ccbpmreport/submit")
+# async def ccbpmreport_submit(body: CCBPMPostIn, current: UserClaims = Depends(get_current_user)):
+#     station_id = body.station_id.strip()
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     db = coll.database
+
+#     url_coll = get_ccbpmurl_coll_upload(station_id)
+
+   
+#     if body.report_id:
+#         try:
+#             oid = ObjectId(body.report_id)
+#         except InvalidId:
+#             raise HTTPException(status_code=400, detail="invalid report_id")
+
+#         existing = await coll.find_one({"_id": oid, "station_id": station_id})
+#         if not existing:
+#             raise HTTPException(status_code=404, detail="Report not found")
+
+#         # reuse ค่าเดิม ไม่ gen ใหม่
+#         # issue_id = existing.get("issue_id")
+#         # doc_name = existing.get("doc_name")
+#         # inspector = body.inspector or existing.get("inspector") or current.username
+
+#         update_fields = {
+#             # "job": body.job,
+#             "rows": body.rows,
+#             "measures": body.measures,          # ใช้เป็นค่าหลัง PM
+#             "summary": body.summary,
+#             "summaryCheck": body.summaryCheck,
+#             # "pm_date": body.pm_date,
+#             # "inspector": inspector,
+#             # "dust_filter": body.dust_filter,
+#             # "doc_name": doc_name,
+#             "side": "post",                     # ตอนนี้อยู่ฝั่ง post แล้ว
+#             "timestamp_post": datetime.now(timezone.utc),
+#         }
+
+#         await coll.update_one({"_id": oid}, {"$set": update_fields})
+
+#         return {
+#             "ok": True,
+#             "report_id": body.report_id,
+#             # "issue_id": issue_id,
+#             # "doc_name": doc_name,
+#         }
+    
+#     doc = {
+#         "station_id": station_id,
+#         # "doc_name": doc_name,
+#         # "issue_id": issue_id,
+#         # "job": body.job,
+#         "rows": body.rows,
+#         "measures": body.measures,         # m4..m8
+#         "summary": body.summary,
+#         "summaryCheck": body.summaryCheck,
+#         # "pm_date": body.pm_date,           # string YYYY-MM-DD (ตามฟรอนต์)
+#         # "inspector": inspector,
+#         # "dust_filter": body.dust_filter,
+#         "status": "draft",
+#         "photos": {},                      # จะถูกเติมใน /photos
+#         # "createdAt": datetime.now(timezone.utc),
+#         # "updatedAt": datetime.now(timezone.utc),
+#         "side": "post",
+#         "timestamp": datetime.now(timezone.utc),
+#     }
+
+#     res = await coll.insert_one(doc)
+#     return {
+#         "ok": True, 
+#         "report_id": str(res.inserted_id), 
+#         # "issue_id": issue_id,
+#         # "doc_name": doc_name,
+#     }
+
+# @app.get("/ccbpmreport/get")
+# async def ccbpmreport_get(station_id: str, report_id: str, current: UserClaims = Depends(get_current_user)):
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     doc = await coll.find_one({"_id": ObjectId(report_id)})
+#     if not doc:
+#         raise HTTPException(status_code=404, detail="not found")
+
+#     doc["_id"] = str(doc["_id"])
+#     return doc
+
+# @app.get("/ccbpmreport/list")
+# async def ccbpmreport_list(
+#     station_id: str = Query(...),
+#     page: int = Query(1, ge=1),
+#     pageSize: int = Query(20, ge=1, le=100),
+#     # current: UserClaims = Depends(get_current_user),
+# ):
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     skip = (page - 1) * pageSize
+
+#     cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector" : 1,"side":1, "createdAt": 1}).sort(
+#         [("createdAt", -1), ("_id", -1)]
+#     ).skip(skip).limit(pageSize)
+
+#     items_raw = await cursor.to_list(length=pageSize)
+#     total = await coll.count_documents({})
+
+#     # ผูก URL PDF รายวันจาก CCBPMUrlDB (ถ้ามี)
+#     pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+#     url_by_day: Dict[str, str] = {}
+#     if pm_dates:
+#         ucoll = get_ccbpmurl_coll_upload(station_id)
+#         ucur = ucoll.find({"pm_date": {"$in": pm_dates}}, {"pm_date": 1, "urls": 1})
+#         url_docs = await ucur.to_list(length=10_000)
+#         for u in url_docs:
+#             day = u.get("pm_date")
+#             first_url = (u.get("urls") or [None])[0]
+#             if day and first_url and day not in url_by_day:
+#                 url_by_day[day] = first_url
+
+#     items = [{
+#         "id": str(it["_id"]),
+#         "issue_id": it.get("issue_id"),
+#         "doc_name": it.get("doc_name"),
+#         "pm_date": it.get("pm_date"),
+#         "side":it.get("side"), 
+#         "inspector": it.get("inspector"),
+#         "createdAt": _ensure_utc_iso(it.get("createdAt")),
+#         "file_url": url_by_day.get(it.get("pm_date") or "", ""),
+#     } for it in items_raw]
+
+#     return {"items": items, "pm_date": [it.get("pm_date") for it in items_raw if it.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
+
+# @app.post("/ccbpmreport/{report_id}/pre/photos")
+# async def ccbpmreport_upload_photos(
+#     report_id: str,
+#     station_id: str = Form(...),
+#     group: str = Form(...),                   # "r1" .. "r10", "r9_0" .. "r9_5"
+#     files: List[UploadFile] = File(...),
+#     # remark: Optional[str] = Form(None),
+#     # current: UserClaims = Depends(get_current_user),
+# ):
+#     # if current.role != "admin" and station_id not in set(current.station_ids):
+#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+#     if not re.fullmatch(r"r\d+(_\d+)?", group):
+#         raise HTTPException(status_code=400, detail="Bad group key")
+
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     try:
+#         oid = ObjectId(report_id)
+#     except Exception:
+#         raise HTTPException(status_code=400, detail="Bad report_id")
+
+#     doc = await coll.find_one({"_id": oid}, {"_id": 1, "station_id": 1})
+#     if not doc:
+#         raise HTTPException(status_code=404, detail="Report not found")
+#     if doc.get("station_id") != station_id:
+#         raise HTTPException(status_code=400, detail="station_id mismatch")
+
+#     # โฟลเดอร์: /uploads/ccbpm/{station_id}/{report_id}/{group}/
+#     dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpm" / station_id / report_id / "pre" / group
+#     dest_dir.mkdir(parents=True, exist_ok=True)
+
+#     saved = []
+#     for f in files:
+#         ext = (f.filename.rsplit(".",1)[-1].lower() if f.filename and "." in f.filename else "")
+#         if ext not in ALLOWED_EXTS:
+#             raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
+
+#         data = await f.read()
+#         if len(data) > MAX_FILE_MB * 1024 * 1024:
+#             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+#         fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+#         path = dest_dir / fname
+#         with open(path, "wb") as out:
+#             out.write(data)
+
+#         url_path = f"/uploads/ccbpm/{station_id}/{report_id}/pre/{group}/{fname}"
+#         saved.append({
+#             "filename": fname,
+#             "size": len(data),
+#             "url": url_path,
+#             # "remark": remark or "",
+#             "uploadedAt": datetime.now(timezone.utc)
+#         })
+
+#     await coll.update_one(
+#         {"_id": oid},
+#         {
+#             "$push": {f"photos_pre.{group}": {"$each": saved}},
+#             "$set": {"updatedAt": datetime.now(timezone.utc)}
+#         }
+#     )
+#     return {"ok": True, "count": len(saved), "group": group, "files": saved}
+
+
+# @app.post("/ccbpmreport/{report_id}/post/photos")
+# async def ccbpmreport_upload_photos(
+#     report_id: str,
+#     station_id: str = Form(...),
+#     group: str = Form(...),                   # "r1" .. "r10", "r9_0" .. "r9_5"
+#     files: List[UploadFile] = File(...),
+#     remark: Optional[str] = Form(None),
+#     # current: UserClaims = Depends(get_current_user),
+# ):
+#     # if current.role != "admin" and station_id not in set(current.station_ids):
+#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+#     if not re.fullmatch(r"r\d+(_\d+)?", group):
+#         raise HTTPException(status_code=400, detail="Bad group key")
+
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     try:
+#         oid = ObjectId(report_id)
+#     except Exception:
+#         raise HTTPException(status_code=400, detail="Bad report_id")
+
+#     doc = await coll.find_one({"_id": oid}, {"_id": 1, "station_id": 1})
+#     if not doc:
+#         raise HTTPException(status_code=404, detail="Report not found")
+#     if doc.get("station_id") != station_id:
+#         raise HTTPException(status_code=400, detail="station_id mismatch")
+
+#     # โฟลเดอร์: /uploads/ccbpm/{station_id}/{report_id}/{group}/
+#     dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpm" / station_id / report_id / "post" / group
+#     dest_dir.mkdir(parents=True, exist_ok=True)
+
+#     saved = []
+#     for f in files:
+#         ext = (f.filename.rsplit(".",1)[-1].lower() if f.filename and "." in f.filename else "")
+#         if ext not in ALLOWED_EXTS:
+#             raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
+
+#         data = await f.read()
+#         if len(data) > MAX_FILE_MB * 1024 * 1024:
+#             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+#         fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+#         path = dest_dir / fname
+#         with open(path, "wb") as out:
+#             out.write(data)
+
+#         url_path = f"/uploads/ccbpm/{station_id}/{report_id}/post/{group}/{fname}"
+#         saved.append({
+#             "filename": fname,
+#             "size": len(data),
+#             "url": url_path,
+#             "remark": remark or "",
+#             "uploadedAt": datetime.now(timezone.utc)
+#         })
+
+#     await coll.update_one(
+#         {"_id": oid},
+#         {
+#             "$push": {f"photos.{group}": {"$each": saved}},
+#             "$set": {"updatedAt": datetime.now(timezone.utc)}
+#         }
+#     )
+#     return {"ok": True, "count": len(saved), "group": group, "files": saved}
+
+# @app.post("/ccbpmreport/{report_id}/finalize")
+# async def ccbpmreport_finalize(
+#     report_id: str,
+#     station_id: str = Form(...),
+#     # current: UserClaims = Depends(get_current_user),
+# ):
+#     # if current.role != "admin" and station_id not in set(current.station_ids):
+#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_ccbpmreport_collection_for(station_id)
+#     try:
+#         oid = ObjectId(report_id)
+#     except Exception:
+#         raise HTTPException(status_code=400, detail="Bad report_id")
+
+#     # (ออปชัน) ตรวจความครบถ้วนก่อน finalize ได้ที่นี่
+#     res = await coll.update_one(
+#         {"_id": oid},
+#         {"$set": {"status": "submitted", "submittedAt": datetime.now(timezone.utc), "updatedAt": datetime.now(timezone.utc)}}
+#     )
+#     if res.matched_count == 0:
+#         raise HTTPException(status_code=404, detail="Report not found")
+#     return {"ok": True}
+
+# @app.post("/ccbpmurl/upload-files", status_code=201)
+# async def ccbpmurl_upload_files(
+#     station_id: str = Form(...),
+#     reportDate: str = Form(...),            # "YYYY-MM-DD" หรือ ISO -> จะ normalize เป็น YYYY-MM-DD
+#     files: List[UploadFile] = File(...),    # อนุญาตเฉพาะ .pdf
+#     # current: UserClaims = Depends(get_current_user),
+#     issue_id: Optional[str] = Form(None),
+#     doc_name: Optional[str] = Form(None),
+#     inspector: Optional[str] = Form(None),
+# ):
+#     coll = get_ccbpmurl_coll_upload(station_id)
+#     pm_date = normalize_pm_date(reportDate)  # คืน YYYY-MM-DD
+
+#     pm_type = "CC"
+#     try:
+#         d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="reportDate/pm_date must be YYYY-MM-DD")
+
+#     rep_coll = get_ccbpmreport_collection_for(station_id)
+#     final_issue_id = None
+#     client_issue = (issue_id or "").strip()
+
+#     if client_issue:
+#         yymm = f"{d.year % 100:02d}{d.month:02d}"
+#         prefix = f"PM-{pm_type}-{yymm}-"
+#         valid_fmt = client_issue.startswith(prefix)
+
+#         url_exists = await coll.find_one({"issue_id": client_issue})
+#         rep_exists = await rep_coll.find_one({"issue_id": client_issue})
+#         unique = not (url_exists or rep_exists)
+
+#         if valid_fmt and unique:
+#             final_issue_id = client_issue
+
+#     if not final_issue_id:
+#         while True:
+#             candidate = await _next_issue_id(coll.database, station_id, pm_type, d, pad=2)
+#             url_exists = await coll.find_one({"issue_id": candidate})
+#             rep_exists = await rep_coll.find_one({"issue_id": candidate})
+#             if not url_exists and not rep_exists:
+#                 final_issue_id = candidate
+#                 break
+        
+#     year_seq: int | None = None
+
+#     # พยายาม reuse year_seq จาก PMReportDB ถ้ามีอยู่แล้ว (issue_id เดียวกัน)
+#     rep = await get_ccbpmreport_collection_for(station_id).find_one(
+#         {"issue_id": final_issue_id},
+#         {"year_seq": 1, "pm_date": 1},
+#     )
+#     if rep and rep.get("year_seq") is not None:
+#         year_seq = int(rep["year_seq"])
+
+#     # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
+#     if year_seq is None:
+#         year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
+
+#     year = d.year
+#     final_doc_name: str | None = None
+
+#     if doc_name:
+#         candidate = doc_name.strip()
+
+#         ok_format = candidate.startswith(f"{station_id}_")
+
+#         rep_coll = get_ccbpmreport_collection_for(station_id)
+#         rep_exists = await rep_coll.find_one({"doc_name": candidate})
+#         url_exists = await coll.find_one({"doc_name": candidate})
+#         unique = not (rep_exists or url_exists)
+
+#         if ok_format and unique:
+#             final_doc_name = candidate
+
+#     if not final_doc_name:
+#         final_doc_name = f"{station_id}_{year_seq}/{year}"
+
+#     doc_name = final_doc_name
+    
+#     # เก็บไว้ที่ /uploads/ccbpmurl/<station_id>/<YYYY-MM-DD>/
+#     dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpmurl" / station_id / pm_date
+#     dest_dir.mkdir(parents=True, exist_ok=True)
+
+#     urls, metas = [], []
+#     for f in files:
+#         ext = (f.filename.rsplit(".",1)[-1].lower() if f.filename and "." in f.filename else "")
+#         if ext != "pdf":
+#             raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
+
+#         data = await f.read()
+#         if len(data) > MAX_FILE_MB * 1024 * 1024:
+#             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+#         fname = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
+#         path = dest_dir / fname
+#         with open(path, "wb") as out:
+#             out.write(data)
+
+#         url = f"/uploads/ccbpmurl/{station_id}/{pm_date}/{fname}"
+#         urls.append(url)
+#         metas.append({"name": f.filename, "size": len(data)})
+
+#     inspector_clean = (inspector or "").strip() or None
+#     now = datetime.now(timezone.utc)
+#     res = await coll.insert_one({
+#         "station": station_id,
+#         "pm_date": pm_date,
+#         "issue_id": final_issue_id, 
+#         "inspector": inspector_clean,
+#         "doc_name": doc_name,
+#         "urls": urls,
+#         "meta": {"files": metas},
+#         "source": "upload-files",
+#         "createdAt": now,
+#         "updatedAt": now,
+#     })
+#     return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls,"issue_id": final_issue_id,"doc_name": doc_name,"inspector": inspector_clean,}
+
+# @app.get("/ccbpmurl/list")
+# async def ccbpmurl_list(
+#     station_id: str = Query(...),
+#     page: int = Query(1, ge=1),
+#     pageSize: int = Query(20, ge=1, le=100),
+#     # current: UserClaims = Depends(get_current_user),
+# ):
+#     coll = get_ccbpmurl_coll_upload(station_id)
+#     skip = (page - 1) * pageSize
+
+#     cursor = coll.find(
+#         {},
+#         {"_id": 1, "issue_id": 1,"doc_name": 1,"inspector":1, "pm_date": 1, "urls": 1, "createdAt": 1}
+#     ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+
+#     items_raw = await cursor.to_list(length=pageSize)
+#     total = await coll.count_documents({})
+
+#     items = []
+#     for it in items_raw:
+#         urls = it.get("urls") or []
+#         first_url = urls[0] if urls else ""
+#         items.append({
+#             "id": str(it["_id"]),
+#             "pm_date": it.get("pm_date"),
+#             "issue_id": it.get("issue_id"),
+#             "inspector": it.get(("inspector")), 
+#             "doc_name": it.get("doc_name"),
+#             "createdAt": _ensure_utc_iso(it.get("createdAt")),
+#             "file_url": first_url,
+#             "urls": urls,
+#         })
+
+#     return {"items": items, "pm_date": [i["pm_date"] for i in items if i.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
+#
+# ------------------------------------------------------------------------
+# new ccb pm report
+# ------------------------------------------------------------------------
 def get_ccbpmreport_collection_for(station_id: str):
     _validate_station_id(station_id)
     return CCBPMReportDB.get_collection(str(station_id))
@@ -6207,14 +6849,14 @@ class CCBPMSubmitIn(BaseModel):
     side: Literal["pre", "post"]
     station_id: str
     job: Dict[str, Any]         # โครงงาน (location/date/inspector ฯลฯ)
-    # rows: Dict[str, Dict[str, Any]]  # {"r1": {"pf": "...", "remark": "..."}, ...}
-    measures_pre : Dict[str, Dict[str, Any]]  # {"m4": {...}, "m5": {...}, ..., "m8": {...}}
-    # summary: str
+    rows_pre: Dict[str, Dict[str, Any]]  # {"r1": {"pf": "...", "remark": "..."}, ...}
+    measures_pre: Dict[str, Any]  # {"m9": {...}, "m10_1": {...}, "m10_2": {...}, ...}
+    subBreakerCount: int = 1    # จำนวนเบรกเกอร์วงจรย่อย (1-6)
     pm_date: str                # "YYYY-MM-DD"
     issue_id: Optional[str] = None
     doc_name: Optional[str] = None 
-    # summaryCheck: Optional[Literal["PASS","FAIL","NA"]] = None
     inspector: Optional[str] = None
+    comment_pre: Optional[str] = None
 
 @app.get("/ccbpmreport/preview-issueid")
 async def ccbpmreport_preview_issueid(
@@ -6233,7 +6875,7 @@ async def ccbpmreport_preview_issueid(
 
     pm_type = "CC"
 
-    latest = await _latest_issue_id_anywhere(station_id, pm_type, d,source="ccb")
+    latest = await _latest_issue_id_anywhere(station_id, pm_type, d, source="ccb")
 
     yymm = f"{d.year % 100:02d}{d.month:02d}"
     prefix = f"PM-{pm_type}-{yymm}-"
@@ -6257,10 +6899,6 @@ async def ccbpmreport_latest_docname(
     ดึง doc_name ล่าสุดของสถานี (ปีเดียวกับ pm_date)
     เพื่อใช้คำนวณเลขถัดไปที่ frontend
     """
-    # auth ถ้าต้องการ
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-    
     latest = await _latest_doc_name_from_pmreport(station_id, pm_date, source="ccb")
     
     return {
@@ -6282,7 +6920,7 @@ async def preview_docname(
 
     year = d.year
 
-    latest = await _latest_doc_name_anywhere(station_id, year,source="ccb")
+    latest = await _latest_doc_name_anywhere(station_id, year, source="ccb")
 
     if not latest:
         next_doc = f"{station_id}_1/{year}"
@@ -6295,7 +6933,7 @@ async def preview_docname(
     return {"doc_name": next_doc}
 
 @app.post("/ccbpmreport/pre/submit")
-async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(get_current_user)):
+async def ccbpmreport_pre_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(get_current_user)):
     station_id = body.station_id.strip()
     coll = get_ccbpmreport_collection_for(station_id)
     db = coll.database
@@ -6318,8 +6956,6 @@ async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(
         prefix = f"PM-{pm_type}-{yymm}-"
         valid_fmt = client_issue.startswith(prefix)
 
-        # ⭐ เช็คทั้ง PMReportDB + PMUrlDB
-        # url_coll = get_pmurl_coll_upload(station_id)
         rep_exists = await coll.find_one({"station_id": station_id, "issue_id": client_issue})
         url_exists = await url_coll.find_one({"issue_id": client_issue})
         unique = not (rep_exists or url_exists)
@@ -6327,8 +6963,6 @@ async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(
         if valid_fmt and unique:
             issue_id = client_issue
     
-    # if not issue_id:
-    #     issue_id = await _next_issue_id(db, station_id, pm_type, d, pad=2)
     if not issue_id:
         while True:
             candidate = await _next_issue_id(db, station_id, pm_type, d, pad=2)
@@ -6359,24 +6993,22 @@ async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(
         doc_name = f"{station_id}_{year_seq}/{year}"
 
     inspector = body.inspector
+
     # เก็บเอกสารเป็น draft ก่อน
     doc = {
         "station_id": station_id,
         "doc_name": doc_name,
         "issue_id": issue_id,
         "job": body.job,
-        # "rows": body.rows,
-        "measures_pre": body.measures_pre,         # m4..m8
-        # "summary": body.summary,
-        # "summaryCheck": body.summaryCheck,
-        "pm_date": body.pm_date,           # string YYYY-MM-DD (ตามฟรอนต์)
+        "rows_pre": body.rows_pre,
+        "measures_pre": body.measures_pre,  # {"main": {...}, "subs": {"1": {...}, ...}}
+        "subBreakerCount": body.subBreakerCount,
+        "pm_date": body.pm_date,
         "status": "draft",
-        # "photos": {},                      # จะถูกเติมใน /photos
         "photos_pre": {},
         "inspector": inspector,
+        "comment_pre": body.comment_pre,
         "side": body.side,
-        # "createdAt": datetime.now(timezone.utc),
-        # "updatedAt": datetime.now(timezone.utc),
         "timestamp": datetime.now(timezone.utc),
     }
 
@@ -6389,28 +7021,23 @@ async def ccbpmreport_submit(body: CCBPMSubmitIn, current: UserClaims = Depends(
     }
 
 class CCBPMPostIn(BaseModel):
-    report_id: str | None = None      # 👈 เพิ่ม
+    report_id: str | None = None
     station_id: str
-    # issue_id: str | None = None
-    # job: dict
     rows: dict
-    measures: dict
+    measures: dict  # {"m9": {...}, "m10_1": {...}, "m10_2": {...}, ...}
+    subBreakerCount: int = 1
     summary: str
-    # pm_date: str
-    # doc_name: str | None = None
     summaryCheck: str | None = None
-    # dust_filter: str | None = None
     side: Literal["post", "after"]
 
 @app.post("/ccbpmreport/submit")
-async def ccbpmreport_submit(body: CCBPMPostIn, current: UserClaims = Depends(get_current_user)):
+async def ccbpmreport_post_submit(body: CCBPMPostIn, current: UserClaims = Depends(get_current_user)):
     station_id = body.station_id.strip()
     coll = get_ccbpmreport_collection_for(station_id)
     db = coll.database
 
     url_coll = get_ccbpmurl_coll_upload(station_id)
 
-   
     if body.report_id:
         try:
             oid = ObjectId(body.report_id)
@@ -6421,22 +7048,13 @@ async def ccbpmreport_submit(body: CCBPMPostIn, current: UserClaims = Depends(ge
         if not existing:
             raise HTTPException(status_code=404, detail="Report not found")
 
-        # reuse ค่าเดิม ไม่ gen ใหม่
-        # issue_id = existing.get("issue_id")
-        # doc_name = existing.get("doc_name")
-        # inspector = body.inspector or existing.get("inspector") or current.username
-
         update_fields = {
-            # "job": body.job,
             "rows": body.rows,
-            "measures": body.measures,          # ใช้เป็นค่าหลัง PM
+            "measures": body.measures,
+            "subBreakerCount": body.subBreakerCount,
             "summary": body.summary,
             "summaryCheck": body.summaryCheck,
-            # "pm_date": body.pm_date,
-            # "inspector": inspector,
-            # "dust_filter": body.dust_filter,
-            # "doc_name": doc_name,
-            "side": "post",                     # ตอนนี้อยู่ฝั่ง post แล้ว
+            "side": "post",
             "timestamp_post": datetime.now(timezone.utc),
         }
 
@@ -6445,26 +7063,17 @@ async def ccbpmreport_submit(body: CCBPMPostIn, current: UserClaims = Depends(ge
         return {
             "ok": True,
             "report_id": body.report_id,
-            # "issue_id": issue_id,
-            # "doc_name": doc_name,
         }
     
     doc = {
         "station_id": station_id,
-        # "doc_name": doc_name,
-        # "issue_id": issue_id,
-        # "job": body.job,
         "rows": body.rows,
-        "measures": body.measures,         # m4..m8
+        "measures": body.measures,
+        "subBreakerCount": body.subBreakerCount,
         "summary": body.summary,
         "summaryCheck": body.summaryCheck,
-        # "pm_date": body.pm_date,           # string YYYY-MM-DD (ตามฟรอนต์)
-        # "inspector": inspector,
-        # "dust_filter": body.dust_filter,
         "status": "draft",
-        "photos": {},                      # จะถูกเติมใน /photos
-        # "createdAt": datetime.now(timezone.utc),
-        # "updatedAt": datetime.now(timezone.utc),
+        "photos": {},
         "side": "post",
         "timestamp": datetime.now(timezone.utc),
     }
@@ -6473,8 +7082,6 @@ async def ccbpmreport_submit(body: CCBPMPostIn, current: UserClaims = Depends(ge
     return {
         "ok": True, 
         "report_id": str(res.inserted_id), 
-        # "issue_id": issue_id,
-        # "doc_name": doc_name,
     }
 
 @app.get("/ccbpmreport/get")
@@ -6492,12 +7099,11 @@ async def ccbpmreport_list(
     station_id: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
-    # current: UserClaims = Depends(get_current_user),
 ):
     coll = get_ccbpmreport_collection_for(station_id)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector" : 1,"side":1, "createdAt": 1}).sort(
+    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector": 1, "side": 1, "createdAt": 1}).sort(
         [("createdAt", -1), ("_id", -1)]
     ).skip(skip).limit(pageSize)
 
@@ -6522,7 +7128,7 @@ async def ccbpmreport_list(
         "issue_id": it.get("issue_id"),
         "doc_name": it.get("doc_name"),
         "pm_date": it.get("pm_date"),
-        "side":it.get("side"), 
+        "side": it.get("side"), 
         "inspector": it.get("inspector"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("pm_date") or "", ""),
@@ -6530,18 +7136,21 @@ async def ccbpmreport_list(
 
     return {"items": items, "pm_date": [it.get("pm_date") for it in items_raw if it.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
 
+# Regex pattern for photo group keys:
+# - g1 to g11 (simple questions)
+# - g3_1, g3_2, g4_1, g4_2, etc. (group questions)
+# - g9 (Main Breaker)
+# - g10_1 to g10_6 (Sub Breakers)
+PHOTO_GROUP_PATTERN = re.compile(r"^g\d+(_\d+)?$")
+
 @app.post("/ccbpmreport/{report_id}/pre/photos")
-async def ccbpmreport_upload_photos(
+async def ccbpmreport_upload_photos_pre(
     report_id: str,
     station_id: str = Form(...),
-    group: str = Form(...),                   # "r1" .. "r10", "r9_0" .. "r9_5"
+    group: str = Form(...),  # "r1", "r9_main", "r10_sub1" .. "r10_sub6"
     files: List[UploadFile] = File(...),
-    # remark: Optional[str] = Form(None),
-    # current: UserClaims = Depends(get_current_user),
 ):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-    if not re.fullmatch(r"r\d+(_\d+)?", group):
+    if not PHOTO_GROUP_PATTERN.match(group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
     coll = get_ccbpmreport_collection_for(station_id)
@@ -6556,13 +7165,13 @@ async def ccbpmreport_upload_photos(
     if doc.get("station_id") != station_id:
         raise HTTPException(status_code=400, detail="station_id mismatch")
 
-    # โฟลเดอร์: /uploads/ccbpm/{station_id}/{report_id}/{group}/
+    # โฟลเดอร์: /uploads/ccbpm/{station_id}/{report_id}/pre/{group}/
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpm" / station_id / report_id / "pre" / group
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     saved = []
     for f in files:
-        ext = (f.filename.rsplit(".",1)[-1].lower() if f.filename and "." in f.filename else "")
+        ext = (f.filename.rsplit(".", 1)[-1].lower() if f.filename and "." in f.filename else "")
         if ext not in ALLOWED_EXTS:
             raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
 
@@ -6580,7 +7189,6 @@ async def ccbpmreport_upload_photos(
             "filename": fname,
             "size": len(data),
             "url": url_path,
-            # "remark": remark or "",
             "uploadedAt": datetime.now(timezone.utc)
         })
 
@@ -6595,17 +7203,14 @@ async def ccbpmreport_upload_photos(
 
 
 @app.post("/ccbpmreport/{report_id}/post/photos")
-async def ccbpmreport_upload_photos(
+async def ccbpmreport_upload_photos_post(
     report_id: str,
     station_id: str = Form(...),
-    group: str = Form(...),                   # "r1" .. "r10", "r9_0" .. "r9_5"
+    group: str = Form(...),  # "r1", "r9_main", "r10_sub1" .. "r10_sub6"
     files: List[UploadFile] = File(...),
     remark: Optional[str] = Form(None),
-    # current: UserClaims = Depends(get_current_user),
 ):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-    if not re.fullmatch(r"r\d+(_\d+)?", group):
+    if not PHOTO_GROUP_PATTERN.match(group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
     coll = get_ccbpmreport_collection_for(station_id)
@@ -6620,13 +7225,13 @@ async def ccbpmreport_upload_photos(
     if doc.get("station_id") != station_id:
         raise HTTPException(status_code=400, detail="station_id mismatch")
 
-    # โฟลเดอร์: /uploads/ccbpm/{station_id}/{report_id}/{group}/
+    # โฟลเดอร์: /uploads/ccbpm/{station_id}/{report_id}/post/{group}/
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpm" / station_id / report_id / "post" / group
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     saved = []
     for f in files:
-        ext = (f.filename.rsplit(".",1)[-1].lower() if f.filename and "." in f.filename else "")
+        ext = (f.filename.rsplit(".", 1)[-1].lower() if f.filename and "." in f.filename else "")
         if ext not in ALLOWED_EXTS:
             raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
 
@@ -6661,18 +7266,13 @@ async def ccbpmreport_upload_photos(
 async def ccbpmreport_finalize(
     report_id: str,
     station_id: str = Form(...),
-    # current: UserClaims = Depends(get_current_user),
 ):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-
     coll = get_ccbpmreport_collection_for(station_id)
     try:
         oid = ObjectId(report_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    # (ออปชัน) ตรวจความครบถ้วนก่อน finalize ได้ที่นี่
     res = await coll.update_one(
         {"_id": oid},
         {"$set": {"status": "submitted", "submittedAt": datetime.now(timezone.utc), "updatedAt": datetime.now(timezone.utc)}}
@@ -6684,15 +7284,14 @@ async def ccbpmreport_finalize(
 @app.post("/ccbpmurl/upload-files", status_code=201)
 async def ccbpmurl_upload_files(
     station_id: str = Form(...),
-    reportDate: str = Form(...),            # "YYYY-MM-DD" หรือ ISO -> จะ normalize เป็น YYYY-MM-DD
-    files: List[UploadFile] = File(...),    # อนุญาตเฉพาะ .pdf
-    # current: UserClaims = Depends(get_current_user),
+    reportDate: str = Form(...),
+    files: List[UploadFile] = File(...),
     issue_id: Optional[str] = Form(None),
     doc_name: Optional[str] = Form(None),
     inspector: Optional[str] = Form(None),
 ):
     coll = get_ccbpmurl_coll_upload(station_id)
-    pm_date = normalize_pm_date(reportDate)  # คืน YYYY-MM-DD
+    pm_date = normalize_pm_date(reportDate)
 
     pm_type = "CC"
     try:
@@ -6727,7 +7326,6 @@ async def ccbpmurl_upload_files(
         
     year_seq: int | None = None
 
-    # พยายาม reuse year_seq จาก PMReportDB ถ้ามีอยู่แล้ว (issue_id เดียวกัน)
     rep = await get_ccbpmreport_collection_for(station_id).find_one(
         {"issue_id": final_issue_id},
         {"year_seq": 1, "pm_date": 1},
@@ -6735,7 +7333,6 @@ async def ccbpmurl_upload_files(
     if rep and rep.get("year_seq") is not None:
         year_seq = int(rep["year_seq"])
 
-    # ถ้าไม่มีค่า year_seq จาก PMReport → ออกใหม่จาก pm_year_sequences
     if year_seq is None:
         year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
 
@@ -6760,13 +7357,12 @@ async def ccbpmurl_upload_files(
 
     doc_name = final_doc_name
     
-    # เก็บไว้ที่ /uploads/ccbpmurl/<station_id>/<YYYY-MM-DD>/
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "ccbpmurl" / station_id / pm_date
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     urls, metas = [], []
     for f in files:
-        ext = (f.filename.rsplit(".",1)[-1].lower() if f.filename and "." in f.filename else "")
+        ext = (f.filename.rsplit(".", 1)[-1].lower() if f.filename and "." in f.filename else "")
         if ext != "pdf":
             raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
 
@@ -6797,21 +7393,20 @@ async def ccbpmurl_upload_files(
         "createdAt": now,
         "updatedAt": now,
     })
-    return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls,"issue_id": final_issue_id,"doc_name": doc_name,"inspector": inspector_clean,}
+    return {"ok": True, "inserted_id": str(res.inserted_id), "count": len(urls), "urls": urls, "issue_id": final_issue_id, "doc_name": doc_name, "inspector": inspector_clean}
 
 @app.get("/ccbpmurl/list")
 async def ccbpmurl_list(
     station_id: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
-    # current: UserClaims = Depends(get_current_user),
 ):
     coll = get_ccbpmurl_coll_upload(station_id)
     skip = (page - 1) * pageSize
 
     cursor = coll.find(
         {},
-        {"_id": 1, "issue_id": 1,"doc_name": 1,"inspector":1, "pm_date": 1, "urls": 1, "createdAt": 1}
+        {"_id": 1, "issue_id": 1, "doc_name": 1, "inspector": 1, "pm_date": 1, "urls": 1, "createdAt": 1}
     ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
 
     items_raw = await cursor.to_list(length=pageSize)
@@ -6825,7 +7420,7 @@ async def ccbpmurl_list(
             "id": str(it["_id"]),
             "pm_date": it.get("pm_date"),
             "issue_id": it.get("issue_id"),
-            "inspector": it.get(("inspector")), 
+            "inspector": it.get("inspector"), 
             "doc_name": it.get("doc_name"),
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "file_url": first_url,
@@ -6833,7 +7428,6 @@ async def ccbpmurl_list(
         })
 
     return {"items": items, "pm_date": [i["pm_date"] for i in items if i.get("pm_date")], "page": page, "pageSize": pageSize, "total": total}
-
 # -------------------------------------------------- PMReportPage (CB-BOX)       
 # def get_cbboxpmreport_collection_for(station_id: str):
 #     _validate_station_id(station_id)

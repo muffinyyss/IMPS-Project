@@ -33,14 +33,14 @@ const T = {
   // Page header
   pageTitle: { th: "Preventive Maintenance Checklist - MDB", en: "Preventive Maintenance Checklist - MDB" },
   pageSubtitle: { th: "ค้นหาและพรีวิวเอกสารรายงานการบำรุงรักษา (PM Report)", en: "Search and preview maintenance reports (PM Report)" },
-  
+
   // Buttons
   upload: { th: "อัปโหลด", en: "Upload" },
   add: { th: "+เพิ่ม", en: "+Add" },
   postPm: { th: "post-pm", en: "post-pm" },
   cancel: { th: "ยกเลิก", en: "Cancel" },
   uploadBtn: { th: "อัปโหลด", en: "Upload" },
-  
+
   // Table headers
   colNo: { th: "ลำดับ", en: "No." },
   colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
@@ -48,21 +48,21 @@ const T = {
   colPmDate: { th: "วันที่ PM", en: "PM Date" },
   colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
   colPdf: { th: "PDF", en: "PDF" },
-  
+
   // Pagination
   entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
   page: { th: "หน้า", en: "Page" },
   of: { th: "จาก", en: "of" },
-  
+
   // Search
   search: { th: "ค้นหา", en: "Search" },
-  
+
   // Loading/Empty states
   loading: { th: "กำลังโหลด…", en: "Loading…" },
   noData: { th: "ไม่มีข้อมูล", en: "No data" },
   selectStationFirst: { th: "กรุณาเลือกสถานีจากแถบบนก่อน", en: "Please select a station first" },
   noFile: { th: "ไม่มีไฟล์", en: "No file" },
-  
+
   // Dialog
   dialogTitle: { th: "เลือกวันที่รายงาน", en: "Select Report Date" },
   docNameLabel: { th: "Document Name / ชื่อเอกสาร", en: "Document Name" },
@@ -71,7 +71,7 @@ const T = {
   pmDateLabel: { th: "PM Date / วันที่ตรวจสอบ", en: "PM Date" },
   filesSelected: { th: "ไฟล์ที่เลือก:", en: "Files selected:" },
   filesUnit: { th: "ไฟล์", en: "file(s)" },
-  
+
   // Alerts
   alertSelectStation: { th: "กรุณาเลือกสถานีก่อน", en: "Please select a station first" },
   alertPdfOnly: { th: "รองรับเฉพาะไฟล์ PDF เท่านั้น", en: "Only PDF files are supported" },
@@ -79,7 +79,7 @@ const T = {
   alertUploadFailed: { th: "อัปโหลดไม่สำเร็จ:", en: "Upload failed:" },
   alertUploadSuccess: { th: "อัปโหลดสำเร็จ", en: "Upload successful" },
   alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัปโหลด", en: "Error during upload" },
-  
+
   // Tooltips
   backToList: { th: "กลับไปหน้า List", en: "Back to list" },
   uploadPdf: { th: "อัปโหลด PDF", en: "Upload PDF" },
@@ -494,7 +494,8 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
           id,
           issue_id: issueId,
           doc_name: doc_name,
-          pm_date: thDate(isoDay),
+          // pm_date: thDate(isoDay),
+          pm_date: isoDay,
           position: isoDay,
           office: fileUrl,
           inspector,
@@ -551,7 +552,7 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
     let alive = true;
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
-  }, [apiBase, stationId, lang]);
+  }, [apiBase, stationId]);
 
   function appendParam(u: string, key: string, val?: string) {
     if (!val) return u; // ❗️อย่าใส่ param ว่าง ๆ กัน 422
@@ -646,7 +647,11 @@ export default function MDBTable({ token, apiBase = BASE }: Props) {
       accessorFn: (row) => row.pm_date,
       id: "date",
       header: () => t("colPmDate", lang),
-      cell: (info) => info.getValue() as React.ReactNode,
+      // cell: (info) => info.getValue() as React.ReactNode,
+      cell: (info) => {
+        const isoDate = info.getValue() as string;
+        return thDate(isoDate, lang);  // ✅ format ตอน render
+      },
       size: 100,
       minSize: 80,
       maxSize: 140,
