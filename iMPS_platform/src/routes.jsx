@@ -1,8 +1,5 @@
-
-
 "use client";
-// import React from "react";
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 /** 1) เมนูแม่แบบ + สิทธิ์ที่เห็นเมนูนั้น ๆ */
 const baseRoutes = [
@@ -10,7 +7,8 @@ const baseRoutes = [
     name: "admin",                       // ← จะถูกเปลี่ยนเป็นชื่อคนที่ล็อกอิน
     icon: <i className="fa fa-user" />,
     divider: true,
-    allow: ["admin", "owner","technician"],
+    allow: ["admin", "owner", "technician"],
+    adminMode: "both", // แสดงทั้งสองโหมด
     pages: [
       {
         layout: "dashboard",
@@ -28,17 +26,17 @@ const baseRoutes = [
       },
     ],
   },
-  { name: "My Charger", icon: <i className="fa fa-bolt" />, path: "/dashboard/chargers", allow: ["admin","owner"] },
-  { name: "Device",     icon: <i className="fa fa-microchip" />, path: "/dashboard/device",  allow: ["admin","owner"] },
-  { name: "Configuration",    icon: <i className="fa fa-cog" />,      path: "/dashboard/setting",  allow: ["admin","owner"] },
-  { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm",                   allow: ["admin","owner"] },
-  { name: "MDB/CCB",      icon: <i className="fa fa-database" />, path: "/dashboard/mdb",     allow: ["admin","owner"] },
-  { name: "PM report",    icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin","owner","technician"] },
-  { name: "CM report",    icon: <i className="far fa-file" />,     path: "/dashboard/cm-report", allow: ["admin","owner","technician"] },
-  { name: "Test report",  icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin","owner","technician"] },
-  { name: "Ai Module",    icon: <i className="fa fa-robot" />,    path: "/dashboard/ai",      allow: ["admin","owner"] },
-  { name: "Users",        icon: <i className="fa fa-users" />,    path: "/dashboard/users",   allow: ["admin"] },
-  { name: "Stations",     icon: <i className="fa fa-charging-station" />, path: "/dashboard/stations", allow: ["admin","owner"] },
+  { name: "Stations", icon: <i className="fa fa-map-marker-alt" />, path: "/dashboard/stations", allow: ["admin", "owner"], adminMode: "both" },
+  { name: "My Charger", icon: <i className="fa fa-charging-station" />, path: "/dashboard/chargers", allow: ["admin", "owner"], adminMode: "charger" },
+  { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner"], adminMode: "charger" },
+  { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner"], adminMode: "charger" },
+  { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm", allow: ["admin", "owner"], adminMode: "charger" },
+  { name: "MDB/CCB", icon: <i className="fa fa-database" />, path: "/dashboard/mdb", allow: ["admin", "owner"], adminMode: "charger" },
+  { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician"], adminMode: "charger" },
+  { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician"], adminMode: "charger" },
+  { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician"], adminMode: "charger" },
+  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner"], adminMode: "charger" },
+  { name: "Users", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], adminMode: "station" },
 ];
 
 /** 2) อ่าน user/role จาก localStorage (ตาม payload ที่ backend ส่งมาใน /login) */
@@ -65,25 +63,46 @@ function getRolesFromStorage() {
 }
 
 /** 3) กรองตาม allow */
-const canSee = (allow, roles=[]) => {
+const canSee = (allow, roles = []) => {
   if (!allow) return false;
   if (allow.includes("*")) return true;
   return roles.some(r => allow.includes(r));
 };
 
-function prune(items, roles) {
+/** 4) กรองตาม adminMode 
+ * - "station": แสดงเฉพาะเมื่อ admin ยังไม่เลือก charger
+ * - "charger": แสดงเฉพาะเมื่อ admin เลือก charger แล้ว
+ * - "both" หรือ undefined: แสดงทั้งสองโหมด
+ */
+const canSeeAdminMode = (adminMode, isAdmin, hasChargerSelected) => {
+  // ถ้าไม่ใช่ admin ให้แสดงตามปกติ (ยกเว้น adminMode: "station" ที่เฉพาะ admin)
+  if (!isAdmin) {
+    // Non-admin: ไม่แสดงเมนูที่เป็น adminMode: "station" (Users, Stations สำหรับ admin เท่านั้น)
+    // แต่ Stations มี allow: ["admin", "owner"] อยู่แล้ว จึงจะถูกกรองโดย canSee
+    return true;
+  }
+
+  // Admin logic
+  if (!adminMode || adminMode === "both") return true;
+  if (adminMode === "station") return !hasChargerSelected;
+  if (adminMode === "charger") return hasChargerSelected;
+  return true;
+};
+
+function prune(items, roles, isAdmin = false, hasChargerSelected = false) {
   return items
     .filter(r => canSee(r.allow ?? ["*"], roles))
+    .filter(r => canSeeAdminMode(r.adminMode, isAdmin, hasChargerSelected))
     .map(r => {
       if (Array.isArray(r.pages)) {
-        const pages = prune(r.pages, roles);
+        const pages = prune(r.pages, roles, isAdmin, hasChargerSelected);
         return { ...r, pages };
       }
       return r;
     });
 }
 
-/** 4) เปลี่ยนชื่อเมนู 'admin' → เป็นชื่อผู้ใช้ที่ล็อกอิน (เช่น username) */
+/** 5) เปลี่ยนชื่อเมนู 'admin' → เป็นชื่อผู้ใช้ที่ล็อกอิน (เช่น username) */
 function personalize(items) {
   const { username, email } = readAuthFromStorage();
   const displayName =
@@ -105,19 +124,69 @@ function personalize(items) {
   });
 }
 
-/** 5) คำนวณเมนูตาม role + ใส่ชื่อผู้ใช้ แล้ว export ฟังก์ชัน/Hook */
-export function getRoutes(roles) {
+/** 6) คำนวณเมนูตาม role + adminMode + ใส่ชื่อผู้ใช้ */
+export function getRoutes(roles, hasChargerSelected = false) {
   const r = roles && roles.length ? roles : getRolesFromStorage();
-  const filtered = prune(baseRoutes, r);
+  const isAdmin = r.includes("admin");
+  const filtered = prune(baseRoutes, r, isAdmin, hasChargerSelected);
   return personalize(filtered);
 }
 
-// React Hook (คำนวณใหม่เมื่อ rolesFromApp เปลี่ยน)
+/** 7) React Hook - ตรวจสอบ URL params หรือ localStorage และคำนวณเมนู */
 export function useRoutes(rolesFromApp) {
+  const [hasChargerSelected, setHasChargerSelected] = useState(false);
+
+  // Check URL params OR localStorage for sn and station_id
+  useEffect(() => {
+    const checkChargerSelection = () => {
+      if (typeof window === "undefined") return;
+      
+      // Check URL params first
+      const params = new URLSearchParams(window.location.search);
+      const snFromUrl = params.get("sn");
+      const stationIdFromUrl = params.get("station_id");
+      
+      // Also check localStorage - only need selected_sn to indicate charger is selected
+      // (selected_station_id is kept for other pages like MDB)
+      const snFromStorage = localStorage.getItem("selected_sn");
+      
+      // Has charger if URL has both OR localStorage has sn
+      const hasFromUrl = !!snFromUrl && !!stationIdFromUrl;
+      const hasFromStorage = !!snFromStorage;
+      
+      setHasChargerSelected(hasFromUrl || hasFromStorage);
+    };
+
+    // Check on mount
+    checkChargerSelection();
+
+    // Listen for URL changes
+    window.addEventListener("popstate", checkChargerSelection);
+    
+    // Custom event for programmatic navigation
+    window.addEventListener("charger:selected", checkChargerSelection);
+    window.addEventListener("charger:deselected", checkChargerSelection);
+    
+    // Listen for storage changes
+    window.addEventListener("storage", checkChargerSelection);
+
+    // Check periodically for URL changes (fallback for Next.js router)
+    const interval = setInterval(checkChargerSelection, 500);
+
+    return () => {
+      window.removeEventListener("popstate", checkChargerSelection);
+      window.removeEventListener("charger:selected", checkChargerSelection);
+      window.removeEventListener("charger:deselected", checkChargerSelection);
+      window.removeEventListener("storage", checkChargerSelection);
+      clearInterval(interval);
+    };
+  }, []);
+
   const routes = React.useMemo(
-    () => getRoutes(rolesFromApp),
-    [Array.isArray(rolesFromApp) ? rolesFromApp.join(",") : ""]
+    () => getRoutes(rolesFromApp, hasChargerSelected),
+    [rolesFromApp, hasChargerSelected]
   );
+
   return routes;
 }
 
