@@ -26,7 +26,6 @@ DOCUMENT_TITLE_PHOTO_POST = "Preventive Maintenance - Photos (POST)"
 
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
-
 # -------------------- Fonts TH --------------------
 FONT_CANDIDATES: Dict[str, List[str]] = {
     "":  ["THSarabunNew.ttf", "TH Sarabun New.ttf", "THSarabun.ttf", "TH SarabunPSK.ttf"],
@@ -34,7 +33,6 @@ FONT_CANDIDATES: Dict[str, List[str]] = {
     "I": ["THSarabunNew-Italic.ttf", "THSarabunNew Italic.ttf", "TH Sarabun New Italic.ttf", "THSarabun Italic.ttf"],
     "BI":["THSarabunNew-BoldItalic.ttf", "THSarabunNew BoldItalic.ttf", "TH Sarabun New BoldItalic.ttf", "THSarabun BoldItalic.ttf"],
 }
-
 
 # -------------------- Helpers / Layout constants --------------------
 LINE_W_OUTER = 0.45
@@ -54,7 +52,6 @@ EDGE_ALIGN_FIX = (LINE_W_OUTER - LINE_W_INNER) / 2.0
 ITEM_W = 65
 RESULT_W = 64
 PHOTO_Q_W = 85.0
-
 
 # -------------------- รายการหัวข้อ Charger --------------------
 # Thai version
@@ -156,8 +153,8 @@ def _log(msg: str):
     if PDF_DEBUG:
         print(msg)
         
-def _is_http_url(s: str) -> bool:
-    return s.startswith("http://") or s.startswith("https://")
+# def _is_http_url(s: str) -> bool:
+#     return s.startswith("http://") or s.startswith("https://")
 
 def _guess_img_type_from_ext(path_or_url: str) -> str:
     ext = os.path.splitext(str(path_or_url).lower())[1]
@@ -595,14 +592,14 @@ def _format_measures_pre_m16(measures_m16: dict) -> str:
 
     return "\n".join(lines)
 
-def _format_measures_pre_cp(cp: dict) -> str:
-    if not cp:
-        return "-"
+# def _format_measures_pre_cp(cp: dict) -> str:
+#     if not cp:
+#         return "-"
 
-    val = str(cp.get("value", "")).strip()
-    unit = str(cp.get("unit", "")).strip()
+#     val = str(cp.get("value", "")).strip()
+#     unit = str(cp.get("unit", "")).strip()
 
-    return f"CP = {val}{unit}" if val else "CP = -"
+#     return f"CP = {val}{unit}" if val else "CP = -"
 
 
 # -------------------- Result / Row processing --------------------

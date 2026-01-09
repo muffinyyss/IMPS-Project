@@ -13,24 +13,22 @@ from PIL import Image, ExifTags
 from functools import lru_cache
 
 try:
-    import requests  # optional
+    import requests
 except Exception:
     requests = None
     
 
-# -------------------- ตั้งค่าทั่วไป --------------------
-DOCUMENT_TITLE_POST = "Preventive Maintenance Checklist - CCB (POST)"
-DOCUMENT_TITLE_PRE = "Preventive Maintenance Checklist - CCB (PRE)"
-DOCUMENT_TITLE_POST_CONT = "Preventive Maintenance Checklist - CCB (POST Continued)"
-DOCUMENT_TITLE_PRE_CONT = "Preventive Maintenance Checklist - CCB (PRE Continued)"
-DOCUMENT_TITLE_PHOTO_CONT = "Photos (Continued)"
-DOCUMENT_TITLE_PHOTO_PRE = "Photos (PRE)"
-DOCUMENT_TITLE_PHOTO_POST = "Photos (POST)"
+# -------------------- Title --------------------
+DOCUMENT_TITLE_POST = "Preventive Maintenance Checklist - Charger (POST)"
+DOCUMENT_TITLE_POST_CONT = "Preventive Maintenance Checklist - Charger (POST Continued)"
+DOCUMENT_TITLE_PHOTO_CONT = "Preventive Maintenance - Photos (Continued)"
+DOCUMENT_TITLE_PHOTO_PRE = "Preventive Maintenance - Photos (PRE)"
+DOCUMENT_TITLE_PHOTO_POST = "Preventive Maintenance - Photos (POST)"
 
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
 
-# -------------------- ฟอนต์ไทย --------------------
+# -------------------- Fonts TH --------------------
 FONT_CANDIDATES: Dict[str, List[str]] = {
     "":  ["THSarabunNew.ttf", "TH Sarabun New.ttf", "THSarabun.ttf", "TH SarabunPSK.ttf"],
     "B": ["THSarabunNew-Bold.ttf", "THSarabunNew Bold.ttf", "TH Sarabun New Bold.ttf", "THSarabun Bold.ttf"],
@@ -51,6 +49,7 @@ ROW_MIN_H = 7
 CHECKBOX_SIZE = 3.5
 SIG_H = 28
 TITLE_H = 5.5
+CHARGER_ROW_H = 5
 PHOTO_CONTINUE_H = 6
 EDGE_ALIGN_FIX = (LINE_W_OUTER - LINE_W_INNER) / 2.0
 ITEM_W = 65
@@ -59,36 +58,52 @@ PHOTO_Q_W = 85.0
 
 
 # -------------------- รายการหัวข้อ CCB --------------------
-ROW_TITLES = {
+# Thai version
+ROW_TITLES_TH = {
     "r1": "ตรวจสอบสภาพทั่วไป",
     "r2": "ตรวจสอบสภาพดักซีล, ซิลิโคนกันซึม",
     "r3": "ตรวจสอบระบบระบายอากาศ",
+    "r4": "ตรวจสอบระบบแสงสว่าง",
+    "r5": "ตรวจสอบระบบสำรองไฟฟ้า (UPS)",
+    "r6": "ตรวจสอบระบบกล้องวงจรปิด (CCTV)",
+    "r7": "ตรวจสอบเราเตอร์ (Router)",
+    "r8": "ตรวจสอบตู้คอนซูเมอร์ยูนิต (Consumer Unit)",
+    "r9": "ตรวจสอบแรงดันไฟฟ้า (Consumer Unit)",
+}
+
+# English version
+ROW_TITLES_EN = {
+    "r1": "Check General Condition",
+    "r2": "Check Seal, Silicone Waterproofing",
+    "r3": "Check Ventilation System",
+    "r4": "Check Lighting System",
+    "r5": "Check UPS (Uninterruptible Power Supply)",
+    "r6": "Check CCTV System",
+    "r7": "Check Router",
+    "r8": "Check Consumer Unit",
+    "r9": "Check Voltage (Consumer Unit)",
+}
+
+# Default to Thai
+ROW_TITLES = ROW_TITLES_TH
+
+# ชื่อข้อย่อย
+# Thai version
+SUB_ROW_TITLES_TH = {
     "r3_sub1": "ตรวจสอบการทำงานอุปกรณ์ตั้งภูมิ",
     "r3_sub2": "ตรวจสอบการทำงานพัดลมระบายอากาศ",
-
-    "r4": "ตรวจสอบระบบแสงสว่าง",
     "r4_sub1": "ตรวจสอบการทำงานของไฟส่องสว่างในสถานี",
     "r4_sub2": "ตรวจสอบการทำงานของป้ายไฟ / Logo",
-
-    "r5": "ตรวจสอบระบบสำรองไฟฟ้า (UPS)",
     "r5_sub1": "เครื่องสามารถทำงานได้ตามปกติ",
     "r5_sub2": "เครื่องสามารถสำรองไฟได้ (>5นาที)",
-
-    "r6": "ตรวจสอบระบบกล้องวงจรปิด (CCTV)",
     "r6_sub1": "ตรวจสอบสภาพทั่วไปของกล้องวงจรปิด",
     "r6_sub2": "ตรวจสอบสภาพทั่วไปเครื่องบันทึก (NVR)",
     "r6_sub3": "ตรวจสอบสถานะการใช้งาน",
     "r6_sub4": "ตรวจสอบมุมกล้อง",
-
-    "r7": "ตรวจสอบเราเตอร์ (Router)",
     "r7_sub1": "ตรวจสอบสภาพทั่วไป",
     "r7_sub2": "ตรวจสอบสถานะการทำงาน",
-
-    "r8": "ตรวจสอบตู้คอนซูเมอร์ยูนิต (Consumer Unit)",
     "r8_sub1": "ตรวจสอบสภาพทั่วไป",
     "r8_sub2": "ตรวจสอบจุดขันแน่น",
-
-    "r9": "ตรวจสอบแรงดันไฟฟ้า (Consumer Unit)",
     "r9_sub1": "เมนเบรกเกอร์ (Main Breaker)",
     "r9_sub2": "เบรกเกอร์วงจรย่อยที่ 1",
     "r9_sub3": "เบรกเกอร์วงจรย่อยที่ 2",
@@ -96,6 +111,33 @@ ROW_TITLES = {
     "r9_sub5": "เบรกเกอร์วงจรย่อยที่ 4",
     "r9_sub6": "เบรกเกอร์วงจรย่อยที่ 5",
 }
+
+# English version
+SUB_ROW_TITLES_EN = {
+    "r3_sub1": "Check Thermostat Operation",
+    "r3_sub2": "Check Ventilation Fan Operation",
+    "r4_sub1": "Check Station Lighting Operation",
+    "r4_sub2": "Check Sign/Logo Lighting Operation",
+    "r5_sub1": "Unit Operates Normally",
+    "r5_sub2": "Unit Can Provide Backup Power (>5 min)",
+    "r6_sub1": "Check General Condition of Cameras",
+    "r6_sub2": "Check General Condition of NVR",
+    "r6_sub3": "Check Operational Status",
+    "r6_sub4": "Check Camera Angles",
+    "r7_sub1": "Check General Condition",
+    "r7_sub2": "Check Operational Status",
+    "r8_sub1": "Check General Condition",
+    "r8_sub2": "Check Tightness of Connections",
+    "r9_sub1": "Main Breaker",
+    "r9_sub2": "Sub-circuit Breaker 1",
+    "r9_sub3": "Sub-circuit Breaker 2",
+    "r9_sub4": "Sub-circuit Breaker 3",
+    "r9_sub5": "Sub-circuit Breaker 4",
+    "r9_sub6": "Sub-circuit Breaker 5",
+}
+
+# Default to Thai
+SUB_ROW_TITLES = SUB_ROW_TITLES_TH
 
 
 # -------------------- Utilities / Core helpers --------------------
@@ -629,17 +671,23 @@ def _format_r9_short(measures: dict, sub_index: int) -> str:
     
 
 # -------------------- Result / Row processing --------------------
-def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
+def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dict = None, sub_row_titles: dict = None) -> List[dict]:
     if not isinstance(rows, dict):
         return []
-    
+
+    # ใช้ค่า default ถ้าไม่ได้ส่งมา
+    if row_titles is None:
+        row_titles = ROW_TITLES
+    if sub_row_titles is None:
+        sub_row_titles = SUB_ROW_TITLES
+
     rows = rows or {}
     measures = measures or {}
     items: List[dict] = []
 
     SUB_INDENT = "\u00A0" * 4
 
-    for main_key, main_title in ROW_TITLES.items():
+    for main_key, main_title in row_titles.items():
         m = re.match(r"^r(\d+)$", main_key)
         if not m:
             continue
@@ -647,7 +695,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None) -> List[dict]:
 
         # รวม sub ของข้อ idx
         subs: List[Tuple[int, str, str]] = []
-        for k, stitle in ROW_TITLES.items():
+        for k, stitle in sub_row_titles.items():
             m_sub = re.match(rf"^r{idx}_sub(\d+)$", k)
             if m_sub:
                 subs.append((int(m_sub.group(1)), k, stitle))
@@ -1298,14 +1346,23 @@ class ReportPDF(HTML2PDF):
             self._pm_date_th,
         )
 
-def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
+def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     # data
     job = doc.get("job", {}) or {}
     station_name = job.get("station_name", "-")
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
     pm_date_th = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
-    checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {})
+
+    # ========== เลือก row titles ตามภาษา ==========
+    if lang == "en":
+        row_titles = ROW_TITLES_EN
+        sub_row_titles = SUB_ROW_TITLES_EN
+    else:
+        row_titles = ROW_TITLES_TH
+        sub_row_titles = SUB_ROW_TITLES_TH
+
+    checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {}, row_titles, sub_row_titles)
     
     # print(f"[DEBUG] 🔍 issue_id (raw): {repr(pm_date)}")
     # print(f"[DEBUG] 🔍 issue_id (display): {pm_date}")
@@ -1694,7 +1751,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_font(base_font, "", FONT_MAIN)
 
     # Post-PM photos: ใช้ measures สำหรับแสดง voltage measurements
-    photo_rows = _build_photo_rows_grouped(ROW_TITLES, doc.get("measures") or {})
+    # รวม row_titles และ sub_row_titles เข้าด้วยกัน
+    combined_titles = {**row_titles, **sub_row_titles}
+    photo_rows = _build_photo_rows_grouped(combined_titles, doc.get("measures") or {})
 
     for it in photo_rows:
         idx = int(it.get("idx") or 0)
@@ -1747,7 +1806,9 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         pdf.set_font(base_font, "", FONT_MAIN)
 
         # Pre-PM photos: ใช้ measures_pre สำหรับแสดง voltage measurements
-        photo_rows = _build_photo_rows_grouped(ROW_TITLES, doc.get("measures_pre") or {})
+        # รวม row_titles และ sub_row_titles เข้าด้วยกัน
+        combined_titles = {**row_titles, **sub_row_titles}
+        photo_rows = _build_photo_rows_grouped(combined_titles, doc.get("measures_pre") or {})
 
         for it in photo_rows:
             idx = int(it.get("idx") or 0)
@@ -1778,5 +1839,5 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
 
 
 # -------------------- Public API --------------------
-def generate_pdf(data: dict) -> bytes:
-    return make_pm_report_html_pdf_bytes(data)
+def generate_pdf(data: dict, lang: str = "th") -> bytes:
+    return make_pm_report_html_pdf_bytes(data, lang=lang)
