@@ -71,6 +71,8 @@ ROW_TITLES_TH = {
     "r10": "ทดสอบปุ่ม Trip Test Breaker Charger ",
     "r11": "ทดสอบปุ่ม Trip Test Breaker Main",
     "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
+    "r13": "ทำความสะอาดตู้ MDB"
+
 }
 
 # English version
@@ -87,6 +89,7 @@ ROW_TITLES_EN = {
     "r10": "Test Trip Test Breaker Charger Button",
     "r11": "Test Trip Test Breaker Main Button",
     "r12": "Check Electrical Connection Points",
+    "r13": "Clean MDB cabinet"
 }
 
 # Default to Thai
@@ -614,6 +617,10 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
     
     # เรียงลำดับข้อหลัก
     for main_idx in sorted(grouped.keys()):
+
+        if f"r{main_idx}" not in row_titles:                                                                                                                                                                                                                                           
+            continue
+
         group = grouped[main_idx]
         main_key = group["main"]
         subs = sorted(group["subs"], key=lambda x: x[0])  # เรียงตาม sub_idx
@@ -660,7 +667,51 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
             
             sub_count = len(subs)
             
-            for sub_idx, sub_key in subs:
+            # สร้าง list เก็บข้อมูล voltage สำหรับแต่ละข้อย่อย
+            voltage_data = {}
+            
+            # ดึงข้อมูล voltage ล่วงหน้า
+            if main_idx == 4:
+                m4_data = measures.get("m4", {})
+                for i, (sub_idx, sub_key) in enumerate(subs):
+                    sub_key_in_measures = f"r4_{sub_idx}"
+                    sub_voltage = m4_data.get(sub_key_in_measures, {})
+                    if sub_voltage:
+                        voltage_text = _format_voltage_measurement_order_full({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
+                        if voltage_text and voltage_text != "-":
+                            voltage_data[i] = voltage_text
+            
+            elif main_idx == 5:
+                m5_data = measures.get("m5", {})
+                for i, (sub_idx, sub_key) in enumerate(subs):
+                    sub_key_in_measures = f"r5_{sub_idx}"
+                    sub_voltage = m5_data.get(sub_key_in_measures, {})
+                    if sub_voltage:
+                        voltage_text = _format_voltage_measurement_order_full({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
+                        if voltage_text and voltage_text != "-":
+                            voltage_data[i] = voltage_text
+            
+            elif main_idx == 6:
+                m6_data = measures.get("m6", {})
+                for i, (sub_idx, sub_key) in enumerate(subs):
+                    sub_key_in_measures = f"r6_{sub_idx}"
+                    sub_voltage = m6_data.get(sub_key_in_measures, {})
+                    if sub_voltage:
+                        voltage_text = _format_voltage_measurement_simple({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
+                        if voltage_text and voltage_text != "-":
+                            voltage_data[i] = voltage_text
+            
+            elif main_idx == 7:
+                m7_data = measures.get("m7", {})
+                for i, (sub_idx, sub_key) in enumerate(subs):
+                    sub_key_in_measures = f"r7_{sub_idx}"
+                    sub_voltage = m7_data.get(sub_key_in_measures, {})
+                    if sub_voltage:
+                        voltage_text = _format_voltage_measurement_simple({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
+                        if voltage_text and voltage_text != "-":
+                            voltage_data[i] = voltage_text
+            
+            for i, (sub_idx, sub_key) in enumerate(subs):
 
                 if sub_key:
                     sub_data = rows.get(sub_key, {})  # ดึงข้อมูล pf/remark จาก rows
@@ -670,7 +721,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 # หาชื่อข้อย่อย
                 sub_title = sub_row_titles.get(sub_key)
 
-                # สำหรับข้อ 4, 7 ที่เป็น dynamic - ใช้ชื่อตามลำดับ
+                # สำหรับข้อ 4, 6, 9, 11 ที่เป็น dynamic - ใช้ชื่อตามลำดับ
                 if main_idx in DYNAMIC_SUB_ROWS:
                     if main_idx == 4:
                         if lang == "en":
@@ -687,68 +738,21 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                             sub_title = f"Breaker CCB Trip Test {sub_idx}"
                         else:
                             sub_title = f"ทดสอบปุ่ม Trip Test เบรกเกอร์ CCB {sub_idx}"
-                    
                     elif main_idx == 11:
                         if lang == "en":
                             sub_title = f"Breaker Main Trip Test {sub_idx}"
                         else:
                             sub_title = f"ทดสอบปุ่ม Trip Test เบรกเกอร์ Main {sub_idx}"
-                    
+                
                 # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc.
                 lines.append(f"   \t{main_idx}.{sub_idx}) {sub_title}")
+                
+                # เพิ่มข้อมูล voltage ถ้ามี (ในบรรทัดถัดไป)
+                if i in voltage_data:
+                    lines.append(f"   \t{voltage_data[i]}")
+                
                 results.append(_norm_result(sub_data.get("pf", "")))
                 remarks.append((sub_data.get("remark") or "").strip())
-            
-            # เพิ่มค่า measures สำหรับข้อ 4 (Breaker Main)
-            if main_idx == 4:
-                m4_data = measures.get("m4", {})
-                # แสดงค่าแรงดันไฟฟ้าสำหรับแต่ละข้อย่อย
-                for i, (sub_idx, sub_key) in enumerate(subs):
-                    # ดึงข้อมูลจาก m4_data.r4_{sub_idx} (เช่น r4_1, r4_2, r4_3, ...)
-                    sub_key_in_measures = f"r4_{sub_idx}"
-                    sub_voltage = m4_data.get(sub_key_in_measures, {})
-                    if sub_voltage:
-                        voltage_text = _format_voltage_measurement_order_full({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
-                        if voltage_text and voltage_text != "-":
-                            lines[i + 1] += f"\n{voltage_text}"
-
-            # เพิ่มค่า measures สำหรับข้อ 5  - FIXED_SUB_ROWS มีแค่ 1 ข้อย่อย
-            if main_idx == 5:
-                m5_data = measures.get("m5", {})
-                for i, (sub_idx, sub_key) in enumerate(subs):
-                    # ดึงข้อมูลจาก m5_data.r5_{sub_idx} (เช่น r5_1, r5_2, r5_3, ...)
-                    sub_key_in_measures = f"r5_{sub_idx}"
-                    sub_voltage = m5_data.get(sub_key_in_measures, {})
-                    if sub_voltage:
-                        voltage_text = _format_voltage_measurement_order_full({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
-                        if voltage_text and voltage_text != "-":
-                            lines[i + 1] += f"\n{voltage_text}"
-
-            # เพิ่มค่า measures สำหรับข้อ 6 (CCB) - DYNAMIC_SUB_ROWS
-            # ใช้รูปแบบ L1-N, L1-G, N-G เท่านั้น
-            if main_idx == 6:
-                m6_data = measures.get("m6", {})
-                for i, (sub_idx, sub_key) in enumerate(subs):
-                    # ดึงข้อมูลจาก m6_data.r6_{sub_idx} (เช่น r6_1, r6_2, r6_3, r6_4, ...)
-                    sub_key_in_measures = f"r6_{sub_idx}"
-                    sub_voltage = m6_data.get(sub_key_in_measures, {})
-                    if sub_voltage:
-                        voltage_text = _format_voltage_measurement_simple({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
-                        if voltage_text and voltage_text != "-":
-                            lines[i + 1] += f"\n{voltage_text}"
-
-            # เพิ่มค่า measures สำหรับข้อ 7  - FIXED_SUB_ROWS มีแค่ 1 ข้อย่อย
-            if main_idx == 7:
-                m7_data = measures.get("m7", {})
-                for i, (sub_idx, sub_key) in enumerate(subs):
-                    # ดึงข้อมูลจาก m7_data.r7_{sub_idx} (เช่น r7_1, r7_2, r7_3, r7_4, ...)
-                    sub_key_in_measures = f"r7_{sub_idx}"
-                    sub_voltage = m7_data.get(sub_key_in_measures, {})
-                    if sub_voltage:
-                        voltage_text = _format_voltage_measurement_simple({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
-                        if voltage_text and voltage_text != "-":
-                            lines[i + 1] += f"\n{voltage_text}"
-
             
             remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
             for i, r in enumerate(remarks):
@@ -756,6 +760,15 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
                 remark_text = r if (r and r != "-") else "-"
                 remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
+                
+                # เพิ่มบรรทัดว่างให้ตรงกับจำนวนบรรทัดของ voltage measurements
+                # นับจำนวนบรรทัดของข้อย่อยนี้ใน lines
+                item_line_text = lines[i + 1] if i + 1 < len(lines) else ""
+                # นับ newline ในข้อย่อยนี้ (ไม่รวมบรรทัดหัวข้อย่อย)
+                voltage_line_count = item_line_text.count('\n')
+                # เพิ่มบรรทัดว่างเท่ากับจำนวนบรรทัดของ voltage measurements
+                for _ in range(voltage_line_count):
+                    remark_lines.append("")
             
             combined_remark = "\n".join(remark_lines)
             
@@ -1465,7 +1478,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         for it in checks_pre:
             idx = int(it.get("idx") or 0)
             
-            if idx == 18:
+            if idx == 13:
                 continue
 
             # ========== สร้าง question text พร้อมข้อย่อยและ remark ==========
@@ -1493,6 +1506,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                 
                 # สร้าง question text ใหม่พร้อม remark
                 result_lines = []
+                current_sub_key = None  # เก็บ sub key ปัจจุบัน
+                
                 for i, line in enumerate(text_lines):
                     line = line.strip()
                     if not line:
@@ -1502,14 +1517,24 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                         # หัวข้อหลัก - เพิ่ม (Pre-PM)
                         result_lines.append(f"{line} {label_pre_pm}")
                     else:
-                        # ข้อย่อย - เพิ่มข้อย่อยก่อน
-                        result_lines.append(f"   {line}")
-                        # หา remark ของข้อย่อยนี้
+                        # ตรวจสอบว่าเป็นข้อย่อยใหม่หรือไม่
                         sub_match = re.match(r"(\d+\.\d+)\)", line)
+                        
                         if sub_match:
-                            sub_key = sub_match.group(1)
-                            if sub_key in remark_dict and remark_dict[sub_key] and remark_dict[sub_key] != "-":
-                                result_lines.append(f"   {label_remark}: {remark_dict[sub_key]}")
+                            # ถ้ามีข้อย่อยก่อนหน้า ให้แทรก remark ก่อน
+                            if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
+                                result_lines.append(f"   {label_remark}: {remark_dict[current_sub_key]}")
+                            
+                            # เริ่มข้อย่อยใหม่
+                            current_sub_key = sub_match.group(1)
+                            result_lines.append(f"   {line}")
+                        else:
+                            # ข้อมูลต่อเนื่องของข้อย่อยปัจจุบัน
+                            result_lines.append(f"   {line}")
+                
+                # แทรก remark ของข้อย่อยสุดท้าย
+                if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
+                    result_lines.append(f"   {label_remark}: {remark_dict[current_sub_key]}")
                 
                 question_text_pre = "\n".join(result_lines)
             else:
@@ -1730,7 +1755,32 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     h_checklist = 7
     total_h = h_comment + h_checklist
 
-    _ensure_space(total_h + 5)
+    # สร้าง _ensure_space_comment สำหรับส่วน Comment เท่านั้น (ไม่วาด header)
+    def _ensure_space_comment(height_needed: float):
+        nonlocal y
+        page_bottom = pdf.h - pdf.b_margin - SIG_H
+
+        if y + height_needed > page_bottom:
+            # **วาดเส้นกรอบเชื่อมต่อ**
+            if pdf._table_x and pdf._table_width:
+                pdf.line(pdf._table_x, y, pdf._table_x, page_bottom)
+                table_right = pdf._table_x + pdf._table_width
+                pdf.line(table_right, y, table_right, page_bottom)
+            
+            pdf.add_page()
+            # header() จะถูกเรียกอัตโนมัติโดย add_page()
+            y = pdf.get_y()
+
+            pdf.set_xy(x0, y)
+            pdf.set_font(base_font, "B", 13)
+            pdf.set_fill_color(255, 230, 100)
+            pdf.cell(page_w, TITLE_H, doc_title_post_cont, border=1, ln=1, align="C", fill=True)
+            y += TITLE_H
+
+            # ไม่วาด header Item, Result, Remark สำหรับส่วน Comment
+            pdf.set_font(base_font, "", FONT_MAIN)
+
+    _ensure_space_comment(total_h + 5)
 
     pdf.rect(comment_x, y, comment_item_w + comment_result_w + comment_remark_w, total_h)
 
@@ -1770,6 +1820,12 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         pdf.cell(20, LINE_H + 1, label, ln=0, align="L")
 
     y_last_row_end = y + h_checklist
+    
+    # วาดเส้นกรอบนอกซ้ายขวา
+    page_bottom = pdf.h - pdf.b_margin - SIG_H
+    pdf.line(comment_x, y_last_row_end, comment_x, page_bottom)
+    pdf.line(comment_x + comment_item_w + comment_result_w + comment_remark_w, y_last_row_end, 
+             comment_x + comment_item_w + comment_result_w + comment_remark_w, page_bottom)
     
     # วาดเส้นกรอบนอกซ้ายขวา
     page_bottom = pdf.h - pdf.b_margin - SIG_H
@@ -1826,16 +1882,18 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     for it in checks:
         idx = int(it.get("idx") or 0)
         
-        # ========== สร้าง question text พร้อมข้อย่อย (ไม่แสดง remark) ==========
+        # ========== สร้าง question text พร้อมข้อย่อยและ remark ==========
         has_subs = it.get("has_subs", False)
         item_text = it.get("text", "")
+        item_remark = it.get("remark", "")
         
         if has_subs:
-            # แยกบรรทัดของ text
+            # แยกบรรทัดของ text (ไม่ต้องใช้ remark ใน POST)
             text_lines = item_text.split("\n")
             
-            # สร้าง question text ใหม่ (ไม่มี remark)
+            # สร้าง question text โดยไม่มี remark
             result_lines = []
+            
             for i, line in enumerate(text_lines):
                 line = line.strip()
                 if not line:
@@ -1845,7 +1903,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                     # หัวข้อหลัก
                     result_lines.append(line)
                 else:
-                    # ข้อย่อย
+                    # ข้อย่อยและข้อมูลต่อเนื่อง
                     result_lines.append(f"   {line}")
             
             question_text = "\n".join(result_lines)
