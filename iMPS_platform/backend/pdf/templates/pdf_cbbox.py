@@ -1565,7 +1565,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         q_w = 85.0
         g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
 
-        def _ensure_space_photo_pre(height_needed: float):
+        def _ensure_space_photo_pre(height_needed: float, draw_header: bool = True):
             nonlocal y
             if y + height_needed > (pdf.h - pdf.b_margin):
                 pdf.add_page()
@@ -1577,8 +1577,10 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                 photo_continue_h = 6
                 pdf.cell(page_w, photo_continue_h, doc_title_photo_cont, border=1, ln=1, align="C", fill=True)
                 y += photo_continue_h
-                y = _draw_photos_table_header_with_labels(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
-                pdf.set_font(base_font, "", FONT_MAIN)
+                # วาด table header เฉพาะเมื่อเป็นข้อตรวจสอบ ไม่ใช่ comment section
+                if draw_header:
+                    y = _draw_photos_table_header_with_labels(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
+                    pdf.set_font(base_font, "", FONT_MAIN)
 
         y = _draw_photos_table_header_with_labels(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
         pdf.set_font(base_font, "", FONT_MAIN)
@@ -1621,7 +1623,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
                     if i == 0:
                         # หัวข้อหลัก - เพิ่ม (Pre-PM)
-                        result_lines.append(f"{line} ({label_pre_pm})")
+                        result_lines.append(f"{line} {label_pre_pm}")
                     else:
                         # ข้อย่อย - เพิ่มข้อย่อยก่อน
                         result_lines.append(f"   {line}")
@@ -1641,7 +1643,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                 # แทนที่ \n ด้วยช่องว่างเพื่อให้ title อยู่บรรทัดเดียว
                 main_title = main_title.replace("\n", " ")
 
-                question_text_pre = f"{idx}) {main_title} ({label_pre_pm})"
+                question_text_pre = f"{idx}) {main_title} {label_pre_pm}"
 
                 # เพิ่ม remark เฉพาะเมื่อมีค่าและไม่เป็น "-"
                 remark_text = item_remark.strip() if item_remark and item_remark.strip() else ""
@@ -1686,8 +1688,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         _, comment_h_calculated = _split_lines(pdf, g_w - 2 * PADDING_X, comment_text_pre, LINE_H)
         h_comment = max(LINE_H * 2, comment_h_calculated + LINE_H * 0.5)
 
-        # เช็คพื้นที่ก่อนวาด
-        _ensure_space_photo_pre(h_comment + 5)
+        # เช็คพื้นที่ก่อนวาด (ไม่แสดง header เพราะเป็น comment section)
+        _ensure_space_photo_pre(h_comment + 5, draw_header=False)
 
         # วาดกรอบ Comment
         comment_x = x_table
