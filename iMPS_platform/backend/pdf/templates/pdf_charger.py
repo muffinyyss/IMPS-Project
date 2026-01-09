@@ -300,35 +300,49 @@ def _cell_text_in_box(
         stripped = paragraph.lstrip(" ")
         if len(paragraph) > len(stripped):
             leading_spaces = paragraph[:len(paragraph) - len(stripped)]
-        
+
+        # ตรวจสอบว่ามี hanging indent pattern หรือไม่ (เช่น "หมายเหตุ: " หรือ "Remark: ")
+        # ถ้ามี ให้ใช้ hanging indent สำหรับบรรทัดถัดไป
+        hanging_indent = ""
+        match_label = re.match(r"^(.*?):\s+", stripped)
+        if match_label:
+            # ให้บรรทัดถัดไปเริ่มที่ตำแหน่งเดียวกับ "หมายเหตุ:" หรือ "Remark:" (ที่ leading spaces เท่านั้น)
+            hanging_indent = leading_spaces
+
         words = stripped.split(" ")
         lines, cur = [], ""
         first_line = True
-        
+
         for wd in words:
             candidate = wd if not cur else (cur + " " + wd)
-            if pdf.get_string_width(leading_spaces + candidate if first_line else candidate) <= inner_w:
+            # บรรทัดแรกใช้ leading_spaces, บรรทัดถัดไปใช้ hanging_indent
+            current_indent = leading_spaces if first_line else hanging_indent
+            if pdf.get_string_width(current_indent + candidate) <= inner_w:
                 cur = candidate
             else:
                 if cur:
-                    # เพิ่ม leading spaces เฉพาะบรรทัดแรก
-                    lines.append(leading_spaces + cur if first_line else cur)
+                    # เพิ่ม indent ตามบรรทัด
+                    lines.append(current_indent + cur)
                     first_line = False
-                if pdf.get_string_width(wd) <= inner_w:
+                current_indent = leading_spaces if first_line else hanging_indent
+                if pdf.get_string_width(current_indent + wd) <= inner_w:
                     cur = wd
                 else:
                     buf = wd
                     while buf:
                         k = 1
+                        current_indent = leading_spaces if first_line else hanging_indent
                         while (
-                            k <= len(buf) and pdf.get_string_width(buf[:k]) <= inner_w
+                            k <= len(buf) and pdf.get_string_width(current_indent + buf[:k]) <= inner_w
                         ):
                             k += 1
-                        lines.append(buf[: k - 1])
+                        lines.append(current_indent + buf[: k - 1])
+                        first_line = False
                         buf = buf[k - 1 :]
                     cur = ""
         if cur:
-            lines.append(leading_spaces + cur if first_line else cur)
+            current_indent = leading_spaces if first_line else hanging_indent
+            lines.append(current_indent + cur)
         return lines
 
     paragraphs = text.split("\n")
@@ -1555,7 +1569,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                     line = line.strip()
                     if not line:
                         continue
-                    
+
                     if i == 0:
                         # หัวข้อหลัก - เพิ่ม (Pre-PM)
                         result_lines.append(f"{line} {label_pre_pm}")
@@ -1567,6 +1581,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                         if sub_match:
                             sub_key = sub_match.group(1)
                             if sub_key in remark_dict and remark_dict[sub_key] and remark_dict[sub_key] != "-":
+                                # ฟังก์ชัน _wrap_paragraph จะทำ hanging indent อัตโนมัติแล้ว
                                 result_lines.append(f"   {label_remark}: {remark_dict[sub_key]}")
                 
                 question_text_pre = "\n".join(result_lines)
@@ -1579,6 +1594,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                 # เพิ่ม remark ถ้ามี
                 remark_label_text = "Remark" if lang == "en" else "หมายเหตุ"
                 if item_remark and item_remark.strip() and item_remark.strip() != "-":
+                    # ฟังก์ชัน _wrap_paragraph จะทำ hanging indent อัตโนมัติแล้ว
                     question_text_pre += f"\n{remark_label_text}: {item_remark.strip()}"
 
             # เพิ่มค่า measures สำหรับข้อ 16
