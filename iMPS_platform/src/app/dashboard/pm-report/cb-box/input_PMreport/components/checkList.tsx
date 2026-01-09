@@ -334,13 +334,13 @@ export default function CBBOXPMForm() {
     const [photos, setPhotos] = useState<Record<number, PhotoItem[]>>(initialPhotos);
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
-    
+
     const key = useMemo(() => draftKey(stationId), [stationId]);
     const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
     const currentDraftKey = isPostMode ? postKey : key;
-    
+
     useEffect(() => { if (typeof window === "undefined") return; const params = new URLSearchParams(window.location.search); if (params.has("draft_id")) { params.delete("draft_id"); const url = `${window.location.pathname}?${params.toString()}`; window.history.replaceState({}, "", url); } }, []);
-    
+
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
     const [inspector, setInspector] = useState<string>("");
     const [postApiLoaded, setPostApiLoaded] = useState(false);
@@ -353,7 +353,7 @@ export default function CBBOXPMForm() {
     const [dropdownQ1, setDropdownQ1] = useState<string>("");
     const [dropdownQ2, setDropdownQ2] = useState<string>("");
     const [q2WasNA, setQ2WasNA] = useState<boolean>(false);
-    
+
     useEffect(() => {
         if (isPostMode) return;
         const isQ2NA = rows["r2"]?.pf === "NA";
@@ -370,14 +370,14 @@ export default function CBBOXPMForm() {
     const flattenRows = (inputRows: Record<string, any>): Record<string, { pf: PF; remark: string }> => {
         const result: Record<string, { pf: PF; remark: string }> = {};
         const validKeys = QUESTIONS.map(q => q.key);
-        
+
         // Extract flat keys directly
         for (const key of validKeys) {
             if (inputRows[key] && typeof inputRows[key] === "object") {
                 result[key] = { pf: inputRows[key].pf ?? "", remark: inputRows[key].remark ?? "" };
             }
         }
-        
+
         // Check for nested keys and extract them
         for (const [parentKey, parentValue] of Object.entries(inputRows)) {
             if (typeof parentValue === "object" && parentValue !== null) {
@@ -390,7 +390,7 @@ export default function CBBOXPMForm() {
                 }
             }
         }
-        
+
         // Ensure all valid keys exist with default values
         for (const key of validKeys) { if (!result[key]) { result[key] = { pf: "", remark: "" }; } }
         return result;
@@ -627,23 +627,78 @@ export default function CBBOXPMForm() {
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || "";
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-            
-            // ✅ Flatten rows to ensure correct structure (no nested keys)
-            const flatRows = flattenRows(rows);
-            
-            const payload = { station_id: stationId, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m5: m5.state }, rows_pre: flatRows, pm_date, doc_name: docName, dropdownQ1, dropdownQ2, side: "pre" as TabId, comment_pre: summary };
-            const res = await fetch(`${API_BASE}/cbboxpmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+
+            // ✅ สร้าง rows_pre โดยตรงจาก rows state (ไม่ใช้ flattenRows)
+            const rowsPreData: Record<string, { pf: string; remark: string }> = {};
+            QUESTIONS.forEach((q) => {
+                rowsPreData[q.key] = {
+                    pf: rows[q.key]?.pf || "",
+                    remark: rows[q.key]?.remark || ""
+                };
+            });
+
+            // ✅ Debug - ลบออกได้หลังแก้เสร็จ
+            console.log("=== DEBUG onPreSave ===");
+            console.log("rows state:", JSON.stringify(rows, null, 2));
+            console.log("rowsPreData:", JSON.stringify(rowsPreData, null, 2));
+            console.log("=======================");
+
+            const payload = {
+                station_id: stationId,
+                issue_id: issueIdFromJob,
+                job: jobWithoutIssueId,
+                inspector,
+                measures_pre: { m5: m5.state },
+                rows_pre: rowsPreData,  // ← ใช้ rowsPreData
+                pm_date,
+                doc_name: docName,
+                dropdownQ1,
+                dropdownQ2,
+                side: "pre" as const,
+                comment_pre: summary
+            };
+
+            // ✅ Debug payload
+            console.log("payload.rows_pre:", JSON.stringify(payload.rows_pre, null, 2));
+
+            const res = await fetch(`${API_BASE}/cbboxpmreport/pre/submit`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                credentials: "include",
+                body: JSON.stringify(payload)
+            });
+
             if (!res.ok) throw new Error(await res.text());
             const { report_id, doc_name } = await res.json() as { report_id: string; doc_name?: string };
-            setReportId(report_id); if (doc_name) setDocName(doc_name);
+            setReportId(report_id);
+            if (doc_name) setDocName(doc_name);
+
+            // Upload photos
             const uploadPromises: Promise<void>[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre")); } });
-            if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
+            Object.entries(photos).forEach(([no, list]) => {
+                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
+                if (files.length > 0) {
+                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
+                }
+            });
+            if (uploadPromises.length > 0) {
+                await Promise.all(uploadPromises);
+            }
+
+            // Clear draft
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
             clearDraftLocal(key);
+
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
-        } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
+        } catch (err: any) {
+            alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`);
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const onFinalSave = async () => {
@@ -654,10 +709,10 @@ export default function CBBOXPMForm() {
             const token = localStorage.getItem("access_token");
             const finalReportId = reportId || editId;
             if (!finalReportId) throw new Error(t("noReportId", lang));
-            
+
             // ✅ Flatten rows to ensure correct structure (no nested keys)
             const flatRows = flattenRows(rows);
-            
+
             const payload = { station_id: stationId, rows: flatRows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), side: "post" as TabId, report_id: finalReportId };
             const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!res.ok) throw new Error(await res.text());
