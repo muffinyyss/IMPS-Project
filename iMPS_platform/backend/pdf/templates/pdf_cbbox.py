@@ -1035,68 +1035,6 @@ def _draw_result_cell(
             pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
 
     pdf.set_xy(x + w, y)
-# def _draw_result_cell(
-#     pdf: FPDF,
-#     base_font: str,
-#     x: float,
-#     y: float,
-#     w: float,
-#     h: float,
-#     result: Union[str, List[str]],
-#     offset_lines: int = 0,   # บรรทัดที่ต้องข้ามก่อนเริ่มวาด
-#     line_step: int = 1,      # จำนวนบรรทัดข้อความต่อ 1 row ของ Result
-# ):
-   
-#     pdf.rect(x, y, w, h)
-
-#     # ให้ result เป็น list เสมอ
-#     if isinstance(result, (list, tuple)):
-#         results = list(result)
-#     else:
-#         results = [result]
-
-#     # normalize ผลแต่ละบรรทัด
-#     results = [_norm_result(r) for r in results]
-#     n_lines = max(1, len(results))
-
-#     col_w = w / 3.0
-#     labels = ["pass", "fail", "na"]
-#     label_text = {"pass": "Pass", "fail": "Fail", "na": "N/A"}
-
-#     pdf.set_font(base_font, "", FONT_SMALL)
-
-#     # วาดเส้นแบ่งคอลัมน์แนวตั้งเต็ม cell
-#     for i in range(1, 3):
-#         sx = x + i * col_w
-#         pdf.line(sx, y, sx, y + h)
-
-#     # base_y = จุดเริ่มต้นของบรรทัดแรก (ชิดบน + ข้ามหัวข้อหลัก offset_lines บรรทัด)
-#     base_y = y + PADDING_Y + offset_lines * LINE_H
-
-#     for row_idx, res in enumerate(results):
-#         line_y = base_y + row_idx * line_step * LINE_H
-
-#         # ถ้าลงล่างเกิน cell แล้วให้หยุด
-#         if line_y + CHECKBOX_SIZE > y + h - PADDING_Y:
-#             break
-
-#         for col_idx, key in enumerate(labels):
-#             lab = label_text[key]
-#             sx = x + col_idx * col_w
-
-#             text_w = pdf.get_string_width(lab)
-#             content_w = CHECKBOX_SIZE + 1.6 + text_w
-
-#             start_x = sx + (col_w - content_w) / 2.0
-#             start_y = line_y + (LINE_H - CHECKBOX_SIZE) / 2.0
-
-#             checked = (res == key)
-
-#             _draw_check(pdf, start_x, start_y, CHECKBOX_SIZE, checked)
-#             pdf.set_xy(start_x + CHECKBOX_SIZE + 1.6, start_y - 0.3)
-#             pdf.cell(text_w, LINE_H, lab, border=0, ln=0, align="L")
-
-#     pdf.set_xy(x + w, y)
 
 def _extract_row_result(row: dict) -> str:
     if not isinstance(row, dict):
