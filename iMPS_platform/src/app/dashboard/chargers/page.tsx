@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-// import Image from "next/image"
 import {
   Card, CardHeader, CardBody, Typography, Carousel,
 } from "@/components/MaterialTailwind";
 
 import StationInfo from "./components/station-info";
-import StatisticChart from "./components/statistics-chart";
+import HealthIndex from "./components/health-index";
 import AICard from "./components/AICard";
 import PMCard from "./components/PMCard";
 import CBMCard from "./components/condition-Based";
@@ -22,26 +21,47 @@ type GalleryImage = { src: string; alt?: string };
 
 export default function ChargersPage() {
   const searchParams = useSearchParams();
-  // const stationId = searchParams.get("station_id");
   const [stationId, setStationId] = useState<string | null>(null);
+  const [sn, setSn] = useState<string | null>(null);
 
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
+    const snFromUrl = searchParams.get("sn");
+
     if (sidFromUrl) {
       setStationId(sidFromUrl);
       localStorage.setItem("selected_station_id", sidFromUrl);
-      return;
+    } else {
+      const sidLocal = localStorage.getItem("selected_station_id");
+      setStationId(sidLocal);
     }
-    const sidLocal = localStorage.getItem("selected_station_id");
-    setStationId(sidLocal);
+
+    if (snFromUrl) {
+      setSn(snFromUrl);
+      localStorage.setItem("selected_sn", snFromUrl);
+    } else {
+      const snLocal = localStorage.getItem("selected_sn");
+      setSn(snLocal);
+    }
   }, [searchParams]);
 
   const [stationDetail, setStationDetail] = useState({
+    station_id: "-",
     station_name: "-",
     model: "-",
+    SN: "-",
+    WO: "-",
+    power: "-",
+    brand: "-",
     status: null as boolean | null,
-    commit_date: null as string | null,
-    warranty_year: null as string | null,
+    commissioningDate: null as string | null,
+    warrantyYears: null as string | null,
+    PLCFirmware: "-",
+    PIFirmware: "-",
+    RTFirmware: "-",
+    chargeBoxID: "-",
+    chargerNo: null as number | null,
+    numberOfCables: null as any,
   });
 
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -64,7 +84,6 @@ export default function ChargersPage() {
     setCurrent(i => (i + 1) % images.length);
   }, [images.length]);
 
-  // ให้ Carousel รี-มาวน์ทเมื่อรายการรูปเปลี่ยน
   const carouselKey = useMemo(
     () => (images.length ? images.map(x => x.src).join("|") : "empty"),
     [images]
@@ -95,62 +114,130 @@ export default function ChargersPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [lightboxOpen, close, prev, next]);
 
-  // station info
+  // ✅ รวม useEffect: ดึงข้อมูล Charger + Station + รูปทั้งหมด
   useEffect(() => {
     const ctrl = new AbortController();
     (async () => {
-      if (!stationId) return;
-      const token =
-        localStorage.getItem("access_token") ||
-        localStorage.getItem("accessToken") || "";
+      if (!stationId && !sn) return;
+
       try {
+        const params = new URLSearchParams();
+        if (sn) params.append("sn", sn);
+        if (stationId) params.append("station_id", stationId);
+
+        // 1. ดึงข้อมูล Charger
         const res = await apiFetch(
-          `/station/info?station_id=${encodeURIComponent(stationId)}`,
+          `/charger/info?${params.toString()}`,
           { signal: ctrl.signal }
         );
+
         if (!res.ok) {
-          console.warn("station/info failed", res.status);
+          console.warn("charger/info failed", res.status);
           return;
         }
+
         const data = await res.json();
-        const info = data.station ?? data;
+        const chargerInfo = data.station ?? data;
+
+        // ✅ เก็บรูป Charger ไว้ก่อน (ยังไม่ใส่ array หลัก)
+        const chargerImages: GalleryImage[] = [];
+
+        if (chargerInfo?.images?.charger) {
+          const url = chargerInfo.images.charger;
+          chargerImages.push({
+            src: url.startsWith("http") ? url : `${API_BASE}${url}`,
+            alt: "Charger Image"
+          });
+        }
+
+        if (chargerInfo?.images?.device) {
+          const url = chargerInfo.images.device;
+          chargerImages.push({
+            src: url.startsWith("http") ? url : `${API_BASE}${url}`,
+            alt: "Device Image"
+          });
+        }
+
+        // 2. ดึง station_name และรูป Station
+        let stationName = "-";
+        const stationImages: GalleryImage[] = [];  // ✅ เก็บรูป Station แยก
+        const currentStationId = chargerInfo?.station_id || stationId;
+
+        if (currentStationId) {
+          try {
+            const stationRes = await apiFetch(
+              `/selected/station/${encodeURIComponent(currentStationId)}`,
+              { signal: ctrl.signal }
+            );
+
+            if (stationRes.ok) {
+              const stationData = await stationRes.json();
+              stationName = stationData?.station_name ?? "-";
+
+              // รวบรวมรูป Station
+              const stationImgs = stationData?.images ?? {};
+              Object.entries(stationImgs).forEach(([key, url]) => {
+                if (typeof url === "string" && url) {
+                  stationImages.push({
+                    src: url.startsWith("http") ? url : `${API_BASE}${url}`,
+                    alt: `Station - ${key}`
+                  });
+                }
+              });
+            }
+          } catch (e) {
+            console.warn("station info error", e);
+          }
+        }
+
+        // ✅ 3. รวมรูป: Station ก่อน → แล้ว Charger/Device ตามหลัง
+        const allImages: GalleryImage[] = [
+          ...stationImages,   // รูป Station ขึ้นก่อน
+          ...chargerImages,   // รูป Charger + Device ตามหลัง
+        ];
+
+        console.log("[Images] Total images:", allImages.length, allImages);
+        setImages(allImages);
+
+        // 4. Set station detail
         setStationDetail(prev => ({
           ...prev,
-          station_name: info?.station_name ?? "-",
-          model: info?.model ?? "-",
-          commit_date: info?.commit_date ?? null,
-          warranty_year: info?.warranty_year ?? null,
+          station_id: chargerInfo?.station_id ?? "-",
+          station_name: stationName,
+          model: chargerInfo?.model ?? "-",
+          commissioningDate: chargerInfo?.commissioningDate ?? null,
+          warrantyYears: chargerInfo?.warrantyYears != null
+            ? String(chargerInfo.warrantyYears)
+            : null,
+          SN: chargerInfo?.SN ?? "-",
+          WO: chargerInfo?.WO ?? "-",
+          power: chargerInfo?.power ?? "-",
+          brand: chargerInfo?.brand ?? "-",
+          PLCFirmware: chargerInfo?.PLCFirmware ?? "-",
+          PIFirmware: chargerInfo?.PIFirmware ?? "-",
+          RTFirmware: chargerInfo?.RTFirmware ?? "-",
+          chargeBoxID: chargerInfo?.chargeBoxID ?? "-",
+          chargerNo: chargerInfo?.chargerNo ?? null,
+          numberOfCables: chargerInfo?.numberOfCables ?? null,
         }));
+
       } catch (e) {
-        console.error("station/info error", e);
+        console.error("fetch error", e);
       }
     })();
-    return () => ctrl.abort();
-  }, [stationId]);
 
-  // on/off status
+    return () => ctrl.abort();
+  }, [stationId, sn]);
+
+  // on/off status (แยก useEffect เพราะ poll ทุก 5 วินาที)
   useEffect(() => {
-    if (!stationId) return;
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") || "";
-    // if (!token) return;
+    if (!sn) return;
 
     const ctrl = new AbortController();
     const fetchStatus = async () => {
       try {
-        // const res = await fetch(
-        //   `${API_BASE}/station-onoff/${encodeURIComponent(stationId)}`,
-        // const res = await apiFetch(
-        //   `${API_BASE}/station-onoff/${encodeURIComponent(stationId)}`,
-        //   {
-        //     headers: { Authorization: `Bearer ${token}` },
-        //     credentials: "include",
-        //     signal: ctrl.signal,
-        //   }
-        // );
         const res = await apiFetch(
-          `/station-onoff/${encodeURIComponent(stationId)}`,
+          `/charger-onoff/${encodeURIComponent(sn)}`,
           { signal: ctrl.signal }
         );
         if (!res.ok) return;
@@ -161,88 +248,38 @@ export default function ChargersPage() {
         }));
       } catch { }
     };
+
     fetchStatus();
     const id = setInterval(fetchStatus, 5000);
     return () => { clearInterval(id); ctrl.abort(); };
-  }, [stationId]);
-
-  useEffect(() => {
-    if (!stationId) { setImages([]); return; }
-
-    const token =
-      localStorage.getItem("access_token") ||
-      localStorage.getItem("accessToken") || "";
-    // if (!token) { setImages([]); return; }
-
-    const ctrl = new AbortController();
-    (async () => {
-      try {
-        // const res = await fetch(
-        //   `${API_BASE}/selected/station/${encodeURIComponent(stationId)}`,
-        // const res = await apiFetch(
-        //   `${API_BASE}/selected/station/${encodeURIComponent(stationId)}`,
-        //   {
-        //     headers: { Authorization: `Bearer ${token}` },
-        //     credentials: "include",
-        //     signal: ctrl.signal,
-        //   }
-        // );
-        const res = await apiFetch(
-          `/selected/station/${encodeURIComponent(stationId)}`,
-          { signal: ctrl.signal }
-        );
-
-        if (!res.ok) {
-          console.warn("selected/station failed", res.status);
-          setImages([]);                      // ไม่มี = ไม่แสดง
-          return;
-        }
-
-        const station: StationDoc = await res.json();
-        const imgsObj = station?.images ?? {};
-        const arr: GalleryImage[] = Object.values(imgsObj)
-          .filter((v): v is string => typeof v === "string" && !!v)
-          .map((url) => ({
-            src: url.startsWith("http") ? url : `${API_BASE}${url}`,
-          }));
-
-        setImages(arr);                       // ⬅️ สำคัญ! อัปเดต state
-      } catch (e) {
-        console.error("selected/station error", e);
-        setImages([]);                        // error ก็ไม่แสดง
-      }
-    })();
-
-    return () => ctrl.abort();
-  }, [stationId]);
-
+  }, [sn]);
 
   return (
     <div className="tw-mt-8 tw-mb-4 tw-mx-auto tw-px-4 sm:tw-px-6">
       <div className="tw-mt-8 tw-mb-4">
-        <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 lg:tw-gap-6 tw-gap-y-6 tw-items-stretch">
+        <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 lg:tw-gap-6 tw-gap-y-6">
+
           {/* LEFT: Carousel */}
-          <div className="lg:tw-col-span-2 tw-min-h-0">
+          <div className="lg:tw-col-span-2">
             <Carousel
               key={carouselKey}
-              className="
-                tw-w-full !tw-max-w-none
-                tw-rounded-2xl tw-overflow-hidden tw-shadow-2xl
-                tw-h-[44vh]
-                sm:tw-h-[52vh]
-                md:tw-h-[70vh] md:tw-max-h-[80vh]
-                lg:tw-h-[64vh] lg:tw-max-h-[74vh]
-                xl:tw-h-[68vh]"
+              className="tw-w-full tw-rounded-2xl tw-overflow-hidden tw-shadow-2xl
+                       tw-h-[400px] sm:tw-h-[450px] md:tw-h-[500px] lg:tw-h-[550px] xl:tw-h-[600px]"
             >
               {(images?.length ? images : []).map((img, i) => (
-                <img
-                  key={(img?.src ?? "img") + i}
-                  src={img?.src}
-                  alt={img?.alt ?? `image-${i + 1}`}
-                  loading="lazy"
-                  onClick={() => openAt(i)}
-                  className="tw-h-full tw-w-full tw-object-cover tw-object-center tw-cursor-zoom-in"
-                />
+                <div key={(img?.src ?? "img") + i} className="tw-relative tw-h-full tw-w-full">
+                  <img
+                    src={img?.src}
+                    alt={img?.alt ?? `image-${i + 1}`}
+                    loading="lazy"
+                    onClick={() => openAt(i)}
+                    className="tw-h-full tw-w-full tw-object-cover tw-object-center tw-cursor-zoom-in"
+                  />
+                  {/* ✅ แสดง label บอกประเภทรูป */}
+                  <div className="tw-absolute tw-bottom-4 tw-left-4 tw-bg-black/60 tw-text-white tw-px-3 tw-py-1 tw-rounded-full tw-text-sm">
+                    {img?.alt || `Image ${i + 1}`}
+                  </div>
+                </div>
               ))}
               {!images?.length && (
                 <div className="tw-flex tw-items-center tw-justify-center tw-w-full tw-h-full tw-bg-blue-gray-50">
@@ -263,20 +300,24 @@ export default function ChargersPage() {
           </div>
 
           {/* RIGHT: Station Information */}
-          <div className="tw-min-h-0">
-            <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-h-full">
-              <CardHeader floated={false} shadow={false} className="tw-px-6 tw-py-4 tw-relative">
-                <Typography variant="h6" color="blue-gray">
-                  Station Information
-                </Typography>
-              </CardHeader>
-              <CardBody className="tw-flex tw-flex-col tw-flex-1 !tw-p-0">
+          <div>
+            <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm 
+                          tw-h-[400px] sm:tw-h-[450px] md:tw-h-[500px] lg:tw-h-[550px] xl:tw-h-[600px]
+                          tw-flex tw-flex-col">
+              <CardBody className="tw-flex-1 tw-overflow-y-auto !tw-p-0">
                 <StationInfo
                   station_name={stationDetail?.station_name ?? "-"}
                   model={stationDetail?.model}
+                  SN={stationDetail?.SN}
+                  WO={stationDetail?.WO}
+                  brand={stationDetail?.brand}
+                  power={stationDetail?.power}
                   status={stationDetail?.status}
-                  commit_date={stationDetail?.commit_date}
-                  warranty_year={stationDetail?.warranty_year}
+                  commissioningDate={stationDetail?.commissioningDate}
+                  warrantyYears={stationDetail?.warrantyYears}
+                  PLCFirmware={stationDetail?.PLCFirmware}
+                  PIFirmware={stationDetail?.PIFirmware}
+                  RTFirmware={stationDetail?.RTFirmware}
                 />
               </CardBody>
             </Card>
@@ -285,11 +326,10 @@ export default function ChargersPage() {
 
         {/* แถวล่าง */}
         <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 tw-gap-6">
-          <StatisticChart />
-
+          <HealthIndex />
           <AICard />
-          {/* <PMCard /> */}
-          <PMCard stationId={stationId!} />
+          {/* <PMCard stationId={stationId!} /> */}
+          <PMCard sn={sn ?? ""} />
         </div>
       </div>
 

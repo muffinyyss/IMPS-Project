@@ -1,107 +1,144 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
     Card,
     CardHeader,
     CardBody,
     Typography,
-    Switch, // นำเข้า Switch
+    Switch,
 } from "@material-tailwind/react";
 
 import {
     AdjustmentsHorizontalIcon,
     ChatBubbleLeftEllipsisIcon,
-    BookOpenIcon,
-    TruckIcon,
-    PaintBrushIcon,
 } from "@heroicons/react/24/solid";
 
-
-const EVENTS_CARD_DATA = [
-    {
-        icon: AdjustmentsHorizontalIcon,
-        title: "Condition-Base",
-        description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
-    },
-    {
-        icon: ChatBubbleLeftEllipsisIcon,
-        title: "Ask expert",
-        description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
-    },
-    // {
-    //     icon: BookOpenIcon,
-    //     title: "STD Maintenance Procedure",
-    //     description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
-    // },
-    // {
-    //     icon: BookOpenIcon,
-    //     title: "WI",
-    //     description: "Lorem ipsum dolor sit amet, consectetur adipiscing elit",
-    // },
-];
+type Lang = "th" | "en";
 
 const CBMCard = () => {
+    // ===== Language State =====
+    const [lang, setLang] = useState<Lang>("en");
+
+    useEffect(() => {
+        const savedLang = localStorage.getItem("app_language") as Lang | null;
+        if (savedLang === "th" || savedLang === "en") {
+            setLang(savedLang);
+        }
+
+        const handleLangChange = (e: CustomEvent<{ lang: Lang }>) => {
+            setLang(e.detail.lang);
+        };
+
+        window.addEventListener("language:change", handleLangChange as EventListener);
+        return () => {
+            window.removeEventListener("language:change", handleLangChange as EventListener);
+        };
+    }, []);
+
+    // ===== Translations =====
+    const t = useMemo(() => {
+        const translations = {
+            th: {
+                conditionBasedMaintenance: "การบำรุงรักษาตามสภาพ",
+                conditionBase: "ตามสภาพ",
+                conditionBaseDesc: "ตรวจสอบและบำรุงรักษาตามสภาพการใช้งานจริง",
+                askExpert: "ถามผู้เชี่ยวชาญ",
+                askExpertDesc: "สอบถามผู้เชี่ยวชาญเกี่ยวกับปัญหาการบำรุงรักษา",
+                active: "เปิด",
+                inactive: "ปิด",
+            },
+            en: {
+                conditionBasedMaintenance: "Condition-Based Maintenance",
+                conditionBase: "Condition-Base",
+                conditionBaseDesc: "Monitor and maintain based on actual operating conditions",
+                askExpert: "Ask expert",
+                askExpertDesc: "Consult experts about maintenance issues",
+                active: "Active",
+                inactive: "Inactive",
+            },
+        };
+        return translations[lang];
+    }, [lang]);
+
+    // Events card data with translations
+    const EVENTS_CARD_DATA = useMemo(() => [
+        {
+            icon: AdjustmentsHorizontalIcon,
+            titleKey: "conditionBase",
+            descKey: "conditionBaseDesc",
+        },
+        {
+            icon: ChatBubbleLeftEllipsisIcon,
+            titleKey: "askExpert",
+            descKey: "askExpertDesc",
+        },
+    ], []);
+
     const [activeStates, setActiveStates] = useState<{ [key: string]: boolean }>(
-        EVENTS_CARD_DATA.reduce<{ [key: string]: boolean }>((acc, { title }) => {
-            acc[title] = false;
+        EVENTS_CARD_DATA.reduce<{ [key: string]: boolean }>((acc, { titleKey }) => {
+            acc[titleKey] = false;
             return acc;
         }, {})
     );
 
-    const handleToggle = (title: string) => {
+    const handleToggle = (titleKey: string) => {
         setActiveStates((prevStates) => ({
             ...prevStates,
-            [title]: !prevStates[title],
+            [titleKey]: !prevStates[titleKey],
         }));
     };
 
     return (
         <div className="tw-col-span-1 tw-my-5">
-            <Card className="tw-border tw-border-blue-gray-100 tw-shadow-lg ">
+            <Card className="tw-border tw-border-blue-gray-100 tw-shadow-lg">
                 <CardHeader floated={false} shadow={false} color="transparent">
                     <Typography className="!tw-font-bold tw-text-lg tw-my-4" color="blue-gray">
-                        Condition-Based Maintenance
+                        {t.conditionBasedMaintenance}
                     </Typography>
                 </CardHeader>
                 <CardBody className="!tw-p-0">
-                    <div className="tw-flex tw-flex-col space-y-4">
-                        {EVENTS_CARD_DATA.map(({ icon, title, description }) => (
+                    <div className="tw-flex tw-flex-col">
+                        {EVENTS_CARD_DATA.map(({ icon, titleKey, descKey }) => (
                             <div
-                                key={title}
-                                className="tw-flex tw-items-center tw-justify-between tw-px-4 tw-py-3 tw-border tw-border-gray-200 "
+                                key={titleKey}
+                                className="tw-px-4 tw-py-3 tw-border tw-border-gray-200"
                             >
-                                <div className="tw-flex tw-items-center">
-                                    <div className="tw-rounded-lg tw-bg-gradient-to-tr tw-from-gray-900 tw-to-gray-800 tw-p-4 tw-shadow">
-                                        {React.createElement(icon, {
-                                            className: "tw-h-6 tw-w-6 tw-text-white",
-                                        })}
+                                {/* Row 1: Icon + Title + Switch */}
+                                <div className="tw-flex tw-items-center tw-justify-between tw-gap-2">
+                                    <div className="tw-flex tw-items-center tw-gap-3 tw-min-w-0">
+                                        <div className="tw-rounded-lg tw-bg-gradient-to-tr tw-from-gray-900 tw-to-gray-800 tw-p-3 sm:tw-p-4 tw-shadow tw-flex-shrink-0">
+                                            {React.createElement(icon, {
+                                                className: "tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6 tw-text-white",
+                                            })}
+                                        </div>
+                                        <Typography
+                                            variant="small"
+                                            className="!tw-font-semibold tw-text-gray-800 tw-text-sm"
+                                        >
+                                            {t[titleKey as keyof typeof t]}
+                                        </Typography>
                                     </div>
-                                    <div className="tw-ml-3">
-                                        <Typography
-                                            variant="small"
-                                            className="!tw-font-semibold tw-text-gray-800"
-                                        >
-                                            {title}
+
+                                    {/* Status + Switch - always on the right */}
+                                    <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
+                                        <Typography variant="small" className="tw-text-xs sm:tw-text-sm tw-text-blue-gray-600 tw-whitespace-nowrap">
+                                            {activeStates[titleKey] ? t.active : t.inactive}
                                         </Typography>
-                                        <Typography
-                                            variant="small"
-                                            className="!tw-font-normal tw-text-blue-gray-600"
-                                        >
-                                            {description}
-                                        </Typography>
+                                        <Switch
+                                            checked={activeStates[titleKey]}
+                                            onChange={() => handleToggle(titleKey)}
+                                        />
                                     </div>
                                 </div>
-                                <div className="tw-flex tw-items-center space-x-2">
-                                    <Typography variant="small" className="tw-text-sm tw-text-blue-gray-600">
-                                        {activeStates[title] ? "Active" : "Inactive"}
+
+                                {/* Row 2: Description (below icon) */}
+                                <div className="tw-mt-2 tw-ml-12 sm:tw-ml-16">
+                                    <Typography
+                                        variant="small"
+                                        className="!tw-font-normal tw-text-blue-gray-600 tw-text-xs sm:tw-text-sm tw-leading-tight"
+                                    >
+                                        {t[descKey as keyof typeof t]}
                                     </Typography>
-                                    <div className="tw-ml-3">
-                                        <Switch
-                                        checked={activeStates[title]}
-                                        onChange={() => handleToggle(title)}
-                                    />
-                                    </div>
-                                    
                                 </div>
                             </div>
                         ))}

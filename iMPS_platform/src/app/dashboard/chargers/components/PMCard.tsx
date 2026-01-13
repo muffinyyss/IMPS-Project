@@ -1,9 +1,7 @@
-
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardHeader, CardBody, Typography, Switch } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
-
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -14,19 +12,18 @@ type LatestPMResp = {
 };
 
 type PMCardProps = {
-  stationId: string;
+  sn: string;
 };
+
+type Lang = "th" | "en";
 
 // --- Date utils ---
 function parseAsDateLocal(dateStr?: string | null, tzOffsetMinutes = 7 * 60) {
   if (!dateStr) return null;
   try {
-    // รับทั้ง 'YYYY-MM-DD' และ ISO
     if (dateStr.length === 10) {
-      // สร้างเป็นเวลา 00:00:00 ในโซนเวลาไทย (UTC+7)
       const [y, m, d] = dateStr.split("-").map(Number);
       const dt = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
-      // ชดเชยให้กลายเป็น "พื้นฐานไทย" โดยลบ offset ออกเพื่อให้เที่ยงคืนไทย
       dt.setUTCMinutes(dt.getUTCMinutes() - tzOffsetMinutes);
       return dt;
     }
@@ -34,43 +31,6 @@ function parseAsDateLocal(dateStr?: string | null, tzOffsetMinutes = 7 * 60) {
   } catch {
     return null;
   }
-}
-
-function fmtDateEN(d?: string | null) {
-  const dt = parseAsDateLocal(d);
-  if (!dt) return "-";
-  try {
-    return new Intl.DateTimeFormat("en-GB", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-    }).format(dt);
-  } catch {
-    return d ?? "-";
-  }
-}
-
-function daysUntil(dateStr?: string | null) {
-  const target = parseAsDateLocal(dateStr);
-  if (!target) return null;
-
-  // วันนี้ (โซนเวลาไทย) ที่เวลา 00:00
-  const now = new Date();
-  const nowTH = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  );
-  // ขยับให้เป็นเที่ยงคืนไทยโดยลบ 7 ชั่วโมงออก
-  nowTH.setUTCHours(nowTH.getUTCHours() - 7, 0, 0, 0);
-
-  // ปัดเวลาเป้าหมายให้เป็นเที่ยงคืนไทยด้วย (แค่เอาวันเปล่า ๆ มาเทียบ)
-  const tgtTH = new Date(
-    Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate())
-  );
-  tgtTH.setUTCHours(tgtTH.getUTCHours() - 7, 0, 0, 0);
-
-  const diffMs = tgtTH.getTime() - nowTH.getTime();
-  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
-  return diffDays; // อาจเป็นลบถ้าเลยกำหนด
 }
 
 function daysBetween(fromDate?: string | null, toDate?: string | null) {
@@ -94,18 +54,95 @@ function daysBetween(fromDate?: string | null, toDate?: string | null) {
   return diffDays;
 }
 
-function renderDaysLeft(fromDate?: string | null, toDate?: string | null) {
-  const d = daysBetween(fromDate, toDate);
-  if (d === null) return "-";
-  return `${d} day${d === 1 ? "" : "s"}`;
-}
-
-export default function PMCard({ stationId }: PMCardProps) {
+export default function PMCard({ sn }: PMCardProps) {
   const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(false);
   const [pmDate, setPmDate] = useState<string | null>(null);
   const [pmNextDate, setPmNextDate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // ===== Language State =====
+  const [lang, setLang] = useState<Lang>("en");
+
+  useEffect(() => {
+    const savedLang = localStorage.getItem("app_language") as Lang | null;
+    if (savedLang === "th" || savedLang === "en") {
+      setLang(savedLang);
+    }
+
+    const handleLangChange = (e: CustomEvent<{ lang: Lang }>) => {
+      setLang(e.detail.lang);
+    };
+
+    window.addEventListener("language:change", handleLangChange as EventListener);
+    return () => {
+      window.removeEventListener("language:change", handleLangChange as EventListener);
+    };
+  }, []);
+
+  // ===== Translations =====
+  const t = useMemo(() => {
+    const translations = {
+      th: {
+        preventiveMaintenance: "บำรุงรักษาเชิงป้องกัน",
+        enabled: "เปิดใช้งาน",
+        disabled: "ปิดใช้งาน",
+        active: "เปิด",
+        inactive: "ปิด",
+        pmLatest: "PM ล่าสุด",
+        nextPm: "PM ครั้งถัดไป",
+        daysLeft: "เหลืออีก",
+        loading: "กำลังโหลด…",
+        error: "ข้อผิดพลาด",
+        day: "วัน",
+        days: "วัน",
+      },
+      en: {
+        preventiveMaintenance: "Preventive Maintenance",
+        enabled: "Enabled",
+        disabled: "Disabled",
+        active: "Active",
+        inactive: "Inactive",
+        pmLatest: "PM Latest",
+        nextPm: "Next PM",
+        daysLeft: "Days Left",
+        loading: "Loading…",
+        error: "Error",
+        day: "day",
+        days: "days",
+      },
+    };
+    return translations[lang];
+  }, [lang]);
+
+  // Date formatter based on language
+  const formatDate = (dateStr?: string | null) => {
+    const dt = parseAsDateLocal(dateStr);
+    if (!dt) return "-";
+    try {
+      if (lang === "th") {
+        const thaiMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+        const day = dt.getDate();
+        const month = thaiMonths[dt.getMonth()];
+        const year = dt.getFullYear() + 543;
+        return `${day} ${month} ${year}`;
+      }
+      return new Intl.DateTimeFormat("en-GB", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+      }).format(dt);
+    } catch {
+      return dateStr ?? "-";
+    }
+  };
+
+  // Days left formatter
+  const renderDaysLeft = (fromDate?: string | null, toDate?: string | null) => {
+    const d = daysBetween(fromDate, toDate);
+    if (d === null) return "-";
+    return `${d} ${d === 1 ? t.day : t.days}`;
+  };
 
   const token = useMemo(
     () =>
@@ -117,7 +154,16 @@ export default function PMCard({ stationId }: PMCardProps) {
 
   useEffect(() => {
     if (!isActive) return;
-    if (!stationId || !token) return;
+    
+    if (!sn) {
+      setPmDate(null);
+      setPmNextDate(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    
+    if (!token) return;
 
     let aborted = false;
     const ctrl = new AbortController();
@@ -126,17 +172,8 @@ export default function PMCard({ stationId }: PMCardProps) {
       setLoading(true);
       setError(null);
       try {
-        // 1) แหล่งหลัก
-        // const res = await apiFetch(
-        //   `${API_BASE}/pmreport/latest/?station_id=${encodeURIComponent(stationId)}`,
-        //   {
-        //     headers: { Authorization: `Bearer ${token}` },
-        //     credentials: "include",
-        //     signal: ctrl.signal,
-        //   }
-        // );
         const res = await apiFetch(
-          `/pmreport/latest/?station_id=${encodeURIComponent(stationId)}`,
+          `/pmreport/latest/?sn=${encodeURIComponent(sn)}`,
           { signal: ctrl.signal }
         );
 
@@ -146,20 +183,14 @@ export default function PMCard({ stationId }: PMCardProps) {
             setPmDate(data.pm_date ?? null);
             setPmNextDate(data.pm_next_date ?? null);
           }
+        } else if (res.status === 404 || res.status === 422) {
+          if (!aborted) {
+            setPmDate(null);
+            setPmNextDate(null);
+          }
         } else {
-          // 2) fallback จากไฟล์ PM URL
-          // const res2 = await apiFetch(
-          //   `${API_BASE}/pmurl/list?station_id=${encodeURIComponent(
-          //     stationId
-          //   )}&page=1&pageSize=1`,
-          //   {
-          //     headers: { Authorization: `Bearer ${token}` },
-          //     credentials: "include",
-          //     signal: ctrl.signal,
-          //   }
-          // );
           const res2 = await apiFetch(
-            `/pmurl/list?station_id=${encodeURIComponent(stationId)}&page=1&pageSize=1`,
+            `/pmurl/list?sn=${encodeURIComponent(sn)}&page=1&pageSize=1`,
             { signal: ctrl.signal }
           );
           if (res2.ok) {
@@ -175,11 +206,17 @@ export default function PMCard({ stationId }: PMCardProps) {
                 setPmNextDate(null);
               }
             }
+          } else if (res2.status === 422 || res2.status === 404) {
+            if (!aborted) {
+              setPmDate(null);
+              setPmNextDate(null);
+            }
           } else {
             throw new Error(`pmurl/list failed: ${res2.status}`);
           }
         }
       } catch (e: any) {
+        if (e.name === "AbortError") return;
         if (!aborted) setError(e?.message ?? "fetch error");
       } finally {
         if (!aborted) setLoading(false);
@@ -191,7 +228,7 @@ export default function PMCard({ stationId }: PMCardProps) {
       aborted = true;
       ctrl.abort();
     };
-  }, [isActive, stationId, token]);
+  }, [isActive, sn, token]);
 
   return (
     <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-h-full">
@@ -206,16 +243,16 @@ export default function PMCard({ stationId }: PMCardProps) {
             <i className="fa-fw fa-solid fa-screwdriver-wrench tw-text-xl tw-text-gray-800" aria-hidden="true" />
             <div>
               <Typography variant="h6" className="tw-leading-none tw-text-gray-900">
-                Preventive Maintenance
+                {t.preventiveMaintenance}
               </Typography>
               <Typography className="!tw-text-xs !tw-font-normal !tw-text-blue-gray-500">
-                {isActive ? "Enabled" : "Disabled"}
+                {isActive ? t.enabled : t.disabled}
               </Typography>
             </div>
           </div>
           <div className="tw-flex tw-items-center tw-gap-2">
             <Typography className="tw-text-sm tw-text-blue-gray-600">
-              {isActive ? "Active" : "Inactive"}
+              {isActive ? t.active : t.inactive}
             </Typography>
             <Switch checked={isActive} onChange={() => setIsActive(v => !v)} />
           </div>
@@ -226,28 +263,28 @@ export default function PMCard({ stationId }: PMCardProps) {
         {!isActive ? (
           <Typography color="blue-gray">-</Typography>
         ) : loading ? (
-          <Typography color="blue-gray">Loading…</Typography>
+          <Typography color="blue-gray">{t.loading}</Typography>
         ) : error ? (
-          <Typography color="red">Error: {error}</Typography>
+          <Typography color="red">{t.error}: {error}</Typography>
         ) : (
           <>
             <div className="tw-flex tw-justify-between">
               <Typography color="blue-gray" className="tw-font-medium">
-                PM Latest
+                {t.pmLatest}
               </Typography>
-              <Typography color="blue-gray">{fmtDateEN(pmDate)}</Typography>
+              <Typography color="blue-gray">{formatDate(pmDate)}</Typography>
             </div>
 
             <div className="tw-flex tw-justify-between">
               <Typography color="blue-gray" className="tw-font-medium">
-                Next PM
+                {t.nextPm}
               </Typography>
-              <Typography color="blue-gray">{fmtDateEN(pmNextDate)}</Typography>
+              <Typography color="blue-gray">{formatDate(pmNextDate)}</Typography>
             </div>
 
             <div className="tw-flex tw-justify-between">
               <Typography color="blue-gray" className="tw-font-medium">
-                Days Left
+                {t.daysLeft}
               </Typography>
               <Typography color="blue-gray">
                 {renderDaysLeft(pmDate, pmNextDate)}
