@@ -1255,33 +1255,33 @@ export function SearchDataTables() {
         );
       },
     },
-    {
-      id: "images",
-      header: () => t.images,
-      size: 80,
-      cell: ({ row }: { row: Row<StationRow> }) => {
-        const stationImage = row.original.stationImage;
+    // {
+    //   id: "images",
+    //   header: () => t.images,
+    //   size: 80,
+    //   cell: ({ row }: { row: Row<StationRow> }) => {
+    //     const stationImage = row.original.stationImage;
 
-        if (!stationImage) {
-          return (
-            <span className="tw-text-blue-gray-300 tw-text-xs tw-flex tw-items-center tw-gap-1">
-              <PhotoIcon className="tw-h-4 tw-w-4" />
-              <span>-</span>
-            </span>
-          );
-        }
+    //     if (!stationImage) {
+    //       return (
+    //         <span className="tw-text-blue-gray-300 tw-text-xs tw-flex tw-items-center tw-gap-1">
+    //           <PhotoIcon className="tw-h-4 tw-w-4" />
+    //           <span>-</span>
+    //         </span>
+    //       );
+    //     }
 
-        return (
-          <div className="tw-flex tw-items-center" onClick={(e) => e.stopPropagation()}>
-            <a href={`${API_BASE}${stationImage}`} target="_blank" rel="noreferrer" className="tw-group">
-              <div className="tw-w-10 tw-h-10 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 group-hover:tw-border-blue-400 tw-transition-colors">
-                <img src={`${API_BASE}${stationImage}`} alt="Station" className="tw-w-full tw-h-full tw-object-cover" />
-              </div>
-            </a>
-          </div>
-        );
-      },
-    },
+    //     return (
+    //       <div className="tw-flex tw-items-center" onClick={(e) => e.stopPropagation()}>
+    //         <a href={`${API_BASE}${stationImage}`} target="_blank" rel="noreferrer" className="tw-group">
+    //           <div className="tw-w-10 tw-h-10 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 group-hover:tw-border-blue-400 tw-transition-colors">
+    //             <img src={`${API_BASE}${stationImage}`} alt="Station" className="tw-w-full tw-h-full tw-object-cover" />
+    //           </div>
+    //         </a>
+    //       </div>
+    //     );
+    //   },
+    // },
     {
       id: "station_name",
       header: () => t.stationName,
