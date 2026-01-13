@@ -115,11 +115,11 @@ SUB_ROW_TITLES_EN = {
 # Default to Thai
 SUB_ROW_TITLES = SUB_ROW_TITLES_TH
 
-# ข้อที่มีข้อย่อย dynamic (4, 6)
-DYNAMIC_SUB_ROWS = {4, 6, 9, 11}
+# ข้อที่มีข้อย่อย dynamic (4, 5, 6, 7, 9, 11)
+DYNAMIC_SUB_ROWS = {4, 5, 6, 7, 9, 11}
 
 # ข้อที่มีข้อย่อยคงที่
-FIXED_SUB_ROWS = {5: 1, 7: 1, 8: 1, 10: 1}
+FIXED_SUB_ROWS = {8: 1, 10: 1}
 
 
 # -------------------- Utilities / Core helpers --------------------
@@ -682,6 +682,9 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
             # ข้อที่มีจำนวนข้อย่อยคงที่ - เอาเท่าที่กำหนดไว้
             expected_count = FIXED_SUB_ROWS[main_idx]
             subs = subs[:expected_count]
+        elif main_idx == 6:
+            # ข้อ 6 จำกัด max 4 ข้อย่อย
+            subs = subs[:4]
         elif main_idx not in DYNAMIC_SUB_ROWS:
             # ถ้าไม่ใช่ข้อที่มีข้อย่อยทั้ง FIXED และ DYNAMIC ให้เคลียร์ subs
             subs = []
@@ -716,9 +719,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
             lines = [f"{main_idx}) {main_title}"]
             results = []
             remarks = []
-            
-            sub_count = len(subs)
-            
+
             # สร้าง list เก็บข้อมูล voltage สำหรับแต่ละข้อย่อย
             voltage_data = {}
             
@@ -762,8 +763,47 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                         voltage_text = _format_voltage_measurement_simple({sub_key_in_measures: sub_voltage}, sub_key_in_measures)
                         if voltage_text and voltage_text != "-":
                             voltage_data[i] = voltage_text
-            
+
+            # กรองเฉพาะข้อย่อยที่มีข้อมูลจริงๆ
+            filtered_subs = []
             for i, (sub_idx, sub_key) in enumerate(subs):
+                # ตรวจสอบว่ามี sub_key ใน rows หรือไม่
+                if not sub_key:
+                    continue
+
+                sub_data = rows.get(sub_key, {})
+                has_voltage = i in voltage_data
+                has_pf = bool(sub_data.get("pf"))
+                has_remark = bool((sub_data.get("remark") or "").strip())
+                has_rows_data = bool(sub_data)  # มี key ใน rows
+
+                # สำหรับข้อ 4, 5, 6, 7 ที่มี voltage data - ต้องมีทั้ง voltage data และ rows data
+                if main_idx in {4, 5, 6, 7}:
+                    if has_voltage and has_rows_data:
+                        filtered_subs.append((i, sub_idx, sub_key))
+                # ข้ออื่นๆ - ถ้ามีข้อมูลอย่างใดอย่างหนึ่ง ให้เก็บไว้
+                elif has_voltage or has_pf or has_remark:
+                    filtered_subs.append((i, sub_idx, sub_key))
+
+            # ถ้าไม่มีข้อย่อยที่มีข้อมูล ให้แสดงเป็นข้อหลักปกติ
+            if not filtered_subs:
+                title = f"{main_idx}) {main_title}"
+                remark_user = (main_data.get("remark") or "").strip()
+
+                items.append({
+                    "idx": main_idx,
+                    "key": main_key,
+                    "text": title,
+                    "result": _norm_result(main_data.get("pf", "")),
+                    "remark": remark_user,
+                    "has_subs": False,
+                })
+                continue
+
+            # นับจำนวนข้อย่อยที่กรองแล้ว
+            sub_count = len(filtered_subs)
+
+            for original_i, sub_idx, sub_key in filtered_subs:
 
                 if sub_key:
                     sub_data = rows.get(sub_key, {})  # ดึงข้อมูล pf/remark จาก rows
@@ -773,18 +813,28 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 # หาชื่อข้อย่อย
                 sub_title = sub_row_titles.get(sub_key)
 
-                # สำหรับข้อ 4, 6, 9, 11 ที่เป็น dynamic - ใช้ชื่อตามลำดับ
+                # สำหรับข้อ 4, 5, 6, 9, 11 ที่เป็น dynamic - ใช้ชื่อตามลำดับ
                 if main_idx in DYNAMIC_SUB_ROWS:
                     if main_idx == 4:
                         if lang == "en":
                             sub_title = f"Breaker Main {sub_idx}"
                         else:
                             sub_title = f"เบรกเกอร์ Main {sub_idx}"
+                    elif main_idx == 5:
+                        if lang == "en":
+                            sub_title = f"Breaker Charger unit {sub_idx}"
+                        else:
+                            sub_title = f"Breaker Charger unit {sub_idx}"
                     elif main_idx == 6:
                         if lang == "en":
                             sub_title = f"Breaker CCB {sub_idx}"
                         else:
                             sub_title = f"เบรกเกอร์ CCB {sub_idx}"
+                    elif main_idx == 7:
+                        if lang == "en":
+                            sub_title = f"RCD unit {sub_idx}"
+                        else:
+                            sub_title = f"RCD unit {sub_idx}"
                     elif main_idx == 9:
                         if lang == "en":
                             sub_title = f"Breaker CCB Trip Test {sub_idx}"
@@ -798,31 +848,29 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 
                 # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc. - เยื้อง 4 ช่องว่าง
                 lines.append(f"    {main_idx}.{sub_idx}) {sub_title}")
-                
+
                 # เพิ่มข้อมูล voltage ถ้ามี (ในบรรทัดถัดไป) - เยื้อง 8 ช่องว่างให้ตรงกับข้อความใน sub_title
-                if i in voltage_data:
-                    lines.append(f"        {voltage_data[i]}")
-                
+                if original_i in voltage_data:
+                    lines.append(f"        {voltage_data[original_i]}")
+
                 results.append(_norm_result(sub_data.get("pf", "")))
                 remarks.append((sub_data.get("remark") or "").strip())
-            
+
             remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
-            for i, r in enumerate(remarks):
-                sub_idx = subs[i][0]
+            for i, (original_i, sub_idx, sub_key) in enumerate(filtered_subs):
+                r = remarks[i]
                 # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
                 remark_text = r if (r and r != "-") else "-"
-                
-                # เพิ่มบรรทัดว่าง 1 บรรทัดก่อน remark text เพื่อให้ตรงกับหัวข้อข้อย่อย
-                remark_lines.append("")
-                
-                # แสดง remark text
+
+                # แสดง remark text (ตรงกับข้อย่อย)
                 remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
-                
+
                 # เพิ่มบรรทัดว่างให้ตรงกับจำนวนบรรทัดของ voltage measurements
-                # ถ้ามี voltage data ให้นับจำนวนบรรทัด (นับจาก \n)
-                if i in voltage_data:
-                    voltage_text = voltage_data[i]
-                    voltage_line_count = voltage_text.count('\n')
+                # ถ้ามี voltage data ให้นับจำนวนบรรทัด (นับจาก \n + 1)
+                if original_i in voltage_data:
+                    voltage_text = voltage_data[original_i]
+                    # จำนวนบรรทัดจริง = จำนวน \n + 1
+                    voltage_line_count = voltage_text.count('\n') + 1
                     # เพิ่มบรรทัดว่างเท่ากับจำนวนบรรทัดของ voltage
                     for _ in range(voltage_line_count):
                         remark_lines.append("")
@@ -1655,7 +1703,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             y += row_h_used
 
         # ========== Comment PRE (หลังข้อ 17) ==========
-        comment_text_pre = str(doc.get("summary_pre", "") or "-")
+        comment_text_pre = str(doc.get("comment_pre", "") or "-")
         
         # คำนวณความสูงของ comment
         _, comment_h_calculated = _split_lines(pdf, g_w - 2 * PADDING_X, comment_text_pre, LINE_H)
@@ -1779,8 +1827,9 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
         # --- ความสูงสำหรับข้อที่มีข้อย่อย ---
         if has_subs:
-            # ต้องมีพื้นที่พอสำหรับ checkbox แต่ละข้อย่อย
-            min_result_h = (sub_count + 1) * LINE_H + 2 * PADDING_Y
+            # คำนวณจากจำนวนบรรทัดจริงของ text (รวม voltage data)
+            text_line_count = text.count('\n') + 1
+            min_result_h = text_line_count * LINE_H + 2 * PADDING_Y
             remark_h = max(remark_h, min_result_h)
 
         # --- ความสูงจริงของ row ---
