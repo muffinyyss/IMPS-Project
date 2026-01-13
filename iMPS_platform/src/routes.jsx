@@ -8,7 +8,7 @@ const baseRoutes = [
     icon: <i className="fa fa-user" />,
     divider: true,
     allow: ["admin", "owner", "technician"],
-    adminMode: "both", // แสดงทั้งสองโหมด
+    showMode: "both", // แสดงทั้งสองโหมด
     pages: [
       {
         layout: "dashboard",
@@ -26,17 +26,17 @@ const baseRoutes = [
       },
     ],
   },
-  { name: "Stations", icon: <i className="fa fa-map-marker-alt" />, path: "/dashboard/stations", allow: ["admin", "owner"], adminMode: "both" },
-  { name: "My Charger", icon: <i className="fa fa-charging-station" />, path: "/dashboard/chargers", allow: ["admin", "owner"], adminMode: "charger" },
-  { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner"], adminMode: "charger" },
-  { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner"], adminMode: "charger" },
-  { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm", allow: ["admin", "owner"], adminMode: "charger" },
-  { name: "MDB/CCB", icon: <i className="fa fa-database" />, path: "/dashboard/mdb", allow: ["admin", "owner"], adminMode: "charger" },
-  { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician"], adminMode: "charger" },
-  { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician"], adminMode: "charger" },
-  { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician"], adminMode: "charger" },
-  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner"], adminMode: "charger" },
-  { name: "Users", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], adminMode: "station" },
+  { name: "Stations", icon: <i className="fa fa-map-marker-alt" />, path: "/dashboard/stations", allow: ["admin", "owner", "technician"], showMode: "both" },
+  { name: "Users", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], showMode: "before" },
+  { name: "My Charger", icon: <i className="fa fa-charging-station" />, path: "/dashboard/chargers", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "MDB/CCB", icon: <i className="fa fa-database" />, path: "/dashboard/mdb", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner", "technician"], showMode: "after" },
 ];
 
 /** 2) อ่าน user/role จาก localStorage (ตาม payload ที่ backend ส่งมาใน /login) */
@@ -69,33 +69,25 @@ const canSee = (allow, roles = []) => {
   return roles.some(r => allow.includes(r));
 };
 
-/** 4) กรองตาม adminMode 
- * - "station": แสดงเฉพาะเมื่อ admin ยังไม่เลือก charger
- * - "charger": แสดงเฉพาะเมื่อ admin เลือก charger แล้ว
+/** 4) กรองตาม showMode 
+ * - "before": แสดงเฉพาะเมื่อยังไม่เลือก charger (Stations, Users)
+ * - "after": แสดงเฉพาะเมื่อเลือก charger แล้ว (เมนูอื่นๆ)
  * - "both" หรือ undefined: แสดงทั้งสองโหมด
  */
-const canSeeAdminMode = (adminMode, isAdmin, hasChargerSelected) => {
-  // ถ้าไม่ใช่ admin ให้แสดงตามปกติ (ยกเว้น adminMode: "station" ที่เฉพาะ admin)
-  if (!isAdmin) {
-    // Non-admin: ไม่แสดงเมนูที่เป็น adminMode: "station" (Users, Stations สำหรับ admin เท่านั้น)
-    // แต่ Stations มี allow: ["admin", "owner"] อยู่แล้ว จึงจะถูกกรองโดย canSee
-    return true;
-  }
-
-  // Admin logic
-  if (!adminMode || adminMode === "both") return true;
-  if (adminMode === "station") return !hasChargerSelected;
-  if (adminMode === "charger") return hasChargerSelected;
+const canSeeByMode = (showMode, hasChargerSelected) => {
+  if (!showMode || showMode === "both") return true;
+  if (showMode === "before") return !hasChargerSelected;
+  if (showMode === "after") return hasChargerSelected;
   return true;
 };
 
-function prune(items, roles, isAdmin = false, hasChargerSelected = false) {
+function prune(items, roles, hasChargerSelected = false) {
   return items
     .filter(r => canSee(r.allow ?? ["*"], roles))
-    .filter(r => canSeeAdminMode(r.adminMode, isAdmin, hasChargerSelected))
+    .filter(r => canSeeByMode(r.showMode, hasChargerSelected))
     .map(r => {
       if (Array.isArray(r.pages)) {
-        const pages = prune(r.pages, roles, isAdmin, hasChargerSelected);
+        const pages = prune(r.pages, roles, hasChargerSelected);
         return { ...r, pages };
       }
       return r;
@@ -124,11 +116,10 @@ function personalize(items) {
   });
 }
 
-/** 6) คำนวณเมนูตาม role + adminMode + ใส่ชื่อผู้ใช้ */
+/** 6) คำนวณเมนูตาม role + showMode + ใส่ชื่อผู้ใช้ */
 export function getRoutes(roles, hasChargerSelected = false) {
   const r = roles && roles.length ? roles : getRolesFromStorage();
-  const isAdmin = r.includes("admin");
-  const filtered = prune(baseRoutes, r, isAdmin, hasChargerSelected);
+  const filtered = prune(baseRoutes, r, hasChargerSelected);
   return personalize(filtered);
 }
 
@@ -147,7 +138,6 @@ export function useRoutes(rolesFromApp) {
       const stationIdFromUrl = params.get("station_id");
       
       // Also check localStorage - only need selected_sn to indicate charger is selected
-      // (selected_station_id is kept for other pages like MDB)
       const snFromStorage = localStorage.getItem("selected_sn");
       
       // Has charger if URL has both OR localStorage has sn
