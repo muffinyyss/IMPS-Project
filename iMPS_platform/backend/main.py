@@ -466,6 +466,38 @@ def station_info(
 
     return {"station": doc}
 
+@app.get("/charger/info")
+def charger_info(
+    station_id: str = Query(None),
+    sn: str = Query(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    # สร้าง query
+    query = {}
+    if sn:
+        query["SN"] = sn
+    elif station_id:
+        query["station_id"] = station_id
+    else:
+        raise HTTPException(status_code=400, detail="station_id or sn required")
+    
+    # ดึงข้อมูล charger
+    doc = charger_collection.find_one(query, {"_id": 0})
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Charger not found")
+    
+    # ดึง station_name จาก stations collection
+    station = station_collection.find_one(
+        {"station_id": doc.get("station_id")},
+        {"_id": 0, "station_name": 1}
+    )
+    
+    # เพิ่ม station_name เข้าไปใน response
+    doc["station_name"] = station.get("station_name", "-") if station else "-"
+
+    return {"station": doc}
+
 # @app.get("/station/info/public")
 # def station_info_public(
 #     station_id: str = Query(...)
@@ -1791,34 +1823,34 @@ def parse_iso_utc(s: str) -> Optional[datetime]:
     except Exception:
         return None
 
-def latest_onoff(station_id: str) -> Dict[str, Any]:
-    """
-    อ่านเอกสารล่าสุดจาก stationsOnOff/<station_id>
-    โครงสร้าง doc:
-      { payload: { value: 0/1, timestamp: "ISO-UTC" }, ... }
-    """
-    coll = charger_onoff.get_collection(station_id)
-    doc = coll.find_one(
-        sort=[("payload.timestamp", -1), ("_id", -1)]
-    )
-    if not doc:
-        return {"status": None, "statusAt": None}
+# def latest_onoff(station_id: str) -> Dict[str, Any]:
+#     """
+#     อ่านเอกสารล่าสุดจาก stationsOnOff/<station_id>
+#     โครงสร้าง doc:
+#       { payload: { value: 0/1, timestamp: "ISO-UTC" }, ... }
+#     """
+#     coll = charger_onoff.get_collection(station_id)
+#     doc = coll.find_one(
+#         sort=[("payload.timestamp", -1), ("_id", -1)]
+#     )
+#     if not doc:
+#         return {"status": None, "statusAt": None}
 
-    payload = doc.get("payload", {})
-    val = payload.get("value", None)
-    ts = payload.get("timestamp", None)
+#     payload = doc.get("payload", {})
+#     val = payload.get("value", None)
+#     ts = payload.get("timestamp", None)
 
-    # แปลงเป็น bool ชัดเจน: 1/true => True, 0/false => False, อื่นๆ -> None
-    if isinstance(val, (int, bool)):
-        status = bool(val)
-    else:
-        try:
-            status = bool(int(val))
-        except Exception:
-            status = None
+#     # แปลงเป็น bool ชัดเจน: 1/true => True, 0/false => False, อื่นๆ -> None
+#     if isinstance(val, (int, bool)):
+#         status = bool(val)
+#     else:
+#         try:
+#             status = bool(int(val))
+#         except Exception:
+#             status = None
 
-    status_at = parse_iso_utc(ts) if isinstance(ts, str) else None
-    return {"status": status, "statusAt": status_at}
+#     status_at = parse_iso_utc(ts) if isinstance(ts, str) else None
+#     return {"status": status, "statusAt": status_at}
 
 # @app.get("/all-stations/")
 # def all_stations(current: UserClaims = Depends(get_current_user)):
@@ -2224,15 +2256,15 @@ def to_object_id_or_400(s: str) -> ObjectId:
 
 #     return {"updated": True, "images": images}
 
-# @app.get("/owners")
-# async def get_owners():
-#     cursor = users_collection.find({"role": "owner"}, {"_id": 1, "username": 1})
-#     owners = [{"user_id": str(u["_id"]), "username": u["username"]} for u in cursor]
+@app.get("/owners")
+async def get_owners():
+    cursor = users_collection.find({"role": "owner"}, {"_id": 1, "username": 1})
+    owners = [{"user_id": str(u["_id"]), "username": u["username"]} for u in cursor]
 
-#     if not owners:
-#         raise HTTPException(status_code=404, detail="owners not found")
+    if not owners:
+        raise HTTPException(status_code=404, detail="owners not found")
 
-#     return {"owners": owners}
+    return {"owners": owners}
 
 # stationOnOff = client1["stationsOnOff"]
 # class StationIdsIn(BaseModel):
@@ -2263,17 +2295,52 @@ def to_object_id_or_400(s: str) -> ObjectId:
 #             out[sid] = False
 #     return {"status": out}
 
-@app.get("/charger-onoff/{station_id}")
-def station_onoff_latest(station_id: str, current: UserClaims = Depends(get_current_user)):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-        # raise HTTPException(status_code=403, detail="Forbidden station_id")
+async def latest_onoff(sn: str) -> Dict[str, Any]:
+    """
+    อ่านเอกสารล่าสุดจาก stationsOnOff/<sn>
+    โครงสร้าง doc:
+      { payload: { value: 0/1, timestamp: "ISO-UTC" }, ... }
+    """
+    try:
+        coll = charger_onoff.get_collection(sn)
+        
+        # ใช้ await สำหรับ Motor (async)
+        cursor = coll.find().sort([("payload.timestamp", -1), ("_id", -1)]).limit(1)
+        docs = await cursor.to_list(length=1)
+        doc = docs[0] if docs else None
+        
+        if not doc:
+            return {"status": None, "statusAt": None}
 
-    data = latest_onoff(str(station_id))
+        payload = doc.get("payload", {})
+        val = payload.get("value", None)
+        ts = payload.get("timestamp", None)
+
+        # แปลงเป็น bool ชัดเจน: 1/true => True, 0/false => False, อื่นๆ -> None
+        if isinstance(val, (int, bool)):
+            status = bool(val)
+        else:
+            try:
+                status = bool(int(val))
+            except Exception:
+                status = None
+
+        status_at = parse_iso_utc(ts) if isinstance(ts, str) else None
+        return {"status": status, "statusAt": status_at}
+    
+    except Exception as e:
+        print(f"[latest_onoff] Error for SN {sn}: {e}")
+        return {"status": None, "statusAt": None}
+    
+@app.get("/charger-onoff/{sn}")
+async def station_onoff_latest(sn: str, current: UserClaims = Depends(get_current_user)):
+    data = await latest_onoff(str(sn))  # เพิ่ม await
     status_at_iso = (
         data["statusAt"].astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
         if data["statusAt"] else None
     )
-    return {"station_id": station_id, "status": data["status"], "statusAt": status_at_iso}
+    return {"sn": sn, "status": data["status"], "statusAt": status_at_iso}
+
 
 def parse_iso_any_tz(s: str) -> datetime | None:
     if not isinstance(s, str):
@@ -2285,6 +2352,7 @@ def parse_iso_any_tz(s: str) -> datetime | None:
             return datetime.fromisoformat(s + "+00:00")
         except Exception:
             return None
+        
 # ------------------------------------ new station
 # ----- Charger Models -----
 class ChargerCreate(BaseModel):
@@ -2691,8 +2759,18 @@ def update_station(
         update_data["station_name"] = body.station_name.strip()
     if body.is_active is not None:
         update_data["is_active"] = body.is_active
+    
+    # เมื่อเปลี่ยน user_id ให้ดึง username มา update ด้วย
     if body.user_id is not None:
-        update_data["user_id"] = to_object_id(body.user_id)
+        new_user_oid = to_object_id(body.user_id)
+        update_data["user_id"] = new_user_oid
+        
+        # ดึง username จาก users collection
+        user = users_collection.find_one({"_id": new_user_oid})
+        if user:
+            update_data["username"] = user.get("username", "")
+        else:
+            raise HTTPException(status_code=400, detail="User not found")
     
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -2706,7 +2784,6 @@ def update_station(
     chargers = list(charger_collection.find({"station_id": updated["station_id"]}).sort("chargerNo", 1))
     
     return format_station_with_chargers(updated, chargers).dict()
-
 
 # ---------------------------------------------------------
 # DELETE /delete_stations/{id} - Delete Station and all Chargers
@@ -11140,7 +11217,7 @@ async def acreport_submit(body: ACSubmitIn, current: UserClaims = Depends(get_cu
     res = await coll.insert_one(doc)
     return {"ok": True, "report_id": str(res.inserted_id)}
 
-# ----------------------------------------------------------------------- device page
+# ----------------------------------------------------------------------- device page (SN)
 def get_device_collection_for(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
@@ -11153,12 +11230,66 @@ async def _ensure_util_index(coll):
     except Exception:
         pass
 
-@app.get("/utilization/stream")
-async def utilization_stream(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+# @app.get("/utilization/stream")
+# async def utilization_stream(request: Request, sn: str = Query(...), current: UserClaims = Depends(get_current_user)):
+#     # if current.role != "admin" and station_id not in set(current.station_ids):
+#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
 
-    coll = get_device_collection_for(station_id)
+#     coll = get_device_collection_for(sn)
+#     headers = {
+#         "Content-Type": "text/event-stream",
+#         "Cache-Control": "no-cache",
+#         "Connection": "keep-alive",
+#         "X-Accel-Buffering": "no",
+#     }
+
+#     async def event_generator():
+#         # ส่ง snapshot ล่าสุดก่อน
+#         latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+#         if latest:
+#             latest["_id"] = str(latest["_id"])
+#             latest["timestamp_utc"] = _ensure_utc_iso(latest.get("timestamp_utc"))
+#             yield f"event: init\ndata: {json.dumps(latest)}\n\n"
+
+#         # ต่อด้วย change stream (ต้องเป็น replica set / Atlas tier ที่รองรับ)
+#         try:
+#             async with coll.watch(full_document='updateLookup') as stream:
+#                 async for change in stream:
+#                     if await request.is_disconnected():
+#                         break
+#                     doc = change.get("fullDocument")
+#                     if not doc:
+#                         continue
+#                     doc["_id"] = str(doc["_id"])
+#                     doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
+#                     yield f"data: {json.dumps(doc)}\n\n"
+#         except Exception:
+#             # fallback: ถ้าใช้ไม่ได้ (เช่น standalone) ให้ polling
+#             last_id = latest.get("_id") if latest else None
+#             while not await request.is_disconnected():
+#                 doc = await coll.find_one({}, sort=[("timestamp_utc", -1), ("_id", -1)])
+#                 if doc and str(doc["_id"]) != str(last_id):
+#                     last_id = str(doc["_id"])
+#                     doc["_id"] = last_id
+#                     doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
+#                     yield f"data: {json.dumps(doc)}\n\n"
+#                 else:
+#                     yield ": keep-alive\n\n"
+#                 await asyncio.sleep(5)
+
+#     return StreamingResponse(event_generator(), headers=headers)
+
+
+# ---------------------------------------------------------------------------------------
+# device page (station_id)
+# ---------------------------------------------------------------------------------------
+@app.get("/utilization/stream")
+async def utilization_stream(
+    request: Request, 
+    station_id: str = Query(...),  # ✅ เปลี่ยนจาก sn เป็น station_id
+    current: UserClaims = Depends(get_current_user)
+):
+    coll = get_device_collection_for(station_id) 
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -11201,6 +11332,7 @@ async def utilization_stream(request: Request, station_id: str = Query(...), cur
                 await asyncio.sleep(5)
 
     return StreamingResponse(event_generator(), headers=headers)
+
 
 #-------------------------------------------------------------------- setting page
 def get_setting_collection_for(station_id: str):
