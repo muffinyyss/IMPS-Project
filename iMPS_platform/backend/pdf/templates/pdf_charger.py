@@ -17,13 +17,6 @@ try:
 except Exception:
     requests = None
 
-# -------------------- Title --------------------
-DOCUMENT_TITLE_POST = "Preventive Maintenance Checklist - Charger (POST)"
-DOCUMENT_TITLE_POST_CONT = "Preventive Maintenance Checklist - Charger (POST Continued)"
-DOCUMENT_TITLE_PHOTO_CONT = "Preventive Maintenance - Photos (Continued)"
-DOCUMENT_TITLE_PHOTO_PRE = "Preventive Maintenance - Photos (PRE)"
-DOCUMENT_TITLE_PHOTO_POST = "Preventive Maintenance - Photos (POST)"
-
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
 # -------------------- Fonts TH --------------------
@@ -1691,7 +1684,11 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pdf._table_width = item_w + result_w + remark_w
     pdf._table_start_y = None
     
-    def _ensure_space(height_needed: float):
+    def _ensure_space(height_needed: float) -> bool:
+        """
+        ตรวจสอบและจัดการพื้นที่ในหน้า
+        Returns: True ถ้าขึ้นหน้าใหม่, False ถ้าไม่ได้ขึ้นหน้าใหม่
+        """
         nonlocal y
         page_bottom = pdf.h - pdf.b_margin - SIG_H
 
@@ -1701,7 +1698,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                 pdf.line(pdf._table_x, y, pdf._table_x, page_bottom)
                 table_right = pdf._table_x + pdf._table_width
                 pdf.line(table_right, y, table_right, page_bottom)
-            
+
             pdf.add_page()
             # header() จะถูกเรียกอัตโนมัติโดย add_page()
             y = pdf.get_y()
@@ -1714,8 +1711,10 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
             y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
             pdf.set_font(base_font, "", FONT_MAIN)
-            
+
             pdf._table_start_y = y
+            return True  # ขึ้นหน้าใหม่
+        return False  # ไม่ได้ขึ้นหน้าใหม่
 
     y = _draw_items_table_header(pdf, base_font, x_table, y, item_w, result_w, remark_w, charger_no)
     pdf.set_font(base_font, "", FONT_MAIN)
