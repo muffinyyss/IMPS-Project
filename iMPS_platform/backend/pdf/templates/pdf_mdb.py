@@ -236,17 +236,57 @@ def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
     return loaded_regular
 
 def _split_lines(pdf: FPDF, width: float, text: str, line_h: float):
+    """คำนวณจำนวนบรรทัดและความสูงโดยใช้ logic เดียวกับ _cell_text_in_box"""
     text = "" if text is None else str(text)
-    try:
-        lines = pdf.multi_cell(width, line_h, text, border=0, split_only=True)
-    except TypeError:
-        avg_char_w = max(pdf.get_string_width("ABCDEFGHIJKLMNOPQRSTUVWXYZ") / 26.0, 1)
-        max_chars = max(int(width / avg_char_w), 1)
-        lines, buf = [], text
-        while buf:
-            lines.append(buf[:max_chars])
-            buf = buf[max_chars:]
-    return lines, max(line_h, len(lines) * line_h)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    
+    def _wrap_paragraph(paragraph: str) -> List[str]:
+        # เก็บ leading spaces ไว้
+        leading_spaces = ""
+        stripped = paragraph.lstrip(" ")
+        if len(paragraph) > len(stripped):
+            leading_spaces = paragraph[:len(paragraph) - len(stripped)]
+        
+        words = stripped.split(" ")
+        lines, cur = [], ""
+        
+        for wd in words:
+            candidate = wd if not cur else (cur + " " + wd)
+            # ทุกบรรทัดในย่อหน้าเดียวกันจะมี leading_spaces เหมือนกัน
+            test_str = leading_spaces + candidate
+            if pdf.get_string_width(test_str) <= width:
+                cur = candidate
+            else:
+                if cur:
+                    lines.append(leading_spaces + cur)
+                if pdf.get_string_width(leading_spaces + wd) <= width:
+                    cur = wd
+                else:
+                    # คำยาวเกินไป ต้องแบ่ง
+                    buf = wd
+                    while buf:
+                        k = 1
+                        test_str = leading_spaces + buf[:k] if buf == wd else buf[:k]
+                        while k <= len(buf) and pdf.get_string_width(test_str) <= width:
+                            k += 1
+                            if k <= len(buf):
+                                test_str = leading_spaces + buf[:k] if buf == wd else buf[:k]
+                        lines.append((leading_spaces if buf == wd else "") + buf[: k - 1])
+                        buf = buf[k - 1 :]
+                    cur = ""
+        if cur:
+            lines.append(leading_spaces + cur)
+        return lines
+    
+    paragraphs = text.split("\n")
+    all_lines: List[str] = []
+    for p in paragraphs:
+        if p == "":
+            all_lines.append("")
+            continue
+        all_lines.extend(_wrap_paragraph(p))
+    
+    return all_lines, max(line_h, len(all_lines) * line_h)
 
 def _cell_text_in_box(
     pdf: FPDF,
@@ -274,32 +314,33 @@ def _cell_text_in_box(
         
         words = stripped.split(" ")
         lines, cur = [], ""
-        first_line = True
         
         for wd in words:
             candidate = wd if not cur else (cur + " " + wd)
-            if pdf.get_string_width(leading_spaces + candidate if first_line else candidate) <= inner_w:
+            # ทุกบรรทัดในย่อหน้าเดียวกันจะมี leading_spaces เหมือนกัน
+            if pdf.get_string_width(leading_spaces + candidate) <= inner_w:
                 cur = candidate
             else:
                 if cur:
-                    # เพิ่ม leading spaces เฉพาะบรรทัดแรก
-                    lines.append(leading_spaces + cur if first_line else cur)
-                    first_line = False
-                if pdf.get_string_width(wd) <= inner_w:
+                    # เพิ่ม leading spaces ทุกบรรทัด
+                    lines.append(leading_spaces + cur)
+                if pdf.get_string_width(leading_spaces + wd) <= inner_w:
                     cur = wd
                 else:
+                    # คำยาวเกินไป ต้องแบ่ง
                     buf = wd
                     while buf:
                         k = 1
-                        while (
-                            k <= len(buf) and pdf.get_string_width(buf[:k]) <= inner_w
-                        ):
+                        test_str = leading_spaces + buf[:k] if buf == wd else buf[:k]
+                        while k <= len(buf) and pdf.get_string_width(test_str) <= inner_w:
                             k += 1
-                        lines.append(buf[: k - 1])
+                            if k <= len(buf):
+                                test_str = leading_spaces + buf[:k] if buf == wd else buf[:k]
+                        lines.append((leading_spaces if buf == wd else "") + buf[: k - 1])
                         buf = buf[k - 1 :]
                     cur = ""
         if cur:
-            lines.append(leading_spaces + cur if first_line else cur)
+            lines.append(leading_spaces + cur)
         return lines
 
     paragraphs = text.split("\n")
@@ -321,8 +362,12 @@ def _cell_text_in_box(
 
     cur_y = start_y
     pdf.set_xy(inner_x, cur_y)
-    for ln in lines:
+    for i, ln in enumerate(lines):
         if cur_y > y + h - lh:
+            # ถ้าความสูงของ box ไม่พอ ให้ข้ามการแสดงบรรทัดที่เหลือ
+            # (แต่ไม่ควรเกิดเพราะเราได้คำนวณความสูงไว้แล้ว)
+            if PDF_DEBUG:
+                print(f"[WARNING] Text overflow in box at y={y}, h={h}, line={i+1}/{len(lines)}: {ln[:50]}")
             break
         pdf.set_xy(inner_x, cur_y)
         pdf.cell(inner_w, lh, ln, border=0, ln=1, align=align)
@@ -542,6 +587,13 @@ def _format_voltage_measurement_order_full(measures: dict, key: str) -> str:
             group = []
     if group:
         lines.append(", ".join(group))
+    
+    # เพิ่มการเยื้อง 8 ช่องว่างให้บรรทัดที่ 2+ เพื่อให้ตรงกับบรรทัดแรก
+    if len(lines) > 1:
+        result = [lines[0]]
+        for line in lines[1:]:
+            result.append("        " + line)
+        return "\n".join(result)
     return "\n".join(lines)
 
 def _format_voltage_measurement_simple(measures: dict, key: str) -> str:
@@ -744,12 +796,12 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                         else:
                             sub_title = f"ทดสอบปุ่ม Trip Test เบรกเกอร์ Main {sub_idx}"
                 
-                # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc.
-                lines.append(f"   \t{main_idx}.{sub_idx}) {sub_title}")
+                # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc. - เยื้อง 4 ช่องว่าง
+                lines.append(f"    {main_idx}.{sub_idx}) {sub_title}")
                 
-                # เพิ่มข้อมูล voltage ถ้ามี (ในบรรทัดถัดไป)
+                # เพิ่มข้อมูล voltage ถ้ามี (ในบรรทัดถัดไป) - เยื้อง 8 ช่องว่างให้ตรงกับข้อความใน sub_title
                 if i in voltage_data:
-                    lines.append(f"   \t{voltage_data[i]}")
+                    lines.append(f"        {voltage_data[i]}")
                 
                 results.append(_norm_result(sub_data.get("pf", "")))
                 remarks.append((sub_data.get("remark") or "").strip())
@@ -759,16 +811,21 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 sub_idx = subs[i][0]
                 # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
                 remark_text = r if (r and r != "-") else "-"
+                
+                # เพิ่มบรรทัดว่าง 1 บรรทัดก่อน remark text เพื่อให้ตรงกับหัวข้อข้อย่อย
+                remark_lines.append("")
+                
+                # แสดง remark text
                 remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
                 
                 # เพิ่มบรรทัดว่างให้ตรงกับจำนวนบรรทัดของ voltage measurements
-                # นับจำนวนบรรทัดของข้อย่อยนี้ใน lines
-                item_line_text = lines[i + 1] if i + 1 < len(lines) else ""
-                # นับ newline ในข้อย่อยนี้ (ไม่รวมบรรทัดหัวข้อย่อย)
-                voltage_line_count = item_line_text.count('\n')
-                # เพิ่มบรรทัดว่างเท่ากับจำนวนบรรทัดของ voltage measurements
-                for _ in range(voltage_line_count):
-                    remark_lines.append("")
+                # ถ้ามี voltage data ให้นับจำนวนบรรทัด (นับจาก \n)
+                if i in voltage_data:
+                    voltage_text = voltage_data[i]
+                    voltage_line_count = voltage_text.count('\n')
+                    # เพิ่มบรรทัดว่างเท่ากับจำนวนบรรทัดของ voltage
+                    for _ in range(voltage_line_count):
+                        remark_lines.append("")
             
             combined_remark = "\n".join(remark_lines)
             
@@ -1491,18 +1548,49 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                 text_lines = item_text.split("\n")
                 remark_lines = item_remark.split("\n") if item_remark else []
                 
-                # สร้าง dict สำหรับ lookup remark ของแต่ละข้อย่อย
+                # สร้าง dict สำหรับ lookup remark ของแต่ละข้อย่อย (รองรับ remark หลายบรรทัด)
                 remark_dict = {}
+                current_sub_key = None
+                current_remark_parts = []
+                
                 for r_line in remark_lines:
-                    r_line = r_line.strip()
-                    if not r_line:
-                        continue
-                    # parse "3.1) xxx" หรือ "3.1) -"
-                    match = re.match(r"^(\d+\.\d+)\)\s*(.*)$", r_line)
+                    r_line_stripped = r_line.strip()
+                    
+                    # ตรวจสอบว่าเป็นการเริ่มข้อย่อยใหม่หรือไม่ (เช่น "8.1) xxx")
+                    match = re.match(r"^(\d+\.\d+)\)\s*(.*)$", r_line_stripped)
+                    
                     if match:
-                        sub_key = match.group(1)  # เช่น "3.1"
+                        # ถ้ามีข้อย่อยก่อนหน้า ให้บันทึก remark ที่รวมไว้
+                        if current_sub_key and current_remark_parts:
+                            # รวมบรรทัดโดยบรรทัดที่ 2+ จะมีช่องว่างเยื้องเพิ่ม (ตรงกับความยาวของ "หมายเหตุ: ")
+                            first_line = current_remark_parts[0]
+                            if len(current_remark_parts) > 1:
+                                # คำนวณความยาวของ prefix "หมายเหตุ: " หรือ "Remark: "
+                                indent = " " * (len(label_remark) + 2)  # +2 สำหรับ ": "
+                                continuation_lines = [indent + line for line in current_remark_parts[1:]]
+                                remark_dict[current_sub_key] = first_line + "\n" + "\n".join(continuation_lines)
+                            else:
+                                remark_dict[current_sub_key] = first_line
+                        
+                        # เริ่มข้อย่อยใหม่
+                        current_sub_key = match.group(1)  # เช่น "8.1"
                         sub_remark = match.group(2).strip()
-                        remark_dict[sub_key] = sub_remark
+                        current_remark_parts = [sub_remark] if sub_remark else []
+                    else:
+                        # บรรทัดต่อเนื่องของ remark เดิม
+                        if current_sub_key and r_line_stripped:
+                            current_remark_parts.append(r_line_stripped)
+                
+                # บันทึก remark ของข้อย่อยสุดท้าย
+                if current_sub_key and current_remark_parts:
+                    # รวมบรรทัดโดยบรรทัดที่ 2+ จะมีช่องว่างเยื้องเพิ่ม
+                    first_line = current_remark_parts[0]
+                    if len(current_remark_parts) > 1:
+                        indent = " " * (len(label_remark) + 2)
+                        continuation_lines = [indent + line for line in current_remark_parts[1:]]
+                        remark_dict[current_sub_key] = first_line + "\n" + "\n".join(continuation_lines)
+                    else:
+                        remark_dict[current_sub_key] = first_line
                 
                 # สร้าง question text ใหม่พร้อม remark
                 result_lines = []
@@ -1523,18 +1611,18 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                         if sub_match:
                             # ถ้ามีข้อย่อยก่อนหน้า ให้แทรก remark ก่อน
                             if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
-                                result_lines.append(f"   {label_remark}: {remark_dict[current_sub_key]}")
+                                result_lines.append(f"        {label_remark}: {remark_dict[current_sub_key]}")
                             
                             # เริ่มข้อย่อยใหม่
                             current_sub_key = sub_match.group(1)
                             result_lines.append(f"   {line}")
                         else:
                             # ข้อมูลต่อเนื่องของข้อย่อยปัจจุบัน
-                            result_lines.append(f"   {line}")
+                            result_lines.append(f"        {line}")
                 
                 # แทรก remark ของข้อย่อยสุดท้าย
                 if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
-                    result_lines.append(f"   {label_remark}: {remark_dict[current_sub_key]}")
+                    result_lines.append(f"        {label_remark}: {remark_dict[current_sub_key]}")
                 
                 question_text_pre = "\n".join(result_lines)
             else:
