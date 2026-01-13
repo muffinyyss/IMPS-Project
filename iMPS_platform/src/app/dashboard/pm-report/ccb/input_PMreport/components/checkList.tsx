@@ -220,7 +220,7 @@ type PhotoItem = {
 type PF = "PASS" | "FAIL" | "NA" | "";
 
 const VOLTAGE_FIELDS_CCB = ["L-N", "L-G", "N-G"] as const;
-const LABELS: Record<string, string> = { 
+const LABELS: Record<string, string> = {
     "L-N": "L-N", "L-G": "L-G", "N-G": "N-G"
 };
 
@@ -936,9 +936,28 @@ export default function CCBPMReport() {
         return (photos[key]?.length ?? 0) < 1;
     }), [REQUIRED_PHOTO_KEYS_PRE, photos, rows]);
 
+    // const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_KEYS_POST.filter((key) => {
+    //     return (photos[key]?.length ?? 0) < 1;
+    // }), [REQUIRED_PHOTO_KEYS_POST, photos]);
+
     const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_KEYS_POST.filter((key) => {
+        // Map photo key back to row key to check if it was N/A in Pre-PM
+        let rowKey: string | null = null;
+        if (key === 90) {
+            rowKey = "r9_main";
+        } else if (key >= 101 && key <= 106) {
+            rowKey = `r10_sub${key - 100}`;
+        } else if (key >= 30 && key < 90) {
+            const qNo = Math.floor(key / 10);
+            const subNo = key % 10;
+            rowKey = `r${qNo}_${subNo}`;
+        } else {
+            rowKey = `r${key}`;
+        }
+        // Skip if this item was N/A in Pre-PM
+        if (rowKey && rowsPre[rowKey]?.pf === "NA") return false;
         return (photos[key]?.length ?? 0) < 1;
-    }), [REQUIRED_PHOTO_KEYS_POST, photos]);
+    }), [REQUIRED_PHOTO_KEYS_POST, photos, rowsPre]);
 
     const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
     const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
@@ -967,9 +986,9 @@ export default function CCBPMReport() {
     }).flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [rowsPre, subBreakerCount]);
 
     const allPFAnsweredPre = useMemo(() => true, []); // Pre mode doesn't require PF
-    const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every((k) => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
     const missingPFItemsPre = useMemo(() => [] as number[], []);
-    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => !rows[k]?.pf).map((k) => {
+    const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every((k) => rowsPre[k]?.pf === "NA" || rows[k]?.pf !== ""), [rows, PF_KEYS_POST, rowsPre]);
+    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => rowsPre[k]?.pf !== "NA" && !rows[k]?.pf).map((k) => {
         // Handle r9_main
         if (k === "r9_main") return "9";
         // Handle r10_sub1, r10_sub2, etc.
@@ -981,7 +1000,7 @@ export default function CCBPMReport() {
             return match[2] ? `${match[1]}.${match[2]}` : match[1];
         }
         return k;
-    }), [rows, PF_KEYS_POST]);
+    }), [rows, PF_KEYS_POST, rowsPre]);
 
     // Remark validation
     const validRemarkKeysPre = useMemo(() => QUESTIONS.filter((q) => q.no !== 11).flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [subBreakerCount]);
@@ -1018,10 +1037,37 @@ export default function CCBPMReport() {
         return !rowKeys.every(k => rowsPre[k]?.pf === "NA");
     }).flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [rowsPre, subBreakerCount]);
 
-    const missingRemarksPost = useMemo(() => {
+    // const missingRemarksPost = useMemo(() => {
+    //     const missing: string[] = [];
+    //     validRemarkKeysPost.forEach((key) => {
+    //         const val = rows[key];
+    //         if (!val?.remark?.trim()) {
+    //             // Handle r9_main
+    //             if (key === "r9_main") {
+    //                 missing.push("9");
+    //                 return;
+    //             }
+    //             // Handle r10_sub1, r10_sub2, etc.
+    //             const subMatch = key.match(/^r10_sub(\d+)$/);
+    //             if (subMatch) {
+    //                 missing.push(`10.${subMatch[1]}`);
+    //                 return;
+    //             }
+    //             // Handle regular keys like r1, r3_1, r3_2
+    //             const match = key.match(/^r(\d+)_?(\d+)?$/);
+    //             if (match) {
+    //                 missing.push(match[2] ? `${match[1]}.${match[2]}` : match[1]);
+    //             }
+    //         }
+    //     });
+    //     return missing;
+    // }, [rows, validRemarkKeysPost]);
+
+     const missingRemarksPost = useMemo(() => {
         const missing: string[] = [];
         validRemarkKeysPost.forEach((key) => {
-            const val = rows[key];
+            if (rowsPre[key]?.pf === "NA") return;
+           const val = rows[key];
             if (!val?.remark?.trim()) {
                 // Handle r9_main
                 if (key === "r9_main") {
@@ -1042,7 +1088,7 @@ export default function CCBPMReport() {
             }
         });
         return missing;
-    }, [rows, validRemarkKeysPost]);
+    }, [rows, validRemarkKeysPost, rowsPre]);
     const allRemarksFilledPost = missingRemarksPost.length === 0;
 
     // Input validation (measures)
@@ -1494,7 +1540,7 @@ export default function CCBPMReport() {
                             {/* Header with count and add button - underline style */}
                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-100">
                                 <Typography className="tw-text-blue-gray-700">
-                                    {lang === "th" 
+                                    {lang === "th"
                                         ? `จำนวนเบรกเกอร์วงจรย่อย: ${subBreakerCount} ตัว`
                                         : `Sub-circuit Breakers: ${subBreakerCount}`}
                                 </Typography>
