@@ -511,15 +511,19 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     # รวมรูปของข้อหลักและข้อย่อยทั้งหมด เช่น g4, g4_1, r4_1, r4_2
     photos = doc.get("photos") or {}
+    print(f"[DEBUG] _get_photo_items_for_idx(idx={idx})")
+    print(f"[DEBUG] photos keys: {list(photos.keys())}")
     items_in = []
 
     prefix_g = f"g{idx}"
     prefix_r = f"r{idx}_"
+    print(f"[DEBUG] Looking for keys: {prefix_g}, {prefix_g}_*, {prefix_r}*")
 
     for k, items in photos.items():
         # รองรับทั้ง g{idx} และ g{idx}_* และ r{idx}_* (เช่น r4_1, r6_2)
         if k == prefix_g or k.startswith(prefix_g + "_") or k.startswith(prefix_r):
             if isinstance(items, list):
+                print(f"[DEBUG] Found key '{k}' with {len(items)} items")
                 items_in.extend(items)
 
     out: List[dict] = []
@@ -574,6 +578,8 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
         if len(out) >= PHOTO_MAX_PER_ROW:
             break
 
+    print(f"[DEBUG] _get_photo_items_for_idx(idx={idx}) returning {len(out)} items")
+    print(f"[DEBUG] Items: {[item.get('url', 'NO_URL')[:80] for item in out]}")
     return out[:PHOTO_MAX_PER_ROW]
 
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
@@ -2086,15 +2092,74 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     y = _draw_photos_table_header(pdf, base_font, x_table, y, q_w, g_w, header_question, header_photos)
     pdf.set_font(base_font, "", FONT_MAIN)
 
-    # Post-PM photos: ใช้ measures สำหรับแสดง voltage measurements
+    # Post-PM photos: แสดงทุกข้อที่มีรูปใน photos field
     # รวม row_titles และ sub_row_titles เข้าด้วยกัน
     combined_titles = {**row_titles, **sub_row_titles}
+
+    # ดึงรายการข้อทั้งหมดที่มีรูป
+    photos_dict = doc.get("photos") or {}
+    photo_indices = set()
+    for key in photos_dict.keys():
+        # แยก index จาก key เช่น g2 -> 2, g4_1 -> 4, g8_2 -> 8
+        match = re.match(r"g(\d+)", key)
+        if match:
+            photo_indices.add(int(match.group(1)))
+
+    print(f"[DEBUG] Photos POST: Found photos for indices: {sorted(photo_indices)}")
+
+    # สร้าง photo rows สำหรับทุกข้อที่มีรูป
     photo_rows = _build_photo_rows_grouped(combined_titles, doc.get("measures") or {}, doc.get("rows") or {}, lang)
+
+    # เพิ่มข้อที่มีรูปแต่ไม่มีใน photo_rows
+    existing_indices = {int(it.get("idx") or 0) for it in photo_rows}
+    print(f"[DEBUG] Existing indices from photo_rows: {sorted(existing_indices)}")
+
+    for idx in sorted(photo_indices):
+        if idx not in existing_indices and idx != 11:  # ข้อ 11 คือทำความสะอาด ไม่แสดงใน POST
+            print(f"[DEBUG] Adding missing index {idx} to photo_rows")
+            # สร้าง row ใหม่สำหรับข้อที่มีรูปแต่ไม่มีใน checklist
+            main_key = f"r{idx}"
+            main_title = combined_titles.get(main_key, f"ข้อ {idx}" if lang == "th" else f"Item {idx}")
+
+            lines = [f"  {idx}) {main_title}"]
+
+            # หา sub items ที่มีรูป
+            sub_keys = []
+            for key in photos_dict.keys():
+                match = re.match(rf"g{idx}_(\d+)", key)
+                if match:
+                    sub_idx = int(match.group(1))
+                    sub_keys.append(sub_idx)
+
+            print(f"[DEBUG] Index {idx} has sub_keys: {sorted(sub_keys)}")
+
+            # เพิ่ม sub items
+            for sub_idx in sorted(sub_keys):
+                sub_key = f"r{idx}_{sub_idx}"
+                sub_title = combined_titles.get(sub_key, f"ข้อย่อย {idx}.{sub_idx}" if lang == "th" else f"Subitem {idx}.{sub_idx}")
+                lines.append(f"        {idx}.{sub_idx}) {sub_title}")
+
+            photo_rows.append({
+                "idx": idx,
+                "text": "\n".join(lines),
+                "measures": doc.get("measures") or {}
+            })
+
+    # เรียงลำดับตาม idx
+    photo_rows.sort(key=lambda x: int(x.get("idx") or 0))
+    print(f"[DEBUG] Final photo_rows indices: {[int(it.get('idx') or 0) for it in photo_rows]}")
 
     for it in photo_rows:
         idx = int(it.get("idx") or 0)
+
+        # ข้าม ข้อ 11 (ทำความสะอาด) ไม่แสดงใน photos post
+        if idx == 11:
+            continue
+
         question_text = it.get("text", "")  # ใช้ text ที่มี subitems แล้ว
         img_items = _get_photo_items_for_idx(doc, idx)
+
+        print(f"[DEBUG] Processing idx={idx}, found {len(img_items)} images")
 
         # คำนวณความสูงจริงของแถวรูป
         _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)
