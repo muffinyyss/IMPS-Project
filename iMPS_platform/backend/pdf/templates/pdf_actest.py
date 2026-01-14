@@ -399,7 +399,7 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
     return y
 
 def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
-                                     table_width=None, safety=None):
+                                     table_width=None, safety=None, doc=None):
     
     # =========================================================
     # 🛠️ DEBUG ZONE: แสดงค่า safety ออกมาดู
@@ -480,6 +480,23 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     pdf.cell(table_width, 6, "Testing Topics for Safety (Specifically Power Supply/Input Side)", border=0, ln=1, align="L")
 
     y = pdf.get_y() + 2
+
+    # -----------------------------------------------------------
+    # 🟢 ส่วน Phase Sequence
+    # -----------------------------------------------------------
+    doc = doc or {}
+    phase_val = str(doc.get("phaseSequence") or "").strip()
+
+    pdf.set_font(base_font, "B", font_size)
+    pdf.set_xy(x, y)
+    pdf.cell(28, 6, "Phase Sequence :", border=0, align="L")
+
+    pdf.set_xy(x + 28, y)
+    pdf.set_font(base_font, "", font_size)
+    pdf.cell(50, 6, phase_val, border=0, align="L")
+
+    y += 8
+
     table_y0 = y
     lw_old = pdf.line_width
     pdf.set_line_width(lw_old)
@@ -505,16 +522,17 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     # ==========================================
     # ส่วนที่ 1: PE.Continuity (แสดงผล Pass/Fail)
     # ==========================================
-    items = ["Left Cover", "Right Cover", "Front Cover", "Back Cover", "Charger Stand", "Charger Case"]
-    
+    items = ["Left Cover", "Right Cover", "Front Cover", "Back Cover", "Pin PE"] #, "Charger Stand", "Charger Case"]
+
     # Mapping ชื่อรายการ -> Key ใน JSON ของคุณ
     pe_key_map = {
         "Left Cover": "leftCover",
         "Right Cover": "rightCover",
         "Front Cover": "frontCover",
         "Back Cover": "backCover",
-        "Charger Stand": "chargerStand",
-        "Charger Case": "chargerCase"
+        "Pin PE": "pinPE",
+        # "Charger Stand": "chargerStand",
+        # "Charger Case": "chargerCase"
     }
 
     # วาด Header PE ด้านซ้าย
@@ -769,7 +787,8 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
         ("State B",          "stateB"),
         ("State C",          "stateC"),
         ("CP Short",         "CPShort"),
-        ("PE Cut",           "PECut")
+        ("PE Cut",           "PECut"),
+        ("Emergency",        "emergency")
     ]
 
     # ดึงข้อมูล r1, r2, r3 ออกมาเตรียมไว้ (เพื่อความง่ายในการเรียกใช้)
@@ -945,57 +964,11 @@ def draw_remark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float
     
     # 1. รับข้อมูล (กัน Error ถ้า doc เป็น None)
     doc = doc or {}
-    
-    # =======================================================
-    # 🟢 ส่วน Logic: กำหนดสถานะ Checkbox
-    # =======================================================
-    
-    # 1. Phase Sequence (ยังคงดึงจาก Database ตามปกติ)
-    phase_val = str(doc.get("phaseSequence") or "").strip()
-    SHOW_PHASE_L1 = (phase_val == "L1L2L3")
-    SHOW_PHASE_L3 = (phase_val == "L3L2L1")
 
     # 2. Remark Text
     remark_text = doc.get("remarks", {}).get("testRematk", "")
 
-    # 3. Symbol (PASS / Not PASS) -> ปรับเป็น Hardcode ไม่ดึง Data
-    SHOW_PASS     = True   # ✅ ให้แสดงติ๊กถูกเสมอ
-    SHOW_NOT_PASS = True   # ❌ ให้แสดงกากบาทเสมอ
-    
-    # ส่วน N/A (ถ้าอยากดึง Data ก็ใช้ Logic เดิม หรือจะ Hardcode ก็ได้)
-    symbol_val = str(doc.get("symbol") or "").lower().replace(" ", "")
-    SHOW_NA    = (symbol_val in ["na", "n/a"])
-
     y -= 2
-
-    # -----------------------------------------------------------
-    # ฟังก์ชันวาด Checkbox Helper
-    # -----------------------------------------------------------
-    def _draw_check(pdf_obj, bx, by, size, checked=False, style="tick"):
-        # วาดกรอบสี่เหลี่ยม
-        pdf_obj.rect(bx, by, size, size)
-        
-        if checked:
-            original_font = pdf_obj.font_family
-            original_style = pdf_obj.font_style
-            original_size = pdf_obj.font_size_pt
-            
-            # ใช้ Font ZapfDingbats
-            # '3' = ติ๊กถูก (✓), '7' = กากบาท (✗)
-            char = "7" if style == "cross" else "3"
-            
-            try:
-                pdf_obj.set_font("ZapfDingbats", "", original_size)
-                pdf_obj.set_xy(bx, by)
-                pdf_obj.cell(size, size, char, border=0, align="C")
-            except:
-                # Fallback
-                fallback_char = "X" if style == "cross" else "/"
-                pdf_obj.set_font("Arial", "", original_size)
-                pdf_obj.set_xy(bx, by)
-                pdf_obj.cell(size, size, fallback_char, border=0, align="C")
-            
-            pdf_obj.set_font(original_font, original_style, original_size)
 
     # -----------------------------------------------------------
     # ส่วน Remark Section (วาดเส้น + ข้อความ)
@@ -1022,120 +995,18 @@ def draw_remark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float
         pdf.multi_cell(w - 25, line_gap, remark_text, border=0, align="L")
 
     y += remark_h + 3
-    
-    # -----------------------------------------------------------
-    # ส่วน Symbol & Phase Section
-    # -----------------------------------------------------------
-    section_h = 5
-    
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(x, y)
-    pdf.cell(15, 6, "Symbol :", border=0, align="L")
-    
-    checkbox_size = 5
-    checkbox_y = y + 1
-    
-    # 1. PASS (แสดงติ๊กถูกเสมอ)
-    cx = x + 16  
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PASS, style="tick")
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(12, 6, "PASS", border=0, align="L")
-    
-    # 2. Not PASS (แสดงกากบาทเสมอ)
-    cx += 18 
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_NOT_PASS, style="cross")
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.cell(20, 6, "Not PASS", border=0, align="L")
-    
-    # 3. N/A (ตาม Logic Data)
-    cx += 26
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_NA, style="tick")
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.cell(25, 6, "N/A (Not TEST)", border=0, align="L")
-    
-    # -----------------------------------------------------------
-    # 🟢 ส่วน Phase Sequence (ตาม Logic Data)
-    # -----------------------------------------------------------
-    phase_label_x = cx + 32 
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(phase_label_x, y)
-    pdf.cell(28, 6, "Phase Sequence :", border=0, align="L")
-    
-    # Checkbox 1: L1-L2-L3
-    cx = phase_label_x + 28
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PHASE_L1, style="tick")
-    
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(18, 6, "L1-L2-L3", border=0, align="L")
-    
-    # Checkbox 2: L3-L2-L1
-    cx += 24
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PHASE_L3, style="tick")
-    
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.cell(18, 6, "L3-L2-L1", border=0, align="L")
 
-    y += section_h
-    
     return y
 
 def draw_IMGremark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float, w: float, doc: dict = None) -> float:
-    
+
     # 1. รับข้อมูล (กัน Error ถ้า doc เป็น None)
     doc = doc or {}
-    
-    # =======================================================
-    # 🟢 ส่วน Logic: กำหนดสถานะ Checkbox
-    # =======================================================
-    
-    # 1. Phase Sequence (ยังคงดึงจาก Database ตามปกติ)
-    phase_val = str(doc.get("phaseSequence") or "").strip()
-    SHOW_PHASE_L1 = (phase_val == "L1L2L3")
-    SHOW_PHASE_L3 = (phase_val == "L3L2L1")
 
     # 2. Remark Text
     remark_text = doc.get("remarks", {}).get("imgRemark", "")
 
-    # 3. Symbol (PASS / Not PASS) -> ปรับเป็น Hardcode ไม่ดึง Data
-    SHOW_PASS     = True   # ✅ ให้แสดงติ๊กถูกเสมอ
-    SHOW_NOT_PASS = True   # ❌ ให้แสดงกากบาทเสมอ
-    
-    # ส่วน N/A (ถ้าอยากดึง Data ก็ใช้ Logic เดิม หรือจะ Hardcode ก็ได้)
-    symbol_val = str(doc.get("symbol") or "").lower().replace(" ", "")
-    SHOW_NA    = (symbol_val in ["na", "n/a"])
-
     y -= 2
-
-    # -----------------------------------------------------------
-    # ฟังก์ชันวาด Checkbox Helper
-    # -----------------------------------------------------------
-    def _draw_check(pdf_obj, bx, by, size, checked=False, style="tick"):
-        # วาดกรอบสี่เหลี่ยม
-        pdf_obj.rect(bx, by, size, size)
-        
-        if checked:
-            original_font = pdf_obj.font_family
-            original_style = pdf_obj.font_style
-            original_size = pdf_obj.font_size_pt
-            
-            # ใช้ Font ZapfDingbats
-            # '3' = ติ๊กถูก (✓), '7' = กากบาท (✗)
-            char = "7" if style == "cross" else "3"
-            
-            try:
-                pdf_obj.set_font("ZapfDingbats", "", original_size)
-                pdf_obj.set_xy(bx, by)
-                pdf_obj.cell(size, size, char, border=0, align="C")
-            except:
-                # Fallback
-                fallback_char = "X" if style == "cross" else "/"
-                pdf_obj.set_font("Arial", "", original_size)
-                pdf_obj.set_xy(bx, by)
-                pdf_obj.cell(size, size, fallback_char, border=0, align="C")
-            
-            pdf_obj.set_font(original_font, original_style, original_size)
 
     # -----------------------------------------------------------
     # ส่วน Remark Section (วาดเส้น + ข้อความ)
@@ -1162,63 +1033,7 @@ def draw_IMGremark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: fl
         pdf.multi_cell(w - 25, line_gap, remark_text, border=0, align="L")
 
     y += remark_h + 3
-    
-    # -----------------------------------------------------------
-    # ส่วน Symbol & Phase Section
-    # -----------------------------------------------------------
-    section_h = 5
-    
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(x, y)
-    pdf.cell(15, 6, "Symbol :", border=0, align="L")
-    
-    checkbox_size = 5
-    checkbox_y = y + 1
-    
-    # 1. PASS (แสดงติ๊กถูกเสมอ)
-    cx = x + 16  
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PASS, style="tick")
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(12, 6, "PASS", border=0, align="L")
-    
-    # 2. Not PASS (แสดงกากบาทเสมอ)
-    cx += 18 
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_NOT_PASS, style="cross")
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.cell(20, 6, "Not PASS", border=0, align="L")
-    
-    # 3. N/A (ตาม Logic Data)
-    cx += 26
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_NA, style="tick")
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.cell(25, 6, "N/A (Not TEST)", border=0, align="L")
-    
-    # -----------------------------------------------------------
-    # 🟢 ส่วน Phase Sequence (ตาม Logic Data)
-    # -----------------------------------------------------------
-    phase_label_x = cx + 32 
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(phase_label_x, y)
-    pdf.cell(28, 6, "Phase Sequence :", border=0, align="L")
-    
-    # Checkbox 1: L1-L2-L3
-    cx = phase_label_x + 28
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PHASE_L1, style="tick")
-    
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.cell(18, 6, "L1-L2-L3", border=0, align="L")
-    
-    # Checkbox 2: L3-L2-L1
-    cx += 24
-    _draw_check(pdf, cx, checkbox_y, checkbox_size, checked=SHOW_PHASE_L3, style="tick")
-    
-    pdf.set_xy(cx + checkbox_size + 1, y)
-    pdf.cell(18, 6, "L3-L2-L1", border=0, align="L")
 
-    y += section_h
-    
     return y
 
 
@@ -1857,7 +1672,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         y=y,
         base_font=base_font,
         font_size=FONT_MAIN,
-        safety=electrical_safety
+        safety=electrical_safety,
+        doc=doc
     )
     
     y += 2
