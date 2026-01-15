@@ -10,6 +10,7 @@ import {
   LanguageIcon,
   MapPinIcon,
   ChevronRightIcon,
+  BellIcon,
 } from "@heroicons/react/24/solid";
 
 import {
@@ -19,12 +20,12 @@ import {
 
 // Custom Charger Box Icon
 const ChargerBoxIcon = ({ className }: { className?: string }) => (
-  <svg 
-    viewBox="0 0 24 24" 
-    fill="currentColor" 
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
     className={className}
   >
-    <path d="M18 10a1 1 0 0 1-1-1a1 1 0 0 1 1-1a1 1 0 0 1 1 1a1 1 0 0 1-1 1m-3 7v-5h1V7a2 2 0 0 0-2-2h-1V3h-2v2H9V3H7v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2h1v-1h-2m-2 0H6V7h8v10m2-5h1v2h2v-4a2 2 0 0 0-2-2h-1v4m-5-5l-3 4.5h2V17l3-4.5h-2V9Z"/>
+    <path d="M18 10a1 1 0 0 1-1-1a1 1 0 0 1 1-1a1 1 0 0 1 1 1a1 1 0 0 1-1 1m-3 7v-5h1V7a2 2 0 0 0-2-2h-1V3h-2v2H9V3H7v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2h1v-1h-2m-2 0H6V7h8v10m2-5h1v2h2v-4a2 2 0 0 0-2-2h-1v4m-5-5l-3 4.5h2V17l3-4.5h-2V9Z" />
   </svg>
 );
 
@@ -42,6 +43,22 @@ export function DashboardNavbar() {
   const HIDE_TOPBAR = ["/pages", "/mainpages"];
   const hideTopbar = HIDE_TOPBAR.some((p) => pathname === p || pathname.startsWith(p + "/"));
   const isAuthPage = pathname.startsWith("/auth");
+
+  const [userRole, setUserRole] = useState<string>("");
+
+  useEffect(() => {
+    const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
+    if (token) {
+      try {
+        const payload = token.split(".")[1];
+        const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+        const claims = JSON.parse(json);
+        setUserRole(claims.role || "user");
+      } catch {
+        setUserRole("user");
+      }
+    }
+  }, []);
 
   // tooltip
   const [showStationTooltip, setShowStationTooltip] = useState(false);
@@ -63,6 +80,9 @@ export function DashboardNavbar() {
 
   // ===== Language State =====
   const [lang, setLang] = useState<Lang>("th");
+
+  // ===== Notification State =====
+  const [notificationCount, setNotificationCount] = useState<number>(0);
 
   useEffect(() => {
     const savedLang = localStorage.getItem("app_language") as Lang | null;
@@ -105,7 +125,7 @@ export function DashboardNavbar() {
     const stationId = localStorage.getItem("selected_station_id") ?? "";
     const stationName = localStorage.getItem("selected_station_name") ?? stationId;
     const chargerNo = localStorage.getItem("selected_charger_no") ?? "";
-    
+
     setSelectedSN(prev => prev !== sn ? sn : prev);
     setSelectedStationId(prev => prev !== stationId ? stationId : prev);
     setSelectedStationName(prev => prev !== stationName ? stationName : prev);
@@ -123,23 +143,23 @@ export function DashboardNavbar() {
     const handleChargerEvent = () => {
       requestAnimationFrame(loadSelection);
     };
-    
+
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "selected_sn" || 
-          e.key === "selected_station_id" || 
-          e.key === "selected_station_name" || 
-          e.key === "selected_charger_no") {
+      if (e.key === "selected_sn" ||
+        e.key === "selected_station_id" ||
+        e.key === "selected_station_name" ||
+        e.key === "selected_charger_no") {
         requestAnimationFrame(loadSelection);
       }
     };
-    
+
     window.addEventListener("storage", handleStorageChange);
     window.addEventListener("charger:selected", handleChargerEvent);
     window.addEventListener("charger:deselected", handleChargerEvent);
     window.addEventListener("station:selected", handleChargerEvent);
-    
+
     const interval = setInterval(loadSelection, 1000);
-    
+
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("charger:selected", handleChargerEvent);
@@ -154,23 +174,23 @@ export function DashboardNavbar() {
     const originalSetItem = localStorage.setItem.bind(localStorage);
     localStorage.setItem = (key: string, value: string) => {
       originalSetItem(key, value);
-      
-      if (key === "selected_sn" || 
-          key === "selected_station_id" || 
-          key === "selected_station_name" || 
-          key === "selected_charger_no") {
-        window.dispatchEvent(new CustomEvent("localStorageChange", { 
-          detail: { key, value } 
+
+      if (key === "selected_sn" ||
+        key === "selected_station_id" ||
+        key === "selected_station_name" ||
+        key === "selected_charger_no") {
+        window.dispatchEvent(new CustomEvent("localStorageChange", {
+          detail: { key, value }
         }));
       }
     };
-    
+
     const handleLocalStorageChange = () => {
       requestAnimationFrame(loadSelection);
     };
-    
+
     window.addEventListener("localStorageChange", handleLocalStorageChange);
-    
+
     return () => {
       localStorage.setItem = originalSetItem;
       window.removeEventListener("localStorageChange", handleLocalStorageChange);
@@ -181,6 +201,7 @@ export function DashboardNavbar() {
     currentStation: lang === "th" ? "สถานี" : "Station",
     currentCharger: lang === "th" ? "ตู้ชาร์จ" : "Charger",
     goToStations: lang === "th" ? "เลือกตู้ชาร์จ" : "Select Charger",
+    notifications: lang === "th" ? "การแจ้งเตือน" : "Notifications",
   };
 
   return (
@@ -376,12 +397,48 @@ export function DashboardNavbar() {
               <div className="tw-hidden sm:tw-block tw-w-px tw-h-8 tw-bg-gray-200" />
             )}
 
+            {/* Notification Bell */}
+            {userRole !== "technician" && (
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard/notifications")}
+                className="
+                  tw-relative
+                  tw-p-2 sm:tw-p-1.5
+                  tw-bg-gray-900
+                  hover:tw-bg-gray-700
+                  tw-rounded-full
+                  tw-shadow-sm
+                  tw-transition-all tw-duration-200
+                  active:tw-scale-95
+                "
+                title={t.notifications}
+              >
+                <div className="tw-p-1.5 tw-bg-white/20 tw-rounded-lg">
+                  <BellIcon className="tw-h-3 tw-w-3 tw-text-white" />
+                </div>
+                {notificationCount > 0 && (
+                  <span className="
+                    tw-absolute tw--top-1 tw--right-1
+                    tw-flex tw-items-center tw-justify-center
+                    tw-min-w-[18px] tw-h-[18px]
+                    tw-bg-red-500 tw-text-white
+                    tw-text-[10px] tw-font-bold
+                    tw-rounded-full
+                    tw-border-2 tw-border-white
+                  ">
+                    {notificationCount > 99 ? "99+" : notificationCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Language Toggle */}
             <button
               type="button"
               onClick={toggleLanguage}
               className="
-                tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-1.5
+                tw-flex tw-items-center tw-gap-2 tw-px-2 sm:tw-px-3 tw-py-1.5
                 tw-bg-gray-900
                 hover:tw-bg-gray-700
                 tw-rounded-full
@@ -394,7 +451,7 @@ export function DashboardNavbar() {
               <div className="tw-p-1.5 tw-bg-white/20 tw-rounded-lg">
                 <LanguageIcon className="tw-h-3 tw-w-3 tw-text-white" />
               </div>
-              <span className="tw-text-xs tw-font-medium tw-text-white">
+              <span className="tw-text-xs tw-font-medium tw-text-white tw-hidden sm:tw-inline">
                 {lang === "th" ? "TH" : "EN"}
               </span>
             </button>

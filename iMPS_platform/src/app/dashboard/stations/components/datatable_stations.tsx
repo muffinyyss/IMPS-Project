@@ -858,7 +858,13 @@ export function SearchDataTables() {
     if (stationId) params.set("station_id", stationId);
 
     const queryString = params.toString();
-    router.push(`/dashboard/chargers${queryString ? `?${queryString}` : ""}`);
+
+    // Technician ไปหน้า PM, role อื่นไปหน้า chargers
+    if (me?.role === "technician") {
+      router.push(`/dashboard/pm-report${queryString ? `?${queryString}` : ""}`);
+    } else {
+      router.push(`/dashboard/chargers${queryString ? `?${queryString}` : ""}`);
+    }
   };
 
   const handleUpdateStation = async () => {
@@ -1232,177 +1238,158 @@ export function SearchDataTables() {
   }, [openAdd, openEditStation, openEditCharger, openAddCharger]);
 
   // ===== Columns =====
-  const columns = useMemo(() => [
-    {
-      id: "expander",
-      header: () => null,
-      size: 50,
-      cell: ({ row }: { row: Row<StationRow> }) => {
-        const hasChargers = row.original.chargers.length > 0;
-        const canEdit = isAdmin || row.original.user_id === me?.user_id;
-        const canExpand = hasChargers || canEdit;
+  const columns = useMemo(() => {
+    const baseColumns = [
+      {
+        id: "expander",
+        header: () => null,
+        size: 50,
+        cell: ({ row }: { row: Row<StationRow> }) => {
+          const hasChargers = row.original.chargers.length > 0;
+          const canEdit = isAdmin || row.original.user_id === me?.user_id;
+          const canExpand = hasChargers || canEdit;
 
-        if (!canExpand) return null;
+          if (!canExpand) return null;
 
-        return (
-          <span className="tw-p-1.5 tw-rounded-lg">
-            {row.getIsExpanded() ? (
-              <ChevronDownIcon className="tw-h-5 tw-w-5 tw-text-blue-600" />
-            ) : (
-              <ChevronRightIconSolid className="tw-h-5 tw-w-5 tw-text-blue-gray-500" />
-            )}
-          </span>
-        );
-      },
-    },
-    // {
-    //   id: "images",
-    //   header: () => t.images,
-    //   size: 80,
-    //   cell: ({ row }: { row: Row<StationRow> }) => {
-    //     const stationImage = row.original.stationImage;
-
-    //     if (!stationImage) {
-    //       return (
-    //         <span className="tw-text-blue-gray-300 tw-text-xs tw-flex tw-items-center tw-gap-1">
-    //           <PhotoIcon className="tw-h-4 tw-w-4" />
-    //           <span>-</span>
-    //         </span>
-    //       );
-    //     }
-
-    //     return (
-    //       <div className="tw-flex tw-items-center" onClick={(e) => e.stopPropagation()}>
-    //         <a href={`${API_BASE}${stationImage}`} target="_blank" rel="noreferrer" className="tw-group">
-    //           <div className="tw-w-10 tw-h-10 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 group-hover:tw-border-blue-400 tw-transition-colors">
-    //             <img src={`${API_BASE}${stationImage}`} alt="Station" className="tw-w-full tw-h-full tw-object-cover" />
-    //           </div>
-    //         </a>
-    //       </div>
-    //     );
-    //   },
-    // },
-    {
-      id: "station_name",
-      header: () => t.stationName,
-      accessorFn: (row: StationRow) => row.station_name,
-      cell: (info: any) => (
-        <span className="tw-font-medium tw-text-blue-gray-900">{info.getValue()}</span>
-      ),
-    },
-    {
-      id: "charger_count",
-      header: () => t.chargers,
-      size: 100,
-      cell: ({ row }: { row: Row<StationRow> }) => {
-        const count = row.original.chargers.length;
-        const onlineCount = row.original.chargers.filter(c => c.status).length;
-        return (
-          <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-gap-0.5 sm:tw-gap-2">
-            <span className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-bg-gradient-to-r tw-from-amber-50 tw-to-yellow-50 tw-border tw-border-amber-200">
-              <BoltIcon className="tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4 tw-text-amber-500" />
-              <span className="tw-text-xs sm:tw-text-sm tw-font-semibold tw-text-amber-700">{count}</span>
+          return (
+            <span className="tw-p-1.5 tw-rounded-lg">
+              {row.getIsExpanded() ? (
+                <ChevronDownIcon className="tw-h-5 tw-w-5 tw-text-blue-600" />
+              ) : (
+                <ChevronRightIconSolid className="tw-h-5 tw-w-5 tw-text-blue-gray-500" />
+              )}
             </span>
-            {count > 0 && (
-              <span className="tw-text-[10px] sm:tw-text-xs tw-text-blue-gray-400 tw-whitespace-nowrap">
-                ({onlineCount} {t.online})
+          );
+        },
+      },
+      {
+        id: "station_name",
+        header: () => t.stationName,
+        accessorFn: (row: StationRow) => row.station_name,
+        cell: (info: any) => (
+          <span className="tw-font-medium tw-text-blue-gray-900">{info.getValue()}</span>
+        ),
+      },
+      {
+        id: "charger_count",
+        header: () => t.chargers,
+        size: 100,
+        cell: ({ row }: { row: Row<StationRow> }) => {
+          const count = row.original.chargers.length;
+          const onlineCount = row.original.chargers.filter(c => c.status).length;
+          return (
+            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-gap-0.5 sm:tw-gap-2">
+              <span className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-bg-gradient-to-r tw-from-amber-50 tw-to-yellow-50 tw-border tw-border-amber-200">
+                <BoltIcon className="tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4 tw-text-amber-500" />
+                <span className="tw-text-xs sm:tw-text-sm tw-font-semibold tw-text-amber-700">{count}</span>
               </span>
-            )}
-          </div>
-        );
+              {count > 0 && (
+                <span className="tw-text-[10px] sm:tw-text-xs tw-text-blue-gray-400 tw-whitespace-nowrap">
+                  ({onlineCount} {t.online})
+                </span>
+              )}
+            </div>
+          );
+        },
       },
-    },
-    {
-      id: "username",
-      header: () => t.owner,
-      accessorFn: (row: StationRow) => row.username ?? "-",
-      cell: (info: any) => (
-        <span className="tw-text-blue-gray-600">{info.getValue()}</span>
-      ),
-    },
-    {
-      id: "technician",
-      header: () => t.technician,
-      accessorFn: (row: StationRow) => {
-        const techs = technicians.get(row.station_id);
-        return techs ? techs.join(", ") : "-";
+      {
+        id: "username",
+        header: () => t.owner,
+        accessorFn: (row: StationRow) => row.username ?? "-",
+        cell: (info: any) => (
+          <span className="tw-text-blue-gray-600">{info.getValue()}</span>
+        ),
       },
-      cell: ({ row }: { row: Row<StationRow> }) => {
-        const techs = technicians.get(row.original.station_id);
+      {
+        id: "technician",
+        header: () => t.technician,
+        accessorFn: (row: StationRow) => {
+          const techs = technicians.get(row.station_id);
+          return techs ? techs.join(", ") : "-";
+        },
+        cell: ({ row }: { row: Row<StationRow> }) => {
+          const techs = technicians.get(row.original.station_id);
 
-        if (!techs || techs.length === 0) {
-          return <span className="tw-text-blue-gray-400">-</span>;
-        }
+          if (!techs || techs.length === 0) {
+            return <span className="tw-text-blue-gray-400">-</span>;
+          }
 
-        if (techs.length === 1) {
-          return <span className="tw-text-blue-gray-600 tw-text-sm">{techs[0]}</span>;
-        }
+          if (techs.length === 1) {
+            return <span className="tw-text-blue-gray-600 tw-text-sm">{techs[0]}</span>;
+          }
 
-        return (
-          <div className="tw-flex tw-flex-col tw-gap-0.5">
-            {techs.map((tech, idx) => (
-              <span key={idx} className="tw-text-blue-gray-600 tw-text-xs sm:tw-text-sm tw-leading-tight">
-                - {tech}
-              </span>
-            ))}
-          </div>
-        );
+          return (
+            <div className="tw-flex tw-flex-col tw-gap-0.5">
+              {techs.map((tech, idx) => (
+                <span key={idx} className="tw-text-blue-gray-600 tw-text-xs sm:tw-text-sm tw-leading-tight">
+                  - {tech}
+                </span>
+              ))}
+            </div>
+          );
+        },
       },
-    },
-    {
-      id: "is_active",
-      header: () => t.active,
-      size: 100,
-      cell: ({ row }: { row: Row<StationRow> }) => {
-        const on = !!row.original.is_active;
-        return (
-          <Chip
-            size="sm"
-            variant="ghost"
-            value={on ? t.active : t.inactive}
-            color={on ? "green" : "red"}
-            className="tw-rounded-full tw-font-medium"
-            icon={
-              <span className={`tw-mx-auto tw-mt-1 tw-block tw-h-2 tw-w-2 tw-rounded-full tw-content-[''] ${on ? "tw-bg-green-500" : "tw-bg-red-500"}`} />
-            }
-          />
-        );
+      {
+        id: "is_active",
+        header: () => t.active,
+        size: 100,
+        cell: ({ row }: { row: Row<StationRow> }) => {
+          const on = !!row.original.is_active;
+          return (
+            <Chip
+              size="sm"
+              variant="ghost"
+              value={on ? t.active : t.inactive}
+              color={on ? "green" : "red"}
+              className="tw-rounded-full tw-font-medium"
+              icon={
+                <span className={`tw-mx-auto tw-mt-1 tw-block tw-h-2 tw-w-2 tw-rounded-full tw-content-[''] ${on ? "tw-bg-green-500" : "tw-bg-red-500"}`} />
+              }
+            />
+          );
+        },
       },
-    },
-    {
-      id: "actions",
-      header: () => t.actions,
-      size: 100,
-      enableSorting: false,
-      cell: ({ row }: { row: Row<StationRow> }) => {
-        const canEdit = isAdmin || row.original.user_id === me?.user_id;
-        return (
-          <span className="tw-inline-flex tw-items-center tw-gap-1" onClick={(e) => e.stopPropagation()}>
-            {canEdit && (
-              <Tooltip content={t.editStationTooltip}>
-                <button
-                  onClick={(e) => handleEditStation(row.original, e)}
-                  className="tw-rounded-lg tw-p-2 tw-border tw-border-blue-gray-100 hover:tw-bg-blue-50 hover:tw-border-blue-200 tw-transition-all tw-duration-200"
-                >
-                  <PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600" />
-                </button>
-              </Tooltip>
-            )}
-            {isAdmin && (
-              <Tooltip content={t.deleteStationTooltip}>
-                <button
-                  onClick={(e) => handleDeleteStation(row.original, e)}
-                  className="tw-rounded-lg tw-p-2 tw-border tw-border-blue-gray-100 hover:tw-bg-red-50 hover:tw-border-red-200 tw-transition-all tw-duration-200"
-                >
-                  <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" />
-                </button>
-              </Tooltip>
-            )}
-          </span>
-        );
-      },
-    },
-  ], [me, technicians, isAdmin, t]);
+    ];
+
+    // เพิ่มคอลัมน์ actions เฉพาะเมื่อไม่ใช่ technician
+    if (me?.role !== "technician") {
+      baseColumns.push({
+        id: "actions",
+        header: () => t.actions,
+        size: 100,
+        enableSorting: false,
+        cell: ({ row }: { row: Row<StationRow> }) => {
+          const canEdit = isAdmin || row.original.user_id === me?.user_id;
+          return (
+            <span className="tw-inline-flex tw-items-center tw-gap-1" onClick={(e) => e.stopPropagation()}>
+              {canEdit && (
+                <Tooltip content={t.editStationTooltip}>
+                  <button
+                    onClick={(e) => handleEditStation(row.original, e)}
+                    className="tw-rounded-lg tw-p-2 tw-border tw-border-blue-gray-100 hover:tw-bg-blue-50 hover:tw-border-blue-200 tw-transition-all tw-duration-200"
+                  >
+                    <PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600" />
+                  </button>
+                </Tooltip>
+              )}
+              {isAdmin && (
+                <Tooltip content={t.deleteStationTooltip}>
+                  <button
+                    onClick={(e) => handleDeleteStation(row.original, e)}
+                    className="tw-rounded-lg tw-p-2 tw-border tw-border-blue-gray-100 hover:tw-bg-red-50 hover:tw-border-red-200 tw-transition-all tw-duration-200"
+                  >
+                    <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" />
+                  </button>
+                </Tooltip>
+              )}
+            </span>
+          );
+        },
+      } as any);
+    }
+
+    return baseColumns;
+  }, [me, technicians, isAdmin, t]);
 
   const handleSubmitImages = async (
     stationId: string,
@@ -1468,30 +1455,30 @@ export function SearchDataTables() {
         className="tw-relative tw-overflow-hidden tw-rounded-md sm:tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-all tw-duration-200 tw-cursor-pointer hover:tw-border-blue-300"
         style={{ animationDelay: `${index * 50}ms` }}
       >
-        <div className="tw-p-1.5 sm:tw-p-3 lg:tw-p-4">
+        <div className="tw-p-2 sm:tw-p-3 lg:tw-p-4">
           {/* Header */}
-          <div className="tw-flex tw-items-start tw-justify-between tw-gap-0.5 sm:tw-gap-2 tw-mb-1 sm:tw-mb-2">
-            <div className="tw-flex tw-items-center tw-gap-1 sm:tw-gap-2 tw-min-w-0 tw-flex-1">
-              <div className={`tw-p-0.5 sm:tw-p-1.5 tw-rounded sm:tw-rounded-lg tw-flex-shrink-0 ${isOnline ? "tw-bg-green-50" : "tw-bg-red-50"}`}>
-                <BoltIcon className={`tw-h-2.5 tw-w-2.5 sm:tw-h-4 sm:tw-w-4 ${isOnline ? "tw-text-green-600" : "tw-text-red-500"}`} />
+          <div className="tw-flex tw-items-start tw-justify-between tw-gap-1 tw-mb-1.5 sm:tw-mb-2">
+            <div className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2 tw-min-w-0 tw-flex-1">
+              <div className={`tw-p-1 sm:tw-p-1.5 tw-rounded tw-flex-shrink-0 ${isOnline ? "tw-bg-green-50" : "tw-bg-red-50"}`}>
+                <BoltIcon className={`tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4 ${isOnline ? "tw-text-green-600" : "tw-text-red-500"}`} />
               </div>
               <div className="tw-min-w-0 tw-flex-1">
-                <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center tw-gap-0 sm:tw-gap-1">
-                  <h4 className="tw-font-semibold tw-text-[8px] sm:tw-text-xs tw-text-blue-gray-800 tw-truncate" title={charger.chargeBoxID}>
+                <div className="tw-flex tw-flex-col">
+                  <h4 className="tw-font-semibold tw-text-[10px] sm:tw-text-xs tw-text-blue-gray-800 tw-truncate" title={charger.chargeBoxID}>
                     {charger.chargeBoxID}
                   </h4>
-                  <div className="tw-flex tw-items-center tw-gap-0.5">
-                    <span className="tw-px-0.5 tw-py-0 tw-rounded tw-bg-blue-gray-100 tw-text-[6px] sm:tw-text-[8px] tw-font-bold tw-text-blue-gray-600">
+                  <div className="tw-flex tw-items-center tw-gap-1 tw-flex-wrap tw-mt-0.5">
+                    <span className="tw-px-1 tw-py-0.5 tw-rounded tw-bg-blue-gray-100 tw-text-[8px] sm:tw-text-[9px] tw-font-bold tw-text-blue-gray-600">
                       #{charger.chargerNo}
                     </span>
-                    <span className={`tw-px-0.5 tw-py-0 tw-rounded tw-text-[6px] sm:tw-text-[8px] tw-font-bold ${charger.is_active ? "tw-bg-green-100 tw-text-green-700" : "tw-bg-red-100 tw-text-red-700"}`}>
+                    <span className={`tw-px-1 tw-py-0.5 tw-rounded tw-text-[8px] sm:tw-text-[9px] tw-font-bold ${charger.is_active ? "tw-bg-green-100 tw-text-green-700" : "tw-bg-red-100 tw-text-red-700"}`}>
                       {charger.is_active ? t.active : t.inactive}
                     </span>
                   </div>
                 </div>
-                <div className="tw-flex tw-items-center tw-gap-0.5">
-                  <span className={`tw-inline-block tw-h-1 tw-w-1 sm:tw-h-1.5 sm:tw-w-1.5 tw-rounded-full ${isOnline ? "tw-bg-green-500" : "tw-bg-red-500"}`} />
-                  <span className={`tw-text-[6px] sm:tw-text-[10px] tw-font-medium ${isOnline ? "tw-text-green-600" : "tw-text-red-500"}`}>
+                <div className="tw-flex tw-items-center tw-gap-1 tw-mt-0.5">
+                  <span className={`tw-inline-block tw-h-1.5 tw-w-1.5 tw-rounded-full ${isOnline ? "tw-bg-green-500" : "tw-bg-red-500"}`} />
+                  <span className={`tw-text-[8px] sm:tw-text-[10px] tw-font-medium ${isOnline ? "tw-text-green-600" : "tw-text-red-500"}`}>
                     {isOnline ? t.online : t.offline}
                   </span>
                 </div>
@@ -1501,20 +1488,20 @@ export function SearchDataTables() {
             {/* Actions */}
             <div className="tw-flex tw-items-center tw-flex-shrink-0">
               {canEdit && (
-                <button onClick={(e) => handleEditCharger(stationId, charger, e)} className="tw-p-0.5 sm:tw-p-1 tw-rounded tw-text-blue-gray-400 hover:tw-text-blue-600 hover:tw-bg-blue-50">
-                  <PencilSquareIcon className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5" />
+                <button onClick={(e) => handleEditCharger(stationId, charger, e)} className="tw-p-1 tw-rounded tw-text-blue-gray-400 hover:tw-text-blue-600 hover:tw-bg-blue-50">
+                  <PencilSquareIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4" />
                 </button>
               )}
               {isAdmin && (
-                <button onClick={(e) => handleDeleteCharger(stationId, charger, e)} className="tw-p-0.5 sm:tw-p-1 tw-rounded tw-text-blue-gray-400 hover:tw-text-red-500 hover:tw-bg-red-50">
-                  <TrashIcon className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5" />
+                <button onClick={(e) => handleDeleteCharger(stationId, charger, e)} className="tw-p-1 tw-rounded tw-text-blue-gray-400 hover:tw-text-red-500 hover:tw-bg-red-50">
+                  <TrashIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4" />
                 </button>
               )}
             </div>
           </div>
 
           {/* Info Grid */}
-          <div className="tw-grid tw-grid-cols-2 tw-gap-x-1 sm:tw-gap-x-2 tw-gap-y-0 tw-text-[6px] sm:tw-text-[10px] tw-mb-1 sm:tw-mb-2">
+          <div className="tw-grid tw-grid-cols-2 tw-gap-x-2 tw-gap-y-0.5 tw-text-[8px] sm:tw-text-[10px] tw-mb-1.5 sm:tw-mb-2">
             <div className="tw-truncate"><span className="tw-text-blue-gray-400">{t.brand}:</span> <span className="tw-text-blue-gray-700 tw-font-medium">{charger.brand || "-"}</span></div>
             <div className="tw-truncate"><span className="tw-text-blue-gray-400">{t.model}:</span> <span className="tw-text-blue-gray-700 tw-font-medium">{charger.model || "-"}</span></div>
             <div className="tw-truncate"><span className="tw-text-blue-gray-400">{t.serialNumber}:</span> <span className="tw-text-blue-gray-700 tw-font-mono">{charger.SN || "-"}</span></div>
@@ -1525,29 +1512,29 @@ export function SearchDataTables() {
           </div>
 
           {/* Commissioning Date */}
-          <div className="tw-text-[6px] sm:tw-text-[10px] tw-mb-1 sm:tw-mb-2 tw-px-1 tw-py-0.5 tw-rounded tw-bg-blue-50 tw-border tw-border-blue-100">
+          <div className="tw-text-[8px] sm:tw-text-[10px] tw-mb-1.5 sm:tw-mb-2 tw-px-1.5 tw-py-1 tw-rounded tw-bg-blue-50 tw-border tw-border-blue-100">
             <span className="tw-text-blue-gray-500">📅</span>{" "}
             <span className="tw-text-blue-700 tw-font-medium">{formatDate(charger.commissioningDate)}</span>
           </div>
 
           {/* Firmware */}
-          <div className="tw-rounded tw-bg-gray-50 tw-p-1 sm:tw-p-1.5">
-            <div className="tw-flex tw-items-center tw-gap-0.5 tw-mb-0.5">
-              <CpuChipIcon className="tw-h-2 tw-w-2 sm:tw-h-2.5 sm:tw-w-2.5 tw-text-blue-gray-400" />
-              <span className="tw-text-[5px] sm:tw-text-[8px] tw-font-semibold tw-uppercase tw-text-blue-gray-500">{t.firmware}</span>
+          <div className="tw-rounded tw-bg-gray-50 tw-p-1.5 sm:tw-p-2">
+            <div className="tw-flex tw-items-center tw-gap-1 tw-mb-1">
+              <CpuChipIcon className="tw-h-2.5 tw-w-2.5 sm:tw-h-3 sm:tw-w-3 tw-text-blue-gray-400" />
+              <span className="tw-text-[7px] sm:tw-text-[9px] tw-font-semibold tw-uppercase tw-text-blue-gray-500">{t.firmware}</span>
             </div>
-            <div className="tw-grid tw-grid-cols-3 tw-gap-0.5">
-              <div className="tw-text-center tw-rounded tw-px-0.5 tw-py-0.5 tw-bg-white tw-border tw-border-blue-gray-100">
-                <div className="tw-text-[5px] sm:tw-text-[7px] tw-text-blue-gray-400">PLC</div>
-                <div className="tw-text-[6px] sm:tw-text-[9px] tw-font-mono tw-text-blue-gray-700 tw-truncate">{charger.PLCFirmware || "-"}</div>
+            <div className="tw-grid tw-grid-cols-3 tw-gap-1">
+              <div className="tw-text-center tw-rounded tw-px-1 tw-py-1 tw-bg-white tw-border tw-border-blue-gray-100">
+                <div className="tw-text-[7px] sm:tw-text-[8px] tw-text-blue-gray-400">PLC</div>
+                <div className="tw-text-[8px] sm:tw-text-[10px] tw-font-mono tw-text-blue-gray-700 tw-truncate">{charger.PLCFirmware || "-"}</div>
               </div>
-              <div className="tw-text-center tw-rounded tw-px-0.5 tw-py-0.5 tw-bg-white tw-border tw-border-blue-gray-100">
-                <div className="tw-text-[5px] sm:tw-text-[7px] tw-text-blue-gray-400">Pi</div>
-                <div className="tw-text-[6px] sm:tw-text-[9px] tw-font-mono tw-text-blue-gray-700 tw-truncate">{charger.PIFirmware || "-"}</div>
+              <div className="tw-text-center tw-rounded tw-px-1 tw-py-1 tw-bg-white tw-border tw-border-blue-gray-100">
+                <div className="tw-text-[7px] sm:tw-text-[8px] tw-text-blue-gray-400">Pi</div>
+                <div className="tw-text-[8px] sm:tw-text-[10px] tw-font-mono tw-text-blue-gray-700 tw-truncate">{charger.PIFirmware || "-"}</div>
               </div>
-              <div className="tw-text-center tw-rounded tw-px-0.5 tw-py-0.5 tw-bg-white tw-border tw-border-blue-gray-100">
-                <div className="tw-text-[5px] sm:tw-text-[7px] tw-text-blue-gray-400">RT</div>
-                <div className="tw-text-[6px] sm:tw-text-[9px] tw-font-mono tw-text-blue-gray-700 tw-truncate">{charger.RTFirmware || "-"}</div>
+              <div className="tw-text-center tw-rounded tw-px-1 tw-py-1 tw-bg-white tw-border tw-border-blue-gray-100">
+                <div className="tw-text-[7px] sm:tw-text-[8px] tw-text-blue-gray-400">RT</div>
+                <div className="tw-text-[8px] sm:tw-text-[10px] tw-font-mono tw-text-blue-gray-700 tw-truncate">{charger.RTFirmware || "-"}</div>
               </div>
             </div>
           </div>
@@ -1599,7 +1586,7 @@ export function SearchDataTables() {
             {/* Charger Cards Grid */}
             <div className="tw-p-2 sm:tw-p-4">
               {chargers.length > 0 ? (
-                <div className="tw-grid tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-1.5 sm:tw-gap-3 lg:tw-gap-4">
+                <div className="tw-grid tw-grid-cols-4 sm:tw-grid-cols-4 md:tw-grid-cols-3 lg:tw-grid-cols-3 xl:tw-grid-cols-4 tw-gap-2 sm:tw-gap-4 lg:tw-gap-5">
                   {chargers.map((charger, index) => (
                     <ChargerCard key={charger.id || charger.chargeBoxID} charger={charger} stationId={stationId} canEdit={canEdit} index={index} />
                   ))}
@@ -1644,15 +1631,17 @@ export function SearchDataTables() {
                 {t.stationManagementDesc}
               </Typography>
             </div>
-            <Button
-              onClick={() => setOpenAdd(true)}
-              size="sm"
-              className="tw-flex tw-items-center tw-gap-1.5 tw-px-3 sm:tw-px-4 tw-py-2 sm:tw-py-2.5 tw-rounded-xl tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white tw-font-semibold tw-text-xs sm:tw-text-sm tw-shadow-md tw-flex-shrink-0 tw-normal-case"
-            >
-              <span className="tw-text-base tw-leading-none">+</span>
-              <span className="tw-hidden sm:tw-inline">{t.addStation}</span>
-              <span className="tw-inline sm:tw-hidden">{t.add}</span>
-            </Button>
+            {(isAdmin || me?.role === "owner") && (
+              <Button
+                onClick={() => setOpenAdd(true)}
+                size="sm"
+                className="tw-flex tw-items-center tw-gap-1.5 tw-px-3 sm:tw-px-4 tw-py-2 sm:tw-py-2.5 tw-rounded-xl tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white tw-font-semibold tw-text-xs sm:tw-text-sm tw-shadow-md tw-flex-shrink-0 tw-normal-case"
+              >
+                <span className="tw-text-base tw-leading-none">+</span>
+                <span className="tw-hidden sm:tw-inline">{t.addStation}</span>
+                <span className="tw-inline sm:tw-hidden">{t.add}</span>
+              </Button>
+            )}
           </div>
         </CardHeader>
 
