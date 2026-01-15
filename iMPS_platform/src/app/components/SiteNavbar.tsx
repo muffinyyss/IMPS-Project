@@ -88,7 +88,8 @@ export default function SiteNavbar() {
       const role = user.role?.toLowerCase() ?? "";
       // รองรับทั้ง technician และ tecnician
       if (role === "technician" || role === "tecnician") {
-        return "/dashboard/pm-report";
+        // return "/dashboard/pm-report";
+        return "/dashboard/stations";
       }
     }
     return item.href;

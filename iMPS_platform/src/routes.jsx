@@ -28,15 +28,15 @@ const baseRoutes = [
   },
   { name: "Stations", icon: <i className="fa fa-map-marker-alt" />, path: "/dashboard/stations", allow: ["admin", "owner", "technician"], showMode: "both" },
   { name: "Users", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], showMode: "before" },
-  { name: "My Charger", icon: <i className="fa fa-charging-station" />, path: "/dashboard/chargers", allow: ["admin", "owner", "technician"], showMode: "after" },
-  { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner", "technician"], showMode: "after" },
-  { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner", "technician"], showMode: "after" },
-  { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm", allow: ["admin", "owner", "technician"], showMode: "after" },
-  { name: "MDB/CCB", icon: <i className="fa fa-database" />, path: "/dashboard/mdb", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "My Charger", icon: <i className="fa fa-charging-station" />, path: "/dashboard/chargers", allow: ["admin", "owner"], showMode: "after" },
+  { name: "Device", icon: <i className="fa fa-microchip" />, path: "/dashboard/device", allow: ["admin", "owner"], showMode: "after" },
+  { name: "Configuration", icon: <i className="fa fa-cog" />, path: "/dashboard/setting", allow: ["admin", "owner"], showMode: "after" },
+  { name: "Condition-base", icon: <i className="fa fa-desktop" />, path: "/dashboard/cbm", allow: ["admin", "owner"], showMode: "after" },
+  { name: "MDB/CCB", icon: <i className="fa fa-database" />, path: "/dashboard/mdb", allow: ["admin", "owner"], showMode: "after" },
   { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician"], showMode: "after" },
   { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician"], showMode: "after" },
   { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician"], showMode: "after" },
-  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner", "technician"], showMode: "after" },
+  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner"], showMode: "after" },
 ];
 
 /** 2) อ่าน user/role จาก localStorage (ตาม payload ที่ backend ส่งมาใน /login) */
