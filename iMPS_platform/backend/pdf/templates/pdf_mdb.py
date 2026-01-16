@@ -66,10 +66,10 @@ ROW_TITLES_TH = {
     "r5": "ตรวจสอบแรงดันไฟฟ้า Breaker Charger",
     "r6": "ตรวจสอบแรงดันไฟฟ้า Breaker CCB",
     "r7": "ตรวจสอบแรงดันไฟฟ้า RCD",
-    "r8": "ทดสอบปุ่ม Trip Test RCD",
-    "r9": "ทดสอบปุ่ม Trip Test Breaker CCB",
-    "r10": "ทดสอบปุ่ม Trip Test Breaker Charger ",
-    "r11": "ทดสอบปุ่ม Trip Test Breaker Main",
+    "r8": "ทดสอบปุ่ม RCD Trip",
+    "r9": "ทดสอบปุ่ม Breaker CCB Trip",
+    "r10": "ทดสอบปุ่ม Breaker Charger Trip ",
+    "r11": "ทดสอบปุ่ม Breaker Main Trip ",
     "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
     "r13": "ทำความสะอาดตู้ MDB"
 
@@ -100,8 +100,8 @@ ROW_TITLES = ROW_TITLES_TH
 SUB_ROW_TITLES_TH = {
     "r5_1": "Breaker Charger ตัวที่ 1",
     "r7_1": "RCD ตัวที่ 1",
-    "r8_1": "Trip Test RCD ตัวที่ 1",
-    "r10_1": "Trip Test Breaker Charger ตัวที่ 1",
+    "r8_1": "RCD ตัวที่ 1",
+    "r10_1": "Breaker Charger ตัวที่ 1",
 }
 
 # English version
@@ -817,34 +817,34 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 if main_idx in DYNAMIC_SUB_ROWS:
                     if main_idx == 4:
                         if lang == "en":
-                            sub_title = f"Breaker Main {sub_idx}"
+                            sub_title = f"Breaker Main No. {sub_idx}"
                         else:
-                            sub_title = f"เบรกเกอร์ Main {sub_idx}"
+                            sub_title = f"Breaker Main ตัวที่ {sub_idx}"
                     elif main_idx == 5:
                         if lang == "en":
-                            sub_title = f"Breaker Charger unit {sub_idx}"
+                            sub_title = f"Breaker Charger No. {sub_idx}"
                         else:
-                            sub_title = f"Breaker Charger unit {sub_idx}"
+                            sub_title = f"Breaker Charger ตัวที่ {sub_idx}"
                     elif main_idx == 6:
                         if lang == "en":
-                            sub_title = f"Breaker CCB {sub_idx}"
+                            sub_title = f"Breaker CCB No. {sub_idx}"
                         else:
-                            sub_title = f"เบรกเกอร์ CCB {sub_idx}"
+                            sub_title = f"Breaker CCB ตัวที่ {sub_idx}"
                     elif main_idx == 7:
                         if lang == "en":
-                            sub_title = f"RCD unit {sub_idx}"
+                            sub_title = f"RCD No. {sub_idx}"
                         else:
-                            sub_title = f"RCD unit {sub_idx}"
+                            sub_title = f"RCD ตัวที่ {sub_idx}"
                     elif main_idx == 9:
                         if lang == "en":
-                            sub_title = f"Breaker CCB Trip Test {sub_idx}"
+                            sub_title = f"Breaker CCB No. {sub_idx}"
                         else:
-                            sub_title = f"ทดสอบปุ่ม Trip Test เบรกเกอร์ CCB {sub_idx}"
+                            sub_title = f"Breaker CCB ตัวที่ {sub_idx}"
                     elif main_idx == 11:
                         if lang == "en":
-                            sub_title = f"Breaker Main Trip Test {sub_idx}"
+                            sub_title = f"Breaker Main No. {sub_idx}"
                         else:
-                            sub_title = f"ทดสอบปุ่ม Trip Test เบรกเกอร์ Main {sub_idx}"
+                            sub_title = f"Breaker Main ตัวที่ {sub_idx}"
                 
                 # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc. - เยื้อง 4 ช่องว่าง
                 lines.append(f"    {main_idx}.{sub_idx}) {sub_title}")
