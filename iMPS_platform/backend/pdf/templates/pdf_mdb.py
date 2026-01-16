@@ -56,39 +56,38 @@ RESULT_W = 64
 PHOTO_Q_W = 85.0
 
 
-# -------------------- รายการหัวข้อ Charger --------------------
+# -------------------- รายการหัวข้อ MDB --------------------
 # Thai version
 ROW_TITLES_TH = {
     "r1": "ตรวจสอบสภาพทั่วไป",
-    "r2": "ตรวจสอบดักซีล, ซิลิโคนกันซึม",
-    "r3": "ตรวจสอบ Power Meter ",
+    "r2": "ตรวจสอบสภาพดักซีล,ซิลิโคนกันซึม",
+    "r3": "ตรวจสอบ Power Meter",
     "r4": "ตรวจสอบแรงดันไฟฟ้า Breaker Main",
     "r5": "ตรวจสอบแรงดันไฟฟ้า Breaker Charger",
     "r6": "ตรวจสอบแรงดันไฟฟ้า Breaker CCB",
     "r7": "ตรวจสอบแรงดันไฟฟ้า RCD",
     "r8": "ทดสอบปุ่ม RCD Trip",
     "r9": "ทดสอบปุ่ม Breaker CCB Trip",
-    "r10": "ทดสอบปุ่ม Breaker Charger Trip ",
-    "r11": "ทดสอบปุ่ม Breaker Main Trip ",
+    "r10": "ทดสอบปุ่ม Breaker Charger Trip",
+    "r11": "ทดสอบปุ่ม Breaker Main Trip",
     "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
     "r13": "ทำความสะอาดตู้ MDB"
-
 }
 
 # English version
 ROW_TITLES_EN = {
-    "r1": "Check General Condition",
-    "r2": "Check Seal, Silicone Waterproofing",
+    "r1": "General condition inspection",
+    "r2": "Check sealant and silicone",
     "r3": "Check Power Meter",
-    "r4": "Check voltage Breaker Main",
-    "r5": "Check voltage Breaker Charger",
-    "r6": "Check voltage Breaker CCB",
-    "r7": "Check voltage RCD",
-    "r8": "Test Trip Test RCD Button",
-    "r9": "Test Trip Test Breaker CCB Button",
-    "r10": "Test Trip Test Breaker Charger Button",
-    "r11": "Test Trip Test Breaker Main Button",
-    "r12": "Check Electrical Connection Points",
+    "r4": "Check Breaker Main voltage",
+    "r5": "Check Breaker Charger voltage",
+    "r6": "Check Breaker CCB voltage",
+    "r7": "Check RCD voltage",
+    "r8": "Test RCD Trip button",
+    "r9": "Test Breaker CCB Trip button",
+    "r10": "Test Breaker Charger Trip button",
+    "r11": "Test Breaker Main Trip button",
+    "r12": "Check electrical connections",
     "r13": "Clean MDB cabinet"
 }
 
@@ -106,10 +105,10 @@ SUB_ROW_TITLES_TH = {
 
 # English version
 SUB_ROW_TITLES_EN = {
-    "r5_1":  "Breaker Charger unit 1",
-    "r7_1": "RCD unit 1",
-    "r8_1": "Trip Test RCD unit 1",
-    "r10_1": "Trip Test Breaker Charger unit 1",
+    "r5_1": "Breaker Charger #1",
+    "r7_1": "RCD #1",
+    "r8_1": "Trip Test RCD #1",
+    "r10_1": "Trip Test Breaker Charger #1",
 }
 
 # Default to Thai
@@ -817,32 +816,32 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 if main_idx in DYNAMIC_SUB_ROWS:
                     if main_idx == 4:
                         if lang == "en":
-                            sub_title = f"Breaker Main No. {sub_idx}"
+                            sub_title = f"Breaker Main #{sub_idx}"
                         else:
                             sub_title = f"Breaker Main ตัวที่ {sub_idx}"
                     elif main_idx == 5:
                         if lang == "en":
-                            sub_title = f"Breaker Charger No. {sub_idx}"
+                            sub_title = f"Breaker Charger #{sub_idx}"
                         else:
                             sub_title = f"Breaker Charger ตัวที่ {sub_idx}"
                     elif main_idx == 6:
                         if lang == "en":
-                            sub_title = f"Breaker CCB No. {sub_idx}"
+                            sub_title = f"Breaker CCB #{sub_idx}"
                         else:
                             sub_title = f"Breaker CCB ตัวที่ {sub_idx}"
                     elif main_idx == 7:
                         if lang == "en":
-                            sub_title = f"RCD No. {sub_idx}"
+                            sub_title = f"RCD #{sub_idx}"
                         else:
                             sub_title = f"RCD ตัวที่ {sub_idx}"
                     elif main_idx == 9:
                         if lang == "en":
-                            sub_title = f"Breaker CCB No. {sub_idx}"
+                            sub_title = f"Trip Test Breaker CCB #{sub_idx}"
                         else:
                             sub_title = f"Breaker CCB ตัวที่ {sub_idx}"
                     elif main_idx == 11:
                         if lang == "en":
-                            sub_title = f"Breaker Main No. {sub_idx}"
+                            sub_title = f"Trip Test Breaker Main #{sub_idx}"
                         else:
                             sub_title = f"Breaker Main ตัวที่ {sub_idx}"
                 
