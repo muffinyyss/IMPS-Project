@@ -56,8 +56,8 @@ ROW_TITLES_TH = {
     "r5": "ตรวจสอบปุ่มหยุดฉุกเฉิน",
     "r6": "ตรวจสอบ QR CODE",
     "r7": "ตรวจสอบป้ายเตือนระวังไฟฟ้าช็อก",
-    "r8": "ตรวจสอบป้ายเตือนต้องการระบายอากาศ",
-    "r9": "ตรวจสอบป้ายเตือนปุ่มฉุกเฉิน",
+    "r8": "ป้ายเตือนต้องการระบายอากาศ",
+    "r9": "ป้ายเตือนปุ่มฉุกเฉิน",
     "r10": "ตรวจสอบแรงดันไฟฟ้าที่พิน CP",
     "r11": "ตรวจสอบแผ่นกรองระบายอากาศ",
     "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
@@ -71,23 +71,23 @@ ROW_TITLES_TH = {
 
 # English version
 ROW_TITLES_EN = {
-    "r1": "Check General Condition",
-    "r2": "Check Seal, Silicone Waterproofing",
-    "r3": "Check Charging Cable",
-    "r4": "Check Charging Connector",
-    "r5": "Check Emergency Stop Button",
+    "r1": "General condition inspection",
+    "r2": "Check sealant and silicone",
+    "r3": "Check charging cables",
+    "r4": "Check charging connector",
+    "r5": "Check emergency stop button",
     "r6": "Check QR CODE",
-    "r7": "Check Electric Shock Warning Sign",
-    "r8": "Check Ventilation Required Warning Sign",
-    "r9": "Check Emergency Button Warning Sign",
-    "r10": "Check CP Pin Voltage",
-    "r11": "Check Ventilation Filter",
-    "r12": "Check Electrical Connection Points",
-    "r13": "Check Contactor",
-    "r14": "Check Surge Protection Device",
-    "r15": "Check Phase Sequence",
-    "r16": "Measure Input Voltage",
-    "r17": "Test Charging",
+    "r7": "Electric shock warning sign",
+    "r8": "Ventilation warning sign",
+    "r9": "Emergency button warning sign",
+    "r10": "Check CP pin voltage",
+    "r11": "Check air filter",
+    "r12": "Check electrical connections",
+    "r13": "Check contactor",
+    "r14": "Check surge protection device",
+    "r15": "Check phase sequence",
+    "r16": "Measure input voltage",
+    "r17": "Charging test",
     "r18": "Cleaning"
 }
 
@@ -97,38 +97,43 @@ ROW_TITLES = ROW_TITLES_TH
 # ชื่อข้อย่อย (ข้อที่มี 2 ข้อย่อยคงที่)
 # Thai version
 SUB_ROW_TITLES_TH = {
-    "r3_1": "สายอัดประจุ หัวที่ 1",
-    "r3_2": "สายอัดประจุ หัวที่ 2",
-    "r4_1": "หัวจ่ายอัดประจุ หัวที่ 1",
-    "r4_2": "หัวจ่ายอัดประจุ หัวที่ 2",
-    "r6_1": "QR CODE หัวที่ 1",
-    "r6_2": "QR CODE หัวที่ 2",
+    "r3_1": "สายอัดประจุที่ 1",
+    "r3_2": "สายอัดประจุที่ 2",
+    
+    "r4_1": "หัวจ่ายอัดประจุที่ 1",
+    "r4_2": "หัวจ่ายอัดประจุที่ 2",
+    
+    "r6_1": "QR CODE ที่ 1",
+    "r6_2": "QR CODE ที่ 2",
+    
     "r10_1": "แรงดันไฟฟ้าที่พิน CP สายที่ 1",
     "r10_2": "แรงดันไฟฟ้าที่พิน CP สายที่ 2",
+    
     "r11_1": "แผ่นกรองระบายอากาศ (ด้านซ้าย)",
     "r11_2": "แผ่นกรองระบายอากาศ (ด้านขวา)",
     "r11_3": "แผ่นกรองระบายอากาศ (ด้านหน้า)",
     "r11_4": "แผ่นกรองระบายอากาศ (ด้านหลัง)",
+    
     "r17_1": "สายที่ 1",
     "r17_2": "สายที่ 2",
 }
 
 # English version
 SUB_ROW_TITLES_EN = {
-    "r3_1": "Charging Cable Connector 1",
-    "r3_2": "Charging Cable Connector 2",
-    "r4_1": "Charging Connector 1",
-    "r4_2": "Charging Connector 2",
-    "r6_1": "QR CODE Connector 1",
-    "r6_2": "QR CODE Connector 2",
-    "r10_1": "CP Pin Voltage Cable 1",
-    "r10_2": "CP Pin Voltage Cable 2",
-    "r11_1": "Ventilation Filter (Left Side)",
-    "r11_2": "Ventilation Filter (Right Side)",
-    "r11_3": "Ventilation Filter (Front Side)",
-    "r11_4": "Ventilation Filter (Rear Side)",
-    "r17_1": "Cable 1",
-    "r17_2": "Cable 2",
+    "r3_1": "Charging cable 1",
+    "r3_2": "Charging cable 2",
+    "r4_1": "Connector 1",
+    "r4_2": "Connector 2",
+    "r6_1": "QR CODE 1",
+    "r6_2": "QR CODE 2",
+    "r10_1": "CP pin voltage cable 1",
+    "r10_2": "CP pin voltage cable 2",
+    "r11_1": "Air filter (left)",
+    "r11_2": "Air filter (right)",
+    "r11_3": "Air filter (front)",
+    "r11_4": "Air filter (back)",
+    "r17_1": "Charging test cable 1",
+    "r17_2": "Charging test cable 2",
 }
 
 # Default to Thai

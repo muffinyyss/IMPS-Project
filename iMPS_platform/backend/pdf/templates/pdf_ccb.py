@@ -68,27 +68,27 @@ ROW_TITLES_TH = {
     "r2": "ตรวจสอบสภาพดักซีล, ซิลิโคนกันซึม",
     "r3": "ตรวจสอบระบบระบายอากาศ",
     "r4": "ตรวจสอบระบบแสงสว่าง",
-    "r5": "ตรวจสอบระบบสำรองไฟฟ้า (UPS)",
+    "r5": "ตรวจสอบเครื่องสำรองไฟฟ้า (UPS)",
     "r6": "ตรวจสอบระบบกล้องวงจรปิด (CCTV)",
-    "r7": "ตรวจสอบเราเตอร์ (Router)",
-    "r8": "ตรวจสอบตู้คอนซูเมอร์ยูนิต (Consumer Unit)",
-    "r9": "ตรวจสอบแรงดันไฟฟ้า - เมนเบรกเกอร์ (Main Breaker)",
-    "r10": "ตรวจสอบแรงดันไฟฟ้า - เบรกเกอร์วงจรย่อย",
+    "r7": "ตรวจสอบเร้าเตอร์ (Router)",
+    "r8": "ตรวจสอบ (Consumer Unit)",
+    "r9": "ตรวจสอบแรงดันไฟฟ้า (Consumer Unit) - เมนเบรกเกอร์ (Main Breaker)",
+    "r10": "ตรวจสอบแรงดันไฟฟ้า (Consumer Unit) - เบรกเกอร์วงจรย่อย",
     "r11": "ทำความสะอาด",
 }
 
 # English version
 ROW_TITLES_EN = {
-    "r1": "Check General Condition",
-    "r2": "Check Seal, Silicone Waterproofing",
-    "r3": "Check Ventilation System",
-    "r4": "Check Lighting System",
-    "r5": "Check UPS (Uninterruptible Power Supply)",
-    "r6": "Check CCTV System",
-    "r7": "Check Router",
-    "r8": "Check Consumer Unit",
-    "r9": "Check Voltage (Consumer Unit)",
-    "r10": "Check Voltage - Sub-circuit Breaker",
+    "r1": "General condition inspection",
+    "r2": "Seal and silicone waterproofing inspection",
+    "r3": "Ventilation system inspection",
+    "r4": "Lighting system inspection",
+    "r5": "UPS backup system inspection",
+    "r6": "CCTV system inspection",
+    "r7": "Router inspection",
+    "r8": "Consumer Unit inspection",
+    "r9": "Voltage measurement - Main Breaker",
+    "r10": "Voltage measurement - Sub-circuit Breakers",
     "r11": "Cleaning",
 }
 
@@ -101,8 +101,8 @@ SUB_ROW_TITLES_TH = {
     "r3_1": "ตรวจสอบการทำงานอุปกรณ์ตั้งอุณหภูมิ",
     "r3_2": "ตรวจสอบการทำงานพัดลมระบายอากาศ",
     
-    "r4_1": "ตรวจสอบการทำงานของไฟส่องสว่างในสถานี",
-    "r4_2": "ตรวจสอบการทำงานของป้ายไฟ / Logo",
+    "r4_1": "ตรวจสอบระบบควบคุมไฟส่องสว่างในสถานี",
+    "r4_2": "ตรวจสอบระบบควบคุมไฟป้าย LOGO",
     
     "r5_1": "เครื่องสามารถทำงานได้ตามปกติ",
     "r5_2": "เครื่องสามารถสำรองไฟได้ (>5นาที)",
@@ -121,20 +121,25 @@ SUB_ROW_TITLES_TH = {
 
 # English version
 SUB_ROW_TITLES_EN = {
-    "r3_1": "Check Thermostat Operation",
-    "r3_2": "Check Ventilation Fan Operation",
-    "r4_1": "Check Station Lighting Operation",
-    "r4_2": "Check Sign/Logo Lighting Operation",
-    "r5_1": "Unit Operates Normally",
-    "r5_2": "Unit Can Provide Backup Power (>5 min)",
-    "r6_1": "Check General Condition of Cameras",
-    "r6_2": "Check General Condition of NVR",
-    "r6_3": "Check Operational Status",
-    "r6_4": "Check Camera Angles",
-    "r7_1": "Check General Condition",
-    "r7_2": "Check Operational Status",
-    "r8_1": "Check General Condition",
-    "r8_2": "Check Tightness of Connections",
+    "r3_1": "Thermostat operation check",
+    "r3_2": "Ventilation fan operation check",
+    
+    "r4_1": "Station lighting operation check",
+    "r4_2": "Light sign / Logo operation check",
+    
+    "r5_1": "Device operates normally",
+    "r5_2": "Device can backup power (>5 min)",
+    
+    "r6_1": "General condition of CCTV cameras",
+    "r6_2": "General condition of NVR",
+    "r6_3": "Usage status check",
+    "r6_4": "Camera angle check",
+    
+    "r7_1": "General condition check",
+    "r7_2": "Operation status check",
+    
+    "r8_1": "General condition check",
+    "r8_2": "Tightening points check",
 }
 
 # Default to Thai
@@ -1811,9 +1816,19 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             remark_h = max(remark_h, LINE_H * 3.5)
         elif row_num == 6:
             remark_h = max(remark_h, LINE_H * 5.5)
+        # elif row_num == 9:
+        #     # # ถ้าเป็นหน้าแรก ไม่ต้องกำหนดความสูงขั้นต่ำเพราะจะขยายให้เต็มพื้นที่
+        #     # if pdf.page != 1:
+        #     remark_h = max(remark_h, LINE_H * 13.5)
         elif row_num == 9:
-            # ถ้าเป็นหน้าแรก ไม่ต้องกำหนดความสูงขั้นต่ำเพราะจะขยายให้เต็มพื้นที่
-            if pdf.page != 1:
+            # ข้อ 9 มี voltage data 10 บรรทัด - นับจำนวนบรรทัดจริง
+            remark_lines_count = remark.count('\n') + 1 if remark.strip() else 0
+            
+            if remark_lines_count > 3:  # มี voltage data
+                # คำนวณจากความสูงจริง + buffer 10%
+                min_h_for_voltage = (remark_lines_count * LINE_H + 2 * PADDING_Y) * 1.1
+                remark_h = max(remark_h, min_h_for_voltage)
+            else:  # ไม่มี voltage data
                 remark_h = max(remark_h, LINE_H * 13.5)
 
         result_block_h = max(ROW_MIN_H, len(result_lines) * LINE_H)
