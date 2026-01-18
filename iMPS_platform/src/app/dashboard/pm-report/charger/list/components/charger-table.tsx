@@ -36,12 +36,12 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 // ==================== TRANSLATIONS ====================
 const T = {
   // Page Header
-  pageTitle: { th: "Preventive Maintenance Checklist", en: "Preventive Maintenance Checklist" },
+  pageTitle: { th: "Preventive Maintenance Checklist - Charger", en: "Preventive Maintenance Checklist - Charger" },
   pageSubtitle: { th: "ค้นหาและดาวน์โหลดเอกสาร PM Report", en: "Search and download PM Report documents" },
 
   // Buttons
   upload: { th: "อัพโหลด", en: "Upload" },
-  add: { th: "+เพิ่ม", en: "+Add" },
+  add: { th: "+ เพิ่ม", en: "+ Add" },
   postPm: { th: "Post-PM", en: "Post-PM" },
   cancel: { th: "ยกเลิก", en: "Cancel" },
   uploadBtn: { th: "อัพโหลด", en: "Upload" },
@@ -605,9 +605,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       id: "no",
       header: () => t("colNo", lang),
       enableSorting: false,
-      size: 25,
-      minSize: 10,
-      maxSize: 25,
+      size: 60,
+      minSize: 50,
+      maxSize: 80,
       cell: (info: CellContext<TData, unknown>) => {
         const { pageIndex, pageSize } = info.table.getState().pagination;
         return pageIndex * pageSize + info.row.index + 1;
@@ -618,40 +618,56 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       accessorFn: (row) => row.doc_name || "—",
       id: "name",
       header: () => t("colDocName", lang),
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 120,
-      minSize: 80,
-      maxSize: 160,
-      meta: { headerAlign: "center", cellAlign: "center" },
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 150,
+      minSize: 100,
+      maxSize: 200,
+      meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
       accessorFn: (row) => row.issue_id || "—",
       id: "issue_id",
       header: () => t("colIssueId", lang),
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 120,
-      minSize: 80,
-      maxSize: 160,
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 140,
+      minSize: 100,
+      maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
       accessorFn: (row) => row.pm_date,
       id: "date",
       header: () => t("colPmDate", lang),
-      cell: (info: CellContext<TData, unknown>) => formatDate(info.getValue() as string, lang),
-      size: 100,
-      minSize: 80,
-      maxSize: 140,
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-whitespace-nowrap">
+          {formatDate(info.getValue() as string, lang)}
+        </span>
+      ),
+      size: 120,
+      minSize: 100,
+      maxSize: 150,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
       accessorFn: (row) => row.inspector || "-",
       id: "inspector",
       header: () => t("colInspector", lang),
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 100,
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 120,
       minSize: 80,
-      maxSize: 140,
+      maxSize: 160,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
@@ -673,49 +689,47 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
         if (rowSide == "pre") {
           return (
-            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-              <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
-                <Button
-                  size="sm"
-                  color="blue"
-                  variant="outlined"
-                  className="tw-shrink-0"
-                  onClick={() => {
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.delete("tab");
-                    params.set("view", "form");
-                    params.set("action", "post");
-                    params.set("edit_id", info.row.original.id || "");
-                    params.set("pmtab", "post");
+            <div className="tw-flex tw-items-center tw-justify-center">
+              <Button
+                size="sm"
+                color="blue"
+                variant="outlined"
+                className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-py-1 sm:tw-py-1.5 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams.toString());
+                  params.delete("tab");
+                  params.set("view", "form");
+                  params.set("action", "post");
+                  params.set("edit_id", info.row.original.id || "");
+                  params.set("pmtab", "post");
 
-                    router.push(`${pathname}?${params.toString()}`, { scroll: false });
-                  }}
-                >
-                  {t("postPm", lang)}
-                </Button>
-              </div>
+                  router.push(`${pathname}?${params.toString()}`, { scroll: false });
+                }}
+              >
+                {t("postPm", lang)}
+              </Button>
             </div>
           );
         } else {
           return (
-            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
+            <div className="tw-flex tw-items-center tw-justify-center">
               <a
                 aria-label={t("preview", lang)}
                 href={previewHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
+                className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-red-600 hover:tw-text-red-800 hover:tw-bg-red-50 tw-transition-colors"
                 title={t("preview", lang)}
               >
-                <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
+                <DocumentArrowDownIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
               </a>
             </div>
           )
         }
       },
-      size: 150,
-      minSize: 120,
-      maxSize: 180,
+      size: 100,
+      minSize: 80,
+      maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
   ], [lang, searchParams, pathname, router, sn]);
@@ -880,7 +894,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   if (mode === "form") {
     return (
-      <div className="tw-mt-6">
+      <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
         <ChargerPMForm />
       </div>
     );
@@ -888,88 +902,116 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   return (
     <>
-      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8">
-        <CardHeader floated={false} shadow={false} className="tw-p-4">
-          <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-4">
-            <div className="tw-flex-1">
-              <Typography variant="h5" color="blue-gray">
+      {/* Main Card */}
+      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
+        
+        {/* Card Header */}
+        <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0">
+          <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-3 sm:tw-gap-4">
+            {/* Title Section */}
+            <div className="tw-min-w-0 tw-flex-1">
+              <Typography 
+                variant="h5" 
+                color="blue-gray" 
+                className="tw-text-sm sm:tw-text-base lg:tw-text-lg tw-leading-tight tw-font-semibold"
+              >
                 {t("pageTitle", lang)}
               </Typography>
-              <Typography variant="small" className="tw-text-blue-gray-500 tw-mt-1">
+              <Typography 
+                variant="small" 
+                className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-leading-relaxed tw-font-normal tw-text-blue-gray-400 tw-mt-0.5"
+              >
                 {t("pageSubtitle", lang)}
               </Typography>
             </div>
 
-            <div className="tw-w-full md:tw-w-auto md:tw-ml-auto md:tw-flex md:tw-justify-end">
-              <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 sm:tw-gap-3 tw-justify-end tw-w-full md:tw-w-auto md:tw-mt-6">
-                <input
-                  ref={pdfInputRef}
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  multiple
-                  className="tw-hidden"
-                  onChange={handlePdfChange}
-                />
-                <Button
-                  variant="text"
-                  size="lg"
-                  disabled={!sn}
-                  onClick={() => pdfInputRef.current?.click()}
-                  className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
-                  title={t("uploadPdf", lang)}>
-
-                  <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
-                  <span className="tw-text-sm">{t("upload", lang)}</span>
-                </Button>
-                <Button
-                  size="lg"
-                  onClick={goAdd}
-                  disabled={!sn}
-                  className={`
-                                  !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
-                                  tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                                  ${!sn
-                      ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                      : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
-                                  tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                                  focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                                `}
-                  title={sn ? "" : t("selectChargerFirst", lang)}
-                >
-                  <span className="tw-w-full tw-text-center">{t("add", lang)}</span>
-                </Button>
-              </div>
+            {/* Buttons Section */}
+            <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                multiple
+                className="tw-hidden"
+                onChange={handlePdfChange}
+              />
+              <Button
+                variant="outlined"
+                size="sm"
+                disabled={!sn}
+                onClick={() => pdfInputRef.current?.click()}
+                className="tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4 tw-flex tw-items-center tw-justify-center tw-gap-1 sm:tw-gap-1.5 tw-border-blue-gray-200 tw-font-medium hover:tw-bg-blue-gray-50 tw-transition-colors"
+                title={t("uploadPdf", lang)}
+              >
+                <ArrowUpTrayIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 tw-flex-shrink-0" />
+                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("upload", lang)}</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={goAdd}
+                disabled={!sn}
+                className={`
+                  tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4
+                  tw-flex tw-items-center tw-justify-center tw-font-medium
+                  ${!sn
+                    ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+                    : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white"}
+                  tw-shadow-md tw-transition-all
+                `}
+                title={sn ? "" : t("selectChargerFirst", lang)}
+              >
+                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("add", lang)}</span>
+              </Button>
             </div>
           </div>
         </CardHeader>
 
-        <CardBody className="tw-flex tw-items-center tw-gap-3">
-          <div className="tw-flex tw-items-center tw-gap-2">
-            <select
-              value={table.getState().pagination.pageSize}
-              onChange={(e) => table.setPageSize(Number(e.target.value))}
-              className="tw-border tw-p-2 tw-rounded"
-            >
-              {[5, 10, 15, 20, 25, 50].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <Typography variant="small" className="tw-text-blue-gray-500">
-              {t("entriesPerPage", lang)}
-            </Typography>
-          </div>
-          <div className="tw-ml-auto tw-w-64">
-            <Input value={filtering} onChange={(e) => setFiltering(e.target.value)} label={t("search", lang)} crossOrigin={undefined} />
+        {/* Card Body - Search & Entries per page */}
+        <CardBody className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-border-t tw-border-blue-gray-50">
+          <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-stretch sm:tw-items-center tw-gap-2.5 sm:tw-gap-3 lg:tw-gap-4">
+            
+            {/* Entries per page */}
+            <div className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2 tw-flex-shrink-0">
+              <select
+                value={table.getState().pagination.pageSize}
+                onChange={(e) => table.setPageSize(Number(e.target.value))}
+                className="tw-border tw-border-blue-gray-200 tw-py-1.5 sm:tw-py-2 tw-px-2 sm:tw-px-3 tw-rounded-lg tw-text-xs sm:tw-text-sm tw-w-14 sm:tw-w-16 lg:tw-w-20 tw-bg-white focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent tw-cursor-pointer"
+              >
+                {[5, 10, 15, 20, 25, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <Typography 
+                variant="small" 
+                className="tw-text-blue-gray-500 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-whitespace-nowrap"
+              >
+                {t("entriesPerPage", lang)}
+              </Typography>
+            </div>
+
+            {/* Spacer */}
+            <div className="tw-flex-1 tw-hidden sm:tw-block" />
+
+            {/* Search */}
+            <div className="tw-w-full sm:tw-w-48 lg:tw-w-64">
+              <Input
+                value={filtering}
+                onChange={(e) => setFiltering(e.target.value)}
+                label={t("search", lang)}
+                crossOrigin={undefined}
+              />
+            </div>
           </div>
         </CardBody>
 
-
+        {/* Table Content */}
         <CardFooter className="tw-p-0">
-          <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
-            <table className="tw-w-full tw-text-left tw-min-w-[720px] md:tw-min-w-0 md:tw-table-fixed">
-              <thead className="tw-bg-gray-50 tw-sticky tw-top-0">
+          <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth tw--webkit-overflow-scrolling-touch">
+            <table className="tw-w-full tw-text-left tw-min-w-[700px]">
+              {/* Table Header */}
+              <thead className="tw-bg-gray-50/80 tw-sticky tw-top-0 tw-backdrop-blur-sm">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
                     {hg.headers.map((header) => {
@@ -979,23 +1021,24 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                         <th
                           key={header.id}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                          className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap
-                    ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
+                          className={`tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-semibold tw-whitespace-nowrap tw-border-b tw-border-blue-gray-100
+                            ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}
+                            ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-100 tw-transition-colors tw-select-none" : ""}`}
                         >
                           {canSort ? (
                             <Typography
                               color="blue-gray"
-                              className={`tw-flex tw-items-center tw-gap-1 md:tw-gap-2 tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                        ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}
+                              className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60
+                                ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}
                             >
                               {flexRender(header.column.columnDef.header, header.getContext())}
-                              <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
+                              <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0" />
                             </Typography>
                           ) : (
                             <Typography
                               color="blue-gray"
-                              className={`tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                        ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
+                              className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60
+                                ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
                             >
                               {flexRender(header.column.columnDef.header, header.getContext())}
                             </Typography>
@@ -1007,27 +1050,34 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 ))}
               </thead>
 
-              <tbody>
+              {/* Table Body */}
+              <tbody className="tw-divide-y tw-divide-blue-gray-50">
                 {loading ? (
                   <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {t("loading", lang)}
+                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                      <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
+                        <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin"></div>
+                        <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t("loading", lang)}</span>
+                      </div>
                     </td>
                   </tr>
                 ) : table.getRowModel().rows.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50">
+                  table.getRowModel().rows.map((row, index) => (
+                    <tr 
+                      key={row.id} 
+                      className={`tw-transition-colors hover:tw-bg-blue-50/50 ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-gray-50/30'}`}
+                    >
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
                         return (
                           <td
                             key={cell.id}
-                            className={`!tw-border-y !tw-border-x-0 tw-align-middle
-                      ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
+                            className={`tw-align-middle tw-border-0 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4
+                              ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
                           >
                             <Typography
                               variant="small"
-                              className="!tw-font-normal !tw-text-blue-gray-600 tw-py-3 md:tw-py-4 tw-px-3 md:tw-px-4 tw-truncate md:tw-whitespace-normal"
+                              className="!tw-font-normal !tw-text-blue-gray-700 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm"
                             >
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>
@@ -1038,8 +1088,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!sn ? t("selectChargerFirst", lang) : t("noData", lang)}
+                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                      <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
+                        <div className="tw-w-10 tw-h-10 sm:tw-w-12 sm:tw-h-12 lg:tw-w-16 lg:tw-h-16 tw-rounded-full tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-center">
+                          <DocumentArrowDownIcon className="tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 lg:tw-w-8 lg:tw-h-8 tw-text-blue-gray-300" />
+                        </div>
+                        <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm tw-font-medium">
+                          {!sn ? t("selectChargerFirst", lang) : t("noData", lang)}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -1048,81 +1105,117 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
         </CardFooter>
 
-
-        <div className="tw-flex tw-items-center tw-justify-between tw-p-4">
-          <Typography variant="small">
-            {t("page", lang)} <strong>{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)} <strong>{table.getPageCount()}</strong>
+        {/* Pagination */}
+        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-50 tw-bg-gray-50/30">
+          <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-text-blue-gray-600 tw-order-2 sm:tw-order-1">
+            {t("page", lang)} <strong className="tw-text-blue-gray-800">{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)} <strong className="tw-text-blue-gray-800">{table.getPageCount() || 1}</strong>
           </Typography>
-          <div className="tw-flex tw-gap-2">
-            <Button size="sm" variant="outlined" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
-              <ChevronLeftIcon className="tw-h-4 tw-w-4" />
+          <div className="tw-flex tw-gap-1.5 sm:tw-gap-2 tw-order-1 sm:tw-order-2">
+            <Button 
+              size="sm" 
+              variant="outlined" 
+              onClick={() => table.previousPage()} 
+              disabled={!table.getCanPreviousPage()}
+              className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors"
+            >
+              <ChevronLeftIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
             </Button>
-            <Button size="sm" variant="outlined" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
-              <ChevronRightIcon className="tw-h-4 tw-w-4" />
+            <Button 
+              size="sm" 
+              variant="outlined" 
+              onClick={() => table.nextPage()} 
+              disabled={!table.getCanNextPage()}
+              className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors"
+            >
+              <ChevronRightIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
             </Button>
           </div>
         </div>
       </Card>
 
-      <Dialog open={dateOpen} handler={setDateOpen} size="sm">
-        <DialogHeader>{t("dialogTitle", lang)}</DialogHeader>
-        <DialogBody className="tw-space-y-4">
-          <div className="tw-space-y-2">
+      {/* Upload Dialog */}
+      <Dialog 
+        open={dateOpen} 
+        handler={setDateOpen} 
+        size="sm"
+        className="tw-mx-4 tw-max-w-[calc(100vw-2rem)] sm:tw-max-w-md tw-rounded-xl sm:tw-rounded-2xl"
+      >
+        <DialogHeader className="tw-text-base sm:tw-text-lg lg:tw-text-xl tw-font-semibold tw-px-4 sm:tw-px-6 tw-pt-5 sm:tw-pt-6 tw-pb-2">
+          {t("dialogTitle", lang)}
+        </DialogHeader>
+        <DialogBody className="tw-space-y-4 tw-px-4 sm:tw-px-6 tw-py-4">
+          <div>
             <Input
               label={t("docNameLabel", lang)}
               value={docName}
               onChange={(e) => setDocName(e.target.value)}
               crossOrigin=""
               containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-w-full !tw-bg-blue-gray-50"
+              className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm"
+              labelProps={{ className: "!tw-text-sm" }}
               readOnly
             />
           </div>
-          <div className="tw-space-y-2">
+          <div>
             <Input
               label={t("issueIdLabel", lang)}
               value={issueId}
               onChange={(e) => setIssueId(e.target.value)}
               crossOrigin=""
               containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-w-full !tw-bg-blue-gray-50"
+              className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm"
+              labelProps={{ className: "!tw-text-sm" }}
               readOnly
             />
           </div>
-          <div className="tw-space-y-2">
+          <div>
             <Input
               label={t("inspectorLabel", lang)}
               value={inspector}
               onChange={(e) => setInspector(e.target.value)}
               crossOrigin=""
               containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-w-full !tw-bg-blue-gray-50"
+              className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm"
+              labelProps={{ className: "!tw-text-sm" }}
               readOnly
             />
           </div>
-          <Input
-            type="date"
-            value={reportDate}
-            max={todayStr}
-            onChange={(e) => setReportDate(e.target.value)}
-            label={t("pmDateLabel", lang)}
-            crossOrigin=""
-          />
-          <Typography variant="small" className="tw-text-blue-gray-500">
-            {t("filesSelected", lang)} <strong>{pendingFiles.length}</strong> {t("filesUnit", lang)}
-          </Typography>
+          <div>
+            <Input
+              type="date"
+              value={reportDate}
+              max={todayStr}
+              onChange={(e) => setReportDate(e.target.value)}
+              label={t("pmDateLabel", lang)}
+              crossOrigin=""
+              containerProps={{ className: "!tw-min-w-0" }}
+              className="!tw-text-sm"
+              labelProps={{ className: "!tw-text-sm" }}
+            />
+          </div>
+          <div className="tw-bg-blue-50 tw-rounded-lg tw-p-3 sm:tw-p-4">
+            <Typography variant="small" className="tw-text-blue-gray-600 tw-text-xs sm:tw-text-sm">
+              {t("filesSelected", lang)} <strong className="tw-text-blue-600">{pendingFiles.length}</strong> {t("filesUnit", lang)}
+            </Typography>
+          </div>
         </DialogBody>
-        <DialogFooter className="tw-gap-2">
+        <DialogFooter className="tw-gap-2 sm:tw-gap-3 tw-px-4 sm:tw-px-6 tw-pb-5 sm:tw-pb-6 tw-pt-2">
           <Button
             variant="text"
+            size="sm"
             onClick={() => {
               setPendingFiles([]);
               setDateOpen(false);
             }}
+            className="tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-text-blue-gray-600 hover:tw-bg-blue-gray-50 tw-transition-colors tw-rounded-lg"
           >
             {t("cancel", lang)}
           </Button>
-          <Button onClick={uploadPdfs} className="tw-bg-black">
+          <Button 
+            onClick={uploadPdfs} 
+            size="sm"
+            className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all"
+          >
             {t("uploadBtn", lang)}
           </Button>
         </DialogFooter>

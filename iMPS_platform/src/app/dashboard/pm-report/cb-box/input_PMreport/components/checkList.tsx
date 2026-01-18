@@ -1,27 +1,15 @@
 "use client";
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
-import {
-    Button,
-    Card,
-    CardBody,
-    CardHeader,
-    CardFooter,
-    Input,
-    Typography,
-    Textarea,
-    Tooltip,
-} from "@material-tailwind/react";
+import { Button, Input, Typography, Textarea, Tooltip } from "@material-tailwind/react";
 import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "@/app/dashboard/pm-report/cb-box/input_PMreport/lib/draft";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Image from "next/image";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
-import { apiFetch } from "@/utils/api";
 import { putPhoto, getPhoto, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 
-// ==================== TRANSLATIONS ====================
 const T = {
     pageTitle: { th: "Preventive Maintenance Checklist - Safety Switch / Circuit Breaker - Box", en: "Preventive Maintenance Checklist - Safety Switch / Circuit Breaker - Box" },
     companyName: { th: "Electricity Generating Authority of Thailand (EGAT)", en: "Electricity Generating Authority of Thailand (EGAT)" },
@@ -45,13 +33,11 @@ const T = {
     photos: { th: "รูป", en: "photos" },
     cameraSupported: { th: "รองรับการถ่ายจากกล้องบนมือถือ", en: "Camera supported on mobile" },
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
-    remark: { th: "หมายเหตุ *", en: "Remark *" },
+    remark: { th: "หมายเหตุ **", en: "Remark **" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
     preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
     comment: { th: "Comment", en: "Comment" },
-    prePM: { th: "ก่อน PM", en: "Pre-PM" },
-    postPM: { th: "หลัง PM", en: "Post-PM" },
     beforePM: { th: "ก่อน PM", en: "Before PM" },
     afterPM: { th: "หลัง PM", en: "After PM" },
     summaryResult: { th: "สรุปผลการตรวจสอบ", en: "Inspection Summary" },
@@ -62,44 +48,42 @@ const T = {
     selectDevice: { th: "-- เลือกอุปกรณ์ --", en: "-- Select device --" },
     powerSource: { th: "แหล่งรับไฟ", en: "Power source" },
     circuitDevice: { th: "อุปกรณ์ตัดวงจรไฟฟ้า", en: "Circuit breaker device" },
-    validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)", en: "1) Photo Attachments (all items)" },
+    validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ", en: "1) Photo Attachments" },
     validationInputTitle: { th: "2) อินพุตข้อ 5", en: "2) Input Item 5" },
-    validationRemarkTitle: { th: "3) หมายเหตุ (ทุกข้อ)", en: "3) Remarks (all items)" },
-    validationPFTitle: { th: "3) สถานะ PASS / FAIL / N/A ทั้ง 7 ข้อ", en: "3) PASS / FAIL / N/A for all 7 items" },
-    validationRemarkTitlePost: { th: "4) หมายเหตุ (ทุกข้อ)", en: "4) Remarks (all items)" },
+    validationRemarkTitle: { th: "3) หมายเหตุ", en: "3) Remarks" },
+    validationPFTitle: { th: "3) สถานะ PASS / FAIL / N/A", en: "3) PASS / FAIL / N/A status" },
+    validationRemarkTitlePost: { th: "4) หมายเหตุ", en: "4) Remarks" },
     validationSummaryTitle: { th: "5) สรุปผลการตรวจสอบ", en: "5) Inspection Summary" },
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos for:" },
-    missingInput: { th: "ยังขาด:", en: "Missing:" },
+    missingInput: { th: "ยังขาดข้อ:", en: "Missing:" },
     missingRemark: { th: "ยังไม่ได้กรอกหมายเหตุข้อ:", en: "Missing remarks for:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
-    missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected (Pass/Fail/N/A)" },
-    itemLabel: { th: "ข้อ", en: "Item" },
+    missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล", en: "Summary status not selected" },
     alertNoStation: { th: "ยังไม่ทราบ station_id", en: "Station ID not found" },
     alertFillPhoto: { th: "กรุณาแนบรูปในทุกข้อก่อนบันทึก", en: "Please attach photos for all items" },
     alertFillPreFirst: { th: "กรุณากรอกข้อมูลในส่วน Pre-PM ให้ครบก่อน", en: "Please complete all Pre-PM fields first" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
-    alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields and attach photos before saving" },
-    alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos in Pre-PM section" },
+    alertCompleteAll: { th: "กรุณากรอกข้อมูลและแนบรูปให้ครบก่อนบันทึก", en: "Please complete all fields" },
+    alertPhotoNotComplete: { th: "กรุณาแนบรูปในส่วน Pre-PM ให้ครบก่อน", en: "Please attach all photos" },
     alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 5 ให้ครบ", en: "Please fill in Item 5" },
     alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill in remarks for:" },
-    noReportId: { th: "ไม่มี report_id - กรุณาบันทึกข้อมูล Pre-PM ก่อน", en: "No report_id - Please save Pre-PM first" },
+    noReportId: { th: "ไม่มี report_id", en: "No report_id" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 
-// Questions with bilingual labels
 const QUESTIONS_DATA = [
-    { no: 1, key: "r1", label: { th: "1) การไฟฟ้าฝ่ายจำหน่าย", en: "1) Power distribution authority" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบระบบจำหน่ายว่าอยู่ภายใต้ความรับผิดชอบของหน่วยงานใด (MEA,PEA หรือเป็นระบบไฟในพื้นที่)", en: "Check which authority is responsible for the distribution system (MEA, PEA, or local electrical system)" } },
-    { no: 2, key: "r2", label: { th: "2) ตรวจสอบอุปกรณ์ตัดวงจรไฟฟ้า", en: "2) Check circuit breaker device" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบและระบุประเภทอุปกรณ์ตัดตอน", en: "Inspect and identify the type of circuit breaker device" } },
-    { no: 3, key: "r3", label: { th: "3) ตรวจสอบสภาพทั่วไป", en: "3) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความแข็งแรงของตู้ว่าไม่มีรอยผุ รอยไหม้ หรือการบิดเบี้ยว ระบบล็อกและบานพับ", en: "Check cabinet integrity for rust, burn marks, or deformation, including lock and hinge systems" } },
-    { no: 4, key: "r4", label: { th: "4) ตรวจสอบสภาพดักซีล,ซิลิโคนกันซึม", en: "4) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพดักซีลที่ปิดหรืออุดตามรอยต่อและช่องทางเข้าสาย", en: "Check sealant condition at joints and cable entry points" } },
-    { no: 5, key: "r5", label: { th: "5) ตรวจสอบแรงดันอุปกรณ์ตัดวงจรไฟฟ้า (Safety Switch / Circuit Breaker)", en: "5) Check voltage of circuit breaker (Safety Switch / Circuit Breaker)" }, kind: "measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าด้านเข้าของ Safety Switch/Circuit Breaker", en: "Measure input voltage of Safety Switch/Circuit Breaker" } },
-    { no: 6, key: "r6", label: { th: "6) ปุ่มฉุกเฉิน", en: "6) Emergency button" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพและการทำงานของปุ่มหยุดฉุกเฉิน", en: "Check condition and functionality of emergency stop button" } },
-    { no: 7, key: "r7", label: { th: "7) ทดสอบปุ่ม Trip Test (Circuit Breaker)", en: "7) Test Trip Test button (Circuit Breaker)" }, kind: "simple", hasPhoto: true, tooltip: { th: "กดปุ่ม Test เพื่อทดสอบกลไกการตัดวงจรของ Breaker ในตู้ CB-Box", en: "Press Test button to verify the trip mechanism of the Breaker in CB-Box" } },
-    { no: 8, key: "r8", label: { th: "8) ตรวจสอบจุดต่อทางไฟฟ้าและขันแน่น", en: "8) Check electrical connections and tighten" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at cable connection points and inspect for burn marks using thermal imaging camera" } },
-    { no: 9, key: "r9", label: { th: "9) ทำความสะอาดตู้อุปกรณ์", en: "9) Clean equipment cabinet" }, kind: "simple", hasPhoto: true, tooltip: { th: "ทำความสะอาดโดยการขจัดฝุ่นและสิ่งสกปรกภายในตู้ด้วยเครื่องดูดฝุ่นหรือเป่าลมแห้ง และตรวจสอบความสะอาดบริเวณหน้าสัมผัสไฟฟ้า", en: "Clean by removing dust and dirt inside the cabinet using vacuum cleaner or dry air blower, and check cleanliness of electrical contacts" } },
+    { no: 1, key: "r1", label: { th: "1) การไฟฟ้าฝ่ายจำหน่าย", en: "1) Power distribution authority" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบระบบจำหน่าย", en: "Check distribution system" } },
+    { no: 2, key: "r2", label: { th: "2) ตรวจสอบอุปกรณ์ตัดวงจรไฟฟ้า", en: "2) Check circuit breaker device" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบอุปกรณ์ตัดตอน", en: "Inspect circuit breaker" } },
+    { no: 3, key: "r3", label: { th: "3) ตรวจสอบสภาพทั่วไป", en: "3) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความแข็งแรงของตู้", en: "Check cabinet integrity" } },
+    { no: 4, key: "r4", label: { th: "4) ตรวจสอบสภาพดักซีล,ซิลิโคนกันซึม", en: "4) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพดักซีล", en: "Check sealant condition" } },
+    { no: 5, key: "r5", label: { th: "5) ตรวจสอบแรงดันอุปกรณ์ตัดวงจรไฟฟ้า", en: "5) Check voltage of circuit breaker" }, kind: "measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้า", en: "Measure input voltage" } },
+    { no: 6, key: "r6", label: { th: "6) ปุ่มฉุกเฉิน", en: "6) Emergency button" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบปุ่มหยุดฉุกเฉิน", en: "Check emergency button" } },
+    { no: 7, key: "r7", label: { th: "7) ทดสอบปุ่ม Trip Test", en: "7) Test Trip Test button" }, kind: "simple", hasPhoto: true, tooltip: { th: "กดปุ่ม Test", en: "Press Test button" } },
+    { no: 8, key: "r8", label: { th: "8) ตรวจสอบจุดต่อทางไฟฟ้าและขันแน่น", en: "8) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่น", en: "Check bolt tightness" } },
+    { no: 9, key: "r9", label: { th: "9) ทำความสะอาดตู้อุปกรณ์", en: "9) Clean equipment cabinet" }, kind: "simple", hasPhoto: true, tooltip: { th: "ทำความสะอาด", en: "Clean cabinet" } },
 ] as const;
 
 const DROPDOWN_Q1_OPTIONS = [
@@ -115,436 +99,419 @@ const DROPDOWN_Q2_OPTIONS = [
 ] as const;
 
 type TabId = "pre" | "post";
-const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
-    { id: "pre", label: "Pre\u2011PM", slug: "pre" },
-    { id: "post", label: "Post\u2011PM", slug: "post" },
-];
-
-function slugToTab(slug: string | null): TabId {
-    switch (slug) { case "post": return "post"; case "pre": default: return "pre"; }
-}
-function tabToSlug(tab: TabId): "pre" | "post" { return TABS.find(t => t.id === tab)!.slug; }
+const TABS: { id: TabId; label: string }[] = [{ id: "pre", label: "Pre\u2011PM" }, { id: "post", label: "Post\u2011PM" }];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 const LOGO_SRC = "/img/logo_egat.png";
 
-type StationPublic = { station_id: string; station_name: string; status?: boolean; };
-type Me = { id: string; username: string; email: string; role: string; company: string; tel: string; };
-
-async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
-    const url = `${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (res.status === 404) throw new Error("Station not found");
-    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-    const json = await res.json();
-    return json.station ?? json;
-}
-
-const UNITS = { voltage: ["V"] as const };
-type UnitVoltage = (typeof UNITS.voltage)[number];
-type PhotoItem = { id: string; file?: File; preview?: string; remark?: string; uploading?: boolean; error?: string; ref?: PhotoRef; isNA?: boolean; };
+type StationPublic = { station_id: string; station_name: string; status?: boolean };
+type Me = { id: string; username: string; email: string; role: string; company: string; tel: string };
+type PhotoItem = { id: string; file?: File; preview?: string; remark?: string; ref?: PhotoRef; isNA?: boolean };
 type PF = "PASS" | "FAIL" | "NA" | "";
 
 const VOLTAGE_FIELDS = ["L1-N", "L2-N", "L3-N", "L1-G", "L2-G", "L3-G", "L1-L2", "L2-L3", "L3-L1", "N-G"] as const;
-const LABELS: Record<string, string> = {
-    "L1-N": "L1 to N", "L2-N": "L2 to N", "L3-N": "L3 to N",
-    "L1-G": "L1 to G", "L2-G": "L2 to G", "L3-G": "L3 to G",
-    "L1-L2": "L1 to L2", "L2-L3": "L2 to L3", "L3-L1": "L3 to L1", "N-G": "N to G",
-};
+const LABELS: Record<string, string> = { "L1-N": "L1-N", "L2-N": "L2-N", "L3-N": "L3-N", "L1-G": "L1-G", "L2-G": "L2-G", "L3-G": "L3-G", "L1-L2": "L1-L2", "L2-L3": "L2-L3", "L3-L1": "L3-L1", "N-G": "N-G" };
 
 type Question = { no: number; key: string; label: { th: string; en: string }; kind: string; hasPhoto?: boolean; tooltip?: { th: string; en: string } };
 const QUESTIONS = QUESTIONS_DATA as unknown as Question[];
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
     const baseLabel = q.label[lang];
-    if (mode === "pre") return lang === "th" ? `${baseLabel} (ก่อน PM)` : `${baseLabel} (Pre-PM)`;
-    return lang === "th" ? `${baseLabel} (หลัง PM)` : `${baseLabel} (Post-PM)`;
+    return mode === "pre" ? (lang === "th" ? `${baseLabel} (ก่อน PM)` : `${baseLabel} (Pre-PM)`) : (lang === "th" ? `${baseLabel} (หลัง PM)` : `${baseLabel} (Post-PM)`);
 }
 
-const FIELD_GROUPS: Record<number, { keys: readonly string[]; unitType: "voltage"; note?: string } | undefined> = {
-    5: { keys: VOLTAGE_FIELDS, unitType: "voltage" },
-} as const;
+const FIELD_GROUPS: Record<number, { keys: readonly string[] } | undefined> = { 5: { keys: VOLTAGE_FIELDS } };
 
-type MeasureRow<U extends string> = { value: string; unit: U };
-type MeasureState<U extends string> = Record<string, MeasureRow<U>>;
+type UnitVoltage = "V";
+type MeasureRow = { value: string; unit: UnitVoltage };
+type MeasureState = Record<string, MeasureRow>;
 
-function initMeasureState<U extends string>(keys: readonly string[], defaultUnit: U): MeasureState<U> {
-    return keys.reduce((acc, k) => { acc[k] = { value: "", unit: defaultUnit }; return acc; }, {} as MeasureState<U>);
+function initMeasureState(keys: readonly string[]): MeasureState {
+    return keys.reduce((acc, k) => { acc[k] = { value: "", unit: "V" }; return acc; }, {} as MeasureState);
 }
 
-function useMeasure<U extends string>(keys: readonly string[], defaultUnit: U) {
-    const [state, setState] = useState<MeasureState<U>>(() => initMeasureState(keys, defaultUnit));
-    const patch = (key: string, patch: Partial<MeasureRow<U>>) => setState((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
-    const syncUnits = (newUnit: U) => setState((prev) => { const next: MeasureState<U> = { ...prev }; keys.forEach((k) => (next[k] = { ...prev[k], unit: newUnit })); return next; });
-    return { state, setState, patch, syncUnits };
+function useMeasure(keys: readonly string[]) {
+    const [state, setState] = useState<MeasureState>(() => initMeasureState(keys));
+    const patch = (key: string, p: Partial<MeasureRow>) => setState(prev => ({ ...prev, [key]: { ...prev[key], ...p } }));
+    return { state, setState, patch };
 }
 
 function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
     useEffect(() => { const h = setTimeout(effect, delay); return () => clearTimeout(h); }, deps);
 }
 
-function SectionCard({ title, subtitle, children, tooltip }: { title?: string; subtitle?: string; children: React.ReactNode; tooltip?: string }) {
+async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
+    const res = await fetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store" });
+    if (!res.ok) throw new Error("Station not found");
+    const json = await res.json();
+    return json.station ?? json;
+}
+
+async function fetchPreviewIssueId(stationId: string, pmDate: string): Promise<string | null> {
+    const u = new URL(`${API_BASE}/cbboxpmreport/preview-issueid`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
+    const token = localStorage.getItem("access_token") ?? "";
+    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    if (!r.ok) return null; return (await r.json())?.issue_id ?? null;
+}
+
+async function fetchPreviewDocName(stationId: string, pmDate: string): Promise<string | null> {
+    const u = new URL(`${API_BASE}/cbboxpmreport/preview-docname`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
+    const token = localStorage.getItem("access_token") ?? "";
+    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    if (!r.ok) return null; return (await r.json())?.doc_name ?? null;
+}
+
+async function fetchReport(reportId: string, stationId: string) {
+    const token = localStorage.getItem("access_token") ?? "";
+    const res = await fetch(`${API_BASE}/cbboxpmreport/get?station_id=${stationId}&report_id=${reportId}`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+}
+
+// ==================== UI COMPONENTS (FIXED) ====================
+
+function SectionCard({ title, children, tooltip }: { title?: string; children: React.ReactNode; tooltip?: string }) {
     return (
-        <>
+        <div className="tw-rounded-xl tw-border tw-border-gray-200 tw-overflow-hidden tw-bg-white tw-shadow-sm">
             {title && (
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                    <Typography variant="h6">{title}</Typography>
+                <div className="tw-bg-gray-800 tw-px-4 tw-py-3 tw-flex tw-items-center tw-justify-between">
+                    <Typography className="tw-text-white tw-font-medium tw-text-sm">{title}</Typography>
                     {tooltip && (
                         <Tooltip content={tooltip} placement="bottom">
-                            <svg className="tw-w-4 tw-h-4 tw-text-blue-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
+                            <svg className="tw-w-5 tw-h-5 tw-text-gray-400 tw-cursor-help hover:tw-text-white" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                             </svg>
                         </Tooltip>
                     )}
                 </div>
             )}
-            <Card className="tw-mt-1 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                {subtitle && (<CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2"><Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography></CardHeader>)}
-                <CardBody className="tw-space-y-4">{children}</CardBody>
-            </Card>
-        </>
+            <div className="tw-p-4">{children}</div>
+        </div>
     );
 }
 
 function Section({ title, ok, children, lang }: { title: React.ReactNode; ok: boolean; children?: React.ReactNode; lang: Lang }) {
     return (
-        <div className={`tw-rounded-lg tw-border tw-p-3 ${ok ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-            <Typography className="tw-font-medium">{title}</Typography>
-            {ok ? <Typography variant="small" className="!tw-text-green-700">{t("allComplete", lang)}</Typography> : children}
-        </div>
-    );
-}
-
-function InputWithUnit<U extends string>({ label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, labelOnTop, required = true }: {
-    label: string; value: string; unit: U; units: readonly U[]; onValueChange: (v: string) => void; onUnitChange: (u: U) => void; readOnly?: boolean; disabled?: boolean; labelOnTop?: boolean; required?: boolean;
-}) {
-    return (
-        <div className="tw-space-y-1">
-            {labelOnTop && <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{label}</Typography>}
-            <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
-                <Input type="text" inputMode="decimal" label={labelOnTop ? undefined : label} value={value}
-                    onChange={(e) => { const newValue = e.target.value; if (newValue === "" || newValue === "-" || /^-?\d*\.?\d*$/.test(newValue)) onValueChange(newValue); }}
-                    crossOrigin="" containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }} className={`!tw-w-full ${disabled ? "!tw-bg-blue-gray-50" : ""}`} readOnly={readOnly} disabled={disabled} required={required} />
-                <select required={required} value={unit} onChange={(e) => onUnitChange(e.target.value as U)}
-                    className={`tw-col-span-1 tw-h-10 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-2 tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-500 ${disabled ? "tw-bg-blue-gray-50 tw-text-blue-gray-400 tw-cursor-not-allowed" : ""}`} disabled={disabled}>
-                    {units.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
+        <div className="tw-rounded-lg tw-p-2.5 sm:tw-p-3 tw-bg-gray-100">
+            <div className="tw-flex tw-items-center tw-gap-2">
+                {ok ? <svg className="tw-w-4 tw-h-4 tw-text-gray-700 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                    : <svg className="tw-w-4 tw-h-4 tw-text-gray-500 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>}
+                <Typography className="tw-font-medium tw-text-xs sm:tw-text-sm tw-text-gray-800">{title}</Typography>
             </div>
+            {ok ? <Typography variant="small" className="!tw-text-green-600 tw-text-xs sm:tw-text-sm tw-ml-6">{t("allComplete", lang)}</Typography> : <div className="tw-ml-6 tw-mt-1">{children}</div>}
         </div>
     );
 }
 
-function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, lang }: {
+function InputWithUnit({ label, value, unit, onValueChange, readOnly, disabled, required = true }: {
+    label: string; value: string; unit: string; onValueChange: (v: string) => void; readOnly?: boolean; disabled?: boolean; required?: boolean;
+}) {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newValue = e.target.value;
+        if (newValue === "" || /^-?\d*\.?\d*$/.test(newValue)) onValueChange(newValue);
+    };
+    return (
+        <div className="tw-flex tw-items-center tw-gap-2">
+            <div className="tw-flex-1 tw-relative">
+                <input type="text" inputMode="numeric" pattern="-?[0-9]*\.?[0-9]*" value={value} onChange={handleChange} readOnly={readOnly} disabled={disabled} required={required} placeholder=" "
+                    className={`tw-peer tw-w-full tw-h-10 tw-px-3 tw-pt-4 tw-pb-1 tw-text-sm tw-border tw-border-gray-300 tw-rounded-lg tw-outline-none focus:tw-border-blue-500 focus:tw-ring-1 focus:tw-ring-blue-500 ${disabled ? "tw-bg-gray-100 tw-text-gray-500" : "tw-bg-white"}`} />
+                <label className="tw-absolute tw-left-3 tw-top-1 tw-text-[10px] tw-text-gray-500 tw-pointer-events-none">{label}{required && <span className="tw-text-red-500">*</span>}</label>
+            </div>
+            <div className="tw-flex-shrink-0 tw-w-10 tw-h-10 tw-flex tw-items-center tw-justify-center tw-text-gray-600 tw-font-medium tw-text-sm tw-bg-gray-100 tw-rounded-lg tw-border tw-border-gray-200">{unit}</div>
+        </div>
+    );
+}
+
+function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, lang }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
-    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; lang: Lang;
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; lang: Lang;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
-    const buttonGroup = (
-        <div className="tw-flex tw-gap-2 tw-ml-auto">
-            <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
-            <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
-            <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>{text.NA}</Button>
-        </div>
-    );
-    const buttonsRow = (<div className="tw-flex tw-items-center tw-gap-3 tw-w-full">{inlineLeft && <div className="tw-flex tw-items-center tw-gap-2">{inlineLeft}</div>}{buttonGroup}</div>);
     return (
         <div className="tw-space-y-3 tw-py-3">
-            <Typography className="tw-font-medium">{label}</Typography>
-            {onRemarkChange ? (
-                <div className="tw-w-full tw-min-w-0 tw-space-y-2">{aboveRemark}{buttonsRow}{beforeRemark}<Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" /></div>
-            ) : (<div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>)}
+            <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-justify-between tw-gap-2">
+                <Typography className="tw-font-medium">{label}</Typography>
+                <div className="tw-flex tw-gap-2">
+                    <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
+                    <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
+                    <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("NA")}>{text.NA}</Button>
+                </div>
+            </div>
+            {onRemarkChange && <div className="tw-space-y-3">{aboveRemark}{beforeRemark}<Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div>}
         </div>
     );
 }
 
-function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang }: { photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>; max?: number; draftKey: string; qNo: number; lang: Lang; }) {
+function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang }: { photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>; max?: number; draftKey: string; qNo: number; lang: Lang }) {
     const fileRef = useRef<HTMLInputElement>(null);
-    const handlePick = () => fileRef.current?.click();
     const handleFiles = async (list: FileList | null) => {
         if (!list) return;
         const remain = Math.max(0, max - photos.length);
         const files = Array.from(list).slice(0, remain);
         const items: PhotoItem[] = await Promise.all(files.map(async (f, i) => { const photoId = `${qNo}-${Date.now()}-${i}-${f.name}`; const ref = await putPhoto(draftKey, photoId, f); return { id: photoId, file: f, preview: URL.createObjectURL(f), remark: "", ref }; }));
-        setPhotos((prev) => [...prev, ...items]);
+        setPhotos(prev => [...prev, ...items]);
         if (fileRef.current) fileRef.current.value = "";
     };
-    const handleRemove = async (id: string) => { await delPhoto(draftKey, id); setPhotos((prev) => { const target = prev.find((p) => p.id === id); if (target?.preview) URL.revokeObjectURL(target.preview); return prev.filter((p) => p.id !== id); }); };
+    const handleRemove = async (id: string) => { await delPhoto(draftKey, id); setPhotos(prev => { const target = prev.find(p => p.id === id); if (target?.preview) URL.revokeObjectURL(target.preview); return prev.filter(p => p.id !== id); }); };
     return (
         <div className="tw-space-y-3">
-            <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2"><Button size="sm" color="blue" variant="outlined" onClick={handlePick} className="tw-shrink-0">{t("attachPhoto", lang)}</Button></div>
-            <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">{t("maxPhotos", lang)} {max} {t("photos", lang)} • {t("cameraSupported", lang)}</Typography>
-            <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => { void handleFiles(e.target.files); }} />
+            <Button size="sm" color="blue" variant="outlined" onClick={() => fileRef.current?.click()}>{t("attachPhoto", lang)}</Button>
+            <Typography variant="small" className="!tw-text-gray-500">{t("maxPhotos", lang)} {max} {t("photos", lang)} • {t("cameraSupported", lang)}</Typography>
+            <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => void handleFiles(e.target.files)} />
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-                    {photos.map((p) => (<div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"><div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">{p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}<button onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button></div></div>))}
+                    {photos.map(p => (<div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white"><div className="tw-relative tw-aspect-[4/3] tw-bg-gray-50">{p.preview && <img src={p.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />}<button onClick={() => void handleRemove(p.id)} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600">×</button></div></div>))}
                 </div>
-            ) : (<Typography variant="small" className="!tw-text-blue-gray-500">{t("noPhotos", lang)}</Typography>)}
+            ) : <Typography variant="small" className="!tw-text-gray-500">{t("noPhotos", lang)}</Typography>}
         </div>
     );
 }
 
 function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
     return (
-        <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-amber-50 tw-border-amber-200">
+        <div className="tw-py-4 tw-bg-amber-50/50">
             <div className="tw-flex tw-items-center tw-justify-between">
-                <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{label}</Typography>
-                {remark && (<Typography variant="small" className="tw-text-blue-gray-600">{t("remarkLabel", lang)} - {remark}</Typography>)}
+                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{label}</Typography>
+                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
             </div>
+            {remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {remark}</Typography>}
         </div>
     );
 }
 
-async function fetchPreviewIssueId(stationId: string, pmDate: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/cbboxpmreport/preview-issueid`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-    if (!r.ok) return null; const j = await r.json(); return (j && typeof j.issue_id === "string") ? j.issue_id : null;
-}
-
-async function fetchPreviewDocName(stationId: string, pmDate: string): Promise<string | null> {
-    const u = new URL(`${API_BASE}/cbboxpmreport/preview-docname`); u.searchParams.set("station_id", stationId); u.searchParams.set("pm_date", pmDate);
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-    if (!r.ok) return null; const j = await r.json(); return (j && typeof j.doc_name === "string") ? j.doc_name : null;
-}
-
-async function fetchReport(reportId: string, stationId: string) {
-    const token = localStorage.getItem("access_token") ?? "";
-    const url = `${API_BASE}/cbboxpmreport/get?station_id=${stationId}&report_id=${reportId}`;
-    const res = await fetch(url, { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
-    if (!res.ok) throw new Error(await res.text());
-    return await res.json();
-}
+// ==================== MAIN COMPONENT ====================
 
 export default function CBBOXPMForm() {
     const { lang } = useLanguage();
-    const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
-    const [submitting, setSubmitting] = useState(false);
-    const [docName, setDocName] = useState<string>("");
-    const [reportId, setReportId] = useState<string>("");
-
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const editId = searchParams.get("edit_id") ?? "";
     const action = searchParams.get("action");
     const isPostMode = action === "post";
 
-    const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])) as Record<number, PhotoItem[]>;
-    const [photos, setPhotos] = useState<Record<number, PhotoItem[]>>(initialPhotos);
-    const [summary, setSummary] = useState<string>("");
+    const [submitting, setSubmitting] = useState(false);
+    const [docName, setDocName] = useState("");
+    const [reportId, setReportId] = useState("");
     const [stationId, setStationId] = useState<string | null>(null);
+    const [summary, setSummary] = useState("");
+    const [summaryCheck, setSummaryCheck] = useState<PF>("");
+    const [inspector, setInspector] = useState("");
+    const [postApiLoaded, setPostApiLoaded] = useState(false);
+    const [commentPre, setCommentPre] = useState("");
+    const [job, setJob] = useState({ issue_id: "", station_name: "", date: "" });
+    const [dropdownQ1, setDropdownQ1] = useState("");
+    const [dropdownQ2, setDropdownQ2] = useState("");
+    const [q2WasNA, setQ2WasNA] = useState(false);
+
+    const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(QUESTIONS.filter(q => q.hasPhoto).map(q => [q.no, []])) as Record<number, PhotoItem[]>;
+    const [photos, setPhotos] = useState<Record<number, PhotoItem[]>>(initialPhotos);
+
+    const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
+    const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
+        const initial: Record<string, { pf: PF; remark: string }> = {};
+        QUESTIONS.forEach(q => { initial[q.key] = { pf: "", remark: "" }; });
+        return initial;
+    });
+
+    const [m5Pre, setM5Pre] = useState<MeasureState>(() => initMeasureState(VOLTAGE_FIELDS));
+    const m5 = useMeasure(VOLTAGE_FIELDS);
 
     const key = useMemo(() => draftKey(stationId), [stationId]);
     const postKey = useMemo(() => `${draftKey(stationId)}:${editId}:post`, [stationId, editId]);
     const currentDraftKey = isPostMode ? postKey : key;
 
-    useEffect(() => { if (typeof window === "undefined") return; const params = new URLSearchParams(window.location.search); if (params.has("draft_id")) { params.delete("draft_id"); const url = `${window.location.pathname}?${params.toString()}`; window.history.replaceState({}, "", url); } }, []);
-
-    const [summaryCheck, setSummaryCheck] = useState<PF>("");
-    const [inspector, setInspector] = useState<string>("");
-    const [postApiLoaded, setPostApiLoaded] = useState(false);
-    const [commentPre, setCommentPre] = useState<string>("");
-
-    const [job, setJob] = useState({ issue_id: "", station_name: "", date: "" });
-    const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
-    const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => { const initial: Record<string, { pf: PF; remark: string }> = {}; QUESTIONS.forEach((q) => { initial[q.key] = { pf: "", remark: "" }; }); return initial; });
-
-    const [dropdownQ1, setDropdownQ1] = useState<string>("");
-    const [dropdownQ2, setDropdownQ2] = useState<string>("");
-    const [q2WasNA, setQ2WasNA] = useState<boolean>(false);
-
+    // Q2 NA dependency
     useEffect(() => {
         if (isPostMode) return;
         const isQ2NA = rows["r2"]?.pf === "NA";
         const dependentKeys = ["r5", "r6", "r7"];
-        if (isQ2NA && !q2WasNA) { setRows(prev => { const next = { ...prev }; dependentKeys.forEach(key => { next[key] = { ...next[key], pf: "NA" }; }); return next; }); setQ2WasNA(true); }
-        else if (!isQ2NA && q2WasNA) { setRows(prev => { const next = { ...prev }; dependentKeys.forEach(key => { if (next[key]?.pf === "NA") { next[key] = { ...next[key], pf: "" }; } }); return next; }); setQ2WasNA(false); }
-        else if (isQ2NA) { setRows(prev => { const next = { ...prev }; let changed = false; dependentKeys.forEach(key => { if (next[key]?.pf !== "NA") { next[key] = { ...next[key], pf: "NA" }; changed = true; } }); return changed ? next : prev; }); }
+        if (isQ2NA && !q2WasNA) {
+            setRows(prev => { const next = { ...prev }; dependentKeys.forEach(k => { next[k] = { ...next[k], pf: "NA" }; }); return next; });
+            setQ2WasNA(true);
+        } else if (!isQ2NA && q2WasNA) {
+            setRows(prev => { const next = { ...prev }; dependentKeys.forEach(k => { if (next[k]?.pf === "NA") next[k] = { ...next[k], pf: "" }; }); return next; });
+            setQ2WasNA(false);
+        }
     }, [rows["r2"]?.pf, isPostMode, q2WasNA]);
 
-    const [m5Pre, setM5Pre] = useState<MeasureState<UnitVoltage>>(() => initMeasureState(VOLTAGE_FIELDS, "V"));
-    const m5 = useMeasure<UnitVoltage>(VOLTAGE_FIELDS, "V");
+    // Load station info
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const sid = params.get("station_id") || localStorage.getItem("selected_station_id");
+        if (sid) setStationId(sid);
+        if (!sid || isPostMode) return;
+        getStationInfoPublic(sid).then(st => {
+            setJob(prev => ({ ...prev, station_name: st.station_name ?? prev.station_name, date: prev.date || new Date().toISOString().slice(0, 10) }));
+        }).catch(console.error);
+    }, [isPostMode]);
 
-    // ✅ Helper function to flatten rows and ensure correct structure (no nested keys)
-    const flattenRows = (inputRows: Record<string, any>): Record<string, { pf: PF; remark: string }> => {
-        const result: Record<string, { pf: PF; remark: string }> = {};
-        const validKeys = QUESTIONS.map(q => q.key);
+    // Load me
+    useEffect(() => {
+        const token = localStorage.getItem("access_token") ?? "";
+        if (!token) return;
+        fetch(`${API_BASE}/me`, { headers: { Authorization: `Bearer ${token}` }, credentials: "include" })
+            .then(res => res.ok ? res.json() : null)
+            .then((data: Me | null) => { if (data) setInspector(prev => prev || data.username || ""); })
+            .catch(console.error);
+    }, []);
 
-        // Extract flat keys directly
-        for (const key of validKeys) {
-            if (inputRows[key] && typeof inputRows[key] === "object") {
-                result[key] = { pf: inputRows[key].pf ?? "", remark: inputRows[key].remark ?? "" };
-            }
-        }
+    // Preview issue_id and doc_name
+    useEffect(() => {
+        if (isPostMode || !stationId || !job.date) return;
+        fetchPreviewIssueId(stationId, job.date).then(id => { if (id) setJob(prev => ({ ...prev, issue_id: id })); }).catch(() => {});
+        fetchPreviewDocName(stationId, job.date).then(name => { if (name) setDocName(name); }).catch(() => {});
+    }, [stationId, job.date, isPostMode]);
 
-        // Check for nested keys and extract them
-        for (const [parentKey, parentValue] of Object.entries(inputRows)) {
-            if (typeof parentValue === "object" && parentValue !== null) {
-                for (const [childKey, childValue] of Object.entries(parentValue)) {
-                    if (validKeys.includes(childKey) && typeof childValue === "object" && childValue !== null) {
-                        if (!result[childKey] || (!result[childKey].pf && !result[childKey].remark)) {
-                            result[childKey] = { pf: (childValue as any).pf ?? "", remark: (childValue as any).remark ?? "" };
-                        }
-                    }
-                }
-            }
-        }
-
-        // Ensure all valid keys exist with default values
-        for (const key of validKeys) { if (!result[key]) { result[key] = { pf: "", remark: "" }; } }
-        return result;
-    };
+    // Load draft Pre
+    useEffect(() => {
+        if (!stationId || isPostMode) return;
+        const draft = loadDraftLocal<any>(key);
+        if (!draft) return;
+        if (draft.rows) setRows(draft.rows);
+        if (draft.m5) m5.setState(draft.m5);
+        if (draft.summary) setSummary(draft.summary);
+        if (draft.summary_pf) setSummaryCheck(draft.summary_pf);
+        if (draft.inspector) setInspector(draft.inspector);
+        if (draft.dropdownQ1) setDropdownQ1(draft.dropdownQ1);
+        if (draft.dropdownQ2) setDropdownQ2(draft.dropdownQ2);
+        // Load photos from draft...
+    }, [stationId, key, isPostMode]);
 
     // Load API data for Post mode
     useEffect(() => {
         if (!isPostMode || !editId || !stationId) return;
         setPostApiLoaded(false);
-        (async () => {
-            try {
-                const data = await fetchReport(editId, stationId);
-                if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id }));
-                if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
-                const m5FromPre = data?.measures_pre?.m5;
-                if (m5FromPre) { setM5Pre((prev) => { const next = { ...prev }; VOLTAGE_FIELDS.forEach((k) => { const row = m5FromPre[k] ?? {}; next[k] = { value: row.value ?? "", unit: (row.unit as UnitVoltage) ?? "V" }; }); return next; }); }
-                if (data.doc_name) setDocName(data.doc_name);
-                if (data.inspector) setInspector(data.inspector);
-                if (data.dropdownQ1) setDropdownQ1(data.dropdownQ1);
-                if (data.dropdownQ2) setDropdownQ2(data.dropdownQ2);
-                if (data.comment_pre) setCommentPre(data.comment_pre);
-                if (data.summary) setSummary(data.summary);
-                if (data.rows_pre) { setRowsPre(data.rows_pre); }
-                if (data.rows) { setRows((prev) => { const next = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { next[k] = v as { pf: PF; remark: string }; }); return next; }); }
-                else if (data.rows_pre) { setRows((prev) => { const next = { ...prev }; Object.entries(data.rows_pre).forEach(([k, v]) => { const preRow = v as { pf: PF; remark: string }; next[k] = { pf: preRow.pf, remark: "" }; }); return next; }); }
-                setPostApiLoaded(true);
-            } catch (err) { console.error("load report failed:", err); setPostApiLoaded(true); }
-        })();
+        fetchReport(editId, stationId).then(data => {
+            if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id }));
+            if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
+            if (data?.measures_pre?.m5) {
+                setM5Pre(prev => {
+                    const next = { ...prev };
+                    VOLTAGE_FIELDS.forEach(k => { const row = data.measures_pre.m5[k] ?? {}; next[k] = { value: row.value ?? "", unit: "V" }; });
+                    return next;
+                });
+            }
+            if (data.doc_name) setDocName(data.doc_name);
+            if (data.inspector) setInspector(data.inspector);
+            if (data.dropdownQ1) setDropdownQ1(data.dropdownQ1);
+            if (data.dropdownQ2) setDropdownQ2(data.dropdownQ2);
+            if (data.comment_pre) setCommentPre(data.comment_pre);
+            if (data.summary) setSummary(data.summary);
+            if (data.rows_pre) setRowsPre(data.rows_pre);
+            if (data.rows) setRows(prev => ({ ...prev, ...data.rows }));
+            else if (data.rows_pre) setRows(prev => { const next = { ...prev }; Object.entries(data.rows_pre).forEach(([k, v]) => { next[k] = { pf: (v as any).pf, remark: "" }; }); return next; });
+            setPostApiLoaded(true);
+        }).catch(err => { console.error(err); setPostApiLoaded(true); });
     }, [isPostMode, editId, stationId]);
 
-    // Load draft for Post mode
-    useEffect(() => {
-        if (!isPostMode || !stationId || !editId || !postApiLoaded) return;
-        const postDraft = loadDraftLocal<{ rows: typeof rows; m5: typeof m5.state; summary: string; summaryCheck?: PF; photoRefs?: Record<number, (PhotoRef | { isNA: true })[]>; }>(postKey);
-        if (!postDraft) return;
-        if (postDraft.rows) setRows(prev => ({ ...prev, ...postDraft.rows }));
-        if (postDraft.m5) m5.setState(postDraft.m5);
-        if (postDraft.summary) setSummary(postDraft.summary);
-        if (postDraft.summaryCheck) setSummaryCheck(postDraft.summaryCheck);
-        (async () => {
-            if (!postDraft.photoRefs) return;
-            const next: Record<number, PhotoItem[]> = Object.fromEntries(QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])) as Record<number, PhotoItem[]>;
-            for (const [noStr, refs] of Object.entries(postDraft.photoRefs)) {
-                const no = Number(noStr); const items: PhotoItem[] = [];
-                for (const ref of refs || []) {
-                    if ('isNA' in ref && ref.isNA) { items.push({ id: `${no}-NA-restored`, isNA: true, preview: undefined }); continue; }
-                    if (!('id' in ref) || !ref.id) continue;
-                    const file = await getPhoto(postKey, ref.id); if (!file) continue;
-                    items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
-                }
-                if (items.length > 0) next[no] = items;
-            }
-            if (Object.keys(next).some(k => (next[Number(k)]?.length ?? 0) > 0)) setPhotos(prev => ({ ...prev, ...next }));
-        })();
-    }, [isPostMode, stationId, editId, postKey, postApiLoaded]);
+    const makePhotoSetter = (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
+        return action => setPhotos(prev => ({ ...prev, [no]: typeof action === "function" ? action(prev[no] ?? []) : action }));
+    };
 
-    useEffect(() => { const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : ""; if (!token) return; (async () => { try { const res = await fetch(`${API_BASE}/me`, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include" }); if (!res.ok) return; const data: Me = await res.json(); setMe(data); setInspector((prev) => prev || data.username || ""); } catch (err) { console.error("fetch /me error:", err); } })(); }, []);
+    // Validation
+    const REQUIRED_PHOTO_ITEMS_PRE = useMemo(() => QUESTIONS.filter(q => q.hasPhoto && q.no !== 9).map(q => q.no), []);
+    const REQUIRED_PHOTO_ITEMS_POST = useMemo(() => QUESTIONS.filter(q => q.hasPhoto).map(q => q.no), []);
 
-    useEffect(() => { if (isPostMode || !stationId || !job.date) return; let canceled = false; (async () => { try { const preview = await fetchPreviewIssueId(stationId, job.date); if (!canceled && preview) setJob(prev => ({ ...prev, issue_id: preview })); } catch (err) { console.error("preview issue_id error:", err); } })(); return () => { canceled = true; }; }, [stationId, job.date, isPostMode]);
-    useEffect(() => { if (isPostMode || !stationId || !job.date) return; let canceled = false; (async () => { try { const preview = await fetchPreviewDocName(stationId, job.date); if (!canceled && preview) setDocName(preview); } catch (err) { console.error("preview docName error:", err); } })(); return () => { canceled = true; }; }, [stationId, job.date, isPostMode]);
-
-    useEffect(() => { const params = new URLSearchParams(window.location.search); const sid = params.get("station_id") || localStorage.getItem("selected_station_id"); if (sid) setStationId(sid); if (!sid || isPostMode) return; getStationInfoPublic(sid).then((st) => { setJob((prev) => ({ ...prev, station_name: st.station_name ?? prev.station_name, date: prev.date || new Date().toISOString().slice(0, 10) })); }).catch((err) => console.error("load public station info failed:", err)); }, [isPostMode]);
-
-    // Load draft for Pre mode
-    useEffect(() => {
-        if (!stationId || isPostMode) return;
-        const draft = loadDraftLocal<{ rows: typeof rows; m5: typeof m5.state; summary: string; summary_pf?: PF; inspector?: string; photoRefs?: Record<number, (PhotoRef | { isNA: true })[]>; dropdownQ1?: string; dropdownQ2?: string; }>(key);
-        if (!draft) return;
-        setRows(draft.rows); m5.setState(draft.m5 ?? initMeasureState(VOLTAGE_FIELDS, "V")); setSummary(draft.summary); setSummaryCheck(draft.summary_pf ?? ""); setInspector(draft.inspector ?? "");
-        if (draft.dropdownQ1) setDropdownQ1(draft.dropdownQ1); if (draft.dropdownQ2) setDropdownQ2(draft.dropdownQ2);
-        (async () => {
-            if (!draft.photoRefs) return;
-            const next: Record<number, PhotoItem[]> = Object.fromEntries(QUESTIONS.filter((q) => q.hasPhoto).map((q) => [q.no, [] as PhotoItem[]])) as Record<number, PhotoItem[]>;
-            for (const [noStr, refs] of Object.entries(draft.photoRefs)) {
-                const no = Number(noStr); const items: PhotoItem[] = [];
-                for (const ref of refs || []) {
-                    if ('isNA' in ref && ref.isNA) { items.push({ id: `${no}-NA-restored`, isNA: true, preview: undefined }); continue; }
-                    if (!('id' in ref) || !ref.id) continue;
-                    const file = await getPhoto(key, ref.id); if (!file) continue;
-                    items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
-                }
-                next[no] = items;
-            }
-            setPhotos(next);
-        })();
-    }, [stationId, key, isPostMode]);
-
-    useEffect(() => { const onInfo = (e: Event) => { const detail = (e as CustomEvent).detail as { info?: StationPublic; station?: StationPublic }; const st = detail.info ?? detail.station; if (!st) return; setJob((prev) => ({ ...prev, station_name: st.station_name ?? prev.station_name })); }; window.addEventListener("station:info", onInfo as EventListener); return () => window.removeEventListener("station:info", onInfo as EventListener); }, []);
-
-    const makePhotoSetter = (no: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> => { return (action: React.SetStateAction<PhotoItem[]>) => { setPhotos((prev) => { const current = prev[no] ?? []; const next = typeof action === "function" ? (action as (x: PhotoItem[]) => PhotoItem[])(current) : action; return { ...prev, [no]: next }; }); }; };
-
-    const MEASURE_BY_NO: Record<number, ReturnType<typeof useMeasure<UnitVoltage>> | undefined> = { 5: m5 };
-    const REQUIRED_PHOTO_ITEMS_PRE = useMemo(() => QUESTIONS.filter((q) => q.hasPhoto && q.no !== 9).map((q) => q.no).sort((a, b) => a - b), []);
-    const REQUIRED_PHOTO_ITEMS_POST = useMemo(() => QUESTIONS.filter((q) => q.hasPhoto).map((q) => q.no).sort((a, b) => a - b), []);
-
-    const missingPhotoItemsPre = useMemo(() => REQUIRED_PHOTO_ITEMS_PRE.filter((no) => { const qKey = `r${no}`; if (rows[qKey]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [REQUIRED_PHOTO_ITEMS_PRE, photos, rows]);
-    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_ITEMS_POST.filter((no) => { const qKey = `r${no}`; if (rowsPre[qKey]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [REQUIRED_PHOTO_ITEMS_POST, photos, rowsPre]);
+    const missingPhotoItemsPre = useMemo(() => REQUIRED_PHOTO_ITEMS_PRE.filter(no => { if (rows[`r${no}`]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rows]);
+    const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_ITEMS_POST.filter(no => { if (rowsPre[`r${no}`]?.pf === "NA") return false; return (photos[no]?.length ?? 0) < 1; }), [photos, rowsPre]);
 
     const allPhotosAttachedPre = missingPhotoItemsPre.length === 0;
     const allPhotosAttachedPost = missingPhotoItemsPost.length === 0;
     const missingPhotoItems = isPostMode ? missingPhotoItemsPost : missingPhotoItemsPre;
     const allPhotosAttached = isPostMode ? allPhotosAttachedPost : allPhotosAttachedPre;
 
-    const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter((q) => q.no !== 9).map((q) => q.key), []);
-    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter((q) => { if (q.no === 1 || q.no === 2) return false; if (rowsPre[q.key]?.pf === "NA") return false; return true; }).map((q) => q.key), [rowsPre]);
+    const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
+    const PF_KEYS_POST = useMemo(() => QUESTIONS.filter(q => { if (q.no === 1 || q.no === 2) return false; if (rowsPre[q.key]?.pf === "NA") return false; return true; }).map(q => q.key), [rowsPre]);
 
-    const allPFAnsweredPre = useMemo(() => PF_KEYS_PRE.every((k) => rows[k]?.pf !== ""), [rows, PF_KEYS_PRE]);
-    const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every((k) => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
-    const missingPFItemsPre = useMemo(() => PF_KEYS_PRE.filter((k) => !rows[k]?.pf).map((k) => Number(k.replace("r", ""))).sort((a, b) => a - b), [rows, PF_KEYS_PRE]);
-    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => !rows[k]?.pf).map((k) => Number(k.replace("r", ""))).sort((a, b) => a - b), [rows, PF_KEYS_POST]);
+    const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every(k => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
+    const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => Number(k.replace("r", ""))).sort((a, b) => a - b), [rows, PF_KEYS_POST]);
 
-    const validRemarkKeysPre = useMemo(() => QUESTIONS.filter((q) => q.no !== 9).map((q) => q.key), []);
-    const missingRemarksPre = useMemo(() => { const missing: number[] = []; validRemarkKeysPre.forEach((key) => { const val = rows[key]; if (val?.pf === "NA") return; if (!val?.remark?.trim()) { const match = key.match(/^r(\d+)$/); if (match) { missing.push(parseInt(match[1], 10)); } } }); return missing.sort((a, b) => a - b); }, [rows, validRemarkKeysPre]);
+    const validRemarkKeysPre = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
+    const missingRemarksPre = useMemo(() => {
+        const missing: number[] = [];
+        validRemarkKeysPre.forEach(key => { const val = rows[key]; if (val?.pf === "NA") return; if (!val?.remark?.trim()) { const m = key.match(/^r(\d+)$/); if (m) missing.push(parseInt(m[1], 10)); } });
+        return missing.sort((a, b) => a - b);
+    }, [rows, validRemarkKeysPre]);
     const allRemarksFilledPre = missingRemarksPre.length === 0;
 
-    const validRemarkKeysPost = useMemo(() => QUESTIONS.filter((q) => { if (rowsPre[q.key]?.pf === "NA") return false; return true; }).map((q) => q.key), [rowsPre]);
-    const missingRemarksPost = useMemo(() => { const missing: number[] = []; validRemarkKeysPost.forEach((key) => { const val = rows[key]; if (!val?.remark?.trim()) { const match = key.match(/^r(\d+)$/); if (match) { missing.push(parseInt(match[1], 10)); } } }); return missing.sort((a, b) => a - b); }, [rows, validRemarkKeysPost]);
+    const validRemarkKeysPost = useMemo(() => QUESTIONS.filter(q => rowsPre[q.key]?.pf !== "NA").map(q => q.key), [rowsPre]);
+    const missingRemarksPost = useMemo(() => {
+        const missing: number[] = [];
+        validRemarkKeysPost.forEach(key => { const val = rows[key]; if (!val?.remark?.trim()) { const m = key.match(/^r(\d+)$/); if (m) missing.push(parseInt(m[1], 10)); } });
+        return missing.sort((a, b) => a - b);
+    }, [rows, validRemarkKeysPost]);
     const allRemarksFilledPost = missingRemarksPost.length === 0;
 
-    const missingInputs = useMemo(() => { const r: string[] = []; if (rows["r5"]?.pf === "NA") return r; if (rowsPre["r5"]?.pf === "NA") return r; FIELD_GROUPS[5]?.keys.forEach((k) => { const value = m5.state[k]?.value ?? ""; if (!value.trim()) r.push(`5: ${String(k)}`); }); return r; }, [m5.state, rowsPre, rows]);
-    const allRequiredInputsFilled = useMemo(() => missingInputs.length === 0, [missingInputs]);
+    const missingInputs = useMemo(() => {
+        const r: string[] = [];
+        if (rows["r5"]?.pf === "NA" || rowsPre["r5"]?.pf === "NA") return r;
+        const missingKeys = FIELD_GROUPS[5]?.keys.filter(k => !m5.state[k]?.value?.trim()) || [];
+        if (missingKeys.length > 0) r.push(`5: ${missingKeys.join(", ")}`);
+        return r;
+    }, [m5.state, rowsPre, rows]);
+    const allRequiredInputsFilled = missingInputs.length === 0;
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
 
-    const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled && allRemarksFilledPre);
+    const canGoAfter = isPostMode ? true : (allPhotosAttachedPre && allRequiredInputsFilled && allRemarksFilledPre);
     const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
 
-    const handleUnitChange = (no: number, key: string, u: UnitVoltage) => { const m = MEASURE_BY_NO[no]; if (!m) return; const firstKey = (FIELD_GROUPS[no]?.keys ?? [key])[0] as string; if (key !== firstKey) m.patch(firstKey, { unit: u }); m.syncUnits(u); };
+    // Auto-save draft
+    const photoRefs = useMemo(() => {
+        const out: Record<number, (PhotoRef | { isNA: true })[]> = {};
+        Object.entries(photos).forEach(([noStr, list]) => { out[Number(noStr)] = (list || []).map(p => p.isNA ? { isNA: true } : p.ref).filter(Boolean) as any[]; });
+        return out;
+    }, [photos]);
 
-    const renderMeasureGridWithPre = (no: number) => {
-        const cfg = FIELD_GROUPS[no]; const m = MEASURE_BY_NO[no]; if (!cfg || !m) return null;
+    useDebouncedEffect(() => {
+        if (!stationId || isPostMode) return;
+        saveDraftLocal(key, { rows, m5: m5.state, summary, summary_pf: summaryCheck, photoRefs, dropdownQ1, dropdownQ2, inspector });
+    }, [key, stationId, rows, m5.state, summary, summaryCheck, dropdownQ1, dropdownQ2, photoRefs, isPostMode, inspector]);
+
+    useDebouncedEffect(() => {
+        if (!stationId || !isPostMode || !editId) return;
+        saveDraftLocal(postKey, { rows, m5: m5.state, summary, summaryCheck, photoRefs });
+    }, [postKey, stationId, rows, m5.state, summary, summaryCheck, photoRefs, isPostMode, editId]);
+
+    // Render measure grid
+    const renderMeasureGrid = (no: number, isPreView = false) => {
+        const cfg = FIELD_GROUPS[no]; if (!cfg) return null;
+        const state = isPreView ? m5Pre : m5.state;
         return (
-            <div className="tw-space-y-3">
-                <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{t("beforePM", lang)}</Typography>
-                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">{cfg.keys.map((k) => (<div key={`pre-${no}-${k}`} className="tw-pointer-events-none tw-opacity-60"><InputWithUnit<UnitVoltage> label={LABELS[k] ?? k} value={m5Pre[k]?.value || ""} unit={(m5Pre[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage} onValueChange={() => { }} onUnitChange={() => { }} readOnly required={false} /></div>))}</div>
-                <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mt-2">{t("afterPM", lang)}</Typography>
-                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">{cfg.keys.map((k) => (<InputWithUnit<UnitVoltage> key={`post-${no}-${k}`} label={LABELS[k] ?? k} value={m.state[k]?.value || ""} unit={(m.state[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage} onValueChange={(v) => m.patch(k, { value: v })} onUnitChange={(u) => handleUnitChange(no, k, u)} />))}</div>
+            <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-5 tw-gap-3">
+                {cfg.keys.map(k => (
+                    <div key={k} className={isPreView ? "tw-pointer-events-none tw-opacity-60" : ""}>
+                        <InputWithUnit label={LABELS[k] ?? k} value={state[k]?.value || ""} unit="V" onValueChange={v => !isPreView && m5.patch(k, { value: v })} readOnly={isPreView} required={!isPreView} />
+                    </div>
+                ))}
             </div>
         );
     };
 
-    const renderMeasureGrid = (no: number) => {
-        const cfg = FIELD_GROUPS[no]; const m = MEASURE_BY_NO[no]; if (!cfg || !m) return null;
-        return (<div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">{cfg.keys.map((k) => (<InputWithUnit<UnitVoltage> key={`${no}-${k}`} label={String(k)} value={m.state[k]?.value || ""} unit={(m.state[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage} onValueChange={(v) => m.patch(k, { value: v })} onUnitChange={(u) => handleUnitChange(no, k, u)} />))}</div>);
+    const renderMeasureGridWithPre = (no: number) => {
+        const cfg = FIELD_GROUPS[no]; if (!cfg) return null;
+        return (
+            <div className="tw-space-y-3">
+                <Typography variant="small" className="tw-font-medium tw-text-gray-700">{t("beforePM", lang)}</Typography>
+                {renderMeasureGrid(no, true)}
+                <Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mt-2">{t("afterPM", lang)}</Typography>
+                {renderMeasureGrid(no, false)}
+            </div>
+        );
     };
 
+    // Render question block
     const renderQuestionBlock = (q: Question, mode: TabId) => {
-        const hasMeasure: boolean = q.kind === "measure" && !!FIELD_GROUPS[q.no];
-        const subtitle = FIELD_GROUPS[q.no]?.note;
+        const hasMeasure = q.kind === "measure" && !!FIELD_GROUPS[q.no];
         const qTooltip = q.tooltip?.[lang];
         const preRemark = rowsPre[q.key]?.remark;
         const preRemarkElement = mode === "post" && preRemark ? (
             <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1"><svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg><Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography></div>
+                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
+                    <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
+                    <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
+                </div>
                 <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{preRemark}</Typography>
             </div>
         ) : null;
@@ -555,61 +522,58 @@ export default function CBBOXPMForm() {
             const isDependentOnQ2 = [5, 6, 7].includes(q.no);
             const isLockedByQ2 = isDependentOnQ2 && isQ2NA;
             return (
-                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} subtitle={subtitle} tooltip={qTooltip}>
-                    <div className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
+                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
+                    <div className={isNA ? "tw-bg-amber-50/50" : ""}>
                         <div className="tw-flex tw-items-center tw-justify-end tw-gap-2 tw-mb-3">
-                            {isLockedByQ2 && (<Typography variant="small" className="tw-text-amber-700 tw-italic">{lang === "th" ? "(N/A ตามข้อ 2)" : "(N/A from Q2)"}</Typography>)}
-                            <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"} disabled={isLockedByQ2} onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
+                            {isLockedByQ2 && <Typography variant="small" className="tw-text-amber-700 tw-italic">{lang === "th" ? "(N/A ตามข้อ 2)" : "(N/A from Q2)"}</Typography>}
+                            <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} disabled={isLockedByQ2} onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                         </div>
-                        {q.hasPhoto && (<div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>)}
-                        {hasMeasure && (<div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderMeasureGrid(q.no)}</div>)}
-                        {q.no === 1 && (<div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select required value={dropdownQ1} onChange={(e) => setDropdownQ1(e.target.value)} className="tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-500"><option value="">{t("selectPowerSource", lang)}</option>{DROPDOWN_Q1_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select></div>)}
-                        {q.no === 2 && (<div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select required value={dropdownQ2} onChange={(e) => setDropdownQ2(e.target.value)} className="tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-500"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && (<Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 5, 6, 7 จะเป็น N/A ตามข้อนี้" : "* Q5, 6, 7 will be N/A accordingly"}</Typography>)}</div>)}
-                        <Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={(e) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
+                        {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
+                        {hasMeasure && <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderMeasureGrid(q.no)}</div>}
+                        {q.no === 1 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ1} onChange={e => setDropdownQ1(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectPowerSource", lang)}</option>{DROPDOWN_Q1_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select></div>}
+                        {q.no === 2 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && <Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 5, 6, 7 จะเป็น N/A ตามข้อนี้" : "* Q5, 6, 7 will be N/A accordingly"}</Typography>}</div>}
+                        <Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={3} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" />
                     </div>
                 </SectionCard>
             );
         }
 
-        if (rowsPre[q.key]?.pf === "NA") { return (<SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} subtitle={subtitle}><SkippedNAItem label={q.label[lang]} remark={rowsPre[q.key]?.remark} lang={lang} /></SectionCard>); }
+        if (rowsPre[q.key]?.pf === "NA") return <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}><SkippedNAItem label={q.label[lang]} remark={rowsPre[q.key]?.remark} lang={lang} /></SectionCard>;
 
         if (mode === "post" && (q.no === 1 || q.no === 2)) {
             return (
-                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} subtitle={subtitle}>
-                    <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100">
-                        {q.hasPhoto && (<div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>)}
-                        {q.no === 1 && (<div className="tw-mb-4 tw-space-y-3"><Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mb-2">{t("powerSource", lang)}</Typography><div className="tw-p-3 tw-bg-blue-gray-50 tw-rounded tw-border tw-border-blue-gray-200"><Typography variant="small">{dropdownQ1 || "-"}</Typography></div>{preRemarkElement}<Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={(e) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" /></div>)}
-                        {q.no === 2 && (<div className="tw-mb-4 tw-space-y-3"><Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mb-2">{t("circuitDevice", lang)}</Typography><div className="tw-p-3 tw-bg-blue-gray-50 tw-rounded tw-border tw-border-blue-gray-200"><Typography variant="small">{dropdownQ2 || "-"}</Typography></div>{preRemarkElement}<Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={(e) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" /></div>)}
-                    </div>
+                <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
+                    {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
+                    {q.no === 1 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("powerSource", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ1 || "-"}</Typography></div>{preRemarkElement}<Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div>}
+                    {q.no === 2 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("circuitDevice", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ2 || "-"}</Typography></div>{preRemarkElement}<Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div>}
                 </SectionCard>
             );
         }
 
         return (
-            <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} subtitle={subtitle}>
-                <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100">
-                    <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang} onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })} remark={rows[q.key]?.remark || ""} onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-                        aboveRemark={q.hasPhoto && (<div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-8 tw-border-blue-gray-50"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>)}
-                        beforeRemark={<>{hasMeasure && (q.no === 5 ? renderMeasureGridWithPre(q.no) : renderMeasureGrid(q.no))}{preRemarkElement}</>} />
-                </div>
+            <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
+                <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang} onChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })} remark={rows[q.key]?.remark || ""} onRemarkChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
+                    aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
+                    beforeRemark={<>{hasMeasure && (q.no === 5 ? renderMeasureGridWithPre(q.no) : renderMeasureGrid(q.no))}{preRemarkElement}</>} />
             </SectionCard>
         );
     };
 
-    const photoRefs = useMemo(() => { const out: Record<number, (PhotoRef | { isNA: true })[]> = {}; Object.entries(photos).forEach(([noStr, list]) => { const no = Number(noStr); out[no] = (list || []).map(p => p.isNA ? { isNA: true } : p.ref).filter(Boolean) as (PhotoRef | { isNA: true })[]; }); return out; }, [photos]);
-
-    useDebouncedEffect(() => { if (!stationId || isPostMode) return; saveDraftLocal(key, { rows, m5: m5.state, summary, summary_pf: summaryCheck, photoRefs, dropdownQ1, dropdownQ2, inspector }); }, [key, stationId, rows, m5.state, summary, summaryCheck, dropdownQ1, dropdownQ2, photoRefs, isPostMode, inspector]);
-    useDebouncedEffect(() => { if (!stationId || !isPostMode || !editId) return; saveDraftLocal(postKey, { rows, m5: m5.state, summary, summaryCheck, photoRefs }); }, [postKey, stationId, rows, m5.state, summary, summaryCheck, photoRefs, isPostMode, editId]);
-
+    // Image compression
     async function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
         if (!file.type.startsWith("image/") || file.size < 500 * 1024) return file;
-        return new Promise((resolve) => { const img = document.createElement("img"); img.onload = () => { URL.revokeObjectURL(img.src); let { width, height } = img; if (width > maxWidth) { height = (height * maxWidth) / width; width = maxWidth; } const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height; const ctx = canvas.getContext("2d")!; ctx.drawImage(img, 0, 0, width, height); canvas.toBlob((blob) => { if (blob && blob.size < file.size) resolve(new File([blob], file.name, { type: "image/jpeg" })); else resolve(file); }, "image/jpeg", quality); }; img.onerror = () => resolve(file); img.src = URL.createObjectURL(file); });
+        return new Promise(resolve => {
+            const img = document.createElement("img");
+            img.onload = () => { URL.revokeObjectURL(img.src); let { width, height } = img; if (width > maxWidth) { height = (height * maxWidth) / width; width = maxWidth; } const canvas = document.createElement("canvas"); canvas.width = width; canvas.height = height; const ctx = canvas.getContext("2d")!; ctx.drawImage(img, 0, 0, width, height); canvas.toBlob(blob => { if (blob && blob.size < file.size) resolve(new File([blob], file.name, { type: "image/jpeg" })); else resolve(file); }, "image/jpeg", quality); };
+            img.onerror = () => resolve(file);
+            img.src = URL.createObjectURL(file);
+        });
     }
 
     async function uploadGroupPhotos(reportId: string, stationId: string, group: string, files: File[], side: TabId) {
         if (files.length === 0) return;
         const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
-        const form = new FormData(); form.append("station_id", stationId); form.append("group", group); form.append("side", side); compressedFiles.forEach((f) => form.append("files", f));
+        const form = new FormData(); form.append("station_id", stationId); form.append("group", group); form.append("side", side); compressedFiles.forEach(f => form.append("files", f));
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/cbboxpmreport/${reportId}/pre/photos` : `${API_BASE}/cbboxpmreport/${reportId}/post/photos`;
         const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
@@ -625,80 +589,22 @@ export default function CBBOXPMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const pm_date = job.date?.trim() || "";
-            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-
-            // ✅ สร้าง rows_pre โดยตรงจาก rows state (ไม่ใช้ flattenRows)
             const rowsPreData: Record<string, { pf: string; remark: string }> = {};
-            QUESTIONS.forEach((q) => {
-                rowsPreData[q.key] = {
-                    pf: rows[q.key]?.pf || "",
-                    remark: rows[q.key]?.remark || ""
-                };
-            });
-
-            // ✅ Debug - ลบออกได้หลังแก้เสร็จ
-            console.log("=== DEBUG onPreSave ===");
-            console.log("rows state:", JSON.stringify(rows, null, 2));
-            console.log("rowsPreData:", JSON.stringify(rowsPreData, null, 2));
-            console.log("=======================");
-
-            const payload = {
-                station_id: stationId,
-                issue_id: issueIdFromJob,
-                job: jobWithoutIssueId,
-                inspector,
-                measures_pre: { m5: m5.state },
-                rows_pre: rowsPreData,  // ← ใช้ rowsPreData
-                pm_date,
-                doc_name: docName,
-                dropdownQ1,
-                dropdownQ2,
-                side: "pre" as const,
-                comment_pre: summary
-            };
-
-            // ✅ Debug payload
-            console.log("payload.rows_pre:", JSON.stringify(payload.rows_pre, null, 2));
-
-            const res = await fetch(`${API_BASE}/cbboxpmreport/pre/submit`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {})
-                },
-                credentials: "include",
-                body: JSON.stringify(payload)
-            });
-
+            QUESTIONS.forEach(q => { rowsPreData[q.key] = { pf: rows[q.key]?.pf || "", remark: rows[q.key]?.remark || "" }; });
+            const payload = { station_id: stationId, issue_id: job.issue_id, job: { station_name: job.station_name, date: job.date }, inspector, measures_pre: { m5: m5.state }, rows_pre: rowsPreData, pm_date: job.date, doc_name: docName, dropdownQ1, dropdownQ2, side: "pre", comment_pre: summary };
+            const res = await fetch(`${API_BASE}/cbboxpmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!res.ok) throw new Error(await res.text());
             const { report_id, doc_name } = await res.json() as { report_id: string; doc_name?: string };
             setReportId(report_id);
             if (doc_name) setDocName(doc_name);
-
-            // Upload photos
             const uploadPromises: Promise<void>[] = [];
-            Object.entries(photos).forEach(([no, list]) => {
-                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
-                if (files.length > 0) {
-                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre"));
-                }
-            });
-            if (uploadPromises.length > 0) {
-                await Promise.all(uploadPromises);
-            }
-
-            // Clear draft
+            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) uploadPromises.push(uploadGroupPhotos(report_id, stationId, `g${no}`, files, "pre")); });
+            if (uploadPromises.length > 0) await Promise.all(uploadPromises);
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
             clearDraftLocal(key);
-
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
-        } catch (err: any) {
-            alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`);
-        } finally {
-            setSubmitting(false);
-        }
+        } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
     const onFinalSave = async () => {
@@ -709,17 +615,12 @@ export default function CBBOXPMForm() {
             const token = localStorage.getItem("access_token");
             const finalReportId = reportId || editId;
             if (!finalReportId) throw new Error(t("noReportId", lang));
-
-            // ✅ Flatten rows to ensure correct structure (no nested keys)
-            const flatRows = flattenRows(rows);
-
-            const payload = { station_id: stationId, rows: flatRows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), side: "post" as TabId, report_id: finalReportId };
+            const payload = { station_id: stationId, rows, measures: { m5: m5.state }, summary, dropdownQ1, dropdownQ2, ...(summaryCheck ? { summaryCheck } : {}), side: "post", report_id: finalReportId };
             const res = await fetch(`${API_BASE}/cbboxpmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!res.ok) throw new Error(await res.text());
-            const { report_id } = await res.json() as { report_id: string };
             const uploadPromises: Promise<void>[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, `g${no}`, files, "post")); } });
-            if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
+            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, `g${no}`, files, "post")); });
+            if (uploadPromises.length > 0) await Promise.all(uploadPromises);
             await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
@@ -728,61 +629,93 @@ export default function CBBOXPMForm() {
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
-    const active: TabId = useMemo(() => slugToTab(searchParams.get("pmtab")), [searchParams]);
-
-    useEffect(() => { const tabParam = searchParams.get("pmtab"); let desired: "pre" | "post"; if (isPostMode) desired = "post"; else if (!tabParam) desired = "pre"; else if (tabParam === "after" && !canGoAfter) desired = "pre"; else desired = tabParam === "post" ? "post" : "pre"; if (tabParam !== desired) { const params = new URLSearchParams(searchParams.toString()); params.set("pmtab", desired); router.replace(`${pathname}?${params.toString()}`, { scroll: false }); } }, [searchParams, canGoAfter, pathname, router, isPostMode]);
-
-    const go = (next: TabId) => { if (isPostMode && next === "pre") return; if (next === "post" && !canGoAfter) { alert(t("alertFillPreFirst", lang)); return; } const params = new URLSearchParams(searchParams.toString()); params.set("pmtab", tabToSlug(next)); router.push(`${pathname}?${params.toString()}`, { scroll: false }); };
-
+    // Tab navigation
+    const active: TabId = useMemo(() => searchParams.get("pmtab") === "post" ? "post" : "pre", [searchParams]);
     const displayTab: TabId = isPostMode ? "post" : (active === "post" && !canGoAfter ? "pre" : active);
-    const allPFAnsweredForUI = displayTab === "pre" ? allPFAnsweredPre : allPFAnsweredPost;
-    const missingPFItemsForUI = displayTab === "pre" ? missingPFItemsPre : missingPFItemsPost;
+
+    useEffect(() => {
+        const tabParam = searchParams.get("pmtab");
+        let desired: TabId = isPostMode ? "post" : (tabParam === "post" ? "post" : "pre");
+        if (desired === "post" && !canGoAfter && !isPostMode) desired = "pre";
+        if (tabParam !== desired) {
+            const params = new URLSearchParams(searchParams.toString());
+            params.set("pmtab", desired);
+            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        }
+    }, [searchParams, canGoAfter, pathname, router, isPostMode]);
+
+    const go = (next: TabId) => {
+        if (isPostMode && next === "pre") return;
+        if (next === "post" && !canGoAfter) { alert(t("alertFillPreFirst", lang)); return; }
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("pmtab", next);
+        router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    };
 
     return (
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
-                <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}><ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" /></Button>
+                <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}><ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" /></Button>
                 <Tabs value={displayTab}>
-                    <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
-                        {TABS.map((tb) => { const isPreDisabled = isPostMode && tb.id === "pre"; const isLockedAfter = tb.id === "post" && !canGoAfter; if (isPreDisabled) return <div key={tb.id} className="tw-px-4 tw-py-2 tw-font-medium tw-opacity-50 tw-cursor-not-allowed tw-select-none">{tb.label}</div>; if (isLockedAfter) return <div key={tb.id} className="tw-px-4 tw-py-2 tw-font-medium tw-opacity-50 tw-cursor-not-allowed tw-select-none" onClick={() => alert(t("alertFillPreFirst", lang))}>{tb.label}</div>; return <Tab key={tb.id} value={tb.id} onClick={() => go(tb.id)} className="tw-px-4 tw-py-2 tw-font-medium">{tb.label}</Tab>; })}
+                    <TabsHeader className="tw-bg-gray-100 tw-rounded-lg">
+                        {TABS.map(tb => {
+                            const isPreDisabled = isPostMode && tb.id === "pre";
+                            const isLockedAfter = tb.id === "post" && !canGoAfter;
+                            if (isPreDisabled) return <div key={tb.id} className="tw-px-4 tw-py-2 tw-font-medium tw-opacity-50 tw-cursor-not-allowed">{tb.label}</div>;
+                            if (isLockedAfter) return <div key={tb.id} className="tw-px-4 tw-py-2 tw-font-medium tw-opacity-50 tw-cursor-not-allowed" onClick={() => alert(t("alertFillPreFirst", lang))}>{tb.label}</div>;
+                            return <Tab key={tb.id} value={tb.id} onClick={() => go(tb.id)} className="tw-px-4 tw-py-2 tw-font-medium">{tb.label}</Tab>;
+                        })}
                     </TabsHeader>
                 </Tabs>
             </div>
-            <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
-                <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
+            <form noValidate onSubmit={e => { e.preventDefault(); return false; }} onKeyDown={e => { if (e.key === "Enter") e.preventDefault(); }}>
+                <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-gray-200 tw-rounded-xl tw-shadow-sm tw-p-4 sm:tw-p-6 md:tw-p-8">
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
-                            <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-shrink-0 tw-h-14 tw-w-[64px] sm:tw-h-16 sm:tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]"><Image src={LOGO_SRC} alt="Company logo" fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 152px, (min-width:768px) 108px, (min-width:640px) 76px, 64px" /></div>
-                            <div className="tw-min-w-0"><div className="tw-font-semibold tw-text-blue-gray-900 tw-text-sm sm:tw-text-base">{t("pageTitle", lang)}</div><div className="tw-text-xs sm:tw-text-sm tw-text-blue-gray-600">{t("companyName", lang)}<br /><span className="tw-hidden sm:tw-inline">{t("companyAddress", lang)}<br /></span><span className="sm:tw-hidden">{t("companyAddressShort", lang)}<br /></span>{t("callCenter", lang)}</div></div>
+                            <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-shrink-0 tw-h-14 tw-w-[64px] sm:tw-h-16 sm:tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]"><Image src={LOGO_SRC} alt="Logo" fill priority className="tw-object-contain" sizes="152px" /></div>
+                            <div className="tw-min-w-0"><div className="tw-font-semibold tw-text-gray-900 tw-text-sm sm:tw-text-base">{t("pageTitle", lang)}</div><div className="tw-text-xs sm:tw-text-sm tw-text-gray-600">{t("companyAddressShort", lang)}<br />{t("callCenter", lang)}</div></div>
                         </div>
-                        <div className="tw-text-left md:tw-text-right tw-text-sm tw-text-blue-gray-700 tw-border-t tw-border-blue-gray-100 tw-pt-3 md:tw-border-t-0 md:tw-pt-0 md:tw-shrink-0"><div className="tw-font-semibold">{t("docName", lang)}</div><div className="tw-break-all">{docName || "-"}</div></div>
+                        <div className="tw-text-left md:tw-text-right tw-text-sm tw-text-gray-700 tw-border-t tw-border-gray-100 tw-pt-3 md:tw-border-t-0 md:tw-pt-0 md:tw-shrink-0"><div className="tw-font-semibold">{t("docName", lang)}</div><div className="tw-break-all">{docName || "-"}</div></div>
                     </div>
-                    <div className="tw-mt-8 tw-space-y-8">
-                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
-                            <div className="lg:tw-col-span-1"><Input label={t("issueId", lang)} value={job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50" /></div>
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("location", lang)} value={job.station_name} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
-                            <div className="lg:tw-col-span-1"><Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
-                        </div>
+                    <div className="tw-mt-8 tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
+                        <div className="lg:tw-col-span-1"><Input label={t("issueId", lang)} value={job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-gray-50" /></div>
+                        <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("location", lang)} value={job.station_name} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
+                        <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
+                        <div className="lg:tw-col-span-1"><Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
                     </div>
-                    <CardBody className="tw-space-y-2">{QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 9)).map((q) => renderQuestionBlock(q, displayTab))}</CardBody>
-                    <CardBody className="tw-space-y-3 !tw-pt-4 !tw-pb-0">
-                        <Typography variant="h6" className="tw-mb-1">{t("comment", lang)}</Typography>
-                        {displayTab === "post" && commentPre && (<div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-1"><svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg><Typography variant="small" className="tw-font-semibold tw-text-amber-700">{lang === "th" ? "Comment (ก่อน PM)" : "Comment (Pre-PM)"}</Typography></div><Typography variant="small" className="tw-text-amber-900 tw-ml-6">{commentPre}</Typography></div>)}
-                        <div className="tw-space-y-2"><Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" /></div>
-                        {displayTab === "post" && (<div className="tw-pt-4 tw-border-t tw-border-blue-gray-100"><PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)} lang={lang} labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} /></div>)}
-                    </CardBody>
-                    <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
+                    <div className="tw-space-y-4 tw-mt-6">{QUESTIONS.filter(q => !(displayTab === "pre" && q.no === 9)).map(q => renderQuestionBlock(q, displayTab))}</div>
+                    <div className="tw-space-y-3 tw-mt-6">
+                        <Typography variant="h6">{t("comment", lang)}</Typography>
+                        {displayTab === "post" && commentPre && (
+                            <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
+                                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1"><svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg><Typography variant="small" className="tw-font-semibold tw-text-amber-700">{lang === "th" ? "Comment (ก่อน PM)" : "Comment (Pre-PM)"}</Typography></div>
+                                <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{commentPre}</Typography>
+                            </div>
+                        )}
+                        <Textarea label={t("comment", lang)} value={summary} onChange={e => setSummary(e.target.value)} rows={4} required={isPostMode} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" />
+                        {displayTab === "post" && <div className="tw-pt-4 tw-border-t tw-border-gray-100"><PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={v => setSummaryCheck(v)} lang={lang} labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} /></div>}
+                    </div>
+                    <div className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
                         <div className="tw-p-3 tw-flex tw-flex-col tw-gap-3">
                             <Section title={t("validationPhotoTitle", lang)} ok={allPhotosAttached} lang={lang}><Typography variant="small" className="!tw-text-amber-700">{t("missingPhoto", lang)} {missingPhotoItems.join(", ")}</Typography></Section>
-                            <Section title={t("validationInputTitle", lang)} ok={allRequiredInputsFilled} lang={lang}>{allRequiredInputsFilled ? (<Typography variant="small" className="!tw-text-green-700">{t("allComplete", lang)}</Typography>) : (<div className="tw-space-y-1"><Typography variant="small" className="!tw-text-amber-700">{t("missingInput", lang)}</Typography><ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">{missingInputs.map((line, i) => (<li key={i}>{line}</li>))}</ul></div>)}</Section>
-                            {displayTab === "pre" && (<Section title={t("validationRemarkTitle", lang)} ok={allRemarksFilledPre} lang={lang}>{missingRemarksPre.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPre.join(", ")}</Typography>}</Section>)}
-                            {isPostMode && (<><Section title={t("validationPFTitle", lang)} ok={allPFAnsweredForUI} lang={lang}><Typography variant="small" className="!tw-text-amber-700">{t("missingPF", lang)} {missingPFItemsForUI.join(", ")}</Typography></Section><Section title={t("validationRemarkTitlePost", lang)} ok={allRemarksFilledPost} lang={lang}>{missingRemarksPost.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPost.join(", ")}</Typography>}</Section><Section title={t("validationSummaryTitle", lang)} ok={isSummaryFilled && isSummaryCheckFilled} lang={lang}><div className="tw-space-y-1">{!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryText", lang)}</Typography>}{!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryStatus", lang)}</Typography>}</div></Section></>)}
+                            <Section title={t("validationInputTitle", lang)} ok={allRequiredInputsFilled} lang={lang}><div className="tw-space-y-1"><Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingInput", lang)}</Typography><ul className="tw-list-disc tw-ml-4 sm:tw-ml-5 tw-text-xs sm:tw-text-sm tw-text-amber-700">{missingInputs.map((line, i) => <li key={i}>{line}</li>)}</ul></div></Section>
+                            {displayTab === "pre" && <Section title={t("validationRemarkTitle", lang)} ok={allRemarksFilledPre} lang={lang}>{missingRemarksPre.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPre.join(", ")}</Typography>}</Section>}
+                            {isPostMode && (
+                                <>
+                                    <Section title={t("validationPFTitle", lang)} ok={allPFAnsweredPost} lang={lang}><Typography variant="small" className="!tw-text-amber-700">{t("missingPF", lang)} {missingPFItemsPost.join(", ")}</Typography></Section>
+                                    <Section title={t("validationRemarkTitlePost", lang)} ok={allRemarksFilledPost} lang={lang}>{missingRemarksPost.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPost.join(", ")}</Typography>}</Section>
+                                    <Section title={t("validationSummaryTitle", lang)} ok={isSummaryFilled && isSummaryCheckFilled} lang={lang}><div>{!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryText", lang)}</Typography>}{!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryStatus", lang)}</Typography>}</div></Section>
+                                </>
+                            )}
                         </div>
-                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
-                            {displayTab === "pre" ? (<Button color="blue" type="button" onClick={onPreSave} disabled={!canGoAfter || submitting} title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : !allRequiredInputsFilled ? t("alertInputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>{submitting ? t("saving", lang) : t("save", lang)}</Button>) : (<Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting} title={!canFinalSave ? t("alertCompleteAll", lang) : undefined}>{submitting ? t("saving", lang) : t("save", lang)}</Button>)}
+                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
+                            {displayTab === "pre" ? (
+                                <Button className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto" type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}>{submitting ? t("saving", lang) : t("save", lang)}</Button>
+                            ) : (
+                                <Button className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}>{submitting ? t("saving", lang) : t("save", lang)}</Button>
+                            )}
                         </div>
-                    </CardFooter>
+                    </div>
                 </div>
             </form>
         </section>

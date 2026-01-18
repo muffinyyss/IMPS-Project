@@ -147,33 +147,33 @@ const QUESTIONS_RAW = [
         no: 7, key: "r7", label: { th: "7. โคมไฟส่องสว่าง", en: "7. Lighting" }, kind: "group", hasPhoto: true,
         tooltip: { th: "ตรวจสอบสภาพและการทำงานของโคมไฟส่องสว่างภายในสถานี", en: "Check condition and operation of lighting fixtures within the station" },
         items: [
-            { key: "r7_1", label: { th: "ตรวจสอบสภาพโคมไฟส่องสว่าง", en: "Check lighting fixture condition" } },
-            { key: "r7_2", label: { th: "ตรวจสอบการทำงาน", en: "Check operation" } },
+            { key: "r7_1", label: { th: "7.1) ตรวจสอบสภาพโคมไฟส่องสว่าง", en: "7.1) Check lighting fixture condition" } },
+            { key: "r7_2", label: { th: "7.2) ตรวจสอบการทำงาน", en: "7.2) Check operation" } },
         ],
     },
     {
         no: 8, key: "r8", label: { th: "8. ป้ายชื่อสถานี", en: "8. Station sign" }, kind: "group", hasPhoto: true,
         tooltip: { th: "ตรวจสอบสภาพและการทำงานของป้ายสถานี", en: "Check condition and operation of station sign" },
         items: [
-            { key: "r8_1", label: { th: "ตรวจสอบสภาพป้ายชื่อสถานี", en: "Check station sign condition" } },
-            { key: "r8_2", label: { th: "ตรวจสอบการทำงาน", en: "Check operation" } },
+            { key: "r8_1", label: { th: "8.1) ตรวจสอบสภาพป้ายชื่อสถานี", en: "8.1) Check station sign condition" } },
+            { key: "r8_2", label: { th: "8.2) ตรวจสอบการทำงาน", en: "8.2) Check operation" } },
         ],
     },
     {
         no: 9, key: "r9", label: { th: "9. ป้ายวิธีใช้งาน", en: "9. Usage instruction sign" }, kind: "group", hasPhoto: true,
         tooltip: { th: "ตรวจสอบป้ายแนะนำการใช้งานว่าอยู่ในสภาพสมบูรณ์ ไม่หลุดหรือชำรุด โดยตัวอักษรและข้อมูลคำแนะนำต้องชัดเจน", en: "Check usage instruction sign is in good condition, not detached or damaged, with clear and legible text and instructions" },
         items: [
-            { key: "r9_1", label: { th: "ตรวจสอบสภาพป้ายวิธีใช้งาน", en: "Check instruction sign condition" } },
-            { key: "r9_2", label: { th: "ตรวจสอบการทำงาน", en: "Check operation" } },
+            { key: "r9_1", label: { th: "9.1) ตรวจสอบสภาพป้ายวิธีใช้งาน", en: "9.1) Check instruction sign condition" } },
+            { key: "r9_2", label: { th: "9.2) ตรวจสอบการทำงาน", en: "9.2) Check operation" } },
         ],
     },
     {
         no: 10, key: "r10", label: { th: "10. ตรวจสอบถังดับเพลิง", en: "10. Check fire extinguisher" }, kind: "group", hasPhoto: true,
         tooltip: { th: "ตรวจสอบสภาพภายนอกของถังดับเพลิงและเกจวัดแรงดันไม่อยู่ในสถานะ Overcharge", en: "Check external condition of fire extinguisher and ensure pressure gauge is not in Overcharge status" },
         items: [
-            { key: "r10_1", label: { th: "ตรวจสอบสภาพทั่วไป", en: "Check general condition" } },
-            { key: "r10_2", label: { th: "ตรวจสอบเกจวัดแรงดัน", en: "Check pressure gauge" } },
-            { key: "r10_3", label: { th: "ตรวจสอบของเหลวภายใน", en: "Check internal liquid" } },
+            { key: "r10_1", label: { th: "10.1) ตรวจสอบสภาพทั่วไป", en: "10.1) Check general condition" } },
+            { key: "r10_2", label: { th: "10.2) ตรวจสอบเกจวัดแรงดัน", en: "10.2) Check pressure gauge" } },
+            { key: "r10_3", label: { th: "10.3) ตรวจสอบของเหลวภายใน", en: "10.3) Check internal liquid" } },
         ],
     },
     { no: 11, key: "r11", label: { th: "11. ทำความสะอาด", en: "11. Cleaning" }, kind: "simple", hasPhoto: true, tooltip: { th: "ทำความสะอาดและกำจัดเศษขยะหรือสิ่งสกปรกบริเวณสถานี", en: "Clean and remove debris or dirt from the station area" } },
@@ -193,38 +193,64 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
     useEffect(() => { const h = setTimeout(effect, delay); return () => clearTimeout(h); }, deps);
 }
 
+// ==================== FIXED: SectionCard with larger padding to match Charger page ====================
 function SectionCard({ title, subtitle, children, tooltip }: { title?: string; subtitle?: string; children: React.ReactNode; tooltip?: string }) {
+    // Extract question number from title (e.g., "1. ตรวจสอบ..." -> "1")
+    const qNumber = title?.match(/^(\d+)\./)?.[1];
+
     return (
-        <>
+        <div className="tw-bg-white tw-rounded-xl tw-border tw-border-gray-200 tw-shadow-sm tw-overflow-hidden">
+            {/* Header with number badge - Dark theme - FIXED: larger padding */}
             {title && (
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                    <Typography variant="h6">{title}</Typography>
-                    {tooltip && (
-                        <Tooltip content={tooltip} placement="bottom">
-                            <svg className="tw-w-4 tw-h-4 tw-text-blue-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                            </svg>
-                        </Tooltip>
+                <div className="tw-bg-gray-800 tw-px-4 sm:tw-px-5 tw-py-3 sm:tw-py-4">
+                    <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3">
+                        {qNumber && (
+                            <div className="tw-flex-shrink-0 tw-w-7 tw-h-7 sm:tw-w-8 sm:tw-h-8 tw-rounded-full tw-bg-white tw-text-gray-800 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-xs sm:tw-text-sm">
+                                {qNumber}
+                            </div>
+                        )}
+                        <Typography variant="h6" className="tw-text-white tw-text-sm sm:tw-text-base tw-font-semibold tw-flex-1">
+                            {qNumber ? title.replace(/^\d+\.\s*/, '') : title}
+                        </Typography>
+                        {tooltip && (
+                            <Tooltip content={tooltip} placement="bottom">
+                                <svg className="tw-w-4 tw-h-4 sm:tw-w-5 sm:tw-h-5 tw-text-gray-400 tw-cursor-help tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                                </svg>
+                            </Tooltip>
+                        )}
+                    </div>
+                    {subtitle && (
+                        <Typography variant="small" className="!tw-text-gray-300 tw-text-xs sm:tw-text-sm tw-mt-1 tw-ml-9 sm:tw-ml-11">{subtitle}</Typography>
                     )}
                 </div>
             )}
-            <Card className="tw-mt-1 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                {subtitle && (
-                    <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                        <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography>
-                    </CardHeader>
-                )}
-                <CardBody className="tw-space-y-4">{children}</CardBody>
-            </Card>
-        </>
+            {/* Content - FIXED: larger padding to match Charger page */}
+            <div className="tw-p-4 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">{children}</div>
+        </div>
     );
 }
 
 function Section({ title, ok, children, lang }: { title: React.ReactNode; ok: boolean; children?: React.ReactNode; lang: Lang }) {
     return (
-        <div className={`tw-rounded-lg tw-border tw-p-3 ${ok ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-            <Typography className="tw-font-medium">{title}</Typography>
-            {ok ? <Typography variant="small" className="!tw-text-green-700">{t("allComplete", lang)}</Typography> : children}
+        <div className="tw-rounded-lg tw-p-2.5 sm:tw-p-3 tw-bg-gray-100">
+            <div className="tw-flex tw-items-center tw-gap-2">
+                {ok ? (
+                    <svg className="tw-w-4 tw-h-4 tw-text-gray-700 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                ) : (
+                    <svg className="tw-w-4 tw-h-4 tw-text-gray-500 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                )}
+                <Typography className="tw-font-medium tw-text-xs sm:tw-text-sm tw-text-gray-800">{title}</Typography>
+            </div>
+            {ok ? (
+                <Typography variant="small" className="!tw-text-green-600 tw-text-xs sm:tw-text-sm tw-ml-6">{t("allComplete", lang)}</Typography>
+            ) : (
+                <div className="tw-ml-6 tw-mt-1">{children}</div>
+            )}
         </div>
     );
 }
@@ -304,7 +330,7 @@ function PhotoMultiInput({
             <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
                 <Button size="sm" color="blue" variant="outlined" onClick={handlePick} className="tw-shrink-0">{t("attachPhoto", lang)}</Button>
             </div>
-            <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
+            <Typography variant="small" className="!tw-text-gray-500 tw-flex tw-items-center">
                 {t("maxPhotos", lang)} {max} {t("photos", lang)} • {t("cameraSupported", lang)}
             </Typography>
             <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => { void handleFiles(e.target.files); }} />
@@ -312,7 +338,7 @@ function PhotoMultiInput({
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
                     {photos.map((p) => (
                         <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col">
-                            <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
+                            <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-50">
                                 {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}
                                 <button onClick={() => { void handleRemove(p.id); }}
                                     className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
@@ -321,7 +347,7 @@ function PhotoMultiInput({
                     ))}
                 </div>
             ) : (
-                <Typography variant="small" className="!tw-text-blue-gray-500">{t("noPhotos", lang)}</Typography>
+                <Typography variant="small" className="!tw-text-gray-500">{t("noPhotos", lang)}</Typography>
             )}
         </div>
     );
@@ -329,15 +355,16 @@ function PhotoMultiInput({
 
 function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
     return (
-        <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-amber-50 tw-border-amber-200">
+        <div className="tw-py-4 tw-bg-amber-50/50">
             <div className="tw-flex tw-items-center tw-justify-between">
-                <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{label}</Typography>
-                {remark && (
-                    <Typography variant="small" className="tw-text-blue-gray-600">
-                        {t("remarkLabel", lang)} - {remark}
-                    </Typography>
-                )}
+                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{label}</Typography>
+                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
             </div>
+            {remark && (
+                <Typography variant="small" className="tw-text-gray-600 tw-mt-1">
+                    {t("remarkLabel", lang)}: {remark}
+                </Typography>
+            )}
         </div>
     );
 }
@@ -842,7 +869,7 @@ export default function StationPMReport() {
     // Helper function to flatten rows and ensure correct structure
     const flattenRows = (inputRows: Record<string, any>): Record<string, { pf: PF; remark: string }> => {
         const result: Record<string, { pf: PF; remark: string }> = {};
-        
+
         // Get all valid keys from QUESTIONS
         const validKeys: string[] = [];
         QUESTIONS.forEach((q) => {
@@ -854,7 +881,7 @@ export default function StationPMReport() {
                 });
             }
         });
-        
+
         // First, extract flat keys directly
         for (const key of validKeys) {
             if (inputRows[key] && typeof inputRows[key] === "object") {
@@ -864,7 +891,7 @@ export default function StationPMReport() {
                 };
             }
         }
-        
+
         // Then, check for nested keys (e.g., r10.r10_1) and extract them
         for (const [parentKey, parentValue] of Object.entries(inputRows)) {
             if (typeof parentValue === "object" && parentValue !== null) {
@@ -882,14 +909,14 @@ export default function StationPMReport() {
                 }
             }
         }
-        
+
         // Ensure all valid keys exist with default values
         for (const key of validKeys) {
             if (!result[key]) {
                 result[key] = { pf: "", remark: "" };
             }
         }
-        
+
         return result;
     };
 
@@ -903,10 +930,10 @@ export default function StationPMReport() {
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || "";
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-            
+
             // Flatten rows to ensure correct structure (no nested keys)
             const flatRows = flattenRows(rows);
-            
+
             const payload = {
                 station_id: stationId, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector,
                 rows_pre: flatRows, pm_date, doc_name: docName, side: "pre" as TabId,
@@ -967,10 +994,10 @@ export default function StationPMReport() {
             const token = localStorage.getItem("access_token");
             const finalReportId = reportId || editId;
             if (!finalReportId) throw new Error(t("noReportId", lang));
-            
+
             // Flatten rows to ensure correct structure (no nested keys)
             const flatRows = flattenRows(rows);
-            
+
             const payload = {
                 station_id: stationId, rows: flatRows, summary,
                 ...(summaryCheck ? { summaryCheck } : {}), side: "post" as TabId, report_id: finalReportId,
@@ -1033,16 +1060,16 @@ export default function StationPMReport() {
                 const isNA = rows[q.key]?.pf === "NA";
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <div className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
+                        <div className={isNA ? "tw-bg-amber-50/50" : ""}>
                             {/* N/A Button */}
                             <div className="tw-flex tw-items-center tw-justify-end tw-gap-2 tw-mb-3">
-                                <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"}
+                                <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
                                     onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>
                                     {isNA ? t("cancelNA", lang) : t("na", lang)}
                                 </Button>
                             </div>
                             {q.hasPhoto && (
-                                <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                                <div className="tw-mb-4">
                                     <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} />
                                 </div>
                             )}
@@ -1056,19 +1083,19 @@ export default function StationPMReport() {
             // Group type in Pre mode
             return (
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                    {q.items.map((item) => {
+                    {q.items.map((item, idx) => {
                         const isNA = rows[item.key]?.pf === "NA";
                         return (
-                            <div key={item.key} className={`tw-p-4 tw-rounded-lg tw-border tw-mb-4 last:tw-mb-0 ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
+                            <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""} ${isNA ? "tw-bg-amber-50/50" : ""}`}>
                                 <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                                     <Typography variant="small" className="tw-font-medium">{item.label[lang]}</Typography>
-                                    <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"}
+                                    <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
                                         onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))}>
                                         {isNA ? t("cancelNA", lang) : t("na", lang)}
                                     </Button>
                                 </div>
                                 {q.hasPhoto && (
-                                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                                    <div className="tw-mb-4">
                                         <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} />
                                     </div>
                                 )}
@@ -1108,19 +1135,17 @@ export default function StationPMReport() {
 
             return (
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
-                    <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100">
-                        <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang}
-                            onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
-                            remark={rows[q.key]?.remark || ""}
-                            onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-                            aboveRemark={q.hasPhoto && (
-                                <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-8 tw-border-blue-gray-50">
-                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} />
-                                </div>
-                            )}
-                            beforeRemark={preRemarkElement}
-                        />
-                    </div>
+                    <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang}
+                        onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
+                        remark={rows[q.key]?.remark || ""}
+                        onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
+                        aboveRemark={q.hasPhoto && (
+                            <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
+                                <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} />
+                            </div>
+                        )}
+                        beforeRemark={preRemarkElement}
+                    />
                 </SectionCard>
             );
         }
@@ -1128,11 +1153,11 @@ export default function StationPMReport() {
         // Group type in Post mode
         return (
             <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
-                {q.items.map((item) => {
+                {q.items.map((item, idx) => {
                     // Check if this item was N/A in Pre mode
                     if (rowsPre[item.key]?.pf === "NA") {
                         return (
-                            <div key={item.key} className="tw-mb-4 last:tw-mb-0">
+                            <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""}`}>
                                 <SkippedNAItem label={item.label[lang]} remark={rowsPre[item.key]?.remark} lang={lang} />
                             </div>
                         );
@@ -1152,13 +1177,13 @@ export default function StationPMReport() {
                     ) : null;
 
                     return (
-                        <div key={item.key} className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100 tw-mb-4 last:tw-mb-0">
+                        <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""}`}>
                             <PassFailRow label={item.label[lang]} value={rows[item.key]?.pf ?? ""} lang={lang}
                                 onChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], pf: v } })}
                                 remark={rows[item.key]?.remark || ""}
                                 onRemarkChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: v } })}
                                 aboveRemark={q.hasPhoto && (
-                                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-8 tw-border-blue-gray-50">
+                                    <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
                                         <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} />
                                     </div>
                                 )}
@@ -1201,10 +1226,10 @@ export default function StationPMReport() {
         <section className="tw-pb-24">
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}>
-                    <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
+                    <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" />
                 </Button>
                 <Tabs value={displayTab}>
-                    <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
+                    <TabsHeader className="tw-bg-gray-50 tw-rounded-lg">
                         {TABS.map((tb) => {
                             const isPreDisabled = isPostMode && tb.id === "pre";
                             const isLockedAfter = tb.id === "post" && !canGoAfter;
@@ -1217,6 +1242,7 @@ export default function StationPMReport() {
             </div>
 
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
+                {/* FIXED: Changed padding from tw-p-3 sm:tw-p-6 lg:tw-p-8 to tw-p-6 md:tw-p-8 to match Charger page */}
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
                     {/* Header with responsive layout */}
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
@@ -1249,12 +1275,14 @@ export default function StationPMReport() {
                         </div>
                     </div>
 
-                    <CardBody className="tw-space-y-2">
+                    {/* FIXED: Changed from CardBody to div with proper spacing to match Charger page */}
+                    <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab))}
-                    </CardBody>
+                    </div>
 
-                    <CardBody className="tw-space-y-3 !tw-pt-4 !tw-pb-0">
-                        <Typography variant="h6" className="tw-mb-1">{t("comment", lang)}</Typography>
+                    {/* FIXED: Changed from CardBody to div with proper spacing */}
+                    <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-3">
+                        <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
                         {/* แสดง comment จาก Pre mode ใน Post mode */}
                         {displayTab === "post" && commentPre && (
                             <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
@@ -1269,59 +1297,60 @@ export default function StationPMReport() {
                                 <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{commentPre}</Typography>
                             </div>
                         )}
-                        <div className="tw-space-y-2">
-                            <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                        </div>
+                        <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-text-sm resize-none" />
                         {displayTab === "post" && (
-                            <div className="tw-pt-4 tw-border-t tw-border-blue-gray-100">
+                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
                                 <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)} lang={lang}
                                     labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} />
                             </div>
                         )}
-                    </CardBody>
+                    </div>
 
-                    <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-                        <div className="tw-p-3 tw-flex tw-flex-col tw-gap-3">
+                    {/* FIXED: Changed from CardFooter to div with proper spacing */}
+                    <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
+                        <div className="tw-p-3 sm:tw-p-4 tw-flex tw-flex-col tw-gap-2 tw-bg-gray-50 tw-rounded-xl tw-border tw-border-gray-200">
                             <Section title={t("validationPhotoTitle", lang)} ok={allPhotosAttached} lang={lang}>
-                                <Typography variant="small" className="!tw-text-amber-700">{t("missingPhoto", lang)} {missingPhotoItems.join(", ")}</Typography>
+                                <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPhoto", lang)} {missingPhotoItems.join(", ")}</Typography>
                             </Section>
                             {/* Remark validation for Pre mode */}
                             {displayTab === "pre" && (
                                 <Section title={t("validationRemarkTitle", lang)} ok={allRemarksFilledPre} lang={lang}>
-                                    {missingRemarksPre.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPre.join(", ")}</Typography>}
+                                    {missingRemarksPre.length > 0 && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm" >{t("missingRemark", lang)} {missingRemarksPre.join(", ")}</Typography>}
                                 </Section>
                             )}
                             {isPostMode && (
                                 <>
                                     <Section title={t("validationPFTitle", lang)} ok={allPFAnswered} lang={lang}>
-                                        <Typography variant="small" className="!tw-text-amber-700">{t("missingPF", lang)} {missingPFItems.join(", ")}</Typography>
+                                        <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPF", lang)} {missingPFItems.join(", ")}</Typography>
                                     </Section>
                                     <Section title={t("validationRemarkTitlePost", lang)} ok={allRemarksFilledPost} lang={lang}>
-                                        {missingRemarksPost.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPost.join(", ")}</Typography>}
+                                        {missingRemarksPost.length > 0 && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingRemark", lang)} {missingRemarksPost.join(", ")}</Typography>}
                                     </Section>
                                     <Section title={t("validationSummaryTitle", lang)} ok={isSummaryFilled && isSummaryCheckFilled} lang={lang}>
                                         <div className="tw-space-y-1">
-                                            {!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryText", lang)}</Typography>}
-                                            {!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryStatus", lang)}</Typography>}
+                                            {!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryText", lang)}</Typography>}
+                                            {!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryStatus", lang)}</Typography>}
                                         </div>
                                     </Section>
                                 </>
                             )}
                         </div>
-                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                             {displayTab === "pre" ? (
-                                <Button color="blue" type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
+                                <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
+                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
                                     title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             ) : (
-                                <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
                                     title={!canFinalSave ? t("alertCompleteAll", lang) : undefined}>
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
                         </div>
-                    </CardFooter>
+                    </div>
                 </div>
             </form>
         </section>

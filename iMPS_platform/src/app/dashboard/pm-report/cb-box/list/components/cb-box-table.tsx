@@ -22,7 +22,7 @@ import {
   Input,
   Typography,
 } from "@material-tailwind/react";
-import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
+import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import CBBOXPMForm from "@/app/dashboard/pm-report/cb-box/input_PMreport/components/checkList";
@@ -31,43 +31,42 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 
 // ==================== TRANSLATIONS ====================
 const T = {
-    pageTitle: { th: "Preventive Maintenance Checklist - CB-BOX", en: "Preventive Maintenance Checklist - CB-BOX" },
-    pageSubtitle: { th: "ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM report)", en: "Search and download PM reports" },
-    entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
-    search: { th: "ค้นหา", en: "Search" },
-    loading: { th: "กำลังโหลด…", en: "Loading…" },
-    noData: { th: "ไม่มีข้อมูล", en: "No data" },
-    selectStation: { th: "กรุณาเลือกสถานีจากแถบบนก่อน", en: "Please select a station first" },
-    page: { th: "หน้า", en: "Page" },
-    of: { th: "จาก", en: "of" },
-    upload: { th: "อัปโหลด", en: "Upload" },
-    add: { th: "+เพิ่ม", en: "+Add" },
-    postPm: { th: "Post-PM", en: "Post-PM" },
-    preview: { th: "ดูตัวอย่าง", en: "Preview" },
-    // Dialog
-    dialogTitle: { th: "เลือกวันที่รายงาน (PM Report)", en: "Select Report Date (PM Report)" },
-    docName: { th: "Document Name / ชื่อเอกสาร", en: "Document Name" },
-    issueId: { th: "Issue ID / รหัสเอกสาร", en: "Issue ID" },
-    inspector: { th: "Inspector / ผู้ตรวจสอบ", en: "Inspector" },
-    pmDate: { th: "PM Date / วันที่ตรวจสอบ", en: "PM Date" },
-    filesSelected: { th: "ไฟล์ที่เลือก:", en: "Files selected:" },
-    filesUnit: { th: "ไฟล์", en: "files" },
-    cancel: { th: "ยกเลิก", en: "Cancel" },
-    uploadBtn: { th: "อัปโหลด", en: "Upload" },
-    // Alerts
-    alertSelectStation: { th: "กรุณาเลือกสถานีก่อน", en: "Please select a station first" },
-    alertPdfOnly: { th: "รองรับเฉพาะไฟล์ PDF เท่านั้น", en: "Only PDF files are supported" },
-    alertInvalidDate: { th: "รูปแบบวันที่ไม่ถูกต้อง (ควรเป็น YYYY-MM-DD)", en: "Invalid date format (should be YYYY-MM-DD)" },
-    alertUploadFailed: { th: "อัปโหลดไม่สำเร็จ:", en: "Upload failed:" },
-    alertUploadSuccess: { th: "อัปโหลดสำเร็จ", en: "Upload successful" },
-    alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัปโหลด", en: "Error during upload" },
-    // Column headers
-    colNo: { th: "ลำดับ", en: "No." },
-    colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
-    colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
-    colPmDate: { th: "วันที่ PM", en: "PM Date" },
-    colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
-    colPdf: { th: "PDF", en: "PDF" },
+  pageTitle: { th: "Preventive Maintenance Checklist - CB-BOX", en: "Preventive Maintenance Checklist - CB-BOX" },
+  pageSubtitle: { th: "ค้นหาและดาวน์โหลดเอกสารรายงานการบำรุงรักษา (PM report)", en: "Search and download PM reports" },
+  entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
+  search: { th: "ค้นหา", en: "Search" },
+  loading: { th: "กำลังโหลด…", en: "Loading…" },
+  noData: { th: "ไม่มีข้อมูล", en: "No data" },
+  selectStation: { th: "กรุณาเลือกสถานีจากแถบบนก่อน", en: "Please select a station first" },
+  page: { th: "หน้า", en: "Page" },
+  of: { th: "จาก", en: "of" },
+  upload: { th: "อัปโหลด", en: "Upload" },
+  add: { th: "+เพิ่ม", en: "+Add" },
+  postPm: { th: "Post-PM", en: "Post-PM" },
+  preview: { th: "พรีวิว", en: "Preview" },
+  noFile: { th: "ไม่มีไฟล์", en: "No file" },
+  dialogTitle: { th: "เลือกวันที่รายงาน (PM Report)", en: "Select Report Date (PM Report)" },
+  docName: { th: "Document Name / ชื่อเอกสาร", en: "Document Name" },
+  issueId: { th: "Issue ID / รหัสเอกสาร", en: "Issue ID" },
+  inspector: { th: "Inspector / ผู้ตรวจสอบ", en: "Inspector" },
+  pmDate: { th: "PM Date / วันที่ตรวจสอบ", en: "PM Date" },
+  filesSelected: { th: "ไฟล์ที่เลือก:", en: "Files selected:" },
+  filesUnit: { th: "ไฟล์", en: "file(s)" },
+  cancel: { th: "ยกเลิก", en: "Cancel" },
+  uploadBtn: { th: "อัปโหลด", en: "Upload" },
+  alertSelectStation: { th: "กรุณาเลือกสถานีก่อน", en: "Please select a station first" },
+  alertPdfOnly: { th: "รองรับเฉพาะไฟล์ PDF เท่านั้น", en: "Only PDF files are supported" },
+  alertInvalidDate: { th: "รูปแบบวันที่ไม่ถูกต้อง (ควรเป็น YYYY-MM-DD)", en: "Invalid date format (should be YYYY-MM-DD)" },
+  alertUploadFailed: { th: "อัปโหลดไม่สำเร็จ:", en: "Upload failed:" },
+  alertUploadSuccess: { th: "อัปโหลดสำเร็จ", en: "Upload successful" },
+  alertUploadError: { th: "เกิดข้อผิดพลาดระหว่างอัปโหลด", en: "Error during upload" },
+  colNo: { th: "ลำดับ", en: "No." },
+  colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
+  colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
+  colPmDate: { th: "วันที่ PM", en: "PM Date" },
+  colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
+  colPdf: { th: "PDF", en: "PDF" },
+  uploadPdf: { th: "อัปโหลด PDF", en: "Upload PDF" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -83,16 +82,11 @@ type TData = {
   side?: string;
 };
 
-type Props = {
-  token?: string;
-  apiBase?: string;
-};
+type Props = { token?: string; apiBase?: string; };
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
 const REPORT_PREFIX = "cbboxpmreport";
 const URL_PREFIX = "cbboxpmurl";
-
 const PM_TYPE_CODE = "CB";
 
 function makePrefix(typeCode: string, dateISO: string) {
@@ -158,15 +152,12 @@ function makeDocNameParts(stationId: string, dateISO: string) {
 function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
   const { prefix, suffix } = makeDocNameParts(stationId, dateISO);
   const s = String(latestFromDb || "").trim();
-
   if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) {
     return `${prefix}1${suffix}`;
   }
-
   const inside = s.slice(prefix.length, s.length - suffix.length);
   const cur = parseInt(inside, 10);
   const nextIndex = isNaN(cur) ? 1 : cur + 1;
-
   return `${prefix}${nextIndex}${suffix}`;
 }
 
@@ -174,19 +165,9 @@ async function fetchPreviewDocName(stationId: string, pmDate: string): Promise<s
   const u = new URL(`${BASE}/cbboxpmreport/preview-docname`);
   u.searchParams.set("station_id", stationId);
   u.searchParams.set("pm_date", pmDate);
-
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-
-  const r = await apiFetch(u.toString(), {
-    credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-
-  if (!r.ok) {
-    console.error("fetchPreviewDocName failed:", r.status);
-    return null;
-  }
-
+  const r = await apiFetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+  if (!r.ok) return null;
   const j = await r.json();
   return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
@@ -196,32 +177,14 @@ async function fetchLatestDocName(stationId: string, dateISO: string): Promise<s
   u.searchParams.set("station_id", stationId);
   u.searchParams.set("pm_date", dateISO);
   u.searchParams.set("_ts", String(Date.now()));
-
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-
-  const r = await apiFetch(u.toString(), {
-    credentials: "include",
-    cache: "no-store",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-
-  if (!r.ok) {
-    console.error("fetchLatestDocName failed:", r.status);
-    return null;
-  }
-
+  const r = await apiFetch(u.toString(), { credentials: "include", cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+  if (!r.ok) return null;
   const j = await r.json();
   return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
 
-type Me = {
-  id: string;
-  username: string;
-  email: string;
-  role: string;
-  company: string;
-  tel: string;
-};
+type Me = { id: string; username: string; email: string; role: string; company: string; tel: string; };
 
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
@@ -238,51 +201,24 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   const todayStr = useMemo(() => {
     const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }, []);
 
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
-    if (sidFromUrl) {
-      setStationId(sidFromUrl);
-      localStorage.setItem("selected_station_id", sidFromUrl);
-      return;
-    }
-    const sidLocal = localStorage.getItem("selected_station_id");
-    setStationId(sidLocal);
+    if (sidFromUrl) { setStationId(sidFromUrl); localStorage.setItem("selected_station_id", sidFromUrl); return; }
+    setStationId(localStorage.getItem("selected_station_id"));
   }, [searchParams]);
 
   useEffect(() => {
-    const useHttpOnlyCookie = true;
-
     (async () => {
       try {
-        const headers: Record<string, string> = {};
-        if (!useHttpOnlyCookie) {
-          const t = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-          if (t) headers.Authorization = `Bearer ${t}`;
-        }
-
-        const res = await apiFetch(`${apiBase}/me`, {
-          method: "GET",
-          headers,
-          credentials: "include",
-        });
-
-        if (!res.ok) {
-          console.warn("/me failed:", res.status);
-          return;
-        }
-
+        const res = await apiFetch(`${apiBase}/me`, { method: "GET", credentials: "include" });
+        if (!res.ok) return;
         const data: Me = await res.json();
         setMe(data);
         setInspector((prev) => prev || data.username || "");
-      } catch (err) {
-        console.error("fetch /me error:", err);
-      }
+      } catch (err) { console.error("fetch /me error:", err); }
     })();
   }, [apiBase]);
 
@@ -290,17 +226,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const pathname = usePathname();
   const editId = searchParams.get("edit_id") ?? "";
   const mode: "list" | "form" = (searchParams.get("view") === "form" || !!editId) ? "form" : "list";
-  
+
   const setView = (view: "list" | "form", { replace = false } = {}) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (view === "form") {
-      params.set("view", "form");
-      params.set("pmtab", "pre");
-    } else {
-      params.delete("view");
-      params.delete("edit_id");
-      params.delete("pmtab");
-    }
+    if (view === "form") { params.set("view", "form"); params.set("pmtab", "pre"); }
+    else { params.delete("view"); params.delete("edit_id"); params.delete("pmtab"); }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -313,23 +243,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
     return h;
   }
+  const FetchOpts: RequestInit = { headers: makeHeaders(), ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}), cache: "no-store" };
 
-  const FetchOpts: RequestInit = {
-    headers: makeHeaders(),
-    ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
-    cache: "no-store",
-  };
-
-  function thDate(iso?: string) {
+  function formatDate(iso?: string, currentLang: Lang = lang) {
     if (!iso) return "-";
     const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + "T00:00:00Z") : new Date(iso);
     if (isNaN(d.getTime())) return "-";
-    return d.toLocaleDateString("th-TH-u-ca-gregory", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      timeZone: "UTC",
-    });
+    return d.toLocaleDateString(currentLang === "en" ? "en-GB" : "th-TH-u-ca-gregory", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
   }
 
   function toISODateOnly(s?: string) {
@@ -338,29 +258,16 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
       const d = new Date(s);
       if (isNaN(d.getTime())) return "";
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}`;
-    } catch {
-      return "";
-    }
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    } catch { return ""; }
   }
 
   function resolveFileHref(v: any, apiBase: string) {
     if (!v) return "";
-    if (typeof v === "object") {
-      const c = v.url ?? v.href ?? v.link ?? "";
-      return resolveFileHref(c, apiBase);
-    }
+    if (typeof v === "object") return resolveFileHref(v.url ?? v.href ?? v.link ?? "", apiBase);
     const s = String(v).trim();
     if (!s) return "";
-
-    try {
-      const u = new URL(s);
-      return u.toString();
-    } catch { /* not absolute */ }
-
+    try { return new URL(s).toString(); } catch { }
     if (s.startsWith("/")) return `${apiBase}${s}`;
     if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
     return `${apiBase}/${s}`;
@@ -376,28 +283,27 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   }
 
   function pickDateFromItem(it: any): string {
-    const cands = [
-      it?.pm_date,
-      it?.reportDate,
-      it?.job?.date,
-      it?.submittedAt,
-      it?.timestamp,
-      it?.createdAt,
-      it?.updatedAt,
-      it?.date,
-    ];
-    for (const v of cands) {
+    for (const v of [it?.pm_date, it?.reportDate, it?.job?.date, it?.submittedAt, it?.timestamp, it?.createdAt, it?.updatedAt, it?.date]) {
       const d = normalizeAnyDate(v);
       if (d) return d;
     }
     return "";
   }
 
+  function extractDocIdFromAnything(x: any): string {
+    if (!x) return "";
+    const raw = (x._id !== undefined ? x._id : x.id) ?? "";
+    let id = "";
+    if (raw && typeof raw === "object") id = raw.$oid || raw.oid || raw.$id || "";
+    else id = String(raw || "");
+    if (/^[a-fA-F0-9]{24}$/.test(id)) return id;
+    const s = typeof x === "string" ? x : JSON.stringify(x);
+    const m = s.match(/[A-Fa-f0-9]{24}/);
+    return m ? m[0] : "";
+  }
+
   const fetchRows = async (signal?: AbortSignal) => {
-    if (!stationId) {
-      setData([]);
-      return;
-    }
+    if (!stationId) { setData([]); return; }
     setLoading(true);
     try {
       const makeURL = (path: string) => {
@@ -408,29 +314,19 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         u.searchParams.set("_ts", String(Date.now()));
         return u.toString();
       };
-
       const [pmRes, urlRes] = await Promise.allSettled([
         fetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
         fetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
       ]);
 
-      let pmItems: any[] = [];
-      let urlItems: any[] = [];
-
-      if (pmRes.status === "fulfilled" && pmRes.value.ok) {
-        const j = await pmRes.value.json();
-        if (Array.isArray(j?.items)) pmItems = j.items;
-      }
-      if (urlRes.status === "fulfilled" && urlRes.value.ok) {
-        const j = await urlRes.value.json();
-        if (Array.isArray(j?.items)) urlItems = j.items;
-      }
+      let pmItems: any[] = [], urlItems: any[] = [];
+      if (pmRes.status === "fulfilled" && pmRes.value.ok) { const j = await pmRes.value.json(); if (Array.isArray(j?.items)) pmItems = j.items; }
+      if (urlRes.status === "fulfilled" && urlRes.value.ok) { const j = await urlRes.value.json(); if (Array.isArray(j?.items)) urlItems = j.items; }
 
       const pmRows: TData[] = pmItems.map((it: any) => {
         const isoDay = pickDateFromItem(it);
         const rawUploaded = it.file_url ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ?? it.file ?? it.path;
         const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
-
         function extractId(x: any): string {
           if (!x) return "";
           const raw = (x._id !== undefined ? x._id : x.id) ?? "";
@@ -441,71 +337,31 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const id = extractId(it);
         const generatedUrl = id ? `${apiBase}/pdf/cbbox/${encodeURIComponent(id)}/export` : "";
         const fileUrl = uploadedUrl || generatedUrl;
-        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "";
-        const doc_name = (it.doc_name ? String(it.doc_name) : "");
-        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string;
-        const side = (it.side ?? it.job?.side ?? "") as string;
-        
-        return {
-          id,
-          issue_id: issueId,
-          doc_name: doc_name,
-          pm_date: thDate(isoDay),
-          position: isoDay,
-          office: fileUrl,
-          inspector,
-          side
-        } as TData;
+        return { id, issue_id: (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "", doc_name: it.doc_name ? String(it.doc_name) : "", pm_date: isoDay, position: isoDay, office: fileUrl, inspector: (it.inspector ?? it.job?.inspector ?? "") as string, side: (it.side ?? it.job?.side ?? "") as string } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
         const isoDay = pickDateFromItem(it);
         const raw = it.file_url ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url) ?? it.file ?? it.path;
         const href = resolveFileHref(raw, apiBase);
-        const issueId = (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "";
-        const doc_name = (it.doc_name ? String(it.doc_name) : "");
-        const inspector = (it.inspector ?? it.job?.inspector ?? "") as string;
-        const side = (it.side ?? it.job?.side ?? "") as string;
-        
-        return {
-          issue_id: issueId,
-          doc_name: doc_name,
-          pm_date: thDate(isoDay),
-          position: isoDay,
-          office: href,
-          inspector,
-          side
-        } as TData;
+        return { issue_id: (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(href) || "", doc_name: it.doc_name ? String(it.doc_name) : "", pm_date: isoDay, position: isoDay, office: href, inspector: (it.inspector ?? it.job?.inspector ?? "") as string, side: (it.side ?? it.job?.side ?? "") as string } as TData;
       });
 
       const allRows = [...pmRows, ...urlRows].sort((a, b) => {
-        const da = (a.position ?? "") as string;
-        const db = (b.position ?? "") as string;
-        if (!da && !db) return 0;
-        if (!da) return 1;
-        if (!db) return -1;
+        const da = (a.position ?? "") as string, db = (b.position ?? "") as string;
+        if (!da && !db) return 0; if (!da) return 1; if (!db) return -1;
         return da < db ? 1 : da > db ? -1 : 0;
       });
-
-      if (!allRows.length) { setData([]); return; }
       setData(allRows);
-    } catch (err: any) {
-      if (err?.name === "AbortError") return;
-      console.error("fetch both lists error:", err);
-      setData([]);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { if (err?.name !== "AbortError") { console.error("fetch error:", err); setData([]); } }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    let alive = true;
-    (async () => { await fetchRows(); })();
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId]);
+  useEffect(() => { fetchRows(); }, [apiBase, stationId]);
+  useEffect(() => { const ac = new AbortController(); fetchRows(ac.signal); return () => ac.abort(); }, [apiBase, stationId, searchParams.toString()]);
 
-  function appendParam(u: string, key: string, val: string) {
+  function appendParam(u: string, key: string, val?: string) {
+    if (!val) return u;
     const url = new URL(u, apiBase);
     if (!url.searchParams.has(key)) url.searchParams.set(key, val);
     return url.toString();
@@ -514,50 +370,22 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   function buildHtmlLinks(baseUrl?: string) {
     const u = (baseUrl || "").trim();
     if (!u) return { previewHref: "", isPdfEndpoint: false };
-
     const isPdfEndpoint = /\/pdf\/(charger|mdb|ccb|cbbox|station)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
-
     if (isPdfEndpoint) {
       let finalUrl = u;
       if (stationId) finalUrl = appendParam(finalUrl, "station_id", stationId);
-
+      finalUrl = appendParam(finalUrl, "lang", lang);
       const photosBase = (process.env.NEXT_PUBLIC_PHOTOS_BASE_URL as string) || (typeof window !== "undefined" ? window.location.origin : "");
       if (photosBase) finalUrl = appendParam(finalUrl, "photos_base_url", photosBase);
-
       finalUrl = appendParam(finalUrl, "dl", "0");
       return { previewHref: finalUrl, isPdfEndpoint: true };
     }
     return { previewHref: u, isPdfEndpoint: false };
   }
 
-  function extractDocIdFromAnything(x: any): string {
-    if (!x) return "";
-    const raw = (x._id !== undefined ? x._id : x.id) ?? "";
-    let id = "";
-    if (raw && typeof raw === "object") id = raw.$oid || raw.oid || raw.$id || "";
-    else id = String(raw || "");
-    if (/^[a-fA-F0-9]{24}$/.test(id)) return id;
-
-    const s = typeof x === "string" ? x : JSON.stringify(x);
-    const m = s.match(/[A-Fa-f0-9]{24}/);
-    return m ? m[0] : "";
-  }
-
-  useEffect(() => {
-    const ac = new AbortController();
-    fetchRows(ac.signal);
-    return () => ac.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId, searchParams.toString()]);
-
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
-      id: "no",
-      header: () => t("colNo", lang),
-      enableSorting: false,
-      size: 25,
-      minSize: 10,
-      maxSize: 25,
+      id: "no", header: () => t("colNo", lang), enableSorting: false, size: 60, minSize: 50, maxSize: 80,
       cell: (info: CellContext<TData, unknown>) => {
         const pageRows = info.table.getRowModel().rows as Row<TData>[];
         const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
@@ -567,118 +395,65 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.doc_name || "—",
-      id: "name",
-      header: () => t("colDocName", lang),
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 120,
-      minSize: 80,
-      maxSize: 160,
-      meta: { headerAlign: "center", cellAlign: "center" },
+      accessorFn: (row) => row.doc_name || "—", id: "name", header: () => t("colDocName", lang),
+      cell: (info: CellContext<TData, unknown>) => (<span className="tw-block tw-truncate" title={info.getValue() as string}>{info.getValue() as React.ReactNode}</span>),
+      size: 150, minSize: 100, maxSize: 200, meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
-      accessorFn: (row) => row.issue_id || "—",
-      id: "issue_id",
-      header: () => t("colIssueId", lang),
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 120,
-      minSize: 80,
-      maxSize: 160,
-      meta: { headerAlign: "center", cellAlign: "center" },
+      accessorFn: (row) => row.issue_id || "—", id: "issue_id", header: () => t("colIssueId", lang),
+      cell: (info) => (<span className="tw-block tw-truncate" title={info.getValue() as string}>{info.getValue() as React.ReactNode}</span>),
+      size: 140, minSize: 100, maxSize: 180, meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.pm_date,
-      id: "date",
-      header: () => t("colPmDate", lang),
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 80,
-      minSize: 60,
-      maxSize: 120,
-      meta: { headerAlign: "center", cellAlign: "center" },
+      accessorFn: (row) => row.pm_date, id: "date", header: () => t("colPmDate", lang),
+      cell: (info) => (<span className="tw-whitespace-nowrap">{formatDate(info.getValue() as string, lang)}</span>),
+      size: 120, minSize: 100, maxSize: 150, meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.inspector || "-",
-      id: "inspector",
-      header: () => t("colInspector", lang),
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 100,
-      minSize: 80,
-      maxSize: 140,
-      meta: { headerAlign: "center", cellAlign: "center" },
+      accessorFn: (row) => row.inspector || "-", id: "inspector", header: () => t("colInspector", lang),
+      cell: (info: CellContext<TData, unknown>) => (<span className="tw-block tw-truncate" title={info.getValue() as string}>{info.getValue() as React.ReactNode}</span>),
+      size: 120, minSize: 80, maxSize: 160, meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.office,
-      id: "pdf",
-      header: () => t("colPdf", lang),
-      enableSorting: false,
+      accessorFn: (row) => row.office, id: "pdf", header: () => t("colPdf", lang), enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
-
-        if (!hasUrl) {
-          return <span className="tw-text-blue-gray-300" title="No file">—</span>;
-        }
-
+        if (!hasUrl) return <span className="tw-text-blue-gray-300" title={t("noFile", lang)}>—</span>;
         const { previewHref } = buildHtmlLinks(url);
         const rowSide = info.row.original.side;
-
-        if (rowSide == "pre") {
+        if (rowSide === "pre") {
           return (
-            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-              <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
-                <Button
-                  size="sm"
-                  color="blue"
-                  variant="outlined"
-                  className="tw-shrink-0"
-                  onClick={() => {
-                    const params = new URLSearchParams(searchParams.toString());
-                    params.set("view", "form");
-                    params.set("action", "post");
-                    params.set("edit_id", info.row.original.id || "");
-                    params.set("pmtab", "post");
-                    router.push(`${pathname}?${params.toString()}`, { scroll: false });
-                  }}
-                >
-                  {t("postPm", lang)}
-                </Button>
-              </div>
+            <div className="tw-flex tw-items-center tw-justify-center">
+              <Button size="sm" color="blue" variant="outlined"
+                className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-py-1 sm:tw-py-1.5 tw-min-h-0 tw-h-auto tw-font-medium tw-rounded-md"
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams.toString());
+                  params.set("view", "form"); params.set("action", "post"); params.set("edit_id", info.row.original.id || ""); params.set("pmtab", "post");
+                  router.push(`${pathname}?${params.toString()}`, { scroll: false });
+                }}>{t("postPm", lang)}</Button>
             </div>
           );
         } else {
           return (
-            <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-              <a
-                aria-label={t("preview", lang)}
-                href={previewHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-                title={t("preview", lang)}
-              >
-                <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-              </a>
+            <div className="tw-flex tw-items-center tw-justify-center">
+              <a aria-label={t("preview", lang)} href={previewHref} target="_blank" rel="noopener noreferrer"
+                className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-red-600 hover:tw-text-red-800 hover:tw-bg-red-50 tw-transition-colors"
+                title={t("preview", lang)}><DocumentArrowDownIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" /></a>
             </div>
           );
         }
       },
-      size: 150,
-      minSize: 120,
-      maxSize: 180,
-      meta: { headerAlign: "center", cellAlign: "center" },
+      size: 100, minSize: 80, maxSize: 140, meta: { headerAlign: "center", cellAlign: "center" },
     },
   ], [lang, searchParams, pathname, router, stationId]);
 
   const table = useReactTable({
-    data,
-    columns,
+    data, columns,
     state: { globalFilter: filtering, sorting },
-    onSortingChange: setSorting,
-    onGlobalFilterChange: setFiltering,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    onSortingChange: setSorting, onGlobalFilterChange: setFiltering,
+    getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(), getPaginationRowModel: getPaginationRowModel(),
     columnResizeMode: "onChange",
   });
 
@@ -691,244 +466,123 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const files = Array.from(e.target.files ?? []);
     e.currentTarget.value = "";
     if (!files.length) return;
-
     const pdfs = files.filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-    if (!pdfs.length) {
-      alert(t("alertPdfOnly", lang));
-      return;
-    }
+    if (!pdfs.length) { alert(t("alertPdfOnly", lang)); return; }
     setPendingFiles(pdfs);
     setDateOpen(true);
   };
 
   async function uploadPdfs() {
     try {
-      if (!stationId) {
-        alert(t("alertSelectStation", lang));
-        return;
-      }
-      if (!pendingFiles.length) {
-        setDateOpen(false);
-        return;
-      }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
-        alert(t("alertInvalidDate", lang));
-        return;
-      }
-
+      if (!stationId) { alert(t("alertSelectStation", lang)); return; }
+      if (!pendingFiles.length) { setDateOpen(false); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert(t("alertInvalidDate", lang)); return; }
       const fd = new FormData();
-      fd.append("station_id", stationId);
-      fd.append("reportDate", reportDate);
-      fd.append("issue_id", issueId);
-      fd.append("doc_name", docName || "");
-      fd.append("inspector", inspector || "");
+      fd.append("station_id", stationId); fd.append("reportDate", reportDate); fd.append("issue_id", issueId);
+      fd.append("doc_name", docName || ""); fd.append("inspector", inspector || "");
       pendingFiles.forEach((f) => fd.append("files", f));
-
-      const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const txt = await res.text();
-        alert(`${t("alertUploadFailed", lang)} ${txt}`);
-        return;
-      }
-
-      const j = await res.json();
-      console.log("uploaded:", j);
+      const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, { method: "POST", body: fd, credentials: "include" });
+      if (!res.ok) { const txt = await res.text(); alert(`${t("alertUploadFailed", lang)} ${txt}`); return; }
+      await res.json();
       alert(t("alertUploadSuccess", lang));
-
-      setPendingFiles([]);
-      setDateOpen(false);
-
+      setPendingFiles([]); setDateOpen(false);
       await fetchRows();
-    } catch (err) {
-      console.error(err);
-      alert(t("alertUploadError", lang));
-    }
+    } catch (err) { console.error(err); alert(t("alertUploadError", lang)); }
   }
 
   useEffect(() => {
     if (!dateOpen || !stationId || !reportDate) return;
-
     let canceled = false;
-
     (async () => {
       try {
         const preview = await fetchPreviewDocName(stationId, reportDate);
-        if (!canceled && preview) {
-          setDocName(preview);
-          return;
-        }
-
+        if (!canceled && preview) { setDocName(preview); return; }
         const latest = await fetchLatestDocName(stationId, reportDate);
-        if (!canceled) {
-          const next = nextDocNameFor(stationId, reportDate, latest || undefined);
-          setDocName(next);
-        }
-      } catch (e) {
-        console.error("auto doc_name error:", e);
-        if (!canceled) {
-          const fallback = nextDocNameFor(stationId, reportDate);
-          setDocName(fallback);
-        }
-      }
+        if (!canceled) { setDocName(nextDocNameFor(stationId, reportDate, latest || undefined)); }
+      } catch (e) { if (!canceled) { setDocName(nextDocNameFor(stationId, reportDate)); } }
     })();
-
     return () => { canceled = true; };
   }, [dateOpen, stationId, reportDate]);
 
   useEffect(() => {
     if (!dateOpen || !stationId || !reportDate) return;
-
     let canceled = false;
     (async () => {
       try {
         const latest = await fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase, FetchOpts);
-        const next = nextIssueIdFor(PM_TYPE_CODE, reportDate, latest || "");
-        if (!canceled) setIssueId(next);
-      } catch {
-        if (!canceled) setIssueId(nextIssueIdFor(PM_TYPE_CODE, reportDate, ""));
-      }
+        if (!canceled) setIssueId(nextIssueIdFor(PM_TYPE_CODE, reportDate, latest || ""));
+      } catch { if (!canceled) setIssueId(nextIssueIdFor(PM_TYPE_CODE, reportDate, "")); }
     })();
-
     return () => { canceled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateOpen, stationId, reportDate]);
 
   const goAdd = () => setView("form");
-  const goList = () => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("view");
-    params.delete("edit_id");
-    router.push(`${pathname}?${params.toString()}`, { scroll: false });
-  };
 
   if (mode === "form") {
-    return (
-      <div className="tw-mt-6">
-        <CBBOXPMForm />
-      </div>
-    );
+    return (<div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8"><CBBOXPMForm /></div>);
   }
 
   return (
     <>
-      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
-        <CardHeader
-          floated={false}
-          shadow={false}
-          className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-3 md:tw-!px-4 tw-!py-3 md:tw-!py-4 tw-mb-6"
-        >
-          <div className="tw-ml-3">
-            <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
-              {t("pageTitle", lang)}
-            </Typography>
-            <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm">
-              {t("pageSubtitle", lang)}
-            </Typography>
-          </div>
-
-          <div className="tw-w-full md:tw-w-auto md:tw-ml-auto md:tw-flex md:tw-justify-end">
-            <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 sm:tw-gap-3 tw-justify-end tw-w-full md:tw-w-auto md:tw-mt-6">
-              <input
-                ref={pdfInputRef}
-                type="file"
-                accept="application/pdf,.pdf"
-                multiple
-                className="tw-hidden"
-                onChange={handlePdfChange}
-              />
-              <Button
-                variant="text"
-                size="lg"
-                onClick={() => pdfInputRef.current?.click()}
-                className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-bg-white tw-text-blue-gray-900 tw-border tw-border-blue-gray-100 tw-shadow-[0_1px_0_rgba(0,0,0,0.04)] hover:tw-bg-black hover:tw-text-black hover:tw-border-black hover:tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)] tw-transition-colors tw-duration-200 focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none"
-              >
-                <ArrowUpTrayIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-200 group-hover:-tw-translate-y-0.5" />
-                <span className="tw-text-sm">{t("upload", lang)}</span>
+      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
+        <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0">
+          <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-3 sm:tw-gap-4">
+            <div className="tw-min-w-0 tw-flex-1">
+              <Typography variant="h5" color="blue-gray" className="tw-text-sm sm:tw-text-base lg:tw-text-lg tw-leading-tight tw-font-semibold">{t("pageTitle", lang)}</Typography>
+              <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-leading-relaxed tw-font-normal tw-text-blue-gray-400 tw-mt-0.5">{t("pageSubtitle", lang)}</Typography>
+            </div>
+            <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
+              <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" multiple className="tw-hidden" onChange={handlePdfChange} />
+              <Button variant="outlined" size="sm" disabled={!stationId} onClick={() => pdfInputRef.current?.click()}
+                className="tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4 tw-flex tw-items-center tw-justify-center tw-gap-1 sm:tw-gap-1.5 tw-border-blue-gray-200 tw-font-medium hover:tw-bg-blue-gray-50 tw-transition-colors"
+                title={t("uploadPdf", lang)}>
+                <ArrowUpTrayIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 tw-flex-shrink-0" />
+                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("upload", lang)}</span>
               </Button>
-
-              <Button
-                size="lg"
-                onClick={goAdd}
-                disabled={!stationId}
-                className={`
-                  !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
-                  tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                  ${!stationId
-                    ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                    : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
-                  tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                  focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                `}
-                title={stationId ? "" : t("selectStation", lang)}
-              >
-                <span className="tw-w-full tw-text-center">{t("add", lang)}</span>
+              <Button size="sm" onClick={goAdd} disabled={!stationId}
+                className={`tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4 tw-flex tw-items-center tw-justify-center tw-font-medium ${!stationId ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed" : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white"} tw-shadow-md tw-transition-all`}
+                title={stationId ? "" : t("selectStation", lang)}>
+                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("add", lang)}</span>
               </Button>
             </div>
           </div>
         </CardHeader>
 
-        <CardBody className="tw-flex tw-items-center tw-gap-3 tw-px-3 md:tw-px-4">
-          <div className="tw-flex tw-items-center tw-gap-3">
-            <select
-              value={table.getState().pagination.pageSize}
-              onChange={(e) => table.setPageSize(Number(e.target.value))}
-              className="tw-border tw-p-2 tw-border-blue-gray-100 tw-rounded-lg tw-w-[72px]"
-            >
-              {[5, 10, 15, 20, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-            <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal">
-              {t("entriesPerPage", lang)}
-            </Typography>
-          </div>
-          <div className="tw-ml-auto tw-min-w-0 tw-flex-1 md:tw-flex-none md:tw-w-64">
-            <Input
-              variant="outlined"
-              value={filtering}
-              onChange={(e) => setFiltering(e.target.value)}
-              label={t("search", lang)}
-              crossOrigin={undefined}
-              containerProps={{ className: "tw-min-w-0" }}
-              className="tw-w-full"
-            />
+        <CardBody className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-border-t tw-border-blue-gray-50">
+          <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-stretch sm:tw-items-center tw-gap-2.5 sm:tw-gap-3 lg:tw-gap-4">
+            <div className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2 tw-flex-shrink-0">
+              <select value={table.getState().pagination.pageSize} onChange={(e) => table.setPageSize(Number(e.target.value))}
+                className="tw-border tw-border-blue-gray-200 tw-py-1.5 sm:tw-py-2 tw-px-2 sm:tw-px-3 tw-rounded-lg tw-text-xs sm:tw-text-sm tw-w-14 sm:tw-w-16 lg:tw-w-20 tw-bg-white focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent tw-cursor-pointer">
+                {[5, 10, 15, 20, 25, 50].map((n) => (<option key={n} value={n}>{n}</option>))}
+              </select>
+              <Typography variant="small" className="tw-text-blue-gray-500 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-whitespace-nowrap">{t("entriesPerPage", lang)}</Typography>
+            </div>
+            <div className="tw-flex-1 tw-hidden sm:tw-block" />
+            <div className="tw-w-full sm:tw-w-48 lg:tw-w-64">
+              <Input value={filtering} onChange={(e) => setFiltering(e.target.value)} label={t("search", lang)} crossOrigin={undefined} />
+            </div>
           </div>
         </CardBody>
 
         <CardFooter className="tw-p-0">
-          <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
-            <table className="tw-w-full tw-text-left tw-min-w-[720px] md:tw-min-w-0 md:tw-table-fixed">
-              <thead className="tw-bg-gray-50 tw-sticky tw-top-0">
+          <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth tw--webkit-overflow-scrolling-touch">
+            <table className="tw-w-full tw-text-left tw-min-w-[700px]">
+              <thead className="tw-bg-gray-50/80 tw-sticky tw-top-0 tw-backdrop-blur-sm">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
                     {hg.headers.map((header) => {
                       const canSort = header.column.getCanSort();
                       const align = (header.column.columnDef as any).meta?.headerAlign ?? "left";
                       return (
-                        <th
-                          key={header.id}
-                          onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                          className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap
-                          ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
-                        >
+                        <th key={header.id} onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                          className={`tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-semibold tw-whitespace-nowrap tw-border-b tw-border-blue-gray-100 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"} ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-100 tw-transition-colors tw-select-none" : ""}`}>
                           {canSort ? (
-                            <Typography
-                              color="blue-gray"
-                              className={`tw-flex tw-items-center tw-gap-1 md:tw-gap-2 tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                              ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}
-                            >
+                            <Typography color="blue-gray" className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60 ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}>
                               {flexRender(header.column.columnDef.header, header.getContext())}
-                              <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
+                              <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0" />
                             </Typography>
                           ) : (
-                            <Typography
-                              color="blue-gray"
-                              className={`tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40
-                              ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
-                            >
+                            <Typography color="blue-gray" className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}>
                               {flexRender(header.column.columnDef.header, header.getContext())}
                             </Typography>
                           )}
@@ -938,30 +592,22 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                   </tr>
                 ))}
               </thead>
-
-              <tbody>
+              <tbody className="tw-divide-y tw-divide-blue-gray-50">
                 {loading ? (
-                  <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {t("loading", lang)}
-                    </td>
-                  </tr>
+                  <tr><td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                    <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
+                      <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin"></div>
+                      <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t("loading", lang)}</span>
+                    </div>
+                  </td></tr>
                 ) : table.getRowModel().rows.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50">
+                  table.getRowModel().rows.map((row, index) => (
+                    <tr key={row.id} className={`tw-transition-colors hover:tw-bg-blue-50/50 ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-gray-50/30'}`}>
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
                         return (
-                          <td
-                            key={cell.id}
-                            style={{ width: cell.column.getSize() }}
-                            className={`!tw-border-y !tw-border-x-0 tw-align-middle
-                            ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
-                          >
-                            <Typography
-                              variant="small"
-                              className="!tw-font-normal !tw-text-blue-gray-600 tw-py-3 md:tw-py-4 tw-px-3 md:tw-px-4 tw-truncate md:tw-whitespace-normal"
-                            >
+                          <td key={cell.id} className={`tw-align-middle tw-border-0 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}>
+                            <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-700 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>
                           </td>
@@ -970,113 +616,51 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                     </tr>
                   ))
                 ) : (
-                  <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!stationId ? t("selectStation", lang) : t("noData", lang)}
-                    </td>
-                  </tr>
+                  <tr><td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                    <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
+                      <div className="tw-w-10 tw-h-10 sm:tw-w-12 sm:tw-h-12 lg:tw-w-16 lg:tw-h-16 tw-rounded-full tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-center">
+                        <DocumentArrowDownIcon className="tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 lg:tw-w-8 lg:tw-h-8 tw-text-blue-gray-300" />
+                      </div>
+                      <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm tw-font-medium">{!stationId ? t("selectStation", lang) : t("noData", lang)}</span>
+                    </div>
+                  </td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </CardFooter>
 
-        <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4 tw-py-4">
-          <span className="tw-text-sm">
-            <Typography className="!tw-font-bold tw-inline">{t("page", lang)}</Typography>{" "}
-            <strong>{table.getState().pagination.pageIndex + 1} {t("of", lang)} {table.getPageCount()}</strong>
-          </span>
-          <div className="tw-flex tw-items-center tw-gap-2">
-            <Button
-              variant="outlined"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              className="disabled:tw-opacity-30 tw-py-2 tw-px-2"
-            >
-              <ChevronLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-              <span className="tw-sr-only">Previous</span>
+        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-50 tw-bg-gray-50/30">
+          <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-text-blue-gray-600 tw-order-2 sm:tw-order-1">
+            {t("page", lang)} <strong className="tw-text-blue-gray-800">{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)} <strong className="tw-text-blue-gray-800">{table.getPageCount() || 1}</strong>
+          </Typography>
+          <div className="tw-flex tw-gap-1.5 sm:tw-gap-2 tw-order-1 sm:tw-order-2">
+            <Button size="sm" variant="outlined" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
+              className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors">
+              <ChevronLeftIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
             </Button>
-            <Button
-              variant="outlined"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              className="disabled:tw-opacity-30 tw-py-2 tw-px-2"
-            >
-              <ChevronRightIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-              <span className="tw-sr-only">Next</span>
+            <Button size="sm" variant="outlined" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
+              className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors">
+              <ChevronRightIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
             </Button>
           </div>
         </div>
       </Card>
 
-      <Dialog open={dateOpen} handler={setDateOpen} size="sm">
-        <DialogHeader className="tw-text-base sm:tw-text-lg">
-          {t("dialogTitle", lang)}
-        </DialogHeader>
-        <DialogBody className="tw-space-y-4">
-          <div className="tw-space-y-2">
-            <Input
-              label={t("docName", lang)}
-              value={docName}
-              onChange={(e) => setDocName(e.target.value)}
-              crossOrigin=""
-              containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-w-full !tw-bg-blue-gray-50"
-              readOnly
-            />
-          </div>
-          <div className="tw-space-y-2">
-            <Input
-              label={t("issueId", lang)}
-              value={issueId}
-              onChange={(e) => setIssueId(e.target.value)}
-              crossOrigin=""
-              containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-w-full !tw-bg-blue-gray-50"
-              readOnly
-            />
-          </div>
-          <div className="tw-space-y-2">
-            <Input
-              label={t("inspector", lang)}
-              value={inspector}
-              onChange={(e) => setInspector(e.target.value)}
-              crossOrigin=""
-              containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-w-full !tw-bg-blue-gray-50"
-              readOnly
-            />
-          </div>
-          <Input
-            type="date"
-            value={reportDate}
-            max={todayStr}
-            onChange={(e) => setReportDate(e.target.value)}
-            label={t("pmDate", lang)}
-            crossOrigin=""
-          />
-          <div className="tw-text-sm tw-text-blue-gray-500">
-            {t("filesSelected", lang)} <strong>{pendingFiles.length}</strong> {t("filesUnit", lang)}
+      <Dialog open={dateOpen} handler={setDateOpen} size="sm" className="tw-mx-4 tw-max-w-[calc(100vw-2rem)] sm:tw-max-w-md tw-rounded-xl sm:tw-rounded-2xl">
+        <DialogHeader className="tw-text-base sm:tw-text-lg lg:tw-text-xl tw-font-semibold tw-px-4 sm:tw-px-6 tw-pt-5 sm:tw-pt-6 tw-pb-2">{t("dialogTitle", lang)}</DialogHeader>
+        <DialogBody className="tw-space-y-4 tw-px-4 sm:tw-px-6 tw-py-4">
+          <div><Input label={t("docName", lang)} value={docName} onChange={(e) => setDocName(e.target.value)} crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm" labelProps={{ className: "!tw-text-sm" }} readOnly /></div>
+          <div><Input label={t("issueId", lang)} value={issueId} onChange={(e) => setIssueId(e.target.value)} crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm" labelProps={{ className: "!tw-text-sm" }} readOnly /></div>
+          <div><Input label={t("inspector", lang)} value={inspector} onChange={(e) => setInspector(e.target.value)} crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm" labelProps={{ className: "!tw-text-sm" }} readOnly /></div>
+          <div><Input type="date" value={reportDate} max={todayStr} onChange={(e) => setReportDate(e.target.value)} label={t("pmDate", lang)} crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-text-sm" labelProps={{ className: "!tw-text-sm" }} /></div>
+          <div className="tw-bg-blue-50 tw-rounded-lg tw-p-3 sm:tw-p-4">
+            <Typography variant="small" className="tw-text-blue-gray-600 tw-text-xs sm:tw-text-sm">{t("filesSelected", lang)} <strong className="tw-text-blue-600">{pendingFiles.length}</strong> {t("filesUnit", lang)}</Typography>
           </div>
         </DialogBody>
-        <DialogFooter className="tw-gap-2">
-          <Button
-            variant="text"
-            color="blue-gray"
-            onClick={() => { setPendingFiles([]); setDateOpen(false); }}
-            className="tw-rounded-xl"
-          >
-            {t("cancel", lang)}
-          </Button>
-          <Button
-            color="gray"
-            className="tw-rounded-xl tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black"
-            onClick={uploadPdfs}
-          >
-            {t("uploadBtn", lang)}
-          </Button>
+        <DialogFooter className="tw-gap-2 sm:tw-gap-3 tw-px-4 sm:tw-px-6 tw-pb-5 sm:tw-pb-6 tw-pt-2">
+          <Button variant="text" size="sm" onClick={() => { setPendingFiles([]); setDateOpen(false); }} className="tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-text-blue-gray-600 hover:tw-bg-blue-gray-50 tw-transition-colors tw-rounded-lg">{t("cancel", lang)}</Button>
+          <Button onClick={uploadPdfs} size="sm" className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all">{t("uploadBtn", lang)}</Button>
         </DialogFooter>
       </Dialog>
     </>

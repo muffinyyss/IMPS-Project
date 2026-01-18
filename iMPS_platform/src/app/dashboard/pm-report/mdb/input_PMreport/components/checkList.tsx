@@ -71,12 +71,12 @@ const T = {
     preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
     breakerMainCount: { th: "จำนวน Breaker Main:", en: "Breaker Main count:" },
     unit: { th: "ตัว", en: "units" },
-    addBreakerMain: { th: "เพิ่ม Breaker Main", en: "Add Breaker Main" },
+    addBreakerMain: { th: "เพิ่ม", en: "Add" },
     chargerCountLabel: { th: "จำนวนตู้ชาร์จใน Station นี้:", en: "Chargers in this station:" },
     chargerUnit: { th: "ตู้", en: "chargers" },
     breakerCCBCount: { th: "จำนวน Breaker CCB:", en: "Breaker CCB count:" },
     breakerCCBMax: { th: "ตัว (สูงสุด 4 ตัว)", en: "units (max 4)" },
-    addBreakerCCB: { th: "เพิ่ม Breaker CCB", en: "Add Breaker CCB" },
+    addBreakerCCB: { th: "เพิ่ม", en: "Add" },
     rcdCount: { th: "จำนวน RCD (ตามจำนวนตู้ชาร์จ):", en: "RCD count (per charger):" },
     breakerChargerCount: { th: "จำนวน Breaker Charger (ตามจำนวนตู้ชาร์จ):", en: "Breaker Charger (per charger):" },
     validationPhotoTitle: { th: "1) ตรวจสอบการแนบรูปภาพ (ทุกข้อ)", en: "1) Photo attachment (all items)" },
@@ -86,7 +86,7 @@ const T = {
     validationSummaryTitle: { th: "5) สรุปผลการตรวจสอบ", en: "5) Summary result" },
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos:" },
-    missingInput: { th: "ยังขาด:", en: "Missing:" },
+    missingInput: { th: "ยังขาดข้อ:", en: "Missing:" },
     missingRemark: { th: "ยังไม่ได้กรอกหมายเหตุข้อ:", en: "Missing remarks:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอกข้อความสรุปผลการตรวจสอบ", en: "Summary text not filled" },
@@ -273,37 +273,62 @@ function PassFailRow({
  *       UI ATOMS
  * ========================= */
 function SectionCard({ title, subtitle, children, tooltip }: { title?: string; subtitle?: string; children: React.ReactNode; tooltip?: string; }) {
+    // Extract question number from title (e.g., "1) ตรวจสอบ..." -> "1")
+    const qNumber = title?.match(/^(\d+)\)/)?.[1];
+
     return (
-        <>
+        <div className="tw-bg-white tw-rounded-xl tw-border tw-border-gray-200 tw-shadow-sm tw-overflow-hidden">
+            {/* Header with number badge - Dark theme */}
             {title && (
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                    <Typography variant="h6">{title}</Typography>
-                    {tooltip && (
-                        <Tooltip content={tooltip} placement="bottom">
-                            <svg className="tw-w-4 tw-h-4 tw-text-blue-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                            </svg>
-                        </Tooltip>
+                <div className="tw-bg-gray-800 tw-px-3 sm:tw-px-4 tw-py-2.5 sm:tw-py-3">
+                    <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3">
+                        {qNumber && (
+                            <div className="tw-flex-shrink-0 tw-w-7 tw-h-7 sm:tw-w-8 sm:tw-h-8 tw-rounded-full tw-bg-white tw-text-gray-800 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-xs sm:tw-text-sm">
+                                {qNumber}
+                            </div>
+                        )}
+                        <Typography variant="h6" className="tw-text-white tw-text-sm sm:tw-text-base tw-font-semibold tw-flex-1">
+                            {qNumber ? title.replace(/^\d+\)\s*/, '') : title}
+                        </Typography>
+                        {tooltip && (
+                            <Tooltip content={tooltip} placement="bottom">
+                                <svg className="tw-w-4 tw-h-4 sm:tw-w-5 sm:tw-h-5 tw-text-gray-400 tw-cursor-help tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                                </svg>
+                            </Tooltip>
+                        )}
+                    </div>
+                    {subtitle && (
+                        <Typography variant="small" className="!tw-text-gray-300 tw-text-xs sm:tw-text-sm tw-mt-1 tw-ml-9 sm:tw-ml-11">{subtitle}</Typography>
                     )}
                 </div>
             )}
-            <Card className="tw-mt-1 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                {subtitle && (
-                    <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-                        <Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography>
-                    </CardHeader>
-                )}
-                <CardBody className="tw-space-y-4">{children}</CardBody>
-            </Card>
-        </>
+            {/* Content */}
+            <div className="tw-p-3 sm:tw-p-4 tw-space-y-3 sm:tw-space-y-4">{children}</div>
+        </div>
     );
 }
 
 function Section({ title, ok, children, lang }: { title: React.ReactNode; ok: boolean; children?: React.ReactNode; lang: Lang }) {
     return (
-        <div className={`tw-rounded-lg tw-border tw-p-3 ${ok ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-            <Typography className="tw-font-medium">{title}</Typography>
-            {ok ? <Typography variant="small" className="!tw-text-green-700">{t("allComplete", lang)}</Typography> : children}
+        <div className={`tw-rounded-lg tw-p-2.5 sm:tw-p-3 ${ok ? "tw-bg-gray-100" : "tw-bg-gray-100"}`}>
+            <div className="tw-flex tw-items-center tw-gap-2">
+                {ok ? (
+                    <svg className="tw-w-4 tw-h-4 tw-text-gray-700 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                ) : (
+                    <svg className="tw-w-4 tw-h-4 tw-text-gray-500 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                )}
+                <Typography className="tw-font-medium tw-text-xs sm:tw-text-sm tw-text-gray-800">{title}</Typography>
+            </div>
+            {ok ? (
+                <Typography variant="small" className="!tw-text-green-600 tw-text-xs sm:tw-text-sm tw-ml-6">{t("allComplete", lang)}</Typography>
+            ) : (
+                <div className="tw-ml-6 tw-mt-1">{children}</div>
+            )}
         </div>
     );
 }
@@ -315,22 +340,39 @@ function InputWithUnit<U extends string>({
     onValueChange: (v: string) => void; onUnitChange: (u: U) => void;
     readOnly?: boolean; disabled?: boolean; labelOnTop?: boolean; required?: boolean;
 }) {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newValue = e.target.value;
+        // อนุญาตให้กรอก: ว่าง, เครื่องหมายลบ, ตัวเลข, จุดทศนิยม
+        if (newValue === "" || /^-?\d*\.?\d*$/.test(newValue)) {
+            onValueChange(newValue);
+        }
+    };
+
     return (
-        <div className="tw-space-y-1">
-            {labelOnTop && <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{label}</Typography>}
-            <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
-                <Input type="text" inputMode="decimal" label={labelOnTop ? undefined : label} value={value}
-                    onChange={(e) => { const newValue = e.target.value; if (newValue === "" || newValue === "-" || /^-?\d*\.?\d*$/.test(newValue)) onValueChange(newValue); }}
-                    crossOrigin="" containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }}
-                    className={`!tw-w-full ${disabled ? "!tw-bg-blue-gray-50" : ""}`}
-                    readOnly={readOnly} disabled={disabled} required={required} />
-                <select required={required} value={unit} onChange={(e) => onUnitChange(e.target.value as U)}
-                    className={`tw-col-span-1 tw-h-10 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-2 tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-500 ${disabled ? "tw-bg-blue-gray-50 tw-text-blue-gray-400 tw-cursor-not-allowed" : ""}`}
-                    disabled={disabled}>
-                    {units.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
+        // <div className="tw-space-y-1">
+        <div className="tw-flex tw-items-center tw-gap-2">
+            <div className="tw-flex-1 tw-relative">
+                <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="-?[0-9]*\.?[0-9]*"
+                    value={value}
+                    onChange={handleChange}
+                    readOnly={readOnly}
+                    disabled={disabled}
+                    required={required}
+                    placeholder=" "
+                    className={`tw-peer tw-w-full tw-h-10 tw-px-3 tw-pt-4 tw-pb-1 tw-text-sm tw-border tw-border-gray-300 tw-rounded-lg tw-outline-none focus:tw-border-blue-500 focus:tw-ring-1 focus:tw-ring-blue-500 ${disabled ? "tw-bg-gray-100 tw-text-gray-500" : "tw-bg-white"}`}
+                />
+                <label className="tw-absolute tw-left-3 tw-top-1 tw-text-[10px] tw-text-gray-500 tw-pointer-events-none">
+                    {label}{required && <span className="tw-text-red-500">*</span>}
+                </label>
+            </div>
+            <div className="tw-flex-shrink-0 tw-w-10 tw-h-10 tw-flex tw-items-center tw-justify-center tw-text-gray-600 tw-font-medium tw-text-sm tw-bg-gray-100 tw-rounded-lg tw-border tw-border-gray-200">
+                {unit}
             </div>
         </div>
+        // </div>
     );
 }
 
@@ -411,14 +453,14 @@ function PhotoRemarkSection({
         });
     };
     return (
-        <div className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
+        <div className={`tw-py-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
             {label && (
                 <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                    <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{label}</Typography>
+                    <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{label}</Typography>
                 </div>
             )}
             <div className="tw-flex tw-justify-end tw-mb-3">
-                <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"}
+                <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
                     onClick={() => setRows(prev => ({ ...prev, [qKey]: { ...prev[qKey], pf: isNA ? "" : "NA" } }))}>
                     {isNA ? t("cancelNA", lang) : t("na", lang)}
                 </Button>
@@ -445,14 +487,14 @@ function DynamicItemsSection({
     draftKey: string; lang: Lang;
 }) {
     return (
-        <div className="tw-space-y-4">
+        <div className="tw-divide-y tw-divide-gray-200">
             {items.map((item) => {
                 const isNA = rows[item.key]?.pf === "NA";
                 return (
-                    <div key={item.key} className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
+                    <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
                         <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                            <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{item.label}</Typography>
-                            <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"}
+                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
+                            <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
                                 onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">
                                 {isNA ? t("cancelNA", lang) : t("na", lang)}
                             </Button>
@@ -479,15 +521,16 @@ function DynamicItemsSection({
 // Component for displaying skipped N/A items in Post mode
 function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
     return (
-        <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-amber-50 tw-border-amber-200">
+        <div className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
             <div className="tw-flex tw-items-center tw-justify-between">
-                <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{label}</Typography>
-                {remark && (
-                    <Typography variant="small" className="tw-text-blue-gray-600">
-                        {t("remarkLabel", lang)} - {remark}
-                    </Typography>
-                )}
+                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{label}</Typography>
+                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
             </div>
+            {remark && (
+                <Typography variant="small" className="tw-text-gray-600 tw-mt-1">
+                    {t("remarkLabel", lang)}: {remark}
+                </Typography>
+            )}
         </div>
     );
 }
@@ -496,14 +539,14 @@ function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string
 function PreRemarkElement({ remark, lang }: { remark?: string; lang: Lang }) {
     if (!remark) return null;
     return (
-        <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
+        <div className="tw-mb-3 tw-p-3 tw-bg-gray-100 tw-rounded-lg">
             <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="tw-w-4 tw-h-4 tw-text-gray-500" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                 </svg>
-                <Typography variant="small" className="tw-font-semibold tw-text-amber-700">{t("preRemarkLabel", lang)}</Typography>
+                <Typography variant="small" className="tw-font-semibold tw-text-gray-600">{t("preRemarkLabel", lang)}</Typography>
             </div>
-            <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{remark}</Typography>
+            <Typography variant="small" className="tw-text-gray-700 tw-ml-6">{remark}</Typography>
         </div>
     );
 }
@@ -822,7 +865,8 @@ export default function MDBPMForm() {
         (async () => {
             if (!draft.photoRefs) return;
             const next: Record<string | number, PhotoItem[]> = {};
-            for (const [keyStr, refs] of Object.entries(draft.photoRefs)) {
+            const photoRefsEntries = Object.entries(draft.photoRefs) as [string, PhotoRef[]][];
+            for (const [keyStr, refs] of photoRefsEntries) {
                 const photoKey = isNaN(Number(keyStr)) ? keyStr : Number(keyStr);
                 const items: PhotoItem[] = [];
                 for (const ref of refs || []) {
@@ -1077,7 +1121,9 @@ export default function MDBPMForm() {
         const m = MEASURE_BY_NO[no];
         if (!cfg || !m) return null;
         return (
-            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+            
+            <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-5 tw-gap-3">
+
                 {cfg.keys.map((k) => (
                     <InputWithUnit<UnitVoltage> key={`${no}-${k}`} label={LABELS[k] ?? k} value={m.state[k]?.value || ""} unit={(m.state[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage}
                         onValueChange={(v) => m.patch(k, { value: v })} onUnitChange={(u) => handleUnitChange(no, k, u)} />
@@ -1096,7 +1142,7 @@ export default function MDBPMForm() {
         else if (qNo === 7) { state = m7State[itemKey]; patchFn = patchM7State; fields = VOLTAGE_FIELDS_CCB; }
         else return null;
         return (
-            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+            <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                 {fields.map((k) => (
                     <InputWithUnit<UnitVoltage> key={`${qNo}-${itemKey}-${k}`} label={LABELS[k] ?? k} value={state?.[k]?.value || ""} unit={(state?.[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage}
                         onValueChange={(v) => patchFn(itemKey, k, { value: v })} onUnitChange={(u) => patchFn(itemKey, k, { unit: u })} />
@@ -1118,7 +1164,7 @@ export default function MDBPMForm() {
         return (
             <div className="tw-space-y-3">
                 <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{t("prePM", lang)}</Typography>
-                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                     {fields.map((k) => (
                         <div key={`pre-${qNo}-${itemKey}-${k}`} className="tw-pointer-events-none tw-opacity-60">
                             <InputWithUnit<UnitVoltage> label={LABELS[k] ?? k} value={preState?.[k]?.value || ""} unit={(preState?.[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage}
@@ -1127,7 +1173,7 @@ export default function MDBPMForm() {
                     ))}
                 </div>
                 <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mt-2">{t("postPM", lang)}</Typography>
-                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                     {fields.map((k) => (
                         <InputWithUnit<UnitVoltage> key={`post-${qNo}-${itemKey}-${k}`} label={LABELS[k] ?? k} value={state?.[k]?.value || ""} unit={(state?.[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage}
                             onValueChange={(v) => patchFn(itemKey, k, { value: v })} onUnitChange={(u) => patchFn(itemKey, k, { unit: u })} />
@@ -1145,7 +1191,7 @@ export default function MDBPMForm() {
         return (
             <div className="tw-space-y-3">
                 <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{t("prePM", lang)}</Typography>
-                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                     {cfg.keys.map((k) => (
                         <div key={`pre-${no}-${k}`} className="tw-pointer-events-none tw-opacity-60">
                             <InputWithUnit<UnitVoltage> label={LABELS[k] ?? k} value={pre[k]?.value || ""} unit={(pre[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage}
@@ -1154,7 +1200,7 @@ export default function MDBPMForm() {
                     ))}
                 </div>
                 <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mt-2">{t("postPM", lang)}</Typography>
-                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
+                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-2 md:tw-grid-cols-5 tw-gap-3">
                     {cfg.keys.map((k) => (
                         <InputWithUnit<UnitVoltage> key={`post-${no}-${k}`} label={LABELS[k] ?? k} value={m.state[k]?.value || ""} unit={(m.state[k]?.unit as UnitVoltage) || "V"} units={UNITS.voltage}
                             onValueChange={(v) => m.patch(k, { value: v })} onUnitChange={(u) => handleUnitChange(no, k, u)} />
@@ -1177,35 +1223,37 @@ export default function MDBPMForm() {
             if (q.kind === "dynamic_measure") {
                 return (
                     <SectionCard key={q.key} title={qLabel} subtitle={subtitle} tooltip={qTooltip}>
-                        <div className="tw-space-y-4">
-                            <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-blue-gray-100">
+                        <div className="tw-space-y-0">
+                            <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-gray-200">
                                 <Typography variant="small" className="tw-text-blue-gray-600">{t("breakerMainCount", lang)} {q4Items.length} {t("unit", lang)}</Typography>
-                                <Button size="sm" color="blue" variant="outlined" onClick={addQ4Item} className="tw-flex tw-items-center tw-gap-1">
+                                <Button size="sm" color="gray" variant="outlined" onClick={addQ4Item} className="tw-flex tw-items-center tw-gap-1">
                                     <span className="tw-text-lg tw-leading-none">+</span>
                                     <span className="tw-text-xs">{t("addBreakerMain", lang)}</span>
                                 </Button>
                             </div>
-                            {q4Items.map((item, idx) => {
-                                const isNA = rows[item.key]?.pf === "NA";
-                                return (
-                                    <div key={item.key} className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
-                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{item.label}</Typography>
-                                            <div className="tw-flex tw-items-center tw-gap-2">
-                                                <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
-                                                {q4Items.length > 1 && (
-                                                    <button type="button" onClick={() => removeQ4Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100">
-                                                        <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                                                    </button>
-                                                )}
+                            <div className="tw-divide-y tw-divide-gray-200">
+                                {q4Items.map((item, idx) => {
+                                    const isNA = rows[item.key]?.pf === "NA";
+                                    return (
+                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
+                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
+                                                <div className="tw-flex tw-items-center tw-gap-2">
+                                                    <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
+                                                    {q4Items.length > 1 && (
+                                                        <button type="button" onClick={() => removeQ4Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100">
+                                                            <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
+                                            <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(4, item.key)}</div>
+                                            <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
-                                        <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(4, item.key)}</div>
-                                        <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     </SectionCard>
                 );
@@ -1215,25 +1263,27 @@ export default function MDBPMForm() {
             if (q.kind === "charger_measure") {
                 return (
                     <SectionCard key={q.key} title={qLabel} subtitle={subtitle} tooltip={qTooltip}>
-                        <div className="tw-space-y-4">
-                            <div className="tw-flex tw-items-center tw-gap-2 tw-pb-3 tw-border-b tw-border-blue-gray-100">
+                        <div className="tw-space-y-0">
+                            <div className="tw-flex tw-items-center tw-gap-2 tw-pb-3 tw-border-b tw-border-gray-200">
                                 <Typography variant="small" className="tw-text-blue-gray-600">{t("chargerCountLabel", lang)}</Typography>
                                 <Typography variant="small" className="tw-font-bold tw-text-blue-600">{chargerCount} {t("chargerUnit", lang)}</Typography>
                             </div>
-                            {q5Items.map((item) => {
-                                const isNA = rows[item.key]?.pf === "NA";
-                                return (
-                                    <div key={item.key} className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
-                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{item.label}</Typography>
-                                            <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
+                            <div className="tw-divide-y tw-divide-gray-200">
+                                {q5Items.map((item) => {
+                                    const isNA = rows[item.key]?.pf === "NA";
+                                    return (
+                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
+                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
+                                                <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
+                                            </div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
+                                            <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(5, item.key)}</div>
+                                            <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
-                                        <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(5, item.key)}</div>
-                                        <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     </SectionCard>
                 );
@@ -1243,35 +1293,37 @@ export default function MDBPMForm() {
             if (q.kind === "ccb_measure") {
                 return (
                     <SectionCard key={q.key} title={qLabel} subtitle={subtitle} tooltip={qTooltip}>
-                        <div className="tw-space-y-4">
-                            <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-blue-gray-100">
+                        <div className="tw-space-y-0">
+                            <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-gray-200">
                                 <Typography variant="small" className="tw-text-blue-gray-600">{t("breakerCCBCount", lang)} {q6Items.length} {t("breakerCCBMax", lang)}</Typography>
-                                <Button size="sm" color="blue" variant="outlined" onClick={addQ6Item} disabled={q6Items.length >= 4} className="tw-flex tw-items-center tw-gap-1">
+                                <Button size="sm" color="gray" variant="outlined" onClick={addQ6Item} disabled={q6Items.length >= 4} className="tw-flex tw-items-center tw-gap-1">
                                     <span className="tw-text-lg tw-leading-none">+</span>
                                     <span className="tw-text-xs">{t("addBreakerCCB", lang)}</span>
                                 </Button>
                             </div>
-                            {q6Items.map((item, idx) => {
-                                const isNA = rows[item.key]?.pf === "NA";
-                                return (
-                                    <div key={item.key} className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
-                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{item.label}</Typography>
-                                            <div className="tw-flex tw-items-center tw-gap-2">
-                                                <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
-                                                {q6Items.length > 1 && (
-                                                    <button type="button" onClick={() => removeQ6Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100">
-                                                        <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
-                                                    </button>
-                                                )}
+                            <div className="tw-divide-y tw-divide-gray-200">
+                                {q6Items.map((item, idx) => {
+                                    const isNA = rows[item.key]?.pf === "NA";
+                                    return (
+                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
+                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
+                                                <div className="tw-flex tw-items-center tw-gap-2">
+                                                    <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
+                                                    {q6Items.length > 1 && (
+                                                        <button type="button" onClick={() => removeQ6Item(idx)} className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100">
+                                                            <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
+                                            <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(6, item.key)}</div>
+                                            <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
-                                        <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(6, item.key)}</div>
-                                        <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     </SectionCard>
                 );
@@ -1281,24 +1333,26 @@ export default function MDBPMForm() {
             if (q.kind === "rcd_measure") {
                 return (
                     <SectionCard key={q.key} title={qLabel} subtitle={subtitle} tooltip={qTooltip}>
-                        <div className="tw-space-y-4">
-                            <div className="tw-flex tw-items-center tw-gap-2 tw-pb-3 tw-border-b tw-border-blue-gray-100">
+                        <div className="tw-space-y-0">
+                            <div className="tw-flex tw-items-center tw-gap-2 tw-pb-3 tw-border-b tw-border-gray-200">
                                 <Typography variant="small" className="tw-text-blue-gray-600">{t("rcdCount", lang)} {chargerCount} {t("unit", lang)}</Typography>
                             </div>
-                            {q7Items.map((item) => {
-                                const isNA = rows[item.key]?.pf === "NA";
-                                return (
-                                    <div key={item.key} className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
-                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{item.label}</Typography>
-                                            <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
+                            <div className="tw-divide-y tw-divide-gray-200">
+                                {q7Items.map((item) => {
+                                    const isNA = rows[item.key]?.pf === "NA";
+                                    return (
+                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
+                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
+                                                <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
+                                            </div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
+                                            <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(7, item.key)}</div>
+                                            <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
-                                        <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderDynamicMeasureGrid(7, item.key)}</div>
-                                        <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     </SectionCard>
                 );
@@ -1316,23 +1370,25 @@ export default function MDBPMForm() {
                 const cfg = tripConfigs[q.kind];
                 return (
                     <SectionCard key={q.key} title={qLabel} subtitle={subtitle} tooltip={qTooltip}>
-                        <div className="tw-space-y-4">
-                            <div className="tw-flex tw-items-center tw-gap-2 tw-pb-3 tw-border-b tw-border-blue-gray-100">
+                        <div className="tw-space-y-0">
+                            <div className="tw-flex tw-items-center tw-gap-2 tw-pb-3 tw-border-b tw-border-gray-200">
                                 <Typography variant="small" className="tw-text-blue-gray-600">{cfg.countLabel} {cfg.count} {t("unit", lang)}</Typography>
                             </div>
-                            {cfg.items.map((item) => {
-                                const isNA = rows[item.key]?.pf === "NA";
-                                return (
-                                    <div key={item.key} className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
-                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{item.label}</Typography>
-                                            <Button size="sm" color={isNA ? "amber" : "blue-gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
+                            <div className="tw-divide-y tw-divide-gray-200">
+                                {cfg.items.map((item) => {
+                                    const isNA = rows[item.key]?.pf === "NA";
+                                    return (
+                                        <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
+                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
+                                                <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isNA ? "" : "NA" } }))} className="tw-text-xs">{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
+                                            </div>
+                                            <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
+                                            <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
                                         </div>
-                                        <div className="tw-mb-3"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>
-                                        <Textarea label={t("remark", lang)} value={rows[item.key]?.remark ?? ""} onChange={(e) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: e.target.value } }))} rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     </SectionCard>
                 );
@@ -1593,7 +1649,8 @@ export default function MDBPMForm() {
         (async () => {
             if (!draft.photoRefs) return;
             const next: Record<string | number, PhotoItem[]> = {};
-            for (const [keyStr, refs] of Object.entries(draft.photoRefs)) {
+            const photoRefsEntries = Object.entries(draft.photoRefs) as [string, PhotoRef[]][];
+            for (const [keyStr, refs] of photoRefsEntries) {
                 const photoKey = isNaN(Number(keyStr)) ? keyStr : Number(keyStr);
                 const items: PhotoItem[] = [];
                 for (const ref of refs || []) {
@@ -1830,95 +1887,98 @@ export default function MDBPMForm() {
             </div>
 
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
-                <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
-                    <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
-                        <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
-                            <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-h-16 tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]">
-                                <Image src={LOGO_SRC} alt="Company logo" fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 152px, (min-width:768px) 108px, 76px" />
-                            </div>
-                            <div>
-                                <div className="tw-font-semibold tw-text-blue-gray-900">{t("pageTitle", lang)}</div>
-                                <div className="tw-text-sm tw-text-blue-gray-600">
-                                    {t("companyName", lang)}<br />
-                                    {t("companyAddress", lang)}<br />
-                                    {t("callCenter", lang)}
-                                </div>
-                            </div>
+                <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-4 sm:tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
+                    {/* Header with logo and company info */}
+                    <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
+                        <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-h-14 tw-w-[66px] sm:tw-h-16 sm:tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px] tw-flex-shrink-0">
+                            <Image src={LOGO_SRC} alt="Company logo" fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 152px, (min-width:768px) 108px, 76px" />
                         </div>
-                        <div className="tw-text-right tw-text-sm tw-text-blue-gray-700">
-                            <div className="tw-font-semibold">{t("docName", lang)}</div>
-                            <div>{docName || "-"}</div>
+                        <div>
+                            <div className="tw-font-semibold tw-text-sm sm:tw-text-base tw-text-blue-gray-900">{t("pageTitle", lang)}</div>
+                            <div className="tw-text-xs sm:tw-text-sm tw-text-blue-gray-600">
+                                {t("companyName", lang)}<br />
+                                {t("companyAddress", lang)}<br />
+                                {t("callCenter", lang)}
+                            </div>
                         </div>
                     </div>
 
-                    <div className="tw-mt-8 tw-space-y-8">
-                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
-                            <div className="lg:tw-col-span-1"><Input label={t("issueId", lang)} value={job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50" /></div>
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("location", lang)} value={job.station_name} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-2"><Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
-                            <div className="lg:tw-col-span-1"><Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" /></div>
-                        </div>
+                    {/* Document Name - left aligned */}
+                    <div className="tw-mt-4 sm:tw-mt-6 tw-mb-4 sm:tw-mb-6">
+                        <div className="tw-text-sm sm:tw-text-base tw-font-semibold tw-text-gray-800">{t("docName", lang)}</div>
+                        <div className="tw-text-sm sm:tw-text-base tw-text-gray-700">{docName || "-"}</div>
                     </div>
 
-                    <CardBody className="tw-space-y-2">
+                    {/* Form fields - stacked vertically */}
+                    <div className="tw-space-y-3 sm:tw-space-y-4">
+                        <Input label={t("issueId", lang)} value={job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm" />
+                        <Input label={t("location", lang)} value={job.station_name} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50 !tw-text-sm" />
+                        <Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50 !tw-text-sm" />
+                        <Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50 !tw-text-sm" />
+                    </div>
+
+                    <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 13)).map((q) => renderQuestionBlock(q, displayTab))}
-                    </CardBody>
+                    </div>
 
-                    <CardBody className="tw-space-y-3 !tw-pt-4 !tw-pb-0">
-                        <Typography variant="h6" className="tw-mb-1">{t("comment", lang)}</Typography>
-                        <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
+                    <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-3">
+                        <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
+                        <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-text-sm resize-none" />
                         {displayTab === "post" && (
-                            <div className="tw-pt-4 tw-border-t tw-border-blue-gray-100">
+                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
                                 <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)} lang={lang}
                                     labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} />
                             </div>
                         )}
-                    </CardBody>
+                    </div>
 
-                    <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-4">
-                        <div className="tw-p-3 tw-flex tw-flex-col tw-gap-2">
+                    <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
+                        <div className="tw-p-3 sm:tw-p-4 tw-flex tw-flex-col tw-gap-2 tw-bg-gray-50 tw-rounded-xl tw-border tw-border-gray-200">
                             <Section title={t("validationPhotoTitle", lang)} ok={allPhotosAttached} lang={lang}>
-                                <Typography variant="small" className="!tw-text-amber-700">{t("missingPhoto", lang)} {missingPhotoItems.join(", ")}</Typography>
+                                <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPhoto", lang)} {missingPhotoItems.join(", ")}</Typography>
                             </Section>
                             <Section title={t("validationInputTitle", lang)} ok={allRequiredInputsFilled} lang={lang}>
                                 <div className="tw-space-y-1">
-                                    <Typography variant="small" className="!tw-text-amber-700">{t("missingInput", lang)}</Typography>
-                                    <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
+                                    <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingInput", lang)}</Typography>
+                                    {/* <ul className="tw-list-disc tw-ml-4 sm:tw-ml-5 tw-text-xs sm:tw-text-sm tw-text-gray-600"> */}
+                                    <ul className="tw-list-disc tw-ml-4 sm:tw-ml-5 tw-text-xs sm:tw-text-sm tw-text-amber-700">
                                         {missingInputsTextLines.map((line, i) => <li key={i}>{line}</li>)}
                                     </ul>
                                 </div>
                             </Section>
                             <Section title={t("validationRemarkTitle", lang)} ok={allRemarksFilledForUI} lang={lang}>
-                                {missingRemarksForUI.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksForUI.join(", ")}</Typography>}
+                                {missingRemarksForUI.length > 0 && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingRemark", lang)} {missingRemarksForUI.join(", ")}</Typography>}
                             </Section>
                             {isPostMode && (
                                 <>
                                     <Section title={t("validationPFTitle", lang)} ok={allPFAnsweredForUI} lang={lang}>
-                                        <Typography variant="small" className="!tw-text-amber-700">{t("missingPF", lang)} {missingPFItemsForUI.join(", ")}</Typography>
+                                        <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPF", lang)} {missingPFItemsForUI.join(", ")}</Typography>
                                     </Section>
                                     <Section title={t("validationSummaryTitle", lang)} ok={isSummaryFilled && isSummaryCheckFilled} lang={lang}>
                                         <div className="tw-space-y-1">
-                                            {!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryText", lang)}</Typography>}
-                                            {!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryStatus", lang)}</Typography>}
+                                            {!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryText", lang)}</Typography>}
+                                            {!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryStatus", lang)}</Typography>}
                                         </div>
                                     </Section>
                                 </>
                             )}
                         </div>
-                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                             {displayTab === "pre" ? (
-                                <Button color="blue" type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
+                                <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
+                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
                                     title={!allPhotosAttachedPre ? t("photoNotComplete", lang) : !allRequiredInputsFilled ? t("inputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}>
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             ) : (
-                                <Button color="blue" type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
+                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
                                     title={!canFinalSave ? t("allNotComplete", lang) : undefined}>
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
                         </div>
-                    </CardFooter>
+                    </div>
                 </div>
             </form>
         </section>
