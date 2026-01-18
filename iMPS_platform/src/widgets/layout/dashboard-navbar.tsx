@@ -31,6 +31,54 @@ const ChargerBoxIcon = ({ className }: { className?: string }) => (
 
 type Lang = "th" | "en";
 
+// ===== Consistent Icon Button Component =====
+const NavIconButton = ({
+  onClick,
+  title,
+  children,
+  className = "",
+  badge,
+}: {
+  onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void;
+  title?: string;
+  children: React.ReactNode;
+  className?: string;
+  badge?: number;
+}) => (
+  <button
+    type="button"
+    onClick={(e) => onClick?.(e)}
+    title={title}
+    className={`
+      tw-relative
+      tw-flex tw-items-center tw-justify-center
+      tw-w-9 tw-h-9
+      tw-bg-gray-900
+      hover:tw-bg-gray-700
+      tw-rounded-full
+      tw-shadow-sm
+      tw-transition-all tw-duration-200
+      active:tw-scale-95
+      ${className}
+    `}
+  >
+    {children}
+    {badge !== undefined && badge > 0 && (
+      <span className="
+        tw-absolute tw--top-1 tw--right-1
+        tw-flex tw-items-center tw-justify-center
+        tw-min-w-[18px] tw-h-[18px]
+        tw-bg-red-500 tw-text-white
+        tw-text-[10px] tw-font-bold
+        tw-rounded-full
+        tw-border-2 tw-border-white
+      ">
+        {badge > 99 ? "99+" : badge}
+      </span>
+    )}
+  </button>
+);
+
 export function DashboardNavbar() {
   const [controller, dispatch] = useMaterialTailwindController();
   const { fixedNavbar, openSidenav } = controller;
@@ -264,9 +312,7 @@ export function DashboardNavbar() {
                         tw-rounded-full
                         tw-shadow-sm
                       ">
-                        <div className="tw-p-1.5 tw-bg-white/20 tw-rounded-lg">
-                          <MapPinIcon className="tw-h-3 tw-w-3 tw-text-white" />
-                        </div>
+                        <MapPinIcon className="tw-h-4 tw-w-4 tw-text-white" />
                         <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[100px] lg:tw-max-w-[150px] tw-truncate">
                           {selectedStationName || selectedStationId}
                         </span>
@@ -279,47 +325,34 @@ export function DashboardNavbar() {
                         tw-rounded-full
                         tw-shadow-sm
                       ">
-                        <div className="tw-p-1.5 tw-bg-white/20 tw-rounded-lg">
-                          <ChargerBoxIcon className="tw-h-3 tw-w-3 tw-text-white" />
-                        </div>
+                        <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
                         <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[80px] lg:tw-max-w-[120px] tw-truncate">
                           {selectedChargerNo ? `#${selectedChargerNo}` : ""} {selectedSN}
                         </span>
                       </div>
                     </div>
 
-                    {/* Mobile: Icons with Tap Tooltip */}
-                    <div className="tw-relative tw-flex sm:tw-hidden tw-items-center tw-gap-1">
-                      <button
-                        type="button"
+                    {/* Mobile: Consistent Icon Buttons with Tap Tooltip */}
+                    <div className="tw-relative tw-flex sm:tw-hidden tw-items-center tw-gap-2">
+                      <NavIconButton
                         onClick={(e) => {
-                          e.stopPropagation();
+                          e?.stopPropagation();
                           setShowStationTooltip(!showStationTooltip);
                         }}
-                        className="
-                          tw-flex tw-items-center tw-gap-1
-                          tw-p-2 tw-rounded-lg
-                          tw-bg-gray-900
-                          active:tw-scale-95 tw-transition-transform
-                        "
+                        title={t.currentStation}
                       >
                         <MapPinIcon className="tw-h-4 tw-w-4 tw-text-white" />
-                      </button>
+                      </NavIconButton>
 
-                      <button
-                        type="button"
+                      <NavIconButton
                         onClick={(e) => {
-                          e.stopPropagation();
+                          e?.stopPropagation();
                           setShowStationTooltip(!showStationTooltip);
                         }}
-                        className="
-                          tw-p-2 tw-rounded-lg
-                          tw-bg-gray-900
-                          active:tw-scale-95 tw-transition-transform
-                        "
+                        title={t.currentCharger}
                       >
                         <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
-                      </button>
+                      </NavIconButton>
 
                       {/* Tooltip Popup */}
                       {showStationTooltip && (
@@ -397,64 +430,26 @@ export function DashboardNavbar() {
               <div className="tw-hidden sm:tw-block tw-w-px tw-h-8 tw-bg-gray-200" />
             )}
 
-            {/* Notification Bell */}
+            {/* Notification Bell - Consistent Style */}
             {userRole !== "technician" && (
-              <button
-                type="button"
+              <NavIconButton
                 onClick={() => router.push("/dashboard/notifications")}
-                className="
-                  tw-relative
-                  tw-p-2 sm:tw-p-1.5
-                  tw-bg-gray-900
-                  hover:tw-bg-gray-700
-                  tw-rounded-full
-                  tw-shadow-sm
-                  tw-transition-all tw-duration-200
-                  active:tw-scale-95
-                "
                 title={t.notifications}
+                badge={notificationCount}
               >
-                <div className="tw-p-1.5 tw-bg-white/20 tw-rounded-lg">
-                  <BellIcon className="tw-h-3 tw-w-3 tw-text-white" />
-                </div>
-                {notificationCount > 0 && (
-                  <span className="
-                    tw-absolute tw--top-1 tw--right-1
-                    tw-flex tw-items-center tw-justify-center
-                    tw-min-w-[18px] tw-h-[18px]
-                    tw-bg-red-500 tw-text-white
-                    tw-text-[10px] tw-font-bold
-                    tw-rounded-full
-                    tw-border-2 tw-border-white
-                  ">
-                    {notificationCount > 99 ? "99+" : notificationCount}
-                  </span>
-                )}
-              </button>
+                <BellIcon className="tw-h-4 tw-w-4 tw-text-white" />
+              </NavIconButton>
             )}
 
-            {/* Language Toggle */}
-            <button
-              type="button"
+            {/* Language Toggle - Consistent Style */}
+            <NavIconButton
               onClick={toggleLanguage}
-              className="
-                tw-flex tw-items-center tw-gap-2 tw-px-2 sm:tw-px-3 tw-py-1.5
-                tw-bg-gray-900
-                hover:tw-bg-gray-700
-                tw-rounded-full
-                tw-shadow-sm
-                tw-transition-all tw-duration-200
-                active:tw-scale-95
-              "
               title={lang === "th" ? "Switch to English" : "เปลี่ยนเป็นภาษาไทย"}
             >
-              <div className="tw-p-1.5 tw-bg-white/20 tw-rounded-lg">
-                <LanguageIcon className="tw-h-3 tw-w-3 tw-text-white" />
-              </div>
-              <span className="tw-text-xs tw-font-medium tw-text-white tw-hidden sm:tw-inline">
+              <span className="tw-text-xs tw-font-bold tw-text-white">
                 {lang === "th" ? "TH" : "EN"}
               </span>
-            </button>
+            </NavIconButton>
 
             {/* Menu Toggle */}
             <button

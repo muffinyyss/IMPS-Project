@@ -99,7 +99,7 @@ const T = {
 
     allComplete: { th: "ครบเรียบร้อย ✅", en: "Complete ✅" },
     missingPhoto: { th: "ยังไม่ได้แนบรูปข้อ:", en: "Missing photos for:" },
-    missingInput: { th: "ยังขาด:", en: "Missing:" },
+    missingInput: { th: "ยังขาดข้อ:", en: "Missing:" },
     missingRemark: { th: "ยังไม่ได้กรอกหมายเหตุข้อ:", en: "Missing remarks for:" },
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
@@ -165,10 +165,13 @@ const T = {
     subBreaker4: { th: "เบรกเกอร์วงจรย่อยที่ 4", en: "Sub-circuit Breaker 4" },
     subBreaker5: { th: "เบรกเกอร์วงจรย่อยที่ 5", en: "Sub-circuit Breaker 5" },
     subBreaker6: { th: "เบรกเกอร์วงจรย่อยที่ 6", en: "Sub-circuit Breaker 6" },
-    addSubBreaker: { th: "เพิ่มเบรกเกอร์วงจรย่อย", en: "Add Sub-circuit Breaker" },
+    addSubBreaker: { th: "เพิ่ม", en: "Add" },
     removeSubBreaker: { th: "ลบ", en: "Remove" },
     maxSubBreakers: { th: "สูงสุด 6 ตัว", en: "Max 6 breakers" },
-    subBreakerCount: { th: "จำนวนเบรกเกอร์วงจรย่อย", en: "Sub-circuit Breakers" },
+    subBreakerCount: { th: "จำนวนเบรกเกอร์วงจรย่อย:", en: "Sub-circuit Breakers:" },
+
+    // Units
+    unit: { th: "ตัว", en: "units" },
 
     // Suffixes
     prePmSuffix: { th: "(ก่อน PM)", en: "(Pre-PM)" },
@@ -307,33 +310,62 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
 }
 
 function SectionCard({ title, subtitle, children, tooltip }: { title?: string; subtitle?: string; children: React.ReactNode; tooltip?: string }) {
+    // Extract question number from title (e.g., "1) ตรวจสอบ..." -> "1")
+    const qNumber = title?.match(/^(\d+)\)/)?.[1];
+    
     return (
-        <>
+        <div className="tw-bg-white tw-rounded-xl tw-border tw-border-gray-200 tw-shadow-sm tw-overflow-hidden">
+            {/* Header with number badge - Dark theme */}
             {title && (
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                    <Typography variant="h6">{title}</Typography>
-                    {tooltip && (
-                        <Tooltip content={tooltip} placement="bottom">
-                            <svg className="tw-w-4 tw-h-4 tw-text-blue-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                            </svg>
-                        </Tooltip>
+                <div className="tw-bg-gray-800 tw-px-3 sm:tw-px-4 tw-py-2.5 sm:tw-py-3">
+                    <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3">
+                        {qNumber && (
+                            <div className="tw-flex-shrink-0 tw-w-7 tw-h-7 sm:tw-w-8 sm:tw-h-8 tw-rounded-full tw-bg-white tw-text-gray-800 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-xs sm:tw-text-sm">
+                                {qNumber}
+                            </div>
+                        )}
+                        <Typography variant="h6" className="tw-text-white tw-text-sm sm:tw-text-base tw-font-semibold tw-flex-1">
+                            {qNumber ? title.replace(/^\d+\)\s*/, '') : title}
+                        </Typography>
+                        {tooltip && (
+                            <Tooltip content={tooltip} placement="bottom">
+                                <svg className="tw-w-4 tw-h-4 sm:tw-w-5 sm:tw-h-5 tw-text-gray-400 tw-cursor-help tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                                </svg>
+                            </Tooltip>
+                        )}
+                    </div>
+                    {subtitle && (
+                        <Typography variant="small" className="!tw-text-gray-300 tw-text-xs sm:tw-text-sm tw-mt-1 tw-ml-9 sm:tw-ml-11">{subtitle}</Typography>
                     )}
                 </div>
             )}
-            <Card className="tw-mt-1 tw-shadow-sm tw-border tw-border-blue-gray-100">
-                {subtitle && (<CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2"><Typography variant="small" className="!tw-text-blue-gray-500 tw-italic tw-mt-1">{subtitle}</Typography></CardHeader>)}
-                <CardBody className="tw-space-y-4">{children}</CardBody>
-            </Card>
-        </>
+            {/* Content */}
+            <div className="tw-p-3 sm:tw-p-4 tw-space-y-3 sm:tw-space-y-4">{children}</div>
+        </div>
     );
 }
 
 function Section({ title, ok, children, lang }: { title: React.ReactNode; ok: boolean; children?: React.ReactNode; lang: Lang }) {
     return (
-        <div className={`tw-rounded-lg tw-border tw-p-3 ${ok ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
-            <Typography className="tw-font-medium">{title}</Typography>
-            {ok ? <Typography variant="small" className="!tw-text-green-700">{t("allComplete", lang)}</Typography> : children}
+        <div className={`tw-rounded-lg tw-p-2.5 sm:tw-p-3 ${ok ? "tw-bg-gray-100" : "tw-bg-gray-100"}`}>
+            <div className="tw-flex tw-items-center tw-gap-2">
+                {ok ? (
+                    <svg className="tw-w-4 tw-h-4 tw-text-gray-700 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                ) : (
+                    <svg className="tw-w-4 tw-h-4 tw-text-gray-500 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                )}
+                <Typography className="tw-font-medium tw-text-xs sm:tw-text-sm tw-text-gray-800">{title}</Typography>
+            </div>
+            {ok ? (
+                <Typography variant="small" className="!tw-text-green-600 tw-text-xs sm:tw-text-sm tw-ml-6">{t("allComplete", lang)}</Typography>
+            ) : (
+                <div className="tw-ml-6 tw-mt-1">{children}</div>
+            )}
         </div>
     );
 }
@@ -341,17 +373,37 @@ function Section({ title, ok, children, lang }: { title: React.ReactNode; ok: bo
 function InputWithUnit<U extends string>({ label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, labelOnTop, required = true }: {
     label: string; value: string; unit: U; units: readonly U[]; onValueChange: (v: string) => void; onUnitChange: (u: U) => void; readOnly?: boolean; disabled?: boolean; labelOnTop?: boolean; required?: boolean;
 }) {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newValue = e.target.value;
+        // อนุญาตให้กรอก: ว่าง, เครื่องหมายลบ, ตัวเลข, จุดทศนิยม
+        if (newValue === "" || /^-?\d*\.?\d*$/.test(newValue)) {
+            onValueChange(newValue);
+        }
+    };
+
     return (
         <div className="tw-space-y-1">
-            {labelOnTop && <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{label}</Typography>}
-            <div className="tw-grid tw-grid-cols-2 tw-gap-2 tw-items-end sm:tw-items-center">
-                <Input type="text" inputMode="decimal" label={labelOnTop ? undefined : label} value={value}
-                    onChange={(e) => { const newValue = e.target.value; if (newValue === "" || newValue === "-" || /^-?\d*\.?\d*$/.test(newValue)) onValueChange(newValue); }}
-                    crossOrigin="" containerProps={{ className: "tw-col-span-1 !tw-min-w-0" }} className={`!tw-w-full ${disabled ? "!tw-bg-blue-gray-50" : ""}`} readOnly={readOnly} disabled={disabled} required={required} />
-                <select required={required} value={unit} onChange={(e) => onUnitChange(e.target.value as U)}
-                    className={`tw-col-span-1 tw-h-10 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-2 tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-500 ${disabled ? "tw-bg-blue-gray-50 tw-text-blue-gray-400 tw-cursor-not-allowed" : ""}`} disabled={disabled}>
-                    {units.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
+            <div className="tw-flex tw-items-center tw-gap-2">
+                <div className="tw-flex-1 tw-relative">
+                    <input 
+                        type="text" 
+                        inputMode="numeric"
+                        pattern="-?[0-9]*\.?[0-9]*"
+                        value={value}
+                        onChange={handleChange}
+                        readOnly={readOnly} 
+                        disabled={disabled} 
+                        required={required}
+                        placeholder=" "
+                        className={`tw-peer tw-w-full tw-h-10 tw-px-3 tw-pt-4 tw-pb-1 tw-text-sm tw-border tw-border-gray-300 tw-rounded-lg tw-outline-none focus:tw-border-blue-500 focus:tw-ring-1 focus:tw-ring-blue-500 ${disabled ? "tw-bg-gray-100 tw-text-gray-500" : "tw-bg-white"}`}
+                    />
+                    <label className="tw-absolute tw-left-3 tw-top-1 tw-text-[10px] tw-text-gray-500 tw-pointer-events-none">
+                        {label}{required && <span className="tw-text-red-500">*</span>}
+                    </label>
+                </div>
+                <div className="tw-flex-shrink-0 tw-w-10 tw-h-10 tw-flex tw-items-center tw-justify-center tw-text-gray-600 tw-font-medium tw-text-sm tw-bg-gray-100 tw-rounded-lg tw-border tw-border-gray-200">
+                    {unit}
+                </div>
             </div>
         </div>
     );
@@ -363,18 +415,18 @@ function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, a
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
     const buttonGroup = (
-        <div className="tw-flex tw-gap-2 tw-ml-auto">
-            <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
-            <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
-            <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>{text.NA}</Button>
+        <div className="tw-flex tw-gap-1.5 sm:tw-gap-2 tw-flex-wrap sm:tw-flex-nowrap tw-justify-end sm:tw-justify-start">
+            <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("PASS")}>{text.PASS}</Button>
+            <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
+            <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("NA")}>{text.NA}</Button>
         </div>
     );
-    const buttonsRow = (<div className="tw-flex tw-items-center tw-gap-3 tw-w-full">{inlineLeft && <div className="tw-flex tw-items-center tw-gap-2">{inlineLeft}</div>}{buttonGroup}</div>);
+    const buttonsRow = (<div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-stretch sm:tw-items-center tw-gap-2 sm:tw-gap-3 tw-w-full">{inlineLeft && <div className="tw-flex tw-items-center tw-gap-2">{inlineLeft}</div>}<div className="tw-ml-auto">{buttonGroup}</div></div>);
     return (
-        <div className="tw-space-y-3 tw-py-3">
-            <Typography className="tw-font-medium">{label}</Typography>
+        <div className="tw-space-y-2 sm:tw-space-y-3 tw-py-2 sm:tw-py-3">
+            <Typography className="tw-font-medium tw-text-xs sm:tw-text-sm lg:tw-text-base">{label}</Typography>
             {onRemarkChange ? (
-                <div className="tw-w-full tw-min-w-0 tw-space-y-2">{aboveRemark}{buttonsRow}{beforeRemark}<Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" /></div>
+                <div className="tw-w-full tw-min-w-0 tw-space-y-2">{aboveRemark}{buttonsRow}{beforeRemark}<Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full !tw-text-xs sm:!tw-text-sm" /></div>
             ) : (<div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>)}
         </div>
     );
@@ -393,25 +445,25 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang }: {
     };
     const handleRemove = async (id: string) => { await delPhoto(draftKey, id); setPhotos((prev) => { const target = prev.find((p) => p.id === id); if (target?.preview) URL.revokeObjectURL(target.preview); return prev.filter((p) => p.id !== id); }); };
     return (
-        <div className="tw-space-y-3">
-            <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2"><Button size="sm" color="blue" variant="outlined" onClick={handlePick} className="tw-shrink-0">{t("attachPhoto", lang)}</Button></div>
-            <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">{t("maxPhotos", lang)} {max} {t("photos", lang)} • {t("cameraSupported", lang)}</Typography>
+        <div className="tw-space-y-2 sm:tw-space-y-3">
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2"><Button size="sm" color="blue" variant="outlined" onClick={handlePick} className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2">{t("attachPhoto", lang)}</Button></div>
+            <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center tw-flex-wrap tw-text-[10px] sm:tw-text-xs">{t("maxPhotos", lang)} {max} {t("photos", lang)} • {t("cameraSupported", lang)}</Typography>
             <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => { void handleFiles(e.target.files); }} />
             {photos.length > 0 ? (
-                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-                    {photos.map((p) => (<div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"><div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">{p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}<button onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button></div></div>))}
+                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-2 sm:tw-gap-3">
+                    {photos.map((p) => (<div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"><div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">{p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}<button onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-1.5 tw-right-1.5 sm:tw-top-2 sm:tw-right-2 tw-bg-red-500 tw-text-white tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors tw-text-xs sm:tw-text-sm">×</button></div></div>))}
                 </div>
-            ) : (<Typography variant="small" className="!tw-text-blue-gray-500">{t("noPhotos", lang)}</Typography>)}
+            ) : (<Typography variant="small" className="!tw-text-blue-gray-500 tw-text-xs sm:tw-text-sm">{t("noPhotos", lang)}</Typography>)}
         </div>
     );
 }
 
 function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
     return (
-        <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-amber-50 tw-border-amber-200">
-            <div className="tw-flex tw-items-center tw-justify-between">
-                <Typography className="tw-font-semibold tw-text-sm tw-text-blue-gray-800">{label}</Typography>
-                {remark && (<Typography variant="small" className="tw-text-blue-gray-600">{t("remarkLabel", lang)} - {remark}</Typography>)}
+        <div className="tw-p-3 sm:tw-p-3 sm:tw-p-4 tw-rounded-lg tw-border tw-bg-amber-50 tw-border-amber-200">
+            <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-1 sm:tw-gap-2">
+                <Typography className="tw-font-semibold tw-text-xs sm:tw-text-sm tw-text-blue-gray-800">{label}</Typography>
+                {remark && (<Typography variant="small" className="tw-text-blue-gray-600 tw-text-[10px] sm:tw-text-xs">{t("remarkLabel", lang)} - {remark}</Typography>)}
             </div>
         </div>
     );
@@ -936,10 +988,6 @@ export default function CCBPMReport() {
         return (photos[key]?.length ?? 0) < 1;
     }), [REQUIRED_PHOTO_KEYS_PRE, photos, rows]);
 
-    // const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_KEYS_POST.filter((key) => {
-    //     return (photos[key]?.length ?? 0) < 1;
-    // }), [REQUIRED_PHOTO_KEYS_POST, photos]);
-
     const missingPhotoItemsPost = useMemo(() => REQUIRED_PHOTO_KEYS_POST.filter((key) => {
         // Map photo key back to row key to check if it was N/A in Pre-PM
         let rowKey: string | null = null;
@@ -1036,32 +1084,6 @@ export default function CCBPMReport() {
         const rowKeys = getRowKeysForQuestion(q, subBreakerCount);
         return !rowKeys.every(k => rowsPre[k]?.pf === "NA");
     }).flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [rowsPre, subBreakerCount]);
-
-    // const missingRemarksPost = useMemo(() => {
-    //     const missing: string[] = [];
-    //     validRemarkKeysPost.forEach((key) => {
-    //         const val = rows[key];
-    //         if (!val?.remark?.trim()) {
-    //             // Handle r9_main
-    //             if (key === "r9_main") {
-    //                 missing.push("9");
-    //                 return;
-    //             }
-    //             // Handle r10_sub1, r10_sub2, etc.
-    //             const subMatch = key.match(/^r10_sub(\d+)$/);
-    //             if (subMatch) {
-    //                 missing.push(`10.${subMatch[1]}`);
-    //                 return;
-    //             }
-    //             // Handle regular keys like r1, r3_1, r3_2
-    //             const match = key.match(/^r(\d+)_?(\d+)?$/);
-    //             if (match) {
-    //                 missing.push(match[2] ? `${match[1]}.${match[2]}` : match[1]);
-    //             }
-    //         }
-    //     });
-    //     return missing;
-    // }, [rows, validRemarkKeysPost]);
 
      const missingRemarksPost = useMemo(() => {
         const missing: string[] = [];
@@ -1384,11 +1406,11 @@ export default function CCBPMReport() {
                 const isNA = rows[q.key]?.pf === "NA";
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <div className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
-                            <div className="tw-flex tw-items-center tw-justify-end tw-gap-2 tw-mb-3">
+                        <div className={`tw-py-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
+                            <div className="tw-flex tw-justify-end tw-mb-3">
                                 <Button
                                     size="sm"
-                                    color={isNA ? "amber" : "blue-gray"}
+                                    color={isNA ? "amber" : "gray"}
                                     variant={isNA ? "filled" : "outlined"}
                                     onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}
                                 >
@@ -1396,7 +1418,7 @@ export default function CCBPMReport() {
                                 </Button>
                             </div>
                             {q.hasPhoto && (
-                                <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-blue-gray-50">
+                                <div className="tw-mb-3">
                                     <PhotoMultiInput
                                         photos={photos[q.no] || []}
                                         setPhotos={makePhotoSetter(q.no)}
@@ -1425,51 +1447,52 @@ export default function CCBPMReport() {
             if (q.kind === "group") {
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100">
-                            <div className="tw-space-y-4">
-                                {q.items.map((item) => {
-                                    const photoKey = getPhotoKeyForQuestion(q, item.key);
-                                    const isItemNA = rows[item.key]?.pf === "NA";
-                                    return (
-                                        <div key={item.key} className={`tw-mb-4 tw-pb-4 last:tw-mb-0 last:tw-pb-0 last:tw-border-b-0 tw-border-b tw-border-blue-gray-100 tw-p-3 tw-rounded-lg ${isItemNA ? "tw-bg-amber-50 tw-border tw-border-amber-200" : ""}`}>
-                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
-                                                <Typography variant="small" className="tw-font-medium">
-                                                    {t(item.labelKey, lang)}
-                                                </Typography>
-                                                <Button
-                                                    size="sm"
-                                                    color={isItemNA ? "amber" : "blue-gray"}
-                                                    variant={isItemNA ? "filled" : "outlined"}
-                                                    onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isItemNA ? "" : "NA" } }))}
-                                                >
-                                                    {isItemNA ? t("cancelNA", lang) : t("na", lang)}
-                                                </Button>
-                                            </div>
-                                            {q.hasPhoto && (
-                                                <div className="tw-mb-3">
-                                                    <PhotoMultiInput
-                                                        photos={photos[photoKey] || []}
-                                                        setPhotos={makePhotoSetter(photoKey)}
-                                                        max={10}
-                                                        draftKey={currentDraftKey}
-                                                        qNo={photoKey}
-                                                        lang={lang}
-                                                    />
-                                                </div>
-                                            )}
-                                            <Textarea
-                                                label={t("remark", lang)}
-                                                value={rows[item.key]?.remark || ""}
-                                                onChange={(e) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: e.target.value } })}
-                                                rows={2}
-                                                required
-                                                containerProps={{ className: "!tw-min-w-0" }}
-                                                className="!tw-w-full resize-none"
-                                            />
+                        <div className="tw-divide-y tw-divide-gray-200">
+                            {q.items.map((item, idx) => {
+                                const photoKey = getPhotoKeyForQuestion(q, item.key);
+                                const isItemNA = rows[item.key]?.pf === "NA";
+                                // Generate sub-item label with number (e.g., "3.1) ...")
+                                const subLabel = `${q.no}.${idx + 1}) ${t(item.labelKey, lang)}`;
+                                return (
+                                    <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
+                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">
+                                                {subLabel}
+                                            </Typography>
+                                            <Button
+                                                size="sm"
+                                                color={isItemNA ? "amber" : "gray"}
+                                                variant={isItemNA ? "filled" : "outlined"}
+                                                onClick={() => setRows(prev => ({ ...prev, [item.key]: { ...prev[item.key], pf: isItemNA ? "" : "NA" } }))}
+                                                className="tw-text-xs"
+                                            >
+                                                {isItemNA ? t("cancelNA", lang) : t("na", lang)}
+                                            </Button>
                                         </div>
-                                    );
-                                })}
-                            </div>
+                                        {q.hasPhoto && (
+                                            <div className="tw-mb-3">
+                                                <PhotoMultiInput
+                                                    photos={photos[photoKey] || []}
+                                                    setPhotos={makePhotoSetter(photoKey)}
+                                                    max={10}
+                                                    draftKey={currentDraftKey}
+                                                    qNo={photoKey}
+                                                    lang={lang}
+                                                />
+                                            </div>
+                                        )}
+                                        <Textarea
+                                            label={t("remark", lang)}
+                                            value={rows[item.key]?.remark || ""}
+                                            onChange={(e) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: e.target.value } })}
+                                            rows={3}
+                                            required
+                                            containerProps={{ className: "!tw-min-w-0" }}
+                                            className="!tw-w-full resize-none"
+                                        />
+                                    </div>
+                                );
+                            })}
                         </div>
                     </SectionCard>
                 );
@@ -1481,20 +1504,23 @@ export default function CCBPMReport() {
                 const isNA = rows[rowKey]?.pf === "NA";
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <div className={`tw-p-4 tw-rounded-lg tw-border ${isNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
+                        <div className={`tw-py-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                                <Typography className="tw-font-medium">{t("mainBreaker", lang)}</Typography>
+                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">
+                                    {`9.1) ${t("mainBreaker", lang)}`}
+                                </Typography>
                                 <Button
                                     size="sm"
-                                    color={isNA ? "amber" : "blue-gray"}
+                                    color={isNA ? "amber" : "gray"}
                                     variant={isNA ? "filled" : "outlined"}
                                     onClick={() => setRows(prev => ({ ...prev, [rowKey]: { ...prev[rowKey], pf: isNA ? "" : "NA" } }))}
+                                    className="tw-text-xs"
                                 >
                                     {isNA ? t("cancelNA", lang) : t("na", lang)}
                                 </Button>
                             </div>
                             {q.hasPhoto && (
-                                <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                <div className="tw-mb-3">
                                     <PhotoMultiInput
                                         photos={photos[90] || []}
                                         setPhotos={makePhotoSetter(90)}
@@ -1505,7 +1531,7 @@ export default function CCBPMReport() {
                                     />
                                 </div>
                             )}
-                            <div className={`tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4 tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
+                            <div className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4 tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
                                 {VOLTAGE_FIELDS_CCB.map((k) => (
                                     <InputWithUnit<UnitVoltage>
                                         key={`main-${k}`}
@@ -1522,7 +1548,7 @@ export default function CCBPMReport() {
                                 label={t("remark", lang)}
                                 value={rows[rowKey]?.remark || ""}
                                 onChange={(e) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: e.target.value } })}
-                                rows={2}
+                                rows={3}
                                 required
                                 containerProps={{ className: "!tw-min-w-0" }}
                                 className="!tw-w-full resize-none"
@@ -1536,106 +1562,107 @@ export default function CCBPMReport() {
             if (q.kind === "subBreakers") {
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                        <div className="tw-p-4">
-                            {/* Header with count and add button - underline style */}
-                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-100">
-                                <Typography className="tw-text-blue-gray-700">
-                                    {lang === "th"
-                                        ? `จำนวนเบรกเกอร์วงจรย่อย: ${subBreakerCount} ตัว`
-                                        : `Sub-circuit Breakers: ${subBreakerCount}`}
-                                </Typography>
+                        {/* Header with count summary and add button */}
+                        <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-gray-200">
+                            <div className="tw-flex tw-items-center tw-gap-2">
+                                <Typography variant="small" className="tw-text-blue-gray-600">{t("subBreakerCount", lang)}</Typography>
+                                <Typography variant="small" className="tw-font-bold tw-text-blue-600">{subBreakerCount} {t("unit", lang)}</Typography>
+                            </div>
+                            {subBreakerCount < 6 && (
                                 <Button
                                     size="sm"
-                                    color="blue"
+                                    color="gray"
                                     variant="outlined"
                                     onClick={addSubBreaker}
-                                    disabled={subBreakerCount >= 6}
                                     className="tw-flex tw-items-center tw-gap-1"
                                 >
-                                    <span>+</span> {lang === "th" ? "เพิ่มเบรกเกอร์วงจรย่อย" : "Add Sub Breaker"}
+                                    <span className="tw-text-lg tw-leading-none">+</span>
+                                    <span className="tw-text-xs">{t("addSubBreaker", lang)}</span>
                                 </Button>
-                            </div>
+                            )}
+                        </div>
 
-                            <div className="tw-space-y-4">
-                                {Array.from({ length: subBreakerCount }, (_, idx) => {
-                                    const i = idx + 1;
-                                    const photoKey = 100 + i;
-                                    const rowKey = `r10_sub${i}`;
-                                    const isItemNA = rows[rowKey]?.pf === "NA";
-                                    const m = M_SUB_LIST[idx];
-                                    return (
-                                        <div key={rowKey} className={`tw-p-4 tw-rounded-lg tw-border ${isItemNA ? "tw-bg-amber-50 tw-border-amber-200" : "tw-bg-gray-50 tw-border-blue-gray-100"}`}>
-                                            {/* Breaker header with label and N/A button */}
-                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-4">
-                                                <Typography className="tw-font-medium tw-text-blue-gray-800">
-                                                    {`10.${i}) ${lang === "th" ? "เบรกเกอร์วงจรย่อยตัวที่" : "Sub-circuit Breaker"} ${i}`}
-                                                </Typography>
-                                                <div className="tw-flex tw-gap-2">
-                                                    <Button
-                                                        size="sm"
-                                                        color={isItemNA ? "amber" : "blue-gray"}
-                                                        variant={isItemNA ? "filled" : "outlined"}
-                                                        onClick={() => setRows(prev => ({ ...prev, [rowKey]: { ...prev[rowKey], pf: isItemNA ? "" : "NA" } }))}
+                        <div className="tw-divide-y tw-divide-gray-200">
+                            {Array.from({ length: subBreakerCount }, (_, idx) => {
+                                const i = idx + 1;
+                                const photoKey = 100 + i;
+                                const rowKey = `r10_sub${i}`;
+                                const isItemNA = rows[rowKey]?.pf === "NA";
+                                const m = M_SUB_LIST[idx];
+                                return (
+                                    <div key={rowKey} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
+                                        {/* Breaker header with label and N/A button */}
+                                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">
+                                                {`10.${i}) ${lang === "th" ? "เบรกเกอร์วงจรย่อยตัวที่" : "Sub-circuit Breaker"} ${i}`}
+                                            </Typography>
+                                            <div className="tw-flex tw-items-center tw-gap-2">
+                                                <Button
+                                                    size="sm"
+                                                    color={isItemNA ? "amber" : "gray"}
+                                                    variant={isItemNA ? "filled" : "outlined"}
+                                                    onClick={() => setRows(prev => ({ ...prev, [rowKey]: { ...prev[rowKey], pf: isItemNA ? "" : "NA" } }))}
+                                                    className="tw-text-xs"
+                                                >
+                                                    {isItemNA ? t("cancelNA", lang) : t("na", lang)}
+                                                </Button>
+                                                {subBreakerCount > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeSubBreaker(i)}
+                                                        className="tw-h-6 tw-w-6 tw-flex tw-items-center tw-justify-center tw-rounded tw-bg-red-50 tw-text-red-600 hover:tw-bg-red-100 hover:tw-text-red-700 tw-transition-all tw-duration-200"
+                                                        aria-label="Remove item"
                                                     >
-                                                        {isItemNA ? t("cancelNA", lang) : "N/A"}
-                                                    </Button>
-                                                    {subBreakerCount > 1 && (
-                                                        <Button
-                                                            size="sm"
-                                                            color="red"
-                                                            variant="outlined"
-                                                            onClick={() => removeSubBreaker(i)}
-                                                            className="tw-px-2"
-                                                        >
-                                                            ✕
-                                                        </Button>
-                                                    )}
-                                                </div>
+                                                        <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
+                                                    </button>
+                                                )}
                                             </div>
-
-                                            {/* Photo upload */}
-                                            {q.hasPhoto && (
-                                                <div className="tw-mb-4">
-                                                    <PhotoMultiInput
-                                                        photos={photos[photoKey] || []}
-                                                        setPhotos={makePhotoSetter(photoKey)}
-                                                        max={10}
-                                                        draftKey={currentDraftKey}
-                                                        qNo={photoKey}
-                                                        lang={lang}
-                                                    />
-                                                </div>
-                                            )}
-
-                                            {/* Voltage inputs - 3 columns grid */}
-                                            <div className={`tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-3 tw-mb-4 ${isItemNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
-                                                {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                    <InputWithUnit<UnitVoltage>
-                                                        key={`sub${i}-${k}`}
-                                                        label={LABELS[k]}
-                                                        value={m.state[k]?.value || ""}
-                                                        unit={(m.state[k]?.unit as UnitVoltage) || "V"}
-                                                        units={["V"] as const}
-                                                        onValueChange={(v) => m.patch(k, { value: v })}
-                                                        onUnitChange={(u) => m.syncUnits(u)}
-                                                    />
-                                                ))}
-                                            </div>
-
-                                            {/* Remark */}
-                                            <Textarea
-                                                label={`${t("remark", lang)} **`}
-                                                value={rows[rowKey]?.remark || ""}
-                                                onChange={(e) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: e.target.value } })}
-                                                rows={3}
-                                                required
-                                                containerProps={{ className: "!tw-min-w-0" }}
-                                                className="!tw-w-full resize-none"
-                                            />
                                         </div>
-                                    );
-                                })}
-                            </div>
+
+                                        {/* Photo upload */}
+                                        {q.hasPhoto && (
+                                            <div className="tw-mb-3">
+                                                <PhotoMultiInput
+                                                    photos={photos[photoKey] || []}
+                                                    setPhotos={makePhotoSetter(photoKey)}
+                                                    max={10}
+                                                    draftKey={currentDraftKey}
+                                                    qNo={photoKey}
+                                                    lang={lang}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Voltage inputs - 3 columns grid */}
+                                        <div className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3 tw-mb-3 ${isItemNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
+                                            {VOLTAGE_FIELDS_CCB.map((k) => (
+                                                <InputWithUnit<UnitVoltage>
+                                                    key={`sub${i}-${k}`}
+                                                    label={LABELS[k]}
+                                                    value={m.state[k]?.value || ""}
+                                                    unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+                                                    units={["V"] as const}
+                                                    onValueChange={(v) => m.patch(k, { value: v })}
+                                                    onUnitChange={(u) => m.syncUnits(u)}
+                                                />
+                                            ))}
+                                        </div>
+
+                                        {/* Remark */}
+                                        <Textarea
+                                            label={t("remark", lang)}
+                                            value={rows[rowKey]?.remark || ""}
+                                            onChange={(e) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: e.target.value } })}
+                                            rows={3}
+                                            required
+                                            containerProps={{ className: "!tw-min-w-0" }}
+                                            className="!tw-w-full resize-none"
+                                        />
+                                    </div>
+                                );
+                            })}
                         </div>
                     </SectionCard>
                 );
@@ -1657,8 +1684,8 @@ export default function CCBPMReport() {
 
         return (
             <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                <div className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100">
-                    {q.kind === "simple" && (
+                {q.kind === "simple" && (
+                    <div className="tw-py-2">
                         <PassFailRow
                             label={t("testResult", lang)}
                             value={rows[q.key]?.pf ?? ""}
@@ -1668,7 +1695,7 @@ export default function CCBPMReport() {
                             lang={lang}
                             aboveRemark={
                                 q.hasPhoto && (
-                                    <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-8 tw-border-blue-gray-50">
+                                    <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
                                         <PhotoMultiInput
                                             photos={photos[q.no] || []}
                                             setPhotos={makePhotoSetter(q.no)}
@@ -1682,19 +1709,33 @@ export default function CCBPMReport() {
                             }
                             beforeRemark={renderPreRemarkElement(q.key, mode)}
                         />
-                    )}
+                    </div>
+                )}
 
-                    {q.kind === "group" && (
-                        <div className="tw-space-y-4">
-                            {q.items.map((item) => {
-                                if (rowsPre[item.key]?.pf === "NA") {
-                                    return <SkippedNAItem key={item.key} label={t(item.labelKey, lang)} remark={rowsPre[item.key]?.remark} lang={lang} />;
-                                }
-                                const photoKey = getPhotoKeyForQuestion(q, item.key);
+                {q.kind === "group" && (
+                    <div className="tw-divide-y tw-divide-gray-200">
+                        {q.items.map((item, idx) => {
+                            const subLabel = `${q.no}.${idx + 1}) ${t(item.labelKey, lang)}`;
+                            if (rowsPre[item.key]?.pf === "NA") {
                                 return (
+                                    <div key={item.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
+                                        <div className="tw-flex tw-items-center tw-justify-between">
+                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{subLabel}</Typography>
+                                            <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
+                                        </div>
+                                        {rowsPre[item.key]?.remark && (
+                                            <Typography variant="small" className="tw-text-gray-600 tw-mt-1">
+                                                {t("remarkLabel", lang)}: {rowsPre[item.key]?.remark}
+                                            </Typography>
+                                        )}
+                                    </div>
+                                );
+                            }
+                            const photoKey = getPhotoKeyForQuestion(q, item.key);
+                            return (
+                                <div key={item.key} className="tw-py-4 first:tw-pt-2">
                                     <PassFailRow
-                                        key={item.key}
-                                        label={t(item.labelKey, lang)}
+                                        label={subLabel}
                                         value={rows[item.key]?.pf ?? ""}
                                         onChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], pf: v } })}
                                         remark={rows[item.key]?.remark || ""}
@@ -1702,7 +1743,7 @@ export default function CCBPMReport() {
                                         lang={lang}
                                         aboveRemark={
                                             q.hasPhoto && (
-                                                <div className="tw-pb-4 tw-border-b tw-border-blue-gray-50">
+                                                <div className="tw-pb-4 tw-border-b tw-border-gray-100">
                                                     <PhotoMultiInput
                                                         photos={photos[photoKey] || []}
                                                         setPhotos={makePhotoSetter(photoKey)}
@@ -1716,166 +1757,185 @@ export default function CCBPMReport() {
                                         }
                                         beforeRemark={renderPreRemarkElement(item.key, mode)}
                                     />
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {q.kind === "mainBreaker" && (
-                        (() => {
-                            const rowKey = "r9_main";
-                            if (rowsPre[rowKey]?.pf === "NA") {
-                                return <SkippedNAItem label={t("mainBreaker", lang)} remark={rowsPre[rowKey]?.remark} lang={lang} />;
-                            }
-                            return (
-                                <div className="tw-mb-4 tw-pb-4">
-                                    <Typography className="tw-font-medium tw-mb-3">{t("mainBreaker", lang)}</Typography>
-
-                                    {q.hasPhoto && (
-                                        <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
-                                            <PhotoMultiInput
-                                                photos={photos[90] || []}
-                                                setPhotos={makePhotoSetter(90)}
-                                                max={3}
-                                                draftKey={currentDraftKey}
-                                                qNo={90}
-                                                lang={lang}
-                                            />
-                                        </div>
-                                    )}
-
-                                    <div className="tw-mb-4">
-                                        <PassFailRow
-                                            label={t("testResult", lang)}
-                                            value={rows[rowKey]?.pf ?? ""}
-                                            onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
-                                            remark={rows[rowKey]?.remark || ""}
-                                            onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
-                                            lang={lang}
-                                            beforeRemark={renderPreRemarkElement(rowKey, mode)}
-                                        />
-                                    </div>
-
-                                    <div className="tw-space-y-3">
-                                        <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{t("beforePM", lang)}</Typography>
-                                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4 tw-opacity-60 tw-pointer-events-none">
-                                            {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                <InputWithUnit<UnitVoltage>
-                                                    key={`pre-main-${k}`}
-                                                    label={LABELS[k]}
-                                                    value={mMainPre[k]?.value != null ? String(mMainPre[k]?.value) : "-"}
-                                                    unit={(mMainPre[k]?.unit as UnitVoltage) || "V"}
-                                                    units={["V"] as const}
-                                                    onValueChange={() => { }}
-                                                    onUnitChange={() => { }}
-                                                    readOnly
-                                                    required={false}
-                                                />
-                                            ))}
-                                        </div>
-
-                                        <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mt-2">{t("afterPM", lang)}</Typography>
-                                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-4">
-                                            {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                <InputWithUnit<UnitVoltage>
-                                                    key={`post-main-${k}`}
-                                                    label={LABELS[k]}
-                                                    value={mMain.state[k]?.value || ""}
-                                                    unit={(mMain.state[k]?.unit as UnitVoltage) || "V"}
-                                                    units={["V"] as const}
-                                                    onValueChange={(v) => mMain.patch(k, { value: v })}
-                                                    onUnitChange={(u) => mMain.syncUnits(u)}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
                                 </div>
                             );
-                        })()
-                    )}
+                        })}
+                    </div>
+                )}
+
+                {q.kind === "mainBreaker" && (
+                    (() => {
+                        const rowKey = "r9_main";
+                        if (rowsPre[rowKey]?.pf === "NA") {
+                            return <SkippedNAItem label={`9.1) ${t("mainBreaker", lang)}`} remark={rowsPre[rowKey]?.remark} lang={lang} />;
+                        }
+                        return (
+                            <div className="tw-py-2">
+                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800 tw-mb-3">{`9.1) ${t("mainBreaker", lang)}`}</Typography>
+
+                                {q.hasPhoto && (
+                                    <div className="tw-mb-3 tw-pb-3 tw-border-b tw-border-gray-100">
+                                        <PhotoMultiInput
+                                            photos={photos[90] || []}
+                                            setPhotos={makePhotoSetter(90)}
+                                            max={3}
+                                            draftKey={currentDraftKey}
+                                            qNo={90}
+                                            lang={lang}
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="tw-mb-4">
+                                    <PassFailRow
+                                        label={t("testResult", lang)}
+                                        value={rows[rowKey]?.pf ?? ""}
+                                        onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
+                                        remark={rows[rowKey]?.remark || ""}
+                                        onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
+                                        lang={lang}
+                                        beforeRemark={renderPreRemarkElement(rowKey, mode)}
+                                    />
+                                </div>
+
+                                <div className="tw-space-y-3">
+                                    <Typography variant="small" className="tw-font-medium tw-text-gray-700">{t("beforePM", lang)}</Typography>
+                                    <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4 tw-opacity-60 tw-pointer-events-none">
+                                        {VOLTAGE_FIELDS_CCB.map((k) => (
+                                            <InputWithUnit<UnitVoltage>
+                                                key={`pre-main-${k}`}
+                                                label={LABELS[k]}
+                                                value={mMainPre[k]?.value != null ? String(mMainPre[k]?.value) : "-"}
+                                                unit={(mMainPre[k]?.unit as UnitVoltage) || "V"}
+                                                units={["V"] as const}
+                                                onValueChange={() => { }}
+                                                onUnitChange={() => { }}
+                                                readOnly
+                                                required={false}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    <Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mt-2">{t("afterPM", lang)}</Typography>
+                                    <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4">
+                                        {VOLTAGE_FIELDS_CCB.map((k) => (
+                                            <InputWithUnit<UnitVoltage>
+                                                key={`post-main-${k}`}
+                                                label={LABELS[k]}
+                                                value={mMain.state[k]?.value || ""}
+                                                unit={(mMain.state[k]?.unit as UnitVoltage) || "V"}
+                                                units={["V"] as const}
+                                                onValueChange={(v) => mMain.patch(k, { value: v })}
+                                                onUnitChange={(u) => mMain.syncUnits(u)}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()
+                )}
 
                     {q.kind === "subBreakers" && (
-                        <div className="tw-space-y-4">
-                            {Array.from({ length: subBreakerCount }, (_, idx) => {
-                                const i = idx + 1;
-                                const photoKey = 100 + i;
-                                const rowKey = `r10_sub${i}`;
-                                const mPre = M_SUB_PRE_LIST[idx];
-                                const m = M_SUB_LIST[idx];
-                                const breakerLabel = `10.${i}) ${lang === "th" ? "เบรกเกอร์วงจรย่อยตัวที่" : "Sub-circuit Breaker"} ${i}`;
+                        <div className="tw-space-y-0">
+                            {/* Count summary row for POST mode */}
+                            <div className="tw-flex tw-items-center tw-gap-2 tw-pb-3 tw-border-b tw-border-gray-200">
+                                <Typography variant="small" className="tw-text-blue-gray-600">{t("subBreakerCount", lang)}</Typography>
+                                <Typography variant="small" className="tw-font-bold tw-text-blue-600">{subBreakerCount} {t("unit", lang)}</Typography>
+                            </div>
+                            <div className="tw-divide-y tw-divide-gray-200">
+                                {Array.from({ length: subBreakerCount }, (_, idx) => {
+                                    const i = idx + 1;
+                                    const photoKey = 100 + i;
+                                    const rowKey = `r10_sub${i}`;
+                                    const mPre = M_SUB_PRE_LIST[idx];
+                                    const m = M_SUB_LIST[idx];
+                                    const breakerLabel = `10.${i}) ${lang === "th" ? "เบรกเกอร์วงจรย่อยตัวที่" : "Sub-circuit Breaker"} ${i}`;
 
-                                if (rowsPre[rowKey]?.pf === "NA") {
-                                    return <SkippedNAItem key={rowKey} label={breakerLabel} remark={rowsPre[rowKey]?.remark} lang={lang} />;
-                                }
+                                    if (rowsPre[rowKey]?.pf === "NA") {
+                                        return (
+                                            <div key={rowKey} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
+                                                <div className="tw-flex tw-items-center tw-justify-between">
+                                                    <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{breakerLabel}</Typography>
+                                                    <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
+                                                </div>
+                                                {rowsPre[rowKey]?.remark && (
+                                                    <Typography variant="small" className="tw-text-gray-600 tw-mt-1">
+                                                        {t("remarkLabel", lang)}: {rowsPre[rowKey]?.remark}
+                                                    </Typography>
+                                                )}
+                                            </div>
+                                        );
+                                    }
 
-                                return (
-                                    <div key={rowKey} className="tw-p-4 tw-rounded-lg tw-border tw-bg-gray-50 tw-border-blue-gray-100">
-                                        <Typography className="tw-font-medium tw-text-blue-gray-800 tw-mb-4">{breakerLabel}</Typography>
+                                    return (
+                                        <div key={rowKey} className="tw-py-4 first:tw-pt-2">
+                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800 tw-mb-3">{breakerLabel}</Typography>
 
-                                        {q.hasPhoto && (
-                                            <div className="tw-mb-4 tw-pb-4 tw-border-b tw-border-blue-gray-50">
-                                                <PhotoMultiInput
-                                                    photos={photos[photoKey] || []}
-                                                    setPhotos={makePhotoSetter(photoKey)}
-                                                    max={10}
-                                                    draftKey={currentDraftKey}
-                                                    qNo={photoKey}
+                                            {q.hasPhoto && (
+                                                <div className="tw-mb-3 tw-pb-3 tw-border-b tw-border-gray-100">
+                                                    <PhotoMultiInput
+                                                        photos={photos[photoKey] || []}
+                                                        setPhotos={makePhotoSetter(photoKey)}
+                                                        max={10}
+                                                        draftKey={currentDraftKey}
+                                                        qNo={photoKey}
+                                                        lang={lang}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            <div className="tw-mb-4">
+                                                <PassFailRow
+                                                    label={t("testResult", lang)}
+                                                    value={rows[rowKey]?.pf ?? ""}
+                                                    onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
+                                                    remark={rows[rowKey]?.remark || ""}
+                                                    onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
                                                     lang={lang}
+                                                    beforeRemark={renderPreRemarkElement(rowKey, mode)}
                                                 />
                                             </div>
-                                        )}
 
-                                        <div className="tw-mb-4">
-                                            <PassFailRow
-                                                label={t("testResult", lang)}
-                                                value={rows[rowKey]?.pf ?? ""}
-                                                onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
-                                                remark={rows[rowKey]?.remark || ""}
-                                                onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
-                                                lang={lang}
-                                                beforeRemark={renderPreRemarkElement(rowKey, mode)}
-                                            />
-                                        </div>
+                                            <div className="tw-space-y-3">
+                                                <Typography variant="small" className="tw-font-medium tw-text-gray-700">{t("beforePM", lang)}</Typography>
+                                                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3 tw-opacity-60 tw-pointer-events-none">
+                                                    {VOLTAGE_FIELDS_CCB.map((k) => (
+                                                        <InputWithUnit<UnitVoltage>
+                                                            key={`pre-sub${i}-${k}`}
+                                                            label={LABELS[k]}
+                                                            value={mPre[k]?.value != null ? String(mPre[k]?.value) : "-"}
+                                                            unit={(mPre[k]?.unit as UnitVoltage) || "V"}
+                                                            units={["V"] as const}
+                                                            onValueChange={() => { }}
+                                                            onUnitChange={() => { }}
+                                                            readOnly
+                                                            required={false}
+                                                        />
+                                                    ))}
+                                                </div>
 
-                                        <div className="tw-space-y-3">
-                                            <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700">{t("beforePM", lang)}</Typography>
-                                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-3 tw-opacity-60 tw-pointer-events-none">
-                                                {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                    <InputWithUnit<UnitVoltage>
-                                                        key={`pre-sub${i}-${k}`}
-                                                        label={LABELS[k]}
-                                                        value={mPre[k]?.value != null ? String(mPre[k]?.value) : "-"}
-                                                        unit={(mPre[k]?.unit as UnitVoltage) || "V"}
-                                                        units={["V"] as const}
-                                                        onValueChange={() => { }}
-                                                        onUnitChange={() => { }}
-                                                        readOnly
-                                                        required={false}
-                                                    />
-                                                ))}
-                                            </div>
-
-                                            <Typography variant="small" className="tw-font-medium tw-text-blue-gray-700 tw-mt-2">{t("afterPM", lang)}</Typography>
-                                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-3 tw-gap-3">
-                                                {VOLTAGE_FIELDS_CCB.map((k) => (
-                                                    <InputWithUnit<UnitVoltage>
-                                                        key={`post-sub${i}-${k}`}
-                                                        label={LABELS[k]}
-                                                        value={m.state[k]?.value || ""}
-                                                        unit={(m.state[k]?.unit as UnitVoltage) || "V"}
-                                                        units={["V"] as const}
-                                                        onValueChange={(v) => m.patch(k, { value: v })}
-                                                        onUnitChange={(u) => m.syncUnits(u)}
-                                                    />
-                                                ))}
+                                                <Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mt-2">{t("afterPM", lang)}</Typography>
+                                                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
+                                                    {VOLTAGE_FIELDS_CCB.map((k) => (
+                                                        <InputWithUnit<UnitVoltage>
+                                                            key={`post-sub${i}-${k}`}
+                                                            label={LABELS[k]}
+                                                            value={m.state[k]?.value || ""}
+                                                            unit={(m.state[k]?.unit as UnitVoltage) || "V"}
+                                                            units={["V"] as const}
+                                                            onValueChange={(v) => m.patch(k, { value: v })}
+                                                            onUnitChange={(u) => m.syncUnits(u)}
+                                                        />
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
-                </div>
             </SectionCard>
         );
     };
@@ -1938,78 +1998,75 @@ export default function CCBPMReport() {
             </div>
 
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
-                <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
-                    <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
-                        <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
-                            <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-shrink-0 tw-h-14 tw-w-[64px] sm:tw-h-16 sm:tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]">
-                                <Image src={LOGO_SRC} alt="Company logo" fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 152px, (min-width:768px) 108px, (min-width:640px) 76px, 64px" />
+                <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl lg:tw-rounded-2xl tw-shadow-sm tw-p-3 sm:tw-p-6 lg:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
+                    <div className="tw-flex tw-flex-col tw-gap-3 sm:tw-gap-4 lg:tw-flex-row lg:tw-items-start lg:tw-justify-between lg:tw-gap-6">
+                        <div className="tw-flex tw-items-start tw-gap-2 sm:tw-gap-3 lg:tw-gap-4">
+                            <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-shrink-0 tw-h-10 tw-w-[48px] sm:tw-h-14 sm:tw-w-[64px] md:tw-h-16 md:tw-w-[76px] lg:tw-h-20 lg:tw-w-[108px]">
+                                <Image src={LOGO_SRC} alt="Company logo" fill priority className="tw-object-contain tw-p-0" sizes="(min-width:1024px) 108px, (min-width:768px) 76px, (min-width:640px) 64px, 48px" />
                             </div>
-                            <div className="tw-min-w-0">
-                                <div className="tw-font-semibold tw-text-blue-gray-900 tw-text-sm sm:tw-text-base">{t("pageTitle", lang)}</div>
-                                <div className="tw-text-xs sm:tw-text-sm tw-text-blue-gray-600">
-                                    {t("companyName", lang)}<br />
-                                    <span className="tw-hidden sm:tw-inline">{t("companyAddress", lang)}<br /></span>
-                                    <span className="sm:tw-hidden">{t("companyAddressShort", lang)}<br /></span>
+                            <div className="tw-min-w-0 tw-flex-1">
+                                <div className="tw-font-semibold tw-text-blue-gray-900 tw-text-[11px] sm:tw-text-xs md:tw-text-sm lg:tw-text-base tw-leading-tight">{t("pageTitle", lang)}</div>
+                                <div className="tw-text-[9px] sm:tw-text-[10px] md:tw-text-xs lg:tw-text-sm tw-text-blue-gray-600 tw-leading-relaxed tw-mt-0.5">
+                                    <span className="tw-hidden md:tw-inline">{t("companyName", lang)}<br />{t("companyAddress", lang)}<br /></span>
+                                    <span className="md:tw-hidden">{t("companyAddressShort", lang)}<br /></span>
                                     {t("callCenter", lang)}
                                 </div>
                             </div>
                         </div>
-                        <div className="tw-text-left md:tw-text-right tw-text-sm tw-text-blue-gray-700 tw-border-t tw-border-blue-gray-100 tw-pt-3 md:tw-border-t-0 md:tw-pt-0 md:tw-shrink-0">
+                        <div className="tw-text-left lg:tw-text-right tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-text-blue-gray-700 tw-border-t tw-border-blue-gray-100 tw-pt-2 sm:tw-pt-3 lg:tw-border-t-0 lg:tw-pt-0 lg:tw-shrink-0">
                             <div className="tw-font-semibold">{t("docName", lang)}</div>
                             <div className="tw-break-all">{docName || "-"}</div>
                         </div>
                     </div>
 
-                    <div className="tw-mt-8 tw-space-y-8">
-                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-6 tw-gap-4">
-                            <div className="lg:tw-col-span-1">
-                                <Input label={t("issueId", lang)} value={job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50" />
+                    <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-space-y-4 sm:tw-space-y-6 lg:tw-space-y-8">
+                        <div className="tw-grid tw-grid-cols-1 lg:tw-grid-cols-6 tw-gap-2 sm:tw-gap-3 lg:tw-gap-4">
+                            <div className="tw-col-span-1 lg:tw-col-span-1">
+                                <Input label={t("issueId", lang)} value={job.issue_id || "-"} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-xs sm:!tw-text-sm" labelProps={{ className: "!tw-text-xs sm:!tw-text-sm" }} />
                             </div>
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-2">
-                                <Input label={t("location", lang)} value={job.station_name} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" />
+                            <div className="tw-col-span-1 lg:tw-col-span-2">
+                                <Input label={t("location", lang)} value={job.station_name} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50 !tw-text-xs sm:!tw-text-sm" labelProps={{ className: "!tw-text-xs sm:!tw-text-sm" }} />
                             </div>
-                            <div className="sm:tw-col-span-2 lg:tw-col-span-2">
-                                <Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" />
+                            <div className="tw-col-span-1 lg:tw-col-span-2">
+                                <Input label={t("inspector", lang)} value={inspector} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50 !tw-text-xs sm:!tw-text-sm" labelProps={{ className: "!tw-text-xs sm:!tw-text-sm" }} />
                             </div>
-                            <div className="lg:tw-col-span-1">
-                                <Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50" />
+                            <div className="tw-col-span-1 lg:tw-col-span-1">
+                                <Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-blue-gray-50 !tw-text-xs sm:!tw-text-sm" labelProps={{ className: "!tw-text-xs sm:!tw-text-sm" }} />
                             </div>
                         </div>
                     </div>
 
-                    <CardBody className="tw-space-y-2">
+                    <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab))}
-                    </CardBody>
+                    </div>
 
-                    <CardBody className="tw-space-y-3 !tw-pt-4 !tw-pb-0">
-                        <Typography variant="h6" className="tw-mb-1">{t("comment", lang)}</Typography>
+                    <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-px-0 sm:tw-px-2 lg:tw-px-4">
+                        <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
                         {displayTab === "post" && commentPre && (
-                            <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
+                            <div className="tw-mb-2 sm:tw-mb-3 tw-p-2.5 sm:tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
                                 <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
-                                    <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <svg className="tw-w-3.5 tw-h-3.5 sm:tw-w-4 sm:tw-h-4 tw-text-amber-600 tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                                     </svg>
-                                    <Typography variant="small" className="tw-font-semibold tw-text-amber-700">
+                                    <Typography variant="small" className="tw-font-semibold tw-text-amber-700 tw-text-[10px] sm:tw-text-xs">
                                         {lang === "th" ? "Comment (ก่อน PM)" : "Comment (Pre-PM)"}
                                     </Typography>
                                 </div>
-                                <Typography variant="small" className="tw-text-amber-900 tw-ml-6">{commentPre}</Typography>
+                                <Typography variant="small" className="tw-text-amber-900 tw-ml-5 sm:tw-ml-6 tw-text-xs sm:tw-text-sm">{commentPre}</Typography>
                             </div>
                         )}
-                        <div className="tw-space-y-2">
-                            <Textarea
-                                label={t("comment", lang)}
-                                value={summary}
-                                onChange={(e) => setSummary(e.target.value)}
-                                rows={4}
-                                required={isPostMode}
-                                autoComplete="off"
-                                containerProps={{ className: "!tw-min-w-0" }}
-                                className="!tw-w-full resize-none"
-                            />
-                        </div>
+                        <Textarea
+                            label={t("comment", lang)}
+                            value={summary}
+                            onChange={(e) => setSummary(e.target.value)}
+                            rows={3}
+                            required={isPostMode}
+                            autoComplete="off"
+                            containerProps={{ className: "!tw-min-w-0" }}
+                            className="!tw-w-full !tw-text-sm resize-none"
+                        />
                         {displayTab === "post" && (
-                            <div className="tw-pt-4 tw-border-t tw-border-blue-gray-100">
+                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
                                 <PassFailRow
                                     label={t("summaryResult", lang)}
                                     value={summaryCheck}
@@ -2019,20 +2076,20 @@ export default function CCBPMReport() {
                                 />
                             </div>
                         )}
-                    </CardBody>
+                    </div>
 
-                    <CardFooter className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-                        <div className="tw-p-3 tw-flex tw-flex-col tw-gap-3">
+                    <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3 tw-px-3 sm:tw-px-4 lg:tw-px-6">
+                        <div className="tw-p-3 sm:tw-p-4 tw-flex tw-flex-col tw-gap-2 tw-bg-gray-50 tw-rounded-xl tw-border tw-border-gray-200">
                             <Section title={t("validationPhotoTitle", lang)} ok={allPhotosAttached} lang={lang}>
-                                <Typography variant="small" className="!tw-text-amber-700">{t("missingPhoto", lang)} {formatMissingPhotoItems(missingPhotoItems)}</Typography>
+                                <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPhoto", lang)} {formatMissingPhotoItems(missingPhotoItems)}</Typography>
                             </Section>
                             <Section title={t("validationInputTitle", lang)} ok={allRequiredInputsFilled} lang={lang}>
                                 {allRequiredInputsFilled ? (
-                                    <Typography variant="small" className="!tw-text-green-700">{t("allComplete", lang)}</Typography>
+                                    <Typography variant="small" className="!tw-text-green-600 tw-text-xs sm:tw-text-sm">{t("allComplete", lang)}</Typography>
                                 ) : (
                                     <div className="tw-space-y-1">
-                                        <Typography variant="small" className="!tw-text-amber-700">{t("missingInput", lang)}</Typography>
-                                        <ul className="tw-list-disc tw-ml-5 tw-text-sm tw-text-blue-gray-700">
+                                        <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingInput", lang)}</Typography>
+                                        <ul className="tw-list-disc tw-ml-4 sm:tw-ml-5 tw-text-xs sm:tw-text-sm tw-text-amber-700">
                                             {missingInputs.map((line, i) => (<li key={i}>{line}</li>))}
                                         </ul>
                                     </div>
@@ -2040,50 +2097,50 @@ export default function CCBPMReport() {
                             </Section>
                             {displayTab === "pre" && (
                                 <Section title={t("validationRemarkTitle", lang)} ok={allRemarksFilledPre} lang={lang}>
-                                    {missingRemarksPre.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPre.join(", ")}</Typography>}
+                                    {missingRemarksPre.length > 0 && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingRemark", lang)} {missingRemarksPre.join(", ")}</Typography>}
                                 </Section>
                             )}
                             {isPostMode && (
                                 <>
                                     <Section title={t("validationPFTitle", lang)} ok={allPFAnsweredForUI} lang={lang}>
-                                        <Typography variant="small" className="!tw-text-amber-700">{t("missingPF", lang)} {missingPFItemsForUI.join(", ")}</Typography>
+                                        <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPF", lang)} {missingPFItemsForUI.join(", ")}</Typography>
                                     </Section>
                                     <Section title={t("validationRemarkTitlePost", lang)} ok={allRemarksFilledPost} lang={lang}>
-                                        {missingRemarksPost.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPost.join(", ")}</Typography>}
+                                        {missingRemarksPost.length > 0 && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingRemark", lang)} {missingRemarksPost.join(", ")}</Typography>}
                                     </Section>
                                     <Section title={t("validationSummaryTitle", lang)} ok={isSummaryFilled && isSummaryCheckFilled} lang={lang}>
                                         <div className="tw-space-y-1">
-                                            {!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryText", lang)}</Typography>}
-                                            {!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryStatus", lang)}</Typography>}
+                                            {!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryText", lang)}</Typography>}
+                                            {!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryStatus", lang)}</Typography>}
                                         </div>
                                     </Section>
                                 </>
                             )}
                         </div>
-                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-3">
+                        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                             {displayTab === "pre" ? (
                                 <Button
-                                    color="blue"
                                     type="button"
                                     onClick={onPreSave}
                                     disabled={!canGoAfter || submitting}
+                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto"
                                     title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : !allRequiredInputsFilled ? t("alertInputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}
                                 >
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             ) : (
                                 <Button
-                                    color="blue"
                                     type="button"
                                     onClick={onFinalSave}
                                     disabled={!canFinalSave || submitting}
+                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto"
                                     title={!canFinalSave ? t("alertCompleteAll", lang) : undefined}
                                 >
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
                         </div>
-                    </CardFooter>
+                    </div>
                 </div>
             </form>
         </section>

@@ -203,10 +203,7 @@ def to_json(obj) -> str:
     # บังคับให้เป็น single-line และรองรับ UTF-8
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
 
-def get_errorCode_collection_for(station_id: str):
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
-        raise HTTPException(status_code=400, detail="Bad station_id")
-    return errorDB.get_collection(str(station_id))
+
 
 def _ensure_utc_iso(v):
     """
@@ -1382,6 +1379,11 @@ async def mdb_peak_power(station_id: str, current_user: UserClaims = Depends(get
         return result[0]
     else:
         return {"PL1N_peak": None, "PL2N_peak": None, "PL3N_peak": None, "PL123N_peak": None}
+    
+
+# ------------------------------------------------------------------------------------------
+#  erorr code old
+# -----------------------------------------------------------------------------------------
 
 async def _resolve_user_id_by_chargebox(chargebox_id: Optional[str]) -> Optional[str]:
     if not chargebox_id:
@@ -1470,7 +1472,10 @@ async def send_error_email_once(to_email: str | None, chargebox_id: str | None, 
         await email_log_coll.delete_one({"_id": key})
         raise
 
-
+def get_errorCode_collection_for(station_id: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return errorDB.get_collection(str(station_id))
 
 @app.get("/error/{station_id}")
 async def error_stream(request: Request, station_id: str, current: UserClaims = Depends(get_current_user)):
@@ -1542,6 +1547,16 @@ async def error_stream(request: Request, station_id: str, current: UserClaims = 
             await asyncio.sleep(60)
 
     return StreamingResponse(event_generator(), headers=headers)
+
+# ----------------------------------------------------------------------------------------
+# notification
+# ----------------------------------------------------------------------------------------
+
+from routers.notifications import router as notifications_router
+
+app.include_router(notifications_router)
+
+# ------------------------------------------------------------------------------------------
 
 def parse_iso_dt(s: str) -> datetime:
     try:
@@ -2612,37 +2627,87 @@ async def save_image(folder: str, item_id: str, kind: str, upload: UploadFile) -
 # ---------------------------------------------------------
 # GET /all-stations/ - Get all Stations with Chargers
 # ---------------------------------------------------------
+# @app.get("/all-stations/")
+# def get_all_stations(
+#     # current: UserClaims = Depends(get_current_user)
+# ):
+#     """Get all Stations with Chargers (nested)"""
+    
+#     # TODO: Add filter by role
+#     # if current.role == "admin":
+#     #     match_query = {}
+#     # else:
+#     #     match_query = {"user_id": to_object_id(current.user_id)}
+    
+#     match_query = {}
+    
+#     # Get stations
+#     stations_cursor = station_collection.find(match_query)
+    
+#     result = []
+#     for station_doc in stations_cursor:
+#         station_id = station_doc.get("station_id")
+        
+#         # Get chargers for this station (sorted by chargerNo)
+#         chargers_cursor = charger_collection.find({"station_id": station_id}).sort("chargerNo", 1)
+#         charger_docs = list(chargers_cursor)
+        
+#         # Format and add to result
+#         station_out = format_station_with_chargers(station_doc, charger_docs)
+#         result.append(station_out.dict())
+    
+#     return {"stations": result}
+
+def to_object_id_safe(s: str):
+    """Convert string to ObjectId, return original string if failed"""
+    try:
+        return ObjectId(s)
+    except:
+        return s
+    
 @app.get("/all-stations/")
 def get_all_stations(
-    # current: UserClaims = Depends(get_current_user)
+    current: UserClaims = Depends(get_current_user)
 ):
     """Get all Stations with Chargers (nested)"""
     
-    # TODO: Add filter by role
-    # if current.role == "admin":
-    #     match_query = {}
-    # else:
-    #     match_query = {"user_id": to_object_id(current.user_id)}
+    # Debug
+    print(f"=== DEBUG ===")
+    print(f"user_id: {current.user_id}, role: {current.role}")
     
-    match_query = {}
+    # Filter by role
+    if current.role == "admin":
+        match_query = {}
+    elif current.role == "technician":
+        if current.station_ids and len(current.station_ids) > 0:
+            match_query = {"station_id": {"$in": current.station_ids}}
+        else:
+            return {"stations": []}
+    else:
+        # Owner - ลองทั้ง string และ ObjectId
+        match_query = {
+            "$or": [
+                {"user_id": current.user_id},
+                {"user_id": to_object_id_safe(current.user_id)}
+            ]
+        }
+    
+    print(f"match_query: {match_query}")
     
     # Get stations
     stations_cursor = station_collection.find(match_query)
+    stations_list = list(stations_cursor)
+    print(f"Found {len(stations_list)} stations")
     
     result = []
-    for station_doc in stations_cursor:
+    for station_doc in stations_list:
         station_id = station_doc.get("station_id")
-        
-        # Get chargers for this station (sorted by chargerNo)
         chargers_cursor = charger_collection.find({"station_id": station_id}).sort("chargerNo", 1)
         charger_docs = list(chargers_cursor)
-        
-        # Format and add to result
         station_out = format_station_with_chargers(station_doc, charger_docs)
         result.append(station_out.dict())
     
     return {"stations": result}
-
 
 # ---------------------------------------------------------
 # POST /add_stations/ - Create Station with Chargers
