@@ -354,7 +354,7 @@ def _load_image_source_from_urlpath(
     
     # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
     if not url_path.startswith("http"):  # ข้าม http URL
-        print("[DEBUG] 📂 ลองหาใน backend/uploads...")
+        # print("[DEBUG] 📂 ลองหาใน backend/uploads...")
         
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
@@ -368,7 +368,7 @@ def _load_image_source_from_urlpath(
             local_path = uploads_root / clean_path
             
             if local_path.exists() and local_path.is_file():
-                print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
+                # print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
             else:
                 print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
@@ -468,40 +468,6 @@ def _collect_photos_for_main_idx(photos: dict, idx: int) -> List[dict]:
 
     return out
 
-# def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-#     photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
-#     out = []
-#     for p in photos:
-#         if isinstance(p, dict) and p.get("url"):
-#             out.append(p)
-#     return out[:PHOTO_MAX_PER_ROW]
-
-# def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
-#     """
-#     ✅ แก้: ลองหา photos_pre ก่อน ถ้าไม่มีให้ใช้ photos แทน
-#     """
-#     # 1. ลองหา photos_pre ก่อน
-#     photos_pre = doc.get("photos_pre")
-#     if photos_pre and isinstance(photos_pre, dict):
-#         photos = (photos_pre or {}).get(f"g{idx}") or []
-#         if photos:
-#             out = []
-#             for p in photos:
-#                 if isinstance(p, dict) and p.get("url"):
-#                     out.append(p)
-#             return out[:PHOTO_MAX_PER_ROW]
-    
-#     # 2. ถ้าไม่มี photos_pre ให้ใช้ photos แทน (fallback)
-#     photos_regular = doc.get("photos")
-#     if photos_regular and isinstance(photos_regular, dict):
-#         photos = (photos_regular or {}).get(f"g{idx}") or []
-#         out = []
-#         for p in photos:
-#             if isinstance(p, dict) and p.get("url"):
-#                 out.append(p)
-#         return out[:PHOTO_MAX_PER_ROW]
-    
-#     return []
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     photos = doc.get("photos") or {}
     out = _collect_photos_for_main_idx(photos, idx)
@@ -620,7 +586,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 "key": main_key,
                 "text": title,
                 "result": _norm_result(main_data.get("pf", "")),
-                "remark": remark_user,
+                "remark": "" if remark_user == "-" else remark_user,
                 "has_subs": False,
             })
 
@@ -653,9 +619,9 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
             remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
             for i, r in enumerate(remarks):
                 sub_idx = subs[i][0]
-                # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
-                remark_text = r if (r and r != "-") else "-"
-                remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
+                # แสดง remark เฉพาะเมื่อมีค่าและไม่ใช่ "-"
+                if r and r != "-":
+                    remark_lines.append(f"{main_idx}.{sub_idx}) {r}")
 
             combined_remark = "\n".join(remark_lines)
 
@@ -1867,13 +1833,9 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
              comment_x + comment_item_w + comment_result_w + comment_remark_w, page_bottom)
 
     # ================================================================================
-    # 📸 ส่วนที่ 3: PHOTOS POST
+    # ส่วนที่ 3: PHOTOS POST
     # ================================================================================
-    # ⭐ สำคัญ: ต้อง add_page() ก่อนเปลี่ยน _section
-    # เพราะ add_page() จะเรียก footer() ของหน้าก่อนหน้า (Checklist POST สุดท้าย)
-    pdf.add_page()  # footer() ของหน้า Checklist วาด signature ✅
-    pdf._section = "photos"  # เปลี่ยนหลัง add_page() เพื่อให้หน้า Photos POST ไม่มี signature
-
+    pdf._section = "photos"  
     # header() จะถูกเรียกอัตโนมัติโดย add_page()
     y = pdf.get_y()
 
@@ -1892,11 +1854,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     def _ensure_space_photo_post(height_needed: float):
         nonlocal y
         if y + height_needed > (pdf.h - pdf.b_margin):
-            # ⭐ _section เป็น "photos" อยู่แล้ว (ถูกตั้งค่าหลังไปหน้า Photos แรก)
-            # ดังนั้น footer() จะ return ไม่วาด signature โดยอัตโนมัติ
             pdf.add_page()
 
-            # header() จะถูกเรียกอัตโนมัติโดย add_page()
             y = pdf.get_y()
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)
