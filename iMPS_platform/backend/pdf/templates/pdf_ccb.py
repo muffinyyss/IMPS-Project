@@ -57,8 +57,8 @@ RESULT_W = 64
 PHOTO_Q_W = 85.0
 
 # Indentation constants
-MAIN_INDENT = "  "       # 2 spaces สำหรับหัวข้อหลัก
-SUB_INDENT = "        "  # 8 spaces สำหรับข้อย่อย
+MAIN_INDENT = " "       # 2 spaces สำหรับหัวข้อหลัก
+SUB_INDENT = "    "      # 4 spaces สำหรับข้อย่อย (เดิมเป็น 8 spaces)
 
 
 # -------------------- รายการหัวข้อ CCB --------------------
@@ -389,22 +389,22 @@ def _load_image_source_from_urlpath(
     # print(f"{'='*80}")
 
     # case: data URL
-    if url_path.startswith("data:image/"):
-        print("[DEBUG] ✅ เป็น data URL")
-        try:
-            head, b64 = url_path.split(",", 1)
-            mime = head.split(";")[0].split(":", 1)[1]
-            bio = BytesIO(base64.b64decode(b64))
-            img_type = (
-                "PNG"
-                if "png" in mime
-                else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
-            )
-            print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
-            return bio, img_type
-        except Exception as e:
-            print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
-            return None, None
+    # if url_path.startswith("data:image/"):
+    #     print("[DEBUG] ✅ เป็น data URL")
+    #     try:
+    #         head, b64 = url_path.split(",", 1)
+    #         mime = head.split(";")[0].split(":", 1)[1]
+    #         bio = BytesIO(base64.b64decode(b64))
+    #         img_type = (
+    #             "PNG"
+    #             if "png" in mime
+    #             else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
+    #         )
+    #         print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
+    #         return bio, img_type
+    #     except Exception as e:
+    #         print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
+    #         return None, None
 
     # ปรับลำดับ: เช็ค local file ก่อน (เร็วที่สุด) แทนที่จะ download
     
@@ -433,7 +433,7 @@ def _load_image_source_from_urlpath(
             # print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
             
             if local_path.exists() and local_path.is_file():
-                print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
+                # print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
             else:
                 print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
@@ -517,19 +517,19 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     # รวมรูปของข้อหลักและข้อย่อยทั้งหมด เช่น g4, g4_1, r4_1, r4_2
     photos = doc.get("photos") or {}
-    print(f"[DEBUG] _get_photo_items_for_idx(idx={idx})")
-    print(f"[DEBUG] photos keys: {list(photos.keys())}")
+    # print(f"[DEBUG] _get_photo_items_for_idx(idx={idx})")
+    # print(f"[DEBUG] photos keys: {list(photos.keys())}")
     items_in = []
 
     prefix_g = f"g{idx}"
     prefix_r = f"r{idx}_"
-    print(f"[DEBUG] Looking for keys: {prefix_g}, {prefix_g}_*, {prefix_r}*")
+    # print(f"[DEBUG] Looking for keys: {prefix_g}, {prefix_g}_*, {prefix_r}*")
 
     for k, items in photos.items():
         # รองรับทั้ง g{idx} และ g{idx}_* และ r{idx}_* (เช่น r4_1, r6_2)
         if k == prefix_g or k.startswith(prefix_g + "_") or k.startswith(prefix_r):
             if isinstance(items, list):
-                print(f"[DEBUG] Found key '{k}' with {len(items)} items")
+                # print(f"[DEBUG] Found key '{k}' with {len(items)} items")
                 items_in.extend(items)
 
     out: List[dict] = []
@@ -584,8 +584,8 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
         if len(out) >= PHOTO_MAX_PER_ROW:
             break
 
-    print(f"[DEBUG] _get_photo_items_for_idx(idx={idx}) returning {len(out)} items")
-    print(f"[DEBUG] Items: {[item.get('url', 'NO_URL')[:80] for item in out]}")
+    # print(f"[DEBUG] _get_photo_items_for_idx(idx={idx}) returning {len(out)} items")
+    # print(f"[DEBUG] Items: {[item.get('url', 'NO_URL')[:80] for item in out]}")
     return out[:PHOTO_MAX_PER_ROW]
 
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
@@ -710,7 +710,6 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
     if not isinstance(rows, dict):
         return []
 
-    # ใช้ค่า default ถ้าไม่ได้ส่งมา
     if row_titles is None:
         row_titles = ROW_TITLES
     if sub_row_titles is None:
@@ -726,22 +725,20 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
             continue
         idx = int(m.group(1))
 
-        # รวม sub ของข้อ idx
         subs: List[Tuple[int, str, str]] = []
 
         # ข้อ 10 เป็น dynamic - ดึงจาก rows ที่มีอยู่จริง
         if idx == 10:
             for key in rows.keys():
-                m_ = re.match(rf"^r{idx}_(\d+)$", key)
-                if m_:
-                    sub_idx = int(m_.group(1))
+                m_sub = re.match(r"^r10_sub(\d+)$", key)
+                if m_sub:
+                    sub_idx = int(m_sub.group(1))
                     stitle = f"เบรกเกอร์วงจรย่อยที่ {sub_idx}" if sub_row_titles == SUB_ROW_TITLES_TH else f"Sub-circuit Breaker {sub_idx}"
                     subs.append((sub_idx, key, stitle))
+            
             subs.sort(key=lambda x: x[0])
-            # จำกัด max 6 ข้อย่อย
             subs = subs[:6]
         else:
-            # ข้ออื่นๆ ดึงจาก sub_row_titles ตามปกติ
             for k, stitle in sub_row_titles.items():
                 m_ = re.match(rf"^r{idx}_(\d+)$", k)
                 if m_:
@@ -751,101 +748,118 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
         # ---------- ข้อความในคอลัมน์ Item ----------
         lines: List[str] = [f"{MAIN_INDENT}{idx}) {main_title}"]
 
+        # ข้อ 9: แสดง voltage data แบบย่อใน Item (แนวนอน)
+        if idx == 9:
+            measure_key = f"m{idx}"
+            voltage_text = _format_voltage_measurement(measures, measure_key)
+            if voltage_text:
+                voltage_lines = voltage_text.strip().split('\n')
+                voltage_horizontal = ', '.join(voltage_lines[:3])
+                lines.append(f"{SUB_INDENT}{voltage_horizontal}")
+
         for sub_index, sub_key, stitle in subs:
             lines.append(f"{SUB_INDENT}{idx}.{sub_index}) {stitle}")
 
             # ข้อ 10 ให้เพิ่ม voltage data ต่อท้ายแต่ละข้อย่อย
             if idx == 10:
-                measure_key = f"m{idx}"
-                voltage_text = _format_voltage_measurement(measures, measure_key, sub_index - 1)
-                if voltage_text:
-                    lines.append(f"{SUB_INDENT}{voltage_text}")
-
+                voltage_key = f"m10_{sub_index}"
+                voltage_data = measures.get(voltage_key)
+                if voltage_data:
+                    v_parts = []
+                    for k in ["L-N", "L-G", "N-G"]:
+                        d = voltage_data.get(k) or {}
+                        val = str(d.get("value") or "").strip()
+                        unit = str(d.get("unit") or "").strip()
+                        if not val or val.lower() == "none":
+                            val = "-"
+                        v_parts.append(f"{k} = {val}{unit}")
+                    lines.append(f"{SUB_INDENT}{', '.join(v_parts)}")
 
         text = "\n".join(lines)
-
 
         # ---------- ผลลัพธ์ในคอลัมน์ Result ----------
         result_lines: List[str] = []
         remark_lines: List[str] = []
         
         if subs:
-            # ใช้ผลของหัวข้อย่อยทีละบรรทัด
             for order_num, sub_key, stitle in subs:
-                # ใช้ alt_key เป็นหลักเสมอ
-                alt_key = f"r{idx}_{order_num}"
-                data_ = rows.get(alt_key) or rows.get(sub_key) or {}
-
+                data_ = rows.get(sub_key) or {}
                 raw_res = _extract_row_result(data_)
                 rmk = (data_.get("remark") or "").strip()
 
                 result_lines.append(_norm_result(raw_res))
                 remark_lines.append(rmk)
 
-            # เริ่มต้นค่า default
-            result_offset = 1      # ข้ามบรรทัดหัวข้อหลัก
-            result_step = 1        # ปกติ 1 row ของ Result ต่อ 1 บรรทัดข้อความ
+            result_offset = 1
+            result_step = 1
 
-            # ข้อ 10 มี voltage data หลายบรรทัด
             if idx == 10:
-                # นับจำนวนบรรทัด voltage data (ปกติจะมี 3 หรือ 10 บรรทัด)
-                measure_key = f"m{idx}"
-                test_voltage = _format_voltage_measurement(measures, measure_key, 0)
-                if test_voltage:
-                    voltage_lines = test_voltage.count('\n') + 1
-                    result_step = 1 + voltage_lines  # 1 สำหรับชื่อข้อย่อย + จำนวนบรรทัด voltage
+                result_step = 2
         else:
-            # ไม่มี sub → ใช้ pf ของหัวข้อหลัก rN ตามเดิม
-            data_main = rows.get(main_key) or {}
+            actual_key = main_key
+            if idx == 9:
+                actual_key = "r9_main"
+            elif idx == 10:
+                continue
+            
+            data_main = rows.get(actual_key) or {}
             raw_res = _extract_row_result(data_main)
             result_lines.append(_norm_result(raw_res))
             remark_lines.append((data_main.get("remark") or "").strip())
             result_offset = 0
             result_step = 1
 
-
-        # ---------- Remark (รวม voltage + remark แยกบรรทัด) ----------
+        # ---------- Remark (แก้ไขให้ remark ตรงกับแถว) ----------
         remark_parts: List[str] = []
 
-        # ข้อ 4–8 : พ่วงข้อมูลวัดแรงดันไฟฟ้าแบบเดิม (m4..m8)
+        # ข้อ 4-8: แสดง voltage measurements
         if main_key.lower() in ["r4", "r5", "r6", "r7", "r8"]:
             measure_key = f"m{idx}"
             voltage_text = _format_voltage_measurement(measures, measure_key)
             if voltage_text:
                 remark_parts.append(voltage_text)
 
-        # ---------- main remark ----------
-        data_main = rows.get(main_key) or {}
-        main_rmk = (data_main.get("remark") or "").strip()
-        if main_rmk:
-            remark_parts.append(main_rmk)
+        # main remark (แถวแรก - ตรงกับหัวข้อหลัก)
+        if idx == 9:
+            data_main = rows.get("r9_main") or {}
+            main_rmk = (data_main.get("remark") or "").strip()
+            if main_rmk and main_rmk != "-":
+                remark_parts.append(main_rmk)
+        elif idx != 10:
+            data_main = rows.get(main_key) or {}
+            main_rmk = (data_main.get("remark") or "").strip()
+            if main_rmk and main_rmk != "-":
+                remark_parts.append(main_rmk)
 
-        # ---------- sub remark ----------
-        if subs and result_offset == 1:
-            formatted_remarks = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
-
+        # sub remark - ⭐ สร้าง remark ที่ตรงกับแต่ละแถวของข้อย่อย
+        if subs:
+            # สร้าง list ของ remark สำหรับแต่ละบรรทัด
+            # บรรทัดแรก = หัวข้อหลัก (ใช้ main_rmk ที่เพิ่มไปแล้ว)
+            # บรรทัดถัดไป = ข้อย่อยแต่ละข้อ
+            
+            sub_remarks = []
+            
             for i, (order_num, sub_key, stitle) in enumerate(subs):
                 rmk = remark_lines[i] if i < len(remark_lines) else ""
-                # แสดง remark พร้อมเลขข้อย่อย ถ้าว่างให้แสดง "-"
-                remark_text = rmk if (rmk and rmk != "-") else "-"
-                formatted_remarks.append(f"{idx}.{order_num}) {remark_text}")
-
-                # ถ้าเป็นข้อ 10 ที่มี voltage data ให้เพิ่มบรรทัดว่างตามจำนวนบรรทัด voltage
+                
+                # แสดง remark ของข้อย่อยนี้ในบรรทัดเดียวกับข้อย่อย
+                if rmk and rmk != "-":
+                    sub_remarks.append(f"{idx}.{order_num}) {rmk}")
+                else:
+                    sub_remarks.append("")  # บรรทัดว่างถ้าไม่มี remark
+                
+                # ถ้าเป็นข้อ 10 ที่มี voltage data ให้เพิ่มบรรทัดว่าง
                 if idx == 10:
-                    measure_key = f"m{idx}"
-                    voltage_text = _format_voltage_measurement(measures, measure_key, order_num - 1)
-                    if voltage_text:
-                        voltage_line_count = voltage_text.count('\n') + 1
-                        for _ in range(voltage_line_count):
-                            formatted_remarks.append("")
+                    sub_remarks.append("")
+            
+            if sub_remarks:
+                # เพิ่มบรรทัดว่างหนึ่งบรรทัด (สำหรับหัวข้อหลัก) ถ้ายังไม่มี main remark
+                if not (idx == 9 or (idx != 10 and main_rmk and main_rmk != "-")):
+                    remark_parts.append("")
+                
+                remark_parts.extend(sub_remarks)
 
-            remark_text = "\n".join(formatted_remarks)
-            if remark_text.strip():
-                remark_parts.append(remark_text)
-
-        # รวม remark
-        remark = "\n".join(p for p in remark_parts if p.strip())
-
+        remark = "\n".join(remark_parts)
 
         items.append(
             {
@@ -855,12 +869,188 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 "remark": remark,
                 "result_offset": result_offset,
                 "result_step": result_step,
-                "remark": remark,
-                
             }
         )
 
     return items
+# def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dict = None, sub_row_titles: dict = None) -> List[dict]:
+#     if not isinstance(rows, dict):
+#         return []
+
+#     # ใช้ค่า default ถ้าไม่ได้ส่งมา
+#     if row_titles is None:
+#         row_titles = ROW_TITLES
+#     if sub_row_titles is None:
+#         sub_row_titles = SUB_ROW_TITLES
+
+#     rows = rows or {}
+#     measures = measures or {}
+#     items: List[dict] = []
+
+#     for main_key, main_title in row_titles.items():
+#         m = re.match(r"^r(\d+)$", main_key)
+#         if not m:
+#             continue
+#         idx = int(m.group(1))
+
+#         # รวม sub ของข้อ idx
+#         subs: List[Tuple[int, str, str]] = []
+
+#         # ข้อ 10 เป็น dynamic - ดึงจาก rows ที่มีอยู่จริง
+#         if idx == 10:
+#             for key in rows.keys():
+#                 m_ = re.match(rf"^r{idx}_(\d+)$", key)
+#                 if m_:
+#                     sub_idx = int(m_.group(1))
+#                     stitle = f"เบรกเกอร์วงจรย่อยที่ {sub_idx}" if sub_row_titles == SUB_ROW_TITLES_TH else f"Sub-circuit Breaker {sub_idx}"
+#                     subs.append((sub_idx, key, stitle))
+#             subs.sort(key=lambda x: x[0])
+#             # จำกัด max 6 ข้อย่อย
+#             subs = subs[:6]
+#         else:
+#             # ข้ออื่นๆ ดึงจาก sub_row_titles ตามปกติ
+#             for k, stitle in sub_row_titles.items():
+#                 m_ = re.match(rf"^r{idx}_(\d+)$", k)
+#                 if m_:
+#                     subs.append((int(m_.group(1)), k, stitle))
+#             subs.sort(key=lambda x: x[0])
+
+#         # ---------- ข้อความในคอลัมน์ Item ----------
+#         # lines: List[str] = [f"{MAIN_INDENT}{idx}) {main_title}"]
+
+#         # for sub_index, sub_key, stitle in subs:
+#         #     lines.append(f"{SUB_INDENT}{idx}.{sub_index}) {stitle}")
+
+#         #     # ข้อ 10 ให้เพิ่ม voltage data ต่อท้ายแต่ละข้อย่อย
+#         #     if idx == 10:
+#         #         measure_key = f"m{idx}"
+#         #         voltage_text = _format_voltage_measurement(measures, measure_key, sub_index - 1)
+#         #         if voltage_text:
+#         #             lines.append(f"{SUB_INDENT}{voltage_text}")
+#         # ---------- ข้อความในคอลัมน์ Item ----------
+#         lines: List[str] = [f"{MAIN_INDENT}{idx}) {main_title}"]
+
+#         # ข้อ 9: แสดง voltage data แบบย่อใน Item (แนวนอน)
+#         if idx == 9:
+#             measure_key = f"m{idx}"
+#             voltage_text = _format_voltage_measurement(measures, measure_key)
+#             if voltage_text:
+#                 # แปลงจากแนวตั้งเป็นแนวนอน
+#                 voltage_lines = voltage_text.strip().split('\n')
+#                 voltage_horizontal = ', '.join(voltage_lines[:3])  # แสดงแค่ 3 คู่แรก (L1-N, L1-G, N-G)
+#                 lines.append(f"{SUB_INDENT}{voltage_horizontal}")
+
+#         for sub_index, sub_key, stitle in subs:
+#             lines.append(f"{SUB_INDENT}{idx}.{sub_index}) {stitle}")
+
+#             # ข้อ 10 ให้เพิ่ม voltage data ต่อท้ายแต่ละข้อย่อย
+#             if idx == 10:
+#                 measure_key = f"m{idx}"
+#                 voltage_text = _format_voltage_measurement(measures, measure_key, sub_index - 1)
+#                 if voltage_text:
+#                     lines.append(f"{SUB_INDENT}{voltage_text}")
+
+
+#         text = "\n".join(lines)
+
+
+#         # ---------- ผลลัพธ์ในคอลัมน์ Result ----------
+#         result_lines: List[str] = []
+#         remark_lines: List[str] = []
+        
+#         if subs:
+#             # ใช้ผลของหัวข้อย่อยทีละบรรทัด
+#             for order_num, sub_key, stitle in subs:
+#                 # ใช้ alt_key เป็นหลักเสมอ
+#                 alt_key = f"r{idx}_{order_num}"
+#                 data_ = rows.get(alt_key) or rows.get(sub_key) or {}
+
+#                 raw_res = _extract_row_result(data_)
+#                 rmk = (data_.get("remark") or "").strip()
+
+#                 result_lines.append(_norm_result(raw_res))
+#                 remark_lines.append(rmk)
+
+#             # เริ่มต้นค่า default
+#             result_offset = 1      # ข้ามบรรทัดหัวข้อหลัก
+#             result_step = 1        # ปกติ 1 row ของ Result ต่อ 1 บรรทัดข้อความ
+
+#             # ข้อ 10 มี voltage data หลายบรรทัด
+#             if idx == 10:
+#                 # นับจำนวนบรรทัด voltage data (ปกติจะมี 3 หรือ 10 บรรทัด)
+#                 measure_key = f"m{idx}"
+#                 test_voltage = _format_voltage_measurement(measures, measure_key, 0)
+#                 if test_voltage:
+#                     voltage_lines = test_voltage.count('\n') + 1
+#                     result_step = 1 + voltage_lines  # 1 สำหรับชื่อข้อย่อย + จำนวนบรรทัด voltage
+#         else:
+#             # ไม่มี sub → ใช้ pf ของหัวข้อหลัก rN ตามเดิม
+#             data_main = rows.get(main_key) or {}
+#             raw_res = _extract_row_result(data_main)
+#             result_lines.append(_norm_result(raw_res))
+#             remark_lines.append((data_main.get("remark") or "").strip())
+#             result_offset = 0
+#             result_step = 1
+
+
+#         # ---------- Remark (รวม voltage + remark แยกบรรทัด) ----------
+#         remark_parts: List[str] = []
+
+#         # ข้อ 4–9 : พ่วงข้อมูลวัดแรงดันไฟฟ้าแบบเดิม (m4..m9)
+#         if main_key.lower() in ["r4", "r5", "r6", "r7", "r8"]:
+#             measure_key = f"m{idx}"
+#             voltage_text = _format_voltage_measurement(measures, measure_key)
+#             if voltage_text:
+#                 remark_parts.append(voltage_text)
+
+#         # ---------- main remark ----------
+#         data_main = rows.get(main_key) or {}
+#         main_rmk = (data_main.get("remark") or "").strip()
+#         if main_rmk and main_rmk != "-":
+#             remark_parts.append(main_rmk)
+
+#         # ---------- sub remark ----------
+#         if subs and result_offset == 1:
+#             formatted_remarks = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
+
+#             for i, (order_num, sub_key, stitle) in enumerate(subs):
+#                 rmk = remark_lines[i] if i < len(remark_lines) else ""
+
+#                 # แสดงเลขข้อย่อยเฉพาะเมื่อมี remark
+#                 if rmk and rmk != "-":
+#                     formatted_remarks.append(f"{idx}.{order_num}) {rmk}")
+
+#                 # ถ้าเป็นข้อ 10 ที่มี voltage data ให้เพิ่มบรรทัดว่างตามจำนวนบรรทัด voltage
+#                 if idx == 10:
+#                     measure_key = f"m{idx}"
+#                     voltage_text = _format_voltage_measurement(measures, measure_key, order_num - 1)
+#                     if voltage_text:
+#                         voltage_line_count = voltage_text.count('\n') + 1
+#                         for _ in range(voltage_line_count):
+#                             formatted_remarks.append("")
+
+#             remark_text = "\n".join(formatted_remarks)
+#             if remark_text.strip():
+#                 remark_parts.append(remark_text)
+
+#         # รวม remark
+#         remark = "\n".join(p for p in remark_parts if p.strip())
+
+
+#         items.append(
+#             {
+#                 "idx": idx,
+#                 "text": text,
+#                 "results": result_lines,
+#                 "remark": remark,
+#                 "result_offset": result_offset,
+#                 "result_step": result_step,
+#                 "remark": remark,
+                
+#             }
+#         )
+
+#     return items
 
 
 def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
@@ -1633,7 +1823,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
         # Pre-PM photos: สร้างข้อความแบบกำหนดเองสำหรับ Photos PRE
         # ดึงข้อมูล rows สำหรับ remark
-        rows_data = doc.get("rows") or {}
+        rows_data = doc.get("rows_pre") or {}
         remark_label = "Remark" if lang == "en" else "หมายเหตุ"
 
         # จัดกลุ่มหัวข้อหลักและข้อย่อย
@@ -1655,7 +1845,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             # ข้อ 10 เป็น dynamic - ดึงจาก rows ที่มีอยู่จริง
             if idx == 10:
                 for key in rows_data.keys():
-                    m = re.match(rf"^r{idx}_(\d+)$", key)
+                    m = re.match(rf"^r10_sub(\d+)$", key)
                     if m:
                         sub_idx = int(m.group(1))
                         stitle = f"เบรกเกอร์วงจรย่อยที่ {sub_idx}" if lang == "th" else f"Sub-circuit Breaker {sub_idx}"
@@ -1677,8 +1867,12 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             lines.append(f"{idx}) {main_title} (Pre-PM)")  # หัวข้อหลัก ไม่มี indent
 
             # ดึง remark ของหัวข้อหลัก
-            main_key = f"r{idx}"
-            main_data = rows_data.get(main_key) or {}
+            if idx == 9:
+                actual_key = "r9_main"
+            else:
+                actual_key = f"r{idx}"
+            
+            main_data = rows_data.get(actual_key) or {}
             main_remark = (main_data.get("remark") or "").strip()
             if main_remark and main_remark != "-":
                 lines.append(f"{remark_label}: {main_remark}")  # remark หัวข้อหลัก ไม่มี indent
@@ -1694,6 +1888,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                     lines.append(f"   {remark_label}: {sub_remark}")  # 3 spaces สำหรับ remark
 
             question_text_pre = "\n".join(lines)
+            
+            
             img_items = _get_photo_items_for_idx_pre(doc, idx)
 
             # คำนวณความสูงจริงของแถวรูป
@@ -1787,6 +1983,49 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     # ก่อนเริ่มลูป ให้คำนวณข้อมูลทั้งหมด เพื่อรู้ว่า row ไหนเป็นสุดท้าย
     checks_list = list(checks)
     
+    # for idx, it in enumerate(checks_list):
+    #     text = str(it.get("text", ""))
+    #     result_lines = it.get("results") or []
+    #     if not result_lines:
+    #         result_lines = [it.get("result", "na")]
+
+    #     remark = str(it.get("remark", "") or "")
+    #     result_offset = int(it.get("result_offset", 0))
+    #     result_step = int(it.get("result_step", 1))
+
+    #     item_lines, item_h = _split_lines(
+    #         pdf, item_w - 2 * PADDING_X, text, LINE_H
+    #     )
+
+    #     _, remark_h_raw = _split_lines(
+    #         pdf, remark_w - 2 * PADDING_X, remark, LINE_H
+    #     )
+
+    #     # ฐานความสูง remark (ถูกต้อง)
+    #     remark_h = max(remark_h_raw + 2 * PADDING_Y, ROW_MIN_H)
+
+    #     match_row = re.match(r"^(\d+)\.", text.strip())
+    #     row_num = int(match_row.group(1)) if match_row else 0
+
+    #     # กำหนดขั้นต่ำเฉพาะบางข้อ
+    #     if row_num in [3, 4, 5, 7, 8]:
+    #         remark_h = max(remark_h, LINE_H * 6.5)
+    #     elif row_num == 6:
+    #         remark_h = max(remark_h, LINE_H * 7.5)
+    #     # elif row_num == 9:
+    #     #     # # ถ้าเป็นหน้าแรก ไม่ต้องกำหนดความสูงขั้นต่ำเพราะจะขยายให้เต็มพื้นที่
+    #     #     # if pdf.page != 1:
+    #     #     remark_h = max(remark_h, LINE_H * 13.5)
+    #     # elif row_num == 9:
+    #     #     # ข้อ 9 มี voltage data 10 บรรทัด - นับจำนวนบรรทัดจริง
+    #     #     remark_lines_count = remark.count('\n') + 1 if remark.strip() else 0
+            
+    #     #     if remark_lines_count > 3:  # มี voltage data
+    #     #         # คำนวณจากความสูงจริง + buffer 10%
+    #     #         min_h_for_voltage = (remark_lines_count * LINE_H + 2 * PADDING_Y) * 1.1
+    #     #         remark_h = max(remark_h, min_h_for_voltage)
+    #     #     else:  # ไม่มี voltage data
+    #     #         remark_h = max(remark_h, LINE_H * 13.5)
     for idx, it in enumerate(checks_list):
         text = str(it.get("text", ""))
         result_lines = it.get("results") or []
@@ -1811,25 +2050,24 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         match_row = re.match(r"^(\d+)\.", text.strip())
         row_num = int(match_row.group(1)) if match_row else 0
 
-        # กำหนดขั้นต่ำเฉพาะบางข้อ
+        # นับจำนวนบรรทัดจริงใน text (รวมหัวข้อหลัก + ข้อย่อย)
+        text_line_count = text.count('\n') + 1
+        
+        # คำนวณความสูงขั้นต่ำตามจำนวนบรรทัด
+        min_item_h = text_line_count * LINE_H + 2 * PADDING_Y
+    
+        
         if row_num in [3, 4, 5, 7, 8]:
-            remark_h = max(remark_h, LINE_H * 3.5)
+            # 3 บรรทัด (หัวข้อ + 2 ข้อย่อย)
+            min_item_h = max(min_item_h, 3 * LINE_H + 2 * PADDING_Y)
+            remark_h = max(remark_h, 3 * LINE_H + 2 * PADDING_Y)
         elif row_num == 6:
-            remark_h = max(remark_h, LINE_H * 5.5)
-        # elif row_num == 9:
-        #     # # ถ้าเป็นหน้าแรก ไม่ต้องกำหนดความสูงขั้นต่ำเพราะจะขยายให้เต็มพื้นที่
-        #     # if pdf.page != 1:
-        #     remark_h = max(remark_h, LINE_H * 13.5)
-        elif row_num == 9:
-            # ข้อ 9 มี voltage data 10 บรรทัด - นับจำนวนบรรทัดจริง
-            remark_lines_count = remark.count('\n') + 1 if remark.strip() else 0
-            
-            if remark_lines_count > 3:  # มี voltage data
-                # คำนวณจากความสูงจริง + buffer 10%
-                min_h_for_voltage = (remark_lines_count * LINE_H + 2 * PADDING_Y) * 1.1
-                remark_h = max(remark_h, min_h_for_voltage)
-            else:  # ไม่มี voltage data
-                remark_h = max(remark_h, LINE_H * 13.5)
+            # 5 บรรทัด (หัวข้อ + 4 ข้อย่อย)
+            min_item_h = max(min_item_h, 5 * LINE_H + 2 * PADDING_Y)
+            remark_h = max(remark_h, 5 * LINE_H + 2 * PADDING_Y)
+        
+        # ใช้ความสูงที่คำนวณได้
+        item_h = max(item_h, min_item_h)
 
         result_block_h = max(ROW_MIN_H, len(result_lines) * LINE_H)
 
@@ -2121,18 +2359,18 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         if match:
             photo_indices.add(int(match.group(1)))
 
-    print(f"[DEBUG] Photos POST: Found photos for indices: {sorted(photo_indices)}")
+    # print(f"[DEBUG] Photos POST: Found photos for indices: {sorted(photo_indices)}")
 
     # สร้าง photo rows สำหรับทุกข้อที่มีรูป
     photo_rows = _build_photo_rows_grouped(combined_titles, doc.get("measures") or {}, doc.get("rows") or {}, lang)
 
     # เพิ่มข้อที่มีรูปแต่ไม่มีใน photo_rows
     existing_indices = {int(it.get("idx") or 0) for it in photo_rows}
-    print(f"[DEBUG] Existing indices from photo_rows: {sorted(existing_indices)}")
+    # print(f"[DEBUG] Existing indices from photo_rows: {sorted(existing_indices)}")
 
     for idx in sorted(photo_indices):
         if idx not in existing_indices and idx != 11:  # ข้อ 11 คือทำความสะอาด ไม่แสดงใน POST
-            print(f"[DEBUG] Adding missing index {idx} to photo_rows")
+            # print(f"[DEBUG] Adding missing index {idx} to photo_rows")
             # สร้าง row ใหม่สำหรับข้อที่มีรูปแต่ไม่มีใน checklist
             main_key = f"r{idx}"
             main_title = combined_titles.get(main_key, f"ข้อ {idx}" if lang == "th" else f"Item {idx}")
@@ -2147,7 +2385,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                     sub_idx = int(match.group(1))
                     sub_keys.append(sub_idx)
 
-            print(f"[DEBUG] Index {idx} has sub_keys: {sorted(sub_keys)}")
+            # print(f"[DEBUG] Index {idx} has sub_keys: {sorted(sub_keys)}")
 
             # เพิ่ม sub items
             for sub_idx in sorted(sub_keys):
@@ -2163,19 +2401,19 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
     # เรียงลำดับตาม idx
     photo_rows.sort(key=lambda x: int(x.get("idx") or 0))
-    print(f"[DEBUG] Final photo_rows indices: {[int(it.get('idx') or 0) for it in photo_rows]}")
+    # print(f"[DEBUG] Final photo_rows indices: {[int(it.get('idx') or 0) for it in photo_rows]}")
 
     for it in photo_rows:
         idx = int(it.get("idx") or 0)
 
         # ข้าม ข้อ 11 (ทำความสะอาด) ไม่แสดงใน photos post
-        if idx == 11:
-            continue
+        # if idx == 11:
+        #     continue
 
         question_text = it.get("text", "")  # ใช้ text ที่มี subitems แล้ว
         img_items = _get_photo_items_for_idx(doc, idx)
 
-        print(f"[DEBUG] Processing idx={idx}, found {len(img_items)} images")
+        # print(f"[DEBUG] Processing idx={idx}, found {len(img_items)} images")
 
         # คำนวณความสูงจริงของแถวรูป
         _, text_h = _split_lines(pdf, q_w - 2 * PADDING_X, question_text, LINE_H)

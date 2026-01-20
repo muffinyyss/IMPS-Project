@@ -410,7 +410,7 @@ def _load_image_source_from_urlpath(
     
     # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
     if not url_path.startswith("http"):  # ข้าม http URL
-        print("[DEBUG] 📂 ลองหาใน backend/uploads...")
+        # print("[DEBUG] 📂 ลองหาใน backend/uploads...")
         
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
@@ -424,7 +424,7 @@ def _load_image_source_from_urlpath(
             local_path = uploads_root / clean_path
             
             if local_path.exists() and local_path.is_file():
-                print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
+                # print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
             else:
                 print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
@@ -1256,7 +1256,7 @@ def _draw_photos_row(
             if img_buf is not None:
                 try:
                     pdf.image(img_buf, x=cx, y=cy, w=slot_w, h=PHOTO_IMG_MAX_H)
-                    print(f"[DEBUG] ✅ ใส่รูปสำเร็จ: {url_path}")
+                    # print(f"[DEBUG] ✅ ใส่รูปสำเร็จ: {url_path}")
                 except Exception as e:
                     print(f"[ERROR] ❌ ใส่รูปล้มเหลว {url_path}: {e}")
                     import traceback
