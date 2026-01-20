@@ -668,6 +668,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
         if not subs:
             title = f"{main_idx}) {main_title}"
             remark_user = (main_data.get("remark") or "").strip()
+            remark_user = "" if remark_user == "-" else remark_user   # 🔥 ตัด "-" ทิ้ง
             
             # เพิ่มค่า measures สำหรับข้อ 10
             if main_idx == 10:
@@ -721,7 +722,10 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc.
                 lines.append(f"   \t{main_idx}.{sub_idx}) {sub_title}")
                 results.append(_norm_result(sub_data.get("pf", "")))
-                remarks.append((sub_data.get("remark") or "").strip())
+                # remarks.append((sub_data.get("remark") or "").strip())
+                r = (sub_data.get("remark") or "").strip()
+                remarks.append("" if r == "-" else r)   
+
             
             # เพิ่มค่า measures สำหรับข้อ 10 (CP แต่ละหัว)
             if main_idx == 10:
@@ -736,9 +740,10 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
             remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
             for i, r in enumerate(remarks):
                 sub_idx = subs[i][0]
-                # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
-                remark_text = r if (r and r != "-") else "-"
-                remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
+                if r:   # มี remark จริง
+                    remark_lines.append(f"{main_idx}.{sub_idx}) {r}")
+                else:
+                    remark_lines.append("")   # 🔥 ว่างจริง ไม่ใส่ "-"
             
             combined_remark = "\n".join(remark_lines)
             
@@ -747,7 +752,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 "key": main_key,
                 "text": "\n".join(lines),
                 "result": results,
-                "remark": combined_remark if combined_remark else "-",
+                "remark": combined_remark if combined_remark else "",
                 "has_subs": True,
                 "sub_count": sub_count,
             })
@@ -1733,6 +1738,9 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         remark = str(it.get("remark", "") or "")
         has_subs = it.get("has_subs", False)
         sub_count = it.get("sub_count", 0)
+        
+        if remark.strip() == "-":
+            remark = ""
 
         # --- คำนวณความสูง Item ---
         _, item_h = _split_lines(

@@ -17,13 +17,6 @@ try:
 except Exception:
     requests = None
 
-# -------------------- Title --------------------
-DOCUMENT_TITLE_POST = "Preventive Maintenance Checklist - CB Box (POST)"
-DOCUMENT_TITLE_POST_CONT = "Preventive Maintenance Checklist - CB Box (POST Continued)"
-DOCUMENT_TITLE_PHOTO_CONT = "Preventive Maintenance - Photos (Continued)"
-DOCUMENT_TITLE_PHOTO_PRE = "Preventive Maintenance - Photos (PRE)"
-DOCUMENT_TITLE_PHOTO_POST = "Preventive Maintenance - Photos (POST)"
-
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
 # -------------------- Fonts TH --------------------
@@ -59,23 +52,25 @@ ROW_TITLES_TH = {
     "r1": "การไฟฟ้าฝ่ายจำหน่าย",
     "r2": "ตรวจสอบอุปกรณ์ตัดวงจรไฟฟ้า",
     "r3": "ตรวจสอบสภาพทั่วไป",
-    "r4": "ตรวจสอบสภาพดักซีล,ซิลิโคนกันซึม",
-    "r5": "อุปกรณ์ตัดวงจรไฟฟ้า \n(Safety Switch / Circuit Breaker)",
-    "r6": "ทดสอบปุ่ม Trip Test (Circuit Breaker)",
-    "r7": "ตรวจสอบจุดต่อทางไฟฟ้าและขันแน่น",
-    "r8": "ทำความสะอาดตู้ MDB"
+    "r4": "ตรวจสอบสภาพดักซีล, ซิลิโคนกันซึม",
+    "r5": "ตรวจสอบแรงดันอุปกรณ์ตัดวงจรไฟฟ้า \n(Safety Switch / Circuit Breaker)",
+    "r6": "ปุ่มฉุกเฉิน",
+    "r7": "ทดสอบปุ่ม Trip Test",
+    "r8": "ตรวจสอบจุดต่อทางไฟฟ้าและขันแน่น",
+    "r9": "ทำความสะอาดตู้อุปกรณ์"
 }
 
 # English version
 ROW_TITLES_EN = {
-    "r1": "Provincial Electricity Authority",
-    "r2": "Check Circuit Breaker Equipment",
-    "r3": "Check General Condition",
-    "r4": "Check Seal, Silicone Waterproofing",
-    "r5": "Circuit Breaker Equipment \n(Safety Switch / Circuit Breaker)",
-    "r6": "Test Trip Test Button (Circuit Breaker)",
-    "r7": "Check Electrical Connection Points and Tighten",
-    "r8": "Clean MDB Cabinet"
+    "r1": "Power distribution authority",
+    "r2": "Check circuit breaker device",
+    "r3": "General condition inspection",
+    "r4": "Check sealant and silicone",
+    "r5": "Check voltage of circuit breaker \n(Safety Switch / Circuit Breaker)",
+    "r6": "Emergency button",
+    "r7": "Test Trip Test button (Circuit Breaker)",
+    "r8": "Check electrical connections and tighten",
+    "r9": "Clean equipment cabinet"
 }
 
 # Default to Thai
@@ -354,7 +349,7 @@ def _load_image_source_from_urlpath(
     
     # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
     if not url_path.startswith("http"):  # ข้าม http URL
-        print("[DEBUG] 📂 ลองหาใน backend/uploads...")
+        # print("[DEBUG] 📂 ลองหาใน backend/uploads...")
         
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
@@ -368,7 +363,7 @@ def _load_image_source_from_urlpath(
             local_path = uploads_root / clean_path
             
             if local_path.exists() and local_path.is_file():
-                print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
+                # print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
             else:
                 print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
@@ -468,40 +463,6 @@ def _collect_photos_for_main_idx(photos: dict, idx: int) -> List[dict]:
 
     return out
 
-# def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
-#     photos = ((doc.get("photos") or {}).get(f"g{idx}") or [])
-#     out = []
-#     for p in photos:
-#         if isinstance(p, dict) and p.get("url"):
-#             out.append(p)
-#     return out[:PHOTO_MAX_PER_ROW]
-
-# def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
-#     """
-#     ✅ แก้: ลองหา photos_pre ก่อน ถ้าไม่มีให้ใช้ photos แทน
-#     """
-#     # 1. ลองหา photos_pre ก่อน
-#     photos_pre = doc.get("photos_pre")
-#     if photos_pre and isinstance(photos_pre, dict):
-#         photos = (photos_pre or {}).get(f"g{idx}") or []
-#         if photos:
-#             out = []
-#             for p in photos:
-#                 if isinstance(p, dict) and p.get("url"):
-#                     out.append(p)
-#             return out[:PHOTO_MAX_PER_ROW]
-    
-#     # 2. ถ้าไม่มี photos_pre ให้ใช้ photos แทน (fallback)
-#     photos_regular = doc.get("photos")
-#     if photos_regular and isinstance(photos_regular, dict):
-#         photos = (photos_regular or {}).get(f"g{idx}") or []
-#         out = []
-#         for p in photos:
-#             if isinstance(p, dict) and p.get("url"):
-#                 out.append(p)
-#         return out[:PHOTO_MAX_PER_ROW]
-    
-#     return []
 def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     photos = doc.get("photos") or {}
     out = _collect_photos_for_main_idx(photos, idx)
@@ -620,7 +581,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 "key": main_key,
                 "text": title,
                 "result": _norm_result(main_data.get("pf", "")),
-                "remark": remark_user,
+                "remark": "" if remark_user == "-" else remark_user,
                 "has_subs": False,
             })
 
@@ -653,9 +614,9 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
             remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
             for i, r in enumerate(remarks):
                 sub_idx = subs[i][0]
-                # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
-                remark_text = r if (r and r != "-") else "-"
-                remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
+                # แสดง remark เฉพาะเมื่อมีค่าและไม่ใช่ "-"
+                if r and r != "-":
+                    remark_lines.append(f"{main_idx}.{sub_idx}) {r}")
 
             combined_remark = "\n".join(remark_lines)
 
@@ -1285,9 +1246,12 @@ class HTML2PDF(FPDF, HTMLMixin):
     pass
 
 class ReportPDF(HTML2PDF):
-    def __init__(self, *args, issue_id="-", **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, issue_id="-", doc_name="-", **kwargs):
+        self._doc_name = doc_name
         self.issue_id = issue_id
+        
+        super().__init__(*args, **kwargs)
+        
         self._section = "checklist"  # "checklist" = วาด signature, "photos" = ไม่วาด
         self._pm_date_th = ""
         self._base_font_name = "Arial"
@@ -1314,6 +1278,7 @@ class ReportPDF(HTML2PDF):
                 self,
                 self._base_font_name,
                 issue_id=self.issue_id,
+                doc_name=self._doc_name,
                 label_page=self._label_page,
                 label_issue_id=self._label_issue_id,
                 label_doc_name=self._label_doc_name,
@@ -1361,10 +1326,11 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
     pm_date_th = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
+    doc_name = str(doc.get("doc_name", "-"))
     dropdownQ1 = str(doc.get("dropdownQ1", "-"))
     dropdownQ2 = str(doc.get("dropdownQ2", "-"))
 
-    pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id)
+    pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
     pdf._pm_date_th = pm_date_th
     pdf._section = "checklist"
 
@@ -1526,7 +1492,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         for it in checks_pre:
             idx = int(it.get("idx") or 0)
 
-            if idx == 8:
+            if idx == 9:
                 continue
 
             # ========== สร้าง question text พร้อมข้อย่อยและ remark ==========
@@ -1867,13 +1833,10 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
              comment_x + comment_item_w + comment_result_w + comment_remark_w, page_bottom)
 
     # ================================================================================
-    # 📸 ส่วนที่ 3: PHOTOS POST
+    # ส่วนที่ 3: PHOTOS POST
     # ================================================================================
-    # ⭐ สำคัญ: ต้อง add_page() ก่อนเปลี่ยน _section
-    # เพราะ add_page() จะเรียก footer() ของหน้าก่อนหน้า (Checklist POST สุดท้าย)
-    pdf.add_page()  # footer() ของหน้า Checklist วาด signature ✅
-    pdf._section = "photos"  # เปลี่ยนหลัง add_page() เพื่อให้หน้า Photos POST ไม่มี signature
-
+    pdf.add_page() 
+    pdf._section = "photos"  
     # header() จะถูกเรียกอัตโนมัติโดย add_page()
     y = pdf.get_y()
 
@@ -1892,11 +1855,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     def _ensure_space_photo_post(height_needed: float):
         nonlocal y
         if y + height_needed > (pdf.h - pdf.b_margin):
-            # ⭐ _section เป็น "photos" อยู่แล้ว (ถูกตั้งค่าหลังไปหน้า Photos แรก)
-            # ดังนั้น footer() จะ return ไม่วาด signature โดยอัตโนมัติ
             pdf.add_page()
 
-            # header() จะถูกเรียกอัตโนมัติโดย add_page()
             y = pdf.get_y()
             pdf.set_xy(x0, y)
             pdf.set_font(base_font, "B", 13)

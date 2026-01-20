@@ -61,16 +61,16 @@ ROW_TITLES_TH = {
 
 # English version
 ROW_TITLES_EN = {
-    "r1": "Check Station Structure",
-    "r2": "Check Station Structure Color",
-    "r3": "Check Station Surface",
-    "r4": "Check Station Surface Color",
-    "r5": "Check Wheel Stopper",
-    "r6": "Check EV Charger Bollard",
+    "r1": "Check station structure",
+    "r2": "Check station structure paint",
+    "r3": "Check station surface",
+    "r4": "Check station surface paint",
+    "r5": "Check wheel stopper",
+    "r6": "Check charger bumper pole",
     "r7": "Lighting",
-    "r8": "Station Name Sign",
-    "r9": "Instruction Sign",
-    "r10": "Check Fire Extinguisher",
+    "r8": "Station sign",
+    "r9": "Usage instruction sign",
+    "r10": "Check fire extinguisher",
     "r11": "Cleaning"
 }
 
@@ -82,24 +82,32 @@ ROW_TITLES = ROW_TITLES_TH
 SUB_ROW_TITLES_TH = {
     "r7_1": "ตรวจสอบสภาพโคมไฟส่องสว่าง",
     "r7_2": "ตรวจสอบการทำงาน",
+    
     "r8_1": "ตรวจสอบสภาพป้ายชื่อสถานี",
     "r8_2": "ตรวจสอบการทำงาน",
+    
     "r9_1": "ตรวจสอบสภาพป้ายวิธีใช้งาน",
     "r9_2": "ตรวจสอบการทำงาน",
+    
     "r10_1": "ตรวจสอบสภาพทั่วไป",
     "r10_2": "ตรวจสอบเกจวัดแรงดัน",
+    "r10_3": "ตรวจสอบของเหลวภายใน",
 }
 
 # English version
 SUB_ROW_TITLES_EN = {
-    "r7_1": "Check Lighting Condition",
-    "r7_2": "Check Function",
-    "r8_1": "Check Station Name Sign Condition",
-    "r8_2": "Check Function",
-    "r9_1": "Check Instruction Sign Condition",
-    "r9_2": "Check Function",
-    "r10_1": "Check General Condition",
-    "r10_2": "Check Voltage Gauge",
+    "r7_1": "Check lighting fixture condition",
+    "r7_2": "Check operation",
+    
+    "r8_1": "Check station sign condition",
+    "r8_2": "Check operation",
+    
+    "r9_1": "Check instruction sign condition",
+    "r9_2": "Check operation",
+    
+    "r10_1": "Check general condition",
+    "r10_2": "Check pressure gauge",
+    "r10_3": "Check internal liquid",
 }
 
 # Default to Thai
@@ -361,56 +369,56 @@ def _load_image_source_from_urlpath(
         return None, None
 
     # 🔥 เพิ่ม debug ที่นี่
-    print(f"\n{'='*80}")
-    print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
-    print(f"{'='*80}")
+    # print(f"\n{'='*80}")
+    # print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
+    # print(f"{'='*80}")
 
     # case: data URL
-    if url_path.startswith("data:image/"):
-        print("[DEBUG] ✅ เป็น data URL")
-        try:
-            head, b64 = url_path.split(",", 1)
-            mime = head.split(";")[0].split(":", 1)[1]
-            bio = BytesIO(base64.b64decode(b64))
-            img_type = (
-                "PNG"
-                if "png" in mime
-                else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
-            )
-            print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
-            return bio, img_type
-        except Exception as e:
-            print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
-            return None, None
+    # if url_path.startswith("data:image/"):
+    #     # print("[DEBUG] ✅ เป็น data URL")
+    #     try:
+    #         head, b64 = url_path.split(",", 1)
+    #         mime = head.split(";")[0].split(":", 1)[1]
+    #         bio = BytesIO(base64.b64decode(b64))
+    #         img_type = (
+    #             "PNG"
+    #             if "png" in mime
+    #             else ("JPEG" if "jpeg" in mime or "jpg" in mime else "")
+    #         )
+    #         print(f"[DEBUG] ✅ แปลง data URL สำเร็จ (type: {img_type})")
+    #         return bio, img_type
+    #     except Exception as e:
+    #         print(f"[DEBUG] ❌ แปลง data URL ล้มเหลว: {e}")
+    #         return None, None
 
     # ปรับลำดับ: เช็ค local file ก่อน (เร็วที่สุด) แทนที่จะ download
     
     # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
     if not url_path.startswith("http"):  # ข้าม http URL
-        print("[DEBUG] 📂 ลองหาใน backend/uploads...")
+        # print("[DEBUG] 📂 ลองหาใน backend/uploads...")
         
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
         
-        print(f"[DEBUG]   📍 backend_root = {backend_root}")
-        print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
-        print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
+        # print(f"[DEBUG]   📍 backend_root = {backend_root}")
+        # print(f"[DEBUG]   📍 uploads_root = {uploads_root}")
+        # print(f"[DEBUG]   📍 uploads_root.exists() = {uploads_root.exists()}")
         
         if uploads_root.exists():
             clean_path = url_path.lstrip("/")
-            print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
+            # print(f"[DEBUG]   🧹 clean_path (หลัง lstrip) = {clean_path}")
             
             if clean_path.startswith("uploads/"):
                 clean_path = clean_path[8:]
-                print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
+                # print(f"[DEBUG]   🧹 clean_path (หลังตัด 'uploads/') = {clean_path}")
             
             local_path = uploads_root / clean_path
-            print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
-            print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
-            print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
+            # print(f"[DEBUG]   📍 local_path (เต็ม) = {local_path}")
+            # print(f"[DEBUG]   📍 local_path.exists() = {local_path.exists()}")
+            # print(f"[DEBUG]   📍 local_path.is_file() = {local_path.is_file() if local_path.exists() else 'N/A'}")
             
             if local_path.exists() and local_path.is_file():
-                print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
+                # print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
             else:
                 print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
@@ -501,7 +509,7 @@ _IMAGE_CACHE = {}
 def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optional[str]]:
     # ตรวจสอบ cache ก่อน
     if url_path in _IMAGE_CACHE:
-        _log(f"[IMG] cache hit: {url_path}")
+        # _log(f"[IMG] cache hit: {url_path}")
         cached_buf, cached_type = _IMAGE_CACHE[url_path]
         # สร้าง BytesIO ใหม่เพื่อ reset position
         new_buf = BytesIO(cached_buf.getvalue())
@@ -517,14 +525,14 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
     try:
         img_buf = load_image_autorotate(src)
         _IMAGE_CACHE[url_path] = (img_buf, img_type)
-        _log(f"[IMG] cached: {url_path}")
+        # _log(f"[IMG] cached: {url_path}")
         
         # สร้าง BytesIO ใหม่เพื่อ return (เพราะ cache ใช้ต้นฉบับ)
         new_buf = BytesIO(img_buf.getvalue())
         return new_buf, img_type
         
     except Exception as e:
-        _log(f"[IMG] auto-rotate error: {e}")
+        # _log(f"[IMG] auto-rotate error: {e}")
         return None, None
 
 
@@ -551,9 +559,9 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
     backend_root = Path(__file__).resolve().parents[2]   # backend/
     folder = backend_root / "uploads" / "stationpm" / station_id / doc_id / f"r{idx}"
 
-    _log(f"[PHOTO] try folder: {folder}")
+    # _log(f"[PHOTO] try folder: {folder}")
     if not folder.exists():
-        _log(f"[PHOTO] folder not exists: {folder}")
+        # _log(f"[PHOTO] folder not exists: {folder}")
         return []
 
     for f in sorted(folder.iterdir()):
@@ -562,7 +570,7 @@ def _get_photo_items_for_idx(doc: dict, idx: int) -> List[dict]:
             if len(out) >= PHOTO_MAX_PER_ROW:
                 break
 
-    _log(f"[PHOTO] found {len(out)} files for r{idx}")
+    # _log(f"[PHOTO] found {len(out)} files for r{idx}")
     return out
 
 def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
@@ -587,9 +595,9 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
     backend_root = Path(__file__).resolve().parents[2]   # backend/
     folder = backend_root / "uploads" / "stationpm" / station_id / doc_id / f"r{idx}"
 
-    _log(f"[PHOTO] try folder: {folder}")
+    # _log(f"[PHOTO] try folder: {folder}")
     if not folder.exists():
-        _log(f"[PHOTO] folder not exists: {folder}")
+        # _log(f"[PHOTO] folder not exists: {folder}")
         return []
 
     for f in sorted(folder.iterdir()):
@@ -598,7 +606,7 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
             if len(out) >= PHOTO_MAX_PER_ROW:
                 break
 
-    _log(f"[PHOTO] found {len(out)} files for r{idx}")
+    # _log(f"[PHOTO] found {len(out)} files for r{idx}")
     return out
 
 
@@ -661,7 +669,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
 
         # สร้างข้อย่อยในรูปแบบ "idx.sub_idx) title" พร้อม indent
         for sub_idx, sub_key, stitle in sub_titles:
-            lines.append(f"   \t{main_idx}.{sub_idx}) {stitle}")
+            lines.append(f"    {main_idx}.{sub_idx}) {stitle}") 
 
         text = "\n".join(lines)
 
@@ -696,18 +704,19 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
         main_rmk = (data_main.get("remark") or "").strip()
 
         if sub_titles and result_offset == 1:
-            # เมื่อมีหัวข้อย่อย ให้สร้าง remark แบบแยกบรรทัดทุกข้อพร้อมเลขกำกับ
             formatted_remarks = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
+            
             for i, (sub_idx, sub_key, stitle) in enumerate(sub_titles):
                 rmk = remark_lines[i] if i < len(remark_lines) else ""
-                # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
-                remark_text = rmk if (rmk and rmk != "-") else "-"
-                formatted_remarks.append(f"{main_idx}.{sub_idx}) {remark_text}")
-
+                
+                if rmk and rmk != "-":
+                    formatted_remarks.append(f"{main_idx}.{sub_idx}) {rmk}")
+                else:
+                    formatted_remarks.append("")
+            
             remark = "\n".join(formatted_remarks)
         else:
-            # เมื่อไม่มีหัวข้อย่อย ให้ใช้ remark ของหัวข้อหลัก
-            remark = main_rmk if main_rmk else ""
+            remark = "" if main_rmk == "-" else (main_rmk if main_rmk else "")
 
         # ---------- สร้าง item ----------
         items.append({
@@ -857,12 +866,7 @@ def _draw_signature_block(
     label_witnessed: str = "Witnessed by",  
     label_date: str = "Date :",             
 ) -> float:
-    """
-    วาดช่องลายเซ็น
-    
-    Args:
-        y_bottom: ถ้ากำหนด ให้วาดโดยติดด้านล่านของค่านี้ (จัดตำแหน่งให้เต็มหน้า)
-    """
+
     signer_labels = [label_performed, label_approved, label_witnessed]
     col_widths = [item_w, result_w, remark_w]
 
@@ -1194,7 +1198,7 @@ def _draw_photos_row(
                 try:
                     pdf.image(img_buf, x=cx, y=cy, w=slot_w, h=PHOTO_IMG_MAX_H)
                 except Exception as e:
-                    _log(f"[IMG] place error: {e}")
+                    # _log(f"[IMG] place error: {e}")
                     pdf.set_xy(cx, cy + (PHOTO_IMG_MAX_H - LINE_H) / 2.0)
                     pdf.cell(slot_w, LINE_H, "-", border=0, align="C")
             else:
@@ -1243,7 +1247,6 @@ def _output_pdf_bytes(pdf: FPDF) -> bytes:
 class HTML2PDF(FPDF, HTMLMixin):
     pass
 
-
 class ReportPDF(HTML2PDF):
     def __init__(self, *args, issue_id="-", doc_name="-", **kwargs):
         super().__init__(*args, **kwargs)
@@ -1270,7 +1273,6 @@ class ReportPDF(HTML2PDF):
         self._label_date = "Date :"
 
     def header(self):
-        # ทุกหน้าเรียกอัตโนมัติ
         _draw_header(
             self,
             self._base_font_name,
@@ -1283,12 +1285,9 @@ class ReportPDF(HTML2PDF):
             addr_line2=self._addr_line2,
             addr_line3=self._addr_line3
         )
-        # self.ln(10)
 
     def footer(self):
-        # ⭐ Photos section ไม่ต้องมีลายเซ็น
-        # _section == "photos" จะถูกตั้งค่าหลังจาก add_page() ไปหน้า Photos แรก
-        # ดังนั้นหน้า Photos ทุกหน้าจะไม่มี signature
+
         if self._section == "photos":
             return
 
@@ -1317,7 +1316,6 @@ class ReportPDF(HTML2PDF):
         )
 
 def _extract_doc_id(doc: dict) -> str:
-    """ดึง _id ของเอกสารให้เป็น string"""
     _id = doc.get("_id")
     if isinstance(_id, str):
         return _id
@@ -1488,7 +1486,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     # 📸 ส่วนที่ 1: PHOTOS PRE (ถ้ามี)
     # ================================================================================
     if has_pre_photos:
-        pdf._section = "photos"  # Photos ไม่มี signature
+        pdf._section = "photos" 
 
         # ========== วาดหัว Photos PRE ==========
         pdf.set_xy(x0, y)
@@ -1533,12 +1531,6 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             item_text = it.get("text", "")
             item_remark = it.get("remark", "")
 
-            # Debug logging
-            if PDF_DEBUG:
-                _log(f"[PRE] idx={idx}, has_subs={has_subs}")
-                _log(f"[PRE] item_text={item_text[:100] if item_text else 'None'}")
-                _log(f"[PRE] item_remark={item_remark[:100] if item_remark else 'None'}")
-
             # ตรวจสอบว่ามีข้อย่อยหรือไม่ (จากการมี newline หรือ flag has_subs)
             has_subs = has_subs or ("\n" in item_text)
 
@@ -1559,8 +1551,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                         sub_key = match.group(1)  # เช่น "7.1"
                         sub_remark = match.group(2).strip()
                         remark_dict[sub_key] = sub_remark
-                        if PDF_DEBUG:
-                            _log(f"[PRE] Parsed remark: {sub_key} -> {sub_remark[:50] if sub_remark else 'empty'}")
+                        # if PDF_DEBUG:
+                        #     _log(f"[PRE] Parsed remark: {sub_key} -> {sub_remark[:50] if sub_remark else 'empty'}")
 
                 # สร้าง question text ใหม่พร้อม remark
                 result_lines = []
@@ -1579,12 +1571,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                         sub_match = re.match(r"(\d+\.\d+)\)", line)
                         if sub_match:
                             sub_key = sub_match.group(1)
-                            if PDF_DEBUG:
-                                _log(f"[PRE] Looking for sub_key={sub_key} in remark_dict={list(remark_dict.keys())}")
                             if sub_key in remark_dict and remark_dict[sub_key] and remark_dict[sub_key] != "-":
                                 result_lines.append(f"   {label_remark}: {remark_dict[sub_key]}")
-                                if PDF_DEBUG:
-                                    _log(f"[PRE] Added remark for {sub_key}")
 
                 question_text_pre = "\n".join(result_lines)
             else:
@@ -1849,10 +1837,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     # ================================================================================
     # 📸 ส่วนที่ 3: PHOTOS POST
     # ================================================================================
-    # ⭐ สำคัญ: ต้อง add_page() ก่อนเปลี่ยน _section
-    # เพราะ add_page() จะเรียก footer() ของหน้าก่อนหน้า (Checklist POST สุดท้าย)
-    pdf.add_page()  # footer() ของหน้า Checklist วาด signature ✅
-    pdf._section = "photos"  # เปลี่ยนหลัง add_page() เพื่อให้หน้า Photos POST ไม่มี signature
+    pdf.add_page()  
+    pdf._section = "photos" 
 
     # header() จะถูกเรียกอัตโนมัติโดย add_page()
     y = pdf.get_y()
