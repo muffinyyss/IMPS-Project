@@ -550,6 +550,50 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
 
 
 # -------------------- Measurement / Data formatting --------------------
+# def _format_voltage_measurement_order_full(measures: dict, key: str) -> str:
+#     """แสดงค่าแรงดันไฟฟ้าสำหรับ Breaker Main (m4, m5, m6, m7, m8)"""
+#     ms = (measures or {}).get(key) or {}
+#     if not ms:
+#         return "-"
+    
+#     # normalize key
+#     norm_ms = {}
+#     for k, v in ms.items():
+#         nk = str(k).strip().replace("–", "-").replace(" ", "")
+#         norm_ms[nk.upper()] = v
+        
+#     # 10 ค่า
+#     order_full = [
+#         "L1-L2", "L2-L3", "L3-L1",
+#         "L1-N", "L2-N", "L3-N",
+#         "L1-G", "L2-G", "L3-G",
+#         "N-G"
+#     ]
+    
+#     def fmt(k: str) -> str:
+#         d = norm_ms.get(k.upper()) or {}
+#         val = str(d.get("value", "")).strip()
+#         unit = str(d.get("unit", "")).strip()
+#         return f"{k} = {val}{unit}" if val else f"{k} = -"
+    
+#     # วาง 3 ค่าต่อบรรทัด
+#     lines = []
+#     group = []
+#     for k in order_full:
+#         group.append(fmt(k))
+#         if len(group) == 3:
+#             lines.append(", ".join(group))
+#             group = []
+#     if group:
+#         lines.append(", ".join(group))
+    
+#     # เพิ่มการเยื้อง 8 ช่องว่างให้บรรทัดที่ 2+ เพื่อให้ตรงกับบรรทัดแรก
+#     if len(lines) > 1:
+#         result = [lines[0]]
+#         for line in lines[1:]:
+#             result.append("        " + line)
+#         return "\n".join(result)
+#     return "\n".join(lines)
 def _format_voltage_measurement_order_full(measures: dict, key: str) -> str:
     """แสดงค่าแรงดันไฟฟ้าสำหรับ Breaker Main (m4, m5, m6, m7, m8)"""
     ms = (measures or {}).get(key) or {}
@@ -587,12 +631,8 @@ def _format_voltage_measurement_order_full(measures: dict, key: str) -> str:
     if group:
         lines.append(", ".join(group))
     
-    # เพิ่มการเยื้อง 8 ช่องว่างให้บรรทัดที่ 2+ เพื่อให้ตรงกับบรรทัดแรก
-    if len(lines) > 1:
-        result = [lines[0]]
-        for line in lines[1:]:
-            result.append("        " + line)
-        return "\n".join(result)
+    # เพิ่มการเยื้อง 8 ช่องว่างให้ทุกบรรทัด เพื่อให้ตรงกับข้อย่อย (4.1))
+    # indented_lines = ["        " + line for line in lines]
     return "\n".join(lines)
 
 def _format_voltage_measurement_simple(measures: dict, key: str) -> str:
@@ -696,6 +736,10 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
         if not subs:
             title = f"{main_idx}) {main_title}"
             remark_user = (main_data.get("remark") or "").strip()
+            
+            # ถ้า remark เป็น "-" ให้เปลี่ยนเป็นค่าว่าง
+            if remark_user == "-":
+                remark_user = ""
             
             # เพิ่มค่า measures สำหรับข้อ 10
             if main_idx == 10:
@@ -845,24 +889,55 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                         else:
                             sub_title = f"Breaker Main ตัวที่ {sub_idx}"
                 
+                # # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc. - เยื้อง 4 ช่องว่าง
+                # lines.append(f"    {main_idx}.{sub_idx}) {sub_title}")
+
+                # # เพิ่มข้อมูล voltage ถ้ามี (ในบรรทัดถัดไป) - เยื้อง 8 ช่องว่างให้ตรงกับข้อความใน sub_title
+                # if original_i in voltage_data:
+                #     lines.append(f"        {voltage_data[original_i]}")
                 # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc. - เยื้อง 4 ช่องว่าง
                 lines.append(f"    {main_idx}.{sub_idx}) {sub_title}")
 
-                # เพิ่มข้อมูล voltage ถ้ามี (ในบรรทัดถัดไป) - เยื้อง 8 ช่องว่างให้ตรงกับข้อความใน sub_title
+                # เพิ่มข้อมูล voltage ถ้ามี (ในบรรทัดถัดไป) - เยื้อง 4 ช่องว่างเหมือนกับข้อย่อย
                 if original_i in voltage_data:
-                    lines.append(f"        {voltage_data[original_i]}")
+                    # แยกแต่ละบรรทัดของ voltage data และเพิ่มการเยื้อง 4 ช่องว่าง
+                    voltage_lines = voltage_data[original_i].split('\n')
+                    for v_line in voltage_lines:
+                        lines.append(f"    {v_line}")
 
                 results.append(_norm_result(sub_data.get("pf", "")))
                 remarks.append((sub_data.get("remark") or "").strip())
 
+            # remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
+            # for i, (original_i, sub_idx, sub_key) in enumerate(filtered_subs):
+            #     r = remarks[i]
+            #     # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
+            #     remark_text = r if (r and r != "-") else "-"
+
+            #     # แสดง remark text (ตรงกับข้อย่อย)
+            #     remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
+
+            #     # เพิ่มบรรทัดว่างให้ตรงกับจำนวนบรรทัดของ voltage measurements
+            #     # ถ้ามี voltage data ให้นับจำนวนบรรทัด (นับจาก \n + 1)
+            #     if original_i in voltage_data:
+            #         voltage_text = voltage_data[original_i]
+            #         # จำนวนบรรทัดจริง = จำนวน \n + 1
+            #         voltage_line_count = voltage_text.count('\n') + 1
+            #         # เพิ่มบรรทัดว่างเท่ากับจำนวนบรรทัดของ voltage
+            #         for _ in range(voltage_line_count):
+            #             remark_lines.append("")
+            
+            # combined_remark = "\n".join(remark_lines)
             remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
             for i, (original_i, sub_idx, sub_key) in enumerate(filtered_subs):
                 r = remarks[i]
-                # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
-                remark_text = r if (r and r != "-") else "-"
-
-                # แสดง remark text (ตรงกับข้อย่อย)
-                remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
+                
+                # แสดง remark เฉพาะที่มีค่าและไม่ใช่ "-"
+                if r and r.strip() and r.strip() != "-":
+                    remark_lines.append(f"{main_idx}.{sub_idx}) {r}")
+                else:
+                    # ถ้าไม่มี remark ให้เพิ่มบรรทัดว่าง
+                    remark_lines.append("")
 
                 # เพิ่มบรรทัดว่างให้ตรงกับจำนวนบรรทัดของ voltage measurements
                 # ถ้ามี voltage data ให้นับจำนวนบรรทัด (นับจาก \n + 1)
@@ -1639,6 +1714,38 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                     else:
                         remark_dict[current_sub_key] = first_line
                 
+                # # สร้าง question text ใหม่พร้อม remark
+                # result_lines = []
+                # current_sub_key = None  # เก็บ sub key ปัจจุบัน
+                
+                # for i, line in enumerate(text_lines):
+                #     line = line.strip()
+                #     if not line:
+                #         continue
+                    
+                #     if i == 0:
+                #         # หัวข้อหลัก - เพิ่ม (Pre-PM)
+                #         result_lines.append(f"{line} {label_pre_pm}")
+                #     else:
+                #         # ตรวจสอบว่าเป็นข้อย่อยใหม่หรือไม่
+                #         sub_match = re.match(r"(\d+\.\d+)\)", line)
+                        
+                #         if sub_match:
+                #             # ถ้ามีข้อย่อยก่อนหน้า ให้แทรก remark ก่อน
+                #             if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
+                #                 result_lines.append(f"        {label_remark}: {remark_dict[current_sub_key]}")
+                            
+                #             # เริ่มข้อย่อยใหม่
+                #             current_sub_key = sub_match.group(1)
+                #             result_lines.append(f"   {line}")
+                #         else:
+                #             # ข้อมูลต่อเนื่องของข้อย่อยปัจจุบัน
+                #             result_lines.append(f"        {line}")
+                
+                # # แทรก remark ของข้อย่อยสุดท้าย
+                # if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
+                #     result_lines.append(f"        {label_remark}: {remark_dict[current_sub_key]}")
+                
                 # สร้าง question text ใหม่พร้อม remark
                 result_lines = []
                 current_sub_key = None  # เก็บ sub key ปัจจุบัน
@@ -1658,19 +1765,18 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                         if sub_match:
                             # ถ้ามีข้อย่อยก่อนหน้า ให้แทรก remark ก่อน
                             if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
-                                result_lines.append(f"        {label_remark}: {remark_dict[current_sub_key]}")
+                                result_lines.append(f"    {label_remark}: {remark_dict[current_sub_key]}")
                             
-                            # เริ่มข้อย่อยใหม่
+                            # เริ่มข้อย่อยใหม่ - เยื้อง 4 ช่องว่าง
                             current_sub_key = sub_match.group(1)
-                            result_lines.append(f"   {line}")
+                            result_lines.append(f"    {line}")
                         else:
-                            # ข้อมูลต่อเนื่องของข้อย่อยปัจจุบัน
-                            result_lines.append(f"        {line}")
+                            # ข้อมูลต่อเนื่องของข้อย่อยปัจจุบัน (voltage data) - เยื้อง 4 ช่องว่าง
+                            result_lines.append(f"    {line}")
                 
                 # แทรก remark ของข้อย่อยสุดท้าย
                 if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
-                    result_lines.append(f"        {label_remark}: {remark_dict[current_sub_key]}")
-                
+                    result_lines.append(f"    {label_remark}: {remark_dict[current_sub_key]}")
                 question_text_pre = "\n".join(result_lines)
             else:
                 # ไม่มีข้อย่อย - แสดงปกติ
