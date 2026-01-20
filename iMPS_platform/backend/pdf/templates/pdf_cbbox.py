@@ -17,13 +17,6 @@ try:
 except Exception:
     requests = None
 
-# -------------------- Title --------------------
-DOCUMENT_TITLE_POST = "Preventive Maintenance Checklist - CB Box (POST)"
-DOCUMENT_TITLE_POST_CONT = "Preventive Maintenance Checklist - CB Box (POST Continued)"
-DOCUMENT_TITLE_PHOTO_CONT = "Preventive Maintenance - Photos (Continued)"
-DOCUMENT_TITLE_PHOTO_PRE = "Preventive Maintenance - Photos (PRE)"
-DOCUMENT_TITLE_PHOTO_POST = "Preventive Maintenance - Photos (POST)"
-
 PDF_DEBUG = os.getenv("PDF_DEBUG") == "1"
 
 # -------------------- Fonts TH --------------------
@@ -59,23 +52,25 @@ ROW_TITLES_TH = {
     "r1": "การไฟฟ้าฝ่ายจำหน่าย",
     "r2": "ตรวจสอบอุปกรณ์ตัดวงจรไฟฟ้า",
     "r3": "ตรวจสอบสภาพทั่วไป",
-    "r4": "ตรวจสอบสภาพดักซีล,ซิลิโคนกันซึม",
-    "r5": "อุปกรณ์ตัดวงจรไฟฟ้า \n(Safety Switch / Circuit Breaker)",
-    "r6": "ทดสอบปุ่ม Trip Test (Circuit Breaker)",
-    "r7": "ตรวจสอบจุดต่อทางไฟฟ้าและขันแน่น",
-    "r8": "ทำความสะอาดตู้ MDB"
+    "r4": "ตรวจสอบสภาพดักซีล, ซิลิโคนกันซึม",
+    "r5": "ตรวจสอบแรงดันอุปกรณ์ตัดวงจรไฟฟ้า \n(Safety Switch / Circuit Breaker)",
+    "r6": "ปุ่มฉุกเฉิน",
+    "r7": "ทดสอบปุ่ม Trip Test",
+    "r8": "ตรวจสอบจุดต่อทางไฟฟ้าและขันแน่น",
+    "r9": "ทำความสะอาดตู้อุปกรณ์"
 }
 
 # English version
 ROW_TITLES_EN = {
-    "r1": "Provincial Electricity Authority",
-    "r2": "Check Circuit Breaker Equipment",
-    "r3": "Check General Condition",
-    "r4": "Check Seal, Silicone Waterproofing",
-    "r5": "Circuit Breaker Equipment \n(Safety Switch / Circuit Breaker)",
-    "r6": "Test Trip Test Button (Circuit Breaker)",
-    "r7": "Check Electrical Connection Points and Tighten",
-    "r8": "Clean MDB Cabinet"
+    "r1": "Power distribution authority",
+    "r2": "Check circuit breaker device",
+    "r3": "General condition inspection",
+    "r4": "Check sealant and silicone",
+    "r5": "Check voltage of circuit breaker \n(Safety Switch / Circuit Breaker)",
+    "r6": "Emergency button",
+    "r7": "Test Trip Test button (Circuit Breaker)",
+    "r8": "Check electrical connections and tighten",
+    "r9": "Clean equipment cabinet"
 }
 
 # Default to Thai
@@ -1251,9 +1246,12 @@ class HTML2PDF(FPDF, HTMLMixin):
     pass
 
 class ReportPDF(HTML2PDF):
-    def __init__(self, *args, issue_id="-", **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, issue_id="-", doc_name="-", **kwargs):
+        self._doc_name = doc_name
         self.issue_id = issue_id
+        
+        super().__init__(*args, **kwargs)
+        
         self._section = "checklist"  # "checklist" = วาด signature, "photos" = ไม่วาด
         self._pm_date_th = ""
         self._base_font_name = "Arial"
@@ -1280,6 +1278,7 @@ class ReportPDF(HTML2PDF):
                 self,
                 self._base_font_name,
                 issue_id=self.issue_id,
+                doc_name=self._doc_name,
                 label_page=self._label_page,
                 label_issue_id=self._label_issue_id,
                 label_doc_name=self._label_doc_name,
@@ -1327,10 +1326,11 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     pm_date = _fmt_date_thai_like_sample(doc.get("pm_date", job.get("date", "-")))
     pm_date_th = _fmt_date_thai_full(doc.get("pm_date", job.get("date", "-")))
     issue_id = str(doc.get("issue_id", "-"))
+    doc_name = str(doc.get("doc_name", "-"))
     dropdownQ1 = str(doc.get("dropdownQ1", "-"))
     dropdownQ2 = str(doc.get("dropdownQ2", "-"))
 
-    pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id)
+    pdf = ReportPDF(unit="mm", format="A4", issue_id=issue_id, doc_name=doc_name)
     pdf._pm_date_th = pm_date_th
     pdf._section = "checklist"
 
@@ -1492,7 +1492,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         for it in checks_pre:
             idx = int(it.get("idx") or 0)
 
-            if idx == 8:
+            if idx == 9:
                 continue
 
             # ========== สร้าง question text พร้อมข้อย่อยและ remark ==========
@@ -1835,6 +1835,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     # ================================================================================
     # ส่วนที่ 3: PHOTOS POST
     # ================================================================================
+    pdf.add_page() 
     pdf._section = "photos"  
     # header() จะถูกเรียกอัตโนมัติโดย add_page()
     y = pdf.get_y()

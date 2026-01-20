@@ -550,50 +550,6 @@ def _get_photo_items_for_idx_pre(doc: dict, idx: int) -> List[dict]:
 
 
 # -------------------- Measurement / Data formatting --------------------
-# def _format_voltage_measurement_order_full(measures: dict, key: str) -> str:
-#     """แสดงค่าแรงดันไฟฟ้าสำหรับ Breaker Main (m4, m5, m6, m7, m8)"""
-#     ms = (measures or {}).get(key) or {}
-#     if not ms:
-#         return "-"
-    
-#     # normalize key
-#     norm_ms = {}
-#     for k, v in ms.items():
-#         nk = str(k).strip().replace("–", "-").replace(" ", "")
-#         norm_ms[nk.upper()] = v
-        
-#     # 10 ค่า
-#     order_full = [
-#         "L1-L2", "L2-L3", "L3-L1",
-#         "L1-N", "L2-N", "L3-N",
-#         "L1-G", "L2-G", "L3-G",
-#         "N-G"
-#     ]
-    
-#     def fmt(k: str) -> str:
-#         d = norm_ms.get(k.upper()) or {}
-#         val = str(d.get("value", "")).strip()
-#         unit = str(d.get("unit", "")).strip()
-#         return f"{k} = {val}{unit}" if val else f"{k} = -"
-    
-#     # วาง 3 ค่าต่อบรรทัด
-#     lines = []
-#     group = []
-#     for k in order_full:
-#         group.append(fmt(k))
-#         if len(group) == 3:
-#             lines.append(", ".join(group))
-#             group = []
-#     if group:
-#         lines.append(", ".join(group))
-    
-#     # เพิ่มการเยื้อง 8 ช่องว่างให้บรรทัดที่ 2+ เพื่อให้ตรงกับบรรทัดแรก
-#     if len(lines) > 1:
-#         result = [lines[0]]
-#         for line in lines[1:]:
-#             result.append("        " + line)
-#         return "\n".join(result)
-#     return "\n".join(lines)
 def _format_voltage_measurement_order_full(measures: dict, key: str) -> str:
     """แสดงค่าแรงดันไฟฟ้าสำหรับ Breaker Main (m4, m5, m6, m7, m8)"""
     ms = (measures or {}).get(key) or {}
@@ -907,27 +863,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
 
                 results.append(_norm_result(sub_data.get("pf", "")))
                 remarks.append((sub_data.get("remark") or "").strip())
-
-            # remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
-            # for i, (original_i, sub_idx, sub_key) in enumerate(filtered_subs):
-            #     r = remarks[i]
-            #     # แสดง remark ทุกข้อพร้อมเลขกำกับ ถ้าว่างให้แสดง "-"
-            #     remark_text = r if (r and r != "-") else "-"
-
-            #     # แสดง remark text (ตรงกับข้อย่อย)
-            #     remark_lines.append(f"{main_idx}.{sub_idx}) {remark_text}")
-
-            #     # เพิ่มบรรทัดว่างให้ตรงกับจำนวนบรรทัดของ voltage measurements
-            #     # ถ้ามี voltage data ให้นับจำนวนบรรทัด (นับจาก \n + 1)
-            #     if original_i in voltage_data:
-            #         voltage_text = voltage_data[original_i]
-            #         # จำนวนบรรทัดจริง = จำนวน \n + 1
-            #         voltage_line_count = voltage_text.count('\n') + 1
-            #         # เพิ่มบรรทัดว่างเท่ากับจำนวนบรรทัดของ voltage
-            #         for _ in range(voltage_line_count):
-            #             remark_lines.append("")
-            
-            # combined_remark = "\n".join(remark_lines)
+                
             remark_lines = [""]  # บรรทัดแรกว่าง (ตรงกับหัวข้อหลัก)
             for i, (original_i, sub_idx, sub_key) in enumerate(filtered_subs):
                 r = remarks[i]
@@ -1099,12 +1035,7 @@ def _draw_signature_block(
     label_witnessed: str = "Witnessed by",  
     label_date: str = "Date :",             
 ) -> float:
-    """
-    วาดช่องลายเซ็น
     
-    Args:
-        y_bottom: ถ้ากำหนด ให้วาดโดยติดด้านล่านของค่านี้ (จัดตำแหน่งให้เต็มหน้า)
-    """
     signer_labels = [label_performed, label_approved, label_witnessed]
     col_widths = [item_w, result_w, remark_w]
 
@@ -1434,9 +1365,6 @@ class ReportPDF(HTML2PDF):
         # self.ln(10)
 
     def footer(self):
-        # ⭐ Photos section ไม่ต้องมีลายเซ็น
-        # _section == "photos" จะถูกตั้งค่าหลังจาก add_page() ไปหน้า Photos แรก
-        # ดังนั้นหน้า Photos ทุกหน้าจะไม่มี signature
         if self._section == "photos":
             return
 
@@ -1713,38 +1641,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
                         remark_dict[current_sub_key] = first_line + "\n" + "\n".join(continuation_lines)
                     else:
                         remark_dict[current_sub_key] = first_line
-                
-                # # สร้าง question text ใหม่พร้อม remark
-                # result_lines = []
-                # current_sub_key = None  # เก็บ sub key ปัจจุบัน
-                
-                # for i, line in enumerate(text_lines):
-                #     line = line.strip()
-                #     if not line:
-                #         continue
-                    
-                #     if i == 0:
-                #         # หัวข้อหลัก - เพิ่ม (Pre-PM)
-                #         result_lines.append(f"{line} {label_pre_pm}")
-                #     else:
-                #         # ตรวจสอบว่าเป็นข้อย่อยใหม่หรือไม่
-                #         sub_match = re.match(r"(\d+\.\d+)\)", line)
-                        
-                #         if sub_match:
-                #             # ถ้ามีข้อย่อยก่อนหน้า ให้แทรก remark ก่อน
-                #             if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
-                #                 result_lines.append(f"        {label_remark}: {remark_dict[current_sub_key]}")
-                            
-                #             # เริ่มข้อย่อยใหม่
-                #             current_sub_key = sub_match.group(1)
-                #             result_lines.append(f"   {line}")
-                #         else:
-                #             # ข้อมูลต่อเนื่องของข้อย่อยปัจจุบัน
-                #             result_lines.append(f"        {line}")
-                
-                # # แทรก remark ของข้อย่อยสุดท้าย
-                # if current_sub_key and current_sub_key in remark_dict and remark_dict[current_sub_key] and remark_dict[current_sub_key] != "-":
-                #     result_lines.append(f"        {label_remark}: {remark_dict[current_sub_key]}")
+    
                 
                 # สร้าง question text ใหม่พร้อม remark
                 result_lines = []

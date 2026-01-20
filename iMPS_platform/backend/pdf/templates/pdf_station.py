@@ -61,16 +61,16 @@ ROW_TITLES_TH = {
 
 # English version
 ROW_TITLES_EN = {
-    "r1": "Check Station Structure",
-    "r2": "Check Station Structure Color",
-    "r3": "Check Station Surface",
-    "r4": "Check Station Surface Color",
-    "r5": "Check Wheel Stopper",
-    "r6": "Check EV Charger Bollard",
+    "r1": "Check station structure",
+    "r2": "Check station structure paint",
+    "r3": "Check station surface",
+    "r4": "Check station surface paint",
+    "r5": "Check wheel stopper",
+    "r6": "Check charger bumper pole",
     "r7": "Lighting",
-    "r8": "Station Name Sign",
-    "r9": "Instruction Sign",
-    "r10": "Check Fire Extinguisher",
+    "r8": "Station sign",
+    "r9": "Usage instruction sign",
+    "r10": "Check fire extinguisher",
     "r11": "Cleaning"
 }
 
@@ -82,24 +82,32 @@ ROW_TITLES = ROW_TITLES_TH
 SUB_ROW_TITLES_TH = {
     "r7_1": "ตรวจสอบสภาพโคมไฟส่องสว่าง",
     "r7_2": "ตรวจสอบการทำงาน",
+    
     "r8_1": "ตรวจสอบสภาพป้ายชื่อสถานี",
     "r8_2": "ตรวจสอบการทำงาน",
+    
     "r9_1": "ตรวจสอบสภาพป้ายวิธีใช้งาน",
     "r9_2": "ตรวจสอบการทำงาน",
+    
     "r10_1": "ตรวจสอบสภาพทั่วไป",
     "r10_2": "ตรวจสอบเกจวัดแรงดัน",
+    "r10_3": "ตรวจสอบของเหลวภายใน",
 }
 
 # English version
 SUB_ROW_TITLES_EN = {
-    "r7_1": "Check Lighting Condition",
-    "r7_2": "Check Function",
-    "r8_1": "Check Station Name Sign Condition",
-    "r8_2": "Check Function",
-    "r9_1": "Check Instruction Sign Condition",
-    "r9_2": "Check Function",
-    "r10_1": "Check General Condition",
-    "r10_2": "Check Voltage Gauge",
+    "r7_1": "Check lighting fixture condition",
+    "r7_2": "Check operation",
+    
+    "r8_1": "Check station sign condition",
+    "r8_2": "Check operation",
+    
+    "r9_1": "Check instruction sign condition",
+    "r9_2": "Check operation",
+    
+    "r10_1": "Check general condition",
+    "r10_2": "Check pressure gauge",
+    "r10_3": "Check internal liquid",
 }
 
 # Default to Thai
