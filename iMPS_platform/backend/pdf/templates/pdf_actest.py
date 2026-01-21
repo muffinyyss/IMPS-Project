@@ -259,18 +259,6 @@ def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", inset_mm: float
     h_right_top = 10  # ใช้ความสูงเต็มสำหรับ Issue ID (ลดจาก 11)
 
     pdf.set_line_width(LINE_W_INNER)
-
-    # # ----- โลโก้ ----- #
-    # pdf.rect(x0, y_top, col_left, h_all)
-    # logo_path = _resolve_logo_path()
-    # if logo_path:
-    #     IMG_W = 28                     # ลดความกว้างโลโก้ลง (จาก ~35)
-    #     img_x = x0 + (col_left - IMG_W) / 2
-    #     img_y = y_top + (h_all - 9.5) / 2  # ปรับให้สมส่วน (ลดจาก 10.5)
-    #     try:
-    #         pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
-    #     except Exception:
-    #         pass
     
     # ----- โลโก้ ----- #
     pdf.rect(x0, y_top, col_left, h_all)
@@ -1385,7 +1373,7 @@ def _load_image_source_from_urlpath(
     # If it's already an absolute file path
     p_abs = Path(raw)
     if p_abs.is_absolute() and p_abs.exists() and p_abs.is_file():
-        print(f"[DEBUG] ✅ พบเป็น absolute path: {p_abs}")
+        # print(f"[DEBUG] ✅ พบเป็น absolute path: {p_abs}")
         return p_abs.as_posix(), _guess_img_type_from_ext(p_abs.as_posix())
 
     # Strip leading slash for easier joins
@@ -1418,9 +1406,9 @@ def _load_image_source_from_urlpath(
         if uploads_root.exists():
             candidate = uploads_root / rel_after_uploads
             tried_paths.append(candidate)
-            print(f"[DEBUG] 📂 ตรวจสอบ backend/uploads: {candidate}")
+            # print(f"[DEBUG] 📂 ตรวจสอบ backend/uploads: {candidate}")
             if candidate.exists() and candidate.is_file():
-                print(f"[DEBUG] ✅ เจอไฟล์ใน backend/uploads: {candidate}")
+                # print(f"[DEBUG] ✅ เจอไฟล์ใน backend/uploads: {candidate}")
                 return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
 
     # Nothing found
