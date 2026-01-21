@@ -1038,6 +1038,44 @@ def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool, style
 
 # ------------------------------------------------------------------
 
+# def draw_remark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float, w: float, doc: dict = None) -> float:
+
+#     # 1. รับข้อมูล (กัน Error ถ้า doc เป็น None)
+#     doc = doc or {}
+
+#     # 2. Remark Text
+#     remark_text = doc.get("remarks", {}).get("testRematk", "")
+
+#     y -= 2
+
+#     # -----------------------------------------------------------
+#     # ส่วน Remark Section (วาดเส้น + ข้อความ)
+#     # -----------------------------------------------------------
+#     remark_h = 25
+#     pdf.set_font(base_font, "B", FONT_MAIN)
+#     pdf.set_xy(x, y)
+#     pdf.cell(20, 6, "Remark : ", border=0, align="L")
+
+#     line_x1 = x + 20
+#     line_x2 = x + w
+#     line_gap = 5  # ระยะห่างระหว่างบรรทัด (ลดจาก 6)
+#     start_line_y = y + 4.5  # ตำแหน่งเริ่มบรรทัดแรก (ลดจาก 5)
+#     pdf.set_line_width(0.22)
+    
+#     for i in range(4):
+#         current_line_y = start_line_y + (i * line_gap)
+#         pdf.line(line_x1, current_line_y, line_x2, current_line_y)
+
+#     if remark_text:
+#         pdf.set_font(base_font, "", FONT_MAIN)
+#         text_y = start_line_y - line_gap + 0.5 
+#         pdf.set_xy(line_x1, text_y)
+#         pdf.multi_cell(w - 25, line_gap, remark_text, border=0, align="L")
+
+#     y += remark_h + 3
+
+#     return y
+
 def draw_remark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float, w: float, doc: dict = None) -> float:
 
     # 1. รับข้อมูล (กัน Error ถ้า doc เป็น None)
@@ -1051,27 +1089,47 @@ def draw_remark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float
     # -----------------------------------------------------------
     # ส่วน Remark Section (วาดเส้น + ข้อความ)
     # -----------------------------------------------------------
-    remark_h = 25
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_xy(x, y)
     pdf.cell(20, 6, "Remark : ", border=0, align="L")
 
     line_x1 = x + 20
     line_x2 = x + w
-    line_gap = 5  # ระยะห่างระหว่างบรรทัด (ลดจาก 6)
-    start_line_y = y + 4.5  # ตำแหน่งเริ่มบรรทัดแรก (ลดจาก 5)
+    line_gap = 5  # ระยะห่างระหว่างบรรทัด
+    start_line_y = y + 4.5  # ตำแหน่งเริ่มบรรทัดแรก
     pdf.set_line_width(0.22)
     
-    for i in range(4):
+    # 🔥 คำนวณจำนวนบรรทัดจากข้อความจริง
+    num_lines = 4  # จำนวนเส้นขั้นต่ำ
+    
+    if remark_text:
+        pdf.set_font(base_font, "", FONT_MAIN)
+        max_width = w - 25
+        
+        # นับจำนวนบรรทัดจริงของข้อความ
+        try:
+            lines = pdf.multi_cell(max_width, line_gap, remark_text, border=0, split_only=True)
+            num_lines = max(len(lines), 4)  # ใช้จำนวนบรรทัดจริง แต่ไม่น้อยกว่า 4
+        except TypeError:
+            # Fallback: ประมาณจำนวนบรรทัด
+            avg_chars_per_line = int(max_width / pdf.get_string_width("A"))
+            estimated_lines = max(len(remark_text) // avg_chars_per_line + 1, 4)
+            num_lines = min(estimated_lines, 10)  # จำกัดไม่เกิน 10 บรรทัด
+    
+    # วาดเส้นใต้ตามจำนวนบรรทัดจริง
+    for i in range(num_lines):
         current_line_y = start_line_y + (i * line_gap)
         pdf.line(line_x1, current_line_y, line_x2, current_line_y)
-
+    
+    # เขียนข้อความ
     if remark_text:
         pdf.set_font(base_font, "", FONT_MAIN)
         text_y = start_line_y - line_gap + 0.5 
         pdf.set_xy(line_x1, text_y)
         pdf.multi_cell(w - 25, line_gap, remark_text, border=0, align="L")
-
+    
+    # คำนวณความสูงจริงของ section
+    remark_h = num_lines * line_gap + 5
     y += remark_h + 3
 
     return y
@@ -1089,27 +1147,47 @@ def draw_IMGremark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: fl
     # -----------------------------------------------------------
     # ส่วน Remark Section (วาดเส้น + ข้อความ)
     # -----------------------------------------------------------
-    remark_h = 25
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_xy(x, y)
     pdf.cell(20, 6, "Remark : ", border=0, align="L")
 
     line_x1 = x + 20
     line_x2 = x + w
-    line_gap = 5  # ระยะห่างระหว่างบรรทัด (ลดจาก 6)
-    start_line_y = y + 4.5  # ตำแหน่งเริ่มบรรทัดแรก (ลดจาก 5)
+    line_gap = 5  # ระยะห่างระหว่างบรรทัด
+    start_line_y = y + 4.5  # ตำแหน่งเริ่มบรรทัดแรก
     pdf.set_line_width(0.22)
     
-    for i in range(4):
+    # คำนวณจำนวนบรรทัดจากข้อความจริง
+    num_lines = 4  # จำนวนเส้นขั้นต่ำ
+    
+    if remark_text:
+        pdf.set_font(base_font, "", FONT_MAIN)
+        max_width = w - 25
+        
+        # นับจำนวนบรรทัดจริงของข้อความ
+        try:
+            lines = pdf.multi_cell(max_width, line_gap, remark_text, border=0, split_only=True)
+            num_lines = max(len(lines), 4)  # ใช้จำนวนบรรทัดจริง แต่ไม่น้อยกว่า 4
+        except TypeError:
+            # Fallback: ประมาณจำนวนบรรทัด
+            avg_chars_per_line = int(max_width / pdf.get_string_width("A"))
+            estimated_lines = max(len(remark_text) // avg_chars_per_line + 1, 4)
+            num_lines = min(estimated_lines, 10)  # จำกัดไม่เกิน 10 บรรทัด
+    
+    # วาดเส้นใต้ตามจำนวนบรรทัดจริง
+    for i in range(num_lines):
         current_line_y = start_line_y + (i * line_gap)
         pdf.line(line_x1, current_line_y, line_x2, current_line_y)
-
+    
+    # เขียนข้อความ
     if remark_text:
         pdf.set_font(base_font, "", FONT_MAIN)
         text_y = start_line_y - line_gap + 0.5 
         pdf.set_xy(line_x1, text_y)
         pdf.multi_cell(w - 25, line_gap, remark_text, border=0, align="L")
-
+    
+    # คำนวณความสูงจริงของ section
+    remark_h = num_lines * line_gap + 5
     y += remark_h + 3
 
     return y

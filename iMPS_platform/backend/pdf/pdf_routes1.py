@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from bson import ObjectId
 from bson.errors import InvalidId
 from main import client1 as pymongo_client
+from datetime import datetime
 import os
 
 # import template ทั้งหมด
@@ -83,11 +84,23 @@ async def export_pdf_redirect(
     pm_templates = ["charger", "mdb", "ccb", "cbbox", "station", "cm", "dc", "ac"]
     if template in pm_templates:
         issue_id = data.get("issue_id")
+        
         if not issue_id:
-            issue_id = str(data.get("_id"))
+            # หาฟิลด์วันที่จากข้อมูล
+            timestamp = data.get("created_at") or data.get("createdAt") or data.get("date") or data.get("timestamp")
+            
+            if timestamp:
+                if isinstance(timestamp, str):
+                    timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                date_str = timestamp.strftime("%y%m%d")  # เอาแค่วันที่ YYMMDD
+            else:
+                # fallback: ใช้ ObjectId timestamp
+                date_str = data["_id"].generation_time.strftime("%y%m%d")
+            
+            issue_id = f"{template.upper()}-{coll_key}-{date_str}"
+            # ผลลัพธ์: "AC-Klongluang3-251211"
+        
         filename = f"{issue_id}.pdf"
-    else:
-        filename = f"{template.upper()}-{sn}.pdf"
 
     # สร้าง URL ใหม่พร้อม query parameters
     query_params = ""
