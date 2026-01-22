@@ -1,18 +1,36 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 // components
-import CMFormHeader from "@/app/dashboard/test-report/components/dc/DCFormHeader";
-import DCFormMeta from "@/app/dashboard/test-report/components/dc/DCFormMeta";
-import EquipmentSection from "@/app/dashboard/test-report/components/dc/DCEquipmentSection";
-import ACFormActions from "@/app/dashboard/test-report/components/dc/DCFormActions";
-import DCTest1Grid, { mapToElectricalPayload, type TestResults } from "@/app/dashboard/test-report/components/dc/DCTest1Grid";
-import ACTest2Grid, { mapToChargerPayload, type TestCharger } from "@/app/dashboard/test-report/components/dc/DCTest2Grid";
-import ACPhotoSection from "@/app/dashboard/test-report/components/dc/DCPhotoSection";
-import ACSignatureSection1 from "@/app/dashboard/test-report/components/dc/DCSignatureSection1";
+import CMFormHeader from "@/app/dashboard/test-report/dc/input_dc/components/DCFormHeader";
+import DCFormMeta from "@/app/dashboard/test-report/dc/input_dc/components/DCFormMeta";
+import EquipmentSection from "@/app/dashboard/test-report/dc/input_dc/components/DCEquipmentSection";
+import DCFormActions from "@/app/dashboard/test-report/dc/input_dc/components/DCFormActions";
+import DCTest1Grid, { mapToElectricalPayload, type TestResults } from "@/app/dashboard/test-report/dc/input_dc/components/DCTest1Grid";
+import DCTest2Grid, { mapToChargerPayload, type TestCharger } from "@/app/dashboard/test-report/dc/input_dc/components/DCTest2Grid";
+import DCPhotoSection from "@/app/dashboard/test-report/dc/input_dc/components/DCPhotoSection";
+import DCMasterValidation, { isFormComplete } from "@/app/dashboard/test-report/dc/input_dc/components/DCMasterValidation";
+
+// draft utilities
+import {
+  draftKey,
+  saveDraftLocal,
+  loadDraftLocal,
+  clearDraftLocal,
+  type DraftData,
+} from "@/app/dashboard/test-report/dc/input_dc/lib/draft";
+import {
+  clearPhotosForDraft,
+  putPhoto,
+  getPhotoByDbKey,
+  type PhotoRef,
+} from "@/app/dashboard/test-report/dc/input_dc/lib/draftPhotos";
+
+// ===== Types =====
+type Lang = "th" | "en";
 
 type Severity = "" | "Low" | "Medium" | "High" | "Critical";
 type Status = "" | "DC" | "AC";
@@ -37,7 +55,6 @@ type Job = {
   repair_result: RepairOption | "";
   preventive_action: string[];
   status: Status;
-  // remarks: string;
   manufacturer?: string;
   model?: string;
   power?: string;
@@ -47,14 +64,15 @@ type Job = {
 };
 
 type Head = {
-  issue_id: string;            // ← เพิ่ม
-  inspection_date: string;     // ← เพิ่ม
+  issue_id: string;
+  inspection_date: string;
   location: string;
   manufacturer?: string;
   model?: string;
   power?: string;
   firmware_version?: string;
   serial_number?: string;
+  inspector?: string;
 };
 
 type EquipmentBlock = {
@@ -63,18 +81,64 @@ type EquipmentBlock = {
   serialNumbers: string[];
 };
 
-
 type RepairOption = (typeof REPAIR_OPTIONS)[number];
 
-type SymbolPick = "pass" | "notPass" | "notTest" | "";
-type PhasePick = "L1L2L3" | "L3L2L1" | "";
+type PhotoItem = { text: string; images: { file: File; url: string }[] };
 
-type ResponsibilityData = {
-  performed: { name: string; signature: string; date: string; company: string };
-  approved: { name: string; signature: string; date: string; company: string };
-  witnessed: { name: string; signature: string; date: string; company: string };
+type StationPublic = {
+  station_name: string;
+  SN?: string;
+  WO?: string;
+  chargerNo?: string;
+  chargeBoxID?: string;
+  model?: string;
+  status?: boolean;
+  brand?: string;
+  manufacturer?: string;
+  power?: string;
+  serial_number?: string;
+  serialNumber?: string;
+  firmware_version?: string;
+  firmwareVersion?: string;
 };
 
+// ===== Translations =====
+const translations = {
+  th: {
+    testingTopicsTitle: "หัวข้อทดสอบความปลอดภัย (ด้านแหล่งจ่ายไฟ/อินพุต)",
+    chargingProcessTitle: "การทดสอบกระบวนการชาร์จ",
+    remark: "หมายเหตุ",
+    photoSectionTitle: "แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)",
+    phaseSequence: "ลำดับเฟส",
+    phaseSequencePlaceholder: "เช่น L1-L2-L3",
+    alertNoSn: "ไม่พบ sn - กรุณาเลือกตู้ชาร์จจาก Navbar ก่อน",
+    alertNoChargerNo: "ไม่พบ chargerNo - กรุณาเลือกตู้ชาร์จที่มี chargerNo",
+    alertNoElectricalTest: "ยังไม่ได้กรอกผลทดสอบ (Electrical Safety)",
+    alertNoChargerTest: "ยังไม่ได้กรอกผลทดสอบ (Charger Safety)",
+    alertSaveFailed: "บันทึกไม่สำเร็จ",
+    alertUploadFailed: "อัปโหลดรูปข้อที่",
+    alertUploadFailedSuffix: "ล้มเหลว",
+    alertUploadPhotoFailed: "อัปโหลดรูป index",
+  },
+  en: {
+    testingTopicsTitle: "Testing Topics for Safety (Specifically Power Supply/Input Side)",
+    chargingProcessTitle: "CHARGING PROCESS TESTING",
+    remark: "Remark",
+    photoSectionTitle: "Attach Photos (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + Others)",
+    phaseSequence: "Phase Sequence",
+    phaseSequencePlaceholder: "e.g. L1-L2-L3",
+    alertNoSn: "SN not found - Please select a charger from Navbar first",
+    alertNoChargerNo: "chargerNo not found - Please select a charger with chargerNo",
+    alertNoElectricalTest: "Electrical Safety test results not filled",
+    alertNoChargerTest: "Charger Safety test results not filled",
+    alertSaveFailed: "Save failed",
+    alertUploadFailed: "Upload photo item",
+    alertUploadFailedSuffix: "failed",
+    alertUploadPhotoFailed: "Upload photo index",
+  },
+};
+
+// ===== Constants =====
 const REPAIR_OPTIONS = [
   "แก้ไขสำเร็จ",
   "แก้ไขไม่สำเร็จ",
@@ -84,7 +148,6 @@ const REPAIR_OPTIONS = [
 
 const LIST_ROUTE = "/dashboard/test-report";
 
-/* ค่าตั้งต้นของฟอร์ม (ใช้สำหรับ reset ด้วย) */
 const INITIAL_JOB: Job = {
   issue_id: "",
   inspection_date: "",
@@ -101,31 +164,20 @@ const INITIAL_JOB: Job = {
   repair_result: "",
   preventive_action: [""],
   status: "",
-  // remarks: "",
   model: "",
   brand: "",
 };
 
 const INITIAL_HEAD: Head = {
-  issue_id: "",                // ← เพิ่ม
-  inspection_date: "",         // ← เพิ่ม
+  issue_id: "",
+  inspection_date: "",
   location: "",
   manufacturer: "",
   model: "",
   power: "",
   firmware_version: "",
   serial_number: "",
-};
-
-type StationPublic = {
-  station_id: string;
-  station_name: string;
-  SN?: string;
-  WO?: string;
-  chargeBoxID?: string;
-  model?: string;
-  status?: boolean;
-  brand?: string;
+  inspector: "",
 };
 
 const INITIAL_EQUIPMENT: EquipmentBlock = {
@@ -134,106 +186,249 @@ const INITIAL_EQUIPMENT: EquipmentBlock = {
   serialNumbers: [""],
 };
 
-type PhotoItem = { text: string; images: { file: File; url: string }[] };
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+// ===== Helper Functions =====
+function localTodayISO(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// ===== Photo ID Generator =====
+let photoIdCounter = 0;
+function generatePhotoId(): string {
+  return `photo_${Date.now()}_${++photoIdCounter}`;
+}
 
 export default function DCForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const stationId = searchParams.get("station_id");
 
-  async function uploadPhotoSection(reportId: string, items: PhotoItem[]) {
-    if (!stationId) return; // ใช้ stationId จาก useSearchParams()
+  // ===== Language =====
+  const [lang, setLang] = useState<Lang>("th");
 
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      const files = (it?.images || []).map(im => im.file).filter(Boolean) as File[];
-      if (!files.length) continue;
+  useEffect(() => {
+    const savedLang = localStorage.getItem("app_language") as Lang | null;
+    if (savedLang === "th" || savedLang === "en") setLang(savedLang);
 
-      const fd = new FormData();
-      fd.append("station_id", stationId);
-      fd.append("item_index", String(i));     // <<-- ส่ง index
-      if (it.text) fd.append("remark", it.text);
-      files.forEach(f => fd.append("files", f, f.name));
+    const handleLangChange = (e: CustomEvent<{ lang: Lang }>) => setLang(e.detail.lang);
+    window.addEventListener("language:change", handleLangChange as EventListener);
+    return () => window.removeEventListener("language:change", handleLangChange as EventListener);
+  }, []);
 
-      const res = await fetch(`${API_BASE}/dctestreport/${encodeURIComponent(reportId)}/photos`, {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const msg = await res.text().catch(() => `HTTP ${res.status}`);
-        throw new Error(`อัปโหลดรูป index ${i} ล้มเหลว: ${msg}`);
-      }
-    }
-  }
+  const t = translations[lang];
 
-  const buildListUrl = () => {
-    const params = new URLSearchParams();
-    if (stationId) params.set("station_id", stationId);
-    const tab = (searchParams.get("tab") ?? "DC"); // กลับแท็บเดิม (default = open)
-    params.set("tab", tab);
-    return `${LIST_ROUTE}?${params.toString()}`;
-  };
+  // ===== SN =====
+  const [sn, setSn] = useState<string | null>(null);
+  const [chargerNo, setChargerNo] = useState<string | null>(null);
 
+  // ★★★ NEW: Preview IDs from backend ★★★
+  const [previewIssueId, setPreviewIssueId] = useState<string>("");
+  const [previewDocName, setPreviewDocName] = useState<string>("");
+
+  const loadSn = useCallback(() => {
+    const snFromUrl = searchParams.get("sn");
+    if (snFromUrl) { setSn(snFromUrl); return; }
+    const snLocal = localStorage.getItem("selected_sn");
+    setSn(snLocal);
+  }, [searchParams]);
+
+  useEffect(() => { loadSn(); }, [loadSn]);
+
+  useEffect(() => {
+    const handleChargerEvent = () => requestAnimationFrame(loadSn);
+    window.addEventListener("charger:selected", handleChargerEvent);
+    window.addEventListener("charger:deselected", handleChargerEvent);
+    return () => {
+      window.removeEventListener("charger:selected", handleChargerEvent);
+      window.removeEventListener("charger:deselected", handleChargerEvent);
+    };
+  }, [loadSn]);
+
+  // ===== Form State =====
   const [job, setJob] = useState<Job>({ ...INITIAL_JOB });
   const [head, setHead] = useState<Head>({ ...INITIAL_HEAD });
   const [equipment, setEquipment] = useState<EquipmentBlock>({ ...INITIAL_EQUIPMENT });
   const [dcTest1Results, setDCTest1Results] = useState<TestResults | null>(null);
   const [dcChargerTest, setDCChargerTest] = useState<TestCharger | null>(null);
-
   const [photoItems, setPhotoItems] = useState<PhotoItem[]>([]);
-
-  const [sigRemark, setSigRemark] = useState<string>("");
-  const [sigSymbol, setSigSymbol] = useState<SymbolPick>("");
-  const [sigPhase, setSigPhase] = useState<PhasePick>("");
-  const [sigResp, setSigResp] = useState<ResponsibilityData>({
-    performed: { name: "", signature: "", date: "", company: "" },
-    approved: { name: "", signature: "", date: "", company: "" },
-    witnessed: { name: "", signature: "", date: "", company: "" },
-  });
-
-  const handleSymbolChange = (sym: SymbolPick) => setSigSymbol(sym);
-  const handlePhaseSequenceChange = (ph: PhasePick) => setSigPhase(ph);
-
+  const [phaseSequence, setPhaseSequence] = useState<string>("");
   const [testRemark, setTestRemark] = useState<string>("");
   const [imgRemark, setImgRemark] = useState<string>("");
-
-
-  const onHeadChange = (updates: Partial<Head>) =>
-    setHead((prev) => ({ ...prev, ...updates }));
-  const [summary, setSummary] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
-  const onSave = () => {
-    console.log({ job, summary });
-    alert("บันทึกชั่วคราว (เดโม่) – ดูข้อมูลใน console");
+  // ===== Draft State =====
+  const [draftChecked, setDraftChecked] = useState(false);
+  const skipAutoSaveRef = useRef(true);
+
+  // ===== Get current draft key =====
+  const currentDraftKey = draftKey(sn);
+
+  // ============================================================
+  // ★★★ PHOTO HELPERS ★★★
+  // ============================================================
+  const savePhotosToIndexedDB = useCallback(async (items: PhotoItem[]): Promise<Record<number, PhotoRef[]>> => {
+    const photoRefs: Record<number, PhotoRef[]> = {};
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item?.images?.length) continue;
+      photoRefs[i] = [];
+      for (const img of item.images) {
+        if (img.file) {
+          const photoId = generatePhotoId();
+          const ref = await putPhoto(currentDraftKey, photoId, img.file, item.text);
+          photoRefs[i].push(ref);
+        }
+      }
+    }
+    return photoRefs;
+  }, [currentDraftKey]);
+
+  const loadPhotosFromIndexedDB = useCallback(async (
+    photoRefs: Record<number | string, (PhotoRef | { isNA: true })[]>
+  ): Promise<PhotoItem[]> => {
+    const items: PhotoItem[] = [];
+    const indices = Object.keys(photoRefs).map(Number).sort((a, b) => a - b);
+    for (const idx of indices) {
+      const refs = photoRefs[idx];
+      const images: { file: File; url: string }[] = [];
+      let remark = "";
+      for (const ref of refs) {
+        if ("isNA" in ref) continue;
+        const file = await getPhotoByDbKey(ref.dbKey);
+        if (file) {
+          const url = URL.createObjectURL(file);
+          images.push({ file, url });
+          if (ref.remark) remark = ref.remark;
+        }
+      }
+      if (images.length > 0) {
+        items[idx] = { text: remark, images };
+      }
+    }
+    return items;
+  }, []);
+
+  // ============================================================
+  // ★★★ DRAFT: AUTO-LOAD ON MOUNT ★★★
+  // ============================================================
+  useEffect(() => {
+    if (!sn || draftChecked) return;
+    const loadDraft = async () => {
+      const draft = loadDraftLocal<DraftData>(currentDraftKey);
+      if (draft) {
+        setEquipment(draft.equipment || INITIAL_EQUIPMENT);
+        setDCTest1Results(draft.dcTest1Results);
+        setDCChargerTest(draft.dcChargerTest);
+        setPhaseSequence(draft.phaseSequence || "");
+        setTestRemark(draft.testRemark || "");
+        setImgRemark(draft.imgRemark || "");
+        if (draft.photoRefs && Object.keys(draft.photoRefs).length > 0) {
+          const items = await loadPhotosFromIndexedDB(draft.photoRefs);
+          setPhotoItems(items);
+        }
+        console.log("[DC Draft] Auto-loaded");
+      }
+      setDraftChecked(true);
+      skipAutoSaveRef.current = true;
+      setTimeout(() => { skipAutoSaveRef.current = false; }, 1000);
+    };
+    loadDraft();
+  }, [sn, draftChecked, currentDraftKey, loadPhotosFromIndexedDB]);
+
+  // ============================================================
+  // ★★★ DRAFT: AUTO-SAVE ★★★
+  // ============================================================
+  useEffect(() => {
+    if (!sn || skipAutoSaveRef.current) return;
+    const hasData =
+      equipment.manufacturers.some(m => m.trim()) ||
+      dcTest1Results !== null ||
+      dcChargerTest !== null ||
+      phaseSequence.trim() ||
+      testRemark.trim() ||
+      imgRemark.trim() ||
+      photoItems.some(p => p?.images?.length > 0);
+
+    if (hasData) {
+      (async () => {
+        const photoRefs = await savePhotosToIndexedDB(photoItems);
+        saveDraftLocal(currentDraftKey, {
+          equipment,
+          dcTest1Results,
+          dcChargerTest,
+          phaseSequence,
+          testRemark,
+          imgRemark,
+          photoRefs,
+        });
+      })();
+    }
+  }, [sn, currentDraftKey, equipment, dcTest1Results, dcChargerTest, phaseSequence, testRemark, imgRemark, photoItems, savePhotosToIndexedDB]);
+
+  useEffect(() => {
+    if (draftChecked) {
+      const timer = setTimeout(() => { skipAutoSaveRef.current = false; }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [draftChecked]);
+
+  // ===== Handlers =====
+  const buildListUrl = () => {
+    const params = new URLSearchParams();
+    if (sn) params.set("sn", sn);
+    const tab = searchParams.get("tab") ?? "DC";
+    params.set("tab", tab);
+    return `${LIST_ROUTE}?${params.toString()}`;
   };
 
-  // ตัวช่วยสำหรับ equipment (อัปเดตเป็นรายแถว)
-  const updateManufacturer = (i: number, val: string) =>
-    setEquipment(prev => {
-      const arr = [...prev.manufacturers];
-      arr[i] = val;
-      return { ...prev, manufacturers: arr };
+  async function uploadPhotoSection(reportId: string, items: PhotoItem[]) {
+    if (!sn) return;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const files = (it?.images || []).map(im => im.file).filter(Boolean) as File[];
+      if (!files.length) continue;
+      const fd = new FormData();
+      fd.append("sn", sn);
+      fd.append("item_index", String(i));
+      if (it.text) fd.append("remark", it.text);
+      files.forEach(f => fd.append("files", f, f.name));
+      const res = await fetch(`${API_BASE}/dctestreport/${encodeURIComponent(reportId)}/photos`, {
+        method: "POST", body: fd, credentials: "include",
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => `HTTP ${res.status}`);
+        throw new Error(`${t.alertUploadPhotoFailed} ${i} ${t.alertUploadFailedSuffix}: ${msg}`);
+      }
+    }
+  }
+
+  const onHeadChange = (updates: Partial<Head>) => setHead(prev => ({ ...prev, ...updates }));
+
+  const onSave = async () => {
+    const photoRefs = await savePhotosToIndexedDB(photoItems);
+    saveDraftLocal(currentDraftKey, {
+      equipment,
+      dcTest1Results,
+      dcChargerTest,
+      phaseSequence,
+      testRemark,
+      imgRemark,
+      photoRefs,
     });
+  };
+
+  const updateManufacturer = (i: number, val: string) =>
+    setEquipment(prev => { const arr = [...prev.manufacturers]; arr[i] = val; return { ...prev, manufacturers: arr }; });
 
   const updateModel = (i: number, val: string) =>
-    setEquipment(prev => {
-      const arr = [...prev.models];
-      arr[i] = val;
-      return { ...prev, models: arr };
-    });
+    setEquipment(prev => { const arr = [...prev.models]; arr[i] = val; return { ...prev, models: arr }; });
 
   const updateSerial = (i: number, val: string) =>
-    setEquipment(prev => {
-      const arr = [...prev.serialNumbers];
-      arr[i] = val;
-      return { ...prev, serialNumbers: arr };
-    });
+    setEquipment(prev => { const arr = [...prev.serialNumbers]; arr[i] = val; return { ...prev, serialNumbers: arr }; });
 
   const addEquipmentRow = () =>
     setEquipment(prev => ({
@@ -247,46 +442,44 @@ export default function DCForm() {
       const man = [...prev.manufacturers];
       const mod = [...prev.models];
       const ser = [...prev.serialNumbers];
-
-      if (man.length <= 1) {
-        return { manufacturers: [""], models: [""], serialNumbers: [""] };
-      }
-      man.splice(i, 1);
-      mod.splice(i, 1);
-      ser.splice(i, 1);
+      if (man.length <= 1) return { manufacturers: [""], models: [""], serialNumbers: [""] };
+      man.splice(i, 1); mod.splice(i, 1); ser.splice(i, 1);
       return { manufacturers: man, models: mod, serialNumbers: ser };
     });
 
+  const onReset = () => {
+    setJob({ ...INITIAL_JOB });
+    setHead({ ...INITIAL_HEAD });
+    setEquipment({ ...INITIAL_EQUIPMENT });
+    setDCTest1Results(null);
+    setDCChargerTest(null);
+    setPhaseSequence("");
+    setTestRemark("");
+    setImgRemark("");
+    setPhotoItems([]);
+    setPreviewIssueId("");
+    setPreviewDocName("");
+    clearDraftLocal(currentDraftKey);
+    clearPhotosForDraft(currentDraftKey);
+  };
+
+  // ============================================================
+  // ★★★ FINAL SAVE ★★★
+  // ============================================================
   const onFinalSave = async () => {
     try {
-      if (!stationId) {
-        alert("ไม่พบ station_id ใน URL");
-        return;
-      }
-
-      if (!dcTest1Results) {
-        alert("ยังไม่ได้กรอกผลทดสอบ (Electrical Safety)");
-        return;
-      }
-
-      if (!dcChargerTest) {
-        alert("ยังไม่ได้กรอกผลทดสอบ (Electrical Safety)");
-        return;
-      }
+      if (!sn) { alert(t.alertNoSn); return; }
+      if (!chargerNo) { alert(t.alertNoChargerNo); return; }
+      if (!dcTest1Results) { alert(t.alertNoElectricalTest); return; }
+      if (!dcChargerTest) { alert(t.alertNoChargerTest); return; }
 
       setSaving(true);
 
-      const {
-        inspection_date: headInspectionDate,
-        issue_id: headIssueId,
-        ...headWithoutDatesAndIssue
-      } = head;
+      const { inspection_date: headInspectionDate, issue_id: _, ...headWithoutIssue } = head;
 
-      // 👉 รวมค่า head ลงใน job ก่อนส่ง (ให้ head มีสิทธิ์ override)
       const mergedJob: Job = {
         ...job,
-        issue_id: headIssueId || job.issue_id,
-        inspection_date: headInspectionDate || job.inspection_date,
+        inspection_date: headInspectionDate || job.inspection_date || localTodayISO(),
         location: head.location || job.location,
         manufacturer: head.manufacturer || job.manufacturer,
         model: head.model || job.model,
@@ -295,59 +488,27 @@ export default function DCForm() {
         serial_number: head.serial_number || job.serial_number,
       };
 
-      // ✅ แปลงผล Electrical Safety (แยกรอบ r1/r2/r3, rcd, ฯลฯ)
-      const electricalTest = mapToElectricalPayload(dcTest1Results);
-      const electrical_safety = electricalTest.electricalSafety;
+      const electrical_safety = mapToElectricalPayload(dcTest1Results).electricalSafety;
+      const charger_safety = mapToChargerPayload(dcChargerTest).ChargerSafety;
 
-      const chargerTest = mapToChargerPayload(dcChargerTest);
-      const charger_safety = chargerTest.ChargerSafety;
-
-      // 1) สร้างรายงานหลัก
-      // const payload = {
-      //   station_id: stationId,
-      //   issue_id: headIssueId,
-      //   inspection_date: headInspectionDate,
-      //   summary,
-      //   job: {
-      //     ...job,
-      //     // ฝั่งหลักเก็บแค่ชื่อไฟล์ (optional) แต่รูปจริงไปอัปโหลดในขั้นตอนถัดไป
-      //     corrective_actions: job.corrective_actions.map((c) => ({
-      //       text: c.text,
-      //       images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
-      //     })),
-      //   },
-      //   head: headWithoutDatesAndIssue,
-      //   equipment,
-      // };
-
+      // ★★★ ไม่ส่ง issue_id และ document_name - ให้ backend generate ★★★
       const payload = {
-        station_id: stationId,
-        issue_id: mergedJob.issue_id,
+        sn,
+        chargerNo,
         inspection_date: mergedJob.inspection_date,
-        // summary,
         job: {
           ...mergedJob,
-          corrective_actions: mergedJob.corrective_actions.map((c) => ({
+          corrective_actions: mergedJob.corrective_actions.map(c => ({
             text: c.text,
-            images: c.images.map((img) => ({ name: img.file?.name ?? "" })),
+            images: c.images.map(img => ({ name: img.file?.name ?? "" })),
           })),
         },
-        head: headWithoutDatesAndIssue,
+        head: headWithoutIssue,
         equipment,
-        electrical_safety, // ⬅️ แนบข้อมูลจาก DCTest1Grid
+        electrical_safety,
         charger_safety,
-        remarks: {
-          testRematk: testRemark,       // remark ด้านบน
-          imgRemark: imgRemark // remark หลังรูป
-        },
-        symbol: sigSymbol,
-        phaseSequence: sigPhase,
-        signature: {
-          // remark: sigRemark,
-          // symbol: sigSymbol,
-          // phaseSequence: sigPhase,
-          responsibility: sigResp,
-        },
+        remarks: { testRemark, imgRemark },
+        phaseSequence,
       };
 
       const res = await fetch(`${API_BASE}/dcreport/submit`, {
@@ -356,212 +517,147 @@ export default function DCForm() {
         credentials: "include",
         body: JSON.stringify(payload),
       });
-      if (!res.ok)
-        throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+      if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
 
-      const { report_id } = await res.json();
+      const { report_id, issue_id, document_name } = await res.json();
+      console.log("Created report:", { report_id, issue_id, document_name });
 
-      // 2) อัปโหลดรูปตาม group (g1,g2,...) จาก Corrective Action
       await uploadPhotosForReport(report_id);
       await uploadPhotoSection(report_id, photoItems);
 
-      // 3) (ถ้าต้องการ) finalize รายงาน
-      // await fetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/finalize`, {
-      //   method: "POST",
-      //   credentials: "include",
-      // });
-
-      // 4) กลับหน้า list พร้อมพารามิเตอร์สถานี
-      // const listUrl = `${LIST_ROUTE}?station_id=${encodeURIComponent(
-      //   stationId
-      // )}`;
-      // router.replace(listUrl);
+      clearDraftLocal(currentDraftKey);
+      clearPhotosForDraft(currentDraftKey);
 
       router.replace(buildListUrl());
     } catch (e: any) {
       console.error(e);
-      alert(`บันทึกไม่สำเร็จ: ${e.message || e}`);
+      alert(`${t.alertSaveFailed}: ${e.message || e}`);
     } finally {
       setSaving(false);
     }
   };
 
-  /* -------------------- Helpers: ลดความซ้ำซ้อน -------------------- */
-  type StringListKey = "equipment_list" | "preventive_action" | "reported_by";
-
-  type NextIssueIdParams = {
-    latestId?: string | null; // รหัสล่าสุดของเดือนนั้น (ถ้ามี)
-    date?: Date | string; // วันที่อ้างอิง (เช่น found_date)
-    prefix?: string; // ค่าเริ่มต้น "EL"
-    pad?: number; // จำนวนหลักของเลขรัน (เริ่มต้น 2 => 01, 02, ...)
-    start?: number; // เริ่มนับที่เลขไหน (เริ่มต้น 1)
-  };
-
-  function localTodayISO(): string {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  }
-
-  // ดึง station_name จาก API แล้วอัปเดตช่อง "สถานที่"
+  // ===== Load station info =====
   useEffect(() => {
     let alive = true;
-    if (!stationId) return;
+    if (!sn || !draftChecked) return;
 
     (async () => {
       try {
-        const res = await fetch(
-          `${API_BASE}/station/info/public?station_id=${encodeURIComponent(
-            stationId
-          )}`,
-          { cache: "no-store" }
-        );
+        const res = await fetch(`${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: { station: StationPublic } = await res.json();
-
         if (!alive) return;
-        setHead((prev) => ({
+        const station = data.station;
+
+        setChargerNo(station.chargerNo ? String(station.chargerNo) : null);
+
+        setHead(prev => ({
           ...prev,
-          location: data.station.station_name || prev.location, // 👈 เซ็ตสถานที่ = station_name
+          inspection_date: prev.inspection_date || localTodayISO(),
+          location: prev.location || station.station_name || "",
+          manufacturer: prev.manufacturer || station.manufacturer || station.brand || "",
+          model: prev.model || station.model || "",
+          power: prev.power || station.power || "",
+          serial_number: prev.serial_number || station.serial_number || station.serialNumber || station.SN || sn || "",
+          firmware_version: prev.firmware_version || station.firmware_version || station.firmwareVersion || "",
         }));
       } catch (err) {
         console.error("โหลดข้อมูลสถานีไม่สำเร็จ:", err);
-        // จะ alert ก็ได้ถ้าต้องการ
       }
     })();
 
-    return () => {
-      alive = false;
-    };
-  }, [stationId]);
+    return () => { alive = false; };
+  }, [sn, draftChecked]);
 
+  // ============================================================
+  // ★★★ NEW: Fetch preview IDs from backend ★★★
+  // ============================================================
   useEffect(() => {
-    function makeNextIssueId({
-      latestId = null,
-      date = new Date(),
-      prefix = "EL",
-      pad = 2,
-      start = 1,
-    }: NextIssueIdParams = {}): string {
-      const d = typeof date === "string" ? new Date(date) : date;
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const base = `${prefix}-${y}-${m}`;
-
-      let seq = start;
-
-      if (latestId) {
-        // รองรับรูปแบบ EL-YYYY-MMNN...
-        const rx = new RegExp(`^${prefix}-(\\d{4})-(\\d{2})(\\d+)$`);
-        const m2 = latestId.match(rx);
-        if (m2) {
-          const [_, yy, mm, tail] = m2;
-          if (Number(yy) === y && mm === m) {
-            seq = Math.max(Number(tail) + 1, start);
-          }
-        }
-      }
-
-      const tail = String(seq).padStart(pad, "0");
-      return `${base}${tail}`;
-    }
-
     let alive = true;
+    if (!sn || !chargerNo || !draftChecked) return;
 
     (async () => {
-      const todayStr = localTodayISO(); // เช่น 2025-10-17
-      const [y, m] = todayStr.split("-");
-
-      let latestId: string | null = null;
       try {
-        const res = await fetch(`/api/dc/latest-id?y=${y}&m=${m}`);
-        if (res.ok) {
-          const data = await res.json();
-          latestId = data?.id ?? null; // เช่น "EL-2025-1007"
-        }
-      } catch {
-        /* fallback: เริ่ม 01 */
+        const todayStr = localTodayISO();
+        const url = `${API_BASE}/dcreport/next-ids?sn=${encodeURIComponent(sn)}&chargerNo=${encodeURIComponent(chargerNo)}&inspection_date=${todayStr}`;
+        
+        const res = await fetch(url, { credentials: "include" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        
+        const data = await res.json();
+        if (!alive) return;
+
+        // ★ Set preview values
+        setPreviewIssueId(data.issue_id || "");
+        setPreviewDocName(data.document_name || "");
+
+        // ★ Update head.issue_id for display
+        setHead(prev => ({
+          ...prev,
+          issue_id: data.issue_id || prev.issue_id,
+          inspection_date: prev.inspection_date || todayStr,
+        }));
+
+        console.log("[DC] Preview IDs loaded:", data);
+      } catch (err) {
+        console.error("โหลด preview IDs ไม่สำเร็จ:", err);
       }
-
-      const nextId = makeNextIssueId({ latestId, date: todayStr });
-
-      if (!alive) return;
-      setHead((prev) => ({
-        ...prev,
-        inspection_date: todayStr,
-        issue_id: nextId,
-      }));
     })();
 
-    return () => {
-      alive = false;
-    };
-  }, []); // ⭐ รันครั้งเดียวตอน mount
+    return () => { alive = false; };
+  }, [sn, chargerNo, draftChecked]);
 
   async function uploadPhotosForReport(reportId: string) {
-    if (!stationId) return;
-
-    // loop แต่ละข้อของ Corrective Action → map เป็น group=g1,g2,...
+    if (!sn) return;
     for (let i = 0; i < job.corrective_actions.length; i++) {
       const item = job.corrective_actions[i];
-      const files = item.images.map((im) => im.file).filter(Boolean) as File[];
-      if (!files.length) continue; // ข้อนี้ไม่มีรูปก็ข้าม
-
-      const group = `g${i + 1}`; // g1, g2, ... (อย่าเกินที่ backend รองรับ)
+      const files = item.images.map(im => im.file).filter(Boolean) as File[];
+      if (!files.length) continue;
+      const group = `g${i + 1}`;
       const fd = new FormData();
-      fd.append("station_id", stationId);
+      fd.append("sn", sn);
       fd.append("group", group);
-      if (item.text) fd.append("remark", item.text); // จะไม่ส่งก็ได้
-
-      // แนบหลายไฟล์ด้วย key "files" ซ้ำ ๆ
-      files.forEach((f) => fd.append("files", f, f.name));
-
-      const res = await fetch(
-        `${API_BASE}/dctestreport/${encodeURIComponent(reportId)}/photos`,
-        {
-          method: "POST",
-          body: fd,
-          credentials: "include", // ถ้าใช้ cookie httpOnly
-          // ถ้าใช้ Bearer token ให้ใส่ headers.Authorization แทน
-        }
-      );
-
+      if (item.text) fd.append("remark", item.text);
+      files.forEach(f => fd.append("files", f, f.name));
+      const res = await fetch(`${API_BASE}/dctestreport/${encodeURIComponent(reportId)}/photos`, {
+        method: "POST", body: fd, credentials: "include",
+      });
       if (!res.ok) {
         const msg = await res.text().catch(() => `HTTP ${res.status}`);
-        throw new Error(`อัปโหลดรูปข้อที่ ${i + 1} ล้มเหลว: ${msg}`);
+        throw new Error(`${t.alertUploadFailed} ${i + 1} ${t.alertUploadFailedSuffix}: ${msg}`);
       }
     }
   }
-  /* ----------------------------------------------------------------- */
+
+  const formComplete = React.useMemo(() => {
+    return isFormComplete(head, phaseSequence, equipment, dcTest1Results, dcChargerTest, photoItems);
+  }, [head, phaseSequence, equipment, dcTest1Results, dcChargerTest, photoItems]);
 
   return (
     <section className="tw-pb-24">
       <form
         action="#"
         noValidate
-        onSubmit={(e) => {
-          e.preventDefault();
-          return false;
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.preventDefault();
-        }}
+        onSubmit={(e) => { e.preventDefault(); return false; }}
+        onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
       >
         <div className="tw-mx-auto tw-w-full tw-max-w-[1000px] lg:tw-max-w-[1100px] tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
 
-          {/* HEADER */}
-          <CMFormHeader headerLabel="DC Report" />
+          {/* HEADER - ★ ส่ง previewDocName สำหรับแสดง */}
+          <CMFormHeader 
+            headerLabel="DC Report" 
+            issueId={previewIssueId || head.issue_id} 
+            documentName={previewDocName}
+          />
 
-          {/* BODY */}
           <div className="tw-mt-8 tw-space-y-8">
-            {/* META – การ์ดหัวเรื่อง */}
-            <DCFormMeta
-              head={head} onHeadChange={onHeadChange}
+            {/* META - ★ ส่ง previewIssueId */}
+            <DCFormMeta 
+              head={{ ...head, issue_id: previewIssueId || head.issue_id }} 
+              onHeadChange={onHeadChange} 
             />
 
-            {/* Equipment Identification Details */}
             <EquipmentSection
               equipmentList={equipment.manufacturers}
               reporterList={equipment.models}
@@ -573,28 +669,40 @@ export default function DCForm() {
               onRemove={removeEquipmentRow}
             />
 
-            {/* AC Test Results Grid */}
             <div className="tw-space-y-4">
               <h3 className="tw-text-lg tw-font-semibold tw-text-blue-gray-800">
-                <span className="tw-underline">
-                  Testing Topics for Safety (Specifically Power Supply/Input Side)
-                </span>
+                <span className="tw-underline">{t.testingTopicsTitle}</span>
               </h3>
-              <DCTest1Grid onResultsChange={setDCTest1Results} />
+              {/* ★★★ FIXED: Phase Sequence - same line on mobile ★★★ */}
+              <div className="tw-flex tw-items-center tw-gap-3">
+                <span className="tw-text-sm tw-font-semibold tw-text-gray-800 tw-whitespace-nowrap">
+                  {t.phaseSequence}
+                </span>
+                <span className="tw-font-semibold tw-text-base">:</span>
+                <div className="tw-flex-1 md:tw-flex-none md:tw-w-48">
+                  <Input
+                    id="phase-sequence-input"
+                    value={phaseSequence}
+                    onChange={(e) => setPhaseSequence(e.target.value)}
+                    placeholder={t.phaseSequencePlaceholder}
+                    crossOrigin=""
+                    className="!tw-border-gray-300"
+                    containerProps={{ className: "!tw-min-w-0" }}
+                  />
+                </div>
+              </div>
+              <DCTest1Grid onResultsChange={setDCTest1Results} initialResults={dcTest1Results || undefined} />
             </div>
+
             <div className="tw-space-y-4">
               <h3 className="tw-text-lg tw-font-semibold tw-text-blue-gray-800">
-                <span className="tw-underline tw-font-bold">
-                  CHARGING PROCESS TESTING
-                </span>
+                <span className="tw-underline tw-font-bold">{t.chargingProcessTitle}</span>
               </h3>
-              <ACTest2Grid onResultsChange={setDCChargerTest} />
+              <DCTest2Grid onResultsChange={setDCChargerTest} initialResults={dcChargerTest || undefined} />
             </div>
 
             <div className="tw-mb-3">
-              <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
-                Remark
-              </span>
+              <span className="tw-text-sm tw-font-semibold tw-text-gray-800">{t.remark}</span>
             </div>
             <div className="tw-space-y-2">
               <Textarea
@@ -604,16 +712,13 @@ export default function DCForm() {
                 containerProps={{ className: "!tw-min-w-0" }}
               />
             </div>
+
             <div className="tw-mb-3">
-              <ACPhotoSection initialItems={photoItems}
-                onItemsChange={setPhotoItems}
-                title="แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)"
-              />
+              <DCPhotoSection initialItems={photoItems} onItemsChange={setPhotoItems} title={t.photoSectionTitle} />
             </div>
+
             <div className="tw-mb-3">
-              <span className="tw-text-sm tw-font-semibold tw-text-gray-800">
-                Remark
-              </span>
+              <span className="tw-text-sm tw-font-semibold tw-text-gray-800">{t.remark}</span>
             </div>
             <div className="tw-space-y-2">
               <Textarea
@@ -623,114 +728,35 @@ export default function DCForm() {
                 containerProps={{ className: "!tw-min-w-0" }}
               />
             </div>
-            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
-              <div>
-                <div className="tw-flex tw-items-center tw-gap-3 tw-mb-2">
-                  <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Symbol</span>
-                  <span className="tw-font-semibold tw-text-base">:</span>
-                  <div className="tw-flex tw-items-center tw-flex-wrap tw-gap-8">
-                    {/* ☑ PASS */}
-                    <div className="tw-flex tw-items-center tw-gap-2">
-                      <span
-                        className="tw-inline-flex tw-items-center tw-justify-center tw-w-6 tw-h-6 tw-border-2 tw-border-black"
-                        aria-hidden="true"
-                      >
-                        <span className="tw-text-sm tw-leading-none">✓</span>
-                      </span>
-                      <span className="tw-text-sm tw-text-gray-800 tw-whitespace-nowrap">PASS</span>
-                    </div>
-                    {/* ☒ Not PASS (บรรทัดเดียว) */}
-                    <div className="tw-flex tw-items-center tw-gap-2">
-                      <span
-                        className="tw-inline-flex tw-items-center tw-justify-center tw-w-6 tw-h-6 tw-border-2 tw-border-black"
-                        aria-hidden="true"
-                      >
-                        <span className="tw-text-sm tw-leading-none">X</span>
-                      </span>
-                      <span className="tw-text-sm tw-text-gray-800 tw-whitespace-nowrap">Not PASS</span>
-                    </div>
 
-                    {/* ☐ N/A (Not TEST) — บรรทัดเดียว */}
-                    <div className="tw-flex tw-items-center tw-gap-2">
-                      <span
-                        className="tw-inline-flex tw-w-6 tw-h-6 tw-border-2 tw-border-black"
-                        aria-hidden="true"
-                      />
-                      <span className="tw-text-sm tw-text-gray-800 tw-whitespace-nowrap">N/A (Not TEST)</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <DCMasterValidation
+              head={head}
+              phaseSequence={phaseSequence}
+              equipment={equipment}
+              dcTest1Results={dcTest1Results}
+              dcChargerTest={dcChargerTest}
+              photoItems={photoItems}
+              lang={lang}
+            />
 
-
-              {/* Phase Sequence (ปุ่มเล็ก) */}
-              <div className="tw-flex tw-items-center tw-gap-3 tw-flex-wrap md:tw-flex-nowrap">
-                <span className="tw-text-sm tw-font-semibold tw-text-gray-800">Phase Sequence</span>
-                <span className="tw-font-semibold tw-text-base">:</span>
-
-                <button
-                  type="button"
-                  onClick={() => handlePhaseSequenceChange('L1L2L3')}
-                  className={`tw-ml-1 tw-px-3 tw-py-1 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors ${sigPhase === 'L1L2L3'
-                      ? 'tw-bg-blue-600 tw-text-white tw-border-blue-600'
-                      : 'tw-bg-white tw-text-blue-600 tw-border-blue-500 hover:tw-bg-blue-50'
-                    }`}
-                  aria-pressed={sigPhase === 'L1L2L3'}
-                >
-                  L1-L2-L3
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handlePhaseSequenceChange('L3L2L1')}
-                  className={`tw-px-3 tw-py-1 tw-rounded-md tw-font-medium tw-text-sm tw-border tw-transition-colors ${sigPhase === 'L3L2L1'
-                      ? 'tw-bg-orange-600 tw-text-white tw-border-orange-600'
-                      : 'tw-bg-white tw-text-orange-600 tw-border-orange-500 hover:tw-bg-orange-50'
-                    }`}
-                  aria-pressed={sigPhase === 'L3L2L1'}
-                >
-                  L3-L2-L1
-                </button>
-              </div>
-
-            </div>
-
-            {/* Signature Section */}
-            <div className="tw-space-y-4">
-              <ACSignatureSection1
-                // onRemarkChange={(v) => setSigRemark(v)}
-                onResponsibilityChange={(field, who, val) => {
-                  setSigResp(prev => ({
-                    ...prev,
-                    [who]: { ...prev[who], [field]: val }
-                  }));
-                }} />
-            </div>
-            {/* FOOTER + ปุ่มบันทึก */}
-            <ACFormActions
+            <DCFormActions
               onSave={onSave}
               onSubmit={onFinalSave}
-              onReset={() => setJob({ ...INITIAL_JOB })}
+              onReset={onReset}
               isSaving={saving}
+              isComplete={formComplete}
             />
           </div>
 
         </div>
       </form>
 
-      {/* print styles */}
-      <style jsx global>
-        {`
-          @media print {
-            body {
-              background: white !important;
-            }
-            .tw-print\\:tw-hidden {
-              display: none !important;
-            }
-          }
-        `}
-      </style>
+      <style jsx global>{`
+        @media print {
+          body { background: white !important; }
+          .tw-print\\:tw-hidden { display: none !important; }
+        }
+      `}</style>
     </section>
   );
 }

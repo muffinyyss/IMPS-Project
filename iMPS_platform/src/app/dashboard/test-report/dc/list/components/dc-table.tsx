@@ -1,8 +1,7 @@
-
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import DCForm from "@/app/dashboard/test-report/dc/input_dc/checkList"; // ✅ import ตรง
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import DCForm from "@/app/dashboard/test-report/dc/input_dc/checkList";
 
 import {
   getCoreRowModel,
@@ -24,43 +23,242 @@ import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon, ArrowLeftIcon } f
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 
-// type TData = (typeof AppDataTable)[number];
+// ===== Types =====
 type TData = {
-  name: string;     // วันที่ (แสดงผล)
-  position: string; // YYYY-MM-DD ใช้ sort/filter
-  office: string;   // ลิงก์ไฟล์
+  id: string;
+  documentName: string;
+  issueId: string;
+  dcDate: string;
+  dcDateISO: string;
+  inspector: string;
+  fileUrl: string;
 };
 
 type Props = {
-  token?: string;        // ใช้ได้ ถ้าจะส่ง Bearer แทนคุกกี้
+  token?: string;
   apiBase?: string;
 }
 
+type Lang = "th" | "en";
+
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-export default function CMReportPage({ token, apiBase = BASE }: Props) {
+// ===== Translations =====
+const translations = {
+  th: {
+    title: "Test Report (DC Charger)",
+    subtitle: "ค้นหาและดาวน์โหลดเอกสารรายงานการทดสอบ (Test Report)",
+    upload: "อัปโหลด",
+    add: "+เพิ่ม",
+    entriesPerPage: "รายการต่อหน้า",
+    search: "ค้นหา",
+    page: "หน้า",
+    of: "จาก",
+    loading: "กำลังโหลด…",
+    noData: "ไม่มีข้อมูล",
+    selectStation: "กรุณาเลือกสถานีจากแถบบนก่อน",
+    backToList: "กลับไปหน้า List",
+    // Table columns
+    colNo: "ลำดับ",
+    colDocName: "ชื่อเอกสาร",
+    colIssueId: "รหัสเอกสาร",
+    colDcDate: "วันที่ DC",
+    colInspector: "ผู้ตรวจสอบ",
+    colPdf: "PDF",
+    // Dialog
+    dialogTitle: "เลือกวันที่รายงาน (Test Report)",
+    dialogDateLabel: "วันที่ (รูปแบบ YYYY-MM-DD)",
+    dialogFilesSelected: "ไฟล์ที่เลือก",
+    dialogFiles: "ไฟล์",
+    dialogCancel: "ยกเลิก",
+    dialogUpload: "อัปโหลด",
+    // Alerts
+    alertPdfOnly: "รองรับเฉพาะไฟล์ PDF เท่านั้น",
+    alertSelectStation: "กรุณาเลือกสถานีก่อน",
+    alertInvalidDate: "รูปแบบวันที่ไม่ถูกต้อง (ควรเป็น YYYY-MM-DD)",
+    alertUploadFailed: "อัปโหลดไม่สำเร็จ",
+    alertUploadSuccess: "อัปโหลดสำเร็จ",
+    alertUploadError: "เกิดข้อผิดพลาดระหว่างอัปโหลด",
+    // PDF
+    viewPdf: "ดู/ดาวน์โหลด PDF",
+    noFile: "ไม่มีไฟล์",
+  },
+  en: {
+    title: "Test Report (DC Charger)",
+    subtitle: "Search and download test report documents",
+    upload: "Upload",
+    add: "+Add",
+    entriesPerPage: "entries per page",
+    search: "Search",
+    page: "Page",
+    of: "of",
+    loading: "Loading…",
+    noData: "No data",
+    selectStation: "Please select a station first",
+    backToList: "Back to List",
+    // Table columns
+    colNo: "No.",
+    colDocName: "Document Name",
+    colIssueId: "ISSUE ID",
+    colDcDate: "DC Date",
+    colInspector: "Inspector",
+    colPdf: "PDF",
+    // Dialog
+    dialogTitle: "Select Report Date (Test Report)",
+    dialogDateLabel: "Date (YYYY-MM-DD format)",
+    dialogFilesSelected: "Files selected",
+    dialogFiles: "file(s)",
+    dialogCancel: "Cancel",
+    dialogUpload: "Upload",
+    // Alerts
+    alertPdfOnly: "Only PDF files are supported",
+    alertSelectStation: "Please select a station first",
+    alertInvalidDate: "Invalid date format (should be YYYY-MM-DD)",
+    alertUploadFailed: "Upload failed",
+    alertUploadSuccess: "Upload successful",
+    alertUploadError: "An error occurred during upload",
+    // PDF
+    viewPdf: "View/Download PDF",
+    noFile: "No file",
+  },
+};
+
+// ===== Helper Functions =====
+const extractId = (it: any): string => {
+  if (!it) return "";
+  const raw = (it._id !== undefined ? it._id : it.id) ?? "";
+  if (raw && typeof raw === "object") {
+    return raw.$oid || raw.oid || raw.$id || "";
+  }
+  const s = String(raw || "");
+  return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
+};
+
+const buildDocumentName = (it: any, isoDay: string): string => {
+  const issueId = it.issue_id ?? it.head?.issue_id ?? "";
+  if (issueId) return `DC Test Report - ${issueId}`;
+  if (isoDay) return `DC Test Report - ${isoDay}`;
+  return "DC Test Report";
+};
+
+const getInspector = (it: any): string => {
+  const performed = it.signature?.responsibility?.performed?.name;
+  if (performed) return performed;
+  const inspector = it.head?.inspector ?? it.inspector ?? it.performed_by ?? "";
+  if (inspector) return inspector;
+  return "-";
+};
+
+const thDate = (iso?: string): string => {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const toISODateOnly = (s?: string): string => {
+  if (!s) return "";
+  try {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  } catch {
+    return "";
+  }
+};
+
+const resolveFileHref = (v: any, apiBase: string): string => {
+  if (!v) return "";
+  if (typeof v === "object") {
+    const c = v.url ?? v.href ?? v.link ?? "";
+    return resolveFileHref(c, apiBase);
+  }
+  const s = String(v).trim();
+  if (!s) return "";
+  try { return new URL(s).toString(); } catch { }
+  if (s.startsWith("/")) return `${apiBase}${s}`;
+  if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
+  return `${apiBase}/${s}`;
+};
+
+// ===== Main Component =====
+export default function DCReportPage({ token, apiBase = BASE }: Props) {
   const [loading, setLoading] = useState(false);
-  // const [mode, setMode] = useState<"list" | "form">("list");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
 
-  // อ่าน station_id จาก URL (Navbar เป็นคนอัปเดตให้)
   const searchParams = useSearchParams();
-  // const stationIdFromUrl = sp.get("station_id") ?? "";
-  const [stationId, setStationId] = useState<string | null>(null);
+  const [sn, setSn] = useState<string | null>(null);
 
+  // ===== Language State (sync with Navbar) =====
+  const [lang, setLang] = useState<Lang>("th");
 
   useEffect(() => {
-    const sidFromUrl = searchParams.get("station_id");
-    if (sidFromUrl) {
-      setStationId(sidFromUrl);
-      localStorage.setItem("selected_station_id", sidFromUrl);
+    // Load initial language from localStorage
+    const savedLang = localStorage.getItem("app_language") as Lang | null;
+    if (savedLang === "th" || savedLang === "en") {
+      setLang(savedLang);
+    }
+
+    // Listen for language change event from Navbar
+    const handleLangChange = (e: CustomEvent<{ lang: Lang }>) => {
+      setLang(e.detail.lang);
+    };
+
+    window.addEventListener("language:change", handleLangChange as EventListener);
+
+    return () => {
+      window.removeEventListener("language:change", handleLangChange as EventListener);
+    };
+  }, []);
+
+  // Get translations for current language
+  const t = translations[lang];
+
+  // ===== Load SN from URL or localStorage =====
+  const loadSn = useCallback(() => {
+    const snFromUrl = searchParams.get("sn");
+    if (snFromUrl) {
+      setSn(snFromUrl);
       return;
     }
-    const sidLocal = localStorage.getItem("selected_station_id");
-    setStationId(sidLocal);
+    const snLocal = localStorage.getItem("selected_sn");
+    setSn(snLocal);
   }, [searchParams]);
+
+  useEffect(() => {
+    loadSn();
+  }, [loadSn]);
+
+  // Listen for charger selection changes
+  useEffect(() => {
+    const handleChargerEvent = () => {
+      requestAnimationFrame(loadSn);
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "selected_sn") {
+        requestAnimationFrame(loadSn);
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("charger:selected", handleChargerEvent);
+    window.addEventListener("charger:deselected", handleChargerEvent);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("charger:selected", handleChargerEvent);
+      window.removeEventListener("charger:deselected", handleChargerEvent);
+    };
+  }, [loadSn]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -70,139 +268,53 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     if (view === "form") params.set("view", "form");
     else params.delete("view");
+    
+    if (sn && !params.has("sn")) {
+      params.set("sn", sn);
+    }
+    
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
 
-  // เลือกโหมด auth: คุกกี้ httpOnly (credentials: "include") หรือ Bearer token
-  const useHttpOnlyCookie = true;
-  function makeHeaders(): Record<string, string> {
-    const h: Record<string, string> = { "Content-Type": "application/json" };
-    if (!useHttpOnlyCookie) {
-      const t = token || (typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "");
-      if (t) h.Authorization = `Bearer ${t}`;
-    }
-    return h;
-  }
-  const fetchOpts: RequestInit = {
-    headers: makeHeaders(),
-    ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
-  };
-
-  function thDate(iso?: string) {
-    if (!iso) return "-";
-    return new Date(iso).toLocaleDateString("th-TH-u-ca-buddhist", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  }
-
-  function toISODateOnly(s?: string) {
-    if (!s) return "";
-    try {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-      const d = new Date(s);
-      if (isNaN(d.getTime())) return "";
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}`;
-    } catch {
-      return "";
-    }
-  }
-
-  function resolveFileHref(v: any, apiBase: string) {
-    if (!v) return "";
-    if (typeof v === "object") {
-      const c = v.url ?? v.href ?? v.link ?? "";
-      return resolveFileHref(c, apiBase);
-    }
-    const s = String(v).trim();
-    if (!s) return "";
-    try { return new URL(s).toString(); } catch { }
-    if (s.startsWith("/")) return `${apiBase}${s}`;
-    if (/^[a-f0-9]{24}$/i.test(s)) return `${apiBase}/files/${s}`;
-    return `${apiBase}/${s}`;
-  }
-
-  function appendParam(u: string, key: string, val: string) {
-    const url = new URL(u, apiBase);
-    if (!url.searchParams.has(key)) url.searchParams.set(key, val);
-    return url.toString();
-  }
-
-  function buildHtmlLinks(baseUrl?: string) {
-    const u = (baseUrl || "").trim();
-    if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
-
-    // ตรวจจับ endpoint ใหม่ เช่น /pdf/charger/<id>/export
-    const isPdfEndpoint = /\/pdf\/(dc)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
-
-    if (isPdfEndpoint) {
-      const finalUrl = u;
-      const withStation = appendParam(finalUrl, "station_id", stationId || "");
-      return {
-        previewHref: appendParam(withStation, "dl", "0"),
-        downloadHref: appendParam(withStation, "dl", "1"),
-        isPdfEndpoint: true,
-      };
-    }
-
-    // fallback เดิม
-    return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
-  }
-
-
-
-  function getStatusText(it: any) {
-    return String(it?.status ?? it?.job?.status ?? "").trim();
-  }
-
-  const fetchRows = async () => {
-    if (!stationId) { setData([]); return; }
+  // ===== Fetch data =====
+  const fetchRows = useCallback(async () => {
+    if (!sn) { setData([]); return; }
     setLoading(true);
+    
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
-        u.searchParams.set("station_id", stationId);
+        u.searchParams.set("sn", sn);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
         return u.toString();
       };
 
-      const [cmRes, urlRes] = await Promise.allSettled([
+      const fetchOpts: RequestInit = {
+        headers: { "Content-Type": "application/json" },
+        credentials: "include" as const,
+      };
+
+      const [dcRes, urlRes] = await Promise.allSettled([
         fetch(makeURL("/dctestreport/list"), fetchOpts),
         fetch(makeURL("/dcurl/list"), fetchOpts),
       ]);
 
-      let cmItems: any[] = [];
+      let dcItems: any[] = [];
       let urlItems: any[] = [];
 
-      if (cmRes.status === "fulfilled" && cmRes.value.ok) {
-        const j = await cmRes.value.json();
-        if (Array.isArray(j?.items)) cmItems = j.items;
+      if (dcRes.status === "fulfilled" && dcRes.value.ok) {
+        const j = await dcRes.value.json();
+        if (Array.isArray(j?.items)) dcItems = j.items;
       }
       if (urlRes.status === "fulfilled" && urlRes.value.ok) {
         const j = await urlRes.value.json();
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
 
-      const isDC = (it: any) => {
-        const hasStatus = it?.status != null || it?.job?.status != null;
-        if (!hasStatus) return true;
-        const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
-        return s === "DC";
-      };
-
-      cmItems = cmItems.filter(isDC);
-      urlItems = urlItems.filter(isDC);
-
-
-      const cmRows: TData[] = cmItems.map((it: any) => {
+      const dcRows: TData[] = dcItems.map((it: any) => {
         const isoDay = toISODateOnly(it.inspection_date ?? it.createdAt ?? "");
 
-        // ลิงก์ไฟล์ที่อัปโหลด (ถ้ามี)
         const rawUploaded =
           it.file_url
           ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
@@ -210,38 +322,23 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           ?? it.path;
 
         const uploadedUrl = resolveFileHref(rawUploaded, apiBase);
-
-        // ⬇️ วางไว้ใกล้ๆ ฟังก์ชันอื่น
-        function extractId(it: any): string {
-          if (!it) return "";
-          // ให้โฟกัส _id ก่อน เพราะเป็นของจริงจาก Mongo
-          const raw = (it._id !== undefined ? it._id : it.id) ?? "";
-          if (raw && typeof raw === "object") {
-            // รองรับรูปแบบที่ซีเรียลไลซ์จาก Mongo: { "$oid": "..." } หรือ { "oid": "..." }
-            return raw.$oid || raw.oid || raw.$id || "";
-          }
-          const s = String(raw || "");
-          return /^[a-fA-F0-9]{24}$/.test(s) ? s : "";
-        }
-
-
-        // ⬇️ ใช้ helper ใหม่
         const id = extractId(it);
-        // const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/download` : "";
         const generatedUrl = id ? `${apiBase}/pdf/dc/${encodeURIComponent(id)}/export` : "";
-
         const fileUrl = uploadedUrl || generatedUrl;
 
         return {
-          name: thDate(isoDay),
-          position: isoDay,
-          office: fileUrl,
+          id: id,
+          documentName:  it.document_name,
+          issueId: it.issue_id ?? it.head?.issue_id ?? "-",
+          dcDate: thDate(isoDay),
+          dcDateISO: isoDay,
+          inspector: getInspector(it),
+          fileUrl: fileUrl,
         };
       });
 
-
       const urlRows: TData[] = urlItems.map((it: any) => {
-        const isoDay = toISODateOnly(it.inspection_date ?? it.reportDate ?? it.createdAt ?? "");
+        const isoDay = toISODateOnly(it.dc_date ?? it.reportDate ?? it.createdAt ?? "");
         const raw =
           it.file_url
           ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
@@ -249,35 +346,21 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           ?? it.path;
 
         return {
-          name: thDate(isoDay),
-          position: isoDay,
-          office: resolveFileHref(raw, apiBase),
+          id: extractId(it),
+          documentName: it.document_name,
+          issueId: it.issue_id ?? "-",
+          dcDate: thDate(isoDay),
+          dcDateISO: isoDay,
+          inspector: getInspector(it),
+          fileUrl: resolveFileHref(raw, apiBase),
         };
       });
 
-
-
-      // รวมทั้งหมด แล้ว sort ตามวันที่ (ใหม่ → เก่า) แต่ยัง “ไม่ตัดซ้ำ”
-      const allRows = [...cmRows, ...urlRows].sort((a, b) => {
-        const da = (a.position ?? "") as string;
-        const db = (b.position ?? "") as string;
+      const allRows = [...dcRows, ...urlRows].sort((a, b) => {
+        const da = a.dcDateISO ?? "";
+        const db = b.dcDateISO ?? "";
         return da < db ? 1 : da > db ? -1 : 0;
       });
-
-      // ถ้าไม่มีอะไรเลย → fallback ล่าสุด 1 แถว
-      // if (!allRows.length) {
-      //   const res2 = await fetch(`${apiBase}/cmreport/latest/${encodeURIComponent(stationIdFromUrl)}`, fetchOpts);
-      //   if (res2.ok) {
-      //     const j = await res2.json();
-      //     const iso = j?.cm_date ?? "";
-      //     const rows: TData[] = iso ? ([{ name: thDate(iso), position: iso, office: "" }] as TData[]) : [];
-      //     setData(rows);
-      //     return;
-      //   }
-      //   setData([...AppDataTable] as TData[]);
-      //   return;
-      // }
-      if (!allRows.length) { setData([]); return; }
 
       setData(allRows);
     } catch (err) {
@@ -286,21 +369,49 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sn, apiBase]);
 
   useEffect(() => {
-    let alive = true;
-    (async () => { await fetchRows(); })();
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId]);
+    fetchRows();
+  }, [fetchRows]);
 
-  const columns: ColumnDef<TData, unknown>[] = [
+  useEffect(() => {
+    if (mode === "list") {
+      fetchRows();
+    }
+  }, [mode]);
+
+  const appendParam = (u: string, key: string, val: string): string => {
+    const url = new URL(u, apiBase);
+    if (!url.searchParams.has(key)) url.searchParams.set(key, val);
+    return url.toString();
+  };
+
+  const buildHtmlLinks = useCallback((baseUrl?: string) => {
+    const u = (baseUrl || "").trim();
+    if (!u) return { previewHref: "", downloadHref: "", isPdfEndpoint: false };
+
+    const isPdfEndpoint = /\/pdf\/(dc)\/[A-Fa-f0-9]{24}\/export(?:\b|$)/.test(u);
+
+    if (isPdfEndpoint) {
+      const withStation = appendParam(u, "sn", sn || "");
+      return {
+        previewHref: appendParam(withStation, "dl", "0"),
+        downloadHref: appendParam(withStation, "dl", "1"),
+        isPdfEndpoint: true,
+      };
+    }
+
+    return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
+  }, [sn, apiBase]);
+
+  // Columns with translations
+  const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
       id: "no",
-      header: () => "No.",
+      header: () => t.colNo,
       enableSorting: false,
-      size: 25,
+      size: 60,
       cell: (info) => {
         const pageRows = info.table.getRowModel().rows as Row<TData>[];
         const indexInPage = pageRows.findIndex((r) => r.id === info.row.id);
@@ -310,70 +421,95 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.name,
-      id: "date",
-      header: () => "date",
-      cell: (info: CellContext<TData, unknown>) => info.getValue() as React.ReactNode,
-      size: 50,
-      minSize: 60,
-      maxSize: 120,
+      accessorFn: (row) => row.documentName,
+      id: "documentName",
+      header: () => t.colDocName,
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-text-blue-gray-800">
+          {info.getValue() as string}
+        </span>
+      ),
+      size: 220,
+      minSize: 150,
+      maxSize: 300,
+      meta: { headerAlign: "left", cellAlign: "left" },
+    },
+    {
+      accessorFn: (row) => row.issueId,
+      id: "issueId",
+      header: () => t.colIssueId,
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-font-medium tw-text-blue-gray-800">
+          {info.getValue() as string}
+        </span>
+      ),
+      size: 140,
+      minSize: 100,
+      maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.office,
+      accessorFn: (row) => row.dcDateISO,
+      id: "dcDate",
+      header: () => t.colDcDate,
+      cell: (info: CellContext<TData, unknown>) => {
+        const row = info.row.original;
+        return row.dcDate;
+      },
+      size: 120,
+      minSize: 100,
+      maxSize: 150,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.inspector,
+      id: "inspector",
+      header: () => t.colInspector,
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-text-blue-gray-700">
+          {info.getValue() as string}
+        </span>
+      ),
+      size: 150,
+      minSize: 100,
+      maxSize: 200,
+      meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.fileUrl,
       id: "pdf",
-      header: () => "pdf",
+      header: () => t.colPdf,
       enableSorting: false,
       cell: (info: CellContext<TData, unknown>) => {
-        // const baseUrl = info.getValue() as string | undefined; // เช่น http://localhost:8000/pdf/<id>/file
         const url = info.getValue() as string | undefined;
         const hasUrl = typeof url === "string" && url.length > 0;
-        // const viewUrl = hasUrl ? `${baseUrl}` : undefined;           // inline (พรีวิว)
-
-        const { previewHref /*, downloadHref*/ } = buildHtmlLinks(url);
+        const { previewHref } = buildHtmlLinks(url);
 
         return (
-          // <a
-          //   // href={hasUrl ? url : undefined}
-          //   href={previewHref}
-          //   target="_blank"
-          //   rel="noopener noreferrer"
-          //   onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
-          //   // className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-          //   //       ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-          //   className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-          //   aria-disabled="Preview"
-          //   title={hasUrl ? "Download PDF" : "No file"}
-          // >
-          //   <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
-          //   <span className="tw-sr-only">Download PDF</span>
-          // </a>
           <a
-            // href={hasUrl ? url : undefined}
-            href={previewHref}
+            href={previewHref || "#"}
             aria-label="Preview"
-            // download
             target="_blank"
             rel="noopener noreferrer"
-            // onClick={handleNoUrl}
-            //   className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1
-            // ${hasUrl ? "tw-text-red-600 hover:tw-text-red-800" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-            //   aria-disabled={!hasUrl}
-            className="tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 tw-text-red-600 hover:tw-text-red-800"
-            title={hasUrl ? "Download PDF" : "No file"}
+            className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 ${
+              hasUrl 
+                ? "tw-text-red-600 hover:tw-text-red-800 hover:tw-bg-red-50" 
+                : "tw-text-blue-gray-300 tw-cursor-not-allowed"
+            }`}
+            onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
+            title={hasUrl ? t.viewPdf : t.noFile}
           >
             <DocumentArrowDownIcon className="tw-h-5 tw-w-5" />
             <span className="tw-sr-only">Download PDF</span>
           </a>
         );
       },
-
-      size: 80,
-      minSize: 64,
-      maxSize: 120,
+      size: 70,
+      minSize: 60,
+      maxSize: 90,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-  ];
+  ], [t, buildHtmlLinks]);
 
   const table = useReactTable({
     data,
@@ -388,38 +524,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     columnResizeMode: "onChange",
   });
 
-  // Upload (เดโม่ ไม่เชื่อม backend)
+  // Upload
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [urlText, setUrlText] = useState("");
-
-  async function uploadUrls() {
-    if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
-
-    const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
-    if (!urls.length) { alert("กรุณากรอก URL"); return; }
-
-    const fd = new FormData();
-    fd.append("station_id", stationId);
-    // backend คาด `rows` เป็น list ของ JSON string ทีละแถว
-    fd.append("rows", JSON.stringify({ reportDate, urls }));
-
-    const res = await fetch(`${apiBase}/dcurl/upload`, {
-      method: "POST",
-      body: fd,
-      credentials: "include",            // ⬅️ สำคัญ! ส่งคุกกี้ด้วย
-    });
-
-    if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
-    alert("อัปโหลดสำเร็จ");
-    setDateOpen(false);
-    setUrlText("");
-
-
-  }
 
   const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -430,73 +539,61 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
     );
     if (!pdfs.length) {
-      alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
+      alert(t.alertPdfOnly);
       return;
     }
     setPendingFiles(pdfs);
-    setDateOpen(true);         // 👉 เปิด modal ให้เลือกวันที่รายงาน
+    setDateOpen(true);
   };
 
-  async function uploadPdfs() {
+  const uploadPdfs = async () => {
     try {
-      if (!stationId) {
-        alert("กรุณาเลือกสถานีก่อน");
+      if (!sn) {
+        alert(t.alertSelectStation);
         return;
       }
       if (!pendingFiles.length) {
         setDateOpen(false);
         return;
       }
-      // ตรวจรูปแบบวันที่คร่าวๆ (YYYY-MM-DD)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
-        alert("รูปแบบวันที่ไม่ถูกต้อง (ควรเป็น YYYY-MM-DD)");
+        alert(t.alertInvalidDate);
         return;
       }
 
       const fd = new FormData();
-      fd.append("station_id", stationId);
+      fd.append("sn", sn);
       fd.append("reportDate", reportDate);
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await fetch(`${apiBase}/dcurl/upload-files`, {
         method: "POST",
         body: fd,
-        // ถ้าใช้ cookie httpOnly: เปิดบรรทัดนี้แทน header Authorization
         credentials: "include",
       });
 
       if (!res.ok) {
         const txt = await res.text();
-        alert("อัปโหลดไม่สำเร็จ: " + txt);
+        alert(`${t.alertUploadFailed}: ${txt}`);
         return;
       }
 
-      alert("อัปโหลดสำเร็จ");
-
-      // เคลียร์สถานะ + ปิด dialog
+      alert(t.alertUploadSuccess);
       setPendingFiles([]);
       setDateOpen(false);
-
       await fetchRows();
-
-      // TODO: trigger reload ตาราง ถ้าคุณมีฟังก์ชัน fetchRows แยกไว้ ก็เรียกตรงนี้
-      // await fetchRows();
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
+      alert(t.alertUploadError);
     }
-  }
-
-  // const onPdfPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-  //   const files = Array.from(e.target.files ?? []);
-  //   const pdfs = files.filter(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-  //   if (pdfs.length !== files.length) alert("รองรับเฉพาะไฟล์ PDF เท่านั้น");
-  //   console.log("Picked PDFs (demo):", pdfs.map(f => ({ name: f.name, size: f.size })));
-  //   e.currentTarget.value = "";
-  // };
+  };
 
   const goAdd = () => setView("form");
-  const goList = () => setView("list");
+  // const goList = () => setView("list");
+  const goList = async () => {
+  setView("list");
+  await fetchRows(); // Fetch ข้อมูลใหม่ทันที
+};
 
   if (mode === "form") {
     return (
@@ -507,7 +604,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
             size="sm"
             onClick={goList}
             className="tw-py-2 tw-px-2"
-            title="กลับไปหน้า List"
+            title={t.backToList}
           >
             <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
           </Button>
@@ -524,10 +621,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-3 md:tw-!px-4 tw-!py-3 md:tw-!py-4 tw-mb-6">
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
-              Test Report (DC Charger)
+              {t.title}
             </Typography>
             <Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-normal tw-mt-1 tw-text-sm md:tw-text-[15px]">
-              ค้นหาและดาวน์โหลดเอกสารรายงานการทดสอบ (Test Report)
+              {t.subtitle}
             </Typography>
           </div>
 
@@ -539,66 +636,36 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 accept="application/pdf,.pdf"
                 multiple
                 className="tw-hidden"
-                // onChange={onPdfPick} 
                 onChange={handlePdfChange}
               />
               <Button
                 variant="text"
                 size="lg"
-                disabled={!stationId}
+                disabled={!sn}
                 onClick={() => pdfInputRef.current?.click()}
                 className="group tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-3 sm:tw-px-4 tw-flex tw-items-center tw-gap-2 tw-border tw-border-blue-gray-100 tw-bg-white tw-text-blue-gray-900"
-                title="อัปโหลด PDF (demo)">
-
+                title={t.upload}>
                 <ArrowUpTrayIcon className="tw-h-5 tw-w-5" />
-                <span className="tw-text-sm">Upload</span>
+                <span className="tw-text-sm">{t.upload}</span>
               </Button>
 
-
-
-              {/* +ADD → แสดงฟอร์มทันที (ไม่ route) */}
-              {/* <Button size="lg" onClick={goAdd}
-                className="tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4 tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"
-                title="ไปหน้าแบบฟอร์ม CM">
-                <span className="tw-w-full tw-text-center">+ADD</span>
-              </Button> */}
-
-              {/* <Button
+              <Button
                 size="lg"
                 onClick={goAdd}
-                disabled={!stationIdFromUrl}
+                disabled={!sn}
                 className={`
                   !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
                   tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                  ${!stationIdFromUrl
+                  ${!sn
                     ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
                     : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
                   tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
                   focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
                 `}
-                title={stationIdFromUrl ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
+                title={sn ? "" : t.selectStation}
               >
-                <span className="tw-w-full tw-text-center">+add</span>
-              </Button> */}
-              <Button
-                size="lg"
-                onClick={goAdd}
-                disabled={!stationId}
-                className={`
-                                !tw-flex !tw-justify-center !tw-items-center tw-text-center tw-leading-none
-                                tw-h-10 sm:tw-h-11 tw-rounded-xl tw-px-4
-                                ${!stationId
-                    ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                    : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black tw-text-white"}
-                                tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)]
-                                focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none
-                              `}
-                title={stationId ? "" : "กรุณาเลือกสถานีจากแถบบนก่อน"}
-              >
-                <span className="tw-w-full tw-text-center">+add</span>
+                <span className="tw-w-full tw-text-center">{t.add}</span>
               </Button>
-
-
             </div>
           </div>
         </CardHeader>
@@ -610,25 +677,25 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               value={table.getState().pagination.pageSize}
               onChange={(e) => table.setPageSize(Number(e.target.value))}
               className="tw-border tw-p-2 tw-border-blue-gray-100 tw-rounded-lg tw-w-[72px]"
-              aria-label="จำนวนแถวต่อหน้า"
+              aria-label={t.entriesPerPage}
             >
               {[5, 10, 15, 20, 25].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
             <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-hidden sm:tw-inline">
-              entries per page
+              {t.entriesPerPage}
             </Typography>
           </div>
 
           <div className="tw-ml-auto tw-min-w-0 tw-flex-1 md:tw-flex-none md:tw-w-64">
             <Input variant="outlined" value={filtering} onChange={(e) => setFiltering(e.target.value)}
-              label="Search" crossOrigin={undefined} containerProps={{ className: "tw-min-w-0" }} className="tw-w-full" />
+              label={t.search} crossOrigin={undefined} containerProps={{ className: "tw-min-w-0" }} className="tw-w-full" />
           </div>
         </CardBody>
 
         {/* TABLE */}
         <CardFooter className="tw-p-0">
           <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
-            <table className="tw-w-full tw-text-left tw-min-w-[720px] md:tw-min-w-0 md:tw-table-fixed">
+            <table className="tw-w-full tw-text-left tw-min-w-[800px] md:tw-min-w-0 md:tw-table-fixed">
               <colgroup>
                 {table.getFlatHeaders().map((header) => (
                   <col key={header.id} style={{ width: header.getSize() }} />
@@ -644,7 +711,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                         <th key={header.id} style={{ width: header.getSize() }}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
                           className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
-                            }`}>
+                            } ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-100" : ""}`}>
                           {canSort ? (
                             <Typography color="blue-gray"
                               className={`tw-flex tw-items-center tw-gap-1 md:tw-gap-2 tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"
@@ -670,12 +737,12 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 {loading ? (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      กำลังโหลด…
+                      {t.loading}
                     </td>
                   </tr>
                 ) : table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row) => (
-                    <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50">
+                    <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50 hover:tw-bg-blue-gray-50/50 tw-transition-colors">
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
                         return (
@@ -683,7 +750,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                             className={`!tw-border-y !tw-border-x-0 tw-align-middle ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
                               }`}>
                             <Typography variant="small"
-                              className="!tw-font-normal !tw-text-blue-gray-600 tw-py-3 md:tw-py-4 tw-px-3 md:tw-px-4 tw-truncate md:tw-whitespace-normal">
+                              className="!tw-font-normal !tw-text-blue-gray-600 tw-py-3 md:tw-py-4 tw-px-3 md:tw-px-4">
                               {flexRender(cell.column.columnDef.cell, cell.getContext())}
                             </Typography>
                           </td>
@@ -694,7 +761,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 ) : (
                   <tr>
                     <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!stationId ? "กรุณาเลือกสถานีจากแถบบนก่อน" : "ไม่มีข้อมูล"}
+                      {!sn ? t.selectStation : t.noData}
                     </td>
                   </tr>
                 )}
@@ -706,8 +773,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         {/* PAGINATION */}
         <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4 tw-py-4">
           <span className="tw-text-sm">
-            <Typography className="!tw-font-bold tw-inline">Page</Typography>{" "}
-            <strong>{table.getState().pagination.pageIndex + 1} of {table.getPageCount()}</strong>
+            <Typography className="!tw-font-bold tw-inline">{t.page}</Typography>{" "}
+            <strong>{table.getState().pagination.pageIndex + 1} {t.of} {table.getPageCount()}</strong>
           </span>
           <div className="tw-flex tw-items-center tw-gap-2">
             <Button variant="outlined" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="disabled:tw-opacity-30 tw-py-2 tw-px-2">
@@ -722,15 +789,15 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         </div>
       </Card>
 
-      {/* ⬇️ วาง Dialog นอกร่าง Card แต่ยังอยู่ใน component */}
+      {/* Dialog */}
       <Dialog open={dateOpen} handler={setDateOpen} size="sm">
         <DialogHeader className="tw-text-base sm:tw-text-lg">
-          เลือกวันที่รายงาน (Test Report)
+          {t.dialogTitle}
         </DialogHeader>
         <DialogBody className="tw-space-y-4">
           <div className="tw-space-y-2">
             <Typography variant="small" className="!tw-text-blue-gray-600">
-              วันที่ (รูปแบบ YYYY-MM-DD)
+              {t.dialogDateLabel}
             </Typography>
             <Input
               type="date"
@@ -741,7 +808,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           </div>
 
           <div className="tw-text-sm tw-text-blue-gray-500">
-            ไฟล์ที่เลือก: <strong>{pendingFiles.length}</strong> ไฟล์
+            {t.dialogFilesSelected}: <strong>{pendingFiles.length}</strong> {t.dialogFiles}
           </div>
         </DialogBody>
         <DialogFooter className="tw-gap-2">
@@ -751,14 +818,14 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
             onClick={() => { setPendingFiles([]); setDateOpen(false); }}
             className="tw-rounded-xl"
           >
-            ยกเลิก
+            {t.dialogCancel}
           </Button>
           <Button
             color="gray"
             className="tw-rounded-xl tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-from-black hover:tw-to-black"
             onClick={uploadPdfs}
           >
-            อัปโหลด
+            {t.dialogUpload}
           </Button>
         </DialogFooter>
       </Dialog>
