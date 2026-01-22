@@ -10490,34 +10490,43 @@ async def cmreport_update_status(
     return {"ok": True, "status": updates["status"]}
 
 #---------------------------------------------------------------------- Test Report (DC)
-def get_dc_testreport_collection_for(station_id: str):
-    _validate_station_id(station_id)
-    coll = DCTestReportDB.get_collection(str(station_id))
+def get_dc_testreport_collection_for(sn: str):
+    _validate_station_id(sn)
+    coll = DCTestReportDB.get_collection(str(sn))
     return coll
 
-def get_dcurl_coll_upload(station_id: str):
-    _validate_station_id(station_id)
-    coll = DCUrlDB.get_collection(str(station_id))
+def get_dcurl_coll_upload(sn: str):
+    _validate_station_id(sn)
+    coll = DCUrlDB.get_collection(str(sn))
     return coll
 
 @app.get("/dctestreport/list")
 async def dctestreport_list(
-    station_id: str = Query(...),
+    sn: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
 ):
-    coll = get_dc_testreport_collection_for(station_id)
+    coll = get_dc_testreport_collection_for(sn)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "inspection_date": 1, "createdAt": 1}).sort(
+    # ★★★ เพิ่ม issue_id และ document_name ใน projection ★★★
+    cursor = coll.find({}, {
+        "_id": 1, 
+        "inspection_date": 1, 
+        "createdAt": 1,
+        "issue_id": 1,           # ★ เพิ่ม
+        "document_name": 1,      # ★ เพิ่ม
+        "head": 1,               # ★ เพิ่ม (เผื่อ issue_id อยู่ใน head)
+    }).sort(
         [("createdAt", -1), ("_id", -1)]
     ).skip(skip).limit(pageSize)
+    
     items_raw = await cursor.to_list(length=pageSize)
     total = await coll.count_documents({})
 
     # --- ดึงไฟล์จาก PMReportURL โดย map ด้วย pm_date (string) ---
     dc_dates = [it.get("inspection_date") for it in items_raw if it.get("inspection_date")]
-    urls_coll = get_dcurl_coll_upload(station_id)
+    urls_coll = get_dcurl_coll_upload(sn)
     url_by_day: dict[str, str] = {}
 
     if dc_dates:
@@ -10529,15 +10538,18 @@ async def dctestreport_list(
             if day and first_url and day not in url_by_day:
                 url_by_day[day] = first_url
 
+    # ★★★ เพิ่ม issue_id และ document_name ใน response ★★★
     items = [{
         "id": str(it["_id"]),
         "inspection_date": it.get("inspection_date"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("inspection_date") or "", ""),
+        "issue_id": it.get("issue_id") or it.get("head", {}).get("issue_id") or "",      # ★ เพิ่ม
+        "document_name": it.get("document_name") or it.get("issue_id") or "",            # ★ เพิ่ม
+        "inspector": it.get("head", {}).get("inspector") or "", 
     } for it in items_raw]
 
     dc_date_arr = [it.get("inspection_date") for it in items_raw if it.get("inspection_date")]
-    # status_arr = [it.get("status") for it in items_raw if it.get("status")]
     return {"items": items, "inspection_date": dc_date_arr, "page": page, "pageSize": pageSize, "total": total}
 
 # ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
@@ -10577,35 +10589,36 @@ def _key_for_index(i: int) -> str:
 @app.post("/dctestreport/{report_id}/photos")
 async def dc_testreport_upload_photos(
     report_id: str,
-    station_id: str = Form(...),
+    sn: str = Form(...),
     item_index: int = Form(...),               # <<-- เปลี่ยนจาก group → index
     files: list[UploadFile] = File(...),
     remark: str | None = Form(None),
     current: UserClaims = Depends(get_current_user),
 ):
     # auth
-    if current.role != "admin" and station_id not in set(current.station_ids):
-        raise HTTPException(status_code=403, detail="Forbidden station_id")
+    if current.role != "admin" and sn not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden sn")
 
     # รายงานต้องอยู่ในสถานีนี้
-    coll = get_dc_testreport_collection_for(station_id)
+    coll = get_dc_testreport_collection_for(sn)
     from bson import ObjectId
     try:
         oid = ObjectId(report_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid}, {"_id": 1, "station_id": 1})
+    # doc = await coll.find_one({"_id": oid}, {"_id": 1, "sn": 1})
+    doc = await coll.find_one({"_id": oid}, {"_id": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
-    if doc.get("station_id") != station_id:
-        raise HTTPException(status_code=400, detail="station_id mismatch")
+    # if doc.get("sn") != sn:
+    #     raise HTTPException(status_code=400, detail="sn mismatch")
 
     # แปลง index → ชื่อคีย์โฟลเดอร์/คีย์ในเอกสาร
     key = _key_for_index(item_index)  # e.g. nameplate/charger/.../extra1
 
     # โฟลเดอร์ปลายทาง
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "dctest" / station_id / report_id / key
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "dctest" / sn / report_id / key
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     saved = []
@@ -10623,7 +10636,7 @@ async def dc_testreport_upload_photos(
         with open(path, "wb") as out:
             out.write(data)
 
-        url_path = f"/uploads/dctest/{station_id}/{report_id}/{key}/{fname}"
+        url_path = f"/uploads/dctest/{sn}/{report_id}/{key}/{fname}"
         saved.append({
             "filename": fname,
             "size": len(data),
@@ -10644,13 +10657,13 @@ async def dc_testreport_upload_photos(
 @app.post("/dctestreport/{report_id}/finalize")
 async def dc_testreport_finalize(
     report_id: str,
-    station_id: str = Form(...),
+    sn: str = Form(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    if current.role != "admin" and station_id not in set(current.station_ids):
-        raise HTTPException(status_code=403, detail="Forbidden station_id")
+    if current.role != "admin" and sn not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden sn")
 
-    coll = get_dc_testreport_collection_for(station_id)
+    coll = get_dc_testreport_collection_for(sn)
     from bson import ObjectId
     oid = ObjectId(report_id)
     res = await coll.update_one(
@@ -10663,25 +10676,25 @@ async def dc_testreport_finalize(
 
 @app.post("/dcurl/upload-files", status_code=201)
 async def dcurl_upload_files(
-    station_id: str = Form(...),
+    sn: str = Form(...),
     reportDate: str = Form(...),                 # "YYYY-MM-DD" หรือ ISO
     files: list[UploadFile] = File(...),
     current: UserClaims = Depends(get_current_user),
 ):
     # auth
-    if current.role != "admin" and station_id not in set(current.station_ids):
-        raise HTTPException(status_code=403, detail="Forbidden station_id")
+    if current.role != "admin" and sn not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden sn")
 
     # ตรวจ/เตรียมคอลเลกชัน
-    coll = get_dcurl_coll_upload(station_id)
+    coll = get_dcurl_coll_upload(sn)
 
     # parse วันที่เป็น UTC datetime (มีฟังก์ชันอยู่แล้ว)
     dc_date = normalize_pm_date(reportDate)
 
-    # โฟลเดอร์ปลายทาง: /uploads/pmurl/<station_id>/<YYYY-MM-DD>/
+    # โฟลเดอร์ปลายทาง: /uploads/pmurl/<sn>/<YYYY-MM-DD>/
     # subdir = report_dt_utc.astimezone(th_tz).date().isoformat()
     subdir = dc_date
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "dcurl" / station_id / subdir
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "dcurl" / sn / subdir
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     urls = []
@@ -10703,13 +10716,13 @@ async def dcurl_upload_files(
         with open(dest, "wb") as out:
             out.write(data)
 
-        url = f"/uploads/dcurl/{station_id}/{subdir}/{safe}"   # ← จะเสิร์ฟได้จาก StaticFiles ที่ mount ไว้แล้ว
+        url = f"/uploads/dcurl/{sn}/{subdir}/{safe}"   # ← จะเสิร์ฟได้จาก StaticFiles ที่ mount ไว้แล้ว
         urls.append(url)
         metas.append({"name": f.filename, "size": len(data)})
 
     now = datetime.now(timezone.utc)
     doc = {
-        "station": station_id,
+        "station": sn,
         "dc_date": dc_date,   
         "urls": urls,
         "meta": {"files": metas},
@@ -10723,17 +10736,17 @@ async def dcurl_upload_files(
 
 @app.get("/dcurl/list")
 async def dcurl_list(
-    station_id: str = Query(...),
+    sn: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
 ):
     """
-    ดึงรายการไฟล์ PM (PDF) ที่อัปโหลดไว้ต่อสถานี จาก PMUrlDB/<station_id>
+    ดึงรายการไฟล์ PM (PDF) ที่อัปโหลดไว้ต่อสถานี จาก PMUrlDB/<sn>
     - รองรับทั้งเอกสารที่เก็บ pm_date (string 'YYYY-MM-DD') และ reportDate (Date/ISO)
     - เรียงจากใหม่ไปเก่า (createdAt desc, _id desc)
     - รูปแบบผลลัพธ์ให้เหมือน /pmreport/list (มี file_url สำหรับลิงก์ตัวแรก)
     """
-    coll = get_dcurl_coll_upload(station_id)
+    coll = get_dcurl_coll_upload(sn)
     skip = (page - 1) * pageSize
 
     # ดึงเฉพาะฟิลด์ที่จำเป็น
@@ -10823,7 +10836,9 @@ class SignatureBlock(BaseModel):
     responsibility: ResponsibilityBlock = ResponsibilityBlock()
 
 class DCSubmitIn(BaseModel):
-    station_id: str
+    sn: str
+    chargerNo: Optional[str] = None
+    document_name: Optional[str] = None
     issue_id: Optional[str] = None 
     job: Dict[str, Any]          # โครงสร้างตามฟอร์ม (issue_id, found_date, ... )
     head: Dict[str,Any]
@@ -10832,9 +10847,8 @@ class DCSubmitIn(BaseModel):
     electrical_safety: Dict[str, Any] = Field(default_factory=dict)
     charger_safety: Dict[str, Any] = Field(default_factory=dict)
     remarks: Dict[str, Any] = Field(default_factory=dict)
-    symbol: Optional[SymbolLiteral] = None
-    phaseSequence: Optional[PhaseLiteral] = None
-    signature: Optional[SignatureBlock] = None 
+    phaseSequence: Optional[str] = None 
+    # signature: Optional[SignatureBlock] = None 
 
 async def _ensure_dc_indexes(coll):
     try:
@@ -10853,48 +10867,191 @@ def _normalize_tick_to_pass(obj):
         return "pass" if obj == "✓" else obj
     return obj
 
+async def _next_dc_issue_id(db, sn: str, chargerNo: str, d: date, pad: int = 2) -> str:
+    """Generate next DC issue_id using atomic sequence"""
+    yymm = f"{d.year % 100:02d}{d.month:02d}"
+    seq = await db.dc_sequences.find_one_and_update(
+        {"sn": sn, "chargerNo": chargerNo, "yymm": yymm},  # ★ เพิ่ม chargerNo
+        {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return f"DC-CG{chargerNo}-{yymm}-{int(seq['n']):0{pad}d}"  # ★ ใช้ chargerNo
+
+
+async def _next_dc_year_seq(db, sn: str, chargerNo: str, d: date) -> int:
+    """Generate next DC year sequence for doc_name"""
+    year = d.year
+    seq = await db.dc_year_sequences.find_one_and_update(
+        {"sn": sn, "chargerNo": chargerNo, "year": year},  # ★ เพิ่ม chargerNo
+        {"$inc": {"n": 1}, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    return int(seq["n"])
+
+@app.get("/dcreport/next-ids")
+async def dcreport_next_ids(
+    sn: str = Query(...),
+    chargerNo: str = Query(...),
+    inspection_date: str = Query(None),
+):
+    _validate_station_id(sn)
+    
+    if not chargerNo:
+        raise HTTPException(status_code=400, detail="chargerNo is required")
+    
+    coll = get_dc_testreport_collection_for(sn)
+    
+    # กำหนด date
+    if inspection_date:
+        dc_date = normalize_pm_date(inspection_date)
+    else:
+        dc_date = datetime.now(th_tz).date().isoformat()
+    
+    try:
+        d = datetime.strptime(dc_date, "%Y-%m-%d").date()
+    except ValueError:
+        d = datetime.now(th_tz).date()
+    
+    yymm = f"{d.year % 100:02d}{d.month:02d}"
+    year = d.year
+    
+    # ★★★ FIXED: นับจาก documents จริงใน collection ★★★
+    
+    # 1. หา issue_id ล่าสุดที่มีอยู่จริง
+    prefix_pattern = f"^DC-CG{chargerNo}-{yymm}-"
+    existing_issues = await coll.find(
+        {"issue_id": {"$regex": prefix_pattern}},
+        {"issue_id": 1}
+    ).to_list(length=1000)
+    
+    # หาเลขสูงสุด
+    max_issue_seq = 0
+    for doc in existing_issues:
+        match = re.match(rf"^DC-CG{chargerNo}-{yymm}-(\d+)$", doc.get("issue_id", ""))
+        if match:
+            max_issue_seq = max(max_issue_seq, int(match.group(1)))
+    
+    next_issue_seq = max_issue_seq + 1
+    preview_issue_id = f"DC-CG{chargerNo}-{yymm}-{next_issue_seq:02d}"
+    
+    # 2. หา document_name ล่าสุดที่มีอยู่จริง
+    doc_prefix_pattern = f"^DC-CG{chargerNo}-\\d+/{year}$"
+    existing_docs = await coll.find(
+        {"document_name": {"$regex": doc_prefix_pattern}},
+        {"document_name": 1}
+    ).to_list(length=1000)
+    
+    # หาเลขสูงสุด
+    max_doc_seq = 0
+    for doc in existing_docs:
+        match = re.match(rf"^DC-CG{chargerNo}-(\d+)/{year}$", doc.get("document_name", ""))
+        if match:
+            max_doc_seq = max(max_doc_seq, int(match.group(1)))
+    
+    next_doc_seq = max_doc_seq + 1
+    preview_doc_name = f"DC-CG{chargerNo}-{next_doc_seq:02d}/{year}"
+    
+    return {
+        "issue_id": preview_issue_id,
+        "document_name": preview_doc_name,
+        "inspection_date": dc_date,
+        "is_preview": True,
+    }
+
 @app.post("/dcreport/submit")
 async def dcreport_submit(body: DCSubmitIn, current: UserClaims = Depends(get_current_user)):
-    station_id = body.station_id.strip()
-    # Auth: admin ผ่านหมด, คนทั่วไปต้องมีสิทธิ์ใน station นี้
-    if current.role != "admin" and station_id not in set(current.station_ids):
-        raise HTTPException(status_code=403, detail="Forbidden station_id")
+    sn = body.sn.strip()
+    chargerNo = (body.chargerNo or "").strip()
+    
+    if not chargerNo:
+        raise HTTPException(status_code=400, detail="chargerNo is required")
 
-    coll = get_dc_testreport_collection_for(station_id)
+    coll = get_dc_testreport_collection_for(sn)
     await _ensure_dc_indexes(coll)
 
-    # กำหนด cm_date (string 'YYYY-MM-DD') ให้สอดคล้อง /cmreport/list
-    # ถ้าไม่ส่งมา → ใช้ job.found_date → ถ้าไม่มีอีก → ใช้วันนี้ (เวลาไทย)
+    # กำหนด dc_date
     dc_date_src = body.inspection_date or body.head.get("inspection_date")
     if dc_date_src:
-        dc_date = normalize_pm_date(dc_date_src)   # คืน "YYYY-MM-DD"
+        dc_date = normalize_pm_date(dc_date_src)
     else:
         dc_date = datetime.now(th_tz).date().isoformat()
 
-    issue_id = (body.head or {}).get("issue_id")  or (body.job or {}).get("issue_id") 
+    try:
+        d = datetime.strptime(dc_date, "%Y-%m-%d").date()
+    except ValueError:
+        d = datetime.now(th_tz).date()
 
+    yymm = f"{d.year % 100:02d}{d.month:02d}"
+    year = d.year
+
+    # ★★★ FIXED: นับจาก documents จริงใน collection ★★★
+    
+    # 1. หา issue_id ถัดไปจาก documents จริง
+    prefix_pattern = f"^DC-CG{chargerNo}-{yymm}-"
+    existing_issues = await coll.find(
+        {"issue_id": {"$regex": prefix_pattern}},
+        {"issue_id": 1}
+    ).to_list(length=1000)
+    
+    max_issue_seq = 0
+    for doc in existing_issues:
+        match = re.match(rf"^DC-CG{chargerNo}-{yymm}-(\d+)$", doc.get("issue_id", ""))
+        if match:
+            max_issue_seq = max(max_issue_seq, int(match.group(1)))
+    
+    issue_id = f"DC-CG{chargerNo}-{yymm}-{max_issue_seq + 1:02d}"
+    
+    # 2. หา document_name ถัดไปจาก documents จริง
+    doc_prefix_pattern = f"^DC-CG{chargerNo}-\\d+/{year}$"
+    existing_docs = await coll.find(
+        {"document_name": {"$regex": doc_prefix_pattern}},
+        {"document_name": 1}
+    ).to_list(length=1000)
+    
+    max_doc_seq = 0
+    for doc in existing_docs:
+        match = re.match(rf"^DC-CG{chargerNo}-(\d+)/{year}$", doc.get("document_name", ""))
+        if match:
+            max_doc_seq = max(max_doc_seq, int(match.group(1)))
+    
+    doc_name = f"DC-CG{chargerNo}-{max_doc_seq + 1:02d}/{year}"
+
+    # ★★★ ตรวจสอบซ้ำอีกครั้ง (race condition protection) ★★★
+    exists = await coll.find_one({"$or": [{"issue_id": issue_id}, {"document_name": doc_name}]})
+    if exists:
+        raise HTTPException(status_code=409, detail="Duplicate issue_id or document_name, please retry")
+
+    # Normalize tick symbols
     electrical_safety = _normalize_tick_to_pass(body.electrical_safety or {})
-
     charger_safety = _normalize_tick_to_pass(body.charger_safety or {})
+    
     doc = {
-        "station_id": station_id,
+        "sn": sn,
+        "chargerNo": chargerNo,
+        "document_name": doc_name,
         "issue_id": issue_id,
+        "inspector": (body.head or {}).get("inspector") or "",
         "inspection_date": dc_date,
         "head": body.head,
         "equipment": body.equipment.dict() if body.equipment else {"manufacturers": [], "models": [], "serialNumbers": []},
         "electrical_safety": electrical_safety,
         "charger_safety": charger_safety,
         "remarks": body.remarks or {},
-        "symbol": body.symbol,
         "phaseSequence": body.phaseSequence,
-        "signature": body.signature.dict() if body.signature else None,
         "createdAt": datetime.now(timezone.utc),
         "updatedAt": datetime.now(timezone.utc),
-        "photos": {},                 # รูปจะถูกเติมภายหลังที่ /cmreport/{report_id}/photos
+        "photos": {},
     }
 
     res = await coll.insert_one(doc)
-    return {"ok": True, "report_id": str(res.inserted_id)}
+    return {
+        "ok": True, 
+        "report_id": str(res.inserted_id), 
+        "issue_id": issue_id,
+        "document_name": doc_name
+    }
 
 #---------------------------------------------------------------------- Test Report (AC)
 def get_ac_testreport_collection_for(station_id: str):
