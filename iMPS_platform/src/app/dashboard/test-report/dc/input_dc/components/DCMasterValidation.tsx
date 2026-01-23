@@ -141,6 +141,7 @@ interface ValidationError {
   scrollId?: string;
 }
 
+
 // ===== Helper Functions =====
 const isFailResult = (value?: string): boolean => {
   return value === "FAIL" || value === "✗";
