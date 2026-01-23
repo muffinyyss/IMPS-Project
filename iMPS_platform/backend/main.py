@@ -11070,11 +11070,11 @@ def get_acurl_coll_upload(station_id: str):
 
 @app.get("/actestreport/list")
 async def actestreport_list(
-    station_id: str = Query(...),
+    sn: str = Query(...),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
 ):
-    coll = get_ac_testreport_collection_for(station_id)
+    coll = get_ac_testreport_collection_for(sn)
     skip = (page - 1) * pageSize
 
     # ★★★ เพิ่ม issue_id และ document_name ใน projection ★★★
@@ -11094,7 +11094,7 @@ async def actestreport_list(
 
     # --- ดึงไฟล์จาก ACUrlDB โดย map ด้วย inspection_date (string) ---
     ac_dates = [it.get("inspection_date") for it in items_raw if it.get("inspection_date")]
-    urls_coll = get_acurl_coll_upload(station_id)
+    urls_coll = get_acurl_coll_upload(sn)
     url_by_day: dict[str, str] = {}
 
     if ac_dates:
@@ -11195,18 +11195,18 @@ async def acreport_next_ids(
 
 class ACSubmitIn(BaseModel):
     sn: str
-    chargerNo: Optional[str] = None              # ★ เพิ่ม
-    document_name: Optional[str] = None          # ★ เพิ่ม
+    chargerNo: Optional[str] = None
+    document_name: Optional[str] = None
     issue_id: Optional[str] = None 
-    head: Dict[str,Any]
+    head: Dict[str, Any]
     inspection_date: Optional[str] = None
-    equipment: Optional[EquipmentBlock] = None
+    equipment: Optional[Any] = None  # EquipmentBlock
     electrical_safety: Dict[str, Any] = Field(default_factory=dict)
     charger_safety: Dict[str, Any] = Field(default_factory=dict)
     remarks: Dict[str, Any] = Field(default_factory=dict)
-    symbol: Optional[SymbolLiteral] = None
-    phaseSequence: Optional[PhaseLiteral] = None
-    signature: Optional[SignatureBlock] = None 
+    symbol: Optional[str] = None  # เปลี่ยนจาก SymbolLiteral เป็น str
+    phaseSequence: Optional[str] = None  # ★★★ เปลี่ยนจาก PhaseLiteral เป็น str ★★★
+    signature: Optional[Any] = None  # SignatureBlock
 
 
 async def _ensure_ac_indexes(coll):
@@ -11214,7 +11214,92 @@ async def _ensure_ac_indexes(coll):
         await coll.create_index([("createdAt", -1), ("_id", -1)])
     except Exception:
         pass
+@app.post("/actestreport/{report_id}/photos")
+async def ac_testreport_upload_photos(
+    report_id: str,
+    sn: str = Form(...),
+    item_index: int = Form(...),
+    files: list[UploadFile] = File(...),
+    remark: str | None = Form(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    # auth
+    if current.role != "admin" and sn not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden sn")
 
+    # รายงานต้องอยู่ในสถานีนี้
+    coll = get_ac_testreport_collection_for(sn)
+    from bson import ObjectId
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    doc = await coll.find_one({"_id": oid}, {"_id": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # แปลง index → ชื่อคีย์โฟลเดอร์/คีย์ในเอกสาร
+    key = _key_for_index(item_index)  # e.g. nameplate/charger/.../extra1
+
+    # โฟลเดอร์ปลายทาง (ใช้ actest แทน dctest)
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "actest" / sn / report_id / key
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    for f in files:
+        ext = (f.filename.rsplit(".", 1)[-1].lower() if "." in (f.filename or "") else "")
+        if ext not in ALLOWED_IMAGE_EXTS:
+            raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
+
+        data = await f.read()
+        if len(data) > MAX_IMAGE_FILE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_IMAGE_FILE_MB} MB)")
+
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        path = dest_dir / fname
+        with open(path, "wb") as out:
+            out.write(data)
+
+        url_path = f"/uploads/actest/{sn}/{report_id}/{key}/{fname}"
+        saved.append({
+            "filename": fname,
+            "size": len(data),
+            "url": url_path,
+            "remark": remark or "",
+            "uploadedAt": datetime.now(timezone.utc),
+            "index": item_index,
+        })
+
+    # อัปเดตเอกสารรายงาน: push ลง photos.<key>
+    await coll.update_one(
+        {"_id": oid},
+        {"$push": {f"photos.{key}": {"$each": saved}}, "$set": {"updatedAt": datetime.now(timezone.utc)}}
+    )
+
+    return {"ok": True, "count": len(saved), "key": key, "files": saved}
+
+
+# ====== (Optional) เพิ่ม finalize endpoint สำหรับ AC ======
+@app.post("/actestreport/{report_id}/finalize")
+async def ac_testreport_finalize(
+    report_id: str,
+    sn: str = Form(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    if current.role != "admin" and sn not in set(current.station_ids):
+        raise HTTPException(status_code=403, detail="Forbidden sn")
+
+    coll = get_ac_testreport_collection_for(sn)
+    from bson import ObjectId
+    oid = ObjectId(report_id)
+    res = await coll.update_one(
+        {"_id": oid},
+        {"$set": {"status": "submitted", "submittedAt": datetime.now(timezone.utc)}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"ok": True}
 
 @app.post("/acreport/submit")
 async def acreport_submit(body: ACSubmitIn, current: UserClaims = Depends(get_current_user)):
@@ -11292,7 +11377,7 @@ async def acreport_submit(body: ACSubmitIn, current: UserClaims = Depends(get_cu
         "inspector": (body.head or {}).get("inspector") or "",
         "inspection_date": ac_date,
         "head": body.head,
-        "equipment": body.equipment.dict() if body.equipment else {"manufacturers": [], "models": [], "serialNumbers": []},
+        "equipment": body.equipment if body.equipment else {"manufacturers": [], "models": [], "serialNumbers": []},
         "electrical_safety": electrical_safety,
         "charger_safety": charger_safety,
         "remarks": body.remarks or {},

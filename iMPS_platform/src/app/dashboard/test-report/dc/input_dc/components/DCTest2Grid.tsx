@@ -13,6 +13,7 @@ interface DCTestItem {
   testName: string;
   testNameTh?: string;
   unit?: string;
+  remarkKey?: string; // เพิ่ม remarkKey สำหรับกำหนด key ใน remarks
 }
 
 // Dynamic test results - support variable number of rounds
@@ -198,6 +199,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "None (Normal operate)",
     testNameTh: "ไม่มี (ทำงานปกติ)",
     unit: "",
+    remarkKey: "noneNormalOperate",
   },
   {
     category: "Charger Safety",
@@ -205,6 +207,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "CP short -120 Ohm",
     testNameTh: "CP ลัดวงจร -120 โอห์ม",
     unit: "",
+    remarkKey: "cPShort120ohm",
   },
   {
     category: "Charger Safety",
@@ -212,6 +215,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "PE-PP-Cut",
     testNameTh: "PE-PP-ตัด",
     unit: "",
+    remarkKey: "pEPPCut",
   },
   {
     category: "Charger Safety",
@@ -219,6 +223,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Remote Stop",
     testNameTh: "หยุดระยะไกล",
     unit: "",
+    remarkKey: "remoteStop",
   },
   {
     category: "Charger Safety",
@@ -226,6 +231,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Emergency",
     testNameTh: "ฉุกเฉิน",
     unit: "",
+    remarkKey: "emergency",
   },
   {
     category: "Charger Safety",
@@ -233,6 +239,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "LDC +",
     testNameTh: "LDC +",
     unit: "",
+    remarkKey: "lDCPlus",  // แยก key สำหรับ LDC +
   },
   {
     category: "Charger Safety",
@@ -240,6 +247,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "LDC  -",
     testNameTh: "LDC -",
     unit: "",
+    remarkKey: "lDCMinus",  // แยก key สำหรับ LDC -
   },
 ];
 
@@ -258,10 +266,13 @@ const nameKey = (testName: string) => {
   return camelKey(n);
 };
 
+// แก้ไข buildRemarks ให้ใช้ remarkKey ถ้ามี
 export function buildRemarks(results: TestCharger, items: DCTestItem[]) {
   const remarks: Record<string, string> = {};
   items.forEach((it, i) => {
-    remarks[nameKey(it.testName)] = results.remarks[i] ?? "";
+    // ใช้ remarkKey ถ้ามี ไม่งั้นใช้ nameKey จาก testName
+    const key = it.remarkKey || nameKey(it.testName);
+    remarks[key] = results.remarks[i] ?? "";
   });
   return remarks;
 }
