@@ -1020,8 +1020,8 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
         ("PE-PP-Cut", "PE_PP_cut", "pEPPCut"),
         ("Remote Stop", "remoteStop", "remoteStop"),
         ("Emergency", "emergency", "emergency"),
-        ("LDC +", "LDCp", "lDC"),
-        ("LDC -", "LDCm", "lDC"),
+        ("LDC +", "LDCp", "lDCPlus"),
+        ("LDC -", "LDCm", "lDCMinus"),
     ]
 
     # ดึงข้อมูล r1, r2, r3
