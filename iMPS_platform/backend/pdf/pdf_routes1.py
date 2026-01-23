@@ -169,11 +169,11 @@ async def export_pdf(
     coll = db[coll_key]
 
     # เพิ่มหลังบรรทัด coll = db[coll_key]
-    print(f"Debug: template={template}, db={db_info['db']}, collection={coll_key}, id={id}")
+    # print(f"Debug: template={template}, db={db_info['db']}, collection={coll_key}, id={id}")
 
-    # ลองดูว่า collection มีข้อมูลอะไรบ้าง
-    print(f"Total documents in collection: {coll.count_documents({})}")
-    print(f"Looking for _id: {oid}")
+    # # ลองดูว่า collection มีข้อมูลอะไรบ้าง
+    # print(f"Total documents in collection: {coll.count_documents({})}")
+    # print(f"Looking for _id: {oid}")
     
     # ดึงข้อมูลจาก MongoDB
     data = coll.find_one({"_id": oid})

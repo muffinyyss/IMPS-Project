@@ -682,6 +682,9 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
             v3 = v3 + " Ω"
 
         remark_txt = safety.get("remarks", {}).get(db_key, "")
+        
+        if remark_txt == "-":
+            remark_txt = ""
 
         # วาดแถว
         pdf.set_xy(x, row_y)
@@ -712,8 +715,9 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
 
         pdf.set_xy(current_x, row_y)
         pdf.cell(col_remark, h_row, remark_txt, 1, 0, "L")
-        y += h_row
-
+        y += h_row 
+    
+       
     # ==========================================
     # ส่วนที่ 2: RCD (แสดง Value + Unit)
     # ==========================================
@@ -726,15 +730,41 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     rcd_data = safety.get("rcd", {})
     rcd_remark_data = safety.get("remarks", {})
 
+    # ✅ เพิ่มส่วนนี้: ดึงข้อมูล r1, r2 สำหรับ RCD
+    rcd_r1 = rcd_data.get("r1", {})
+    rcd_r2 = rcd_data.get("r2", {})
+    rcd_r3 = rcd_data.get("r3", {})  # ถ้ามี r3
+
+    # ✅ เพิ่มส่วนนี้: ดึงข้อมูล Isolation Transformer
+    isolation_data = safety.get("isolationTransformer", {})
+
     for label, key, default_unit in rcd_rows:
         row_y = y 
         pdf.set_xy(x, y)
         pdf.cell(col_cat, h_row, "", 0, 0, "C")
         
-        # กรณีพิเศษสำหรับ Isolation Transformer
+                # กรณีพิเศษสำหรับ Isolation Transformer
         if key == "isolation":
             pdf.cell(col_pe, h_row, label, 1, 0, "L")
-            pdf.cell(col_item, h_row, "", 1, 0, "C")
+            
+            # ✅ แสดงเครื่องหมายติ๊กถูก/กากบาทในช่อง col_item (ข้างๆ ชื่อ)
+            is_pass = isolation_data.get("pass", None)
+            
+            if is_pass == True:
+                # แสดงติ๊กถูก (✓)
+                symbol = "3"
+                pdf.set_font("ZapfDingbats", "", FONT_MAIN * 0.75)
+                pdf.cell(col_item, h_row, symbol, 1, 0, "C")
+                pdf.set_font(base_font, "", font_size)
+            elif is_pass == False:
+                # แสดงกากบาท (✗)
+                symbol = "7"
+                pdf.set_font("ZapfDingbats", "", FONT_MAIN * 0.75)
+                pdf.cell(col_item, h_row, symbol, 1, 0, "C")
+                pdf.set_font(base_font, "", font_size)
+            else:
+                # ไม่มีค่า → ช่องว่าง
+                pdf.cell(col_item, h_row, "", 1, 0, "C")
             
         else:
             # กรณีปกติ (RCD type A, F, B)
@@ -748,32 +778,67 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
             w1, w2 = col_item * 0.60, col_item * 0.40
             pdf.cell(w1, h_row, val_str, 1, 0, "C")
             pdf.cell(w2, h_row, unit_str, 1, 0, "C")
+            
+            # ✅ ดึงข้อมูล Test Results จาก r1, r2, r3
+            r1_item = rcd_r1.get(key, {})
+            r2_item = rcd_r2.get(key, {})
+            r3_item = rcd_r3.get(key, {})  # ถ้ามี
 
         # ✅ วาดกรอบและเส้นแบ่งให้แน่นอน
         current_x = pdf.get_x()
         
-        # Test 1
-        pdf.rect(current_x, row_y, col_test, h_row)
-        pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
-        pdf.set_xy(current_x + col_test, row_y)
-        current_x += col_test
-        
-        # Test 2
-        pdf.rect(current_x, row_y, col_test, h_row)
-        pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
-        pdf.set_xy(current_x + col_test, row_y)
-        current_x += col_test
-        
-        # Test 3
-        pdf.rect(current_x, row_y, col_test, h_row)
-        pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
-        current_x += col_test
+        if key == "isolation":
+            # ✅ Isolation: Test Results ทั้ง 3 ช่องเป็นช่องว่าง (ไม่แสดงเครื่องหมาย)
+            for _ in range(3):
+                pdf.rect(current_x, row_y, col_test, h_row)
+                pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
+                pdf.set_xy(current_x + col_test, row_y)
+                current_x += col_test
+        else:
+            # ✅ RCD type A, F, B: แสดง tripTime และ result
+            test_items = [r1_item, r2_item, r3_item]
+            
+            for test_item in test_items:
+                pdf.rect(current_x, row_y, col_test, h_row)
+                pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
+                
+                # ช่องซ้าย (H.1): tripTime + tripTimeUnit
+                trip_time = str(test_item.get("tripTime") or "").strip()
+                if trip_time and trip_time != "-":
+                    # ดึง tripTimeUnit จาก MongoDB
+                    trip_unit = str(test_item.get("tripTimeUnit") or "")
+                    display_text = f"{trip_time} {trip_unit}".strip()
+                    pdf.set_xy(current_x, row_y)
+                    pdf.cell(col_test/2, h_row, display_text, border=0, align="C")
+                
+                # ช่องขวา (H.2): result (pass/fail)
+                result = str(test_item.get("result") or "").lower()
+                if result == "pass":
+                    symbol = "3"  # ✓
+                    pdf.set_font("ZapfDingbats", "", FONT_MAIN * 0.75)
+                    pdf.set_xy(current_x + col_test/2, row_y)
+                    pdf.cell(col_test/2, h_row, symbol, border=0, align="C")
+                    pdf.set_font(base_font, "", font_size)
+                elif result == "fail":
+                    symbol = "7"  # ✗
+                    pdf.set_font("ZapfDingbats", "", FONT_MAIN * 0.75)
+                    pdf.set_xy(current_x + col_test/2, row_y)
+                    pdf.cell(col_test/2, h_row, symbol, border=0, align="C")
+                    pdf.set_font(base_font, "", font_size)
+                
+                pdf.set_xy(current_x + col_test, row_y)
+                current_x += col_test
 
         pdf.set_xy(current_x, row_y)
         
         # Remark
-        rem_key = "rcd" + key[0].upper() + key[1:] if key != "isolation" else key
+        rem_key = "rcd" + key[0].upper() + key[1:] if key != "isolation" else "isolationTransformer"
         remark_txt = rcd_remark_data.get(rem_key, "")
+        
+        if remark_txt == "-":
+            remark_txt = ""
+            
+        pdf.set_xy(current_x, row_y)
         pdf.cell(col_remark, h_row, remark_txt, 1, 0, "L")
         
         y += h_row
@@ -786,16 +851,18 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     l2 = ps_data.get("L2", " ")
     l3 = ps_data.get("L3", " ")
     ps_remark = safety.get("remarks", {}).get("powerStandby", "")
+    
+    if ps_remark == "-":
+            ps_remark = ""
 
     pdf.set_xy(x, y)
     pdf.cell(col_cat, h_row, "", 0, 0, "C")
-    pdf.cell(col_pe, h_row, "Power standby", 1, 0, "L")
-    pdf.cell(col_item, h_row, "", 1, 0, "C")
+    pdf.cell(col_pe + col_item, h_row, "Power standby", 1, 0, "L")
 
     pdf.set_font(base_font, "", font_size - 1)
-    pdf.cell(col_test, h_row, f"L1 = {l1} A", 1, 0, "C")  # ❌ ไม่มีเส้นกลาง
-    pdf.cell(col_test, h_row, f"L2 = {l2} A", 1, 0, "C")  # ❌ ไม่มีเส้นกลาง
-    pdf.cell(col_test, h_row, f"L3 = {l3} A", 1, 0, "C")  # ❌ ไม่มีเส้นกลาง
+    pdf.cell(col_test, h_row, f"L1 = {l1} A", 1, 0, "C")
+    pdf.cell(col_test, h_row, f"L2 = {l2} A", 1, 0, "C")
+    pdf.cell(col_test, h_row, f"L3 = {l3} A", 1, 0, "C")
     pdf.set_font(base_font, "", font_size)
 
     pdf.cell(col_remark, h_row, ps_remark, 1, 0, "L")
@@ -824,62 +891,68 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
 
 
 def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
-                                    table_width=None, safety=None):
+                                    table_width=None, safety=None, doc=None):
 
     # 1. จัดการข้อมูลนำเข้า
     safety = safety or {}
+    doc = doc or {}
     
-    # เช็คว่า data ที่ส่งมาเป็นก้อนใหญ่ (มี key 'charger_safety') หรือก้อนย่อยแล้ว
-    if "charger_safety" in safety:
-        data_src = safety["charger_safety"]
-    else:
-        data_src = safety  # กรณีส่งก้อน debug มาตรงๆ
-
     # ดึงก้อนย่อย
-    pe_data_root = data_src.get("peContinuity", {})
-    rcd_data_root = data_src.get("rcd", {})
-    remarks_data = data_src.get("remarks", {})
+    pe_data_root = safety.get("peContinuity", {})
+    remarks_data = safety.get("remarks", {})  # นี่คือ remarks ใน charger_safety
+    root_remarks = doc.get("remarks", {})     # นี่คือ remarks ที่ root level
 
     # =======================================================
     # ฟังก์ชันช่วยวาดสัญลักษณ์ (ติ๊กถูก/กากบาท)
     # =======================================================
-    def _draw_result_symbol(pdf, x, y, w_total, h, result_str, value_str=None):
+    def _draw_result_symbol(pdf, x, y, w_total, h, h1_str, h2_str):
         """
         วาดช่อง Test Result แบบแบ่ง 2 ส่วน (H.1 | H.2)
-        - แสดงเฉพาะสัญลักษณ์ ✓ หรือ ✗ ตาม result
-        - ไม่แสดง value หรือ unit
+        - H.1: แสดงสัญลักษณ์ pass/fail
+        - H.2: แสดงสัญลักษณ์ pass/fail
         """
         col_h1 = w_total / 2
-        col_result = w_total / 2
+        col_h2 = w_total / 2
 
-        # ช่อง H.1 (ว่างเปล่า)
+        # ช่อง H.1
         pdf.rect(x, y, col_h1, h)
         
-        # ช่อง H.2 (แสดงเฉพาะสัญลักษณ์)
-        pdf.rect(x + col_h1, y, col_result, h)
+        # ช่อง H.2
+        pdf.rect(x + col_h1, y, col_h2, h)
+        
+        # แสดงสัญลักษณ์ใน H.1
+        if h1_str:
+            h1_lower = str(h1_str).strip().lower()
+            
+            if h1_lower == "pass":
+                symbol = "3"  # ✓
+                pdf.set_font("ZapfDingbats", "", FONT_MAIN * 0.75)
+                pdf.set_xy(x, y)
+                pdf.cell(col_h1, h, symbol, border=0, align="C")
+                pdf.set_font(base_font, "", font_size)
+            elif h1_lower == "fail":
+                symbol = "7"  # ✗
+                pdf.set_font("ZapfDingbats", "", FONT_MAIN * 0.75)
+                pdf.set_xy(x, y)
+                pdf.cell(col_h1, h, symbol, border=0, align="C")
+                pdf.set_font(base_font, "", font_size)
         
         # แสดงสัญลักษณ์ใน H.2
-        if result_str:
-            result_lower = str(result_str).strip().lower()
+        if h2_str:
+            h2_lower = str(h2_str).strip().lower()
             
-            # กำหนดสัญลักษณ์
-            if result_lower == "pass":
-                symbol = "✓"
-            elif result_lower == "fail":
-                symbol = "✗"
-            else:
-                symbol = ""
-            
-            # วาดสัญลักษณ์ตรงกลางช่อง H.2
-            if symbol:
+            if h2_lower == "pass":
+                symbol = "3"  # ✓
+                pdf.set_font("ZapfDingbats", "", FONT_MAIN * 0.75)
                 pdf.set_xy(x + col_h1, y)
-                pdf.cell(col_result, h, symbol, 0, 0, "C")
-
-    # ฟังก์ชันดึงค่า h1 และ result จาก object
-    def _get_val_res(data_obj):
-        if not isinstance(data_obj, dict):
-            return "", ""
-        return str(data_obj.get("h1", "")), str(data_obj.get("result", ""))
+                pdf.cell(col_h2, h, symbol, border=0, align="C")
+                pdf.set_font(base_font, "", font_size)
+            elif h2_lower == "fail":
+                symbol = "7"  # ✗
+                pdf.set_font("ZapfDingbats", "", FONT_MAIN * 0.75)
+                pdf.set_xy(x + col_h1, y)
+                pdf.cell(col_h2, h, symbol, border=0, align="C")
+                pdf.set_font(base_font, "", font_size)
 
 
     if table_width is None:
@@ -887,7 +960,7 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
 
     # ---------- Config Column ----------
     col_cat    = 15
-    col_checklist = 55  # เหมือนกับตาราง Electrical Safety
+    col_checklist = 55
     col_test_group = 28
     col_h1         = col_test_group / 2
     col_result     = col_test_group / 2
@@ -903,7 +976,7 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
     pdf.set_font(base_font, "BU", font_size)
     pdf.cell(table_width, 6, "Charging Process Testing", 0, 1, "L")
 
-    y = pdf.get_y() + 1.5  # ระยะห่างหลังหัวข้อ (ลดจาก 2)
+    y = pdf.get_y() + 1.5
     table_y0 = y 
     lw_old = pdf.line_width
     pdf.set_line_width(lw_old)
@@ -937,59 +1010,65 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
     pdf.set_font(base_font, "", font_size)
 
     # ===========================================================
-    # 2) Body Data (Mapping ตรงตาม JSON Debug)
+    # 2) Body Data - Mapping ตาม JSON
     # ===========================================================
 
-    # รายการที่ต้องแสดง (Label ใน PDF, Key ใน JSON)
+    # ✅ รายการและ Key Mapping ที่ถูกต้อง
     items = [
-        ("None (Normal operate)", "none"),        
-        ("CP short -120 Ohm",     "CPshort"),    
-        ("PE-PP-Cut",             "PE_PP_cut"),   
-        ("Remote Stop",           "remoteStop"),   
-        ("Emergency",             "emergency"),  
-        ("LDC +",                 "LDCp"),        
-        ("LDC -",                 "LDCm"),        
+        ("None (Normal operate)", "none", "noneNormalOperate"),
+        ("CP short -120 Ohm", "CPshort", "cPShort120Ohm"),
+        ("PE-PP-Cut", "PE_PP_cut", "pEPPCut"),
+        ("Remote Stop", "remoteStop", "remoteStop"),
+        ("Emergency", "emergency", "emergency"),
+        ("LDC +", "LDCp", "lDCPlus"),
+        ("LDC -", "LDCm", "lDCMinus"),
     ]
 
-    # ดึงข้อมูล r1, r2, r3 ออกมาเตรียมไว้ (เพื่อความง่ายในการเรียกใช้)
-    # ตาม JSON: peContinuity -> r1 -> [key]
+    # ดึงข้อมูล r1, r2, r3
     r1_data_root = pe_data_root.get("r1", {})
     r2_data_root = pe_data_root.get("r2", {})
     r3_data_root = pe_data_root.get("r3", {})
 
-    for label_txt, key_db in items:
+    for label_txt, key_db, remark_key in items:
         
-        # ดึงข้อมูลของแต่ละ Item จาก r1, r2, r3
+        # ดึงข้อมูลของแต่ละ Item
         item_r1 = r1_data_root.get(key_db, {})
         item_r2 = r2_data_root.get(key_db, {})
         item_r3 = r3_data_root.get(key_db, {})
 
-        # แยกค่า h1 และ result
-        h1_1, res_1 = _get_val_res(item_r1)
-        h1_2, res_2 = _get_val_res(item_r2)
-        h1_3, res_3 = _get_val_res(item_r3)
+        # ดึงค่า h1 และ h2
+        h1_1 = str(item_r1.get("h1", ""))
+        h2_1 = str(item_r1.get("h2", ""))
         
-        # Remark
-        rem = remarks_data.get(key_db, "")
+        h1_2 = str(item_r2.get("h1", ""))
+        h2_2 = str(item_r2.get("h2", ""))
+        
+        h1_3 = str(item_r3.get("h1", ""))
+        h2_3 = str(item_r3.get("h2", ""))
+        
+        # ดึง Remark และซ่อนถ้าเป็น "-"
+        rem = remarks_data.get(remark_key, "")
+        if rem == "-":
+            rem = ""
 
         pdf.set_xy(x + col_cat, y)
 
         # 1. ชื่อรายการ
         pdf.cell(col_checklist, h_row, label_txt, 1, 0, "L")
 
-        # 2. ผลการทดสอบ 1st - แสดงเฉพาะ result (✓ หรือ ✗)
+        # 2. ผลการทดสอบ 1st
         current_x = pdf.get_x()
-        _draw_result_symbol(pdf, current_x, y, col_test_group, h_row, res_1, h1_1)
+        _draw_result_symbol(pdf, current_x, y, col_test_group, h_row, h1_1, h2_1)
         pdf.set_xy(current_x + col_test_group, y)
 
-        # 3. ผลการทดสอบ 2nd - แสดงเฉพาะ result (✓ หรือ ✗)
+        # 3. ผลการทดสอบ 2nd
         current_x = pdf.get_x()
-        _draw_result_symbol(pdf, current_x, y, col_test_group, h_row, res_2, h1_2)
+        _draw_result_symbol(pdf, current_x, y, col_test_group, h_row, h1_2, h2_2)
         pdf.set_xy(current_x + col_test_group, y)
 
-        # 4. ผลการทดสอบ 3rd - แสดงเฉพาะ result (✓ หรือ ✗)
+        # 4. ผลการทดสอบ 3rd
         current_x = pdf.get_x()
-        _draw_result_symbol(pdf, current_x, y, col_test_group, h_row, res_3, h1_3)
+        _draw_result_symbol(pdf, current_x, y, col_test_group, h_row, h1_3, h2_3)
         pdf.set_xy(current_x + col_test_group, y)
 
         # 5. Remark
@@ -1073,7 +1152,7 @@ def draw_remark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float
     doc = doc or {}
 
     # 2. Remark Text
-    remark_text = doc.get("remarks", {}).get("testRematk", "")
+    remark_text = doc.get("remarks", {}).get("testRemark", "")
 
     y -= 2
 
@@ -1852,7 +1931,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
         base_font=base_font,
         font_size=FONT_MAIN,
         table_width=page_w,
-        safety=charger_safety
+        safety=charger_safety,
+        doc=doc
     )
     
     y += 3
