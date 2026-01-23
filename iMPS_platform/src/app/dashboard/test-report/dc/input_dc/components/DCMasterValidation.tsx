@@ -141,6 +141,81 @@ interface ValidationError {
   scrollId?: string;
 }
 
+// ===== Helper Functions =====
+const isFailResult = (value?: string): boolean => {
+  return value === "FAIL" || value === "✗";
+};
+
+const isPassResult = (value?: string): boolean => {
+  return value === "PASS" || value === "✓";
+};
+
+const isNaResult = (value?: string): boolean => {
+  return value === "NA";
+};
+
+const isValidResult = (value?: string): boolean => {
+  return ["PASS", "FAIL", "NA", "✓", "✗"].includes(value || "");
+};
+
+// Get failed item indexes for DCTest1 (items that need retest in round 3)
+const getTest1FailedItemIndexes = (results: TestResults): number[] => {
+  const failedIndexes: number[] = [];
+  
+  DC_TEST1_ITEMS.forEach((item, index) => {
+    // Skip Isolation Transformer and Power Standby (they are only in round 1)
+    if (item.isIsolation || item.isPowerStandby) return;
+    
+    const round1Result = results.rounds[0]?.[index]?.result;
+    const round2Result = results.rounds[1]?.[index]?.result;
+    
+    // If NA in either round, skip
+    if (isNaResult(round1Result) || isNaResult(round2Result)) return;
+    
+    // Check if explicitly failed in either round
+    if (isFailResult(round1Result) || isFailResult(round2Result)) {
+      failedIndexes.push(index);
+    }
+  });
+  
+  return failedIndexes;
+};
+
+// Get failed items for DCTest2 with H1/H2 info
+interface Test2FailedItem {
+  itemIndex: number;
+  h1Failed: boolean;
+  h2Failed: boolean;
+}
+
+const getTest2FailedItems = (results: TestCharger): Test2FailedItem[] => {
+  const failedItems: Test2FailedItem[] = [];
+  
+  DC_TEST2_ITEMS.forEach((item, index) => {
+    const round1H1 = results.rounds[0]?.[index]?.h1;
+    const round1H2 = results.rounds[0]?.[index]?.h2;
+    const round2H1 = results.rounds[1]?.[index]?.h1;
+    const round2H2 = results.rounds[1]?.[index]?.h2;
+    
+    // Check if H1 failed in either round
+    const h1Failed = isFailResult(round1H1) || isFailResult(round2H1);
+    
+    // Check if H2 failed in either round
+    const h2Failed = isFailResult(round1H2) || isFailResult(round2H2);
+    
+    // If either H1 or H2 failed, add to list
+    if (h1Failed || h2Failed) {
+      failedItems.push({
+        itemIndex: index,
+        h1Failed,
+        h2Failed,
+      });
+    }
+  });
+  
+  return failedItems;
+};
+
 // ===== Validation Functions =====
 
 function validateMeta(head: Head, phaseSequence: string, lang: Lang): ValidationError[] {
@@ -231,21 +306,14 @@ function validateTest1(
     return errors;
   }
 
+  // Get failed item indexes for round 3 validation
+  const failedItemIndexes = getTest1FailedItemIndexes(results);
+  const hasRound3 = results.rounds.length >= 3;
+
   DC_TEST1_ITEMS.forEach((item, itemIndex) => {
     const displayName = lang === "th" ? item.testNameTh : item.testName;
 
-    // Check remark
-    if (!results.remarks[itemIndex]?.trim()) {
-      errors.push({
-        section: t.sectionElectrical,
-        sectionIcon: "⚡",
-        itemName: displayName,
-        message: t.missingRemark,
-        scrollId: `test-item-${itemIndex}-round-1`,
-      });
-    }
-
-    // Power Standby
+    // Power Standby - only in round 1
     if (item.isPowerStandby) {
       if (!results.powerStandby?.L1?.trim()) {
         errors.push({
@@ -277,7 +345,7 @@ function validateTest1(
       return;
     }
 
-    // Isolation Transformer
+    // Isolation Transformer - only in round 1
     if (item.isIsolation) {
       const result = results.rcdValues[itemIndex];
       if (!result || !["PASS", "FAIL", "✓", "✗"].includes(result)) {
@@ -307,9 +375,13 @@ function validateTest1(
         });
       }
 
-      results.rounds.forEach((roundData, roundIndex) => {
+      // Validate rounds 1 and 2
+      for (let roundIndex = 0; roundIndex < 2; roundIndex++) {
+        const roundData = results.rounds[roundIndex];
+        if (!roundData) continue;
+        
         const roundResult = roundData[itemIndex]?.result;
-        if (roundResult === "NA") return;
+        if (roundResult === "NA") continue;
 
         if (!roundData[itemIndex]?.h1?.trim()) {
           errors.push({
@@ -321,7 +393,7 @@ function validateTest1(
           });
         }
 
-        if (!roundResult || !["PASS", "FAIL", "NA", "✓", "✗"].includes(roundResult)) {
+        if (!isValidResult(roundResult)) {
           errors.push({
             section: t.sectionElectrical,
             sectionIcon: "⚡",
@@ -330,12 +402,42 @@ function validateTest1(
             scrollId: `test-item-${itemIndex}-round-${roundIndex + 1}`,
           });
         }
-      });
+      }
+
+      // Validate round 3 only if this item failed and round 3 exists
+      if (hasRound3 && failedItemIndexes.includes(itemIndex)) {
+        const roundData = results.rounds[2];
+        if (roundData) {
+          if (!roundData[itemIndex]?.h1?.trim()) {
+            errors.push({
+              section: t.sectionElectrical,
+              sectionIcon: "⚡",
+              itemName: `${displayName} (${t.round} 3)`,
+              message: t.missingTestValue,
+              scrollId: `test-item-${itemIndex}-round-3`,
+            });
+          }
+
+          const roundResult = roundData[itemIndex]?.result;
+          if (!isValidResult(roundResult)) {
+            errors.push({
+              section: t.sectionElectrical,
+              sectionIcon: "⚡",
+              itemName: `${displayName} (${t.round} 3)`,
+              message: t.missingResult,
+              scrollId: `test-item-${itemIndex}-round-3`,
+            });
+          }
+        }
+      }
       return;
     }
 
-    // PE Continuity Items
-    results.rounds.forEach((roundData, roundIndex) => {
+    // PE Continuity Items - Validate rounds 1 and 2
+    for (let roundIndex = 0; roundIndex < 2; roundIndex++) {
+      const roundData = results.rounds[roundIndex];
+      if (!roundData) continue;
+
       if (!roundData[itemIndex]?.h1?.trim()) {
         errors.push({
           section: t.sectionElectrical,
@@ -347,7 +449,7 @@ function validateTest1(
       }
 
       const result = roundData[itemIndex]?.result;
-      if (!result || !["PASS", "FAIL", "NA", "✓", "✗"].includes(result)) {
+      if (!isValidResult(result)) {
         errors.push({
           section: t.sectionElectrical,
           sectionIcon: "⚡",
@@ -356,7 +458,34 @@ function validateTest1(
           scrollId: `test-item-${itemIndex}-round-${roundIndex + 1}`,
         });
       }
-    });
+    }
+
+    // Validate round 3 only if this item failed and round 3 exists
+    if (hasRound3 && failedItemIndexes.includes(itemIndex)) {
+      const roundData = results.rounds[2];
+      if (roundData) {
+        if (!roundData[itemIndex]?.h1?.trim()) {
+          errors.push({
+            section: t.sectionElectrical,
+            sectionIcon: "⚡",
+            itemName: `${displayName} (${t.round} 3)`,
+            message: t.missingTestValue,
+            scrollId: `test-item-${itemIndex}-round-3`,
+          });
+        }
+
+        const result = roundData[itemIndex]?.result;
+        if (!isValidResult(result)) {
+          errors.push({
+            section: t.sectionElectrical,
+            sectionIcon: "⚡",
+            itemName: `${displayName} (${t.round} 3)`,
+            message: t.missingResult,
+            scrollId: `test-item-${itemIndex}-round-3`,
+          });
+        }
+      }
+    }
   });
 
   return errors;
@@ -379,26 +508,22 @@ function validateTest2(
     return errors;
   }
 
+  // Get failed items for round 3 validation
+  const failedItems = getTest2FailedItems(results);
+  const hasRound3 = results.rounds.length >= 3;
+
   DC_TEST2_ITEMS.forEach((item, itemIndex) => {
     const displayName = lang === "th" ? item.testNameTh : item.testName;
 
-    // Check remark
-    if (!results.remarks[itemIndex]?.trim()) {
-      errors.push({
-        section: t.sectionCharger,
-        sectionIcon: "🔌",
-        itemName: displayName,
-        message: t.missingRemark,
-        scrollId: `test2-item-${itemIndex}-round-1`,
-      });
-    }
+    // Validate rounds 1 and 2
+    for (let roundIndex = 0; roundIndex < 2; roundIndex++) {
+      const roundData = results.rounds[roundIndex];
+      if (!roundData) continue;
 
-    // Check each round
-    results.rounds.forEach((roundData, roundIndex) => {
       const h1 = roundData[itemIndex]?.h1;
       const h2 = roundData[itemIndex]?.h2;
 
-      if (!h1 || !["PASS", "FAIL", "NA", "✓", "✗"].includes(h1)) {
+      if (!isValidResult(h1)) {
         errors.push({
           section: t.sectionCharger,
           sectionIcon: "🔌",
@@ -408,7 +533,7 @@ function validateTest2(
         });
       }
 
-      if (!h2 || !["PASS", "FAIL", "NA", "✓", "✗"].includes(h2)) {
+      if (!isValidResult(h2)) {
         errors.push({
           section: t.sectionCharger,
           sectionIcon: "🔌",
@@ -417,7 +542,45 @@ function validateTest2(
           scrollId: `test2-item-${itemIndex}-round-${roundIndex + 1}`,
         });
       }
-    });
+    }
+
+    // Validate round 3 only if this item has failed H1/H2
+    if (hasRound3) {
+      const failedItem = failedItems.find(fi => fi.itemIndex === itemIndex);
+      
+      if (failedItem) {
+        const roundData = results.rounds[2];
+        if (roundData) {
+          // Only validate H1 if H1 failed in previous rounds
+          if (failedItem.h1Failed) {
+            const h1 = roundData[itemIndex]?.h1;
+            if (!isValidResult(h1)) {
+              errors.push({
+                section: t.sectionCharger,
+                sectionIcon: "🔌",
+                itemName: `${displayName} (${t.round} 3)`,
+                message: t.missingH1,
+                scrollId: `test2-item-${itemIndex}-round-3`,
+              });
+            }
+          }
+
+          // Only validate H2 if H2 failed in previous rounds
+          if (failedItem.h2Failed) {
+            const h2 = roundData[itemIndex]?.h2;
+            if (!isValidResult(h2)) {
+              errors.push({
+                section: t.sectionCharger,
+                sectionIcon: "🔌",
+                itemName: `${displayName} (${t.round} 3)`,
+                message: t.missingH2,
+                scrollId: `test2-item-${itemIndex}-round-3`,
+              });
+            }
+          }
+        }
+      }
+    }
   });
 
   return errors;

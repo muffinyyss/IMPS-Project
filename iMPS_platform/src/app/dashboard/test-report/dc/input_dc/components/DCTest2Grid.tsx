@@ -37,13 +37,13 @@ const translations = {
     testResultsTitle: "ผลการทดสอบ (บันทึกผ่าน/ไม่ผ่าน) หรือค่าตัวเลข",
     remark: "หมายเหตุ",
     testRound: "ทดสอบครั้งที่",
-    roundOf: "รอบที่ {n} / 3",
+    roundOf: "รอบที่ {n} / {total}",
     remarkPlaceholder: "หมายเหตุ...",
     pass: "ผ่าน",
     fail: "ไม่ผ่าน",
     chargerSafety: "ความปลอดภัยเครื่องชาร์จ",
     peContinuity: "PE Continuity ตัวนำป้องกันของเครื่องชาร์จ",
-    addRound: "เพิ่มรอบทดสอบ",
+    addRound3: "เพิ่มรอบที่ 3",
     totalRounds: "รอบทดสอบ",
     rounds: "รอบ",
     noneNormal: "ไม่มี (ทำงานปกติ)",
@@ -53,19 +53,24 @@ const translations = {
     emergency: "ฉุกเฉิน",
     ldcPlus: "LDC +",
     ldcMinus: "LDC -",
+    round3Info: "รอบที่ 3 - ทดสอบซ้ำเฉพาะหัวข้อที่ไม่ผ่าน",
+    allPassed: "ผ่านทุกหัวข้อทั้ง 2 รอบ",
+    failedItemsCount: "หัวข้อที่ต้องทดสอบซ้ำ: {count} รายการ",
+    handgun1: "หัวชาร์จ 1",
+    handgun2: "หัวชาร์จ 2",
   },
   en: {
     testingChecklist: "Testing Checklist",
     testResultsTitle: "Test Results (Record as Pass/Fail) or Numeric Results",
     remark: "Remark",
     testRound: "Test Round",
-    roundOf: "Round {n} / 3",
+    roundOf: "Round {n} / {total}",
     remarkPlaceholder: "Remark...",
     pass: "Pass",
     fail: "Fail",
     chargerSafety: "Charger Safety",
     peContinuity: "PE.Continuity protective Conductors of Charger",
-    addRound: "Add Test Round",
+    addRound3: "Add Round 3",
     totalRounds: "Rounds",
     rounds: "rounds",
     noneNormal: "None (Normal operate)",
@@ -75,6 +80,11 @@ const translations = {
     emergency: "Emergency",
     ldcPlus: "LDC +",
     ldcMinus: "LDC -",
+    round3Info: "Round 3 - Retest failed items only",
+    allPassed: "All items passed in both rounds",
+    failedItemsCount: "Items to retest: {count}",
+    handgun1: "Handgun 1",
+    handgun2: "Handgun 2",
   },
 };
 
@@ -327,10 +337,98 @@ const createEmptyRound = (itemCount: number): { h1: string; h2: string }[] => {
   return new Array(itemCount).fill(null).map(() => ({ h1: "", h2: "" }));
 };
 
-const createEmptyResults = (itemCount: number, roundCount: number = 3): TestCharger => ({
+const createEmptyResults = (itemCount: number, roundCount: number = 2): TestCharger => ({
   rounds: new Array(roundCount).fill(null).map(() => createEmptyRound(itemCount)),
   remarks: new Array(itemCount).fill(""),
 });
+
+/* ===================== Helper: Result Checkers ===================== */
+
+const isPassResult = (value?: string): boolean => {
+  return value === "PASS" || value === "✓";
+};
+
+const isFailResult = (value?: string): boolean => {
+  return value === "FAIL" || value === "✗";
+};
+
+const isNaResult = (value?: string): boolean => {
+  return value === "NA";
+};
+
+// Get indexes of items that failed in at least one of the first 2 rounds (need retest in round 3)
+// Returns array of objects with itemIndex and which handgun failed
+export interface FailedItem {
+  itemIndex: number;
+  h1Failed: boolean;
+  h2Failed: boolean;
+}
+
+export const getFailedItems = (results: TestCharger, testItems: DCTestItem[]): FailedItem[] => {
+  const failedItems: FailedItem[] = [];
+  
+  testItems.forEach((item, index) => {
+    const round1H1 = results.rounds[0]?.[index]?.h1;
+    const round1H2 = results.rounds[0]?.[index]?.h2;
+    const round2H1 = results.rounds[1]?.[index]?.h1;
+    const round2H2 = results.rounds[1]?.[index]?.h2;
+    
+    // Check if H1 failed in either round
+    const h1Failed = isFailResult(round1H1) || isFailResult(round2H1);
+    
+    // Check if H2 failed in either round
+    const h2Failed = isFailResult(round1H2) || isFailResult(round2H2);
+    
+    // If either H1 or H2 failed, add to list
+    if (h1Failed || h2Failed) {
+      failedItems.push({
+        itemIndex: index,
+        h1Failed,
+        h2Failed,
+      });
+    }
+  });
+  
+  return failedItems;
+};
+
+// Legacy function for backward compatibility
+export const getFailedItemIndexes = (results: TestCharger, testItems: DCTestItem[]): number[] => {
+  return getFailedItems(results, testItems).map(item => item.itemIndex);
+};
+
+// Check if all items passed in both rounds (no FAIL results AND all tested)
+export const allItemsPassed = (results: TestCharger, testItems: DCTestItem[]): boolean => {
+  if (results.rounds.length < 2) return false;
+  
+  // Check if there are any failed items
+  const failedIndexes = getFailedItemIndexes(results, testItems);
+  if (failedIndexes.length > 0) return false;
+  
+  // Check if all items have been tested (H1 and H2 must have PASS or NA result in both rounds)
+  let allTested = true;
+  testItems.forEach((item, index) => {
+    const round1H1 = results.rounds[0]?.[index]?.h1;
+    const round1H2 = results.rounds[0]?.[index]?.h2;
+    const round2H1 = results.rounds[1]?.[index]?.h1;
+    const round2H2 = results.rounds[1]?.[index]?.h2;
+    
+    // Check if H1 is tested in both rounds
+    const h1Round1Tested = isPassResult(round1H1) || isNaResult(round1H1);
+    const h1Round2Tested = isPassResult(round2H1) || isNaResult(round2H1);
+    
+    // Check if H2 is tested in both rounds
+    const h2Round1Tested = isPassResult(round1H2) || isNaResult(round1H2);
+    const h2Round2Tested = isPassResult(round2H2) || isNaResult(round2H2);
+    
+    // All H1 and H2 must be tested
+    if (!h1Round1Tested || !h1Round2Tested || !h2Round1Tested || !h2Round2Tested) {
+      allTested = false;
+    }
+  });
+  
+  return allTested;
+};
 
 /* ===================== Helper: Validation Checker ===================== */
 
@@ -348,23 +446,13 @@ export const validateTestResults = (
   lang: Lang = "th"
 ): ValidationError[] => {
   const errors: ValidationError[] = [];
-  const t = translations[lang];
 
-  items.forEach((item, itemIndex) => {
-    const displayName = getTestName(item, lang, t);
-
-    if (!results.remarks[itemIndex]?.trim()) {
-      errors.push({
-        itemIndex,
-        itemName: displayName,
-        field: lang === "th" ? "หมายเหตุ" : "Remark",
-        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark is missing",
-      });
-    }
-
-    results.rounds.forEach((roundData, roundIndex) => {
-      const h1 = roundData[itemIndex]?.h1;
-      const h2 = roundData[itemIndex]?.h2;
+  results.rounds.forEach((roundData, roundIndex) => {
+    items.forEach((item, itemIndex) => {
+      const displayName = getTestName(item, lang, translations[lang]);
+      const result = roundData[itemIndex];
+      const h1 = result?.h1;
+      const h2 = result?.h2;
 
       if (!h1 || (h1 !== "PASS" && h1 !== "FAIL" && h1 !== "NA" && h1 !== "✓" && h1 !== "✗")) {
         errors.push({
@@ -414,10 +502,12 @@ interface TestRoundCardProps {
   results: TestCharger;
   onResultChange: (roundIndex: number, itemIndex: number, field: "h1" | "h2", value: string) => void;
   onRemarkChange: (itemIndex: number, value: string) => void;
-  onRemoveRound: (roundIndex: number) => void;
+  onRemoveRound: () => void;
   lang: Lang;
   t: typeof translations["th"];
   canRemove: boolean;
+  isRound3?: boolean;
+  failedItems?: FailedItem[];
 }
 
 const TestRoundCard: React.FC<TestRoundCardProps> = ({
@@ -431,6 +521,8 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
   lang,
   t,
   canRemove,
+  isRound3 = false,
+  failedItems = [],
 }) => {
   const roundIndex = roundNumber - 1;
 
@@ -438,10 +530,44 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
     return results.rounds[roundIndex]?.[itemIndex] || { h1: "", h2: "" };
   };
 
-  const renderTestItem = (item: DCTestItem, index: number, isLast: boolean) => {
+  // Determine max rounds display
+  const maxRoundsDisplay = totalRounds >= 3 ? "3" : "2";
+  
+  // Check if round 3 has failed items AND is auto-added (should show in red)
+  const isRound3WithFailedItems = isRound3 && failedItems.length > 0 && !canRemove;
+
+  // Get failed item info by index
+  const getFailedItemInfo = (itemIndex: number): FailedItem | undefined => {
+    return failedItems.find(fi => fi.itemIndex === itemIndex);
+  };
+
+  // For round 3 with failed items, create list of items to show with their failed info
+  const itemsToShowWithInfo = isRound3WithFailedItems 
+    ? failedItems.map(fi => ({ item: testItems[fi.itemIndex], failedInfo: fi }))
+    : testItems.map((item, idx) => ({ item, failedInfo: null as FailedItem | null }));
+
+  // Get previous round results for showing badges
+  const getPreviousResults = (itemIndex: number) => {
+    const r1 = results.rounds[0]?.[itemIndex];
+    const r2 = results.rounds[1]?.[itemIndex];
+    return { r1, r2 };
+  };
+
+  const renderTestItem = (itemData: { item: DCTestItem; failedInfo: FailedItem | null }, index: number, isLast: boolean) => {
+    const { item, failedInfo } = itemData;
+    // For round 3 with failed items, use the itemIndex from failedInfo
+    const actualIndex = failedInfo ? failedInfo.itemIndex : index;
     const displayName = getTestName(item, lang, t);
-    const currentResult = getTestResult(index);
-    const itemId = `test2-item-${index}-round-${roundNumber}`;
+    const currentResult = getTestResult(actualIndex);
+    const itemId = `test2-item-${actualIndex}-round-${roundNumber}`;
+    
+    // Determine which H to show
+    const showH1 = !isRound3WithFailedItems || (failedInfo?.h1Failed ?? true);
+    const showH2 = !isRound3WithFailedItems || (failedInfo?.h2Failed ?? true);
+    
+    // Show previous round results for round 3 with failed items
+    const showPreviousResults = isRound3WithFailedItems;
+    const prevResults = showPreviousResults ? getPreviousResults(actualIndex) : null;
 
     return (
       <div
@@ -454,114 +580,104 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
         {/* Test Name */}
         <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
           <span className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-gray-200 tw-text-gray-700 tw-text-sm tw-font-bold tw-flex tw-items-center tw-justify-center">
-            {index + 1}
+            {actualIndex + 1}
           </span>
           <Typography className="tw-font-semibold tw-text-gray-800 tw-text-base">
             {displayName}
           </Typography>
+          
+          {/* Show previous round badges for round 3 */}
+          {showPreviousResults && prevResults && (
+            <div className="tw-flex tw-gap-1 tw-ml-2">
+              {showH1 && (isFailResult(prevResults.r1?.h1) || isFailResult(prevResults.r2?.h1)) && (
+                <span className="tw-px-2 tw-py-0.5 tw-text-xs tw-font-medium tw-bg-red-100 tw-text-red-700 tw-rounded">
+                  H1: {isFailResult(prevResults.r1?.h1) ? 'R1✗' : ''}{isFailResult(prevResults.r2?.h1) ? ' R2✗' : ''}
+                </span>
+              )}
+              {showH2 && (isFailResult(prevResults.r1?.h2) || isFailResult(prevResults.r2?.h2)) && (
+                <span className="tw-px-2 tw-py-0.5 tw-text-xs tw-font-medium tw-bg-red-100 tw-text-red-700 tw-rounded">
+                  H2: {isFailResult(prevResults.r1?.h2) ? 'R1✗' : ''}{isFailResult(prevResults.r2?.h2) ? ' R2✗' : ''}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Desktop: H1 & H2 in one row */}
         <div className="tw-hidden lg:tw-flex tw-flex-row tw-gap-6 tw-items-center">
           {/* H1 Section */}
-          <div className="tw-flex tw-items-center tw-gap-3 tw-bg-gray-100 tw-rounded-xl tw-p-3">
-            <span className="tw-w-10 tw-h-10 tw-flex tw-items-center tw-justify-center tw-bg-gray-700 tw-text-white tw-font-bold tw-text-sm tw-rounded-full tw-flex-shrink-0">
+          <div className={`tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-p-3 ${!showH1 && isRound3WithFailedItems ? 'tw-bg-green-50' : 'tw-bg-gray-100'}`}>
+            <span className={`tw-w-10 tw-h-10 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm tw-rounded-full tw-flex-shrink-0 ${!showH1 && isRound3WithFailedItems ? 'tw-bg-green-500 tw-text-white' : 'tw-bg-gray-700 tw-text-white'}`}>
               H1
             </span>
-            <PassFailButtons
-              value={currentResult?.h1 || ""}
-              onChange={(v) => onResultChange(roundIndex, index, "h1", v)}
-              lang={lang}
-              size="sm"
-            />
+            {!showH1 && isRound3WithFailedItems ? (
+              <span className="tw-px-4 tw-py-2 tw-text-sm tw-font-semibold tw-text-green-600">✓ {t.pass}</span>
+            ) : (
+              <PassFailButtons
+                value={currentResult?.h1 || ""}
+                onChange={(v) => onResultChange(roundIndex, actualIndex, "h1", v)}
+                lang={lang}
+                size="sm"
+              />
+            )}
           </div>
 
           {/* H2 Section */}
-          <div className="tw-flex tw-items-center tw-gap-3 tw-bg-gray-100 tw-rounded-xl tw-p-3">
-            <span className="tw-w-10 tw-h-10 tw-flex tw-items-center tw-justify-center tw-bg-gray-700 tw-text-white tw-font-bold tw-text-sm tw-rounded-full tw-flex-shrink-0">
+          <div className={`tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-p-3 ${!showH2 && isRound3WithFailedItems ? 'tw-bg-green-50' : 'tw-bg-gray-100'}`}>
+            <span className={`tw-w-10 tw-h-10 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm tw-rounded-full tw-flex-shrink-0 ${!showH2 && isRound3WithFailedItems ? 'tw-bg-green-500 tw-text-white' : 'tw-bg-gray-700 tw-text-white'}`}>
               H2
             </span>
-            <PassFailButtons
-              value={currentResult?.h2 || ""}
-              onChange={(v) => onResultChange(roundIndex, index, "h2", v)}
-              lang={lang}
-              size="sm"
-            />
+            {!showH2 && isRound3WithFailedItems ? (
+              <span className="tw-px-4 tw-py-2 tw-text-sm tw-font-semibold tw-text-green-600">✓ {t.pass}</span>
+            ) : (
+              <PassFailButtons
+                value={currentResult?.h2 || ""}
+                onChange={(v) => onResultChange(roundIndex, actualIndex, "h2", v)}
+                lang={lang}
+                size="sm"
+              />
+            )}
           </div>
 
           {/* Remark Section - fixed width, align right */}
           <div className="tw-flex tw-items-center tw-gap-2 tw-w-[150px] tw-ml-auto tw-flex-shrink-0">
             <input
               type="text"
-              value={results.remarks[index] || ""}
-              onChange={(e) => onRemarkChange(index, e.target.value)}
+              value={results.remarks[actualIndex] || ""}
+              onChange={(e) => onRemarkChange(actualIndex, e.target.value)}
               className="tw-w-full tw-px-2 tw-py-1.5 tw-text-xs tw-border tw-border-gray-300 tw-rounded-lg tw-bg-white focus:tw-border-gray-500 focus:tw-ring-2 focus:tw-ring-gray-300 tw-outline-none tw-transition-all placeholder:tw-text-gray-500"
               placeholder={t.remarkPlaceholder}
             />
           </div>
         </div>
-
-        {/* Mobile: Only show remark here, H1/H2 will be in separate sections */}
-        <div className="lg:tw-hidden tw-flex tw-items-center tw-justify-end tw-gap-2">
-          <input
-            type="text"
-            value={results.remarks[index] || ""}
-            onChange={(e) => onRemarkChange(index, e.target.value)}
-            className="tw-w-[120px] tw-flex-shrink-0 tw-px-2 tw-py-1.5 tw-text-xs tw-border tw-border-gray-300 tw-rounded-lg tw-bg-white focus:tw-border-gray-500 focus:tw-ring-2 focus:tw-ring-gray-300 tw-outline-none tw-transition-all placeholder:tw-text-gray-500"
-            placeholder={t.remarkPlaceholder}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  // Mobile only: Render H1 or H2 item
-  const renderMobileHItem = (item: DCTestItem, index: number, hType: "h1" | "h2", isLast: boolean) => {
-    const displayName = getTestName(item, lang, t);
-    const currentResult = getTestResult(index);
-
-    return (
-      <div
-        key={`${roundNumber}-${item.testName}-${hType}`}
-        className={`tw-py-3 tw-px-4 tw-flex tw-items-center tw-justify-between ${
-          !isLast ? "tw-border-b tw-border-gray-100" : ""
-        }`}
-      >
-        <span className="tw-text-sm tw-text-gray-700">{displayName}</span>
-        <PassFailButtons
-          value={currentResult?.[hType] || ""}
-          onChange={(v) => onResultChange(roundIndex, index, hType, v)}
-          lang={lang}
-          size="sm"
-        />
       </div>
     );
   };
 
   return (
-    <div className="tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-shadow-sm tw-overflow-hidden">
+    <div className={`tw-rounded-2xl tw-border ${isRound3WithFailedItems ? 'tw-border-red-300' : 'tw-border-gray-200'} tw-bg-white tw-shadow-sm tw-overflow-hidden`}>
       {/* Round Header */}
-      <div className="tw-bg-gray-800 tw-px-5 tw-py-4">
+      <div className={`${isRound3WithFailedItems ? 'tw-bg-red-600' : 'tw-bg-gray-800'} tw-px-5 tw-py-4`}>
         <div className="tw-flex tw-items-center tw-justify-between">
           <div className="tw-flex tw-items-center tw-gap-4">
-            <div className="tw-w-10 tw-h-10 tw-rounded-xl tw-bg-white/20 tw-backdrop-blur tw-flex tw-items-center tw-justify-center tw-text-lg tw-font-bold tw-text-white">
+            <div className={`tw-w-10 tw-h-10 tw-rounded-xl ${isRound3WithFailedItems ? 'tw-bg-red-400/30' : 'tw-bg-white/20'} tw-backdrop-blur tw-flex tw-items-center tw-justify-center tw-text-lg tw-font-bold tw-text-white`}>
               {roundNumber}
             </div>
             <div>
               <Typography className="tw-font-bold tw-text-white tw-text-lg">
                 {t.testRound} {roundNumber}
               </Typography>
-              <Typography className="tw-text-white tw-text-sm">
-                {t.roundOf.replace("{n}", String(roundNumber))}
+              <Typography className="tw-text-white/80 tw-text-sm">
+                {isRound3WithFailedItems ? t.round3Info : t.roundOf.replace("{n}", String(roundNumber)).replace("{total}", maxRoundsDisplay)}
               </Typography>
             </div>
           </div>
-          
+          {/* Delete button for manual round 3 */}
           {canRemove && (
             <button
               type="button"
-              className="tw-p-2 tw-rounded-lg tw-text-red-300 hover:tw-text-white hover:tw-bg-red-500/30 tw-transition-all"
-              onClick={() => onRemoveRound(roundIndex)}
+              className="tw-p-2 tw-rounded-lg tw-text-white/70 hover:tw-text-white hover:tw-bg-white/20 tw-transition-all"
+              onClick={onRemoveRound}
             >
               <svg className="tw-w-5 tw-h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -571,44 +687,52 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
         </div>
       </div>
 
-      {/* Desktop Content - Normal view */}
-      <div className="tw-hidden lg:tw-block tw-divide-y tw-divide-gray-100">
-        {testItems.map((item, index) => renderTestItem(item, index, index === testItems.length - 1))}
+      {/* Desktop Content - Original layout */}
+      <div className="tw-hidden lg:tw-block tw-bg-white">
+        {itemsToShowWithInfo.map((itemData, index) => renderTestItem(itemData, index, index === itemsToShowWithInfo.length - 1))}
       </div>
 
       {/* Mobile Content - Separate H1 and H2 sections */}
-      <div className="lg:tw-hidden">
+      <div className="lg:tw-hidden tw-bg-white">
         {/* H1 Section */}
-        <div className="tw-border-b tw-border-gray-200 tw-mb-8">
-          <div className="tw-flex tw-items-center tw-gap-3 tw-px-4 tw-py-3 tw-bg-gray-100">
-            <span className="tw-w-10 tw-h-10 tw-flex tw-items-center tw-justify-center tw-bg-gray-700 tw-text-white tw-font-bold tw-text-sm tw-rounded-full">
+        <div className="tw-border-b tw-border-gray-200">
+          <div className="tw-flex tw-items-center tw-gap-2 tw-px-4 tw-py-3 tw-bg-gray-100">
+            <span className="tw-w-8 tw-h-8 tw-flex tw-items-center tw-justify-center tw-bg-gray-700 tw-text-white tw-font-bold tw-text-sm tw-rounded-full">
               H1
             </span>
-            <span className="tw-font-bold tw-text-gray-700">Handgun 1</span>
+            <Typography className="tw-font-semibold tw-text-gray-700 tw-text-sm">
+              {t.handgun1}
+            </Typography>
           </div>
-          <div>
-            {testItems.map((item, index) => {
+          <div className="tw-divide-y tw-divide-gray-100">
+            {itemsToShowWithInfo.map((itemData, index) => {
+              const { item, failedInfo } = itemData;
+              const actualIndex = failedInfo ? failedInfo.itemIndex : index;
               const displayName = getTestName(item, lang, t);
-              const currentResult = getTestResult(index);
-              const isLast = index === testItems.length - 1;
+              const currentResult = getTestResult(actualIndex);
+              const showH1 = !isRound3WithFailedItems || (failedInfo?.h1Failed ?? true);
+              
               return (
-                <div
-                  key={`h1-${index}`}
-                  className={`tw-py-3 tw-px-4 ${!isLast ? "tw-border-b tw-border-gray-100" : ""}`}
-                >
-                  <div className="tw-text-sm tw-font-medium tw-text-gray-800 tw-mb-2">{displayName}</div>
-                  <div className="tw-flex tw-items-center tw-justify-between tw-gap-2">
-                    <PassFailButtons
-                      value={currentResult?.h1 || ""}
-                      onChange={(v) => onResultChange(roundIndex, index, "h1", v)}
-                      lang={lang}
-                      size="sm"
-                    />
+                <div key={`h1-${actualIndex}`} className="tw-px-4 tw-py-3">
+                  {/* Row 1: Test Name */}
+                  <div className="tw-text-sm tw-font-medium tw-text-gray-700 tw-mb-2">{displayName}</div>
+                  {/* Row 2: Buttons + Remark */}
+                  <div className="tw-flex tw-items-center tw-gap-2">
+                    {!showH1 && isRound3WithFailedItems ? (
+                      <span className="tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-text-green-600 tw-bg-green-50 tw-rounded-lg tw-flex-shrink-0">✓ {t.pass}</span>
+                    ) : (
+                      <PassFailButtons
+                        value={currentResult?.h1 || ""}
+                        onChange={(v) => onResultChange(roundIndex, actualIndex, "h1", v)}
+                        lang={lang}
+                        size="sm"
+                      />
+                    )}
                     <input
                       type="text"
-                      value={results.remarks[index] || ""}
-                      onChange={(e) => onRemarkChange(index, e.target.value)}
-                      className="tw-w-[120px] tw-flex-shrink-0 tw-px-2 tw-py-1.5 tw-text-xs tw-border tw-border-gray-300 tw-rounded-lg tw-bg-white focus:tw-border-gray-500 focus:tw-ring-1 focus:tw-ring-gray-300 tw-outline-none placeholder:tw-text-gray-500"
+                      value={results.remarks[actualIndex] || ""}
+                      onChange={(e) => onRemarkChange(actualIndex, e.target.value)}
+                      className="tw-flex-1 tw-min-w-0 tw-px-2 tw-py-1.5 tw-text-xs tw-border tw-border-gray-300 tw-rounded-lg tw-bg-white focus:tw-border-gray-500 focus:tw-ring-2 focus:tw-ring-gray-300 tw-outline-none tw-transition-all placeholder:tw-text-gray-400"
                       placeholder={t.remarkPlaceholder}
                     />
                   </div>
@@ -619,36 +743,44 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
         </div>
 
         {/* H2 Section */}
-        <div className="tw-mt-8">
-          <div className="tw-flex tw-items-center tw-gap-3 tw-px-4 tw-py-3 tw-bg-gray-100">
-            <span className="tw-w-10 tw-h-10 tw-flex tw-items-center tw-justify-center tw-bg-gray-700 tw-text-white tw-font-bold tw-text-sm tw-rounded-full">
+        <div>
+          <div className="tw-flex tw-items-center tw-gap-2 tw-px-4 tw-py-3 tw-bg-gray-100">
+            <span className="tw-w-8 tw-h-8 tw-flex tw-items-center tw-justify-center tw-bg-gray-700 tw-text-white tw-font-bold tw-text-sm tw-rounded-full">
               H2
             </span>
-            <span className="tw-font-bold tw-text-gray-700">Handgun 2</span>
+            <Typography className="tw-font-semibold tw-text-gray-700 tw-text-sm">
+              {t.handgun2}
+            </Typography>
           </div>
-          <div>
-            {testItems.map((item, index) => {
+          <div className="tw-divide-y tw-divide-gray-100">
+            {itemsToShowWithInfo.map((itemData, index) => {
+              const { item, failedInfo } = itemData;
+              const actualIndex = failedInfo ? failedInfo.itemIndex : index;
               const displayName = getTestName(item, lang, t);
-              const currentResult = getTestResult(index);
-              const isLast = index === testItems.length - 1;
+              const currentResult = getTestResult(actualIndex);
+              const showH2 = !isRound3WithFailedItems || (failedInfo?.h2Failed ?? true);
+              
               return (
-                <div
-                  key={`h2-${index}`}
-                  className={`tw-py-3 tw-px-4 ${!isLast ? "tw-border-b tw-border-gray-100" : ""}`}
-                >
-                  <div className="tw-text-sm tw-font-medium tw-text-gray-800 tw-mb-2">{displayName}</div>
-                  <div className="tw-flex tw-items-center tw-justify-between tw-gap-2">
-                    <PassFailButtons
-                      value={currentResult?.h2 || ""}
-                      onChange={(v) => onResultChange(roundIndex, index, "h2", v)}
-                      lang={lang}
-                      size="sm"
-                    />
+                <div key={`h2-${actualIndex}`} className="tw-px-4 tw-py-3">
+                  {/* Row 1: Test Name */}
+                  <div className="tw-text-sm tw-font-medium tw-text-gray-700 tw-mb-2">{displayName}</div>
+                  {/* Row 2: Buttons + Remark */}
+                  <div className="tw-flex tw-items-center tw-gap-2">
+                    {!showH2 && isRound3WithFailedItems ? (
+                      <span className="tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-text-green-600 tw-bg-green-50 tw-rounded-lg tw-flex-shrink-0">✓ {t.pass}</span>
+                    ) : (
+                      <PassFailButtons
+                        value={currentResult?.h2 || ""}
+                        onChange={(v) => onResultChange(roundIndex, actualIndex, "h2", v)}
+                        lang={lang}
+                        size="sm"
+                      />
+                    )}
                     <input
                       type="text"
-                      value={results.remarks[index] || ""}
-                      onChange={(e) => onRemarkChange(index, e.target.value)}
-                      className="tw-w-[120px] tw-flex-shrink-0 tw-px-2 tw-py-1.5 tw-text-xs tw-border tw-border-gray-300 tw-rounded-lg tw-bg-white focus:tw-border-gray-500 focus:tw-ring-1 focus:tw-ring-gray-300 tw-outline-none placeholder:tw-text-gray-500"
+                      value={results.remarks[actualIndex] || ""}
+                      onChange={(e) => onRemarkChange(actualIndex, e.target.value)}
+                      className="tw-flex-1 tw-min-w-0 tw-px-2 tw-py-1.5 tw-text-xs tw-border tw-border-gray-300 tw-rounded-lg tw-bg-white focus:tw-border-gray-500 focus:tw-ring-2 focus:tw-ring-gray-300 tw-outline-none tw-transition-all placeholder:tw-text-gray-400"
                       placeholder={t.remarkPlaceholder}
                     />
                   </div>
@@ -671,9 +803,10 @@ interface TestResultsGridProps {
   onResultChange: (roundIndex: number, itemIndex: number, field: "h1" | "h2", value: string) => void;
   onRemarkChange: (itemIndex: number, value: string) => void;
   onAddRound: () => void;
-  onRemoveRound: (roundIndex: number) => void;
+  onRemoveRound: () => void;
   lang: Lang;
   t: typeof translations["th"];
+  isRound3Manual: boolean;
 }
 
 const TestResultsGrid: React.FC<TestResultsGridProps> = ({
@@ -686,8 +819,12 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
   onRemoveRound,
   lang,
   t,
+  isRound3Manual,
 }) => {
   const totalRounds = results.rounds.length;
+  const failedItems = getFailedItems(results, testItems);
+  const failedItemIndexes = failedItems.map(fi => fi.itemIndex);
+  const allPassed = allItemsPassed(results, testItems);
 
   return (
     <div className="tw-space-y-6">
@@ -699,11 +836,22 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
           </Typography>
           <div className="tw-flex tw-items-center tw-gap-2 tw-mt-1">
             <span className="tw-inline-flex tw-items-center tw-px-2.5 tw-py-1 tw-rounded-full tw-text-xs tw-font-medium tw-bg-gray-200 tw-text-gray-700">
-              {t.totalRounds}: {totalRounds}/3
+              {t.totalRounds}: {totalRounds}/{totalRounds === 3 ? 3 : 2}
             </span>
+            {totalRounds === 3 && failedItemIndexes.length > 0 && !isRound3Manual && (
+              <span className="tw-inline-flex tw-items-center tw-px-2.5 tw-py-1 tw-rounded-full tw-text-xs tw-font-medium tw-bg-red-100 tw-text-red-700">
+                {t.failedItemsCount.replace("{count}", String(failedItemIndexes.length))}
+              </span>
+            )}
+            {totalRounds === 2 && allPassed && (
+              <span className="tw-inline-flex tw-items-center tw-px-2.5 tw-py-1 tw-rounded-full tw-text-xs tw-font-medium tw-bg-green-100 tw-text-green-700">
+                ✓ {t.allPassed}
+              </span>
+            )}
           </div>
         </div>
-        {totalRounds < 3 && (
+        {/* Show add round 3 button when all passed and no round 3 yet */}
+        {totalRounds === 2 && allPassed && (
           <button
             type="button"
             className="tw-inline-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2.5 tw-bg-gray-800 tw-text-white tw-rounded-xl tw-font-medium tw-text-sm hover:tw-bg-gray-700 tw-transition-all tw-shadow-sm"
@@ -712,7 +860,7 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
             <svg className="tw-w-5 tw-h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            {t.addRound}
+            {t.addRound3}
           </button>
         )}
       </div>
@@ -731,7 +879,9 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
             onRemoveRound={onRemoveRound}
             lang={lang}
             t={t}
-            canRemove={totalRounds > 1}
+            canRemove={idx === 2 && isRound3Manual}
+            isRound3={idx === 2}
+            failedItems={failedItems}
           />
         ))}
       </div>
@@ -747,7 +897,7 @@ export interface DCTestGridProps {
   initialRounds?: number;
 }
 
-const DCTest2Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChange, initialRounds = 3 }) => {
+const DCTest2Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChange, initialRounds = 2 }) => {
   const getInitialResults = (): TestCharger => {
     if (!initialResults) {
       return createEmptyResults(DC_TEST_DATA.length, initialRounds);
@@ -757,18 +907,41 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
       return convertLegacyToNew(initialResults as LegacyTestResults);
     }
     
-    return initialResults as TestCharger;
+    // Ensure at least 2 rounds
+    const results = initialResults as TestCharger;
+    if (results.rounds.length < 2) {
+      const newRounds = [...results.rounds];
+      while (newRounds.length < 2) {
+        newRounds.push(createEmptyRound(DC_TEST_DATA.length));
+      }
+      return { ...results, rounds: newRounds };
+    }
+    
+    return results;
   };
 
   const [results, setResults] = useState<TestCharger>(getInitialResults);
+  const [isRound3Manual, setIsRound3Manual] = useState<boolean>(false);
 
   useEffect(() => {
     if (initialResults) {
+      let newResults: TestCharger;
       if ('test1' in initialResults) {
-        setResults(convertLegacyToNew(initialResults as LegacyTestResults));
+        newResults = convertLegacyToNew(initialResults as LegacyTestResults);
       } else {
-        setResults(initialResults as TestCharger);
+        newResults = initialResults as TestCharger;
       }
+      
+      // Ensure at least 2 rounds
+      if (newResults.rounds.length < 2) {
+        const newRounds = [...newResults.rounds];
+        while (newRounds.length < 2) {
+          newRounds.push(createEmptyRound(DC_TEST_DATA.length));
+        }
+        newResults = { ...newResults, rounds: newRounds };
+      }
+      
+      setResults(newResults);
     }
   }, [initialResults]);
 
@@ -792,6 +965,41 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
   }, []);
 
   const t = translations[lang];
+
+  // Auto add round 3 when there are items that failed in at least one round (only if not manual)
+  useEffect(() => {
+    if (results.rounds.length === 2 && !isRound3Manual) {
+      const failedIndexes = getFailedItemIndexes(results, DC_TEST_DATA);
+      if (failedIndexes.length > 0) {
+        // Auto add round 3
+        const newRound = createEmptyRound(DC_TEST_DATA.length);
+        
+        const newResults = {
+          ...results,
+          rounds: [...results.rounds, newRound]
+        };
+        setResults(newResults);
+        onResultsChange?.(newResults);
+      }
+    }
+  }, [JSON.stringify(results.rounds.slice(0, 2)), isRound3Manual]); // Watch for changes in round 1 and 2
+
+  // Auto remove round 3 when all items pass in both rounds (only if not manually added)
+  useEffect(() => {
+    if (results.rounds.length === 3 && !isRound3Manual) {
+      const failedIndexes = getFailedItemIndexes(results, DC_TEST_DATA);
+      
+      // Remove round 3 immediately if no failed items (all passed)
+      if (failedIndexes.length === 0) {
+        const newResults = {
+          ...results,
+          rounds: results.rounds.slice(0, 2)
+        };
+        setResults(newResults);
+        onResultsChange?.(newResults);
+      }
+    }
+  }, [JSON.stringify(results.rounds.slice(0, 2)), results.rounds.length, isRound3Manual]); // Watch for changes
 
   const handleResultChange = (
     roundIndex: number,
@@ -817,21 +1025,32 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
     onResultsChange?.(newResults);
   };
 
+  // Manual add round 3 (when all passed but user wants to add)
   const handleAddRound = () => {
     if (results.rounds.length >= 3) return;
     
-    const newResults = { ...results };
-    newResults.rounds = [...newResults.rounds, createEmptyRound(DC_TEST_DATA.length)];
+    const newRound = createEmptyRound(DC_TEST_DATA.length);
+    
+    const newResults = {
+      ...results,
+      rounds: [...results.rounds, newRound]
+    };
     setResults(newResults);
+    setIsRound3Manual(true);
     onResultsChange?.(newResults);
   };
 
-  const handleRemoveRound = (roundIndex: number) => {
-    if (results.rounds.length <= 1) return;
+  // Remove manual round 3
+  const handleRemoveRound = () => {
+    // Only allow removing round 3 if it was manually added
+    if (results.rounds.length !== 3 || !isRound3Manual) return;
     
-    const newResults = { ...results };
-    newResults.rounds = newResults.rounds.filter((_, idx) => idx !== roundIndex);
+    const newResults = {
+      ...results,
+      rounds: results.rounds.slice(0, 2)
+    };
     setResults(newResults);
+    setIsRound3Manual(false);
     onResultsChange?.(newResults);
   };
 
@@ -847,6 +1066,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
         onRemoveRound={handleRemoveRound}
         lang={lang}
         t={t}
+        isRound3Manual={isRound3Manual}
       />
     </div>
   );

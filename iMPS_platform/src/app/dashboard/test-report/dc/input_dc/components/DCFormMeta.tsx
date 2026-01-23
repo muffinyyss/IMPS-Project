@@ -40,6 +40,7 @@ const translations = {
     remaining: "ยังขาดอีก {n} รายการ",
     missingFirmware: "ยังไม่ได้กรอกเวอร์ชันเฟิร์มแวร์",
     loading: "กำลังโหลด...",
+    firmwarePlaceholder: "เช่น v1.0.0",
   },
   en: {
     issueId: "Issue ID",
@@ -56,8 +57,18 @@ const translations = {
     remaining: "{n} items remaining",
     missingFirmware: "Firmware Version is missing",
     loading: "Loading...",
+    firmwarePlaceholder: "e.g. v1.0.0",
   },
 };
+
+/* ===================== Helper: Check if firmware has real value ===================== */
+
+function hasFirmwareValue(value: string | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  // ถ้าเป็น "-" หรือ "" ถือว่าไม่มีค่า
+  return trimmed !== "" && trimmed !== "-";
+}
 
 /* ===================== Helper: Validation Checker ===================== */
 
@@ -71,7 +82,8 @@ export const validateFormMeta = (head: Head, lang: Lang = "th"): ValidationError
   const errors: ValidationError[] = [];
   const t = translations[lang];
 
-  if (!head.firmware_version?.trim()) {
+  // ★ ตรวจสอบว่ามีค่า firmware_version ที่ใช้ได้หรือไม่
+  if (!hasFirmwareValue(head.firmware_version)) {
     errors.push({
       field: t.firmwareVersion,
       fieldKey: "firmware_version",
@@ -204,6 +216,9 @@ const ValidationSummary: React.FC<ValidationSummaryProps> = ({ head, lang }) => 
 export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
   const [lang, setLang] = useState<Lang>("th");
   const [inspector, setInspector] = useState<string>("-");
+  
+  // ★★★ Track if firmware came from API (first load) ★★★
+  const [firmwareFromApi, setFirmwareFromApi] = useState<boolean>(false);
 
   useEffect(() => {
     const savedLang = localStorage.getItem("app_language") as Lang | null;
@@ -259,10 +274,17 @@ export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
     }
   }, [head.inspection_date, onHeadChange]);
 
+  // ★★★ Check if firmware came from API on first meaningful value ★★★
+  useEffect(() => {
+    if (!firmwareFromApi && hasFirmwareValue(head.firmware_version)) {
+      setFirmwareFromApi(true);
+    }
+  }, [head.firmware_version, firmwareFromApi]);
+
   const t = translations[lang];
   const displayInspector = head.inspector || inspector;
 
-  // ★★★ FIXED: ตรวจสอบว่ามี issue_id จาก backend หรือยัง ★★★
+  // ★★★ ตรวจสอบว่ามี issue_id จาก backend หรือยัง ★★★
   const hasIssueId = Boolean(head.issue_id && head.issue_id.trim());
   const displayIssueId = hasIssueId ? head.issue_id : t.loading;
 
@@ -272,7 +294,6 @@ export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
       <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4">
         <div>
           <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t.issueId}</label>
-          {/* ★★★ FIXED: แสดง issue_id จาก backend preview ★★★ */}
           <Input
             value={displayIssueId}
             readOnly
@@ -345,16 +366,27 @@ export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
       <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
         <div id="form-meta-firmware_version" className="tw-transition-all tw-duration-300 tw-rounded">
           <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
-            {t.firmwareVersion} <span className="tw-text-red-500">*</span>
+            {t.firmwareVersion} {!firmwareFromApi && <span className="tw-text-red-500">*</span>}
           </label>
-          <Input
-            value={head.firmware_version || ""}
-            onChange={(e) => onHeadChange({ firmware_version: e.target.value })}
-            crossOrigin=""
-            className="!tw-w-full"
-            containerProps={{ className: "!tw-min-w-0" }}
-            placeholder="เช่น v1.0.0"
-          />
+          {/* ★★★ ถ้า firmware มาจาก API → readonly, ถ้าไม่มี → ให้กรอก ★★★ */}
+          {firmwareFromApi ? (
+            <Input
+              value={head.firmware_version || ""}
+              readOnly
+              crossOrigin=""
+              className="!tw-w-full !tw-bg-gray-100"
+              containerProps={{ className: "!tw-min-w-0" }}
+            />
+          ) : (
+            <Input
+              value={head.firmware_version || ""}
+              onChange={(e) => onHeadChange({ firmware_version: e.target.value })}
+              crossOrigin=""
+              className="!tw-w-full"
+              containerProps={{ className: "!tw-min-w-0" }}
+              placeholder={t.firmwarePlaceholder}
+            />
+          )}
         </div>
 
         <div>

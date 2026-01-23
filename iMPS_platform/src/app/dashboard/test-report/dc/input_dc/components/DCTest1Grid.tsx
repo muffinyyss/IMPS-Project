@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Input, Button, Typography, Textarea } from "@material-tailwind/react";
 
 /* ===================== Types ===================== */
@@ -41,11 +41,12 @@ export const translations = {
     remark: "หมายเหตุ",
     testRound: "ทดสอบครั้งที่",
     roundOf: "รอบที่ {n} / {total}",
-    rcdValue: "ค่า RCD",
+    rcdValue: "ค่า RCD (Spec)",
+    measuredValue: "ค่าที่วัดได้",
     isolationCheck: "ตรวจสอบ Isolation",
     remarkUsedForAll: "หมายเหตุ (ใช้สำหรับทุกรอบทดสอบ)",
     remarkPlaceholder: "หมายเหตุ...",
-    valuePlaceholder: "ค่าทดสอบ",
+    valuePlaceholder: "ค่า",
     currentPlaceholder: "กระแส",
     pass: "ผ่าน",
     fail: "ไม่ผ่าน",
@@ -62,16 +63,17 @@ export const translations = {
     rcdTypeB: "RCD ชนิด B",
     isolationTransformer: "หม้อแปลงแยก",
     powerStandby: "พลังงานขณะสแตนด์บาย",
-    testValue: "ค่าทดสอบ",
+    testValue: "ค่าที่วัดได้",
     peContinuitySection: "PE Continuity",
     rcdSection: "RCD",
+    noRcd: "ไม่มี RCD ",
     otherSection: "อื่นๆ",
-    addRound: "เพิ่มรอบทดสอบ",
-    removeRound: "ลบรอบนี้",
+    addRound3: "เพิ่มรอบที่ 3",
     totalRounds: "รอบทดสอบ",
     rounds: "รอบ",
-    minRoundWarning: "ต้องมีอย่างน้อย 1 รอบทดสอบ",
-    maxRounds: "สูงสุด 3 รอบ",
+    round3Info: "รอบที่ 3 - ทดสอบซ้ำเฉพาะหัวข้อที่ไม่ผ่าน",
+    allPassed: "ผ่านทุกหัวข้อทั้ง 2 รอบ",
+    failedItemsCount: "หัวข้อที่ต้องทดสอบซ้ำ: {count} รายการ",
   },
   en: {
     testingChecklist: "Testing Checklist",
@@ -79,11 +81,12 @@ export const translations = {
     remark: "Remark",
     testRound: "Test Round",
     roundOf: "Round {n} / {total}",
-    rcdValue: "RCD value",
+    rcdValue: "RCD Value (Spec)",
+    measuredValue: "Measured",
     isolationCheck: "Isolation check",
     remarkUsedForAll: "Remark (used for all test rounds)",
     remarkPlaceholder: "Remark...",
-    valuePlaceholder: "Test value",
+    valuePlaceholder: "Value",
     currentPlaceholder: "Current",
     pass: "Pass",
     fail: "Fail",
@@ -100,16 +103,17 @@ export const translations = {
     rcdTypeB: "RCD type B",
     isolationTransformer: "Isolation Transformer",
     powerStandby: "Power standby",
-    testValue: "Test Value",
+    testValue: "Measured",
     peContinuitySection: "PE Continuity",
     rcdSection: "RCD",
+    noRcd: "No RCD ",
     otherSection: "Others",
-    addRound: "Add Test Round",
-    removeRound: "Remove Round",
+    addRound3: "Add Round 3",
     totalRounds: "Rounds",
     rounds: "rounds",
-    minRoundWarning: "At least 1 test round is required",
-    maxRounds: "Max 3 rounds",
+    round3Info: "Round 3 - Retest Failed Items",
+    allPassed: "All items passed in both rounds",
+    failedItemsCount: "Items to retest: {count}",
   },
 };
 
@@ -403,12 +407,87 @@ const createEmptyRound = (itemCount: number): { h1: string; result: string }[] =
   return new Array(itemCount).fill(null).map(() => ({ h1: "", result: "" }));
 };
 
-const createEmptyResults = (itemCount: number, roundCount: number = 3): TestResults => ({
+const createEmptyResults = (itemCount: number, roundCount: number = 2): TestResults => ({
   rounds: new Array(roundCount).fill(null).map(() => createEmptyRound(itemCount)),
   rcdValues: new Array(itemCount).fill(""),
   remarks: new Array(itemCount).fill(""),
   powerStandby: { L1: "", L2: "", L3: "" },
 });
+
+/* ===================== Helper: Check if item passed in both rounds ===================== */
+
+const isPassResult = (result: string | undefined): boolean => {
+  return result === "PASS" || result === "✓";
+};
+
+const isFailResult = (result: string | undefined): boolean => {
+  return result === "FAIL" || result === "✗";
+};
+
+const isNaResult = (result: string | undefined): boolean => {
+  return result === "NA";
+};
+
+// Get indexes of items that failed in at least one of the first 2 rounds (need retest in round 3)
+export const getFailedItemIndexes = (results: TestResults, testItems: DCTestItem[]): number[] => {
+  const failedIndexes: number[] = [];
+  
+  testItems.forEach((item, index) => {
+    const isIsolationTransformer = item.testName.includes("Isolation Transformer");
+    const isPowerStandby = item.testName.includes("Power standby");
+    
+    // Skip Isolation Transformer and Power Standby (they are only in round 1)
+    if (isIsolationTransformer || isPowerStandby) return;
+    
+    const round1Result = results.rounds[0]?.[index]?.result;
+    const round2Result = results.rounds[1]?.[index]?.result;
+    
+    // If NA in either round, skip (not a failure)
+    if (isNaResult(round1Result) || isNaResult(round2Result)) return;
+    
+    // Check if explicitly failed in either round (FAIL or ✗)
+    const failedRound1 = isFailResult(round1Result);
+    const failedRound2 = isFailResult(round2Result);
+    
+    // If failed in at least one round, add to failed list
+    if (failedRound1 || failedRound2) {
+      failedIndexes.push(index);
+    }
+  });
+  
+  return failedIndexes;
+};
+
+// Check if all items passed in both rounds (no FAIL results)
+export const allItemsPassed = (results: TestResults, testItems: DCTestItem[]): boolean => {
+  if (results.rounds.length < 2) return false;
+  
+  // Check if there are any failed items
+  const failedIndexes = getFailedItemIndexes(results, testItems);
+  if (failedIndexes.length > 0) return false;
+  
+  // Also check if all items have been tested (have PASS or NA result)
+  let allTested = true;
+  testItems.forEach((item, index) => {
+    const isIsolationTransformer = item.testName.includes("Isolation Transformer");
+    const isPowerStandby = item.testName.includes("Power standby");
+    
+    // Skip Isolation Transformer and Power Standby
+    if (isIsolationTransformer || isPowerStandby) return;
+    
+    const round1Result = results.rounds[0]?.[index]?.result;
+    const round2Result = results.rounds[1]?.[index]?.result;
+    
+    // If either round is empty, not all tested
+    if (!round1Result || !round2Result) {
+      // Exception: if round 1 is NA, round 2 can be empty (will be auto NA)
+      if (isNaResult(round1Result)) return;
+      allTested = false;
+    }
+  });
+  
+  return allTested;
+};
 
 /* ===================== Helper: Validation Checker ===================== */
 
@@ -433,15 +512,6 @@ export const validateTestResults = (
     const isIsolationTransformer = item.testName.includes("Isolation Transformer");
     const isPowerStandby = item.testName.includes("Power standby");
     const displayName = getTestName(item, lang, t);
-
-    if (!results.remarks[itemIndex]?.trim()) {
-      errors.push({
-        itemIndex,
-        itemName: displayName,
-        field: lang === "th" ? "หมายเหตุ" : "Remark",
-        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark is missing",
-      });
-    }
 
     if (isPowerStandby) {
       if (!results.powerStandby?.L1?.trim()) {
@@ -492,7 +562,7 @@ export const validateTestResults = (
       
       // Skip h1 validation if result is NA
       if (result !== "NA" && !roundData[itemIndex]?.h1?.trim()) {
-        errors.push({ round: roundIndex + 1, itemIndex, itemName: displayName, field: lang === "th" ? "ค่าทดสอบ" : "Test Value", message: lang === "th" ? `รอบ ${roundIndex + 1}: ยังไม่ได้กรอกค่า (Ω)` : `Round ${roundIndex + 1}: Test value (Ω) is missing` });
+        errors.push({ round: roundIndex + 1, itemIndex, itemName: displayName, field: lang === "th" ? "ค่าที่วัดได้" : "Measured", message: lang === "th" ? `รอบ ${roundIndex + 1}: ยังไม่ได้กรอกค่า (Ω)` : `Round ${roundIndex + 1}: Measured (Ω) is missing` });
       }
 
       if (!result || (result !== "PASS" && result !== "FAIL" && result !== "NA" && result !== "✓" && result !== "✗")) {
@@ -540,11 +610,13 @@ interface TestRoundCardProps {
   onRcdChange: (itemIndex: number, value: string) => void;
   onRemarkChange: (itemIndex: number, value: string) => void;
   onPowerStandbyChange: (phase: "L1" | "L2" | "L3", value: string) => void;
-  onRemoveRound: (roundIndex: number) => void;
+  onRemoveRound: () => void;
   lang: Lang;
   t: typeof translations["th"];
   isFirstRound: boolean;
-  canRemove: boolean;
+  isRound3?: boolean;
+  failedItemIndexes?: number[];
+  canRemove?: boolean;
 }
 
 const TestRoundCard: React.FC<TestRoundCardProps> = ({
@@ -560,7 +632,9 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
   lang,
   t,
   isFirstRound,
-  canRemove,
+  isRound3 = false,
+  failedItemIndexes = [],
+  canRemove = false,
 }) => {
   const roundIndex = roundNumber - 1;
 
@@ -568,9 +642,22 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
     return results.rounds[roundIndex]?.[itemIndex] || { h1: "", result: "" };
   };
 
+  // Filter items based on whether this is round 3
+  const getFilteredItems = (items: DCTestItem[]) => {
+    if (!isRound3) return items;
+    return items.filter(item => {
+      const globalIndex = testItems.findIndex(ti => ti.testName === item.testName);
+      return failedItemIndexes.includes(globalIndex);
+    });
+  };
+
   const peContinuityItems = testItems.filter(item => item.subCategory?.includes("PE.Continuity"));
   const rcdItems = testItems.filter(item => item.testName.includes("RCD"));
   const otherItems = testItems.filter(item => !item.subCategory?.includes("PE.Continuity") && !item.testName.includes("RCD"));
+
+  // For round 3, filter to only show failed items
+  const filteredPeContinuityItems = getFilteredItems(peContinuityItems);
+  const filteredRcdItems = getFilteredItems(rcdItems);
 
   const renderTestItem = (item: DCTestItem, index: number, itemNumber: number) => {
     const isPowerStandby = item.testName.includes("Power standby");
@@ -589,6 +676,11 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
 
     const itemId = `test-item-${index}-round-${roundNumber}`;
 
+    // Show previous round results for round 3 with failed items (auto-added only)
+    const showPreviousResults = isRound3 && failedItemIndexes.length > 0 && !canRemove;
+    const round1Result = results.rounds[0]?.[index]?.result;
+    const round2Result = results.rounds[1]?.[index]?.result;
+
     return (
       <div
         id={itemId}
@@ -606,46 +698,63 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               <span className="tw-ml-2 tw-text-xs tw-text-gray-400 tw-font-normal">(N/A)</span>
             )}
           </Typography>
+          
+          {/* Show previous round results for round 3 */}
+          {showPreviousResults && (
+            <div className="tw-flex tw-gap-2 tw-ml-auto">
+              <span className={`tw-text-xs tw-px-2 tw-py-0.5 tw-rounded ${isPassResult(round1Result) ? 'tw-bg-green-100 tw-text-green-700' : 'tw-bg-red-100 tw-text-red-700'}`}>
+                R1: {isPassResult(round1Result) ? '✓' : '✗'}
+              </span>
+              <span className={`tw-text-xs tw-px-2 tw-py-0.5 tw-rounded ${isPassResult(round2Result) ? 'tw-bg-green-100 tw-text-green-700' : 'tw-bg-red-100 tw-text-red-700'}`}>
+                R2: {isPassResult(round2Result) ? '✓' : '✗'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Controls */}
         <div className="tw-flex tw-flex-col tw-gap-2 lg:tw-gap-3">
-          {/* Row 1: Input fields (mobile: full row, desktop: inline) */}
-          <div className="tw-flex tw-flex-wrap lg:tw-flex-nowrap tw-items-center tw-gap-2 lg:tw-gap-3">
-            {/* RCD Items */}
-            {isRCDItem && (
-              <>
-                {isFirstRound && (
-                  <div className="tw-flex tw-items-center tw-gap-1 lg:tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3">
-                    
+          {/* RCD Items - Separate rows for Spec and Measured */}
+          {isRCDItem && (
+            <>
+              {/* Row 1: RCD Value (Spec) - only in first round */}
+              {isFirstRound && (
+                <div className="tw-flex tw-items-center tw-gap-2 lg:tw-gap-3">
+                  <div className="tw-flex tw-items-center tw-gap-1 lg:tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 tw-min-w-[180px] lg:tw-min-w-[220px]">
+                    <span className="tw-text-xs tw-text-gray-500 tw-font-medium tw-whitespace-nowrap">{t.rcdValue}</span>
                     <input
                       type="text"
                       value={results.rcdValues[index] || ""}
                       onChange={(e) => onRcdChange(index, e.target.value)}
                       className="tw-w-14 lg:tw-w-20 tw-px-2 lg:tw-px-3 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
                       disabled={isRcdInputDisabled}
+                      placeholder={t.valuePlaceholder}
                     />
-
                     <div className="tw-flex tw-items-center tw-justify-center tw-px-2 lg:tw-px-3 tw-py-1 lg:tw-py-1.5 tw-bg-gray-800 tw-text-white tw-font-bold tw-text-xs tw-rounded-lg">
                       mA
                     </div>
                   </div>
-                )}
-                <div className="tw-flex tw-items-center tw-gap-1 lg:tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3">
-                  
+                </div>
+              )}
+              
+              {/* Row 2: Measured Value + Pass/Fail + Remark */}
+              <div className="tw-flex tw-flex-wrap lg:tw-flex-nowrap tw-items-center tw-gap-2 lg:tw-gap-3">
+                <div className="tw-flex tw-items-center tw-gap-1 lg:tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 tw-min-w-[180px] lg:tw-min-w-[220px]">
+                  <span className="tw-text-xs tw-text-gray-500 tw-font-medium tw-whitespace-nowrap">{t.measuredValue}</span>
                   <input
                     type="text"
                     value={currentResult?.h1 || ""}
                     onChange={(e) => onResultChange(roundIndex, index, "h1", e.target.value)}
                     className="tw-w-14 lg:tw-w-20 tw-px-2 lg:tw-px-3 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
-                    placeholder="ค่า"
+                    placeholder={t.valuePlaceholder}
                     disabled={isRcdInputDisabled}
                   />
                   <div className="tw-flex tw-items-center tw-justify-center tw-px-2 lg:tw-px-3 tw-py-1 lg:tw-py-1.5 tw-bg-gray-800 tw-text-white tw-font-bold tw-text-xs tw-rounded-lg">
-                    Sec
+                    mA
                   </div>
                 </div>
-                {/* Desktop only: PassFailButtons inline */}
+                
+                {/* Desktop: PassFailButtons inline */}
                 <div className="tw-hidden lg:tw-block">
                   <PassFailButtons
                     value={currentResult?.result || ""}
@@ -655,8 +764,45 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                     responsive
                   />
                 </div>
-              </>
-            )}
+                
+                {/* Desktop only: Remark inline */}
+                <div className="tw-hidden lg:tw-block tw-w-[150px] tw-flex-shrink-0 tw-ml-auto">
+                  <input
+                    type="text"
+                    value={results.remarks[index] || ""}
+                    onChange={(e) => onRemarkChange(index, e.target.value)}
+                    className="tw-w-full tw-px-2 tw-py-1.5 tw-text-xs tw-border tw-border-gray-300 tw-rounded-lg tw-bg-white focus:tw-border-gray-500 focus:tw-ring-2 focus:tw-ring-gray-300 tw-outline-none tw-transition-all placeholder:tw-text-gray-500"
+                    placeholder={t.remarkPlaceholder}
+                  />
+                </div>
+              </div>
+              
+              {/* Mobile only: PassFailButtons + Remark */}
+              <div className="tw-flex lg:tw-hidden tw-items-center tw-justify-between tw-gap-2">
+                <PassFailButtons
+                  value={currentResult?.result || ""}
+                  onChange={(v) => onResultChange(roundIndex, index, "result", v)}
+                  lang={lang}
+                  disabled={isRcdButtonsDisabled}
+                  responsive
+                />
+                <div className="tw-w-[120px] tw-flex-shrink-0">
+                  <input
+                    type="text"
+                    value={results.remarks[index] || ""}
+                    onChange={(e) => onRemarkChange(index, e.target.value)}
+                    className="tw-w-full tw-px-2 tw-py-1.5 tw-text-xs tw-border tw-border-gray-300 tw-rounded-lg tw-bg-white focus:tw-border-gray-500 focus:tw-ring-2 focus:tw-ring-gray-300 tw-outline-none tw-transition-all placeholder:tw-text-gray-500"
+                    placeholder={t.remarkPlaceholder}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Non-RCD Items */}
+          {!isRCDItem && (
+          <>
+          <div className="tw-flex tw-flex-wrap lg:tw-flex-nowrap tw-items-center tw-gap-2 lg:tw-gap-3">
 
             {/* Isolation Transformer */}
             {isIsolationTransformer && isFirstRound && (
@@ -687,6 +833,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                       value={results.powerStandby?.[phase] || ""}
                       onChange={(e) => onPowerStandbyChange(phase, e.target.value)}
                       className="tw-w-12 lg:tw-w-16 tw-px-1 lg:tw-px-2 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all"
+                      placeholder={t.valuePlaceholder}
                     />
                     <span className="tw-text-xs tw-text-gray-500">A</span>
                   </div>
@@ -698,13 +845,13 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             {!isRCDItem && !isPowerStandby && !isIsolationTransformer && (
               <>
                 <div className={`tw-flex tw-items-center tw-gap-1 lg:tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 ${isNaSelected ? 'tw-opacity-50' : ''}`}>
-                  
+                  <span className="tw-text-xs tw-text-gray-500 tw-font-medium tw-mr-1">{t.testValue}</span>
                   <input
                     type="text"
                     value={currentResult?.h1 || ""}
                     onChange={(e) => onResultChange(roundIndex, index, "h1", e.target.value)}
                     className="tw-w-14 lg:tw-w-20 tw-px-2 lg:tw-px-3 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
-                    placeholder="ค่า"
+                    placeholder={t.valuePlaceholder}
                     disabled={isNaSelected}
                   />
 
@@ -736,18 +883,9 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Mobile only - PassFailButtons + Remark */}
+          {/* Row 2: Mobile only - PassFailButtons + Remark (Non-RCD items) */}
           <div className="tw-flex lg:tw-hidden tw-items-center tw-justify-between tw-gap-2">
             {/* PassFailButtons for mobile */}
-            {isRCDItem && (
-              <PassFailButtons
-                value={currentResult?.result || ""}
-                onChange={(v) => onResultChange(roundIndex, index, "result", v)}
-                lang={lang}
-                disabled={isRcdButtonsDisabled}
-                responsive
-              />
-            )}
             {isIsolationTransformer && isFirstRound && (
               <PassFailButtons
                 value={results.rcdValues[index] || ""}
@@ -757,7 +895,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                 responsive
               />
             )}
-            {!isRCDItem && !isPowerStandby && !isIsolationTransformer && (
+            {!isPowerStandby && !isIsolationTransformer && (
               <PassFailButtons
                 value={currentResult?.result || ""}
                 onChange={(v) => onResultChange(roundIndex, index, "result", v)}
@@ -778,6 +916,8 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               />
             </div>
           </div>
+          </>
+        )}
         </div>
       </div>
     );
@@ -805,30 +945,75 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
     );
   };
 
+  // Check if all RCD items are N/A in round 1
+  const allRcdNaInRound1 = rcdItems.every(item => {
+    const globalIndex = testItems.findIndex(ti => ti.testName === item.testName);
+    return results.rounds[0]?.[globalIndex]?.result === "NA";
+  });
+
+  // Render RCD section with "No RCD" message for round 2 and 3
+  const renderRcdSection = (items: DCTestItem[], startNumber: number) => {
+    if (items.length === 0) return null;
+    
+    // For round 2 and 3, if all RCD are N/A in round 1, show "No RCD" message
+    if (!isFirstRound && allRcdNaInRound1) {
+      return (
+        <div className="tw-mb-4">
+          {/* Section Header */}
+          <div className="tw-flex tw-items-center tw-gap-3 tw-mb-3 tw-px-5 tw-py-3 tw-bg-gray-50">
+            <div className="tw-w-2 tw-h-6 tw-bg-gray-700 tw-rounded-full" />
+            <Typography className="tw-font-bold tw-text-gray-700 tw-text-sm tw-uppercase tw-tracking-wider">
+              {t.rcdSection}
+            </Typography>
+          </div>
+          {/* No RCD Message */}
+          <div className="tw-px-5 tw-py-6 tw-text-center">
+            <div className="tw-inline-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2 tw-bg-gray-100 tw-rounded-lg">
+              <svg className="tw-w-5 tw-h-5 tw-text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              </svg>
+              <span className="tw-text-gray-600 tw-font-medium">{t.noRcd}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    // Normal render
+    return renderSection(t.rcdSection, items, startNumber);
+  };
+
+  // Determine max rounds display based on whether round 3 exists
+  const maxRoundsDisplay = totalRounds >= 3 ? "3" : "2";
+  
+  // Check if round 3 has failed items AND is auto-added (should show in red)
+  // canRemove means it's manually added, so don't show red
+  const isRound3WithFailedItems = isRound3 && failedItemIndexes.length > 0 && !canRemove;
+
   return (
-    <div className="tw-rounded-2xl tw-border tw-border-gray-200 tw-bg-white tw-shadow-sm tw-overflow-hidden">
+    <div className={`tw-rounded-2xl tw-border ${isRound3WithFailedItems ? 'tw-border-red-300' : 'tw-border-gray-200'} tw-bg-white tw-shadow-sm tw-overflow-hidden`}>
       {/* Round Header */}
-      <div className="tw-bg-gray-800 tw-px-5 tw-py-4">
+      <div className={`${isRound3WithFailedItems ? 'tw-bg-red-600' : 'tw-bg-gray-800'} tw-px-5 tw-py-4`}>
         <div className="tw-flex tw-items-center tw-justify-between">
           <div className="tw-flex tw-items-center tw-gap-4">
-            <div className="tw-w-10 tw-h-10 tw-rounded-xl tw-bg-white/20 tw-backdrop-blur tw-flex tw-items-center tw-justify-center tw-text-lg tw-font-bold tw-text-white">
+            <div className={`tw-w-10 tw-h-10 tw-rounded-xl ${isRound3WithFailedItems ? 'tw-bg-red-400/30' : 'tw-bg-white/20'} tw-backdrop-blur tw-flex tw-items-center tw-justify-center tw-text-lg tw-font-bold tw-text-white`}>
               {roundNumber}
             </div>
             <div>
               <Typography className="tw-font-bold tw-text-white tw-text-lg">
                 {t.testRound} {roundNumber}
               </Typography>
-              <Typography className="tw-text-white tw-text-sm">
-                {t.roundOf.replace("{n}", String(roundNumber)).replace("{total}", "3")}
+              <Typography className="tw-text-white/80 tw-text-sm">
+                {isRound3WithFailedItems ? t.round3Info : t.roundOf.replace("{n}", String(roundNumber)).replace("{total}", maxRoundsDisplay)}
               </Typography>
             </div>
           </div>
-          
+          {/* Delete button for manual round 3 */}
           {canRemove && (
             <button
               type="button"
-              className="tw-p-2 tw-rounded-lg tw-text-red-300 hover:tw-text-white hover:tw-bg-red-500/30 tw-transition-all"
-              onClick={() => onRemoveRound(roundIndex)}
+              className="tw-p-2 tw-rounded-lg tw-text-white/70 hover:tw-text-white hover:tw-bg-white/20 tw-transition-all"
+              onClick={onRemoveRound}
             >
               <svg className="tw-w-5 tw-h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -840,9 +1025,20 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
 
       {/* Content */}
       <div className="tw-bg-white">
-        {renderSection(t.peContinuitySection, peContinuityItems, 1)}
-        {renderSection(t.rcdSection, rcdItems, peContinuityItems.length + 1)}
-        {isFirstRound && renderSection(t.otherSection, otherItems, peContinuityItems.length + rcdItems.length + 1)}
+        {isRound3WithFailedItems ? (
+          // Round 3 with failed items: Only show failed items (red theme)
+          <>
+            {renderSection(t.peContinuitySection, filteredPeContinuityItems, 1)}
+            {renderRcdSection(filteredRcdItems, filteredPeContinuityItems.length + 1)}
+          </>
+        ) : (
+          // Round 1, 2, or Round 3 normal: Show all items
+          <>
+            {renderSection(t.peContinuitySection, peContinuityItems, 1)}
+            {renderRcdSection(rcdItems, peContinuityItems.length + 1)}
+            {isFirstRound && renderSection(t.otherSection, otherItems, peContinuityItems.length + rcdItems.length + 1)}
+          </>
+        )}
       </div>
     </div>
   );
@@ -859,9 +1055,10 @@ interface TestResultsGridProps {
   onRemarkChange: (itemIndex: number, value: string) => void;
   onPowerStandbyChange: (phase: "L1" | "L2" | "L3", value: string) => void;
   onAddRound: () => void;
-  onRemoveRound: (roundIndex: number) => void;
+  onRemoveRound: () => void;
   lang: Lang;
   t: typeof translations["th"];
+  isRound3Manual: boolean;
 }
 
 const TestResultsGrid: React.FC<TestResultsGridProps> = ({
@@ -876,12 +1073,20 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
   onRemoveRound,
   lang,
   t,
+  isRound3Manual,
 }) => {
   const totalRounds = results.rounds.length;
+  
+  // Calculate failed item indexes for round 3
+  const failedItemIndexes = useMemo(() => {
+    return getFailedItemIndexes(results, testItems);
+  }, [results, testItems]);
+  
+  const allPassed = allItemsPassed(results, testItems);
 
   return (
     <div className="tw-space-y-6">
-      {/* Page Title & Add Button */}
+      {/* Page Title */}
       <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-justify-between tw-gap-4">
         <div>
           <Typography variant="h6" className="tw-text-gray-800 tw-font-bold">
@@ -889,11 +1094,22 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
           </Typography>
           <div className="tw-flex tw-items-center tw-gap-2 tw-mt-1">
             <span className="tw-inline-flex tw-items-center tw-px-2.5 tw-py-1 tw-rounded-full tw-text-xs tw-font-medium tw-bg-gray-200 tw-text-gray-700">
-              {t.totalRounds}: {totalRounds}/3
+              {t.totalRounds}: {totalRounds}/{totalRounds === 3 ? 3 : 2}
             </span>
+            {totalRounds === 3 && failedItemIndexes.length > 0 && !isRound3Manual && (
+              <span className="tw-inline-flex tw-items-center tw-px-2.5 tw-py-1 tw-rounded-full tw-text-xs tw-font-medium tw-bg-red-100 tw-text-red-700">
+                {t.failedItemsCount.replace("{count}", String(failedItemIndexes.length))}
+              </span>
+            )}
+            {totalRounds === 2 && allPassed && (
+              <span className="tw-inline-flex tw-items-center tw-px-2.5 tw-py-1 tw-rounded-full tw-text-xs tw-font-medium tw-bg-green-100 tw-text-green-700">
+                ✓ {t.allPassed}
+              </span>
+            )}
           </div>
         </div>
-        {totalRounds < 3 && (
+        {/* Show add round 3 button when all passed and no round 3 yet */}
+        {totalRounds === 2 && allPassed && (
           <button
             type="button"
             className="tw-inline-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2.5 tw-bg-gray-800 tw-text-white tw-rounded-xl tw-font-medium tw-text-sm hover:tw-bg-gray-700 tw-transition-all tw-shadow-sm"
@@ -902,7 +1118,7 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
             <svg className="tw-w-5 tw-h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            {t.addRound}
+            {t.addRound3}
           </button>
         )}
       </div>
@@ -924,7 +1140,9 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
             lang={lang}
             t={t}
             isFirstRound={idx === 0}
-            canRemove={totalRounds > 1}
+            isRound3={idx === 2}
+            failedItemIndexes={failedItemIndexes}
+            canRemove={idx === 2 && isRound3Manual}
           />
         ))}
       </div>
@@ -940,38 +1158,69 @@ export interface DCTestGridProps {
   initialRounds?: number;
 }
 
-const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChange, initialRounds = 3 }) => {
+const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChange, initialRounds = 2 }) => {
   const getInitialResults = (): TestResults => {
     if (!initialResults) {
       return createEmptyResults(DC_TEST_DATA.length, initialRounds);
     }
     
     if ('test1' in initialResults && 'test2' in initialResults && 'test3' in initialResults) {
-      return convertLegacyToNew(initialResults as LegacyTestResults);
+      const converted = convertLegacyToNew(initialResults as LegacyTestResults);
+      // If legacy has 3 rounds but we want 2, keep only 2
+      if (initialRounds === 2 && converted.rounds.length === 3) {
+        converted.rounds = converted.rounds.slice(0, 2);
+      }
+      return converted;
     }
     
     const newResults = { ...(initialResults as TestResults) };
     if (!newResults.powerStandby) {
       newResults.powerStandby = { L1: "", L2: "", L3: "" };
     }
+    
+    // Ensure at least 2 rounds
+    if (newResults.rounds.length < 2) {
+      const newRounds = [...newResults.rounds];
+      while (newRounds.length < 2) {
+        newRounds.push(createEmptyRound(DC_TEST_DATA.length));
+      }
+      newResults.rounds = newRounds;
+    }
+    
     return newResults;
   };
 
   const [results, setResults] = useState<TestResults>(getInitialResults);
+  const [isRound3Manual, setIsRound3Manual] = useState<boolean>(false);
 
   useEffect(() => {
     if (initialResults) {
+      let newResults: TestResults;
       if ('test1' in initialResults) {
-        setResults(convertLegacyToNew(initialResults as LegacyTestResults));
+        const converted = convertLegacyToNew(initialResults as LegacyTestResults);
+        if (initialRounds === 2 && converted.rounds.length === 3) {
+          converted.rounds = converted.rounds.slice(0, 2);
+        }
+        newResults = converted;
       } else {
-        const newResults = initialResults as TestResults;
+        newResults = { ...(initialResults as TestResults) };
         if (!newResults.powerStandby) {
           newResults.powerStandby = { L1: "", L2: "", L3: "" };
         }
-        setResults(newResults);
       }
+      
+      // Ensure at least 2 rounds
+      if (newResults.rounds.length < 2) {
+        const newRounds = [...newResults.rounds];
+        while (newRounds.length < 2) {
+          newRounds.push(createEmptyRound(DC_TEST_DATA.length));
+        }
+        newResults = { ...newResults, rounds: newRounds };
+      }
+      
+      setResults(newResults);
     }
-  }, [initialResults]);
+  }, [initialResults, initialRounds]);
 
   const [lang, setLang] = useState<Lang>("th");
 
@@ -993,6 +1242,88 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
   }, []);
 
   const t = translations[lang];
+
+  // Auto add round 3 when there are items that failed in at least one round (only if not manual)
+  useEffect(() => {
+    if (results.rounds.length === 2 && !isRound3Manual) {
+      const failedIndexes = getFailedItemIndexes(results, DC_TEST_DATA);
+      if (failedIndexes.length > 0) {
+        // Auto add round 3
+        const newRound = createEmptyRound(DC_TEST_DATA.length);
+        
+        DC_TEST_DATA.forEach((item, idx) => {
+          if (item.testName.includes("RCD")) {
+            const hasNaInPreviousRounds = results.rounds.some(round => round[idx]?.result === "NA");
+            if (hasNaInPreviousRounds) {
+              newRound[idx] = { h1: "", result: "NA" };
+            }
+          }
+        });
+        
+        const newResults = {
+          ...results,
+          rounds: [...results.rounds, newRound]
+        };
+        setResults(newResults);
+        onResultsChange?.(newResults);
+      }
+    }
+  }, [JSON.stringify(results.rounds.slice(0, 2))]); // Watch for changes in round 1 and 2
+
+  // Auto remove round 3 when all items pass in both rounds (only if not manually added)
+  useEffect(() => {
+    if (results.rounds.length === 3 && !isRound3Manual) {
+      const failedIndexes = getFailedItemIndexes(results, DC_TEST_DATA);
+      
+      // Remove round 3 immediately if no failed items (all passed)
+      if (failedIndexes.length === 0) {
+        const newResults = {
+          ...results,
+          rounds: results.rounds.slice(0, 2)
+        };
+        setResults(newResults);
+        onResultsChange?.(newResults);
+      }
+    }
+  }, [JSON.stringify(results.rounds.slice(0, 2)), results.rounds.length, isRound3Manual]); // Watch for changes
+
+  // Manual add round 3 (when all passed but user wants to add)
+  const handleAddRound = () => {
+    if (results.rounds.length >= 3) return;
+    
+    const newRound = createEmptyRound(DC_TEST_DATA.length);
+    
+    DC_TEST_DATA.forEach((item, idx) => {
+      if (item.testName.includes("RCD")) {
+        const hasNaInPreviousRounds = results.rounds.some(round => round[idx]?.result === "NA");
+        if (hasNaInPreviousRounds) {
+          newRound[idx] = { h1: "", result: "NA" };
+        }
+      }
+    });
+    
+    const newResults = {
+      ...results,
+      rounds: [...results.rounds, newRound]
+    };
+    setResults(newResults);
+    setIsRound3Manual(true);
+    onResultsChange?.(newResults);
+  };
+
+  // Remove manual round 3
+  const handleRemoveRound = () => {
+    // Only allow removing round 3 if it was manually added
+    if (results.rounds.length !== 3 || !isRound3Manual) return;
+    
+    const newResults = {
+      ...results,
+      rounds: results.rounds.slice(0, 2)
+    };
+    setResults(newResults);
+    setIsRound3Manual(false);
+    onResultsChange?.(newResults);
+  };
 
   const handleResultChange = (roundIndex: number, itemIndex: number, field: "h1" | "result", value: string) => {
     const newResults = { ...results };
@@ -1060,35 +1391,6 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
     onResultsChange?.(newResults);
   };
 
-  const handleAddRound = () => {
-    if (results.rounds.length >= 3) return;
-    
-    const newResults = { ...results };
-    const newRound = createEmptyRound(DC_TEST_DATA.length);
-    
-    DC_TEST_DATA.forEach((item, idx) => {
-      if (item.testName.includes("RCD")) {
-        const hasNaInPreviousRounds = results.rounds.some(round => round[idx]?.result === "NA");
-        if (hasNaInPreviousRounds) {
-          newRound[idx] = { h1: "", result: "NA" };
-        }
-      }
-    });
-    
-    newResults.rounds = [...newResults.rounds, newRound];
-    setResults(newResults);
-    onResultsChange?.(newResults);
-  };
-
-  const handleRemoveRound = (roundIndex: number) => {
-    if (results.rounds.length <= 1) return;
-    
-    const newResults = { ...results };
-    newResults.rounds = newResults.rounds.filter((_, idx) => idx !== roundIndex);
-    setResults(newResults);
-    onResultsChange?.(newResults);
-  };
-
   return (
     <div className="tw-w-full">
       <TestResultsGrid
@@ -1103,6 +1405,7 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
         onRemoveRound={handleRemoveRound}
         lang={lang}
         t={t}
+        isRound3Manual={isRound3Manual}
       />
     </div>
   );

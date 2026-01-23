@@ -100,6 +100,7 @@ type StationPublic = {
   serialNumber?: string;
   firmware_version?: string;
   firmwareVersion?: string;
+  PIFirmware?: string;
 };
 
 // ===== Translations =====
@@ -539,36 +540,40 @@ export default function DCForm() {
 
   // ===== Load station info =====
   useEffect(() => {
-    let alive = true;
-    if (!sn || !draftChecked) return;
+  let alive = true;
+  if (!sn || !draftChecked) return;
 
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: { station: StationPublic } = await res.json();
-        if (!alive) return;
-        const station = data.station;
+  (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: { station: StationPublic } = await res.json();
+      if (!alive) return;
+      const station = data.station;
 
-        setChargerNo(station.chargerNo ? String(station.chargerNo) : null);
+      setChargerNo(station.chargerNo ? String(station.chargerNo) : null);
 
-        setHead(prev => ({
-          ...prev,
-          inspection_date: prev.inspection_date || localTodayISO(),
-          location: prev.location || station.station_name || "",
-          manufacturer: prev.manufacturer || station.manufacturer || station.brand || "",
-          model: prev.model || station.model || "",
-          power: prev.power || station.power || "",
-          serial_number: prev.serial_number || station.serial_number || station.serialNumber || station.SN || sn || "",
-          firmware_version: prev.firmware_version || station.firmware_version || station.firmwareVersion || "",
-        }));
-      } catch (err) {
-        console.error("โหลดข้อมูลสถานีไม่สำเร็จ:", err);
-      }
-    })();
+      setHead(prev => ({
+        ...prev,
+        inspection_date: prev.inspection_date || localTodayISO(),
+        location: prev.location || station.station_name || "",
+        manufacturer: prev.manufacturer || station.manufacturer || station.brand || "",
+        model: prev.model || station.model || "",
+        power: prev.power || station.power || "",
+        serial_number: prev.serial_number || station.serial_number || station.serialNumber || station.SN || sn || "",
+        // ★★★ เพิ่ม PIFirmware และถ้าเป็น "-" ให้เป็นค่าว่าง ★★★
+        firmware_version: prev.firmware_version || (() => {
+          const fw = station.firmware_version || station.firmwareVersion || station.PIFirmware || "";
+          return fw === "-" ? "" : fw;
+        })(),
+      }));
+    } catch (err) {
+      console.error("โหลดข้อมูลสถานีไม่สำเร็จ:", err);
+    }
+  })();
 
-    return () => { alive = false; };
-  }, [sn, draftChecked]);
+  return () => { alive = false; };
+}, [sn, draftChecked]);
 
   // ============================================================
   // ★★★ NEW: Fetch preview IDs from backend ★★★
@@ -581,10 +586,10 @@ export default function DCForm() {
       try {
         const todayStr = localTodayISO();
         const url = `${API_BASE}/dcreport/next-ids?sn=${encodeURIComponent(sn)}&chargerNo=${encodeURIComponent(chargerNo)}&inspection_date=${todayStr}`;
-        
+
         const res = await fetch(url, { credentials: "include" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        
+
         const data = await res.json();
         if (!alive) return;
 
@@ -645,17 +650,17 @@ export default function DCForm() {
         <div className="tw-mx-auto tw-w-full tw-max-w-[1000px] lg:tw-max-w-[1100px] tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
 
           {/* HEADER - ★ ส่ง previewDocName สำหรับแสดง */}
-          <CMFormHeader 
-            headerLabel="DC Report" 
-            issueId={previewIssueId || head.issue_id} 
+          <CMFormHeader
+            headerLabel="DC Report"
+            issueId={previewIssueId || head.issue_id}
             documentName={previewDocName}
           />
 
           <div className="tw-mt-8 tw-space-y-8">
             {/* META - ★ ส่ง previewIssueId */}
-            <DCFormMeta 
-              head={{ ...head, issue_id: previewIssueId || head.issue_id }} 
-              onHeadChange={onHeadChange} 
+            <DCFormMeta
+              head={{ ...head, issue_id: previewIssueId || head.issue_id }}
+              onHeadChange={onHeadChange}
             />
 
             <EquipmentSection
