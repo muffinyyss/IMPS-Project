@@ -36,7 +36,7 @@ export default function DCFormActions({
           onPointerEnterCapture={undefined}
           onPointerLeaveCapture={undefined}
         >
-          {isLoading ? "กำลังบันทึก..." : !isComplete ? "กรอกข้อมูลให้ครบก่อน" : "บันทึก"}
+          {isLoading ? "กำลังบันทึก..." : !isComplete ? "บันทึก" : "บันทึก"}
         </Button>
       </div>
     </div>
