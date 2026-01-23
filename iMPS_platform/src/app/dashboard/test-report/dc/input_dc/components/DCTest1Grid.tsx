@@ -34,6 +34,7 @@ export interface LegacyTestResults {
 
 /* ===================== Translations ===================== */
 
+
 export const translations = {
   th: {
     testingChecklist: "รายการทดสอบ",
