@@ -61,7 +61,7 @@ async def export_pdf_redirect(
 
     # กำหนด collection key ตามประเภท template
     # เฉพาะ charger ใช้ sn, template อื่นๆ ทั้งหมดใช้ station_id
-    if template == "charger":
+    if template in ["charger", "ac", "dc"]:
         coll_key = sn
         if not coll_key:
             raise HTTPException(status_code=400, detail="ต้องระบุ sn สำหรับ template charger")
@@ -168,12 +168,12 @@ async def export_pdf(
     db = pymongo_client[db_info["db"]]
     coll = db[coll_key]
 
-    # # เพิ่มหลังบรรทัด coll = db[coll_key]
-    # print(f"Debug: template={template}, db={db_info['db']}, collection={coll_key}, id={id}")
+    # เพิ่มหลังบรรทัด coll = db[coll_key]
+    print(f"Debug: template={template}, db={db_info['db']}, collection={coll_key}, id={id}")
 
-    # # ลองดูว่า collection มีข้อมูลอะไรบ้าง
-    # print(f"Total documents in collection: {coll.count_documents({})}")
-    # print(f"Looking for _id: {oid}")
+    # ลองดูว่า collection มีข้อมูลอะไรบ้าง
+    print(f"Total documents in collection: {coll.count_documents({})}")
+    print(f"Looking for _id: {oid}")
     
     # ดึงข้อมูลจาก MongoDB
     data = coll.find_one({"_id": oid})
