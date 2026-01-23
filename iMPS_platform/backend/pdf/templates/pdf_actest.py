@@ -1062,10 +1062,10 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
     # ===========================================================
     rcd_rows = [
         ("Emergency",    "emergency",  "",  ""),    
-        ("RCD type A",   "typeA",      "30", "mA"),
+        ("RCD type A",   "typeA",      "-", "mA"),
         ("RCD type F",   "typeF",      "-",  "mA"),
         ("RCD type B",   "typeB",      "-",  "mA"),
-        ("RCD-DD",       "DD",         "6",  "mA")
+        ("RCD-DD",       "DD",         "-",  "mA")
     ]
 
     for label, key_db, def_val, def_unit in rcd_rows:
