@@ -18,7 +18,7 @@ interface Head {
   inspector?: string;
 }
 
-interface DCFormMetaProps {
+interface ACFormMetaProps {
   head: Head;
   onHeadChange: (updates: Partial<Head>) => void;
 }
@@ -107,7 +107,7 @@ export const ValidationSummary: React.FC<ValidationSummaryProps> = ({ head, lang
   const t = translations[lang];
 
   const scrollToField = (fieldKey: string) => {
-    const elementId = `form-meta-${fieldKey}`;
+    const elementId = `ac-form-meta-${fieldKey}`;
     
     // Small delay to ensure element is rendered
     setTimeout(() => {
@@ -135,14 +135,12 @@ export const ValidationSummary: React.FC<ValidationSummaryProps> = ({ head, lang
 
   return (
     <div
-      className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${
-        isComplete ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-      }`}
+      className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${isComplete ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+        }`}
     >
       <div
-        className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${
-          isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"
-        }`}
+        className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"
+          }`}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="tw-flex tw-items-center tw-gap-3">
@@ -222,10 +220,10 @@ export const ValidationSummary: React.FC<ValidationSummaryProps> = ({ head, lang
 
 /* ===================== Main Component ===================== */
 
-export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
+export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
   const [lang, setLang] = useState<Lang>("th");
   const [inspector, setInspector] = useState<string>("-");
-  
+
   // ★★★ Track if user has edited firmware (to keep input enabled) ★★★
   const userEditedFirmware = React.useRef<boolean>(false);
   
@@ -369,11 +367,10 @@ export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
 
       {/* Third Row - Firmware Version, Serial Number, Inspection Date */}
       <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
-        <div id="form-meta-firmware_version" className="tw-transition-all tw-duration-300 tw-rounded tw-p-2 tw--m-2">
+        <div id="ac-form-meta-firmware_version" className="tw-transition-all tw-duration-300 tw-rounded tw-p-2 tw--m-2">
           <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
             {t.firmwareVersion} {!firmwareFromApi && <span className="tw-text-red-500">*</span>}
           </label>
-          {/* ★★★ ถ้า firmware มาจาก API → readonly, ถ้าไม่มี → ให้กรอก ★★★ */}
           {firmwareFromApi ? (
             <Input
               value={head.firmware_version || ""}
@@ -384,6 +381,7 @@ export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
             />
           ) : (
             <Input
+              // ★★★ ถ้าค่าเป็น "-" ให้แสดงเป็นช่องว่าง ★★★
               value={head.firmware_version === "-" ? "" : (head.firmware_version || "")}
               onChange={(e) => {
                 userEditedFirmware.current = true;
@@ -408,7 +406,7 @@ export default function DCFormMeta({ head, onHeadChange }: DCFormMetaProps) {
           />
         </div>
 
-        <div id="form-meta-inspection_date">
+        <div id="ac-form-meta-inspection_date">
           <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
             {t.inspectionDate}
           </label>

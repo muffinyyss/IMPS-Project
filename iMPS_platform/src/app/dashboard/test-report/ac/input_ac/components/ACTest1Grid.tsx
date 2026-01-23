@@ -7,7 +7,7 @@ import { Input, Button, Typography, Textarea } from "@material-tailwind/react";
 
 export type Lang = "th" | "en";
 
-export interface DCTestItem {
+export interface ACTestItem {
   category: string;
   subCategory?: string;
   testName: string;
@@ -56,8 +56,9 @@ export const translations = {
     rightCover: "ฝาครอบขวา",
     frontCover: "ฝาครอบหน้า",
     backCover: "ฝาครอบหลัง",
-    pinPeH1: "Pin PE H.1",
-    pinPeH2: "Pin PE H.2",
+    chargerStand: "ขาตั้งเครื่องชาร์จ",
+    pinPE: "Pin PE",
+    // chargerCase: "ตัวเครื่องชาร์จ",
     rcdTypeA: "RCD ชนิด A",
     rcdTypeF: "RCD ชนิด F",
     rcdTypeB: "RCD ชนิด B",
@@ -96,8 +97,9 @@ export const translations = {
     rightCover: "Right Cover",
     frontCover: "Front Cover",
     backCover: "Back Cover",
-    pinPeH1: "Pin PE H.1",
-    pinPeH2: "Pin PE H.2",
+    chargerStand: "Charger Stand",
+    pinPE: "Pin PE",
+    // chargerCase: "Charger Case",
     rcdTypeA: "RCD type A",
     rcdTypeF: "RCD type F",
     rcdTypeB: "RCD type B",
@@ -118,7 +120,7 @@ export const translations = {
 };
 
 // Helper to get test name based on language
-const getTestName = (item: DCTestItem, lang: Lang, t: typeof translations["th"]): string => {
+const getTestName = (item: ACTestItem, lang: Lang, t: typeof translations["th"]): string => {
   if (lang === "th" && item.testNameTh) {
     return item.testNameTh;
   }
@@ -128,8 +130,8 @@ const getTestName = (item: DCTestItem, lang: Lang, t: typeof translations["th"])
     "Right Cover": "rightCover",
     "Front Cover": "frontCover",
     "Back Cover": "backCover",
-    "Pin PE H.1": "pinPeH1",
-    "Pin PE H.2": "pinPeH2",
+    "Charger Stand": "chargerStand",
+    "Pin PE": "pinPE",
     "RCD type A": "rcdTypeA",
     "RCD type F": "rcdTypeF",
     "RCD type B": "rcdTypeB",
@@ -150,12 +152,11 @@ export type ElectricalSafetyPayload = {
   electricalSafety: {
     peContinuity: {
       [key: string]: Record<
-        "leftCover" | "rightCover" | "frontCover" | "backCover" | "pinPEH1" | "pinPEH2",
+        "leftCover" | "rightCover" | "frontCover" | "backCover" | "chargerStand" | "pinPE",
         { h1: string; result: string }
       >;
     };
     rcd: Record<string, any>;
-    isolationTransformer: { pass: boolean };
     powerStandby: { [key: string]: string };
     remarks: Record<string, string>;
     totalRounds: number;
@@ -231,17 +232,17 @@ export const PassFailButtons: React.FC<{
 
 /* ===================== Data (รายการทดสอบ) ===================== */
 
-export const DC_TEST_DATA: DCTestItem[] = [
+export const AC_TEST_DATA: ACTestItem[] = [
   { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Left Cover", testNameTh: "ฝาครอบซ้าย", unit: "" },
   { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Right Cover", testNameTh: "ฝาครอบขวา", unit: "" },
   { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Front Cover", testNameTh: "ฝาครอบหน้า", unit: "" },
   { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Back Cover", testNameTh: "ฝาครอบหลัง", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Pin PE H.1", testNameTh: "Pin PE H.1", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Pin PE H.2", testNameTh: "Pin PE H.2", unit: "" },
+  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Charger Stand", testNameTh: "ขาตั้งเครื่องชาร์จ", unit: "" },
+  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Pin PE", testNameTh: "Pin PE", unit: "" },
+  // { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Charger Case", testNameTh: "ตัวเครื่องชาร์จ", unit: "" },
   { category: "Electrical Safety", subCategory: "", testName: "RCD type A", testNameTh: "RCD ชนิด A", unit: "mA" },
   { category: "Electrical Safety", subCategory: "", testName: "RCD type F", testNameTh: "RCD ชนิด F", unit: "mA" },
   { category: "Electrical Safety", subCategory: "", testName: "RCD type B", testNameTh: "RCD ชนิด B", unit: "mA" },
-  { category: "Electrical Safety", subCategory: "", testName: "Isolation Transformer", testNameTh: "หม้อแปลงแยก", unit: "" },
   { category: "Electrical Safety", subCategory: "", testName: "Power standby", testNameTh: "พลังงานขณะสแตนด์บาย", unit: "" },
 ];
 
@@ -263,10 +264,12 @@ const nameKey = (testName: string) => {
   }
   if (/^Isolation Transformer$/i.test(n)) return "isolationTransformer";
   if (/^Power standby$/i.test(n)) return "powerStandby";
+  if (/^Charger Stand$/i.test(n)) return "chargerStand";
+  if (/^Pin PE$/i.test(n)) return "pinPE";
   return camelKey(n);
 };
 
-export function buildRemarks(results: TestResults, items: DCTestItem[]) {
+export function buildRemarks(results: TestResults, items: ACTestItem[]) {
   const remarks: Record<string, string> = {};
   items.forEach((it, i) => {
     remarks[nameKey(it.testName)] = results.remarks[i] ?? "";
@@ -281,15 +284,16 @@ const toPass = (v?: string) => {
   return v ?? "";
 };
 
-export function mapToElectricalPayload(results: TestResults, items: DCTestItem[] = DC_TEST_DATA): ElectricalSafetyPayload {
+export function mapToElectricalPayload(results: TestResults, items: ACTestItem[] = AC_TEST_DATA): ElectricalSafetyPayload {
   const findIndex = (name: string) => items.findIndex((it) => it.testName.toLowerCase() === name.toLowerCase());
 
   const iLeft = findIndex("Left Cover");
   const iRight = findIndex("Right Cover");
   const iFront = findIndex("Front Cover");
   const iBack = findIndex("Back Cover");
-  const iPEH1 = findIndex("Pin PE H.1");
-  const iPEH2 = findIndex("Pin PE H.2");
+  const iChargerStand = findIndex("Charger Stand");
+  const iPinPE = findIndex("Pin PE");
+  // const iCase = findIndex("Charger Case");
 
   const V = (roundData: { h1: string; result: string }[], i: number) => ({
     h1: i >= 0 ? roundData[i]?.h1 ?? "" : "",
@@ -303,8 +307,9 @@ export function mapToElectricalPayload(results: TestResults, items: DCTestItem[]
       rightCover: V(roundData, iRight),
       frontCover: V(roundData, iFront),
       backCover: V(roundData, iBack),
-      pinPEH1: V(roundData, iPEH1),
-      pinPEH2: V(roundData, iPEH2),
+      chargerStand: V(roundData, iChargerStand),
+      pinPE: V(roundData, iPinPE),
+      // chargerCase: V(roundData, iCase),
     };
   });
 
@@ -339,9 +344,6 @@ export function mapToElectricalPayload(results: TestResults, items: DCTestItem[]
     };
   });
 
-  const iIso = findIndex("Isolation Transformer");
-  const isolationTransformer = { pass: iIso >= 0 ? (results.rcdValues[iIso] === "✓" || results.rcdValues[iIso] === "PASS") : false };
-
   const powerStandby = {
     L1: results.powerStandby?.L1 ?? "",
     L2: results.powerStandby?.L2 ?? "",
@@ -354,7 +356,6 @@ export function mapToElectricalPayload(results: TestResults, items: DCTestItem[]
     electricalSafety: {
       peContinuity,
       rcd,
-      isolationTransformer,
       powerStandby,
       remarks,
       totalRounds: results.rounds.length,
@@ -365,7 +366,7 @@ export function mapToElectricalPayload(results: TestResults, items: DCTestItem[]
 /* ===================== Conversion helpers ===================== */
 
 export function convertLegacyToNew(legacy: LegacyTestResults): TestResults {
-  const iPsb = DC_TEST_DATA.findIndex(it => it.testName.includes("Power standby"));
+  const iPsb = AC_TEST_DATA.findIndex(it => it.testName.includes("Power standby"));
   
   return {
     rounds: [legacy.test1, legacy.test2, legacy.test3],
@@ -380,7 +381,7 @@ export function convertLegacyToNew(legacy: LegacyTestResults): TestResults {
 }
 
 export function convertNewToLegacy(results: TestResults): LegacyTestResults {
-  const iPsb = DC_TEST_DATA.findIndex(it => it.testName.includes("Power standby"));
+  const iPsb = AC_TEST_DATA.findIndex(it => it.testName.includes("Power standby"));
   
   const test1 = [...(results.rounds[0] || [])];
   const test2 = [...(results.rounds[1] || [])];
@@ -429,15 +430,14 @@ const isNaResult = (result: string | undefined): boolean => {
 };
 
 // Get indexes of items that failed in at least one of the first 2 rounds (need retest in round 3)
-export const getFailedItemIndexes = (results: TestResults, testItems: DCTestItem[]): number[] => {
+export const getFailedItemIndexes = (results: TestResults, testItems: ACTestItem[]): number[] => {
   const failedIndexes: number[] = [];
   
   testItems.forEach((item, index) => {
-    const isIsolationTransformer = item.testName.includes("Isolation Transformer");
     const isPowerStandby = item.testName.includes("Power standby");
     
-    // Skip Isolation Transformer and Power Standby (they are only in round 1)
-    if (isIsolationTransformer || isPowerStandby) return;
+    // Skip Power Standby (it is only in round 1)
+    if (isPowerStandby) return;
     
     const round1Result = results.rounds[0]?.[index]?.result;
     const round2Result = results.rounds[1]?.[index]?.result;
@@ -459,7 +459,7 @@ export const getFailedItemIndexes = (results: TestResults, testItems: DCTestItem
 };
 
 // Check if all items passed in both rounds (no FAIL results)
-export const allItemsPassed = (results: TestResults, testItems: DCTestItem[]): boolean => {
+export const allItemsPassed = (results: TestResults, testItems: ACTestItem[]): boolean => {
   if (results.rounds.length < 2) return false;
   
   // Check if there are any failed items
@@ -469,11 +469,10 @@ export const allItemsPassed = (results: TestResults, testItems: DCTestItem[]): b
   // Also check if all items have been tested (have PASS or NA result)
   let allTested = true;
   testItems.forEach((item, index) => {
-    const isIsolationTransformer = item.testName.includes("Isolation Transformer");
     const isPowerStandby = item.testName.includes("Power standby");
     
-    // Skip Isolation Transformer and Power Standby
-    if (isIsolationTransformer || isPowerStandby) return;
+    // Skip Power Standby
+    if (isPowerStandby) return;
     
     const round1Result = results.rounds[0]?.[index]?.result;
     const round2Result = results.rounds[1]?.[index]?.result;
@@ -501,7 +500,7 @@ export interface ValidationError {
 
 export const validateTestResults = (
   results: TestResults,
-  items: DCTestItem[] = DC_TEST_DATA,
+  items: ACTestItem[] = AC_TEST_DATA,
   lang: Lang = "th"
 ): ValidationError[] => {
   const errors: ValidationError[] = [];
@@ -509,7 +508,6 @@ export const validateTestResults = (
 
   items.forEach((item, itemIndex) => {
     const isRCDItem = item.testName.includes("RCD");
-    const isIsolationTransformer = item.testName.includes("Isolation Transformer");
     const isPowerStandby = item.testName.includes("Power standby");
     const displayName = getTestName(item, lang, t);
 
@@ -522,14 +520,6 @@ export const validateTestResults = (
       }
       if (!results.powerStandby?.L3?.trim()) {
         errors.push({ itemIndex, itemName: displayName, field: "L3", message: lang === "th" ? "ยังไม่ได้กรอกค่า L3" : "L3 value is missing" });
-      }
-      return;
-    }
-
-    if (isIsolationTransformer) {
-      const result = results.rcdValues[itemIndex];
-      if (!result || (result !== "PASS" && result !== "FAIL" && result !== "✓" && result !== "✗")) {
-        errors.push({ itemIndex, itemName: displayName, field: lang === "th" ? "ผลทดสอบ" : "Result", message: lang === "th" ? "ยังไม่ได้เลือก PASS/FAIL" : "PASS/FAIL not selected" });
       }
       return;
     }
@@ -547,7 +537,7 @@ export const validateTestResults = (
         if (roundResult === "NA") return;
 
         if (!roundData[itemIndex]?.h1?.trim()) {
-          errors.push({ round: roundIndex + 1, itemIndex, itemName: displayName, field: lang === "th" ? "เวลา Trip" : "Trip Time", message: lang === "th" ? `รอบ ${roundIndex + 1}: ยังไม่ได้กรอกค่าเวลา (s)` : `Round ${roundIndex + 1}: Trip time (s) is missing` });
+          errors.push({ round: roundIndex + 1, itemIndex, itemName: displayName, field: lang === "th" ? "ค่าที่วัดได้" : "Measured", message: lang === "th" ? `รอบ ${roundIndex + 1}: ยังไม่ได้กรอกค่า (mA)` : `Round ${roundIndex + 1}: Measured (mA) is missing` });
         }
 
         if (!roundResult || (roundResult !== "PASS" && roundResult !== "FAIL" && roundResult !== "NA" && roundResult !== "✓" && roundResult !== "✗")) {
@@ -604,7 +594,7 @@ const isRcdNaInCurrentRound = (results: TestResults, itemIndex: number, currentR
 interface TestRoundCardProps {
   roundNumber: number;
   totalRounds: number;
-  testItems: DCTestItem[];
+  testItems: ACTestItem[];
   results: TestResults;
   onResultChange: (roundIndex: number, itemIndex: number, field: "h1" | "result", value: string) => void;
   onRcdChange: (itemIndex: number, value: string) => void;
@@ -643,7 +633,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
   };
 
   // Filter items based on whether this is round 3
-  const getFilteredItems = (items: DCTestItem[]) => {
+  const getFilteredItems = (items: ACTestItem[]) => {
     if (!isRound3) return items;
     return items.filter(item => {
       const globalIndex = testItems.findIndex(ti => ti.testName === item.testName);
@@ -659,10 +649,9 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
   const filteredPeContinuityItems = getFilteredItems(peContinuityItems);
   const filteredRcdItems = getFilteredItems(rcdItems);
 
-  const renderTestItem = (item: DCTestItem, index: number, itemNumber: number) => {
+  const renderTestItem = (item: ACTestItem, index: number, itemNumber: number) => {
     const isPowerStandby = item.testName.includes("Power standby");
     const isRCDItem = item.testName.includes("RCD");
-    const isIsolationTransformer = item.testName.includes("Isolation Transformer");
     const displayName = getTestName(item, lang, t);
     const currentResult = getTestResult(index);
 
@@ -674,7 +663,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
     // Check if NA is selected for current item (disable input)
     const isNaSelected = currentResult?.result === "NA";
 
-    const itemId = `test-item-${index}-round-${roundNumber}`;
+    const itemId = `ac-test-item-${index}-round-${roundNumber}`;
 
     // Show previous round results for round 3 with failed items (auto-added only)
     const showPreviousResults = isRound3 && failedItemIndexes.length > 0 && !canRemove;
@@ -804,22 +793,6 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
           <>
           <div className="tw-flex tw-flex-wrap lg:tw-flex-nowrap tw-items-center tw-gap-2 lg:tw-gap-3">
 
-            {/* Isolation Transformer */}
-            {isIsolationTransformer && isFirstRound && (
-              <>
-                {/* Desktop only */}
-                <div className="tw-hidden lg:tw-flex tw-items-center tw-gap-2 lg:tw-gap-3 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3">
-                  <PassFailButtons
-                    value={results.rcdValues[index] || ""}
-                    onChange={(v) => onRcdChange(index, v)}
-                    lang={lang}
-                    showNA={false}
-                    responsive
-                  />
-                </div>
-              </>
-            )}
-
             {/* Power Standby - L1, L2, L3 */}
             {isPowerStandby && isFirstRound && (
               <div className="tw-grid tw-grid-cols-2 lg:tw-flex lg:tw-flex-nowrap tw-gap-1 lg:tw-gap-2">
@@ -842,7 +815,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             )}
 
             {/* PE Continuity - Standard items */}
-            {!isRCDItem && !isPowerStandby && !isIsolationTransformer && (
+            {!isRCDItem && !isPowerStandby && (
               <>
                 <div className={`tw-flex tw-items-center tw-gap-1 lg:tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 ${isNaSelected ? 'tw-opacity-50' : ''}`}>
                   <span className="tw-text-xs tw-text-gray-500 tw-font-medium tw-mr-1">{t.testValue}</span>
@@ -886,16 +859,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
           {/* Row 2: Mobile only - PassFailButtons + Remark (Non-RCD items) */}
           <div className="tw-flex lg:tw-hidden tw-items-center tw-justify-between tw-gap-2">
             {/* PassFailButtons for mobile */}
-            {isIsolationTransformer && isFirstRound && (
-              <PassFailButtons
-                value={results.rcdValues[index] || ""}
-                onChange={(v) => onRcdChange(index, v)}
-                lang={lang}
-                showNA={false}
-                responsive
-              />
-            )}
-            {!isPowerStandby && !isIsolationTransformer && (
+            {!isPowerStandby && (
               <PassFailButtons
                 value={currentResult?.result || ""}
                 onChange={(v) => onResultChange(roundIndex, index, "result", v)}
@@ -923,7 +887,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
     );
   };
 
-  const renderSection = (title: string, items: DCTestItem[], startNumber: number) => {
+  const renderSection = (title: string, items: ACTestItem[], startNumber: number) => {
     if (items.length === 0) return null;
     return (
       <div className="tw-mb-4">
@@ -952,7 +916,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
   });
 
   // Render RCD section with "No RCD" message for round 2 and 3
-  const renderRcdSection = (items: DCTestItem[], startNumber: number) => {
+  const renderRcdSection = (items: ACTestItem[], startNumber: number) => {
     if (items.length === 0) return null;
     
     // For round 2 and 3, if all RCD are N/A in round 1, show "No RCD" message
@@ -1048,7 +1012,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
 
 interface TestResultsGridProps {
   title?: string;
-  testItems: DCTestItem[];
+  testItems: ACTestItem[];
   results: TestResults;
   onResultChange: (roundIndex: number, itemIndex: number, field: "h1" | "result", value: string) => void;
   onRcdChange: (itemIndex: number, value: string) => void;
@@ -1152,16 +1116,16 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
 
 /* ===================== Component (export default) ===================== */
 
-export interface DCTestGridProps {
+export interface ACTestGridProps {
   initialResults?: TestResults | LegacyTestResults;
   onResultsChange?: (results: TestResults) => void;
   initialRounds?: number;
 }
 
-const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChange, initialRounds = 2 }) => {
+const ACTest1Grid: React.FC<ACTestGridProps> = ({ initialResults, onResultsChange, initialRounds = 2 }) => {
   const getInitialResults = (): TestResults => {
     if (!initialResults) {
-      return createEmptyResults(DC_TEST_DATA.length, initialRounds);
+      return createEmptyResults(AC_TEST_DATA.length, initialRounds);
     }
     
     if ('test1' in initialResults && 'test2' in initialResults && 'test3' in initialResults) {
@@ -1182,7 +1146,7 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
     if (newResults.rounds.length < 2) {
       const newRounds = [...newResults.rounds];
       while (newRounds.length < 2) {
-        newRounds.push(createEmptyRound(DC_TEST_DATA.length));
+        newRounds.push(createEmptyRound(AC_TEST_DATA.length));
       }
       newResults.rounds = newRounds;
     }
@@ -1213,7 +1177,7 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
       if (newResults.rounds.length < 2) {
         const newRounds = [...newResults.rounds];
         while (newRounds.length < 2) {
-          newRounds.push(createEmptyRound(DC_TEST_DATA.length));
+          newRounds.push(createEmptyRound(AC_TEST_DATA.length));
         }
         newResults = { ...newResults, rounds: newRounds };
       }
@@ -1246,12 +1210,12 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
   // Auto add round 3 when there are items that failed in at least one round (only if not manual)
   useEffect(() => {
     if (results.rounds.length === 2 && !isRound3Manual) {
-      const failedIndexes = getFailedItemIndexes(results, DC_TEST_DATA);
+      const failedIndexes = getFailedItemIndexes(results, AC_TEST_DATA);
       if (failedIndexes.length > 0) {
         // Auto add round 3
-        const newRound = createEmptyRound(DC_TEST_DATA.length);
+        const newRound = createEmptyRound(AC_TEST_DATA.length);
         
-        DC_TEST_DATA.forEach((item, idx) => {
+        AC_TEST_DATA.forEach((item, idx) => {
           if (item.testName.includes("RCD")) {
             const hasNaInPreviousRounds = results.rounds.some(round => round[idx]?.result === "NA");
             if (hasNaInPreviousRounds) {
@@ -1273,7 +1237,7 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
   // Auto remove round 3 when all items pass in both rounds (only if not manually added)
   useEffect(() => {
     if (results.rounds.length === 3 && !isRound3Manual) {
-      const failedIndexes = getFailedItemIndexes(results, DC_TEST_DATA);
+      const failedIndexes = getFailedItemIndexes(results, AC_TEST_DATA);
       
       // Remove round 3 immediately if no failed items (all passed)
       if (failedIndexes.length === 0) {
@@ -1291,9 +1255,9 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
   const handleAddRound = () => {
     if (results.rounds.length >= 3) return;
     
-    const newRound = createEmptyRound(DC_TEST_DATA.length);
+    const newRound = createEmptyRound(AC_TEST_DATA.length);
     
-    DC_TEST_DATA.forEach((item, idx) => {
+    AC_TEST_DATA.forEach((item, idx) => {
       if (item.testName.includes("RCD")) {
         const hasNaInPreviousRounds = results.rounds.some(round => round[idx]?.result === "NA");
         if (hasNaInPreviousRounds) {
@@ -1334,7 +1298,7 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
       [field]: value 
     };
     
-    const testItem = DC_TEST_DATA[itemIndex];
+    const testItem = AC_TEST_DATA[itemIndex];
     const isRCDItem = testItem?.testName.includes("RCD");
     
     // Clear h1 value when NA is selected for any item
@@ -1395,7 +1359,7 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
     <div className="tw-w-full">
       <TestResultsGrid
         title={t.testResultsTitle}
-        testItems={DC_TEST_DATA}
+        testItems={AC_TEST_DATA}
         results={results}
         onResultChange={handleResultChange}
         onRcdChange={handleRcdChange}
@@ -1411,4 +1375,4 @@ const DCTest1Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
   );
 };
 
-export default DCTest1Grid;
+export default ACTest1Grid;

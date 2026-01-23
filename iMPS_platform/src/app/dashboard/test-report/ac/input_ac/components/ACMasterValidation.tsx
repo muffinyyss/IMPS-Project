@@ -4,8 +4,8 @@ import React, { useState } from "react";
 import { Typography } from "@material-tailwind/react";
 
 // Import types from other components
-import type { TestResults } from "./DCTest1Grid";
-import type { TestCharger } from "./DCTest2Grid";
+import type { TestResults } from "./ACTest1Grid";
+import type { TestCharger } from "./ACTest2Grid";
 
 // Re-export for use in checkList.tsx
 export type { TestResults, TestCharger };
@@ -15,14 +15,15 @@ type Lang = "th" | "en";
 
 export interface Head {
   issue_id: string;
+  document_name: string;
   inspection_date: string;
   location: string;
+  inspector: string;
   manufacturer?: string;
   model?: string;
   power?: string;
   firmware_version?: string;
   serial_number?: string;
-  inspector?: string;
 }
 
 export interface PhotoItem {
@@ -49,7 +50,9 @@ const translations = {
     sectionCharger: "Charger Safety Test",
     sectionPhotos: "รูปภาพ",
     // Meta errors
+    missingChargerNo: "ยังไม่ได้กรอก Charger No.",
     missingFirmware: "ยังไม่ได้กรอกเวอร์ชันเฟิร์มแวร์",
+    missingPhaseSequence: "ยังไม่ได้กรอกลำดับเฟส",
     // Equipment errors
     missingManufacturer: "ยังไม่ได้กรอกผู้ผลิต",
     missingModel: "ยังไม่ได้กรอกรุ่น",
@@ -62,10 +65,11 @@ const translations = {
     missingRemark: "ยังไม่ได้กรอกหมายเหตุ",
     round: "รอบ",
     // Test2 errors
-    missingH1: "ยังไม่ได้เลือก H1",
-    missingH2: "ยังไม่ได้เลือก H2",
+    missingH1: "ยังไม่ได้กรอกค่า H.1",
+    missingType2: "ยังไม่ได้กรอกค่า Type 2 (mA)",
     // Photo errors
     missingPhoto: "ยังไม่ได้เพิ่มรูปภาพ",
+    items: "รายการ",
   },
   en: {
     formStatus: "Form Completion Status",
@@ -78,7 +82,9 @@ const translations = {
     sectionCharger: "Charger Safety Test",
     sectionPhotos: "Photos",
     // Meta errors
+    missingChargerNo: "Charger No. is missing",
     missingFirmware: "Firmware Version is missing",
+    missingPhaseSequence: "Phase Sequence is missing",
     // Equipment errors
     missingManufacturer: "Manufacturer is missing",
     missingModel: "Model is missing",
@@ -91,36 +97,43 @@ const translations = {
     missingRemark: "Remark is missing",
     round: "Round",
     // Test2 errors
-    missingH1: "H1 not selected",
-    missingH2: "H2 not selected",
+    missingH1: "H.1 value is missing",
+    missingType2: "Type 2 value (mA) is missing",
     // Photo errors
     missingPhoto: "Photo not added",
+    items: "items",
   },
 };
 
 // ===== Test Data =====
-const DC_TEST1_ITEMS = [
-  { testName: "Left Cover", testNameTh: "ฝาครอบซ้าย", isRCD: false, isPowerStandby: false, isIsolation: false },
-  { testName: "Right Cover", testNameTh: "ฝาครอบขวา", isRCD: false, isPowerStandby: false, isIsolation: false },
-  { testName: "Front Cover", testNameTh: "ฝาครอบหน้า", isRCD: false, isPowerStandby: false, isIsolation: false },
-  { testName: "Back Cover", testNameTh: "ฝาครอบหลัง", isRCD: false, isPowerStandby: false, isIsolation: false },
-  { testName: "Pin PE H.1", testNameTh: "Pin PE H.1", isRCD: false, isPowerStandby: false, isIsolation: false },
-  { testName: "Pin PE H.2", testNameTh: "Pin PE H.2", isRCD: false, isPowerStandby: false, isIsolation: false },
-  { testName: "RCD type A", testNameTh: "RCD ชนิด A", isRCD: true, isPowerStandby: false, isIsolation: false },
-  { testName: "RCD type F", testNameTh: "RCD ชนิด F", isRCD: true, isPowerStandby: false, isIsolation: false },
-  { testName: "RCD type B", testNameTh: "RCD ชนิด B", isRCD: true, isPowerStandby: false, isIsolation: false },
-  { testName: "Isolation Transformer", testNameTh: "หม้อแปลงแยก", isRCD: false, isPowerStandby: false, isIsolation: true },
-  { testName: "Power standby", testNameTh: "พลังงานขณะสแตนด์บาย", isRCD: false, isPowerStandby: true, isIsolation: false },
+// AC Test1 items (different from DC: Pin PE instead of Pin PE H.1/H.2, no Isolation Transformer)
+const AC_TEST1_ITEMS = [
+  { testName: "Left Cover", testNameTh: "ฝาครอบซ้าย", isRCD: false, isPowerStandby: false },
+  { testName: "Right Cover", testNameTh: "ฝาครอบขวา", isRCD: false, isPowerStandby: false },
+  { testName: "Front Cover", testNameTh: "ฝาครอบหน้า", isRCD: false, isPowerStandby: false },
+  { testName: "Back Cover", testNameTh: "ฝาครอบหลัง", isRCD: false, isPowerStandby: false },
+  { testName: "Charger Stand", testNameTh: "ขาตั้งเครื่องชาร์จ", isRCD: false, isPowerStandby: false },
+  { testName: "Pin PE", testNameTh: "Pin PE", isRCD: false, isPowerStandby: false },
+  { testName: "RCD type A", testNameTh: "RCD ชนิด A", isRCD: true, isPowerStandby: false },
+  { testName: "RCD type F", testNameTh: "RCD ชนิด F", isRCD: true, isPowerStandby: false },
+  { testName: "RCD type B", testNameTh: "RCD ชนิด B", isRCD: true, isPowerStandby: false },
+  { testName: "Power standby", testNameTh: "พลังงานขณะสแตนด์บาย", isRCD: false, isPowerStandby: true },
 ];
 
-const DC_TEST2_ITEMS = [
-  { testName: "None (Normal operate)", testNameTh: "ไม่มี (ทำงานปกติ)" },
-  { testName: "CP short -120 Ohm", testNameTh: "CP ลัดวงจร -120 โอห์ม" },
-  { testName: "PE-PP-Cut", testNameTh: "PE-PP-ตัด" },
-  { testName: "Remote Stop", testNameTh: "หยุดระยะไกล" },
-  { testName: "Emergency", testNameTh: "ฉุกเฉิน" },
-  { testName: "LDC +", testNameTh: "LDC +" },
-  { testName: "LDC  -", testNameTh: "LDC -" },
+// AC Test2 items (different from DC: h1+result instead of h1+h2, has RCD items with type2Values)
+const AC_TEST2_ITEMS = [
+  { testName: "Continuity PE", testNameTh: "Continuity PE", isRCD: false, isEmergency: false },
+  { testName: "Insulation Cable", testNameTh: "Insulation Cable", isRCD: false, isEmergency: false },
+  { testName: "State A", testNameTh: "State A", isRCD: false, isEmergency: false },
+  { testName: "State B", testNameTh: "State B", isRCD: false, isEmergency: false },
+  { testName: "State C", testNameTh: "State C", isRCD: false, isEmergency: false },
+  { testName: "CP Short", testNameTh: "CP Short", isRCD: false, isEmergency: false },
+  { testName: "PE Cut", testNameTh: "PE Cut", isRCD: false, isEmergency: false },
+  { testName: "Emergency", testNameTh: "Emergency", isRCD: false, isEmergency: true },
+  { testName: "RCD type A", testNameTh: "RCD type A", isRCD: true, isEmergency: false },
+  { testName: "RCD type F", testNameTh: "RCD type F", isRCD: true, isEmergency: false },
+  { testName: "RCD type B", testNameTh: "RCD type B", isRCD: true, isEmergency: false },
+  { testName: "RDC-DD", testNameTh: "RDC-DD", isRCD: true, isEmergency: false },
 ];
 
 const PHOTO_CATEGORIES = [
@@ -141,94 +154,30 @@ interface ValidationError {
   scrollId?: string;
 }
 
-// ===== Helper Functions =====
-const isFailResult = (value?: string): boolean => {
-  return value === "FAIL" || value === "✗";
-};
-
-const isPassResult = (value?: string): boolean => {
-  return value === "PASS" || value === "✓";
-};
-
-const isNaResult = (value?: string): boolean => {
-  return value === "NA";
-};
-
-const isValidResult = (value?: string): boolean => {
-  return ["PASS", "FAIL", "NA", "✓", "✗"].includes(value || "");
-};
-
-// Get failed item indexes for DCTest1 (items that need retest in round 3)
-const getTest1FailedItemIndexes = (results: TestResults): number[] => {
-  const failedIndexes: number[] = [];
-  
-  DC_TEST1_ITEMS.forEach((item, index) => {
-    // Skip Isolation Transformer and Power Standby (they are only in round 1)
-    if (item.isIsolation || item.isPowerStandby) return;
-    
-    const round1Result = results.rounds[0]?.[index]?.result;
-    const round2Result = results.rounds[1]?.[index]?.result;
-    
-    // If NA in either round, skip
-    if (isNaResult(round1Result) || isNaResult(round2Result)) return;
-    
-    // Check if explicitly failed in either round
-    if (isFailResult(round1Result) || isFailResult(round2Result)) {
-      failedIndexes.push(index);
-    }
-  });
-  
-  return failedIndexes;
-};
-
-// Get failed items for DCTest2 with H1/H2 info
-interface Test2FailedItem {
-  itemIndex: number;
-  h1Failed: boolean;
-  h2Failed: boolean;
-}
-
-const getTest2FailedItems = (results: TestCharger): Test2FailedItem[] => {
-  const failedItems: Test2FailedItem[] = [];
-  
-  DC_TEST2_ITEMS.forEach((item, index) => {
-    const round1H1 = results.rounds[0]?.[index]?.h1;
-    const round1H2 = results.rounds[0]?.[index]?.h2;
-    const round2H1 = results.rounds[1]?.[index]?.h1;
-    const round2H2 = results.rounds[1]?.[index]?.h2;
-    
-    // Check if H1 failed in either round
-    const h1Failed = isFailResult(round1H1) || isFailResult(round2H1);
-    
-    // Check if H2 failed in either round
-    const h2Failed = isFailResult(round1H2) || isFailResult(round2H2);
-    
-    // If either H1 or H2 failed, add to list
-    if (h1Failed || h2Failed) {
-      failedItems.push({
-        itemIndex: index,
-        h1Failed,
-        h2Failed,
-      });
-    }
-  });
-  
-  return failedItems;
-};
-
 // ===== Validation Functions =====
 
-function validateMeta(head: Head, phaseSequence: string, lang: Lang): ValidationError[] {
+function validateMeta(head: Head, chargerNo: string, phaseSequence: string, lang: Lang): ValidationError[] {
   const errors: ValidationError[] = [];
   const t = translations[lang];
 
-  if (!head.firmware_version?.trim()) {
+  // chargerNo มาจาก API โดยอัตโนมัติ ไม่ต้อง scroll ไปหา
+  if (!chargerNo?.trim()) {
+    errors.push({
+      section: t.sectionMeta,
+      sectionIcon: "📋",
+      itemName: "Charger No.",
+      message: t.missingChargerNo,
+      // ไม่มี scrollId เพราะ chargerNo ไม่ใช่ input field ที่ user กรอก
+    });
+  }
+
+  if (!head.firmware_version?.trim() || head.firmware_version === "-") {
     errors.push({
       section: t.sectionMeta,
       sectionIcon: "📋",
       itemName: lang === "th" ? "เวอร์ชันเฟิร์มแวร์" : "Firmware Version",
       message: t.missingFirmware,
-      scrollId: "form-meta-firmware_version",
+      scrollId: "ac-form-meta-firmware_version",
     });
   }
 
@@ -237,18 +186,15 @@ function validateMeta(head: Head, phaseSequence: string, lang: Lang): Validation
       section: t.sectionMeta,
       sectionIcon: "📋",
       itemName: lang === "th" ? "ลำดับเฟส" : "Phase Sequence",
-      message: lang === "th" ? "ยังไม่ได้กรอกลำดับเฟส" : "Phase Sequence is missing",
-      scrollId: "phase-sequence-input",
+      message: t.missingPhaseSequence,
+      scrollId: "ac-phase-sequence-input",
     });
   }
 
   return errors;
 }
 
-function validateEquipment(
-  equipment: EquipmentBlock,
-  lang: Lang
-): ValidationError[] {
+function validateEquipment(equipment: EquipmentBlock, lang: Lang): ValidationError[] {
   const errors: ValidationError[] = [];
   const t = translations[lang];
 
@@ -261,7 +207,7 @@ function validateEquipment(
         sectionIcon: "🔧",
         itemName: setName,
         message: t.missingManufacturer,
-        scrollId: `equipment-set-${index}`,
+        scrollId: `ac-equipment-set-${index}`,
       });
     }
 
@@ -271,7 +217,7 @@ function validateEquipment(
         sectionIcon: "🔧",
         itemName: setName,
         message: t.missingModel,
-        scrollId: `equipment-set-${index}`,
+        scrollId: `ac-equipment-set-${index}`,
       });
     }
 
@@ -281,7 +227,7 @@ function validateEquipment(
         sectionIcon: "🔧",
         itemName: setName,
         message: t.missingSerial,
-        scrollId: `equipment-set-${index}`,
+        scrollId: `ac-equipment-set-${index}`,
       });
     }
   });
@@ -289,72 +235,71 @@ function validateEquipment(
   return errors;
 }
 
-function validateTest1(
-  results: TestResults | null,
-  lang: Lang
-): ValidationError[] {
+function validateTest1(results: TestResults | null, lang: Lang): ValidationError[] {
   const errors: ValidationError[] = [];
   const t = translations[lang];
 
-  if (!results) {
-    errors.push({
-      section: t.sectionElectrical,
-      sectionIcon: "⚡",
-      itemName: "-",
-      message: lang === "th" ? "ยังไม่ได้กรอกผลทดสอบ" : "Test results not filled",
-    });
-    return errors;
-  }
+  // ถ้า results เป็น null ให้สร้าง empty object เพื่อ validate ทุก field
+  const safeResults = results || {
+    rounds: [[]],
+    remarks: [],
+    rcdValues: [],
+    powerStandby: { L1: "", L2: "", L3: "" },
+  };
 
-  // Get failed item indexes for round 3 validation
-  const failedItemIndexes = getTest1FailedItemIndexes(results);
-  const hasRound3 = results.rounds.length >= 3;
+  // Helper: Check if item failed in round 1 or 2 (for round 3 validation)
+  const isFailedInRound1Or2 = (itemIndex: number): boolean => {
+    const r1Result = safeResults.rounds[0]?.[itemIndex]?.result;
+    const r2Result = safeResults.rounds[1]?.[itemIndex]?.result;
+    const isFailResult = (v?: string) => v === "FAIL" || v === "✗";
+    return isFailResult(r1Result) || isFailResult(r2Result);
+  };
 
-  DC_TEST1_ITEMS.forEach((item, itemIndex) => {
+  AC_TEST1_ITEMS.forEach((item, itemIndex) => {
     const displayName = lang === "th" ? item.testNameTh : item.testName;
 
-    // Power Standby - only in round 1
+    // Check if item is NA in first round (skip remark validation)
+    const firstRoundResult = safeResults.rounds[0]?.[itemIndex]?.result;
+    const isNaInFirstRound = firstRoundResult === "NA";
+
+    // Check remark (skip if NA)
+    if (!isNaInFirstRound && !safeResults.remarks[itemIndex]?.trim()) {
+      errors.push({
+        section: t.sectionElectrical,
+        sectionIcon: "⚡",
+        itemName: displayName,
+        message: t.missingRemark,
+        scrollId: `ac-test-item-${itemIndex}-round-1`,
+      });
+    }
+
+    // Power Standby
     if (item.isPowerStandby) {
-      if (!results.powerStandby?.L1?.trim()) {
+      if (!safeResults.powerStandby?.L1?.trim()) {
         errors.push({
           section: t.sectionElectrical,
           sectionIcon: "⚡",
           itemName: displayName,
           message: "L1 " + t.missingTestValue,
-          scrollId: `test-item-${itemIndex}-round-1`,
+          scrollId: `ac-test-item-${itemIndex}-round-1`,
         });
       }
-      if (!results.powerStandby?.L2?.trim()) {
+      if (!safeResults.powerStandby?.L2?.trim()) {
         errors.push({
           section: t.sectionElectrical,
           sectionIcon: "⚡",
           itemName: displayName,
           message: "L2 " + t.missingTestValue,
-          scrollId: `test-item-${itemIndex}-round-1`,
+          scrollId: `ac-test-item-${itemIndex}-round-1`,
         });
       }
-      if (!results.powerStandby?.L3?.trim()) {
+      if (!safeResults.powerStandby?.L3?.trim()) {
         errors.push({
           section: t.sectionElectrical,
           sectionIcon: "⚡",
           itemName: displayName,
           message: "L3 " + t.missingTestValue,
-          scrollId: `test-item-${itemIndex}-round-1`,
-        });
-      }
-      return;
-    }
-
-    // Isolation Transformer - only in round 1
-    if (item.isIsolation) {
-      const result = results.rcdValues[itemIndex];
-      if (!result || !["PASS", "FAIL", "✓", "✗"].includes(result)) {
-        errors.push({
-          section: t.sectionElectrical,
-          sectionIcon: "⚡",
-          itemName: displayName,
-          message: t.missingResult,
-          scrollId: `test-item-${itemIndex}-round-1`,
+          scrollId: `ac-test-item-${itemIndex}-round-1`,
         });
       }
       return;
@@ -362,26 +307,27 @@ function validateTest1(
 
     // RCD Items
     if (item.isRCD) {
-      const firstRoundResult = results.rounds[0]?.[itemIndex]?.result;
+      const firstRoundResult = safeResults.rounds[0]?.[itemIndex]?.result;
       if (firstRoundResult === "NA") return;
 
-      if (!results.rcdValues[itemIndex]?.trim()) {
+      if (!safeResults.rcdValues[itemIndex]?.trim()) {
         errors.push({
           section: t.sectionElectrical,
           sectionIcon: "⚡",
           itemName: displayName,
           message: t.missingRcdValue,
-          scrollId: `test-item-${itemIndex}-round-1`,
+          scrollId: `ac-test-item-${itemIndex}-round-1`,
         });
       }
 
-      // Validate rounds 1 and 2
-      for (let roundIndex = 0; roundIndex < 2; roundIndex++) {
-        const roundData = results.rounds[roundIndex];
-        if (!roundData) continue;
-        
+      safeResults.rounds.forEach((roundData, roundIndex) => {
         const roundResult = roundData[itemIndex]?.result;
-        if (roundResult === "NA") continue;
+        if (roundResult === "NA") return;
+
+        // Round 3: Only validate items that failed in round 1 or 2
+        if (roundIndex === 2 && !isFailedInRound1Or2(itemIndex)) {
+          return;
+        }
 
         if (!roundData[itemIndex]?.h1?.trim()) {
           errors.push({
@@ -389,54 +335,34 @@ function validateTest1(
             sectionIcon: "⚡",
             itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
             message: t.missingTestValue,
-            scrollId: `test-item-${itemIndex}-round-${roundIndex + 1}`,
+            scrollId: `ac-test-item-${itemIndex}-round-${roundIndex + 1}`,
           });
         }
 
-        if (!isValidResult(roundResult)) {
+        if (!roundResult || !["PASS", "FAIL", "NA", "✓", "✗"].includes(roundResult)) {
           errors.push({
             section: t.sectionElectrical,
             sectionIcon: "⚡",
             itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
             message: t.missingResult,
-            scrollId: `test-item-${itemIndex}-round-${roundIndex + 1}`,
+            scrollId: `ac-test-item-${itemIndex}-round-${roundIndex + 1}`,
           });
         }
-      }
-
-      // Validate round 3 only if this item failed and round 3 exists
-      if (hasRound3 && failedItemIndexes.includes(itemIndex)) {
-        const roundData = results.rounds[2];
-        if (roundData) {
-          if (!roundData[itemIndex]?.h1?.trim()) {
-            errors.push({
-              section: t.sectionElectrical,
-              sectionIcon: "⚡",
-              itemName: `${displayName} (${t.round} 3)`,
-              message: t.missingTestValue,
-              scrollId: `test-item-${itemIndex}-round-3`,
-            });
-          }
-
-          const roundResult = roundData[itemIndex]?.result;
-          if (!isValidResult(roundResult)) {
-            errors.push({
-              section: t.sectionElectrical,
-              sectionIcon: "⚡",
-              itemName: `${displayName} (${t.round} 3)`,
-              message: t.missingResult,
-              scrollId: `test-item-${itemIndex}-round-3`,
-            });
-          }
-        }
-      }
+      });
       return;
     }
 
-    // PE Continuity Items - Validate rounds 1 and 2
-    for (let roundIndex = 0; roundIndex < 2; roundIndex++) {
-      const roundData = results.rounds[roundIndex];
-      if (!roundData) continue;
+    // PE Continuity Items (Left/Right/Front/Back Cover, Charger Stand, Pin PE)
+    safeResults.rounds.forEach((roundData, roundIndex) => {
+      const roundResult = roundData[itemIndex]?.result;
+      
+      // Skip validation if this round is NA
+      if (roundResult === "NA") return;
+
+      // Round 3: Only validate items that failed in round 1 or 2
+      if (roundIndex === 2 && !isFailedInRound1Or2(itemIndex)) {
+        return;
+      }
 
       if (!roundData[itemIndex]?.h1?.trim()) {
         errors.push({
@@ -444,152 +370,130 @@ function validateTest1(
           sectionIcon: "⚡",
           itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
           message: t.missingTestValue,
-          scrollId: `test-item-${itemIndex}-round-${roundIndex + 1}`,
+          scrollId: `ac-test-item-${itemIndex}-round-${roundIndex + 1}`,
         });
       }
 
-      const result = roundData[itemIndex]?.result;
-      if (!isValidResult(result)) {
+      if (!roundResult || !["PASS", "FAIL", "NA", "✓", "✗"].includes(roundResult)) {
         errors.push({
           section: t.sectionElectrical,
           sectionIcon: "⚡",
           itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
           message: t.missingResult,
-          scrollId: `test-item-${itemIndex}-round-${roundIndex + 1}`,
+          scrollId: `ac-test-item-${itemIndex}-round-${roundIndex + 1}`,
         });
       }
-    }
-
-    // Validate round 3 only if this item failed and round 3 exists
-    if (hasRound3 && failedItemIndexes.includes(itemIndex)) {
-      const roundData = results.rounds[2];
-      if (roundData) {
-        if (!roundData[itemIndex]?.h1?.trim()) {
-          errors.push({
-            section: t.sectionElectrical,
-            sectionIcon: "⚡",
-            itemName: `${displayName} (${t.round} 3)`,
-            message: t.missingTestValue,
-            scrollId: `test-item-${itemIndex}-round-3`,
-          });
-        }
-
-        const result = roundData[itemIndex]?.result;
-        if (!isValidResult(result)) {
-          errors.push({
-            section: t.sectionElectrical,
-            sectionIcon: "⚡",
-            itemName: `${displayName} (${t.round} 3)`,
-            message: t.missingResult,
-            scrollId: `test-item-${itemIndex}-round-3`,
-          });
-        }
-      }
-    }
+    });
   });
 
   return errors;
 }
 
-function validateTest2(
-  results: TestCharger | null,
-  lang: Lang
-): ValidationError[] {
+function validateTest2(results: TestCharger | null, lang: Lang): ValidationError[] {
   const errors: ValidationError[] = [];
   const t = translations[lang];
 
-  if (!results) {
-    errors.push({
-      section: t.sectionCharger,
-      sectionIcon: "🔌",
-      itemName: "-",
-      message: lang === "th" ? "ยังไม่ได้กรอกผลทดสอบ" : "Test results not filled",
-    });
-    return errors;
-  }
+  // ถ้า results เป็น null ให้สร้าง empty object เพื่อ validate ทุก field
+  const safeResults = results || {
+    rounds: [[]],
+    remarks: [],
+    type2Values: [],
+  };
 
-  // Get failed items for round 3 validation
-  const failedItems = getTest2FailedItems(results);
-  const hasRound3 = results.rounds.length >= 3;
+  // Helper: Check if item failed in round 1 or 2 (for round 3 validation)
+  const isFailedInRound1Or2 = (itemIndex: number): boolean => {
+    const r1Result = safeResults.rounds[0]?.[itemIndex]?.result;
+    const r2Result = safeResults.rounds[1]?.[itemIndex]?.result;
+    const isFailResult = (v?: string) => v === "FAIL" || v === "✗";
+    return isFailResult(r1Result) || isFailResult(r2Result);
+  };
 
-  DC_TEST2_ITEMS.forEach((item, itemIndex) => {
+  AC_TEST2_ITEMS.forEach((item, itemIndex) => {
     const displayName = lang === "th" ? item.testNameTh : item.testName;
+    const isEmergency = item.isEmergency;
 
-    // Validate rounds 1 and 2
-    for (let roundIndex = 0; roundIndex < 2; roundIndex++) {
-      const roundData = results.rounds[roundIndex];
-      if (!roundData) continue;
+    // Check if item is NA in first round (skip all validation for this item)
+    const firstRoundResult = safeResults.rounds[0]?.[itemIndex]?.result;
+    if (firstRoundResult === "NA") return;
 
-      const h1 = roundData[itemIndex]?.h1;
-      const h2 = roundData[itemIndex]?.h2;
+    // RCD items need type2Values (first round only)
+    if (item.isRCD) {
+      if (!safeResults.type2Values[itemIndex]?.trim()) {
+        errors.push({
+          section: t.sectionCharger,
+          sectionIcon: "🔌",
+          itemName: displayName,
+          message: t.missingType2,
+          scrollId: `ac-test2-item-${itemIndex}-round-1`,
+        });
+      }
+    }
 
-      if (!isValidResult(h1)) {
+    // Emergency: only validate round 1, no H.1, only PASS/FAIL (no NA)
+    if (isEmergency) {
+      const result = safeResults.rounds[0]?.[itemIndex]?.result;
+      if (!result || !["PASS", "FAIL", "✓", "✗"].includes(result)) {
+        errors.push({
+          section: t.sectionCharger,
+          sectionIcon: "🔌",
+          itemName: `${displayName} (${t.round} 1)`,
+          message: t.missingResult,
+          scrollId: `ac-test2-item-${itemIndex}-round-1`,
+        });
+      }
+      return; // Skip other rounds for Emergency
+    }
+
+    // Check each round for non-Emergency items
+    safeResults.rounds.forEach((roundData, roundIndex) => {
+      const roundResult = roundData[itemIndex]?.result;
+      
+      // Skip validation if this round is NA
+      if (roundResult === "NA") return;
+
+      // Round 3: Only validate items that failed in round 1 or 2
+      if (roundIndex === 2 && !isFailedInRound1Or2(itemIndex)) {
+        return; // Skip this item for round 3 if it didn't fail in rounds 1-2
+      }
+
+      // Non-RCD items need h1 value (except Emergency which is handled above)
+      if (!item.isRCD && !roundData[itemIndex]?.h1?.trim()) {
         errors.push({
           section: t.sectionCharger,
           sectionIcon: "🔌",
           itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
           message: t.missingH1,
-          scrollId: `test2-item-${itemIndex}-round-${roundIndex + 1}`,
+          scrollId: `ac-test2-item-${itemIndex}-round-${roundIndex + 1}`,
         });
       }
 
-      if (!isValidResult(h2)) {
+      // RCD items also need h1 value (measured value)
+      if (item.isRCD && !roundData[itemIndex]?.h1?.trim()) {
         errors.push({
           section: t.sectionCharger,
           sectionIcon: "🔌",
           itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
-          message: t.missingH2,
-          scrollId: `test2-item-${itemIndex}-round-${roundIndex + 1}`,
+          message: t.missingH1,
+          scrollId: `ac-test2-item-${itemIndex}-round-${roundIndex + 1}`,
         });
       }
-    }
 
-    // Validate round 3 only if this item has failed H1/H2
-    if (hasRound3) {
-      const failedItem = failedItems.find(fi => fi.itemIndex === itemIndex);
-      
-      if (failedItem) {
-        const roundData = results.rounds[2];
-        if (roundData) {
-          // Only validate H1 if H1 failed in previous rounds
-          if (failedItem.h1Failed) {
-            const h1 = roundData[itemIndex]?.h1;
-            if (!isValidResult(h1)) {
-              errors.push({
-                section: t.sectionCharger,
-                sectionIcon: "🔌",
-                itemName: `${displayName} (${t.round} 3)`,
-                message: t.missingH1,
-                scrollId: `test2-item-${itemIndex}-round-3`,
-              });
-            }
-          }
-
-          // Only validate H2 if H2 failed in previous rounds
-          if (failedItem.h2Failed) {
-            const h2 = roundData[itemIndex]?.h2;
-            if (!isValidResult(h2)) {
-              errors.push({
-                section: t.sectionCharger,
-                sectionIcon: "🔌",
-                itemName: `${displayName} (${t.round} 3)`,
-                message: t.missingH2,
-                scrollId: `test2-item-${itemIndex}-round-3`,
-              });
-            }
-          }
-        }
+      if (!roundResult || !["PASS", "FAIL", "NA", "✓", "✗"].includes(roundResult)) {
+        errors.push({
+          section: t.sectionCharger,
+          sectionIcon: "🔌",
+          itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
+          message: t.missingResult,
+          scrollId: `ac-test2-item-${itemIndex}-round-${roundIndex + 1}`,
+        });
       }
-    }
+    });
   });
 
   return errors;
 }
 
-function validatePhotos(
-  items: PhotoItem[],
-  lang: Lang
-): ValidationError[] {
+function validatePhotos(items: PhotoItem[], lang: Lang): ValidationError[] {
   const errors: ValidationError[] = [];
   const t = translations[lang];
 
@@ -603,7 +507,7 @@ function validatePhotos(
         sectionIcon: "📷",
         itemName: categoryName,
         message: t.missingPhoto,
-        scrollId: `photo-category-${index}`,
+        scrollId: `ac-photo-category-${category.key}`,
       });
     }
   });
@@ -624,23 +528,25 @@ function groupErrorsBySection(errors: ValidationError[]): Map<string, Validation
 }
 
 // ===== Props =====
-interface DCMasterValidationProps {
+interface ACMasterValidationProps {
   head: Head;
+  chargerNo: string;
   phaseSequence: string;
   equipment: EquipmentBlock;
-  dcTest1Results: TestResults | null;
-  dcChargerTest: TestCharger | null;
+  acTest1Results: TestResults | null;
+  acChargerTest: TestCharger | null;
   photoItems: PhotoItem[];
   lang?: Lang;
 }
 
 // ===== Component =====
-const DCMasterValidation: React.FC<DCMasterValidationProps> = ({
+const ACMasterValidation: React.FC<ACMasterValidationProps> = ({
   head,
+  chargerNo,
   phaseSequence,
   equipment,
-  dcTest1Results,
-  dcChargerTest,
+  acTest1Results,
+  acChargerTest,
   photoItems,
   lang = "th",
 }) => {
@@ -649,10 +555,10 @@ const DCMasterValidation: React.FC<DCMasterValidationProps> = ({
 
   // Collect all errors
   const allErrors: ValidationError[] = [
-    ...validateMeta(head, phaseSequence, lang),
+    ...validateMeta(head, chargerNo, phaseSequence, lang),
     ...validateEquipment(equipment, lang),
-    ...validateTest1(dcTest1Results, lang),
-    ...validateTest2(dcChargerTest, lang),
+    ...validateTest1(acTest1Results, lang),
+    ...validateTest2(acChargerTest, lang),
     ...validatePhotos(photoItems, lang),
   ];
 
@@ -751,11 +657,9 @@ const DCMasterValidation: React.FC<DCMasterValidationProps> = ({
             {Array.from(groupedErrors.entries()).map(([sectionKey, sectionErrors]) => (
               <div key={sectionKey} className="tw-bg-white tw-rounded-lg tw-p-3 tw-border tw-border-amber-200">
                 <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
-                  <Typography className="tw-font-semibold tw-text-gray-800 tw-text-sm">
-                    {sectionKey}
-                  </Typography>
+                  <Typography className="tw-font-semibold tw-text-gray-800 tw-text-sm">{sectionKey}</Typography>
                   <span className="tw-text-xs tw-bg-amber-100 tw-text-amber-700 tw-px-2 tw-py-0.5 tw-rounded-full">
-                    {sectionErrors.length} {lang === "th" ? "รายการ" : "items"}
+                    {sectionErrors.length} {t.items}
                   </span>
                 </div>
                 <ul className="tw-space-y-1 tw-max-h-40 tw-overflow-y-auto">
@@ -782,22 +686,23 @@ const DCMasterValidation: React.FC<DCMasterValidationProps> = ({
   );
 };
 
-export default DCMasterValidation;
+export default ACMasterValidation;
 
 // ★ Export function สำหรับเช็คว่ากรอกครบหรือยัง (ใช้ใน checkList.tsx)
 export function isFormComplete(
   head: Head,
+  chargerNo: string,
   phaseSequence: string,
   equipment: EquipmentBlock,
-  dcTest1Results: TestResults | null,
-  dcChargerTest: TestCharger | null,
-  photoItems: PhotoItem[],
+  acTest1Results: TestResults | null,
+  acChargerTest: TestCharger | null,
+  photoItems: PhotoItem[]
 ): boolean {
   const allErrors = [
-    ...validateMeta(head, phaseSequence, "th"),
+    ...validateMeta(head, chargerNo, phaseSequence, "th"),
     ...validateEquipment(equipment, "th"),
-    ...validateTest1(dcTest1Results, "th"),
-    ...validateTest2(dcChargerTest, "th"),
+    ...validateTest1(acTest1Results, "th"),
+    ...validateTest2(acChargerTest, "th"),
     ...validatePhotos(photoItems, "th"),
   ];
   return allErrors.length === 0;

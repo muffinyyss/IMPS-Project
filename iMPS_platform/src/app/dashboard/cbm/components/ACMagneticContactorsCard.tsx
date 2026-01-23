@@ -23,8 +23,10 @@ function toBool(v: StatusItem["value"]) {
     const s = String(v).trim().toLowerCase();
     const ACTIVE = ["active", "on", "true", "1", "closed", "energized", "enable", "enabled", "run", "running"];
     const INACTIVE = ["inactive", "off", "false", "0", "open", "deenergized", "normal", "disable", "disabled", "stop", "stopped"];
-    if (ACTIVE.includes(s)) return true;
-    if (INACTIVE.includes(s)) return false;
+    if (ACTIVE.includes(s)) return false;
+    if (INACTIVE.includes(s)) return true;
+    // if (ACTIVE.includes(s)) return true;
+    // if (INACTIVE.includes(s)) return false;
     return null;
 }
 
