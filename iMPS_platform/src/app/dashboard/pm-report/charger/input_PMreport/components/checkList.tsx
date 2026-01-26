@@ -219,24 +219,24 @@ const FIELD_GROUPS: Record<number, { keys: readonly string[]; unitType: "voltage
 
 // ==================== QUESTIONS (Bilingual) ====================
 const QUESTIONS: Question[] = [
-    { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) General condition inspection" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสมบูรณ์ของตู้, การยึดแน่นของน็อตยึดฐาน, รอยแตกร้าวและร่องรอยการกระแทก", en: "Check cabinet integrity, base bolt tightness, cracks and impact marks" } },
+    { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) Check general condition" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสมบูรณ์ของตู้, การยึดแน่นของน็อตยึดฐาน, รอยแตกร้าวและร่องรอยการกระแทก", en: "Check cabinet integrity, base bolt tightness, cracks and impact marks" } },
     { no: 2, key: "r2", label: { th: "2) ตรวจสอบดักซีล,ซิลิโคนกันซึม", en: "2) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความยืดหยุ่นของขอบยางกันน้ำ, รอยต่อของเคเบิลแกลนด์และและสภาพซิลิโคนตามแนวตะเข็บตู้", en: "Check waterproof rubber flexibility, cable gland joints and silicone condition" } },
     { no: 3, key: "r3", label: { th: "3) ตรวจสอบสายอัดประจุ", en: "3) Check charging cables" }, kind: "group", hasPhoto: true, items: [{ label: { th: "3.1) สายที่ 1", en: "3.1) Cable 1" }, key: "r3_1" }], tooltip: { th: "ตรวจสอบความสมบูรณ์ของฉนวนหุ้มสาย, คอสายว่าไม่มีการบิดงอหรือปริแตกและตรวจสอบรอยไหม้", en: "Check cable insulation, bends or cracks, and burn marks" } },
     { no: 4, key: "r4", label: { th: "4) ตรวจสอบหัวจ่ายอัดประจุ", en: "4) Check charging connector" }, kind: "group", hasPhoto: true, items: [{ label: { th: "4.1) หัวจ่ายอัดประจุที่ 1", en: "4.1) Connector 1" }, key: "r4_1" }], tooltip: { th: "ตรวจสอบความสะอาดของขั้วสัมผัส (Pin), ตรวจสอบสปริงล็อกและรอยร้าวบริเวณด้ามจับ", en: "Check pin cleanliness, spring lock and handle cracks" } },
     { no: 5, key: "r5", label: { th: "5) ตรวจสอบปุ่มหยุดฉุกเฉิน", en: "5) Check emergency stop button" }, kind: "group", hasPhoto: true, items: [{ label: { th: "5.1) ปุ่มหยุดฉุกเฉินที่ 1", en: "5.1) Emergency stop 1" }, key: "r5_1" }], tooltip: { th: "ตรวจสอบกลไกการกดและการคลายล็อกและตรวจสอบหน้าสัมผัสทางไฟฟ้าว่าไม่มีคราบสกปรก", en: "Check press/release mechanism and electrical contacts" } },
     { no: 6, key: "r6", label: { th: "6) ตรวจสอบ QR CODE", en: "6) Check QR CODE" }, kind: "group", hasPhoto: true, items: [{ label: { th: "6.1) QR CODE ที่ 1", en: "6.1) QR CODE 1" }, key: "r6_1" }], tooltip: { th: "ตรวจสอบความคมชัดของ QR CODE และการยึดติดของสติ๊กเกอร์", en: "Check QR CODE clarity and sticker adhesion" } },
-    { no: 7, key: "r7", label: { th: "7) ป้ายเตือนระวังไฟฟ้าช็อก", en: "7) Electric shock warning sign" }, kind: "group", hasPhoto: true, items: [{ label: { th: "7.1) ป้ายเตือนระวังไฟฟ้าช็อกที่ 1", en: "7.1) Warning sign 1" }, key: "r7_1" }], tooltip: { th: "ตรวจสอบการติดตั้งและความชัดเจนของป้ายเตือนอันตราย", en: "Check installation and clarity of warning signs" } },
-    { no: 8, key: "r8", label: { th: "8) ป้ายเตือนต้องการระบายอากาศ", en: "8) Ventilation warning sign" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบระยะ Clearance รอบตู้ตามป้ายระบุ เพื่อไม่ให้มีสิ่งของวางกีดขวางทางลม", en: "Check clearance around cabinet per signage" } },
-    { no: 9, key: "r9", label: { th: "9) ป้ายเตือนปุ่มฉุกเฉิน", en: "9) Emergency button warning sign" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสว่างหรือการสะท้อนแสงของป้ายบ่งชี้ตำแหน่งปุ่ม Emergency เพื่อให้มองเห็นได้ในสภาวะแสงน้อย", en: "Check sign visibility in low light conditions" } },
+    { no: 7, key: "r7", label: { th: "7) ตรวจสอบป้ายเตือนระวังไฟฟ้าช็อก", en: "7) Check electric shock warning sign" }, kind: "group", hasPhoto: true, items: [{ label: { th: "7.1) ป้ายเตือนระวังไฟฟ้าช็อกที่ 1", en: "7.1) Warning sign 1" }, key: "r7_1" }], tooltip: { th: "ตรวจสอบการติดตั้งและความชัดเจนของป้ายเตือนอันตราย", en: "Check installation and clarity of warning signs" } },
+    { no: 8, key: "r8", label: { th: "8) ตรวจสอบป้ายเตือนต้องการระบายอากาศ", en: "8) Check ventilation warning sign" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบระยะ Clearance รอบตู้ตามป้ายระบุ เพื่อไม่ให้มีสิ่งของวางกีดขวางทางลม", en: "Check clearance around cabinet per signage" } },
+    { no: 9, key: "r9", label: { th: "9) ตรวจสอบป้ายเตือนปุ่มฉุกเฉิน", en: "9) Check emergency button warning sign" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสว่างหรือการสะท้อนแสงของป้ายบ่งชี้ตำแหน่งปุ่ม Emergency เพื่อให้มองเห็นได้ในสภาวะแสงน้อย", en: "Check sign visibility in low light conditions" } },
     { no: 10, key: "r10", label: { th: "10) ตรวจสอบแรงดันไฟฟ้าที่พิน CP", en: "10) Check CP pin voltage" }, kind: "group", hasPhoto: true, items: [{ label: { th: "10.1) แรงดันไฟฟ้าที่พิน CP สายที่ 1", en: "10.1) CP pin voltage cable 1" }, key: "r10_1" }], tooltip: { th: "วัดค่าแรงดันระหว่าง pin CP และ PE", en: "Measure voltage between CP and PE pins" } },
     {
-        no: 11, key: "r11", label: { th: "11) ตรวจสอบแผ่นกรองระบายอากาศ", en: "11) Check air filter" }, kind: "group", hasPhoto: true,
+        no: 11, key: "r11", label: { th: "11) ตรวจสอบแผ่นกรองอากาศ", en: "11) Check air filter" }, kind: "group", hasPhoto: true,
         tooltip: { th: "ตรวจสอบสภาพแผ่นกรองอากาศและทิศทางการไหลของอากาศ", en: "Check air filter condition and airflow direction" },
         items: [
-            { label: { th: "11.1) แผ่นกรองระบายอากาศ (ด้านซ้าย)", en: "11.1) Air filter (left)" }, key: "r11_1" },
-            { label: { th: "11.2) แผ่นกรองระบายอากาศ (ด้านขวา)", en: "11.2) Air filter (right)" }, key: "r11_2" },
-            { label: { th: "11.3) แผ่นกรองระบายอากาศ (ด้านหน้า)", en: "11.3) Air filter (front)" }, key: "r11_3" },
-            { label: { th: "11.4) แผ่นกรองระบายอากาศ (ด้านหลัง)", en: "11.4) Air filter (back)" }, key: "r11_4" },
+            { label: { th: "11.1) แผ่นกรองอากาศ (ด้านซ้าย)", en: "11.1) Air filter (left)" }, key: "r11_1" },
+            { label: { th: "11.2) แผ่นกรองอากาศ (ด้านขวา)", en: "11.2) Air filter (right)" }, key: "r11_2" },
+            { label: { th: "11.3) แผ่นกรองอากาศ (ด้านหน้า)", en: "11.3) Air filter (front)" }, key: "r11_3" },
+            { label: { th: "11.4) แผ่นกรองอากาศ (ด้านหลัง)", en: "11.4) Air filter (back)" }, key: "r11_4" },
         ]
     },
     { no: 12, key: "r12", label: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at cable connection points and inspect for burn marks using thermal imaging camera" } },
@@ -256,10 +256,10 @@ const getDynamicLabel = {
     qrCode: (idx: number, lang: Lang) => lang === "th" ? `6.${idx}) QR CODE ที่ ${idx}` : `6.${idx}) QR CODE ${idx}`,
     warningSign: (idx: number, lang: Lang) => lang === "th" ? `7.${idx}) ป้ายเตือนระวังไฟฟ้าช็อกที่ ${idx}` : `7.${idx}) Warning sign ${idx}`,
     cpVoltage: (idx: number, lang: Lang) => lang === "th" ? `10.${idx}) แรงดันไฟฟ้าที่พิน CP สายที่ ${idx}` : `10.${idx}) CP pin voltage cable ${idx}`,
-    airFilterLeft: (lang: Lang) => lang === "th" ? "11.1) แผ่นกรองระบายอากาศ (ด้านซ้าย)" : "11.1) Air filter (left)",
-    airFilterRight: (lang: Lang) => lang === "th" ? "11.2) แผ่นกรองระบายอากาศ (ด้านขวา)" : "11.2) Air filter (right)",
-    airFilterFront: (lang: Lang) => lang === "th" ? "11.3) แผ่นกรองระบายอากาศ (ด้านหน้า)" : "11.3) Air filter (front)",
-    airFilterBack: (lang: Lang) => lang === "th" ? "11.4) แผ่นกรองระบายอากาศ (ด้านหลัง)" : "11.4) Air filter (back)",
+    airFilterLeft: (lang: Lang) => lang === "th" ? "11.1) แผ่นกรองอากาศ (ด้านซ้าย)" : "11.1) Air filter (left)",
+    airFilterRight: (lang: Lang) => lang === "th" ? "11.2) แผ่นกรองอากาศ (ด้านขวา)" : "11.2) Air filter (right)",
+    airFilterFront: (lang: Lang) => lang === "th" ? "11.3) แผ่นกรองอากาศ (ด้านหน้า)" : "11.3) Air filter (front)",
+    airFilterBack: (lang: Lang) => lang === "th" ? "11.4) แผ่นกรองอากาศ (ด้านหลัง)" : "11.4) Air filter (back)",
     chargingTest: (idx: number, lang: Lang) => lang === "th" ? `17.${idx}) ทดสอบการอัดประจุ สายที่ ${idx}` : `17.${idx}) Charging test cable ${idx}`,
 };
 
@@ -364,7 +364,7 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
 
 // ==================== UI COMPONENTS ====================
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, onlyNA = false, onClear, lang, remarkId,
+    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, belowRemark, inlineLeft, onlyNA = false, onClear, lang, remarkId, pfButtonsId,
 }: {
     label: string;
     value: PF;
@@ -380,18 +380,19 @@ function PassFailRow({
     onClear?: () => void;
     lang: Lang;
     remarkId?: string;
+    pfButtonsId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
 
     const buttonGroup = onlyNA ? (
-        <div className="tw-flex tw-gap-2 tw-ml-auto">
+        <div id={pfButtonsId} className="tw-flex tw-gap-2 tw-ml-auto tw-transition-all tw-duration-300">
             <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]"
                 onClick={() => value === "NA" && onClear ? onClear() : onChange("NA")}>
                 {text.NA}
             </Button>
         </div>
     ) : (
-        <div className="tw-flex tw-gap-2 tw-ml-auto">
+        <div id={pfButtonsId} className="tw-flex tw-gap-2 tw-ml-auto tw-transition-all tw-duration-300">
             <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
             <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
             <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>{text.NA}</Button>
@@ -600,6 +601,16 @@ function PMValidationCard({
         return `pm-question-${mainNo}`;
     };
 
+    const getPfButtonsScrollId = (item: string): string => {
+        const parts = item.split('.');
+        if (parts.length === 2) {
+            // Sub-item like "3.1" -> pm-pf-3-1
+            return `pm-pf-${parts[0]}-${parts[1]}`;
+        }
+        // Simple item like "1" -> pm-pf-1
+        return `pm-pf-${parts[0]}`;
+    };
+
     // Build validation errors
     const allErrors: ValidationError[] = useMemo(() => {
         const errors: ValidationError[] = [];
@@ -665,7 +676,7 @@ function PMValidationCard({
 
         // Post mode validations
         if (isPostMode) {
-            // 4) PF status errors - link to question section (buttons are at top)
+            // 4) PF status errors - link to PF buttons directly
             if (!allPFAnsweredPost) {
                 missingPFItemsPost.forEach((item) => {
                     errors.push({
@@ -673,7 +684,7 @@ function PMValidationCard({
                         sectionIcon: "✅",
                         itemName: `${t("itemLabel", lang)} ${item}`,
                         message: lang === "th" ? "ยังไม่ได้เลือกสถานะ" : "Status not selected",
-                        scrollId: getQuestionScrollId(item),
+                        scrollId: getPfButtonsScrollId(item),
                     });
                 });
             }
@@ -856,12 +867,19 @@ function InputWithUnit<U extends string>({
     readOnly?: boolean; disabled?: boolean; labelOnTop?: boolean; required?: boolean; 
     isNA?: boolean; onNAChange?: (isNA: boolean) => void; lang: Lang;
 }) {
+    const [showError, setShowError] = useState(false);
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newValue = e.target.value;
         // Allow: empty, negative sign, digits, decimal point
         // Pattern: optional minus, digits, optional decimal with digits
         if (newValue === "" || newValue === "-" || /^-?\d*\.?\d*$/.test(newValue)) {
             onValueChange(newValue);
+            setShowError(false);
+        } else {
+            // Show error briefly when invalid input is attempted
+            setShowError(true);
+            setTimeout(() => setShowError(false), 2000);
         }
     };
 
@@ -890,9 +908,9 @@ function InputWithUnit<U extends string>({
                         disabled={disabled} 
                         required={required}
                         placeholder=" "
-                        className={`tw-peer tw-w-full tw-h-10 tw-px-3 tw-pt-4 tw-pb-1 tw-text-sm tw-border tw-border-gray-300 tw-rounded-lg tw-outline-none focus:tw-border-blue-500 focus:tw-ring-1 focus:tw-ring-blue-500 ${disabled ? "tw-bg-gray-100 tw-text-gray-500" : "tw-bg-white"}`}
+                        className={`tw-peer tw-w-full tw-h-10 tw-px-3 tw-pt-4 tw-pb-1 tw-text-sm tw-border tw-rounded-lg tw-outline-none focus:tw-ring-1 ${showError ? "tw-border-red-500 focus:tw-border-red-500 focus:tw-ring-red-500" : "tw-border-gray-300 focus:tw-border-blue-500 focus:tw-ring-blue-500"} ${disabled ? "tw-bg-gray-100 tw-text-gray-500" : "tw-bg-white"}`}
                     />
-                    <label className="tw-absolute tw-left-3 tw-top-1 tw-text-[10px] tw-text-gray-500 tw-pointer-events-none">
+                    <label className={`tw-absolute tw-left-3 tw-top-1 tw-text-[10px] tw-pointer-events-none ${showError ? "tw-text-red-500" : "tw-text-gray-500"}`}>
                         {label}{required && <span className="tw-text-red-500">*</span>}
                     </label>
                 </div>
@@ -900,6 +918,11 @@ function InputWithUnit<U extends string>({
                     {unit}
                 </div>
             </div>
+            {showError && (
+                <Typography variant="small" className="tw-text-red-500 tw-text-xs">
+                    {lang === "th" ? "กรุณากรอกเฉพาะตัวเลข, จุดทศนิยม (.) หรือ (-)" : "Please enter only numbers, decimal point (.) or (-)"}
+                </Typography>
+            )}
             {onNAChange && !readOnly && !isNA && (
                 <Button size="sm" variant="outlined" onClick={() => onNAChange(true)} className="tw-w-full tw-border-amber-500 tw-text-amber-700">{t("naNoValue", lang)}</Button>
             )}
@@ -1038,6 +1061,7 @@ function DynamicItemsSection({
                         const subNo = idx + 1;
                         const photoId = `pm-photo-${qNo}-${subNo}`;
                         const remarkId = `pm-remark-${qNo}-${subNo}`;
+                        const pfButtonsId = `pm-pf-${qNo}-${subNo}`;
                         
                         if (isSkipped) {
                             return (
@@ -1085,6 +1109,7 @@ function DynamicItemsSection({
                                     remark={rows[item.key]?.remark ?? ""}
                                     onRemarkChange={(v) => setRows(prev => ({ ...prev, [item.key]: { ...(prev[item.key] ?? { pf: "" }), remark: v } }))}
                                     lang={lang}
+                                    pfButtonsId={pfButtonsId}
                                     remarkId={remarkId}
                                     aboveRemark={
                                         <>
@@ -1251,6 +1276,8 @@ function PhotoRemarkSection({
         </div>
     ) : null;
 
+    const pfButtonsId = `pm-pf-${qNo}`;
+
     if (isPostMode) {
         return (
             <div className="tw-py-2">
@@ -1261,6 +1288,7 @@ function PhotoRemarkSection({
                     remark={rows[qKey]?.remark ?? ""}
                     onRemarkChange={(v) => setRows(prev => ({ ...prev, [qKey]: { ...(prev[qKey] ?? { pf: "" }), remark: v } }))}
                     lang={lang}
+                    pfButtonsId={pfButtonsId}
                     aboveRemark={
                         <div className="tw-pt-2 tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
                             <PhotoMultiInput id={photoId} photos={photos[qNo] || []} setPhotos={makePhotoSetter(qNo)} max={10} draftKey={draftKey} qNo={qNo} lang={lang} />
