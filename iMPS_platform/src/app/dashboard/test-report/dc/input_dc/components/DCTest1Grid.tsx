@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Input, Button, Typography, Textarea } from "@material-tailwind/react";
+import { Input, Button, Typography, Textarea, Tooltip } from "@material-tailwind/react";
 
 /* ===================== Types ===================== */
 
@@ -13,6 +13,7 @@ export interface DCTestItem {
   testName: string;
   testNameTh?: string;
   unit?: string;
+  tooltip?: { th: string; en: string };
 }
 
 // Dynamic test results - support variable number of rounds
@@ -165,6 +166,26 @@ export type ElectricalSafetyPayload = {
 
 /* ===================== UI: Pass/Fail/NA Buttons - REDESIGNED ===================== */
 
+// Tooltip translations
+const tooltipTranslations = {
+  th: {
+    pass: "ผ่าน - คลิกเพื่อเลือก",
+    fail: "ไม่ผ่าน - คลิกเพื่อเลือก",
+    na: "ไม่มี/ไม่ทดสอบ - คลิกเพื่อเลือก",
+    passSelected: "ผ่าน (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+    failSelected: "ไม่ผ่าน (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+    naSelected: "ไม่มี/ไม่ทดสอบ (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+  },
+  en: {
+    pass: "Pass - Click to select",
+    fail: "Fail - Click to select",
+    na: "N/A - Click to select",
+    passSelected: "Pass (Selected) - Click to deselect",
+    failSelected: "Fail (Selected) - Click to deselect",
+    naSelected: "N/A (Selected) - Click to deselect",
+  },
+};
+
 export const PassFailButtons: React.FC<{
   value: string;
   onChange: (v: string) => void;
@@ -178,6 +199,8 @@ export const PassFailButtons: React.FC<{
   const isFail = value === "FAIL" || value === "✗";
   const isNA = value === "NA";
 
+  const tt = tooltipTranslations[lang];
+
   const baseClass = responsive
     ? "tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-rounded-lg tw-transition-all tw-duration-200"
     : size === "xs"
@@ -190,6 +213,7 @@ export const PassFailButtons: React.FC<{
     <div className="tw-flex tw-gap-1.5">
       <button
         type="button"
+        title={isPass ? tt.passSelected : tt.pass}
         className={`${baseClass} ${
           isPass
             ? "tw-bg-green-500 tw-text-white tw-shadow-md tw-shadow-green-200"
@@ -202,6 +226,7 @@ export const PassFailButtons: React.FC<{
       </button>
       <button
         type="button"
+        title={isFail ? tt.failSelected : tt.fail}
         className={`${baseClass} ${
           isFail
             ? "tw-bg-red-500 tw-text-white tw-shadow-md tw-shadow-red-200"
@@ -215,6 +240,7 @@ export const PassFailButtons: React.FC<{
       {showNA && (
         <button
           type="button"
+          title={isNA ? tt.naSelected : tt.na}
           className={`${baseClass} ${
             isNA
               ? "tw-bg-gray-500 tw-text-white tw-shadow-md tw-shadow-gray-200"
@@ -233,17 +259,94 @@ export const PassFailButtons: React.FC<{
 /* ===================== Data (รายการทดสอบ) ===================== */
 
 export const DC_TEST_DATA: DCTestItem[] = [
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Left Cover", testNameTh: "ฝาครอบซ้าย", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Right Cover", testNameTh: "ฝาครอบขวา", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Front Cover", testNameTh: "ฝาครอบหน้า", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Back Cover", testNameTh: "ฝาครอบหลัง", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Pin PE H.1", testNameTh: "Pin PE H.1", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Pin PE H.2", testNameTh: "Pin PE H.2", unit: "" },
-  { category: "Electrical Safety", subCategory: "", testName: "RCD type A", testNameTh: "RCD ชนิด A", unit: "mA" },
-  { category: "Electrical Safety", subCategory: "", testName: "RCD type F", testNameTh: "RCD ชนิด F", unit: "mA" },
-  { category: "Electrical Safety", subCategory: "", testName: "RCD type B", testNameTh: "RCD ชนิด B", unit: "mA" },
-  { category: "Electrical Safety", subCategory: "", testName: "Isolation Transformer", testNameTh: "หม้อแปลงแยก", unit: "" },
-  { category: "Electrical Safety", subCategory: "", testName: "Power standby", testNameTh: "พลังงานขณะสแตนด์บาย", unit: "" },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "PE.Continuity protective Conductors of Charger", 
+    testName: "Left Cover", 
+    testNameTh: "ฝาครอบซ้าย", 
+    unit: "",
+    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านซ้าย", en: "Test PE continuity at left cover area" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "PE.Continuity protective Conductors of Charger", 
+    testName: "Right Cover", 
+    testNameTh: "ฝาครอบขวา", 
+    unit: "",
+    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านขวา", en: "Test PE continuity at right cover area" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "PE.Continuity protective Conductors of Charger", 
+    testName: "Front Cover", 
+    testNameTh: "ฝาครอบหน้า", 
+    unit: "",
+    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านหน้า", en: "Test PE continuity at front cover area" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "PE.Continuity protective Conductors of Charger", 
+    testName: "Back Cover", 
+    testNameTh: "ฝาครอบหลัง", 
+    unit: "",
+    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านหลัง", en: "Test PE continuity at back cover area" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "PE.Continuity protective Conductors of Charger", 
+    testName: "Pin PE H.1", 
+    testNameTh: "Pin PE H.1", 
+    unit: "",
+    tooltip: { th: "ทดสอบความต่อเนื่องของขั้ว PE ที่หัวชาร์จ 1", en: "Test PE pin continuity at charging head 1" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "PE.Continuity protective Conductors of Charger", 
+    testName: "Pin PE H.2", 
+    testNameTh: "Pin PE H.2", 
+    unit: "",
+    tooltip: { th: "ทดสอบความต่อเนื่องของขั้ว PE ที่หัวชาร์จ 2", en: "Test PE pin continuity at charging head 2" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "", 
+    testName: "RCD type A", 
+    testNameTh: "RCD ชนิด A", 
+    unit: "mA",
+    tooltip: { th: "ทดสอบการทำงานของ RCD ชนิด A สำหรับกระแสไฟฟ้ากระแสสลับ", en: "Test RCD type A operation for AC fault current" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "", 
+    testName: "RCD type F", 
+    testNameTh: "RCD ชนิด F", 
+    unit: "mA",
+    tooltip: { th: "ทดสอบการทำงานของ RCD ชนิด F สำหรับกระแสไฟฟ้าผสม", en: "Test RCD type F operation for mixed frequency fault current" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "", 
+    testName: "RCD type B", 
+    testNameTh: "RCD ชนิด B", 
+    unit: "mA",
+    tooltip: { th: "ทดสอบการทำงานของ RCD ชนิด B สำหรับกระแสไฟฟ้ากระแสตรง", en: "Test RCD type B operation for DC fault current" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "", 
+    testName: "Isolation Transformer", 
+    testNameTh: "หม้อแปลงแยก", 
+    unit: "",
+    tooltip: { th: "ตรวจสอบการมีหม้อแปลงแยกในระบบ", en: "Check if isolation transformer is present in the system" }
+  },
+  { 
+    category: "Electrical Safety", 
+    subCategory: "", 
+    testName: "Power standby", 
+    testNameTh: "พลังงานขณะสแตนด์บาย", 
+    unit: "",
+    tooltip: { th: "วัดค่าพลังงานที่เครื่องใช้ขณะอยู่ในโหมดสแตนด์บาย (L1, L2, L3)", en: "Measure power consumption during standby mode (L1, L2, L3)" }
+  },
 ];
 
 /* ===================== Helpers (สร้าง payload) ===================== */
@@ -699,6 +802,15 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               <span className="tw-ml-2 tw-text-xs tw-text-gray-400 tw-font-normal">(N/A)</span>
             )}
           </Typography>
+          
+          {/* Tooltip Icon */}
+          {item.tooltip && (
+            <Tooltip content={item.tooltip[lang]} placement="bottom">
+              <svg className="tw-w-4 tw-h-4 lg:tw-w-5 lg:tw-h-5 tw-text-gray-400 tw-cursor-help tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+            </Tooltip>
+          )}
           
           {/* Show previous round results for round 3 */}
           {showPreviousResults && (

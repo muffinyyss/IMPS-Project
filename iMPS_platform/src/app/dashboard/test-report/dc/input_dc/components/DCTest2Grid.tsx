@@ -1,11 +1,28 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Input, Button, Typography } from "@material-tailwind/react";
+import { Input, Button, Typography, Tooltip } from "@material-tailwind/react";
 
 /* ===================== Types ===================== */
 
 type Lang = "th" | "en";
+
+// File attachment for each test item
+export interface TestFile {
+  file: File;
+  url: string;
+  name: string;
+}
+
+// Files organized by: itemIndex -> round -> h1/h2
+export interface TestFiles {
+  [itemIndex: number]: {
+    [roundIndex: number]: {
+      h1?: TestFile;
+      h2?: TestFile;
+    };
+  };
+}
 
 interface DCTestItem {
   category: string;
@@ -14,12 +31,14 @@ interface DCTestItem {
   testNameTh?: string;
   unit?: string;
   remarkKey?: string; // เพิ่ม remarkKey สำหรับกำหนด key ใน remarks
+  tooltip?: { th: string; en: string };
 }
 
 // Dynamic test results - support variable number of rounds
 export interface TestCharger {
   rounds: { h1: string; h2: string }[][]; // Array of rounds, each round has array of items
   remarks: string[];
+  files?: TestFiles; // File attachments
 }
 
 // Legacy format for backward compatibility
@@ -59,6 +78,12 @@ const translations = {
     failedItemsCount: "หัวข้อที่ต้องทดสอบซ้ำ: {count} รายการ",
     handgun1: "หัวชาร์จ 1",
     handgun2: "หัวชาร์จ 2",
+    // File upload translations
+    attachFile: "แนบไฟล์",
+    changeFile: "เปลี่ยนไฟล์",
+    deleteFile: "ลบไฟล์",
+    fileTooltip: "แนบไฟล์เอกสารประกอบการทดสอบ",
+    viewFile: "ดูไฟล์",
   },
   en: {
     testingChecklist: "Testing Checklist",
@@ -86,6 +111,12 @@ const translations = {
     failedItemsCount: "Items to retest: {count}",
     handgun1: "Handgun 1",
     handgun2: "Handgun 2",
+    // File upload translations
+    attachFile: "Attach",
+    changeFile: "Change",
+    deleteFile: "Delete",
+    fileTooltip: "Attach document for this test",
+    viewFile: "View",
   },
 };
 
@@ -130,6 +161,26 @@ export type ChargerSafetyPayload = {
 
 /* ===================== UI: Pass/Fail/NA Buttons - REDESIGNED ===================== */
 
+// Tooltip translations
+const tooltipTranslations = {
+  th: {
+    pass: "ผ่าน - คลิกเพื่อเลือก",
+    fail: "ไม่ผ่าน - คลิกเพื่อเลือก",
+    na: "ไม่มี/ไม่ทดสอบ - คลิกเพื่อเลือก",
+    passSelected: "ผ่าน (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+    failSelected: "ไม่ผ่าน (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+    naSelected: "ไม่มี/ไม่ทดสอบ (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+  },
+  en: {
+    pass: "Pass - Click to select",
+    fail: "Fail - Click to select",
+    na: "N/A - Click to select",
+    passSelected: "Pass (Selected) - Click to deselect",
+    failSelected: "Fail (Selected) - Click to deselect",
+    naSelected: "N/A (Selected) - Click to deselect",
+  },
+};
+
 export const PassFailButtons: React.FC<{
   value: string;
   onChange: (v: string) => void;
@@ -142,6 +193,8 @@ export const PassFailButtons: React.FC<{
   const isFail = value === "FAIL" || value === "✗";
   const isNA = value === "NA";
 
+  const tt = tooltipTranslations[lang];
+
   const baseClass = size === "sm" 
     ? "tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-rounded-lg tw-transition-all tw-duration-200"
     : "tw-px-4 tw-py-2 tw-text-sm tw-font-semibold tw-rounded-lg tw-transition-all tw-duration-200";
@@ -150,6 +203,7 @@ export const PassFailButtons: React.FC<{
     <div className="tw-flex tw-gap-1.5">
       <button
         type="button"
+        title={isPass ? tt.passSelected : tt.pass}
         className={`${baseClass} ${
           isPass
             ? "tw-bg-green-500 tw-text-white tw-shadow-md tw-shadow-green-200"
@@ -162,6 +216,7 @@ export const PassFailButtons: React.FC<{
       </button>
       <button
         type="button"
+        title={isFail ? tt.failSelected : tt.fail}
         className={`${baseClass} ${
           isFail
             ? "tw-bg-red-500 tw-text-white tw-shadow-md tw-shadow-red-200"
@@ -175,6 +230,7 @@ export const PassFailButtons: React.FC<{
       {showNA && (
         <button
           type="button"
+          title={isNA ? tt.naSelected : tt.na}
           className={`${baseClass} ${
             isNA
               ? "tw-bg-gray-500 tw-text-white tw-shadow-md tw-shadow-gray-200"
@@ -190,6 +246,151 @@ export const PassFailButtons: React.FC<{
   );
 };
 
+/* ===================== UI: File Upload Button ===================== */
+
+const FileUploadButton: React.FC<{
+  file?: TestFile;
+  onUpload: (file: File) => void;
+  onDelete: () => void;
+  lang: Lang;
+  t: typeof translations["th"];
+  size?: "sm" | "md";
+  loading?: boolean;
+  disabled?: boolean;
+}> = ({ file, onUpload, onDelete, lang, t, size = "sm", loading = false, disabled = false }) => {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      onUpload(selectedFile);
+    }
+    // Reset input
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+
+  const baseClass = size === "sm"
+    ? "tw-px-2 tw-py-1.5 tw-text-xs tw-font-medium tw-rounded-lg tw-transition-all tw-duration-200"
+    : "tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-rounded-lg tw-transition-all tw-duration-200";
+
+  // Get file icon based on extension
+  const getFileIcon = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (ext === 'pdf') {
+      return (
+        <svg className="tw-w-4 tw-h-4 tw-text-red-500" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+        </svg>
+      );
+    }
+    if (ext === 'doc' || ext === 'docx') {
+      return (
+        <svg className="tw-w-4 tw-h-4 tw-text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+        </svg>
+      );
+    }
+    if (ext === 'xls' || ext === 'xlsx') {
+      return (
+        <svg className="tw-w-4 tw-h-4 tw-text-green-500" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+        </svg>
+      );
+    }
+    if (['jpg', 'jpeg', 'png'].includes(ext || '')) {
+      return (
+        <svg className="tw-w-4 tw-h-4 tw-text-purple-500" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+        </svg>
+      );
+    }
+    return (
+      <svg className="tw-w-4 tw-h-4 tw-text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+      </svg>
+    );
+  };
+
+  // Loading spinner
+  const LoadingSpinner = () => (
+    <svg className="tw-w-3.5 tw-h-3.5 tw-animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="tw-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="tw-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+    </svg>
+  );
+
+  if (loading) {
+    return (
+      <div className={`${baseClass} tw-flex tw-items-center tw-gap-1 tw-bg-gray-100 tw-text-gray-400 tw-border tw-border-gray-300`}>
+        <LoadingSpinner />
+        <span className="tw-hidden sm:tw-inline">...</span>
+      </div>
+    );
+  }
+
+  if (file) {
+    return (
+      <div className="tw-flex tw-items-center tw-gap-1">
+        {/* File Preview */}
+        <Tooltip content={`${t.viewFile}: ${file.name}`} placement="top">
+          <a
+            href={file.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="tw-flex tw-items-center tw-gap-1 tw-px-2 tw-py-1 tw-rounded-md tw-bg-gray-100 tw-border tw-border-gray-300 hover:tw-bg-gray-200 tw-transition-all tw-max-w-[100px]"
+          >
+            {getFileIcon(file.name)}
+            <span className="tw-text-xs tw-text-gray-700 tw-truncate tw-max-w-[60px]">{file.name}</span>
+          </a>
+        </Tooltip>
+        
+        {/* Delete Button */}
+        <Tooltip content={t.deleteFile} placement="top">
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={disabled}
+            className="tw-w-6 tw-h-6 tw-flex tw-items-center tw-justify-center tw-rounded-full tw-bg-red-100 tw-text-red-600 hover:tw-bg-red-200 tw-transition-all disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+          >
+            <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </Tooltip>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+          className="tw-hidden"
+          onChange={handleFileChange}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <Tooltip content={t.fileTooltip} placement="top">
+      <label className={`${baseClass} tw-cursor-pointer tw-flex tw-items-center tw-gap-1 tw-bg-gray-100 tw-text-gray-600 tw-border tw-border-gray-300 hover:tw-bg-gray-200 hover:tw-border-gray-400 ${disabled ? 'tw-opacity-50 tw-cursor-not-allowed' : ''}`}>
+        <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+        </svg>
+        <span className="tw-hidden sm:tw-inline">{t.attachFile}</span>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+          className="tw-hidden"
+          onChange={handleFileChange}
+          disabled={disabled}
+        />
+      </label>
+    </Tooltip>
+  );
+};
+
 /* ===================== Data (รายการทดสอบ) ===================== */
 
 export const DC_TEST_DATA: DCTestItem[] = [
@@ -200,6 +401,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "ไม่มี (ทำงานปกติ)",
     unit: "",
     remarkKey: "noneNormalOperate",
+    tooltip: { th: "ทดสอบการทำงานปกติของเครื่องชาร์จโดยไม่มีการจำลองความผิดปกติ", en: "Test normal charger operation without any fault simulation" },
   },
   {
     category: "Charger Safety",
@@ -208,6 +410,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "CP ลัดวงจร -120 โอห์ม",
     unit: "",
     remarkKey: "cPShort120ohm",
+    tooltip: { th: "ทดสอบการตอบสนองเมื่อสาย CP ลัดวงจรที่ -120 โอห์ม", en: "Test response when CP line is shorted at -120 Ohm" },
   },
   {
     category: "Charger Safety",
@@ -216,6 +419,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "PE-PP-ตัด",
     unit: "",
     remarkKey: "pEPPCut",
+    tooltip: { th: "ทดสอบการตอบสนองเมื่อสาย PE หรือ PP ถูกตัด", en: "Test response when PE or PP line is cut" },
   },
   {
     category: "Charger Safety",
@@ -224,6 +428,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "หยุดระยะไกล",
     unit: "",
     remarkKey: "remoteStop",
+    tooltip: { th: "ทดสอบการหยุดการชาร์จผ่านการควบคุมระยะไกล", en: "Test remote stop charging functionality" },
   },
   {
     category: "Charger Safety",
@@ -232,6 +437,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "ฉุกเฉิน",
     unit: "",
     remarkKey: "emergency",
+    tooltip: { th: "ทดสอบการทำงานของปุ่มหยุดฉุกเฉิน", en: "Test emergency stop button functionality" },
   },
   {
     category: "Charger Safety",
@@ -239,7 +445,8 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "LDC +",
     testNameTh: "LDC +",
     unit: "",
-    remarkKey: "lDCPlus",  // แยก key สำหรับ LDC +
+    remarkKey: "lDCPlus",
+    tooltip: { th: "ทดสอบการตรวจจับรถยนต์ไฟฟ้า (LDC) ขั้วบวก", en: "Test EV detection (LDC) positive terminal" },
   },
   {
     category: "Charger Safety",
@@ -247,7 +454,8 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "LDC  -",
     testNameTh: "LDC -",
     unit: "",
-    remarkKey: "lDCMinus",  // แยก key สำหรับ LDC -
+    remarkKey: "lDCMinus",
+    tooltip: { th: "ทดสอบการตรวจจับรถยนต์ไฟฟ้า (LDC) ขั้วลบ", en: "Test EV detection (LDC) negative terminal" },
   },
 ];
 
@@ -513,6 +721,8 @@ interface TestRoundCardProps {
   results: TestCharger;
   onResultChange: (roundIndex: number, itemIndex: number, field: "h1" | "h2", value: string) => void;
   onRemarkChange: (itemIndex: number, value: string) => void;
+  onFileUpload: (roundIndex: number, itemIndex: number, field: "h1" | "h2", file: File) => void;
+  onFileDelete: (roundIndex: number, itemIndex: number, field: "h1" | "h2") => void;
   onRemoveRound: () => void;
   lang: Lang;
   t: typeof translations["th"];
@@ -529,6 +739,8 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
   results,
   onResultChange,
   onRemarkChange,
+  onFileUpload,
+  onFileDelete,
   onRemoveRound,
   lang,
   t,
@@ -540,6 +752,11 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
 
   const getTestResult = (itemIndex: number) => {
     return results.rounds[roundIndex]?.[itemIndex] || { h1: "", h2: "" };
+  };
+
+  // Get file for specific item/round/field
+  const getFile = (itemIndex: number, field: "h1" | "h2"): TestFile | undefined => {
+    return results.files?.[itemIndex]?.[roundIndex]?.[field];
   };
 
   // Determine max rounds display
@@ -598,6 +815,15 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             {displayName}
           </Typography>
           
+          {/* Tooltip Icon */}
+          {item.tooltip && (
+            <Tooltip content={item.tooltip[lang]} placement="bottom">
+              <svg className="tw-w-4 tw-h-4 lg:tw-w-5 lg:tw-h-5 tw-text-gray-400 tw-cursor-help tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+            </Tooltip>
+          )}
+          
           {/* Show previous round badges for round 3 */}
           {showPreviousResults && prevResults && (
             <div className="tw-flex tw-gap-1 tw-ml-2">
@@ -625,12 +851,23 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             {!showH1 && isRound3WithFailedItems ? (
               <span className="tw-px-4 tw-py-2 tw-text-sm tw-font-semibold tw-text-green-600">✓ {t.pass}</span>
             ) : (
-              <PassFailButtons
-                value={currentResult?.h1 || ""}
-                onChange={(v) => onResultChange(roundIndex, actualIndex, "h1", v)}
-                lang={lang}
-                size="sm"
-              />
+              <>
+                <PassFailButtons
+                  value={currentResult?.h1 || ""}
+                  onChange={(v) => onResultChange(roundIndex, actualIndex, "h1", v)}
+                  lang={lang}
+                  size="sm"
+                />
+                <FileUploadButton
+                  file={getFile(actualIndex, "h1")}
+                  onUpload={(file) => onFileUpload(roundIndex, actualIndex, "h1", file)}
+                  onDelete={() => onFileDelete(roundIndex, actualIndex, "h1")}
+                  lang={lang}
+                  t={t}
+                  size="sm"
+                  disabled={currentResult?.h1 === "NA"}
+                />
+              </>
             )}
           </div>
 
@@ -642,12 +879,23 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             {!showH2 && isRound3WithFailedItems ? (
               <span className="tw-px-4 tw-py-2 tw-text-sm tw-font-semibold tw-text-green-600">✓ {t.pass}</span>
             ) : (
-              <PassFailButtons
-                value={currentResult?.h2 || ""}
-                onChange={(v) => onResultChange(roundIndex, actualIndex, "h2", v)}
-                lang={lang}
-                size="sm"
-              />
+              <>
+                <PassFailButtons
+                  value={currentResult?.h2 || ""}
+                  onChange={(v) => onResultChange(roundIndex, actualIndex, "h2", v)}
+                  lang={lang}
+                  size="sm"
+                />
+                <FileUploadButton
+                  file={getFile(actualIndex, "h2")}
+                  onUpload={(file) => onFileUpload(roundIndex, actualIndex, "h2", file)}
+                  onDelete={() => onFileDelete(roundIndex, actualIndex, "h2")}
+                  lang={lang}
+                  t={t}
+                  size="sm"
+                  disabled={currentResult?.h2 === "NA"}
+                />
+              </>
             )}
           </div>
 
@@ -728,17 +976,28 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                 <div key={`h1-${actualIndex}`} className="tw-px-4 tw-py-3">
                   {/* Row 1: Test Name */}
                   <div className="tw-text-sm tw-font-medium tw-text-gray-700 tw-mb-2">{displayName}</div>
-                  {/* Row 2: Buttons + Remark */}
+                  {/* Row 2: Buttons + Photo + Remark */}
                   <div className="tw-flex tw-items-center tw-gap-2">
                     {!showH1 && isRound3WithFailedItems ? (
                       <span className="tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-text-green-600 tw-bg-green-50 tw-rounded-lg tw-flex-shrink-0">✓ {t.pass}</span>
                     ) : (
-                      <PassFailButtons
-                        value={currentResult?.h1 || ""}
-                        onChange={(v) => onResultChange(roundIndex, actualIndex, "h1", v)}
-                        lang={lang}
-                        size="sm"
-                      />
+                      <>
+                        <PassFailButtons
+                          value={currentResult?.h1 || ""}
+                          onChange={(v) => onResultChange(roundIndex, actualIndex, "h1", v)}
+                          lang={lang}
+                          size="sm"
+                        />
+                        <FileUploadButton
+                          file={getFile(actualIndex, "h1")}
+                          onUpload={(file) => onFileUpload(roundIndex, actualIndex, "h1", file)}
+                          onDelete={() => onFileDelete(roundIndex, actualIndex, "h1")}
+                          lang={lang}
+                          t={t}
+                          size="sm"
+                          disabled={currentResult?.h1 === "NA"}
+                        />
+                      </>
                     )}
                     <input
                       type="text"
@@ -776,17 +1035,28 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                 <div key={`h2-${actualIndex}`} className="tw-px-4 tw-py-3">
                   {/* Row 1: Test Name */}
                   <div className="tw-text-sm tw-font-medium tw-text-gray-700 tw-mb-2">{displayName}</div>
-                  {/* Row 2: Buttons + Remark */}
+                  {/* Row 2: Buttons + Photo + Remark */}
                   <div className="tw-flex tw-items-center tw-gap-2">
                     {!showH2 && isRound3WithFailedItems ? (
                       <span className="tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-text-green-600 tw-bg-green-50 tw-rounded-lg tw-flex-shrink-0">✓ {t.pass}</span>
                     ) : (
-                      <PassFailButtons
-                        value={currentResult?.h2 || ""}
-                        onChange={(v) => onResultChange(roundIndex, actualIndex, "h2", v)}
-                        lang={lang}
-                        size="sm"
-                      />
+                      <>
+                        <PassFailButtons
+                          value={currentResult?.h2 || ""}
+                          onChange={(v) => onResultChange(roundIndex, actualIndex, "h2", v)}
+                          lang={lang}
+                          size="sm"
+                        />
+                        <FileUploadButton
+                          file={getFile(actualIndex, "h2")}
+                          onUpload={(file) => onFileUpload(roundIndex, actualIndex, "h2", file)}
+                          onDelete={() => onFileDelete(roundIndex, actualIndex, "h2")}
+                          lang={lang}
+                          t={t}
+                          size="sm"
+                          disabled={currentResult?.h2 === "NA"}
+                        />
+                      </>
                     )}
                     <input
                       type="text"
@@ -814,6 +1084,8 @@ interface TestResultsGridProps {
   results: TestCharger;
   onResultChange: (roundIndex: number, itemIndex: number, field: "h1" | "h2", value: string) => void;
   onRemarkChange: (itemIndex: number, value: string) => void;
+  onFileUpload: (roundIndex: number, itemIndex: number, field: "h1" | "h2", file: File) => void;
+  onFileDelete: (roundIndex: number, itemIndex: number, field: "h1" | "h2") => void;
   onAddRound: () => void;
   onRemoveRound: () => void;
   lang: Lang;
@@ -827,6 +1099,8 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
   results,
   onResultChange,
   onRemarkChange,
+  onFileUpload,
+  onFileDelete,
   onAddRound,
   onRemoveRound,
   lang,
@@ -888,6 +1162,8 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
             results={results}
             onResultChange={onResultChange}
             onRemarkChange={onRemarkChange}
+            onFileUpload={onFileUpload}
+            onFileDelete={onFileDelete}
             onRemoveRound={onRemoveRound}
             lang={lang}
             t={t}
@@ -907,9 +1183,20 @@ export interface DCTestGridProps {
   initialResults?: TestCharger | LegacyTestResults;
   onResultsChange?: (results: TestCharger) => void;
   initialRounds?: number;
+  // API integration props
+  reportId?: string;
+  sn?: string;
+  testType?: "electrical" | "charger";
 }
 
-const DCTest2Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChange, initialRounds = 2 }) => {
+const DCTest2Grid: React.FC<DCTestGridProps> = ({ 
+  initialResults, 
+  onResultsChange, 
+  initialRounds = 2,
+  reportId,
+  sn,
+  testType = "charger",
+}) => {
   const getInitialResults = (): TestCharger => {
     if (!initialResults) {
       return createEmptyResults(DC_TEST_DATA.length, initialRounds);
@@ -1066,6 +1353,150 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
     onResultsChange?.(newResults);
   };
 
+  // Handle file upload with API
+  const handleFileUpload = async (
+    roundIndex: number,
+    itemIndex: number,
+    field: "h1" | "h2",
+    file: File
+  ) => {
+    // If reportId and sn provided, upload to server
+    if (reportId && sn) {
+      try {
+        const formData = new FormData();
+        formData.append("sn", sn);
+        formData.append("test_type", testType);
+        formData.append("item_index", String(itemIndex));
+        formData.append("round_index", String(roundIndex));
+        formData.append("handgun", field);
+        formData.append("file", file);
+
+        const token = localStorage.getItem("auth_token") || "";
+        const res = await fetch(`/api/dctestreport/${reportId}/test-files`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || "Upload failed");
+        }
+
+        const data = await res.json();
+        
+        // Update local state with server URL
+        const newFiles: TestFiles = { ...results.files };
+        if (!newFiles[itemIndex]) {
+          newFiles[itemIndex] = {};
+        }
+        if (!newFiles[itemIndex][roundIndex]) {
+          newFiles[itemIndex][roundIndex] = {};
+        }
+        
+        newFiles[itemIndex][roundIndex][field] = { 
+          file, 
+          url: data.file?.url || URL.createObjectURL(file), 
+          name: file.name 
+        };
+        
+        const newResults = { ...results, files: newFiles };
+        setResults(newResults);
+        onResultsChange?.(newResults);
+      } catch (error) {
+        console.error("File upload error:", error);
+        alert(error instanceof Error ? error.message : "อัปโหลดไฟล์ไม่สำเร็จ");
+      }
+    } else {
+      // Local only (no API)
+      const url = URL.createObjectURL(file);
+      const newFiles: TestFiles = { ...results.files };
+      
+      if (!newFiles[itemIndex]) {
+        newFiles[itemIndex] = {};
+      }
+      if (!newFiles[itemIndex][roundIndex]) {
+        newFiles[itemIndex][roundIndex] = {};
+      }
+      
+      // Revoke old URL if exists
+      const oldFile = newFiles[itemIndex][roundIndex][field];
+      if (oldFile?.url && oldFile.url.startsWith("blob:")) {
+        URL.revokeObjectURL(oldFile.url);
+      }
+      
+      newFiles[itemIndex][roundIndex][field] = { file, url, name: file.name };
+      
+      const newResults = { ...results, files: newFiles };
+      setResults(newResults);
+      onResultsChange?.(newResults);
+    }
+  };
+
+  // Handle file delete with API
+  const handleFileDelete = async (
+    roundIndex: number,
+    itemIndex: number,
+    field: "h1" | "h2"
+  ) => {
+    // If reportId and sn provided, delete from server
+    if (reportId && sn) {
+      try {
+        const token = localStorage.getItem("auth_token") || "";
+        const params = new URLSearchParams({
+          sn,
+          test_type: testType,
+          item_index: String(itemIndex),
+          round_index: String(roundIndex),
+          handgun: field,
+        });
+
+        const res = await fetch(`/api/dctestreport/${reportId}/test-files?${params}`, {
+          method: "DELETE",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || "Delete failed");
+        }
+      } catch (error) {
+        console.error("File delete error:", error);
+        alert(error instanceof Error ? error.message : "ลบไฟล์ไม่สำเร็จ");
+        return;
+      }
+    }
+
+    // Update local state
+    const newFiles: TestFiles = { ...results.files };
+    
+    if (newFiles[itemIndex]?.[roundIndex]?.[field]) {
+      // Revoke URL if blob
+      const fileData = newFiles[itemIndex][roundIndex][field];
+      if (fileData?.url && fileData.url.startsWith("blob:")) {
+        URL.revokeObjectURL(fileData.url);
+      }
+      
+      delete newFiles[itemIndex][roundIndex][field];
+      
+      // Clean up empty objects
+      if (Object.keys(newFiles[itemIndex][roundIndex]).length === 0) {
+        delete newFiles[itemIndex][roundIndex];
+      }
+      if (Object.keys(newFiles[itemIndex]).length === 0) {
+        delete newFiles[itemIndex];
+      }
+    }
+    
+    const newResults = { ...results, files: newFiles };
+    setResults(newResults);
+    onResultsChange?.(newResults);
+  };
+
   return (
     <div className="tw-w-full">
       <TestResultsGrid
@@ -1074,6 +1505,8 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({ initialResults, onResultsChang
         results={results}
         onResultChange={handleResultChange}
         onRemarkChange={handleRemarkChange}
+        onFileUpload={handleFileUpload}
+        onFileDelete={handleFileDelete}
         onAddRound={handleAddRound}
         onRemoveRound={handleRemoveRound}
         lang={lang}
