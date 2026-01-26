@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Button, Input, Textarea } from "@material-tailwind/react";
+import { Button, Input, Textarea, Tooltip } from "@material-tailwind/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 // components
@@ -112,6 +112,7 @@ const translations = {
     photoSectionTitle: "แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)",
     phaseSequence: "ลำดับเฟส",
     phaseSequencePlaceholder: "เช่น L1-L2-L3",
+    phaseSequenceTooltip: "กรอกลำดับเฟสของระบบไฟฟ้า เช่น L1-L2-L3 หรือ R-S-T",
     alertNoSn: "ไม่พบ sn - กรุณาเลือกตู้ชาร์จจาก Navbar ก่อน",
     alertNoChargerNo: "ไม่พบ chargerNo - กรุณาเลือกตู้ชาร์จที่มี chargerNo",
     alertNoElectricalTest: "ยังไม่ได้กรอกผลทดสอบ (Electrical Safety)",
@@ -128,6 +129,7 @@ const translations = {
     photoSectionTitle: "Attach Photos (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + Others)",
     phaseSequence: "Phase Sequence",
     phaseSequencePlaceholder: "e.g. L1-L2-L3",
+    phaseSequenceTooltip: "Enter the phase sequence of the electrical system, e.g. L1-L2-L3 or R-S-T",
     alertNoSn: "SN not found - Please select a charger from Navbar first",
     alertNoChargerNo: "chargerNo not found - Please select a charger with chargerNo",
     alertNoElectricalTest: "Electrical Safety test results not filled",
@@ -407,6 +409,49 @@ export default function DCForm() {
     }
   }
 
+  // ★★★ NEW: Upload test files for DCTest2Grid (Charger Safety) ★★★
+  async function uploadTestFiles(reportId: string, testType: "electrical" | "charger", testResults: TestCharger | null) {
+    if (!sn || !testResults?.files) return;
+    
+    const files = testResults.files;
+    
+    // Iterate through all files: files[itemIndex][roundIndex][h1/h2]
+    for (const itemIndexStr of Object.keys(files)) {
+      const itemIndex = parseInt(itemIndexStr);
+      const roundsData = files[itemIndex];
+      
+      for (const roundIndexStr of Object.keys(roundsData)) {
+        const roundIndex = parseInt(roundIndexStr);
+        const handgunData = roundsData[roundIndex];
+        
+        for (const handgun of ["h1", "h2"] as const) {
+          const fileData = handgunData[handgun];
+          if (!fileData?.file) continue;
+          
+          const fd = new FormData();
+          fd.append("sn", sn);
+          fd.append("test_type", testType);
+          fd.append("item_index", String(itemIndex));
+          fd.append("round_index", String(roundIndex));
+          fd.append("handgun", handgun);
+          fd.append("file", fileData.file, fileData.file.name);
+          
+          const res = await fetch(`${API_BASE}/dctestreport/${encodeURIComponent(reportId)}/test-files`, {
+            method: "POST", 
+            body: fd, 
+            credentials: "include",
+          });
+          
+          if (!res.ok) {
+            const msg = await res.text().catch(() => `HTTP ${res.status}`);
+            console.error(`Upload test file failed: item ${itemIndex}, round ${roundIndex}, ${handgun}:`, msg);
+            // Continue uploading other files even if one fails
+          }
+        }
+      }
+    }
+  }
+
   const onHeadChange = (updates: Partial<Head>) => setHead(prev => ({ ...prev, ...updates }));
 
   const onSave = async () => {
@@ -525,6 +570,9 @@ export default function DCForm() {
 
       await uploadPhotosForReport(report_id);
       await uploadPhotoSection(report_id, photoItems);
+      
+      // ★★★ Upload test files for Charger Safety Test ★★★
+      await uploadTestFiles(report_id, "charger", dcChargerTest);
 
       clearDraftLocal(currentDraftKey);
       clearPhotosForDraft(currentDraftKey);
@@ -680,8 +728,13 @@ export default function DCForm() {
               </h3>
               {/* ★★★ FIXED: Phase Sequence - same line on mobile ★★★ */}
               <div className="tw-flex tw-items-center tw-gap-3">
-                <span className="tw-text-sm tw-font-semibold tw-text-gray-800 tw-whitespace-nowrap">
+                <span className="tw-text-sm tw-font-semibold tw-text-gray-800 tw-whitespace-nowrap tw-flex tw-items-center tw-gap-1">
                   {t.phaseSequence}
+                  <Tooltip content={t.phaseSequenceTooltip} placement="top">
+                    <svg className="tw-w-4 tw-h-4 tw-text-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                  </Tooltip>
                 </span>
                 <span className="tw-font-semibold tw-text-base">:</span>
                 <div className="tw-flex-1 md:tw-flex-none md:tw-w-48">
