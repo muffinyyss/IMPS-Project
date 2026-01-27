@@ -316,16 +316,93 @@ export default function DCForm() {
   }, []);
 
   // ============================================================
+  // ★★★ TEST FILES HELPERS (for DCTest2Grid) ★★★
+  // ============================================================
+  type TestFileRef = {
+    dbKey: string;
+    name: string;
+    itemIndex: number;
+    roundIndex: number;
+    handgun: "h1" | "h2";
+  };
+
+  const saveTestFilesToIndexedDB = useCallback(async (
+    testResults: TestCharger | null
+  ): Promise<TestFileRef[]> => {
+    const refs: TestFileRef[] = [];
+    if (!testResults?.files) return refs;
+
+    const files = testResults.files;
+    for (const itemIndexStr of Object.keys(files)) {
+      const itemIndex = parseInt(itemIndexStr);
+      const roundsData = files[itemIndex];
+
+      for (const roundIndexStr of Object.keys(roundsData)) {
+        const roundIndex = parseInt(roundIndexStr);
+        const handgunData = roundsData[roundIndex];
+
+        for (const handgun of ["h1", "h2"] as const) {
+          const fileData = handgunData[handgun];
+          if (!fileData?.file || !(fileData.file instanceof Blob)) continue;
+
+          const photoId = `testfile_${itemIndex}_${roundIndex}_${handgun}_${Date.now()}`;
+          const ref = await putPhoto(currentDraftKey, photoId, fileData.file, fileData.name || "");
+          refs.push({
+            dbKey: ref.dbKey,
+            name: fileData.name || fileData.file.name || `file_${itemIndex}_${roundIndex}_${handgun}`,
+            itemIndex,
+            roundIndex,
+            handgun,
+          });
+        }
+      }
+    }
+    return refs;
+  }, [currentDraftKey]);
+
+  const loadTestFilesFromIndexedDB = useCallback(async (
+    refs: TestFileRef[],
+    testResults: TestCharger | null
+  ): Promise<TestCharger | null> => {
+    if (testResults === null || !refs?.length) return testResults;
+
+    const newFiles: TestCharger["files"] = testResults.files ? { ...testResults.files } : {};
+
+    for (const ref of refs) {
+      const file = await getPhotoByDbKey(ref.dbKey);
+      if (file) {
+        const url = URL.createObjectURL(file);
+        if (!newFiles[ref.itemIndex]) newFiles[ref.itemIndex] = {};
+        if (!newFiles[ref.itemIndex][ref.roundIndex]) newFiles[ref.itemIndex][ref.roundIndex] = {};
+        newFiles[ref.itemIndex][ref.roundIndex][ref.handgun] = {
+          file,
+          url,
+          name: ref.name,
+        };
+      }
+    }
+
+    return { ...testResults, files: newFiles };
+  }, []);
+
+  // ============================================================
   // ★★★ DRAFT: AUTO-LOAD ON MOUNT ★★★
   // ============================================================
   useEffect(() => {
     if (!sn || draftChecked) return;
     const loadDraft = async () => {
-      const draft = loadDraftLocal<DraftData>(currentDraftKey);
+      const draft = loadDraftLocal<DraftData & { testFileRefs?: TestFileRef[] }>(currentDraftKey);
       if (draft) {
         setEquipment(draft.equipment || INITIAL_EQUIPMENT);
         setDCTest1Results(draft.dcTest1Results);
-        setDCChargerTest(draft.dcChargerTest);
+        
+        // ★★★ FIXED: โหลด test files จาก IndexedDB ★★★
+        let chargerTest = draft.dcChargerTest;
+        if (draft.testFileRefs && draft.testFileRefs.length > 0) {
+          chargerTest = await loadTestFilesFromIndexedDB(draft.testFileRefs, chargerTest);
+        }
+        setDCChargerTest(chargerTest);
+        
         setPhaseSequence(draft.phaseSequence || "");
         setTestRemark(draft.testRemark || "");
         setImgRemark(draft.imgRemark || "");
@@ -340,7 +417,7 @@ export default function DCForm() {
       setTimeout(() => { skipAutoSaveRef.current = false; }, 1000);
     };
     loadDraft();
-  }, [sn, draftChecked, currentDraftKey, loadPhotosFromIndexedDB]);
+  }, [sn, draftChecked, currentDraftKey, loadPhotosFromIndexedDB, loadTestFilesFromIndexedDB]);
 
   // ============================================================
   // ★★★ DRAFT: AUTO-SAVE ★★★
@@ -359,18 +436,21 @@ export default function DCForm() {
     if (hasData) {
       (async () => {
         const photoRefs = await savePhotosToIndexedDB(photoItems);
+        // ★★★ FIXED: บันทึก test files ลง IndexedDB ★★★
+        const testFileRefs = await saveTestFilesToIndexedDB(dcChargerTest);
         saveDraftLocal(currentDraftKey, {
           equipment,
           dcTest1Results,
-          dcChargerTest,
+          dcChargerTest: dcChargerTest ? { ...dcChargerTest, files: undefined } : null, // ไม่เก็บ files ใน localStorage
           phaseSequence,
           testRemark,
           imgRemark,
           photoRefs,
+          testFileRefs, // เก็บ refs ไว้ใน localStorage แทน
         });
       })();
     }
-  }, [sn, currentDraftKey, equipment, dcTest1Results, dcChargerTest, phaseSequence, testRemark, imgRemark, photoItems, savePhotosToIndexedDB]);
+  }, [sn, currentDraftKey, equipment, dcTest1Results, dcChargerTest, phaseSequence, testRemark, imgRemark, photoItems, savePhotosToIndexedDB, saveTestFilesToIndexedDB]);
 
   useEffect(() => {
     if (draftChecked) {
@@ -392,13 +472,22 @@ export default function DCForm() {
     if (!sn) return;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      const files = (it?.images || []).map(im => im.file).filter(Boolean) as File[];
-      if (!files.length) continue;
+      // ★★★ FIXED: กรองเฉพาะ file ที่เป็น Blob จริงๆ ★★★
+      const validImages = (it?.images || []).filter(im => im.file instanceof Blob);
+      
+      if (!validImages.length) continue;
+      
       const fd = new FormData();
       fd.append("sn", sn);
       fd.append("item_index", String(i));
       if (it.text) fd.append("remark", it.text);
-      files.forEach(f => fd.append("files", f, f.name));
+      
+      // ★★★ FIXED: ถ้าเป็น Blob ที่ไม่มี name ให้กำหนด filename เอง ★★★
+      validImages.forEach((im, idx) => {
+        const filename = im.file.name || `photo_${i}_${idx}.jpg`;
+        fd.append("files", im.file, filename);
+      });
+      
       const res = await fetch(`${API_BASE}/dctestreport/${encodeURIComponent(reportId)}/photos`, {
         method: "POST", body: fd, credentials: "include",
       });
@@ -426,7 +515,8 @@ export default function DCForm() {
         
         for (const handgun of ["h1", "h2"] as const) {
           const fileData = handgunData[handgun];
-          if (!fileData?.file) continue;
+          // ★★★ FIXED: ตรวจสอบว่า file เป็น Blob จริง ★★★
+          if (!fileData?.file || !(fileData.file instanceof Blob)) continue;
           
           const fd = new FormData();
           fd.append("sn", sn);
@@ -434,7 +524,9 @@ export default function DCForm() {
           fd.append("item_index", String(itemIndex));
           fd.append("round_index", String(roundIndex));
           fd.append("handgun", handgun);
-          fd.append("file", fileData.file, fileData.file.name);
+          // ★★★ FIXED: ใช้ fileData.name ที่เก็บไว้ใน interface ★★★
+          const filename = fileData.name || fileData.file.name || `testfile_${itemIndex}_${roundIndex}_${handgun}.bin`;
+          fd.append("file", fileData.file, filename);
           
           const res = await fetch(`${API_BASE}/dctestreport/${encodeURIComponent(reportId)}/test-files`, {
             method: "POST", 
@@ -456,14 +548,17 @@ export default function DCForm() {
 
   const onSave = async () => {
     const photoRefs = await savePhotosToIndexedDB(photoItems);
+    // ★★★ FIXED: บันทึก test files ลง IndexedDB ★★★
+    const testFileRefs = await saveTestFilesToIndexedDB(dcChargerTest);
     saveDraftLocal(currentDraftKey, {
       equipment,
       dcTest1Results,
-      dcChargerTest,
+      dcChargerTest: dcChargerTest ? { ...dcChargerTest, files: undefined } : null,
       phaseSequence,
       testRemark,
       imgRemark,
       photoRefs,
+      testFileRefs,
     });
   };
 
@@ -665,14 +760,19 @@ export default function DCForm() {
     if (!sn) return;
     for (let i = 0; i < job.corrective_actions.length; i++) {
       const item = job.corrective_actions[i];
-      const files = item.images.map(im => im.file).filter(Boolean) as File[];
-      if (!files.length) continue;
+      // ★★★ FIXED: กรองเฉพาะ file ที่เป็น Blob จริงๆ ★★★
+      const validImages = item.images.filter(im => im.file instanceof Blob);
+      if (!validImages.length) continue;
       const group = `g${i + 1}`;
       const fd = new FormData();
       fd.append("sn", sn);
       fd.append("group", group);
       if (item.text) fd.append("remark", item.text);
-      files.forEach(f => fd.append("files", f, f.name));
+      // ★★★ FIXED: ถ้าเป็น Blob ที่ไม่มี name ให้กำหนด filename เอง ★★★
+      validImages.forEach((im, idx) => {
+        const filename = im.file.name || `photo_${i}_${idx}.jpg`;
+        fd.append("files", im.file, filename);
+      });
       const res = await fetch(`${API_BASE}/dctestreport/${encodeURIComponent(reportId)}/photos`, {
         method: "POST", body: fd, credentials: "include",
       });
