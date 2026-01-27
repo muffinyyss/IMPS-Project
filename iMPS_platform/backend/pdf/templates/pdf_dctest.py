@@ -730,12 +730,12 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     rcd_data = safety.get("rcd", {})
     rcd_remark_data = safety.get("remarks", {})
 
-    # ✅ เพิ่มส่วนนี้: ดึงข้อมูล r1, r2 สำหรับ RCD
+    # ดึงข้อมูล r1, r2 สำหรับ RCD
     rcd_r1 = rcd_data.get("r1", {})
     rcd_r2 = rcd_data.get("r2", {})
     rcd_r3 = rcd_data.get("r3", {})  # ถ้ามี r3
 
-    # ✅ เพิ่มส่วนนี้: ดึงข้อมูล Isolation Transformer
+    # ดึงข้อมูล Isolation Transformer
     isolation_data = safety.get("isolationTransformer", {})
 
     for label, key, default_unit in rcd_rows:
