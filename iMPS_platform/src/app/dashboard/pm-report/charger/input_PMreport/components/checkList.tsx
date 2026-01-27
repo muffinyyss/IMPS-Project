@@ -16,7 +16,7 @@ import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../li
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
-import { putPhoto, getPhoto, delPhoto, type PhotoRef } from "../lib/draftPhotos";
+import { putPhoto, getPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 
 type TabId = "pre" | "post";
@@ -1546,6 +1546,142 @@ export default function ChargerPMForm() {
             })
             .catch((err) => console.error("load charger info failed:", err));
     }, [isPostMode]);
+
+    // === LOAD DRAFT (Pre mode) ===
+    useEffect(() => {
+        if (!sn || isPostMode) return;
+        const draft = loadDraftLocal(key);
+        if (!draft) return;
+        
+        // โหลดข้อมูล rows
+        if (draft.rows) {
+            setRows(prev => ({ ...prev, ...draft.rows }));
+            // นับจำนวน q5 และ q7 items
+            const q5Count = Object.keys(draft.rows).filter(k => /^r5_\d+$/.test(k)).length;
+            const q7Count = Object.keys(draft.rows).filter(k => /^r7_\d+$/.test(k)).length;
+            if (q5Count > 0) setQ5Items(Array.from({ length: q5Count }, (_, idx) => ({ key: `r5_${idx + 1}`, label: getDynamicLabel.emergencyStop(idx + 1, lang) })));
+            if (q7Count > 0) setQ7Items(Array.from({ length: q7Count }, (_, idx) => ({ key: `r7_${idx + 1}`, label: getDynamicLabel.warningSign(idx + 1, lang) })));
+        }
+        
+        // โหลด CP values
+        if (draft.cp) {
+            setCp(draft.cp);
+        }
+        
+        // โหลด m16 (voltage measurements)
+        if (draft.m16) {
+            m16.setState(draft.m16);
+        }
+        
+        // โหลด summary
+        if (draft.summary) {
+            setSummary(draft.summary);
+        }
+        
+        // โหลด dustFilterChanged
+        if (draft.dustFilterChanged) {
+            setDustFilterChanged(draft.dustFilterChanged);
+        }
+        
+        // โหลด photos จาก IndexedDB ด้วย photoRefs
+        if (draft.photoRefs) {
+            (async () => {
+                const loadedPhotos: Record<string | number, PhotoItem[]> = {};
+                for (const [photoKey, refs] of Object.entries(draft.photoRefs as Record<string, (PhotoRef | { isNA: true })[]>)) {
+                    if (!refs || refs.length === 0) continue;
+                    const items: PhotoItem[] = [];
+                    for (const ref of refs) {
+                        if ('isNA' in ref && ref.isNA) {
+                            items.push({ id: `na-${photoKey}`, isNA: true });
+                        } else if ('dbKey' in ref) {
+                            const file = await getPhotoByDbKey(ref.dbKey);
+                            if (file) {
+                                items.push({
+                                    id: ref.id,
+                                    file,
+                                    preview: URL.createObjectURL(file),
+                                    remark: ref.remark,
+                                    ref: ref as PhotoRef,
+                                });
+                            }
+                        }
+                    }
+                    if (items.length > 0) {
+                        loadedPhotos[photoKey] = items;
+                    }
+                }
+                setPhotos(prev => ({ ...prev, ...loadedPhotos }));
+            })();
+        }
+    }, [sn, key, isPostMode]);
+
+    // === LOAD DRAFT (Post mode) ===
+    useEffect(() => {
+        if (!sn || !isPostMode || !editId || !postApiLoaded) return;
+        const draft = loadDraftLocal(postKey);
+        if (!draft) return;
+        
+        // โหลดข้อมูล rows (merge กับ data จาก API)
+        if (draft.rows) {
+            setRows(prev => ({ ...prev, ...draft.rows }));
+        }
+        
+        // โหลด CP values
+        if (draft.cp) {
+            setCp(draft.cp);
+        }
+        
+        // โหลด m16 (voltage measurements)
+        if (draft.m16) {
+            m16.setState(draft.m16);
+        }
+        
+        // โหลด summary
+        if (draft.summary) {
+            setSummary(draft.summary);
+        }
+        
+        // โหลด summaryCheck (Post mode only)
+        if (draft.summaryCheck) {
+            setSummaryCheck(draft.summaryCheck);
+        }
+        
+        // โหลด dustFilterChanged
+        if (draft.dustFilterChanged) {
+            setDustFilterChanged(draft.dustFilterChanged);
+        }
+        
+        // โหลด photos จาก IndexedDB ด้วย photoRefs
+        if (draft.photoRefs) {
+            (async () => {
+                const loadedPhotos: Record<string | number, PhotoItem[]> = {};
+                for (const [photoKey, refs] of Object.entries(draft.photoRefs as Record<string, (PhotoRef | { isNA: true })[]>)) {
+                    if (!refs || refs.length === 0) continue;
+                    const items: PhotoItem[] = [];
+                    for (const ref of refs) {
+                        if ('isNA' in ref && ref.isNA) {
+                            items.push({ id: `na-${photoKey}`, isNA: true });
+                        } else if ('dbKey' in ref) {
+                            const file = await getPhotoByDbKey(ref.dbKey);
+                            if (file) {
+                                items.push({
+                                    id: ref.id,
+                                    file,
+                                    preview: URL.createObjectURL(file),
+                                    remark: ref.remark,
+                                    ref: ref as PhotoRef,
+                                });
+                            }
+                        }
+                    }
+                    if (items.length > 0) {
+                        loadedPhotos[photoKey] = items;
+                    }
+                }
+                setPhotos(prev => ({ ...prev, ...loadedPhotos }));
+            })();
+        }
+    }, [sn, postKey, isPostMode, editId, postApiLoaded]);
 
     // Validations
     const validPhotoKeysPre = useMemo(() => {
