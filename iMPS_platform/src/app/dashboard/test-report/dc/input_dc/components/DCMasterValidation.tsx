@@ -64,8 +64,14 @@ const translations = {
     // Test2 errors
     missingH1: "ยังไม่ได้เลือก H1",
     missingH2: "ยังไม่ได้เลือก H2",
+    missingFileH1: "ยังไม่ได้แนบไฟล์ H1",
+    missingFileH2: "ยังไม่ได้แนบไฟล์ H2",
     // Photo errors
     missingPhoto: "ยังไม่ได้เพิ่มรูปภาพ",
+    // Tooltips
+    clickToScroll: "คลิกเพื่อไปยังช่องที่ต้องกรอก",
+    expandToSeeErrors: "คลิกเพื่อดูรายการที่ต้องกรอก",
+    collapseErrors: "คลิกเพื่อซ่อนรายการ",
   },
   en: {
     formStatus: "Form Completion Status",
@@ -93,8 +99,14 @@ const translations = {
     // Test2 errors
     missingH1: "H1 not selected",
     missingH2: "H2 not selected",
+    missingFileH1: "H1 file not attached",
+    missingFileH2: "H2 file not attached",
     // Photo errors
     missingPhoto: "Photo not added",
+    // Tooltips
+    clickToScroll: "Click to go to the field",
+    expandToSeeErrors: "Click to see missing fields",
+    collapseErrors: "Click to collapse",
   },
 };
 
@@ -297,12 +309,43 @@ function validateTest1(
   const errors: ValidationError[] = [];
   const t = translations[lang];
 
+  // ถ้า results === null ให้ validate ว่าขาดอะไรบ้าง แทนที่จะ return error ทันที
   if (!results) {
-    errors.push({
-      section: t.sectionElectrical,
-      sectionIcon: "⚡",
-      itemName: "-",
-      message: lang === "th" ? "ยังไม่ได้กรอกผลทดสอบ" : "Test results not filled",
+    // Validate ทุก item ว่าหากต้องกรอก
+    DC_TEST1_ITEMS.forEach((item, itemIndex) => {
+      const displayName = lang === "th" ? item.testNameTh : item.testName;
+      
+      // Power Standby และ Isolation Transformer ต้องกรอก round 1
+      if (item.isPowerStandby) {
+        errors.push({
+          section: t.sectionElectrical,
+          sectionIcon: "⚡",
+          itemName: displayName,
+          message: "L1 " + t.missingTestValue,
+          scrollId: `test-item-${itemIndex}-round-1`,
+        });
+        return;
+      }
+      
+      if (item.isIsolation) {
+        errors.push({
+          section: t.sectionElectrical,
+          sectionIcon: "⚡",
+          itemName: displayName,
+          message: t.missingResult,
+          scrollId: `test-item-${itemIndex}-round-1`,
+        });
+        return;
+      }
+      
+      // RCD และ PE Continuity ต้องกรอก round 1 อย่างน้อย
+      errors.push({
+        section: t.sectionElectrical,
+        sectionIcon: "⚡",
+        itemName: displayName,
+        message: t.missingTestValue,
+        scrollId: `test-item-${itemIndex}-round-1`,
+      });
     });
     return errors;
   }
@@ -499,12 +542,28 @@ function validateTest2(
   const errors: ValidationError[] = [];
   const t = translations[lang];
 
+  // ถ้า results === null ให้ validate ว่าขาดอะไรบ้าง แทนที่จะ return error ทันที
   if (!results) {
-    errors.push({
-      section: t.sectionCharger,
-      sectionIcon: "🔌",
-      itemName: "-",
-      message: lang === "th" ? "ยังไม่ได้กรอกผลทดสอบ" : "Test results not filled",
+    // Validate ทุก item ว่าต้องกรอก H1, H2, และไฟล์
+    DC_TEST2_ITEMS.forEach((item, itemIndex) => {
+      const displayName = lang === "th" ? item.testNameTh : item.testName;
+      
+      // Round 1 ต้องกรอก H1 และ H2
+      errors.push({
+        section: t.sectionCharger,
+        sectionIcon: "🔌",
+        itemName: `${displayName} (${t.round} 1)`,
+        message: t.missingH1,
+        scrollId: `test2-item-${itemIndex}-round-1`,
+      });
+      
+      errors.push({
+        section: t.sectionCharger,
+        sectionIcon: "🔌",
+        itemName: `${displayName} (${t.round} 1)`,
+        message: t.missingH2,
+        scrollId: `test2-item-${itemIndex}-round-1`,
+      });
     });
     return errors;
   }
@@ -512,6 +571,11 @@ function validateTest2(
   // Get failed items for round 3 validation
   const failedItems = getTest2FailedItems(results);
   const hasRound3 = results.rounds.length >= 3;
+
+  // Helper to check if file exists
+  const hasFile = (itemIndex: number, roundIndex: number, field: "h1" | "h2"): boolean => {
+    return !!(results.files?.[itemIndex]?.[roundIndex]?.[field]);
+  };
 
   DC_TEST2_ITEMS.forEach((item, itemIndex) => {
     const displayName = lang === "th" ? item.testNameTh : item.testName;
@@ -543,6 +607,28 @@ function validateTest2(
           scrollId: `test2-item-${itemIndex}-round-${roundIndex + 1}`,
         });
       }
+
+      // Validate files for H1 (skip if NA)
+      if (!isNaResult(h1) && !hasFile(itemIndex, roundIndex, "h1")) {
+        errors.push({
+          section: t.sectionCharger,
+          sectionIcon: "🔌",
+          itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
+          message: t.missingFileH1,
+          scrollId: `test2-item-${itemIndex}-round-${roundIndex + 1}`,
+        });
+      }
+
+      // Validate files for H2 (skip if NA)
+      if (!isNaResult(h2) && !hasFile(itemIndex, roundIndex, "h2")) {
+        errors.push({
+          section: t.sectionCharger,
+          sectionIcon: "🔌",
+          itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
+          message: t.missingFileH2,
+          scrollId: `test2-item-${itemIndex}-round-${roundIndex + 1}`,
+        });
+      }
     }
 
     // Validate round 3 only if this item has failed H1/H2
@@ -564,6 +650,17 @@ function validateTest2(
                 scrollId: `test2-item-${itemIndex}-round-3`,
               });
             }
+
+            // Validate file for H1 in round 3 (skip if NA)
+            if (!isNaResult(h1) && !hasFile(itemIndex, 2, "h1")) {
+              errors.push({
+                section: t.sectionCharger,
+                sectionIcon: "🔌",
+                itemName: `${displayName} (${t.round} 3)`,
+                message: t.missingFileH1,
+                scrollId: `test2-item-${itemIndex}-round-3`,
+              });
+            }
           }
 
           // Only validate H2 if H2 failed in previous rounds
@@ -575,6 +672,17 @@ function validateTest2(
                 sectionIcon: "🔌",
                 itemName: `${displayName} (${t.round} 3)`,
                 message: t.missingH2,
+                scrollId: `test2-item-${itemIndex}-round-3`,
+              });
+            }
+
+            // Validate file for H2 in round 3 (skip if NA)
+            if (!isNaResult(h2) && !hasFile(itemIndex, 2, "h2")) {
+              errors.push({
+                section: t.sectionCharger,
+                sectionIcon: "🔌",
+                itemName: `${displayName} (${t.round} 3)`,
+                message: t.missingFileH2,
                 scrollId: `test2-item-${itemIndex}-round-3`,
               });
             }
@@ -763,6 +871,7 @@ const DCMasterValidation: React.FC<DCMasterValidationProps> = ({
                   {sectionErrors.map((error, idx) => (
                     <li
                       key={idx}
+                      title={t.clickToScroll}
                       className="tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-amber-700 tw-cursor-pointer hover:tw-text-amber-900 hover:tw-bg-amber-50 tw-rounded tw-px-1 tw-py-0.5 tw-transition-colors"
                       onClick={() => scrollToItem(error.scrollId)}
                     >
