@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Input, Button, Typography, Textarea } from "@material-tailwind/react";
+import { Input, Button, Typography, Textarea, Tooltip } from "@material-tailwind/react";
 
 /* ===================== Types ===================== */
 
@@ -13,6 +13,7 @@ export interface ACTestItem {
   testName: string;
   testNameTh?: string;
   unit?: string;
+  tooltip?: { th: string; en: string };
 }
 
 // Dynamic test results - support variable number of rounds
@@ -163,6 +164,97 @@ export type ElectricalSafetyPayload = {
   };
 };
 
+/* ===================== Helper: Filter Numeric Input ===================== */
+
+// อนุญาตเฉพาะ: ตัวเลข (0-9), จุดทศนิยม (.), เครื่องหมายลบ (-), มากกว่า (>), น้อยกว่า (<)
+const filterNumericInput = (value: string): { filtered: string; hasInvalid: boolean } => {
+  const filtered = value.replace(/[^0-9.\-><]/g, "");
+  const hasInvalid = filtered !== value;
+  return { filtered, hasInvalid };
+};
+
+/* ===================== UI: Numeric Input with Toast ===================== */
+
+const NumericInput: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+  lang?: Lang;
+}> = ({ value, onChange, placeholder, disabled, className, lang = "th" }) => {
+  const [showToast, setShowToast] = useState(false);
+
+  const toastMessage = lang === "th" 
+    ? "กรุณากรอกเฉพาะตัวเลข, จุด (.), ลบ (-), มากกว่า (>) หรือน้อยกว่า (<)" 
+    : "Please enter only numbers, dot (.), minus (-), greater than (>) or less than (<)";
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { filtered, hasInvalid } = filterNumericInput(e.target.value);
+    
+    if (hasInvalid) {
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000); // แสดง 5 วินาที
+    }
+    
+    onChange(filtered);
+  };
+
+  return (
+    <div className="tw-relative">
+      <input
+        type="text"
+        value={value}
+        onChange={handleChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={className}
+      />
+      
+      {/* Toast Notification - สีแดง */}
+      {showToast && (
+        <div className="tw-fixed tw-top-4 tw-left-1/2 tw-transform tw--translate-x-1/2 tw-z-[9999]">
+          <div className="tw-bg-red-600 tw-text-white tw-px-5 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-flex tw-items-center tw-gap-3 tw-text-sm tw-font-medium tw-border tw-border-red-700">
+            <svg className="tw-w-6 tw-h-6 tw-flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>{toastMessage}</span>
+            <button 
+              onClick={() => setShowToast(false)}
+              className="tw-ml-2 tw-text-white/80 hover:tw-text-white tw-transition-colors"
+            >
+              <svg className="tw-w-5 tw-h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ===================== Tooltip Translations ===================== */
+
+const tooltipTranslations = {
+  th: {
+    pass: "ผ่าน - คลิกเพื่อเลือก",
+    fail: "ไม่ผ่าน - คลิกเพื่อเลือก",
+    na: "ไม่มี/ไม่ทดสอบ - คลิกเพื่อเลือก",
+    passSelected: "ผ่าน (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+    failSelected: "ไม่ผ่าน (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+    naSelected: "ไม่มี/ไม่ทดสอบ (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+  },
+  en: {
+    pass: "Pass - Click to select",
+    fail: "Fail - Click to select",
+    na: "N/A - Click to select",
+    passSelected: "Pass (Selected) - Click to deselect",
+    failSelected: "Fail (Selected) - Click to deselect",
+    naSelected: "N/A (Selected) - Click to deselect",
+  },
+};
+
 /* ===================== UI: Pass/Fail/NA Buttons - REDESIGNED ===================== */
 
 export const PassFailButtons: React.FC<{
@@ -178,6 +270,8 @@ export const PassFailButtons: React.FC<{
   const isFail = value === "FAIL" || value === "✗";
   const isNA = value === "NA";
 
+  const tt = tooltipTranslations[lang];
+
   const baseClass = responsive
     ? "tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-rounded-lg tw-transition-all tw-duration-200"
     : size === "xs"
@@ -190,6 +284,7 @@ export const PassFailButtons: React.FC<{
     <div className="tw-flex tw-gap-1.5">
       <button
         type="button"
+        title={isPass ? tt.passSelected : tt.pass}
         className={`${baseClass} ${
           isPass
             ? "tw-bg-green-500 tw-text-white tw-shadow-md tw-shadow-green-200"
@@ -202,6 +297,7 @@ export const PassFailButtons: React.FC<{
       </button>
       <button
         type="button"
+        title={isFail ? tt.failSelected : tt.fail}
         className={`${baseClass} ${
           isFail
             ? "tw-bg-red-500 tw-text-white tw-shadow-md tw-shadow-red-200"
@@ -215,6 +311,7 @@ export const PassFailButtons: React.FC<{
       {showNA && (
         <button
           type="button"
+          title={isNA ? tt.naSelected : tt.na}
           className={`${baseClass} ${
             isNA
               ? "tw-bg-gray-500 tw-text-white tw-shadow-md tw-shadow-gray-200"
@@ -233,17 +330,17 @@ export const PassFailButtons: React.FC<{
 /* ===================== Data (รายการทดสอบ) ===================== */
 
 export const AC_TEST_DATA: ACTestItem[] = [
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Left Cover", testNameTh: "ฝาครอบซ้าย", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Right Cover", testNameTh: "ฝาครอบขวา", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Front Cover", testNameTh: "ฝาครอบหน้า", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Back Cover", testNameTh: "ฝาครอบหลัง", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Charger Stand", testNameTh: "ขาตั้งเครื่องชาร์จ", unit: "" },
-  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Pin PE", testNameTh: "Pin PE", unit: "" },
+  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Left Cover", testNameTh: "ฝาครอบซ้าย", unit: "", tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านซ้าย", en: "Test PE continuity at left cover area" } },
+  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Right Cover", testNameTh: "ฝาครอบขวา", unit: "", tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านขวา", en: "Test PE continuity at right cover area" } },
+  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Front Cover", testNameTh: "ฝาครอบหน้า", unit: "", tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านหน้า", en: "Test PE continuity at front cover area" } },
+  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Back Cover", testNameTh: "ฝาครอบหลัง", unit: "", tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านหลัง", en: "Test PE continuity at back cover area" } },
+  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Charger Stand", testNameTh: "ขาตั้งเครื่องชาร์จ", unit: "", tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณขาตั้งเครื่องชาร์จ", en: "Test PE continuity at charger stand" } },
+  { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Pin PE", testNameTh: "Pin PE", unit: "", tooltip: { th: "ทดสอบความต่อเนื่องของขั้ว PE", en: "Test PE pin continuity" } },
   // { category: "Electrical Safety", subCategory: "PE.Continuity protective Conductors of Charger", testName: "Charger Case", testNameTh: "ตัวเครื่องชาร์จ", unit: "" },
-  { category: "Electrical Safety", subCategory: "", testName: "RCD type A", testNameTh: "RCD ชนิด A", unit: "mA" },
-  { category: "Electrical Safety", subCategory: "", testName: "RCD type F", testNameTh: "RCD ชนิด F", unit: "mA" },
-  { category: "Electrical Safety", subCategory: "", testName: "RCD type B", testNameTh: "RCD ชนิด B", unit: "mA" },
-  { category: "Electrical Safety", subCategory: "", testName: "Power standby", testNameTh: "พลังงานขณะสแตนด์บาย", unit: "" },
+  { category: "Electrical Safety", subCategory: "", testName: "RCD type A", testNameTh: "RCD ชนิด A", unit: "mA", tooltip: { th: "ทดสอบการทำงานของ RCD ชนิด A สำหรับกระแสไฟฟ้ากระแสสลับ", en: "Test RCD type A operation for AC fault current" } },
+  { category: "Electrical Safety", subCategory: "", testName: "RCD type F", testNameTh: "RCD ชนิด F", unit: "mA", tooltip: { th: "ทดสอบการทำงานของ RCD ชนิด F สำหรับกระแสไฟฟ้าผสม", en: "Test RCD type F operation for mixed frequency fault current" } },
+  { category: "Electrical Safety", subCategory: "", testName: "RCD type B", testNameTh: "RCD ชนิด B", unit: "mA", tooltip: { th: "ทดสอบการทำงานของ RCD ชนิด B สำหรับกระแสไฟฟ้ากระแสตรง", en: "Test RCD type B operation for DC fault current" } },
+  { category: "Electrical Safety", subCategory: "", testName: "Power standby", testNameTh: "พลังงานขณะสแตนด์บาย", unit: "", tooltip: { th: "วัดค่าพลังงานที่เครื่องใช้ขณะอยู่ในโหมดสแตนด์บาย (L1, L2, L3)", en: "Measure power consumption during standby mode (L1, L2, L3)" } },
 ];
 
 /* ===================== Helpers (สร้าง payload) ===================== */
@@ -688,6 +785,15 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             )}
           </Typography>
           
+          {/* Tooltip Icon */}
+          {item.tooltip && (
+            <Tooltip content={item.tooltip[lang]} placement="bottom">
+              <svg className="tw-w-4 tw-h-4 lg:tw-w-5 lg:tw-h-5 tw-text-gray-400 tw-cursor-help tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+            </Tooltip>
+          )}
+          
           {/* Show previous round results for round 3 */}
           {showPreviousResults && (
             <div className="tw-flex tw-gap-2 tw-ml-auto">
@@ -711,13 +817,13 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                 <div className="tw-flex tw-items-center tw-gap-2 lg:tw-gap-3">
                   <div className="tw-flex tw-items-center tw-gap-1 lg:tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 tw-min-w-[180px] lg:tw-min-w-[220px]">
                     <span className="tw-text-xs tw-text-gray-500 tw-font-medium tw-whitespace-nowrap">{t.rcdValue}</span>
-                    <input
-                      type="text"
+                    <NumericInput
                       value={results.rcdValues[index] || ""}
-                      onChange={(e) => onRcdChange(index, e.target.value)}
+                      onChange={(v) => onRcdChange(index, v)}
                       className="tw-w-14 lg:tw-w-20 tw-px-2 lg:tw-px-3 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
                       disabled={isRcdInputDisabled}
                       placeholder={t.valuePlaceholder}
+                      lang={lang}
                     />
                     <div className="tw-flex tw-items-center tw-justify-center tw-px-2 lg:tw-px-3 tw-py-1 lg:tw-py-1.5 tw-bg-gray-800 tw-text-white tw-font-bold tw-text-xs tw-rounded-lg">
                       mA
@@ -730,13 +836,13 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               <div className="tw-flex tw-flex-wrap lg:tw-flex-nowrap tw-items-center tw-gap-2 lg:tw-gap-3">
                 <div className="tw-flex tw-items-center tw-gap-1 lg:tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 tw-min-w-[180px] lg:tw-min-w-[220px]">
                   <span className="tw-text-xs tw-text-gray-500 tw-font-medium tw-whitespace-nowrap">{t.measuredValue}</span>
-                  <input
-                    type="text"
+                  <NumericInput
                     value={currentResult?.h1 || ""}
-                    onChange={(e) => onResultChange(roundIndex, index, "h1", e.target.value)}
+                    onChange={(v) => onResultChange(roundIndex, index, "h1", v)}
                     className="tw-w-14 lg:tw-w-20 tw-px-2 lg:tw-px-3 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
                     placeholder={t.valuePlaceholder}
                     disabled={isRcdInputDisabled}
+                    lang={lang}
                   />
                   <div className="tw-flex tw-items-center tw-justify-center tw-px-2 lg:tw-px-3 tw-py-1 lg:tw-py-1.5 tw-bg-gray-800 tw-text-white tw-font-bold tw-text-xs tw-rounded-lg">
                     mA
@@ -801,12 +907,12 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                     <div className="tw-flex tw-items-center tw-justify-center tw-w-8 lg:tw-w-10 tw-h-6 lg:tw-h-8 tw-bg-gray-800 tw-text-white tw-font-bold tw-text-xs tw-rounded-lg">
                       {phase}
                     </div>
-                    <input
-                      type="text"
+                    <NumericInput
                       value={results.powerStandby?.[phase] || ""}
-                      onChange={(e) => onPowerStandbyChange(phase, e.target.value)}
+                      onChange={(v) => onPowerStandbyChange(phase, v)}
                       className="tw-w-12 lg:tw-w-16 tw-px-1 lg:tw-px-2 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all"
                       placeholder={t.valuePlaceholder}
+                      lang={lang}
                     />
                     <span className="tw-text-xs tw-text-gray-500">A</span>
                   </div>
@@ -819,13 +925,13 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               <>
                 <div className={`tw-flex tw-items-center tw-gap-1 lg:tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 ${isNaSelected ? 'tw-opacity-50' : ''}`}>
                   <span className="tw-text-xs tw-text-gray-500 tw-font-medium tw-mr-1">{t.testValue}</span>
-                  <input
-                    type="text"
+                  <NumericInput
                     value={currentResult?.h1 || ""}
-                    onChange={(e) => onResultChange(roundIndex, index, "h1", e.target.value)}
+                    onChange={(v) => onResultChange(roundIndex, index, "h1", v)}
                     className="tw-w-14 lg:tw-w-20 tw-px-2 lg:tw-px-3 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
                     placeholder={t.valuePlaceholder}
                     disabled={isNaSelected}
+                    lang={lang}
                   />
 
                   <div className="tw-flex tw-items-center tw-justify-center tw-px-2 lg:tw-px-3 tw-py-1 lg:tw-py-1.5 tw-bg-gray-800 tw-text-white tw-font-bold tw-text-xs tw-rounded-lg">
