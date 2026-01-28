@@ -85,6 +85,13 @@ const T = {
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
     missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected (Pass/Fail/N/A)" },
 
+    // PMValidationCard translations
+    itemLabel: { th: "ข้อ", en: "Item" },
+    formStatus: { th: "สถานะการกรอกข้อมูล", en: "Form Completion Status" },
+    allCompleteReady: { th: "กรอกข้อมูลครบถ้วนแล้ว พร้อมบันทึก ✓", en: "All fields completed. Ready to save ✓" },
+    remaining: { th: "ยังขาดอีก {n} รายการ", en: "{n} items remaining" },
+    items: { th: "รายการ", en: "items" },
+
     // Alerts
     alertNoStation: { th: "ยังไม่ทราบ station_id", en: "Station ID not found" },
     alertFillPhoto: { th: "กรุณาแนบรูปในทุกข้อก่อนบันทึก", en: "Please attach photos for all items" },
@@ -97,6 +104,39 @@ const T = {
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
+
+// Helper functions to generate scroll IDs
+const ID_PREFIX = "station-pm";
+
+const getPhotoIdFromKey = (photoKey: string): string => {
+    // q1 -> station-pm-photo-1, r7_1 -> station-pm-photo-7-1
+    if (photoKey.startsWith("q")) {
+        return `${ID_PREFIX}-photo-${photoKey.substring(1)}`;
+    }
+    const match = photoKey.match(/^r(\d+)_(\d+)$/);
+    if (match) {
+        return `${ID_PREFIX}-photo-${match[1]}-${match[2]}`;
+    }
+    return `${ID_PREFIX}-photo-${photoKey}`;
+};
+
+const getRemarkIdFromKey = (rowKey: string): string => {
+    // r1 -> station-pm-remark-1, r7_1 -> station-pm-remark-7-1
+    const match = rowKey.match(/^r(\d+)(?:_(\d+))?$/);
+    if (match) {
+        return match[2] ? `${ID_PREFIX}-remark-${match[1]}-${match[2]}` : `${ID_PREFIX}-remark-${match[1]}`;
+    }
+    return `${ID_PREFIX}-remark-${rowKey}`;
+};
+
+const getPfIdFromKey = (rowKey: string): string => {
+    // r1 -> station-pm-pf-1, r7_1 -> station-pm-pf-7-1
+    const match = rowKey.match(/^r(\d+)(?:_(\d+))?$/);
+    if (match) {
+        return match[2] ? `${ID_PREFIX}-pf-${match[1]}-${match[2]}` : `${ID_PREFIX}-pf-${match[1]}`;
+    }
+    return `${ID_PREFIX}-pf-${rowKey}`;
+};
 
 type TabId = "pre" | "post";
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
@@ -193,14 +233,11 @@ function useDebouncedEffect(effect: () => void, deps: any[], delay = 800) {
     useEffect(() => { const h = setTimeout(effect, delay); return () => clearTimeout(h); }, deps);
 }
 
-// ==================== FIXED: SectionCard with larger padding to match Charger page ====================
+// ==================== SectionCard ====================
 function SectionCard({ title, subtitle, children, tooltip }: { title?: string; subtitle?: string; children: React.ReactNode; tooltip?: string }) {
-    // Extract question number from title (e.g., "1. ตรวจสอบ..." -> "1")
     const qNumber = title?.match(/^(\d+)\./)?.[1];
-
     return (
         <div className="tw-bg-white tw-rounded-xl tw-border tw-border-gray-200 tw-shadow-sm tw-overflow-hidden">
-            {/* Header with number badge - Dark theme - FIXED: larger padding */}
             {title && (
                 <div className="tw-bg-gray-800 tw-px-4 sm:tw-px-5 tw-py-3 sm:tw-py-4">
                     <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3">
@@ -225,7 +262,6 @@ function SectionCard({ title, subtitle, children, tooltip }: { title?: string; s
                     )}
                 </div>
             )}
-            {/* Content - FIXED: larger padding to match Charger page */}
             <div className="tw-p-4 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">{children}</div>
         </div>
     );
@@ -255,17 +291,289 @@ function Section({ title, ok, children, lang }: { title: React.ReactNode; ok: bo
     );
 }
 
+// ==================== PMValidationCard Component ====================
+interface ValidationError {
+    section: string;
+    sectionIcon: string;
+    itemName: string;
+    message: string;
+    scrollId?: string;
+}
+
+function groupErrorsBySection(errors: ValidationError[]): Map<string, ValidationError[]> {
+    const map = new Map<string, ValidationError[]>();
+    errors.forEach((err) => {
+        const key = `${err.sectionIcon} ${err.section}`;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(err);
+    });
+    return map;
+}
+
+interface PMValidationCardProps {
+    lang: Lang;
+    displayTab: "pre" | "post";
+    isPostMode: boolean;
+    allPhotosAttached: boolean;
+    missingPhotoItems: string[];
+    allRemarksFilledPre: boolean;
+    missingRemarksPre: string[];
+    allPFAnswered: boolean;
+    missingPFItems: string[];
+    allRemarksFilledPost: boolean;
+    missingRemarksPost: string[];
+    isSummaryFilled: boolean;
+    isSummaryCheckFilled: boolean;
+}
+
+function PMValidationCard({
+    lang, displayTab, isPostMode,
+    allPhotosAttached, missingPhotoItems,
+    allRemarksFilledPre, missingRemarksPre,
+    allPFAnswered, missingPFItems,
+    allRemarksFilledPost, missingRemarksPost,
+    isSummaryFilled, isSummaryCheckFilled,
+}: PMValidationCardProps) {
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    const getPhotoScrollId = (item: string): string => {
+        // "1" -> station-pm-photo-1, "7.1" -> station-pm-photo-7-1
+        const parts = item.split(".");
+        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-photo-${parts[0]}`;
+    };
+
+    const getRemarkScrollId = (item: string): string => {
+        // "1" -> station-pm-remark-1, "7.1" -> station-pm-remark-7-1
+        const parts = item.split(".");
+        if (parts.length === 2) return `${ID_PREFIX}-remark-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-remark-${parts[0]}`;
+    };
+
+    const getPfScrollId = (item: string): string => {
+        // "1" -> station-pm-pf-1, "7.1" -> station-pm-pf-7-1
+        const parts = item.split(".");
+        if (parts.length === 2) return `${ID_PREFIX}-pf-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-pf-${parts[0]}`;
+    };
+
+    const allErrors: ValidationError[] = useMemo(() => {
+        const errors: ValidationError[] = [];
+
+        // 1) Photo errors
+        if (!allPhotosAttached) {
+            missingPhotoItems.forEach((item) => {
+                errors.push({
+                    section: lang === "th" ? "รูปภาพ" : "Photos",
+                    sectionIcon: "📷",
+                    itemName: `${t("itemLabel", lang)} ${item}`,
+                    message: lang === "th" ? "ยังไม่ได้แนบรูป" : "Photo not attached",
+                    scrollId: getPhotoScrollId(item),
+                });
+            });
+        }
+
+        // 2) Remark errors (Pre mode)
+        if (displayTab === "pre" && !allRemarksFilledPre) {
+            missingRemarksPre.forEach((item) => {
+                errors.push({
+                    section: lang === "th" ? "หมายเหตุ" : "Remarks",
+                    sectionIcon: "💬",
+                    itemName: `${t("itemLabel", lang)} ${item}`,
+                    message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
+                    scrollId: getRemarkScrollId(item),
+                });
+            });
+        }
+
+        // 3) Post mode errors
+        if (isPostMode) {
+            // PF status errors
+            if (!allPFAnswered) {
+                missingPFItems.forEach((item) => {
+                    errors.push({
+                        section: lang === "th" ? "สถานะ Pass/Fail" : "Pass/Fail Status",
+                        sectionIcon: "✅",
+                        itemName: `${t("itemLabel", lang)} ${item}`,
+                        message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
+                        scrollId: getPfScrollId(item),
+                    });
+                });
+            }
+
+            // Remark errors (Post mode)
+            if (!allRemarksFilledPost) {
+                missingRemarksPost.forEach((item) => {
+                    errors.push({
+                        section: lang === "th" ? "หมายเหตุ (Post)" : "Remarks (Post)",
+                        sectionIcon: "💬",
+                        itemName: `${t("itemLabel", lang)} ${item}`,
+                        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
+                        scrollId: getRemarkScrollId(item),
+                    });
+                });
+            }
+
+            // Summary errors
+            if (!isSummaryFilled) {
+                errors.push({
+                    section: lang === "th" ? "สรุปผล" : "Summary",
+                    sectionIcon: "📋",
+                    itemName: "Comment",
+                    message: lang === "th" ? "ยังไม่ได้กรอก Comment" : "Comment not filled",
+                    scrollId: `${ID_PREFIX}-summary-section`,
+                });
+            }
+            if (!isSummaryCheckFilled) {
+                errors.push({
+                    section: lang === "th" ? "สรุปผล" : "Summary",
+                    sectionIcon: "📋",
+                    itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
+                    message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail/N/A" : "Status not selected",
+                    scrollId: `${ID_PREFIX}-summary-section`,
+                });
+            }
+        }
+
+        return errors;
+    }, [
+        lang, displayTab, isPostMode,
+        allPhotosAttached, missingPhotoItems,
+        allRemarksFilledPre, missingRemarksPre,
+        allPFAnswered, missingPFItems,
+        allRemarksFilledPost, missingRemarksPost,
+        isSummaryFilled, isSummaryCheckFilled
+    ]);
+
+    const groupedErrors = useMemo(() => groupErrorsBySection(allErrors), [allErrors]);
+    const isComplete = allErrors.length === 0;
+
+    const scrollToItem = (scrollId?: string) => {
+        if (!scrollId) return;
+        const element = document.getElementById(scrollId);
+        if (element) {
+            const rect = element.getBoundingClientRect();
+            const elementTop = rect.top + window.scrollY;
+            const elementHeight = rect.height;
+            const viewportHeight = window.innerHeight;
+            let targetScrollY = elementTop - (viewportHeight / 2) + (elementHeight / 2);
+            targetScrollY = Math.max(0, targetScrollY);
+            const maxScrollY = document.documentElement.scrollHeight - viewportHeight;
+            targetScrollY = Math.min(targetScrollY, maxScrollY);
+            window.scrollTo({ top: targetScrollY, behavior: "smooth" });
+            element.classList.add("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+            setTimeout(() => {
+                element.classList.remove("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+            }, 2000);
+        }
+    };
+
+    return (
+        <div className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${isComplete ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+            <div className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"}`} onClick={() => setIsExpanded(!isExpanded)}>
+                <div className="tw-flex tw-items-center tw-gap-3">
+                    {isComplete ? (
+                        <div className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-green-500 tw-flex tw-items-center tw-justify-center">
+                            <svg className="tw-w-6 tw-h-6 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                    ) : (
+                        <div className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-amber-500 tw-flex tw-items-center tw-justify-center">
+                            <svg className="tw-w-6 tw-h-6 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                    )}
+                    <div>
+                        <Typography className={`tw-font-bold tw-text-base ${isComplete ? "tw-text-green-800" : "tw-text-amber-800"}`}>
+                            {t("formStatus", lang)}
+                        </Typography>
+                        <Typography variant="small" className={isComplete ? "tw-text-green-600" : "tw-text-amber-600"}>
+                            {isComplete ? t("allCompleteReady", lang) : t("remaining", lang).replace("{n}", String(allErrors.length))}
+                        </Typography>
+                    </div>
+                </div>
+                <div className="tw-flex tw-items-center tw-gap-4">
+                    {!isComplete && (
+                        <div className="tw-hidden md:tw-flex tw-items-center tw-gap-2">
+                            {Array.from(groupedErrors.keys()).map((sectionKey) => (
+                                <span key={sectionKey} className="tw-text-xs tw-bg-amber-200 tw-text-amber-800 tw-px-2 tw-py-1 tw-rounded-full tw-font-medium">
+                                    {sectionKey.split(" ")[0]} {groupedErrors.get(sectionKey)?.length}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {!isComplete && (
+                        <svg className={`tw-w-6 tw-h-6 tw-text-amber-600 tw-transition-transform ${isExpanded ? "tw-rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    )}
+                </div>
+            </div>
+            {isExpanded && !isComplete && (
+                <div className="tw-px-4 tw-py-3 tw-max-h-80 tw-overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                    <div className="tw-space-y-4">
+                        {Array.from(groupedErrors.entries()).map(([sectionKey, sectionErrors]) => (
+                            <div key={sectionKey} className="tw-bg-white tw-rounded-lg tw-p-3 tw-border tw-border-amber-200">
+                                <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
+                                    <Typography className="tw-font-semibold tw-text-gray-800 tw-text-sm">{sectionKey}</Typography>
+                                    <span className="tw-text-xs tw-bg-amber-100 tw-text-amber-700 tw-px-2 tw-py-0.5 tw-rounded-full">
+                                        {sectionErrors.length} {t("items", lang)}
+                                    </span>
+                                </div>
+                                <ul className="tw-space-y-1 tw-max-h-40 tw-overflow-y-auto">
+                                    {sectionErrors.map((error, idx) => (
+                                        <li key={idx} className="tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-amber-700 tw-cursor-pointer hover:tw-text-amber-900 hover:tw-bg-amber-50 tw-rounded tw-px-1 tw-py-0.5 tw-transition-colors" onClick={(e) => { e.stopPropagation(); scrollToItem(error.scrollId); }}>
+                                            <span className="tw-text-amber-500 tw-mt-0.5">→</span>
+                                            <span>
+                                                <span className="tw-font-medium">{error.itemName}:</span>{" "}
+                                                <span className="tw-underline tw-underline-offset-2">{error.message}</span>
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Scroll to first error helper
+function scrollToFirstError(scrollId: string) {
+    const element = document.getElementById(scrollId);
+    if (element) {
+        const rect = element.getBoundingClientRect();
+        const elementTop = rect.top + window.scrollY;
+        const elementHeight = rect.height;
+        const viewportHeight = window.innerHeight;
+        let targetScrollY = elementTop - (viewportHeight / 2) + (elementHeight / 2);
+        targetScrollY = Math.max(0, targetScrollY);
+        const maxScrollY = document.documentElement.scrollHeight - viewportHeight;
+        targetScrollY = Math.min(targetScrollY, maxScrollY);
+        window.scrollTo({ top: targetScrollY, behavior: "smooth" });
+        element.classList.add("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+        setTimeout(() => {
+            element.classList.remove("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+        }, 2000);
+    }
+}
+
 function PassFailRow({
-    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, lang,
+    label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, lang, id, remarkId,
 }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void;
     remark?: string; onRemarkChange?: (v: string) => void;
     labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>;
     aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; lang: Lang;
+    id?: string; remarkId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
     const buttonGroup = (
-        <div className="tw-flex tw-gap-2 tw-ml-auto">
+        <div id={id} className="tw-flex tw-gap-2 tw-ml-auto">
             <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
             <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
             <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="sm:tw-min-w-[84px]" onClick={() => onChange("NA")}>{text.NA}</Button>
@@ -285,8 +593,10 @@ function PassFailRow({
                     {aboveRemark}
                     {buttonsRow}
                     {beforeRemark}
-                    <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
-                        containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
+                    <div id={remarkId}>
+                        <Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)}
+                            containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full" />
+                    </div>
                 </div>
             ) : (
                 <div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>
@@ -296,10 +606,10 @@ function PassFailRow({
 }
 
 function PhotoMultiInput({
-    photos, setPhotos, max = 10, draftKey, qNo, lang,
+    photos, setPhotos, max = 10, draftKey, qNo, lang, id,
 }: {
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
-    max?: number; draftKey: string; qNo: number; lang: Lang;
+    max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
 }) {
     const fileRef = useRef<HTMLInputElement>(null);
     const handlePick = () => fileRef.current?.click();
@@ -326,7 +636,7 @@ function PhotoMultiInput({
         });
     };
     return (
-        <div className="tw-space-y-3">
+        <div id={id} className="tw-space-y-3">
             <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
                 <Button size="sm" color="blue" variant="outlined" onClick={handlePick} className="tw-shrink-0">{t("attachPhoto", lang)}</Button>
             </div>
@@ -652,27 +962,19 @@ export default function StationPMReport() {
 
     const missingPhotoItemsPre = useMemo(() => {
         const missingKeys = REQUIRED_PHOTO_KEYS_PRE.filter((photoKey) => {
-            // Skip items that are N/A
             const qKey = photoKey.startsWith("q") ? `r${photoKey.substring(1)}` : photoKey.replace(/_\d+$/, "");
             if (rows[qKey]?.pf === "NA") return false;
-            // For group items, check if the parent is N/A
             const match = photoKey.match(/^r(\d+)_/);
             if (match) {
-                // Check each sub-item's N/A status
                 if (rows[photoKey]?.pf === "NA") return false;
             }
             return (photos[photoKey]?.length ?? 0) < 1;
         });
-        // Convert keys to display numbers: q1 -> "1", r7_1 -> "7.1"
         return missingKeys.map((key) => {
-            if (key.startsWith("q")) {
-                return key.substring(1); // q1 -> "1"
-            }
+            if (key.startsWith("q")) return key.substring(1);
             const match = key.match(/^r(\d+)_(\d+)$/);
-            if (match) {
-                return `${match[1]}.${match[2]}`; // r7_1 -> "7.1"
-            }
-            return key.replace("r", ""); // fallback
+            if (match) return `${match[1]}.${match[2]}`;
+            return key.replace("r", "");
         }).sort((a, b) => {
             const aParts = String(a).split(".").map(Number);
             const bParts = String(b).split(".").map(Number);
@@ -683,7 +985,6 @@ export default function StationPMReport() {
 
     const missingPhotoItemsPost = useMemo(() => {
         const missingKeys = REQUIRED_PHOTO_KEYS_POST.filter((photoKey) => {
-            // Skip items that were N/A in Pre mode
             const match = photoKey.match(/^r(\d+)_/);
             if (match) {
                 if (rowsPre[photoKey]?.pf === "NA") return false;
@@ -693,16 +994,11 @@ export default function StationPMReport() {
             }
             return (photos[photoKey]?.length ?? 0) < 1;
         });
-        // Convert keys to display numbers: q1 -> "1", r7_1 -> "7.1"
         return missingKeys.map((key) => {
-            if (key.startsWith("q")) {
-                return key.substring(1); // q1 -> "1"
-            }
+            if (key.startsWith("q")) return key.substring(1);
             const match = key.match(/^r(\d+)_(\d+)$/);
-            if (match) {
-                return `${match[1]}.${match[2]}`; // r7_1 -> "7.1"
-            }
-            return key.replace("r", ""); // fallback
+            if (match) return `${match[1]}.${match[2]}`;
+            return key.replace("r", "");
         }).sort((a, b) => {
             const aParts = String(a).split(".").map(Number);
             const bParts = String(b).split(".").map(Number);
@@ -748,7 +1044,7 @@ export default function StationPMReport() {
     // Remark validation for Pre mode
     const validRemarkKeysPre = useMemo(() => {
         const keys: string[] = [];
-        QUESTIONS.filter((q) => q.no !== 11).forEach((q) => {  // ข้อ 11 = ทำความสะอาด ไม่ต้องกรอกหมายเหตุใน Pre
+        QUESTIONS.filter((q) => q.no !== 11).forEach((q) => {
             if (q.kind === "simple") { keys.push(q.key); }
             else if (q.kind === "group") { q.items.forEach((item) => { keys.push(item.key); }); }
         });
@@ -812,6 +1108,32 @@ export default function StationPMReport() {
     const canGoAfter: boolean = isPostMode ? true : (allPhotosAttachedPre && allRemarksFilledPre);
     const canFinalSave = allPhotosAttachedPost && allPFAnswered && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
 
+    // Helper functions for scroll IDs
+    const getFirstMissingPhotoScrollId = (): string | null => {
+        if (missingPhotoItems.length === 0) return null;
+        const first = missingPhotoItems[0];
+        const parts = first.split(".");
+        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-photo-${parts[0]}`;
+    };
+
+    const getFirstMissingRemarkScrollId = (): string | null => {
+        const missing = isPostMode ? missingRemarksPost : missingRemarksPre;
+        if (missing.length === 0) return null;
+        const first = missing[0];
+        const parts = first.split(".");
+        if (parts.length === 2) return `${ID_PREFIX}-remark-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-remark-${parts[0]}`;
+    };
+
+    const getFirstMissingPFScrollId = (): string | null => {
+        if (missingPFItems.length === 0) return null;
+        const first = missingPFItems[0];
+        const parts = first.split(".");
+        if (parts.length === 2) return `${ID_PREFIX}-pf-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-pf-${parts[0]}`;
+    };
+
     // Photo refs for draft
     const photoRefs = useMemo(() => {
         const out: Record<string, (PhotoRef | { isNA: true })[]> = {};
@@ -869,71 +1191,57 @@ export default function StationPMReport() {
     // Helper function to flatten rows and ensure correct structure
     const flattenRows = (inputRows: Record<string, any>): Record<string, { pf: PF; remark: string }> => {
         const result: Record<string, { pf: PF; remark: string }> = {};
-
-        // Get all valid keys from QUESTIONS
         const validKeys: string[] = [];
         QUESTIONS.forEach((q) => {
-            if (q.kind === "simple") {
-                validKeys.push(q.key);
-            } else if (q.kind === "group") {
-                q.items.forEach((item) => {
-                    validKeys.push(item.key);
-                });
-            }
+            if (q.kind === "simple") { validKeys.push(q.key); }
+            else if (q.kind === "group") { q.items.forEach((item) => { validKeys.push(item.key); }); }
         });
-
-        // First, extract flat keys directly
         for (const key of validKeys) {
             if (inputRows[key] && typeof inputRows[key] === "object") {
-                result[key] = {
-                    pf: inputRows[key].pf ?? "",
-                    remark: inputRows[key].remark ?? "",
-                };
+                result[key] = { pf: inputRows[key].pf ?? "", remark: inputRows[key].remark ?? "" };
             }
         }
-
-        // Then, check for nested keys (e.g., r10.r10_1) and extract them
         for (const [parentKey, parentValue] of Object.entries(inputRows)) {
             if (typeof parentValue === "object" && parentValue !== null) {
                 for (const [childKey, childValue] of Object.entries(parentValue)) {
-                    // Check if childKey is a valid sub-item key (e.g., r10_1, r10_2)
                     if (validKeys.includes(childKey) && typeof childValue === "object" && childValue !== null) {
-                        // Only overwrite if we haven't already got this key
                         if (!result[childKey] || (!result[childKey].pf && !result[childKey].remark)) {
-                            result[childKey] = {
-                                pf: (childValue as any).pf ?? "",
-                                remark: (childValue as any).remark ?? "",
-                            };
+                            result[childKey] = { pf: (childValue as any).pf ?? "", remark: (childValue as any).remark ?? "" };
                         }
                     }
                 }
             }
         }
-
-        // Ensure all valid keys exist with default values
         for (const key of validKeys) {
-            if (!result[key]) {
-                result[key] = { pf: "", remark: "" };
-            }
+            if (!result[key]) { result[key] = { pf: "", remark: "" }; }
         }
-
         return result;
     };
 
     const onPreSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        if (!allPhotosAttachedPre) { alert(t("alertFillPhoto", lang)); return; }
-        if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
+        
+        // Validation checks with scroll to error
+        if (!allPhotosAttachedPre) { 
+            alert(t("alertFillPhoto", lang)); 
+            const scrollId = getFirstMissingPhotoScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return; 
+        }
+        if (!allRemarksFilledPre) { 
+            alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); 
+            const scrollId = getFirstMissingRemarkScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return; 
+        }
+        
         if (submitting) return;
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
             const pm_date = job.date?.trim() || "";
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-
-            // Flatten rows to ensure correct structure (no nested keys)
             const flatRows = flattenRows(rows);
-
             const payload = {
                 station_id: stationId, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector,
                 rows_pre: flatRows, pm_date, doc_name: docName, side: "pre" as TabId,
@@ -956,7 +1264,6 @@ export default function StationPMReport() {
                 if (list.length === 0) continue;
                 const files = list.map(p => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-
                 let groupKey: string | null = null;
                 if (photoKey.startsWith("q")) {
                     const qNo = Number(photoKey.substring(1));
@@ -988,16 +1295,44 @@ export default function StationPMReport() {
 
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
+        
+        // Validation checks with scroll to error
+        if (!allPhotosAttachedPost) {
+            alert(t("alertFillPhoto", lang));
+            const scrollId = getFirstMissingPhotoScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!allPFAnswered) {
+            alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items");
+            const scrollId = getFirstMissingPFScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!allRemarksFilledPost) {
+            alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`);
+            const scrollId = getFirstMissingRemarkScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!isSummaryFilled) {
+            alert(t("missingSummaryText", lang));
+            scrollToFirstError(`${ID_PREFIX}-summary-section`);
+            return;
+        }
+        if (!isSummaryCheckFilled) {
+            alert(t("missingSummaryStatus", lang));
+            scrollToFirstError(`${ID_PREFIX}-summary-section`);
+            return;
+        }
+        
         if (submitting) return;
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
             const finalReportId = reportId || editId;
             if (!finalReportId) throw new Error(t("noReportId", lang));
-
-            // Flatten rows to ensure correct structure (no nested keys)
             const flatRows = flattenRows(rows);
-
             const payload = {
                 station_id: stationId, rows: flatRows, summary,
                 ...(summaryCheck ? { summaryCheck } : {}), side: "post" as TabId, report_id: finalReportId,
@@ -1017,7 +1352,6 @@ export default function StationPMReport() {
                 if (list.length === 0) continue;
                 const files = list.map(p => p.file!).filter(Boolean) as File[];
                 if (files.length === 0) continue;
-
                 let groupKey: string | null = null;
                 if (photoKey.startsWith("q")) {
                     const qNo = Number(photoKey.substring(1));
@@ -1061,7 +1395,6 @@ export default function StationPMReport() {
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
                         <div className={isNA ? "tw-bg-amber-50/50" : ""}>
-                            {/* N/A Button */}
                             <div className="tw-flex tw-items-center tw-justify-end tw-gap-2 tw-mb-3">
                                 <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"}
                                     onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>
@@ -1070,12 +1403,14 @@ export default function StationPMReport() {
                             </div>
                             {q.hasPhoto && (
                                 <div className="tw-mb-4">
-                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} />
+                                    <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
                                 </div>
                             )}
-                            <Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""}
-                                onChange={(e) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })}
-                                rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
+                            <div id={getRemarkIdFromKey(q.key)}>
+                                <Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""}
+                                    onChange={(e) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })}
+                                    rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
+                            </div>
                         </div>
                     </SectionCard>
                 );
@@ -1096,12 +1431,14 @@ export default function StationPMReport() {
                                 </div>
                                 {q.hasPhoto && (
                                     <div className="tw-mb-4">
-                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} />
+                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
                                     </div>
                                 )}
-                                <Textarea label={t("remark", lang)} value={rows[item.key]?.remark || ""}
-                                    onChange={(e) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: e.target.value } })}
-                                    rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
+                                <div id={getRemarkIdFromKey(item.key)}>
+                                    <Textarea label={t("remark", lang)} value={rows[item.key]?.remark || ""}
+                                        onChange={(e) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: e.target.value } })}
+                                        rows={3} required containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full resize-none" />
+                                </div>
                             </div>
                         );
                     })}
@@ -1111,7 +1448,6 @@ export default function StationPMReport() {
 
         // POST MODE
         if (q.kind === "simple") {
-            // Check if this item was N/A in Pre mode
             if (rowsPre[q.key]?.pf === "NA") {
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
@@ -1139,9 +1475,11 @@ export default function StationPMReport() {
                         onChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
                         remark={rows[q.key]?.remark || ""}
                         onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
+                        id={getPfIdFromKey(q.key)}
+                        remarkId={getRemarkIdFromKey(q.key)}
                         aboveRemark={q.hasPhoto && (
                             <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                                <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} />
+                                <PhotoMultiInput photos={photos[`q${q.no}`] || []} setPhotos={makePhotoSetter(`q${q.no}`)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(`q${q.no}`)} />
                             </div>
                         )}
                         beforeRemark={preRemarkElement}
@@ -1154,7 +1492,6 @@ export default function StationPMReport() {
         return (
             <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)}>
                 {q.items.map((item, idx) => {
-                    // Check if this item was N/A in Pre mode
                     if (rowsPre[item.key]?.pf === "NA") {
                         return (
                             <div key={item.key} className={`tw-py-4 ${idx !== q.items.length - 1 ? "tw-border-b tw-border-gray-200" : ""}`}>
@@ -1182,9 +1519,11 @@ export default function StationPMReport() {
                                 onChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], pf: v } })}
                                 remark={rows[item.key]?.remark || ""}
                                 onRemarkChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: v } })}
+                                id={getPfIdFromKey(item.key)}
+                                remarkId={getRemarkIdFromKey(item.key)}
                                 aboveRemark={q.hasPhoto && (
                                     <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
-                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} />
+                                        <PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} />
                                     </div>
                                 )}
                                 beforeRemark={preRemarkElement}
@@ -1242,9 +1581,7 @@ export default function StationPMReport() {
             </div>
 
             <form action="#" noValidate onSubmit={(e) => { e.preventDefault(); return false; }} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
-                {/* FIXED: Changed padding from tw-p-3 sm:tw-p-6 lg:tw-p-8 to tw-p-6 md:tw-p-8 to match Charger page */}
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-sm tw-p-6 md:tw-p-8 tw-print:tw-shadow-none tw-print:tw-border-0">
-                    {/* Header with responsive layout */}
                     <div className="tw-flex tw-flex-col tw-gap-4 md:tw-flex-row md:tw-items-start md:tw-justify-between md:tw-gap-6">
                         <div className="tw-flex tw-items-start tw-gap-3 md:tw-gap-4">
                             <div className="tw-relative tw-overflow-hidden tw-bg-white tw-rounded-md tw-shrink-0 tw-h-14 tw-w-[64px] sm:tw-h-16 sm:tw-w-[76px] md:tw-h-20 md:tw-w-[108px] lg:tw-h-24 lg:tw-w-[152px]">
@@ -1275,15 +1612,12 @@ export default function StationPMReport() {
                         </div>
                     </div>
 
-                    {/* FIXED: Changed from CardBody to div with proper spacing to match Charger page */}
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
                         {QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab))}
                     </div>
 
-                    {/* FIXED: Changed from CardBody to div with proper spacing */}
-                    <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-3">
+                    <div id={`${ID_PREFIX}-summary-section`} className="tw-mt-6 sm:tw-mt-8 tw-space-y-3">
                         <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
-                        {/* แสดง comment จาก Pre mode ใน Post mode */}
                         {displayTab === "post" && commentPre && (
                             <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
                                 <div className="tw-flex tw-items-center tw-gap-2 tw-mb-1">
@@ -1306,35 +1640,22 @@ export default function StationPMReport() {
                         )}
                     </div>
 
-                    {/* FIXED: Changed from CardFooter to div with proper spacing */}
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3">
-                        <div className="tw-p-3 sm:tw-p-4 tw-flex tw-flex-col tw-gap-2 tw-bg-gray-50 tw-rounded-xl tw-border tw-border-gray-200">
-                            <Section title={t("validationPhotoTitle", lang)} ok={allPhotosAttached} lang={lang}>
-                                <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPhoto", lang)} {missingPhotoItems.join(", ")}</Typography>
-                            </Section>
-                            {/* Remark validation for Pre mode */}
-                            {displayTab === "pre" && (
-                                <Section title={t("validationRemarkTitle", lang)} ok={allRemarksFilledPre} lang={lang}>
-                                    {missingRemarksPre.length > 0 && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm" >{t("missingRemark", lang)} {missingRemarksPre.join(", ")}</Typography>}
-                                </Section>
-                            )}
-                            {isPostMode && (
-                                <>
-                                    <Section title={t("validationPFTitle", lang)} ok={allPFAnswered} lang={lang}>
-                                        <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPF", lang)} {missingPFItems.join(", ")}</Typography>
-                                    </Section>
-                                    <Section title={t("validationRemarkTitlePost", lang)} ok={allRemarksFilledPost} lang={lang}>
-                                        {missingRemarksPost.length > 0 && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingRemark", lang)} {missingRemarksPost.join(", ")}</Typography>}
-                                    </Section>
-                                    <Section title={t("validationSummaryTitle", lang)} ok={isSummaryFilled && isSummaryCheckFilled} lang={lang}>
-                                        <div className="tw-space-y-1">
-                                            {!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryText", lang)}</Typography>}
-                                            {!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryStatus", lang)}</Typography>}
-                                        </div>
-                                    </Section>
-                                </>
-                            )}
-                        </div>
+                        <PMValidationCard
+                            lang={lang}
+                            displayTab={displayTab}
+                            isPostMode={isPostMode}
+                            allPhotosAttached={allPhotosAttached}
+                            missingPhotoItems={missingPhotoItems}
+                            allRemarksFilledPre={allRemarksFilledPre}
+                            missingRemarksPre={missingRemarksPre}
+                            allPFAnswered={allPFAnswered}
+                            missingPFItems={missingPFItems}
+                            allRemarksFilledPost={allRemarksFilledPost}
+                            missingRemarksPost={missingRemarksPost}
+                            isSummaryFilled={isSummaryFilled}
+                            isSummaryCheckFilled={isSummaryCheckFilled}
+                        />
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                             {displayTab === "pre" ? (
                                 <Button type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}
