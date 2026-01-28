@@ -10811,8 +10811,8 @@ MAX_IMAGE_FILE_MB = 10
 PHOTO_GROUP_KEYS = [
     "nameplate",       # index 0
     "charger",         # index 1
-    "circuit_breaker", # index 2
-    "rcd",             # index 3
+    "testingEquipment", # index 2
+    "testingEquipmentNameplate",             # index 3
     "gun1",            # index 4
     "gun2",            # index 5
 ]
