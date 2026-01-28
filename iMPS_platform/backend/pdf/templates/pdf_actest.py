@@ -1733,8 +1733,8 @@ def _draw_picture_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict):
     photo_categories = [
         ("nameplate", "Nameplate"),
         ("charger", "Charger"),
-        ("testing_equipment", "Testing Equipment"),
-        ("testing_equipment_nameplate", "Testing Equipment Nameplate"),
+        ("testingEquipment", "Testing Equipment"),
+        ("testingEquipmentNameplate", "Testing Equipment Nameplate"),
         ("gun1", "GUN 1"),
         ("gun2", "GUN 2"),
     ]
