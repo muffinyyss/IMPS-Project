@@ -33,7 +33,7 @@ const T = {
     photos: { th: "รูป", en: "photos" },
     cameraSupported: { th: "รองรับการถ่ายจากกล้องบนมือถือ", en: "Camera supported on mobile" },
     noPhotos: { th: "ยังไม่มีรูปแนบ", en: "No photos attached" },
-    remark: { th: "หมายเหตุ **", en: "Remark **" },
+    remark: { th: "หมายเหตุ *", en: "Remark *" },
     remarkLabel: { th: "หมายเหตุ", en: "Remark" },
     testResult: { th: "ผลการทดสอบ", en: "Test Result" },
     preRemarkLabel: { th: "หมายเหตุ (ก่อน PM)", en: "Remark (Pre-PM)" },
@@ -70,9 +70,40 @@ const T = {
     alertInputNotComplete: { th: "กรุณากรอกค่าข้อ 5 ให้ครบ", en: "Please fill in Item 5" },
     alertFillRemark: { th: "กรุณากรอกหมายเหตุข้อ:", en: "Please fill in remarks for:" },
     noReportId: { th: "ไม่มี report_id", en: "No report_id" },
+    // PMValidationCard translations
+    itemLabel: { th: "ข้อ", en: "Item" },
+    formStatus: { th: "สถานะการกรอกข้อมูล", en: "Form Completion Status" },
+    allCompleteReady: { th: "กรอกข้อมูลครบถ้วนแล้ว พร้อมบันทึก ✓", en: "All fields completed. Ready to save ✓" },
+    remaining: { th: "ยังขาดอีก {n} รายการ", en: "{n} items remaining" },
+    items: { th: "รายการ", en: "items" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
+
+// Helper functions to generate scroll IDs
+const ID_PREFIX = "cbbox-pm";
+
+const getPhotoIdFromKey = (key: string | number): string => {
+    return `${ID_PREFIX}-photo-${key}`;
+};
+
+const getRemarkIdFromKey = (key: string | number): string => {
+    if (typeof key === "number") return `${ID_PREFIX}-remark-${key}`;
+    const match = String(key).match(/^r(\d+)$/);
+    if (match) return `${ID_PREFIX}-remark-${match[1]}`;
+    return `${ID_PREFIX}-remark-${key}`;
+};
+
+const getInputIdFromKey = (qNo: number, fieldKey: string): string => {
+    return `${ID_PREFIX}-input-${qNo}-${fieldKey}`;
+};
+
+const getPfIdFromKey = (key: string | number): string => {
+    if (typeof key === "number") return `${ID_PREFIX}-pf-${key}`;
+    const match = String(key).match(/^r(\d+)$/);
+    if (match) return `${ID_PREFIX}-pf-${match[1]}`;
+    return `${ID_PREFIX}-pf-${key}`;
+};
 
 const QUESTIONS_DATA = [
     { no: 1, key: "r1", label: { th: "1) การไฟฟ้าฝ่ายจำหน่าย", en: "1) Power distribution authority" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบระบบจำหน่าย", en: "Check distribution system" } },
@@ -168,7 +199,7 @@ async function fetchReport(reportId: string, stationId: string) {
     return res.json();
 }
 
-// ==================== UI COMPONENTS (FIXED) ====================
+// ==================== UI COMPONENTS ====================
 
 function SectionCard({ title, children, tooltip }: { title?: string; children: React.ReactNode; tooltip?: string }) {
     return (
@@ -203,15 +234,290 @@ function Section({ title, ok, children, lang }: { title: React.ReactNode; ok: bo
     );
 }
 
-function InputWithUnit({ label, value, unit, onValueChange, readOnly, disabled, required = true }: {
-    label: string; value: string; unit: string; onValueChange: (v: string) => void; readOnly?: boolean; disabled?: boolean; required?: boolean;
+// ==================== PMValidationCard Component ====================
+interface ValidationError {
+    section: string;
+    sectionIcon: string;
+    itemName: string;
+    message: string;
+    scrollId?: string;
+}
+
+function groupErrorsBySection(errors: ValidationError[]): Map<string, ValidationError[]> {
+    const map = new Map<string, ValidationError[]>();
+    errors.forEach((err) => {
+        const key = `${err.sectionIcon} ${err.section}`;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(err);
+    });
+    return map;
+}
+
+interface MissingInputItem {
+    qNo: number;
+    label: string;
+    fieldKey: string;
+}
+
+interface PMValidationCardProps {
+    lang: Lang;
+    displayTab: "pre" | "post";
+    isPostMode: boolean;
+    allPhotosAttached: boolean;
+    missingPhotoItems: string[];
+    allRequiredInputsFilled: boolean;
+    missingInputsDetailed: MissingInputItem[];
+    allRemarksFilledPre: boolean;
+    missingRemarksPre: number[];
+    allPFAnsweredPost: boolean;
+    missingPFItemsPost: number[];
+    allRemarksFilledPost: boolean;
+    missingRemarksPost: number[];
+    isSummaryFilled: boolean;
+    isSummaryCheckFilled: boolean;
+}
+
+function PMValidationCard({
+    lang, displayTab, isPostMode,
+    allPhotosAttached, missingPhotoItems,
+    allRequiredInputsFilled, missingInputsDetailed,
+    allRemarksFilledPre, missingRemarksPre,
+    allPFAnsweredPost, missingPFItemsPost,
+    allRemarksFilledPost, missingRemarksPost,
+    isSummaryFilled, isSummaryCheckFilled,
+}: PMValidationCardProps) {
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    const handleHeaderClick = () => {
+        setIsExpanded(!isExpanded);
+    };
+
+    const getPhotoScrollId = (item: string): string => {
+        return `${ID_PREFIX}-photo-${item}`;
+    };
+
+    const getRemarkScrollId = (item: number): string => {
+        return `${ID_PREFIX}-remark-${item}`;
+    };
+
+    const getPfButtonsScrollId = (item: number): string => {
+        return `${ID_PREFIX}-pf-${item}`;
+    };
+
+    const getInputScrollId = (qNo: number, fieldKey: string): string => {
+        return `${ID_PREFIX}-input-${qNo}-${fieldKey}`;
+    };
+
+    const allErrors: ValidationError[] = useMemo(() => {
+        const errors: ValidationError[] = [];
+
+        // 1) Photo errors
+        if (!allPhotosAttached) {
+            missingPhotoItems.forEach((item) => {
+                errors.push({
+                    section: lang === "th" ? "รูปภาพ" : "Photos",
+                    sectionIcon: "📷",
+                    itemName: `${t("itemLabel", lang)} ${item}`,
+                    message: lang === "th" ? "ยังไม่ได้แนบรูป" : "Photo not attached",
+                    scrollId: getPhotoScrollId(item),
+                });
+            });
+        }
+
+        // 2) Input errors
+        if (!allRequiredInputsFilled) {
+            missingInputsDetailed.forEach(({ qNo, label, fieldKey }) => {
+                const scrollId = getInputScrollId(qNo, fieldKey);
+                const message = lang === "th" ? `ยังไม่ได้กรอกค่า ${label}` : `${label} value not filled`;
+                errors.push({
+                    section: lang === "th" ? "ค่าที่ต้องกรอก" : "Required Inputs",
+                    sectionIcon: "📝",
+                    itemName: `${t("itemLabel", lang)} ${qNo}`,
+                    message,
+                    scrollId,
+                });
+            });
+        }
+
+        // 3) Remark errors (Pre mode)
+        if (displayTab === "pre" && !allRemarksFilledPre) {
+            missingRemarksPre.forEach((item) => {
+                errors.push({
+                    section: lang === "th" ? "หมายเหตุ" : "Remarks",
+                    sectionIcon: "💬",
+                    itemName: `${t("itemLabel", lang)} ${item}`,
+                    message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
+                    scrollId: getRemarkScrollId(item),
+                });
+            });
+        }
+
+        // 4) Post mode errors
+        if (isPostMode) {
+            // PF status errors
+            if (!allPFAnsweredPost) {
+                missingPFItemsPost.forEach((item) => {
+                    errors.push({
+                        section: lang === "th" ? "สถานะ Pass/Fail" : "Pass/Fail Status",
+                        sectionIcon: "✅",
+                        itemName: `${t("itemLabel", lang)} ${item}`,
+                        message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
+                        scrollId: getPfButtonsScrollId(item),
+                    });
+                });
+            }
+
+            // Remark errors (Post mode)
+            if (!allRemarksFilledPost) {
+                missingRemarksPost.forEach((item) => {
+                    errors.push({
+                        section: lang === "th" ? "หมายเหตุ (Post)" : "Remarks (Post)",
+                        sectionIcon: "💬",
+                        itemName: `${t("itemLabel", lang)} ${item}`,
+                        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
+                        scrollId: getRemarkScrollId(item),
+                    });
+                });
+            }
+
+            // Summary errors
+            if (!isSummaryFilled) {
+                errors.push({
+                    section: lang === "th" ? "สรุปผล" : "Summary",
+                    sectionIcon: "📋",
+                    itemName: "Comment",
+                    message: lang === "th" ? "ยังไม่ได้กรอก Comment" : "Comment not filled",
+                    scrollId: `${ID_PREFIX}-summary-section`,
+                });
+            }
+            if (!isSummaryCheckFilled) {
+                errors.push({
+                    section: lang === "th" ? "สรุปผล" : "Summary",
+                    sectionIcon: "📋",
+                    itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
+                    message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail/N/A" : "Status not selected",
+                    scrollId: `${ID_PREFIX}-summary-section`,
+                });
+            }
+        }
+
+        return errors;
+    }, [
+        lang, displayTab, isPostMode,
+        allPhotosAttached, missingPhotoItems,
+        allRequiredInputsFilled, missingInputsDetailed,
+        allRemarksFilledPre, missingRemarksPre,
+        allPFAnsweredPost, missingPFItemsPost,
+        allRemarksFilledPost, missingRemarksPost,
+        isSummaryFilled, isSummaryCheckFilled
+    ]);
+
+    const groupedErrors = useMemo(() => groupErrorsBySection(allErrors), [allErrors]);
+    const isComplete = allErrors.length === 0;
+
+    const scrollToItem = (scrollId?: string) => {
+        if (!scrollId) return;
+        const element = document.getElementById(scrollId);
+        if (element) {
+            const rect = element.getBoundingClientRect();
+            const elementTop = rect.top + window.scrollY;
+            const elementHeight = rect.height;
+            const viewportHeight = window.innerHeight;
+            let targetScrollY = elementTop - (viewportHeight / 2) + (elementHeight / 2);
+            targetScrollY = Math.max(0, targetScrollY);
+            const maxScrollY = document.documentElement.scrollHeight - viewportHeight;
+            targetScrollY = Math.min(targetScrollY, maxScrollY);
+            window.scrollTo({ top: targetScrollY, behavior: "smooth" });
+            element.classList.add("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+            setTimeout(() => {
+                element.classList.remove("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+            }, 2000);
+        }
+    };
+
+    return (
+        <div className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${isComplete ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+            <div className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"}`} onClick={handleHeaderClick}>
+                <div className="tw-flex tw-items-center tw-gap-3">
+                    {isComplete ? (
+                        <div className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-green-500 tw-flex tw-items-center tw-justify-center">
+                            <svg className="tw-w-6 tw-h-6 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                    ) : (
+                        <div className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-amber-500 tw-flex tw-items-center tw-justify-center">
+                            <svg className="tw-w-6 tw-h-6 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                    )}
+                    <div>
+                        <Typography className={`tw-font-bold tw-text-base ${isComplete ? "tw-text-green-800" : "tw-text-amber-800"}`}>
+                            {t("formStatus", lang)}
+                        </Typography>
+                        <Typography variant="small" className={isComplete ? "tw-text-green-600" : "tw-text-amber-600"}>
+                            {isComplete ? t("allCompleteReady", lang) : t("remaining", lang).replace("{n}", String(allErrors.length))}
+                        </Typography>
+                    </div>
+                </div>
+                <div className="tw-flex tw-items-center tw-gap-4">
+                    {!isComplete && (
+                        <div className="tw-hidden md:tw-flex tw-items-center tw-gap-2">
+                            {Array.from(groupedErrors.keys()).map((sectionKey) => (
+                                <span key={sectionKey} className="tw-text-xs tw-bg-amber-200 tw-text-amber-800 tw-px-2 tw-py-1 tw-rounded-full tw-font-medium">
+                                    {sectionKey.split(" ")[0]} {groupedErrors.get(sectionKey)?.length}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {!isComplete && (
+                        <svg className={`tw-w-6 tw-h-6 tw-text-amber-600 tw-transition-transform ${isExpanded ? "tw-rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    )}
+                </div>
+            </div>
+            {isExpanded && !isComplete && (
+                <div className="tw-px-4 tw-py-3 tw-max-h-80 tw-overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                    <div className="tw-space-y-4">
+                        {Array.from(groupedErrors.entries()).map(([sectionKey, sectionErrors]) => (
+                            <div key={sectionKey} className="tw-bg-white tw-rounded-lg tw-p-3 tw-border tw-border-amber-200">
+                                <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
+                                    <Typography className="tw-font-semibold tw-text-gray-800 tw-text-sm">{sectionKey}</Typography>
+                                    <span className="tw-text-xs tw-bg-amber-100 tw-text-amber-700 tw-px-2 tw-py-0.5 tw-rounded-full">
+                                        {sectionErrors.length} {t("items", lang)}
+                                    </span>
+                                </div>
+                                <ul className="tw-space-y-1 tw-max-h-40 tw-overflow-y-auto">
+                                    {sectionErrors.map((error, idx) => (
+                                        <li key={idx} className="tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-amber-700 tw-cursor-pointer hover:tw-text-amber-900 hover:tw-bg-amber-50 tw-rounded tw-px-1 tw-py-0.5 tw-transition-colors" onClick={(e) => { e.stopPropagation(); scrollToItem(error.scrollId); }}>
+                                            <span className="tw-text-amber-500 tw-mt-0.5">→</span>
+                                            <span>
+                                                <span className="tw-font-medium">{error.itemName}:</span>{" "}
+                                                <span className="tw-underline tw-underline-offset-2">{error.message}</span>
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function InputWithUnit({ label, value, unit, onValueChange, readOnly, disabled, required = true, id }: {
+    label: string; value: string; unit: string; onValueChange: (v: string) => void; readOnly?: boolean; disabled?: boolean; required?: boolean; id?: string;
 }) {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newValue = e.target.value;
         if (newValue === "" || /^-?\d*\.?\d*$/.test(newValue)) onValueChange(newValue);
     };
     return (
-        <div className="tw-flex tw-items-center tw-gap-2">
+        <div id={id} className="tw-flex tw-items-center tw-gap-2">
             <div className="tw-flex-1 tw-relative">
                 <input type="text" inputMode="numeric" pattern="-?[0-9]*\.?[0-9]*" value={value} onChange={handleChange} readOnly={readOnly} disabled={disabled} required={required} placeholder=" "
                     className={`tw-peer tw-w-full tw-h-10 tw-px-3 tw-pt-4 tw-pb-1 tw-text-sm tw-border tw-border-gray-300 tw-rounded-lg tw-outline-none focus:tw-border-blue-500 focus:tw-ring-1 focus:tw-ring-blue-500 ${disabled ? "tw-bg-gray-100 tw-text-gray-500" : "tw-bg-white"}`} />
@@ -222,27 +528,27 @@ function InputWithUnit({ label, value, unit, onValueChange, readOnly, disabled, 
     );
 }
 
-function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, lang }: {
+function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, lang, id, remarkId }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
-    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; lang: Lang;
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; lang: Lang; id?: string; remarkId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
     return (
         <div className="tw-space-y-3 tw-py-3">
             <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-justify-between tw-gap-2">
                 <Typography className="tw-font-medium">{label}</Typography>
-                <div className="tw-flex tw-gap-2">
+                <div id={id} className="tw-flex tw-gap-2">
                     <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("PASS")}>{text.PASS}</Button>
                     <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
                     <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-min-w-[72px]" onClick={() => onChange("NA")}>{text.NA}</Button>
                 </div>
             </div>
-            {onRemarkChange && <div className="tw-space-y-3">{aboveRemark}{beforeRemark}<Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div>}
+            {onRemarkChange && <div className="tw-space-y-3">{aboveRemark}{beforeRemark}<div id={remarkId}><Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div></div>}
         </div>
     );
 }
 
-function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang }: { photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>; max?: number; draftKey: string; qNo: number; lang: Lang }) {
+function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id }: { photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>; max?: number; draftKey: string; qNo: number; lang: Lang; id?: string }) {
     const fileRef = useRef<HTMLInputElement>(null);
     const handleFiles = async (list: FileList | null) => {
         if (!list) return;
@@ -254,7 +560,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang }: {
     };
     const handleRemove = async (id: string) => { await delPhoto(draftKey, id); setPhotos(prev => { const target = prev.find(p => p.id === id); if (target?.preview) URL.revokeObjectURL(target.preview); return prev.filter(p => p.id !== id); }); };
     return (
-        <div className="tw-space-y-3">
+        <div id={id} className="tw-space-y-3">
             <Button size="sm" color="blue" variant="outlined" onClick={() => fileRef.current?.click()}>{t("attachPhoto", lang)}</Button>
             <Typography variant="small" className="!tw-text-gray-500">{t("maxPhotos", lang)} {max} {t("photos", lang)} • {t("cameraSupported", lang)}</Typography>
             <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => void handleFiles(e.target.files)} />
@@ -277,6 +583,26 @@ function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string
             {remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {remark}</Typography>}
         </div>
     );
+}
+
+// Scroll to first error helper
+function scrollToFirstError(scrollId: string) {
+    const element = document.getElementById(scrollId);
+    if (element) {
+        const rect = element.getBoundingClientRect();
+        const elementTop = rect.top + window.scrollY;
+        const elementHeight = rect.height;
+        const viewportHeight = window.innerHeight;
+        let targetScrollY = elementTop - (viewportHeight / 2) + (elementHeight / 2);
+        targetScrollY = Math.max(0, targetScrollY);
+        const maxScrollY = document.documentElement.scrollHeight - viewportHeight;
+        targetScrollY = Math.min(targetScrollY, maxScrollY);
+        window.scrollTo({ top: targetScrollY, behavior: "smooth" });
+        element.classList.add("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+        setTimeout(() => {
+            element.classList.remove("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+        }, 2000);
+    }
 }
 
 // ==================== MAIN COMPONENT ====================
@@ -375,7 +701,6 @@ export default function CBBOXPMForm() {
         if (draft.inspector) setInspector(draft.inspector);
         if (draft.dropdownQ1) setDropdownQ1(draft.dropdownQ1);
         if (draft.dropdownQ2) setDropdownQ2(draft.dropdownQ2);
-        // Load photos from draft...
     }, [stationId, key, isPostMode]);
 
     // Load API data for Post mode
@@ -421,11 +746,22 @@ export default function CBBOXPMForm() {
     const missingPhotoItems = isPostMode ? missingPhotoItemsPost : missingPhotoItemsPre;
     const allPhotosAttached = isPostMode ? allPhotosAttachedPost : allPhotosAttachedPre;
 
+    // Format missingPhotoItems as string[] for PMValidationCard
+    const missingPhotoItemsFormatted = useMemo(() => {
+        return missingPhotoItems.map(no => String(no));
+    }, [missingPhotoItems]);
+
     const PF_KEYS_PRE = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
     const PF_KEYS_POST = useMemo(() => QUESTIONS.filter(q => { if (q.no === 1 || q.no === 2) return false; if (rowsPre[q.key]?.pf === "NA") return false; return true; }).map(q => q.key), [rowsPre]);
 
+    const allPFAnsweredPre = useMemo(() => true, []); // Pre mode doesn't require PF
+    const missingPFItemsPre = useMemo(() => [] as number[], []);
     const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every(k => rows[k]?.pf !== ""), [rows, PF_KEYS_POST]);
     const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter(k => !rows[k]?.pf).map(k => Number(k.replace("r", ""))).sort((a, b) => a - b), [rows, PF_KEYS_POST]);
+
+    // For UI display
+    const allPFAnsweredForUI = isPostMode ? allPFAnsweredPost : allPFAnsweredPre;
+    const missingPFItemsForUI = isPostMode ? missingPFItemsPost : missingPFItemsPre;
 
     const validRemarkKeysPre = useMemo(() => QUESTIONS.filter(q => q.no !== 9).map(q => q.key), []);
     const missingRemarksPre = useMemo(() => {
@@ -450,6 +786,18 @@ export default function CBBOXPMForm() {
         if (missingKeys.length > 0) r.push(`5: ${missingKeys.join(", ")}`);
         return r;
     }, [m5.state, rowsPre, rows]);
+
+    // Detailed missing inputs for PMValidationCard
+    const missingInputsDetailed = useMemo(() => {
+        const r: MissingInputItem[] = [];
+        if (rows["r5"]?.pf === "NA" || rowsPre["r5"]?.pf === "NA") return r;
+        FIELD_GROUPS[5]?.keys.forEach((k) => {
+            const v = m5.state[k]?.value ?? "";
+            if (!String(v).trim()) r.push({ qNo: 5, label: LABELS[k], fieldKey: k });
+        });
+        return r;
+    }, [m5.state, rowsPre, rows]);
+
     const allRequiredInputsFilled = missingInputs.length === 0;
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
@@ -474,6 +822,29 @@ export default function CBBOXPMForm() {
         saveDraftLocal(postKey, { rows, m5: m5.state, summary, summaryCheck, photoRefs });
     }, [postKey, stationId, rows, m5.state, summary, summaryCheck, photoRefs, isPostMode, editId]);
 
+    // Helper functions for scroll IDs
+    const getFirstMissingPhotoScrollId = (): string | null => {
+        if (missingPhotoItems.length === 0) return null;
+        return `${ID_PREFIX}-photo-${missingPhotoItems[0]}`;
+    };
+
+    const getFirstMissingPFScrollId = (): string | null => {
+        if (missingPFItemsPost.length === 0) return null;
+        return `${ID_PREFIX}-pf-${missingPFItemsPost[0]}`;
+    };
+
+    const getFirstMissingRemarkScrollId = (): string | null => {
+        const missing = isPostMode ? missingRemarksPost : missingRemarksPre;
+        if (missing.length === 0) return null;
+        return `${ID_PREFIX}-remark-${missing[0]}`;
+    };
+
+    const getFirstMissingInputScrollId = (): string | null => {
+        if (missingInputsDetailed.length === 0) return null;
+        const first = missingInputsDetailed[0];
+        return `${ID_PREFIX}-input-${first.qNo}-${first.fieldKey}`;
+    };
+
     // Render measure grid
     const renderMeasureGrid = (no: number, isPreView = false) => {
         const cfg = FIELD_GROUPS[no]; if (!cfg) return null;
@@ -482,7 +853,15 @@ export default function CBBOXPMForm() {
             <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-5 tw-gap-3">
                 {cfg.keys.map(k => (
                     <div key={k} className={isPreView ? "tw-pointer-events-none tw-opacity-60" : ""}>
-                        <InputWithUnit label={LABELS[k] ?? k} value={state[k]?.value || ""} unit="V" onValueChange={v => !isPreView && m5.patch(k, { value: v })} readOnly={isPreView} required={!isPreView} />
+                        <InputWithUnit 
+                            label={LABELS[k] ?? k} 
+                            value={state[k]?.value || ""} 
+                            unit="V" 
+                            onValueChange={v => !isPreView && m5.patch(k, { value: v })} 
+                            readOnly={isPreView} 
+                            required={!isPreView}
+                            id={!isPreView ? getInputIdFromKey(no, k) : undefined}
+                        />
                     </div>
                 ))}
             </div>
@@ -528,11 +907,11 @@ export default function CBBOXPMForm() {
                             {isLockedByQ2 && <Typography variant="small" className="tw-text-amber-700 tw-italic">{lang === "th" ? "(N/A ตามข้อ 2)" : "(N/A from Q2)"}</Typography>}
                             <Button size="sm" color={isNA ? "amber" : "gray"} variant={isNA ? "filled" : "outlined"} disabled={isLockedByQ2} onClick={() => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: isNA ? "" : "NA" } }))}>{isNA ? t("cancelNA", lang) : t("na", lang)}</Button>
                         </div>
-                        {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
+                        {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
                         {hasMeasure && <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderMeasureGrid(q.no)}</div>}
                         {q.no === 1 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ1} onChange={e => setDropdownQ1(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectPowerSource", lang)}</option>{DROPDOWN_Q1_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select></div>}
                         {q.no === 2 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && <Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 5, 6, 7 จะเป็น N/A ตามข้อนี้" : "* Q5, 6, 7 will be N/A accordingly"}</Typography>}</div>}
-                        <Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={3} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" />
+                        <div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={3} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div>
                     </div>
                 </SectionCard>
             );
@@ -543,18 +922,27 @@ export default function CBBOXPMForm() {
         if (mode === "post" && (q.no === 1 || q.no === 2)) {
             return (
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                    {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
-                    {q.no === 1 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("powerSource", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ1 || "-"}</Typography></div>{preRemarkElement}<Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div>}
-                    {q.no === 2 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("circuitDevice", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ2 || "-"}</Typography></div>{preRemarkElement}<Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div>}
+                    {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
+                    {q.no === 1 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("powerSource", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ1 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
+                    {q.no === 2 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("circuitDevice", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ2 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
                 </SectionCard>
             );
         }
 
         return (
             <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                <PassFailRow label={t("testResult", lang)} value={rows[q.key]?.pf ?? ""} lang={lang} onChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })} remark={rows[q.key]?.remark || ""} onRemarkChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
-                    aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} /></div>}
-                    beforeRemark={<>{hasMeasure && (q.no === 5 ? renderMeasureGridWithPre(q.no) : renderMeasureGrid(q.no))}{preRemarkElement}</>} />
+                <PassFailRow 
+                    label={t("testResult", lang)} 
+                    value={rows[q.key]?.pf ?? ""} 
+                    lang={lang} 
+                    onChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })} 
+                    remark={rows[q.key]?.remark || ""} 
+                    onRemarkChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
+                    id={getPfIdFromKey(q.no)}
+                    remarkId={getRemarkIdFromKey(q.no)}
+                    aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
+                    beforeRemark={<>{hasMeasure && (q.no === 5 ? renderMeasureGridWithPre(q.no) : renderMeasureGrid(q.no))}{preRemarkElement}</>} 
+                />
             </SectionCard>
         );
     };
@@ -582,9 +970,27 @@ export default function CBBOXPMForm() {
 
     const onPreSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        if (!allPhotosAttachedPre) { alert(t("alertFillPhoto", lang)); return; }
-        if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
-        if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
+        
+        // Validation checks with scroll to error
+        if (!allPhotosAttachedPre) { 
+            alert(t("alertFillPhoto", lang)); 
+            const scrollId = getFirstMissingPhotoScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return; 
+        }
+        if (!allRequiredInputsFilled) { 
+            alert(t("alertInputNotComplete", lang)); 
+            const scrollId = getFirstMissingInputScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return; 
+        }
+        if (!allRemarksFilledPre) { 
+            alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); 
+            const scrollId = getFirstMissingRemarkScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return; 
+        }
+        
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -609,6 +1015,43 @@ export default function CBBOXPMForm() {
 
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
+        
+        // Validation checks with scroll to error
+        if (!allPhotosAttachedPost) {
+            alert(t("alertFillPhoto", lang));
+            const scrollId = getFirstMissingPhotoScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!allPFAnsweredPost) {
+            alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items");
+            const scrollId = getFirstMissingPFScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!allRequiredInputsFilled) {
+            alert(t("alertInputNotComplete", lang));
+            const scrollId = getFirstMissingInputScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!allRemarksFilledPost) {
+            alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`);
+            const scrollId = getFirstMissingRemarkScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!isSummaryFilled) {
+            alert(t("missingSummaryText", lang));
+            scrollToFirstError(`${ID_PREFIX}-summary-section`);
+            return;
+        }
+        if (!isSummaryCheckFilled) {
+            alert(t("missingSummaryStatus", lang));
+            scrollToFirstError(`${ID_PREFIX}-summary-section`);
+            return;
+        }
+        
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -684,7 +1127,7 @@ export default function CBBOXPMForm() {
                         <div className="lg:tw-col-span-1"><Input label={t("pmDate", lang)} type="text" value={job.date} readOnly crossOrigin="" containerProps={{ className: "!tw-min-w-0" }} className="!tw-bg-gray-50" /></div>
                     </div>
                     <div className="tw-space-y-4 tw-mt-6">{QUESTIONS.filter(q => !(displayTab === "pre" && q.no === 9)).map(q => renderQuestionBlock(q, displayTab))}</div>
-                    <div className="tw-space-y-3 tw-mt-6">
+                    <div id={`${ID_PREFIX}-summary-section`} className="tw-space-y-3 tw-mt-6">
                         <Typography variant="h6">{t("comment", lang)}</Typography>
                         {displayTab === "post" && commentPre && (
                             <div className="tw-mb-3 tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
@@ -696,18 +1139,23 @@ export default function CBBOXPMForm() {
                         {displayTab === "post" && <div className="tw-pt-4 tw-border-t tw-border-gray-100"><PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={v => setSummaryCheck(v)} lang={lang} labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} /></div>}
                     </div>
                     <div className="tw-flex tw-flex-col tw-gap-3 tw-mt-8">
-                        <div className="tw-p-3 tw-flex tw-flex-col tw-gap-3">
-                            <Section title={t("validationPhotoTitle", lang)} ok={allPhotosAttached} lang={lang}><Typography variant="small" className="!tw-text-amber-700">{t("missingPhoto", lang)} {missingPhotoItems.join(", ")}</Typography></Section>
-                            <Section title={t("validationInputTitle", lang)} ok={allRequiredInputsFilled} lang={lang}><div className="tw-space-y-1"><Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingInput", lang)}</Typography><ul className="tw-list-disc tw-ml-4 sm:tw-ml-5 tw-text-xs sm:tw-text-sm tw-text-amber-700">{missingInputs.map((line, i) => <li key={i}>{line}</li>)}</ul></div></Section>
-                            {displayTab === "pre" && <Section title={t("validationRemarkTitle", lang)} ok={allRemarksFilledPre} lang={lang}>{missingRemarksPre.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPre.join(", ")}</Typography>}</Section>}
-                            {isPostMode && (
-                                <>
-                                    <Section title={t("validationPFTitle", lang)} ok={allPFAnsweredPost} lang={lang}><Typography variant="small" className="!tw-text-amber-700">{t("missingPF", lang)} {missingPFItemsPost.join(", ")}</Typography></Section>
-                                    <Section title={t("validationRemarkTitlePost", lang)} ok={allRemarksFilledPost} lang={lang}>{missingRemarksPost.length > 0 && <Typography variant="small" className="!tw-text-amber-700">{t("missingRemark", lang)} {missingRemarksPost.join(", ")}</Typography>}</Section>
-                                    <Section title={t("validationSummaryTitle", lang)} ok={isSummaryFilled && isSummaryCheckFilled} lang={lang}><div>{!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryText", lang)}</Typography>}{!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700">{t("missingSummaryStatus", lang)}</Typography>}</div></Section>
-                                </>
-                            )}
-                        </div>
+                        <PMValidationCard
+                            lang={lang}
+                            displayTab={displayTab}
+                            isPostMode={isPostMode}
+                            allPhotosAttached={allPhotosAttached}
+                            missingPhotoItems={missingPhotoItemsFormatted}
+                            allRequiredInputsFilled={allRequiredInputsFilled}
+                            missingInputsDetailed={missingInputsDetailed}
+                            allRemarksFilledPre={allRemarksFilledPre}
+                            missingRemarksPre={missingRemarksPre}
+                            allPFAnsweredPost={allPFAnsweredForUI}
+                            missingPFItemsPost={missingPFItemsForUI}
+                            allRemarksFilledPost={allRemarksFilledPost}
+                            missingRemarksPost={missingRemarksPost}
+                            isSummaryFilled={isSummaryFilled}
+                            isSummaryCheckFilled={isSummaryCheckFilled}
+                        />
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                             {displayTab === "pre" ? (
                                 <Button className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto" type="button" onClick={onPreSave} disabled={!canGoAfter || submitting}>{submitting ? t("saving", lang) : t("save", lang)}</Button>
