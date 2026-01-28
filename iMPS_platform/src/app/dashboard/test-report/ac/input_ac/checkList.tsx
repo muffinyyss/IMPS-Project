@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Button, Input, Textarea } from "@material-tailwind/react";
+import { Button, Input, Textarea, Tooltip } from "@material-tailwind/react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 // components
@@ -65,15 +65,15 @@ type Job = {
 
 type Head = {
   issue_id: string;
-  document_name: string;  // ★ เพิ่มบรรทัดนี้
+  document_name: string;
   inspection_date: string;
   location: string;
-  inspector: string;      // ★ เปลี่ยนจาก optional เป็น required
-  manufacturer?: string;
-  model?: string;
-  power?: string;
-  firmware_version?: string;
-  serial_number?: string;
+  manufacturer: string;
+  model: string;
+  power: string;
+  firmware_version: string;
+  serial_number: string;
+  inspector: string;
 };
 
 type EquipmentBlock = {
@@ -101,8 +101,9 @@ type StationPublic = {
   serialNumber?: string;
   firmware_version?: string;
   firmwareVersion?: string;
-  PIFirmware?: string;  // ★★★ เพิ่มบรรทัดนี้ ★★★
+  PIFirmware?: string;
 };
+
 // ===== Translations =====
 const translations = {
   th: {
@@ -112,6 +113,7 @@ const translations = {
     photoSectionTitle: "แนบรูปถ่ายประกอบ (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + อื่นๆ)",
     phaseSequence: "ลำดับเฟส",
     phaseSequencePlaceholder: "เช่น L1-L2-L3",
+    phaseSequenceTooltip: "กรอกลำดับเฟสของระบบไฟฟ้า เช่น L1-L2-L3 หรือ R-S-T",
     alertNoSn: "ไม่พบ sn - กรุณาเลือกตู้ชาร์จจาก Navbar ก่อน",
     alertNoChargerNo: "ไม่พบ chargerNo - กรุณาเลือกตู้ชาร์จที่มี chargerNo",
     alertNoElectricalTest: "ยังไม่ได้กรอกผลทดสอบ (Electrical Safety)",
@@ -128,6 +130,7 @@ const translations = {
     photoSectionTitle: "Attach Photos (Nameplate / Charger / CB / RCD / GUN1 / GUN2 + Others)",
     phaseSequence: "Phase Sequence",
     phaseSequencePlaceholder: "e.g. L1-L2-L3",
+    phaseSequenceTooltip: "Enter the phase sequence of the electrical system, e.g. L1-L2-L3 or R-S-T",
     alertNoSn: "SN not found - Please select a charger from Navbar first",
     alertNoChargerNo: "chargerNo not found - Please select a charger with chargerNo",
     alertNoElectricalTest: "Electrical Safety test results not filled",
@@ -171,15 +174,15 @@ const INITIAL_JOB: Job = {
 
 const INITIAL_HEAD: Head = {
   issue_id: "",
-  document_name: "",  // ★ เพิ่มบรรทัดนี้
+  document_name: "",  // ★ เพิ่ม
   inspection_date: "",
   location: "",
-  inspector: "",
   manufacturer: "",
   model: "",
   power: "",
   firmware_version: "",
   serial_number: "",
+  inspector: "",
 };
 
 const INITIAL_EQUIPMENT: EquipmentBlock = {
@@ -256,10 +259,7 @@ export default function ACForm() {
   const [equipment, setEquipment] = useState<EquipmentBlock>({ ...INITIAL_EQUIPMENT });
   const [acTest1Results, setACTest1Results] = useState<TestResults | null>(null);
   const [acChargerTest, setACChargerTest] = useState<TestCharger | null>(null);
-  // ★★★ FIXED: Initialize with 6 empty photo categories to match ACPhotoSection ★★★
-  const [photoItems, setPhotoItems] = useState<PhotoItem[]>(() => 
-    Array(6).fill(null).map(() => ({ text: "", images: [] }))
-  );
+  const [photoItems, setPhotoItems] = useState<PhotoItem[]>([]);
   const [phaseSequence, setPhaseSequence] = useState<string>("");
   const [testRemark, setTestRemark] = useState<string>("");
   const [imgRemark, setImgRemark] = useState<string>("");
@@ -318,12 +318,81 @@ export default function ACForm() {
   }, []);
 
   // ============================================================
+  // ★★★ TEST FILES HELPERS (for ACTest2Grid) ★★★
+  // ============================================================
+  type TestFileRef = {
+    dbKey: string;
+    name: string;
+    itemIndex: number;
+    roundIndex: number;
+    handgun: "h1";  // AC ใช้แค่ h1
+  };
+
+  const saveTestFilesToIndexedDB = useCallback(async (
+    testResults: TestCharger | null
+  ): Promise<TestFileRef[]> => {
+    const refs: TestFileRef[] = [];
+    if (!testResults?.files) return refs;
+
+    const files = testResults.files;
+    for (const itemIndexStr of Object.keys(files)) {
+      const itemIndex = parseInt(itemIndexStr);
+      const roundsData = files[itemIndex];
+
+      for (const roundIndexStr of Object.keys(roundsData)) {
+        const roundIndex = parseInt(roundIndexStr);
+        const handgunData = roundsData[roundIndex];
+
+        // AC ใช้แค่ h1
+        const fileData = handgunData.h1;
+        if (!fileData?.file || !(fileData.file instanceof Blob)) continue;
+
+        const photoId = `testfile_${itemIndex}_${roundIndex}_h1_${Date.now()}`;
+        const ref = await putPhoto(currentDraftKey, photoId, fileData.file, fileData.name || "");
+        refs.push({
+          dbKey: ref.dbKey,
+          name: fileData.name || fileData.file.name || `file_${itemIndex}_${roundIndex}_h1`,
+          itemIndex,
+          roundIndex,
+          handgun: "h1",
+        });
+      }
+    }
+    return refs;
+  }, [currentDraftKey]);
+
+  const loadTestFilesFromIndexedDB = useCallback(async (
+    refs: TestFileRef[],
+    testResults: TestCharger | null
+  ): Promise<TestCharger | null> => {
+    if (testResults === null || !refs?.length) return testResults;
+
+    const newFiles: TestCharger["files"] = testResults.files ? { ...testResults.files } : {};
+
+    for (const ref of refs) {
+      const file = await getPhotoByDbKey(ref.dbKey);
+      if (file) {
+        const url = URL.createObjectURL(file);
+        if (!newFiles[ref.itemIndex]) newFiles[ref.itemIndex] = {};
+        if (!newFiles[ref.itemIndex][ref.roundIndex]) newFiles[ref.itemIndex][ref.roundIndex] = {};
+        newFiles[ref.itemIndex][ref.roundIndex][ref.handgun] = {
+          file,
+          url,
+          name: ref.name,
+        };
+      }
+    }
+
+    return { ...testResults, files: newFiles };
+  }, []);
+
+  // ============================================================
   // ★★★ DRAFT: AUTO-LOAD ON MOUNT ★★★
   // ============================================================
   useEffect(() => {
     if (!sn || draftChecked) return;
     const loadDraft = async () => {
-      const draft = loadDraftLocal<DraftData>(currentDraftKey);
+      const draft = loadDraftLocal<DraftData & { testFileRefs?: TestFileRef[] }>(currentDraftKey);
       if (draft) {
         // ★ Load chargerNo from draft if exists
         if (draft.chargerNo) {
@@ -331,22 +400,20 @@ export default function ACForm() {
         }
         setEquipment(draft.equipment || INITIAL_EQUIPMENT);
         setACTest1Results(draft.acTest1Results);
-        setACChargerTest(draft.acChargerTest);
+        
+        // ★★★ FIXED: โหลด test files จาก IndexedDB ★★★
+        let chargerTest = draft.acChargerTest;
+        if (draft.testFileRefs && draft.testFileRefs.length > 0) {
+          chargerTest = await loadTestFilesFromIndexedDB(draft.testFileRefs, chargerTest);
+        }
+        setACChargerTest(chargerTest);
+        
         setPhaseSequence(draft.phaseSequence || "");
         setTestRemark(draft.testRemark || "");
         setImgRemark(draft.imgRemark || "");
         if (draft.photoRefs && Object.keys(draft.photoRefs).length > 0) {
           const items = await loadPhotosFromIndexedDB(draft.photoRefs);
-          // ★★★ FIXED: Merge with default 6 items to ensure all categories exist ★★★
-          const defaultItems: PhotoItem[] = Array(6).fill(null).map(() => ({ text: "", images: [] }));
-          items.forEach((item, idx) => {
-            if (item && idx < defaultItems.length) {
-              defaultItems[idx] = item;
-            } else if (item) {
-              defaultItems.push(item);
-            }
-          });
-          setPhotoItems(defaultItems);
+          setPhotoItems(items);
         }
         console.log("[AC Draft] Auto-loaded");
       }
@@ -355,7 +422,7 @@ export default function ACForm() {
       setTimeout(() => { skipAutoSaveRef.current = false; }, 1000);
     };
     loadDraft();
-  }, [sn, draftChecked, currentDraftKey, loadPhotosFromIndexedDB]);
+  }, [sn, draftChecked, currentDraftKey, loadPhotosFromIndexedDB, loadTestFilesFromIndexedDB]);
 
   // ============================================================
   // ★★★ DRAFT: AUTO-SAVE ★★★
@@ -375,19 +442,22 @@ export default function ACForm() {
     if (hasData) {
       (async () => {
         const photoRefs = await savePhotosToIndexedDB(photoItems);
+        // ★★★ FIXED: บันทึก test files ลง IndexedDB ★★★
+        const testFileRefs = await saveTestFilesToIndexedDB(acChargerTest);
         saveDraftLocal(currentDraftKey, {
-          chargerNo: chargerNo || "",  // ★ Save chargerNo to draft
+          chargerNo: chargerNo || "",  // ★ เพิ่ม chargerNo
           equipment,
           acTest1Results,
-          acChargerTest,
+          acChargerTest: acChargerTest ? { ...acChargerTest, files: undefined } : null, // ไม่เก็บ files ใน localStorage
           phaseSequence,
           testRemark,
           imgRemark,
           photoRefs,
+          testFileRefs, // เก็บ refs ไว้ใน localStorage แทน
         });
       })();
     }
-  }, [sn, currentDraftKey, chargerNo, equipment, acTest1Results, acChargerTest, phaseSequence, testRemark, imgRemark, photoItems, savePhotosToIndexedDB]);
+  }, [sn, currentDraftKey, chargerNo, equipment, acTest1Results, acChargerTest, phaseSequence, testRemark, imgRemark, photoItems, savePhotosToIndexedDB, saveTestFilesToIndexedDB]);
 
   useEffect(() => {
     if (draftChecked) {
@@ -409,13 +479,22 @@ export default function ACForm() {
     if (!sn) return;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      const files = (it?.images || []).map(im => im.file).filter(Boolean) as File[];
-      if (!files.length) continue;
+      // ★★★ FIXED: กรองเฉพาะ file ที่เป็น Blob จริงๆ ★★★
+      const validImages = (it?.images || []).filter(im => im.file instanceof Blob);
+      
+      if (!validImages.length) continue;
+      
       const fd = new FormData();
       fd.append("sn", sn);
       fd.append("item_index", String(i));
       if (it.text) fd.append("remark", it.text);
-      files.forEach(f => fd.append("files", f, f.name));
+      
+      // ★★★ FIXED: ถ้าเป็น Blob ที่ไม่มี name ให้กำหนด filename เอง ★★★
+      validImages.forEach((im, idx) => {
+        const filename = im.file.name || `photo_${i}_${idx}.jpg`;
+        fd.append("files", im.file, filename);
+      });
+      
       const res = await fetch(`${API_BASE}/actestreport/${encodeURIComponent(reportId)}/photos`, {
         method: "POST", body: fd, credentials: "include",
       });
@@ -426,19 +505,67 @@ export default function ACForm() {
     }
   }
 
+  // ★★★ NEW: Upload test files for ACTest2Grid (Charger Safety) ★★★
+  async function uploadTestFiles(reportId: string, testType: "electrical" | "charger", testResults: TestCharger | null) {
+    if (!sn || !testResults?.files) return;
+    
+    const files = testResults.files;
+    
+    // Iterate through all files: files[itemIndex][roundIndex][h1] - AC ใช้แค่ h1
+    for (const itemIndexStr of Object.keys(files)) {
+      const itemIndex = parseInt(itemIndexStr);
+      const roundsData = files[itemIndex];
+      
+      for (const roundIndexStr of Object.keys(roundsData)) {
+        const roundIndex = parseInt(roundIndexStr);
+        const handgunData = roundsData[roundIndex];
+        
+        // AC ใช้แค่ h1
+        const fileData = handgunData.h1;
+        // ★★★ FIXED: ตรวจสอบว่า file เป็น Blob จริง ★★★
+        if (!fileData?.file || !(fileData.file instanceof Blob)) continue;
+        
+        const fd = new FormData();
+        fd.append("sn", sn);
+        fd.append("test_type", testType);
+        fd.append("item_index", String(itemIndex));
+        fd.append("round_index", String(roundIndex));
+        fd.append("handgun", "h1");
+        // ★★★ FIXED: ใช้ fileData.name ที่เก็บไว้ใน interface ★★★
+        const filename = fileData.name || fileData.file.name || `testfile_${itemIndex}_${roundIndex}_h1.bin`;
+        fd.append("file", fileData.file, filename);
+        
+        const res = await fetch(`${API_BASE}/actestreport/${encodeURIComponent(reportId)}/test-files`, {
+          method: "POST", 
+          body: fd, 
+          credentials: "include",
+        });
+        
+        if (!res.ok) {
+          const msg = await res.text().catch(() => `HTTP ${res.status}`);
+          console.error(`Upload test file failed: item ${itemIndex}, round ${roundIndex}, h1:`, msg);
+          // Continue uploading other files even if one fails
+        }
+      }
+    }
+  }
+
   const onHeadChange = (updates: Partial<Head>) => setHead(prev => ({ ...prev, ...updates }));
 
   const onSave = async () => {
     const photoRefs = await savePhotosToIndexedDB(photoItems);
+    // ★★★ FIXED: บันทึก test files ลง IndexedDB ★★★
+    const testFileRefs = await saveTestFilesToIndexedDB(acChargerTest);
     saveDraftLocal(currentDraftKey, {
-      chargerNo: chargerNo || "",  // ★ Save chargerNo
+      chargerNo: chargerNo || "",  // ★ เพิ่ม chargerNo
       equipment,
       acTest1Results,
-      acChargerTest,
+      acChargerTest: acChargerTest ? { ...acChargerTest, files: undefined } : null,
       phaseSequence,
       testRemark,
       imgRemark,
       photoRefs,
+      testFileRefs,
     });
   };
 
@@ -477,8 +604,7 @@ export default function ACForm() {
     setPhaseSequence("");
     setTestRemark("");
     setImgRemark("");
-    // ★★★ FIXED: Reset to 6 empty items instead of empty array ★★★
-    setPhotoItems(Array(6).fill(null).map(() => ({ text: "", images: [] })));
+    setPhotoItems([]);
     setPreviewIssueId("");
     setPreviewDocName("");
     clearDraftLocal(currentDraftKey);
@@ -539,74 +665,24 @@ export default function ACForm() {
         credentials: "include",
         body: JSON.stringify(payload),
       });
-      
-      // Try to parse response as JSON
-      let data: any = null;
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        try {
-          data = await res.json();
-        } catch (jsonErr) {
-          console.error("Failed to parse JSON:", jsonErr);
-        }
-      } else {
-        // If not JSON, try to get text
-        const text = await res.text();
-        console.error("Non-JSON response:", text);
-        data = { detail: text || `HTTP ${res.status}` };
-      }
-      
-      if (!res.ok) {
-        // FastAPI validation errors have "detail" array
-        let errorMsg = `HTTP ${res.status}`;
-        if (data?.detail) {
-          if (Array.isArray(data.detail)) {
-            // FastAPI validation error format: [{loc: [...], msg: "...", type: "..."}]
-            errorMsg = data.detail.map((err: any) => {
-              const field = err.loc?.join(".") || "unknown";
-              return `${field}: ${err.msg}`;
-            }).join(", ");
-          } else if (typeof data.detail === "string") {
-            errorMsg = data.detail;
-          } else {
-            errorMsg = JSON.stringify(data.detail);
-          }
-        } else if (data?.message) {
-          errorMsg = data.message;
-        }
-        throw new Error(errorMsg);
-      }
+      if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
 
-      const { report_id, issue_id, document_name } = data;
+      const { report_id, issue_id, document_name } = await res.json();
       console.log("Created report:", { report_id, issue_id, document_name });
 
       await uploadPhotosForReport(report_id);
       await uploadPhotoSection(report_id, photoItems);
+      
+      // ★★★ Upload test files for Charger Safety Test ★★★
+      await uploadTestFiles(report_id, "charger", acChargerTest);
 
       clearDraftLocal(currentDraftKey);
       clearPhotosForDraft(currentDraftKey);
 
       router.replace(buildListUrl());
     } catch (e: any) {
-      console.error("Save error:", e);
-      console.error("Error type:", typeof e);
-      console.error("Error keys:", e ? Object.keys(e) : "null");
-      console.error("Error stringified:", JSON.stringify(e, null, 2));
-      
-      let errorMsg = t.alertSaveFailed;
-      if (typeof e === "string") {
-        errorMsg += `: ${e}`;
-      } else if (e instanceof Error) {
-        errorMsg += `: ${e.message}`;
-      } else if (e?.message) {
-        errorMsg += `: ${e.message}`;
-      } else if (e?.detail) {
-        errorMsg += `: ${e.detail}`;
-      } else {
-        errorMsg += `: ${JSON.stringify(e)}`;
-      }
-      
-      alert(errorMsg);
+      console.error(e);
+      alert(`${t.alertSaveFailed}: ${e.message || e}`);
     } finally {
       setSaving(false);
     }
@@ -614,40 +690,40 @@ export default function ACForm() {
 
   // ===== Load station info =====
   useEffect(() => {
-    let alive = true;
-    if (!sn || !draftChecked) return;
+  let alive = true;
+  if (!sn || !draftChecked) return;
 
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: { station: StationPublic } = await res.json();
-        if (!alive) return;
-        const station = data.station;
+  (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: { station: StationPublic } = await res.json();
+      if (!alive) return;
+      const station = data.station;
 
-        setChargerNo(station.chargerNo ? String(station.chargerNo) : null);
+      setChargerNo(station.chargerNo ? String(station.chargerNo) : null);
 
-        setHead(prev => ({
-          ...prev,
-          inspection_date: prev.inspection_date || localTodayISO(),
-          location: prev.location || station.station_name || "",
-          manufacturer: prev.manufacturer || station.manufacturer || station.brand || "",
-          model: prev.model || station.model || "",
-          power: prev.power || station.power || "",
-          serial_number: prev.serial_number || station.serial_number || station.serialNumber || station.SN || sn || "",
-          // ★★★ เพิ่ม PIFirmware ★★★
-          firmware_version: prev.firmware_version || (() => {
-            const fw = station.firmware_version || station.firmwareVersion || station.PIFirmware || "";
-            return fw === "-" ? "" : fw;
-          })(),
-        }));
-      } catch (err) {
-        console.error("โหลดข้อมูลสถานีไม่สำเร็จ:", err);
-      }
-    })();
+      setHead(prev => ({
+        ...prev,
+        inspection_date: prev.inspection_date || localTodayISO(),
+        location: prev.location || station.station_name || "",
+        manufacturer: prev.manufacturer || station.manufacturer || station.brand || "",
+        model: prev.model || station.model || "",
+        power: prev.power || station.power || "",
+        serial_number: prev.serial_number || station.serial_number || station.serialNumber || station.SN || sn || "",
+        // ★★★ เพิ่ม PIFirmware และถ้าเป็น "-" ให้เป็นค่าว่าง ★★★
+        firmware_version: prev.firmware_version || (() => {
+          const fw = station.firmware_version || station.firmwareVersion || station.PIFirmware || "";
+          return fw === "-" ? "" : fw;
+        })(),
+      }));
+    } catch (err) {
+      console.error("โหลดข้อมูลสถานีไม่สำเร็จ:", err);
+    }
+  })();
 
-    return () => { alive = false; };
-  }, [sn, draftChecked]);
+  return () => { alive = false; };
+}, [sn, draftChecked]);
 
   // ============================================================
   // ★★★ NEW: Fetch preview IDs from backend ★★★
@@ -691,14 +767,19 @@ export default function ACForm() {
     if (!sn) return;
     for (let i = 0; i < job.corrective_actions.length; i++) {
       const item = job.corrective_actions[i];
-      const files = item.images.map(im => im.file).filter(Boolean) as File[];
-      if (!files.length) continue;
+      // ★★★ FIXED: กรองเฉพาะ file ที่เป็น Blob จริงๆ ★★★
+      const validImages = item.images.filter(im => im.file instanceof Blob);
+      if (!validImages.length) continue;
       const group = `g${i + 1}`;
       const fd = new FormData();
       fd.append("sn", sn);
       fd.append("group", group);
       if (item.text) fd.append("remark", item.text);
-      files.forEach(f => fd.append("files", f, f.name));
+      // ★★★ FIXED: ถ้าเป็น Blob ที่ไม่มี name ให้กำหนด filename เอง ★★★
+      validImages.forEach((im, idx) => {
+        const filename = im.file.name || `photo_${i}_${idx}.jpg`;
+        fd.append("files", im.file, filename);
+      });
       const res = await fetch(`${API_BASE}/actestreport/${encodeURIComponent(reportId)}/photos`, {
         method: "POST", body: fd, credentials: "include",
       });
@@ -709,18 +790,9 @@ export default function ACForm() {
     }
   }
 
-  // ★★★ FIXED: เพิ่ม chargerNo ใน isFormComplete ★★★
   const formComplete = React.useMemo(() => {
-    return isFormComplete(
-      head,
-      chargerNo || "",  // ★ เพิ่ม chargerNo
-      phaseSequence,
-      equipment,
-      acTest1Results,
-      acChargerTest,
-      photoItems
-    );
-  }, [head, chargerNo, phaseSequence, equipment, acTest1Results, acChargerTest, photoItems]);
+    return isFormComplete(head, chargerNo || "", phaseSequence, equipment, acTest1Results, acChargerTest, photoItems);
+  }, [head, phaseSequence, equipment, acTest1Results, acChargerTest, photoItems]);
 
   return (
     <section className="tw-pb-24">
@@ -761,14 +833,20 @@ export default function ACForm() {
               <h3 className="tw-text-lg tw-font-semibold tw-text-blue-gray-800">
                 <span className="tw-underline">{t.testingTopicsTitle}</span>
               </h3>
-              {/* Phase Sequence - Input field */}
-              <div id="ac-phase-sequence-input" className="tw-flex tw-items-center tw-gap-3 tw-p-2 tw--m-2 tw-rounded-lg tw-transition-all tw-duration-300">
-                <span className="tw-text-sm tw-font-semibold tw-text-gray-800 tw-whitespace-nowrap">
+              {/* ★★★ FIXED: Phase Sequence - same line on mobile ★★★ */}
+              <div className="tw-flex tw-items-center tw-gap-3">
+                <span className="tw-text-sm tw-font-semibold tw-text-gray-800 tw-whitespace-nowrap tw-flex tw-items-center tw-gap-1">
                   {t.phaseSequence}
+                  <Tooltip content={t.phaseSequenceTooltip} placement="top">
+                    <svg className="tw-w-4 tw-h-4 tw-text-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                  </Tooltip>
                 </span>
                 <span className="tw-font-semibold tw-text-base">:</span>
                 <div className="tw-flex-1 md:tw-flex-none md:tw-w-48">
                   <Input
+                    id="phase-sequence-input"
                     value={phaseSequence}
                     onChange={(e) => setPhaseSequence(e.target.value)}
                     placeholder={t.phaseSequencePlaceholder}
@@ -816,7 +894,6 @@ export default function ACForm() {
               />
             </div>
 
-            {/* ★★★ FIXED: เพิ่ม chargerNo ใน ACMasterValidation ★★★ */}
             <ACMasterValidation
               head={head}
               chargerNo={chargerNo || ""}
