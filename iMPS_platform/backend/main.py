@@ -11596,164 +11596,9 @@ class ACSubmitIn(BaseModel):
     electrical_safety: Dict[str, Any] = Field(default_factory=dict)
     charger_safety: Dict[str, Any] = Field(default_factory=dict)
     remarks: Dict[str, Any] = Field(default_factory=dict)
-    symbol: Optional[str] = None
-    phaseSequence: Optional[str] = None
+    symbol: Optional[str] = None  # เปลี่ยนจาก SymbolLiteral เป็น str
+    phaseSequence: Optional[str] = None  # ★★★ เปลี่ยนจาก PhaseLiteral เป็น str ★★★
     signature: Optional[Any] = None  # SignatureBlock
-    test_files: Optional[Dict[str, Any]] = None  # ★★★ เพิ่มใหม่ ★★★
-
-@app.post("/actestreport/{report_id}/test-files")
-async def ac_testreport_upload_test_files(
-    report_id: str,
-    sn: str = Form(...),
-    test_type: str = Form(...),          # "electrical" หรือ "charger"
-    item_index: int = Form(...),         # index ของหัวข้อทดสอบ
-    round_index: int = Form(...),        # รอบที่ (0, 1, 2)
-    handgun: str = Form(...),            # "h1" (สำหรับ AC ใช้แค่ h1)
-    file: UploadFile = File(...),
-    current: UserClaims = Depends(get_current_user),
-):
-    """
-    อัปโหลดไฟล์เอกสารสำหรับการทดสอบ AC
-    - test_type: "electrical" (ACTest1Grid) หรือ "charger" (ACTest2Grid)
-    - item_index: index ของหัวข้อทดสอบ
-    - round_index: รอบที่ทดสอบ (0, 1, 2)
-    - handgun: "h1" (AC ใช้แค่ h1)
-    """
-    # Auth
-    if current.role != "admin" and sn not in set(current.station_ids):
-        raise HTTPException(status_code=403, detail="Forbidden sn")
-
-    # Validate handgun (AC ใช้แค่ h1)
-    if handgun not in ("h1",):
-        raise HTTPException(status_code=400, detail="handgun must be 'h1' for AC")
-    
-    # Validate test_type
-    if test_type not in ("electrical", "charger"):
-        raise HTTPException(status_code=400, detail="test_type must be 'electrical' or 'charger'")
-
-    # Get report
-    coll = get_ac_testreport_collection_for(sn)
-    from bson import ObjectId
-    try:
-        oid = ObjectId(report_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad report_id")
-
-    doc = await coll.find_one({"_id": oid}, {"_id": 1})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    # Validate file extension
-    ext = (file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "")
-    if ext not in ALLOWED_DOC_EXTS:
-        raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
-
-    # Read and validate size
-    data = await file.read()
-    if len(data) > MAX_DOC_FILE_MB * 1024 * 1024:
-        raise HTTPException(status_code=413, detail=f"File too large (> {MAX_DOC_FILE_MB} MB)")
-
-    # Create destination directory
-    # Structure: /uploads/actest/{sn}/{report_id}/test_files/{test_type}/{item_index}/{round_index}/{handgun}/
-    dest_dir = pathlib.Path(UPLOADS_ROOT) / "actest" / sn / report_id / "test_files" / test_type / str(item_index) / str(round_index) / handgun
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save file
-    fname = _safe_name(file.filename or f"file_{secrets.token_hex(3)}.{ext}")
-    path = dest_dir / fname
-    with open(path, "wb") as out:
-        out.write(data)
-
-    url_path = f"/uploads/actest/{sn}/{report_id}/test_files/{test_type}/{item_index}/{round_index}/{handgun}/{fname}"
-    
-    file_data = {
-        "filename": fname,
-        "originalName": file.filename,
-        "size": len(data),
-        "url": url_path,
-        "ext": ext,
-        "uploadedAt": datetime.now(timezone.utc),
-    }
-
-    # Update document: store in test_files.{test_type}.{item_index}.{round_index}.{handgun}
-    field_path = f"test_files.{test_type}.{item_index}.{round_index}.{handgun}"
-    await coll.update_one(
-        {"_id": oid},
-        {
-            "$set": {
-                field_path: file_data,
-                "updatedAt": datetime.now(timezone.utc)
-            }
-        }
-    )
-
-    return {
-        "ok": True,
-        "file": file_data,
-        "test_type": test_type,
-        "item_index": item_index,
-        "round_index": round_index,
-        "handgun": handgun,
-    }
-
-@app.delete("/actestreport/{report_id}/test-files")
-async def ac_testreport_delete_test_file(
-    report_id: str,
-    sn: str = Query(...),
-    test_type: str = Query(...),
-    item_index: int = Query(...),
-    round_index: int = Query(...),
-    handgun: str = Query(...),
-    current: UserClaims = Depends(get_current_user),
-):
-    """
-    ลบไฟล์เอกสารสำหรับการทดสอบ AC
-    """
-    # Auth
-    if current.role != "admin" and sn not in set(current.station_ids):
-        raise HTTPException(status_code=403, detail="Forbidden sn")
-
-    # Validate
-    if handgun not in ("h1",):
-        raise HTTPException(status_code=400, detail="handgun must be 'h1' for AC")
-    
-    if test_type not in ("electrical", "charger"):
-        raise HTTPException(status_code=400, detail="test_type must be 'electrical' or 'charger'")
-
-    # Get report
-    coll = get_ac_testreport_collection_for(sn)
-    from bson import ObjectId
-    try:
-        oid = ObjectId(report_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad report_id")
-
-    # Get current file info to delete from disk
-    doc = await coll.find_one({"_id": oid}, {f"test_files.{test_type}.{item_index}.{round_index}.{handgun}": 1})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    # Try to delete file from disk
-    try:
-        file_info = doc.get("test_files", {}).get(test_type, {}).get(str(item_index), {}).get(str(round_index), {}).get(handgun)
-        if file_info and file_info.get("url"):
-            file_path = pathlib.Path(UPLOADS_ROOT) / file_info["url"].lstrip("/uploads/")
-            if file_path.exists():
-                file_path.unlink()
-    except Exception as e:
-        print(f"Warning: Could not delete file from disk: {e}")
-
-    # Remove from document
-    field_path = f"test_files.{test_type}.{item_index}.{round_index}.{handgun}"
-    await coll.update_one(
-        {"_id": oid},
-        {
-            "$unset": {field_path: ""},
-            "$set": {"updatedAt": datetime.now(timezone.utc)}
-        }
-    )
-
-    return {"ok": True}
 
 
 async def _ensure_ac_indexes(coll):
@@ -11934,7 +11779,6 @@ async def acreport_submit(body: ACSubmitIn, current: UserClaims = Depends(get_cu
         "createdAt": datetime.now(timezone.utc),
         "updatedAt": datetime.now(timezone.utc),
         "photos": {},
-        "test_files": body.test_files or {},  # ★★★ เพิ่มใหม่ ★★★
     }
 
     res = await coll.insert_one(doc)
@@ -11958,66 +11802,12 @@ async def _ensure_util_index(coll):
     except Exception:
         pass
 
-@app.get("/utilization/stream")
-async def utilization_stream(request: Request, sn: str = Query(...), current: UserClaims = Depends(get_current_user)):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-
-    coll = get_device_collection_for(sn)
-    headers = {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",
-    }
-
-    async def event_generator():
-        # ส่ง snapshot ล่าสุดก่อน
-        latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
-        if latest:
-            latest["_id"] = str(latest["_id"])
-            latest["timestamp_utc"] = _ensure_utc_iso(latest.get("timestamp_utc"))
-            yield f"event: init\ndata: {json.dumps(latest)}\n\n"
-
-        # ต่อด้วย change stream (ต้องเป็น replica set / Atlas tier ที่รองรับ)
-        try:
-            async with coll.watch(full_document='updateLookup') as stream:
-                async for change in stream:
-                    if await request.is_disconnected():
-                        break
-                    doc = change.get("fullDocument")
-                    if not doc:
-                        continue
-                    doc["_id"] = str(doc["_id"])
-                    doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
-                    yield f"data: {json.dumps(doc)}\n\n"
-        except Exception:
-            # fallback: ถ้าใช้ไม่ได้ (เช่น standalone) ให้ polling
-            last_id = latest.get("_id") if latest else None
-            while not await request.is_disconnected():
-                doc = await coll.find_one({}, sort=[("timestamp_utc", -1), ("_id", -1)])
-                if doc and str(doc["_id"]) != str(last_id):
-                    last_id = str(doc["_id"])
-                    doc["_id"] = last_id
-                    doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
-                    yield f"data: {json.dumps(doc)}\n\n"
-                else:
-                    yield ": keep-alive\n\n"
-                await asyncio.sleep(5)
-
-    return StreamingResponse(event_generator(), headers=headers)
-
-
-# ---------------------------------------------------------------------------------------
-# device page (station_id)
-# ---------------------------------------------------------------------------------------
 # @app.get("/utilization/stream")
-# async def utilization_stream(
-#     request: Request, 
-#     station_id: str = Query(...),  # ✅ เปลี่ยนจาก sn เป็น station_id
-#     current: UserClaims = Depends(get_current_user)
-# ):
-#     coll = get_device_collection_for(station_id) 
+# async def utilization_stream(request: Request, sn: str = Query(...), current: UserClaims = Depends(get_current_user)):
+#     # if current.role != "admin" and station_id not in set(current.station_ids):
+#     #     raise HTTPException(status_code=403, detail="Forbidden station_id")
+
+#     coll = get_device_collection_for(sn)
 #     headers = {
 #         "Content-Type": "text/event-stream",
 #         "Cache-Control": "no-cache",
@@ -12060,6 +11850,60 @@ async def utilization_stream(request: Request, sn: str = Query(...), current: Us
 #                 await asyncio.sleep(5)
 
 #     return StreamingResponse(event_generator(), headers=headers)
+
+
+# ---------------------------------------------------------------------------------------
+# device page (station_id)
+# ---------------------------------------------------------------------------------------
+@app.get("/utilization/stream")
+async def utilization_stream(
+    request: Request, 
+    station_id: str = Query(...),  # ✅ เปลี่ยนจาก sn เป็น station_id
+    current: UserClaims = Depends(get_current_user)
+):
+    coll = get_device_collection_for(station_id) 
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    async def event_generator():
+        # ส่ง snapshot ล่าสุดก่อน
+        latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+        if latest:
+            latest["_id"] = str(latest["_id"])
+            latest["timestamp_utc"] = _ensure_utc_iso(latest.get("timestamp_utc"))
+            yield f"event: init\ndata: {json.dumps(latest)}\n\n"
+
+        # ต่อด้วย change stream (ต้องเป็น replica set / Atlas tier ที่รองรับ)
+        try:
+            async with coll.watch(full_document='updateLookup') as stream:
+                async for change in stream:
+                    if await request.is_disconnected():
+                        break
+                    doc = change.get("fullDocument")
+                    if not doc:
+                        continue
+                    doc["_id"] = str(doc["_id"])
+                    doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
+                    yield f"data: {json.dumps(doc)}\n\n"
+        except Exception:
+            # fallback: ถ้าใช้ไม่ได้ (เช่น standalone) ให้ polling
+            last_id = latest.get("_id") if latest else None
+            while not await request.is_disconnected():
+                doc = await coll.find_one({}, sort=[("timestamp_utc", -1), ("_id", -1)])
+                if doc and str(doc["_id"]) != str(last_id):
+                    last_id = str(doc["_id"])
+                    doc["_id"] = last_id
+                    doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
+                    yield f"data: {json.dumps(doc)}\n\n"
+                else:
+                    yield ": keep-alive\n\n"
+                await asyncio.sleep(5)
+
+    return StreamingResponse(event_generator(), headers=headers)
 
 
 #-------------------------------------------------------------------- setting page

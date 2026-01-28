@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Input, Typography, Tooltip } from "@material-tailwind/react";
+import { Input, Typography } from "@material-tailwind/react";
 
 // ===== Types =====
 type Lang = "th" | "en";
@@ -23,14 +23,6 @@ const translations = {
     missingManufacturer: "ยังไม่ได้กรอกผู้ผลิต",
     missingModel: "ยังไม่ได้กรอกรุ่น",
     missingSerial: "ยังไม่ได้กรอกหมายเลขเครื่อง",
-    // Tooltips
-    titleTooltip: "กรอกข้อมูลอุปกรณ์ทดสอบที่ใช้ในการตรวจสอบ",
-    manufacturerTooltip: "ชื่อผู้ผลิตอุปกรณ์ทดสอบ",
-    modelTooltip: "รุ่นของอุปกรณ์ทดสอบ",
-    serialTooltip: "หมายเลขเครื่องของอุปกรณ์ทดสอบ",
-    addTooltip: "เพิ่มอุปกรณ์ทดสอบใหม่",
-    removeTooltip: "ลบอุปกรณ์ทดสอบนี้",
-    clickToScroll: "คลิกเพื่อไปยังช่องที่ต้องกรอก",
   },
   en: {
     title: "Equipment Identification Details",
@@ -47,14 +39,6 @@ const translations = {
     missingManufacturer: "Manufacturer is missing",
     missingModel: "Model is missing",
     missingSerial: "Serial Number is missing",
-    // Tooltips
-    titleTooltip: "Enter testing equipment details used for inspection",
-    manufacturerTooltip: "Testing equipment manufacturer name",
-    modelTooltip: "Testing equipment model",
-    serialTooltip: "Testing equipment serial number",
-    addTooltip: "Add new testing equipment",
-    removeTooltip: "Remove this testing equipment",
-    clickToScroll: "Click to go to the field",
   },
 };
 
@@ -248,7 +232,6 @@ const ValidationSummary: React.FC<ValidationSummaryProps> = ({
                   {setErrors.map((error, idx) => (
                     <li
                       key={idx}
-                      title={t.clickToScroll}
                       className="tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-amber-700 tw-cursor-pointer hover:tw-text-amber-900 hover:tw-bg-amber-50 tw-rounded tw-px-1 tw-py-0.5 tw-transition-colors"
                       onClick={() => scrollToItem(error)}
                     >
@@ -327,28 +310,22 @@ export default function EquipmentSection({
   return (
     <div className="tw-space-y-3">
       <div className="tw-flex tw-items-center tw-justify-between">
-        <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-flex tw-items-center tw-gap-2">
+        <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">
           <span className="tw-text-lg tw-font-bold tw-underline tw-text-blue-gray-800">{t.title}</span>
-          <Tooltip content={t.titleTooltip} placement="top">
-            <svg className="tw-w-4 tw-h-4 tw-text-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-            </svg>
-          </Tooltip>
         </span>
-        <Tooltip content={isMaxReached ? t.maxReached : t.addTooltip} placement="top">
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={isMaxReached}
-            className={`tw-text-sm tw-rounded-md tw-border tw-px-3 tw-py-1 tw-transition-colors ${
-              isMaxReached
-                ? "tw-border-gray-300 tw-bg-gray-100 tw-text-gray-400 tw-cursor-not-allowed"
-                : "tw-border-gray-700 tw-bg-gray-800 tw-text-white hover:tw-bg-gray-700"
-            }`}
-          >
-            {t.add}
-          </button>
-        </Tooltip>
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={isMaxReached}
+          className={`tw-text-sm tw-rounded-md tw-border tw-px-3 tw-py-1 tw-transition-colors ${
+            isMaxReached
+              ? "tw-border-gray-300 tw-bg-gray-100 tw-text-gray-400 tw-cursor-not-allowed"
+              : "tw-border-gray-700 tw-bg-gray-800 tw-text-white hover:tw-bg-gray-700"
+          }`}
+          title={isMaxReached ? t.maxReached : ""}
+        >
+          {t.add}
+        </button>
       </div>
 
       {equipmentList.map((val, i) => (
@@ -363,16 +340,15 @@ export default function EquipmentSection({
               {t.setNumber} {i + 1}
             </span>
             {equipmentList.length > 1 && (
-              <Tooltip content={t.removeTooltip} placement="top">
-                <button
-                  type="button"
-                  onClick={() => onRemove(i)}
-                  className="tw-h-8 tw-w-8 tw-flex tw-items-center tw-justify-center tw-rounded-full tw-border tw-border-red-200 tw-text-red-600 tw-bg-white hover:tw-bg-red-50 hover:tw-border-red-300 tw-transition-colors tw-font-bold tw-text-base"
-                  aria-label={t.remove}
-                >
-                  ×
-                </button>
-              </Tooltip>
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                className="tw-h-8 tw-w-8 tw-flex tw-items-center tw-justify-center tw-rounded-full tw-border tw-border-red-200 tw-text-red-600 tw-bg-white hover:tw-bg-red-50 hover:tw-border-red-300 tw-transition-colors tw-font-bold tw-text-base"
+                title={t.remove}
+                aria-label={t.remove}
+              >
+                ×
+              </button>
             )}
           </div>
 
@@ -380,14 +356,7 @@ export default function EquipmentSection({
           <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4 tw-items-end">
             {/* Manufacturer */}
             <div>
-              <label className="tw-flex tw-items-center tw-gap-1 tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                {t.manufacturer} :
-                <Tooltip content={t.manufacturerTooltip} placement="top">
-                  <svg className="tw-w-3.5 tw-h-3.5 tw-text-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                  </svg>
-                </Tooltip>
-              </label>
+              <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t.manufacturer} :</label>
               <Input
                 value={val}
                 onChange={(e) => onUpdateEquipment(i, e.target.value)}
@@ -398,14 +367,7 @@ export default function EquipmentSection({
 
             {/* Model */}
             <div>
-              <label className="tw-flex tw-items-center tw-gap-1 tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                {t.model} :
-                <Tooltip content={t.modelTooltip} placement="top">
-                  <svg className="tw-w-3.5 tw-h-3.5 tw-text-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                  </svg>
-                </Tooltip>
-              </label>
+              <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t.model} :</label>
               <Input
                 value={reporterList[i] || ""}
                 onChange={(e) => onUpdateReporter(i, e.target.value)}
@@ -416,14 +378,7 @@ export default function EquipmentSection({
 
             {/* Serial Number + ปุ่มลบ (Desktop) */}
             <div>
-              <label className="tw-flex tw-items-center tw-gap-1 tw-text-xs tw-text-blue-gray-500 tw-mb-1">
-                {t.serialNumber} :
-                <Tooltip content={t.serialTooltip} placement="top">
-                  <svg className="tw-w-3.5 tw-h-3.5 tw-text-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                  </svg>
-                </Tooltip>
-              </label>
+              <label className="tw-block tw-text-xs tw-text-blue-gray-500 tw-mb-1">{t.serialNumber} :</label>
               <div className="tw-flex tw-gap-2">
                 <Input
                   value={serialNumbers[i] || ""}
@@ -433,16 +388,15 @@ export default function EquipmentSection({
                 />
                 {/* Desktop: ปุ่มลบ X */}
                 {equipmentList.length > 1 && (
-                  <Tooltip content={t.removeTooltip} placement="top">
-                    <button
-                      type="button"
-                      onClick={() => onRemove(i)}
-                      className="tw-hidden md:tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-md tw-border tw-border-red-200 tw-text-red-600 hover:tw-bg-red-50 hover:tw-border-red-300 tw-transition-colors tw-font-bold tw-text-lg"
-                      aria-label={t.remove}
-                    >
-                      ×
-                    </button>
-                  </Tooltip>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(i)}
+                    className="tw-hidden md:tw-flex tw-h-10 tw-w-10 tw-items-center tw-justify-center tw-rounded-md tw-border tw-border-red-200 tw-text-red-600 hover:tw-bg-red-50 hover:tw-border-red-300 tw-transition-colors tw-font-bold tw-text-lg"
+                    title={t.remove}
+                    aria-label={t.remove}
+                  >
+                    ×
+                  </button>
                 )}
               </div>
             </div>

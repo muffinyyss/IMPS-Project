@@ -395,16 +395,15 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
     if (isPdfEndpoint) {
       const withStation = appendParam(u, "sn", sn || "");
-      const withLang = appendParam(withStation, "lang", lang);
       return {
-        previewHref: appendParam(withLang, "dl", "0"),
-        downloadHref: appendParam(withLang, "dl", "1"),
+        previewHref: appendParam(withStation, "dl", "0"),
+        downloadHref: appendParam(withStation, "dl", "1"),
         isPdfEndpoint: true,
       };
     }
 
     return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
-  }, [sn, apiBase, lang]);
+  }, [sn, apiBase]);
 
   // Columns with translations
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [

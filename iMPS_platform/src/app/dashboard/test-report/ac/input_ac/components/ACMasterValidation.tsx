@@ -67,14 +67,9 @@ const translations = {
     // Test2 errors
     missingH1: "ยังไม่ได้กรอกค่า H.1",
     missingType2: "ยังไม่ได้กรอกค่า Type 2 (mA)",
-    missingFile: "ยังไม่ได้แนบไฟล์",
     // Photo errors
     missingPhoto: "ยังไม่ได้เพิ่มรูปภาพ",
     items: "รายการ",
-    // Tooltips
-    clickToScroll: "คลิกเพื่อไปยังช่องที่ต้องกรอก",
-    expandToSeeErrors: "คลิกเพื่อดูรายการที่ต้องกรอก",
-    collapseErrors: "คลิกเพื่อซ่อนรายการ",
   },
   en: {
     formStatus: "Form Completion Status",
@@ -104,14 +99,9 @@ const translations = {
     // Test2 errors
     missingH1: "H.1 value is missing",
     missingType2: "Type 2 value (mA) is missing",
-    missingFile: "File not attached",
     // Photo errors
     missingPhoto: "Photo not added",
     items: "items",
-    // Tooltips
-    clickToScroll: "Click to go to the field",
-    expandToSeeErrors: "Click to see required fields",
-    collapseErrors: "Click to hide list",
   },
 };
 
@@ -132,25 +122,25 @@ const AC_TEST1_ITEMS = [
 
 // AC Test2 items (different from DC: h1+result instead of h1+h2, has RCD items with type2Values)
 const AC_TEST2_ITEMS = [
-  { testName: "Continuity PE", testNameTh: "Continuity PE", isRCD: false, isEmergency: false, requireFile: true },
-  { testName: "Insulation Cable", testNameTh: "Insulation Cable", isRCD: false, isEmergency: false, requireFile: true },
-  { testName: "State A", testNameTh: "State A", isRCD: false, isEmergency: false, requireFile: true },
-  { testName: "State B", testNameTh: "State B", isRCD: false, isEmergency: false, requireFile: true },
-  { testName: "State C", testNameTh: "State C", isRCD: false, isEmergency: false, requireFile: true },
-  { testName: "CP Short", testNameTh: "CP Short", isRCD: false, isEmergency: false, requireFile: true },
-  { testName: "PE Cut", testNameTh: "PE Cut", isRCD: false, isEmergency: false, requireFile: true },
-  { testName: "Emergency", testNameTh: "Emergency", isRCD: false, isEmergency: true, requireFile: false },
-  { testName: "RCD type A", testNameTh: "RCD type A", isRCD: true, isEmergency: false, requireFile: true },
-  { testName: "RCD type F", testNameTh: "RCD type F", isRCD: true, isEmergency: false, requireFile: true },
-  { testName: "RCD type B", testNameTh: "RCD type B", isRCD: true, isEmergency: false, requireFile: true },
-  { testName: "RDC-DD", testNameTh: "RDC-DD", isRCD: true, isEmergency: false, requireFile: true },
+  { testName: "Continuity PE", testNameTh: "Continuity PE", isRCD: false, isEmergency: false },
+  { testName: "Insulation Cable", testNameTh: "Insulation Cable", isRCD: false, isEmergency: false },
+  { testName: "State A", testNameTh: "State A", isRCD: false, isEmergency: false },
+  { testName: "State B", testNameTh: "State B", isRCD: false, isEmergency: false },
+  { testName: "State C", testNameTh: "State C", isRCD: false, isEmergency: false },
+  { testName: "CP Short", testNameTh: "CP Short", isRCD: false, isEmergency: false },
+  { testName: "PE Cut", testNameTh: "PE Cut", isRCD: false, isEmergency: false },
+  { testName: "Emergency", testNameTh: "Emergency", isRCD: false, isEmergency: true },
+  { testName: "RCD type A", testNameTh: "RCD type A", isRCD: true, isEmergency: false },
+  { testName: "RCD type F", testNameTh: "RCD type F", isRCD: true, isEmergency: false },
+  { testName: "RCD type B", testNameTh: "RCD type B", isRCD: true, isEmergency: false },
+  { testName: "RDC-DD", testNameTh: "RDC-DD", isRCD: true, isEmergency: false },
 ];
 
 const PHOTO_CATEGORIES = [
   { key: "nameplate", en: "Nameplate", th: "Nameplate" },
   { key: "charger", en: "Charger", th: "Charger" },
-  { key: "circuitBreaker", en: "Test Equipment", th: "เครื่องมือที่ใช้ทดสอบ" },
-  { key: "rcd", en: "Test Equipment Nameplate", th: "Nameplate ของเครื่องทดสอบ" },
+  { key: "circuitBreaker", en: "Circuit Breaker", th: "Circuit Breaker" },
+  { key: "rcd", en: "RCD", th: "RCD" },
   { key: "gun1", en: "GUN 1", th: "GUN 1" },
   { key: "gun2", en: "GUN 2", th: "GUN 2" },
 ];
@@ -268,11 +258,20 @@ function validateTest1(results: TestResults | null, lang: Lang): ValidationError
   AC_TEST1_ITEMS.forEach((item, itemIndex) => {
     const displayName = lang === "th" ? item.testNameTh : item.testName;
 
-    // Check if item is NA in first round
+    // Check if item is NA in first round (skip remark validation)
     const firstRoundResult = safeResults.rounds[0]?.[itemIndex]?.result;
     const isNaInFirstRound = firstRoundResult === "NA";
 
-    // Remark is optional - no validation needed
+    // Check remark (skip if NA)
+    if (!isNaInFirstRound && !safeResults.remarks[itemIndex]?.trim()) {
+      errors.push({
+        section: t.sectionElectrical,
+        sectionIcon: "⚡",
+        itemName: displayName,
+        message: t.missingRemark,
+        scrollId: `ac-test-item-${itemIndex}-round-1`,
+      });
+    }
 
     // Power Standby
     if (item.isPowerStandby) {
@@ -390,7 +389,7 @@ function validateTest1(results: TestResults | null, lang: Lang): ValidationError
   return errors;
 }
 
-function validateTest2(results: TestCharger | null, lang: Lang, requireFiles: boolean = false): ValidationError[] {
+function validateTest2(results: TestCharger | null, lang: Lang): ValidationError[] {
   const errors: ValidationError[] = [];
   const t = translations[lang];
 
@@ -399,7 +398,6 @@ function validateTest2(results: TestCharger | null, lang: Lang, requireFiles: bo
     rounds: [[]],
     remarks: [],
     type2Values: [],
-    files: {},
   };
 
   // Helper: Check if item failed in round 1 or 2 (for round 3 validation)
@@ -408,11 +406,6 @@ function validateTest2(results: TestCharger | null, lang: Lang, requireFiles: bo
     const r2Result = safeResults.rounds[1]?.[itemIndex]?.result;
     const isFailResult = (v?: string) => v === "FAIL" || v === "✗";
     return isFailResult(r1Result) || isFailResult(r2Result);
-  };
-
-  // Helper: Check if file exists for item/round
-  const hasFile = (itemIndex: number, roundIndex: number): boolean => {
-    return !!safeResults.files?.[itemIndex]?.[roundIndex]?.h1;
   };
 
   AC_TEST2_ITEMS.forEach((item, itemIndex) => {
@@ -437,10 +430,9 @@ function validateTest2(results: TestCharger | null, lang: Lang, requireFiles: bo
     }
 
     // Emergency: only validate round 1, no H.1, only PASS/FAIL (no NA)
-    // Uses type2Values like Isolation Transformer (same as ACTest2Grid.tsx)
     if (isEmergency) {
-      const emergencyValue = safeResults.type2Values[itemIndex];
-      if (!emergencyValue || !["PASS", "FAIL", "✓", "✗"].includes(emergencyValue)) {
+      const result = safeResults.rounds[0]?.[itemIndex]?.result;
+      if (!result || !["PASS", "FAIL", "✓", "✗"].includes(result)) {
         errors.push({
           section: t.sectionCharger,
           sectionIcon: "🔌",
@@ -495,17 +487,6 @@ function validateTest2(results: TestCharger | null, lang: Lang, requireFiles: bo
           scrollId: `ac-test2-item-${itemIndex}-round-${roundIndex + 1}`,
         });
       }
-
-      // File validation (only if requireFiles is true and item requires file)
-      if (requireFiles && item.requireFile && !hasFile(itemIndex, roundIndex)) {
-        errors.push({
-          section: t.sectionCharger,
-          sectionIcon: "🔌",
-          itemName: `${displayName} (${t.round} ${roundIndex + 1})`,
-          message: t.missingFile,
-          scrollId: `ac-test2-item-${itemIndex}-round-${roundIndex + 1}`,
-        });
-      }
     });
   });
 
@@ -556,7 +537,6 @@ interface ACMasterValidationProps {
   acChargerTest: TestCharger | null;
   photoItems: PhotoItem[];
   lang?: Lang;
-  requireFiles?: boolean; // เพิ่ม option สำหรับ validate ไฟล์แนบ
 }
 
 // ===== Component =====
@@ -569,7 +549,6 @@ const ACMasterValidation: React.FC<ACMasterValidationProps> = ({
   acChargerTest,
   photoItems,
   lang = "th",
-  requireFiles = true,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const t = translations[lang];
@@ -579,7 +558,7 @@ const ACMasterValidation: React.FC<ACMasterValidationProps> = ({
     ...validateMeta(head, chargerNo, phaseSequence, lang),
     ...validateEquipment(equipment, lang),
     ...validateTest1(acTest1Results, lang),
-    ...validateTest2(acChargerTest, lang, requireFiles),
+    ...validateTest2(acChargerTest, lang),
     ...validatePhotos(photoItems, lang),
   ];
 
@@ -687,7 +666,6 @@ const ACMasterValidation: React.FC<ACMasterValidationProps> = ({
                   {sectionErrors.map((error, idx) => (
                     <li
                       key={idx}
-                      title={t.clickToScroll}
                       className="tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-amber-700 tw-cursor-pointer hover:tw-text-amber-900 hover:tw-bg-amber-50 tw-rounded tw-px-1 tw-py-0.5 tw-transition-colors"
                       onClick={() => scrollToItem(error.scrollId)}
                     >
@@ -708,6 +686,8 @@ const ACMasterValidation: React.FC<ACMasterValidationProps> = ({
   );
 };
 
+export default ACMasterValidation;
+
 // ★ Export function สำหรับเช็คว่ากรอกครบหรือยัง (ใช้ใน checkList.tsx)
 export function isFormComplete(
   head: Head,
@@ -716,17 +696,14 @@ export function isFormComplete(
   equipment: EquipmentBlock,
   acTest1Results: TestResults | null,
   acChargerTest: TestCharger | null,
-  photoItems: PhotoItem[],
-  requireFiles: boolean = true
+  photoItems: PhotoItem[]
 ): boolean {
   const allErrors = [
     ...validateMeta(head, chargerNo, phaseSequence, "th"),
     ...validateEquipment(equipment, "th"),
     ...validateTest1(acTest1Results, "th"),
-    ...validateTest2(acChargerTest, "th", requireFiles),
+    ...validateTest2(acChargerTest, "th"),
     ...validatePhotos(photoItems, "th"),
   ];
   return allErrors.length === 0;
 }
-
-export default ACMasterValidation;

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import { Textarea, Typography, Tooltip } from "@material-tailwind/react";
+import { Textarea, Typography } from "@material-tailwind/react";
 
 /* ===================== Types ===================== */
 
@@ -34,14 +34,6 @@ const translations = {
     allComplete: "กรอกข้อมูลครบถ้วนแล้ว ✓",
     remaining: "ยังขาดอีก {n} รายการ",
     missingPhoto: "ยังไม่ได้เพิ่มรูปภาพ",
-    // Tooltips
-    clickToChangePhoto: "คลิกเพื่อเปลี่ยนรูปภาพ",
-    clickToUploadPhoto: "คลิกเพื่ออัปโหลดรูปภาพ",
-    deletePhotoTooltip: "ลบรูปภาพนี้",
-    photoRequired: "จำเป็นต้องใส่รูปภาพ",
-    clickToViewFull: "คลิกเพื่อดูรูปเต็ม",
-    clickToScroll: "คลิกเพื่อไปยังช่องที่ต้องกรอก",
-    categoryTooltip: "อัปโหลดรูปภาพสำหรับหมวดหมู่นี้",
   },
   en: {
     addPhoto: "Add Photo / Take Photo",
@@ -55,32 +47,24 @@ const translations = {
     allComplete: "All fields completed ✓",
     remaining: "{n} items remaining",
     missingPhoto: "Photo not added",
-    // Tooltips
-    clickToChangePhoto: "Click to change photo",
-    clickToUploadPhoto: "Click to upload photo",
-    deletePhotoTooltip: "Delete this photo",
-    photoRequired: "Photo is required",
-    clickToViewFull: "Click to view full image",
-    clickToScroll: "Click to go to the field",
-    categoryTooltip: "Upload photo for this category",
   },
 };
 
 /* ===================== Photo Categories ===================== */
 
 const photoCategories = [
-  { key: "nameplate", en: "Nameplate", th: "Nameplate", tooltip: { th: "ถ่ายรูป Nameplate ของเครื่องชาร์จ", en: "Take photo of charger nameplate" } },
-  { key: "charger", en: "Charger", th: "เครื่องอัดประจุไฟฟ้า", tooltip: { th: "ถ่ายรูปเครื่องอัดประจุไฟฟ้าทั้งตัว", en: "Take photo of the entire charger" } },
-  { key: "testingEquipment", en: "Testing Equipment", th: "เครื่องมือทดสอบ", tooltip: { th: "ถ่ายรูปเครื่องมือทดสอบที่ใช้", en: "Take photo of testing equipment used" } },
-  { key: "testingEquipmentNameplate", en: "Testing Equipment Nameplate", th: "Nameplate ของเครื่องมือทดสอบ", tooltip: { th: "ถ่ายรูป Nameplate ของเครื่องมือทดสอบ", en: "Take photo of testing equipment nameplate" } },
-  { key: "gun1", en: "GUN 1", th: "หัวชาร์จที่ 1", tooltip: { th: "ถ่ายรูปหัวชาร์จที่ 1", en: "Take photo of charging gun 1" } },
-  { key: "gun2", en: "GUN 2", th: "หัวชาร์จที่ 2", tooltip: { th: "ถ่ายรูปหัวชาร์จที่ 2", en: "Take photo of charging gun 2" } },
+  { key: "nameplate", en: "Nameplate", th: "Nameplate" },
+  { key: "charger", en: "Charger", th: "Charger" },
+  { key: "circuitBreaker", en: "Circuit Breaker", th: "Circuit Breaker" },
+  { key: "rcd", en: "RCD", th: "RCD" },
+  { key: "gun1", en: "GUN 1", th: "GUN 1" },
+  { key: "gun2", en: "GUN 2", th: "GUN 2" },
 ];
 
 /* ===================== Helper: Validation Checker ===================== */
 
 export interface ValidationError {
-  categoryIndex: number;
+  categoryKey: string;
   categoryName: string;
   field: string;
   message: string;
@@ -101,7 +85,7 @@ export const validatePhotoItems = (
     // Check if photo exists
     if (!item?.images || item.images.length === 0) {
       errors.push({
-        categoryIndex: index,
+        categoryKey: category.key,
         categoryName,
         field: lang === "th" ? "รูปภาพ" : "Photo",
         message: t.missingPhoto,
@@ -138,7 +122,7 @@ const ValidationSummary: React.FC<ValidationSummaryProps> = ({ items, lang }) =>
 
   // Scroll to item and highlight
   const scrollToItem = (error: ValidationError) => {
-    const elementId = `photo-category-${error.categoryIndex}`;
+    const elementId = `ac-photo-category-${error.categoryKey}`;
     const element = document.getElementById(elementId);
 
     if (element) {
@@ -237,7 +221,6 @@ const ValidationSummary: React.FC<ValidationSummaryProps> = ({ items, lang }) =>
                   {categoryErrors.map((error, idx) => (
                     <li
                       key={idx}
-                      title={t.clickToScroll}
                       className="tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-amber-700 tw-cursor-pointer hover:tw-text-amber-900 hover:tw-bg-amber-50 tw-rounded tw-px-1 tw-py-0.5 tw-transition-colors"
                       onClick={() => scrollToItem(error)}
                     >
@@ -372,32 +355,18 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({ initialItems, onItemsCh
       <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
         {photoCategories.map((category, categoryIndex) => {
           const categoryName = lang === "th" ? category.th : category.en;
-          const categoryTooltip = category.tooltip[lang];
           return (
             <div
-              id={`photo-category-${categoryIndex}`}
+              id={`ac-photo-category-${category.key}`}
               key={category.key}
               className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4 tw-transition-all tw-duration-300"
             >
-              <div className="tw-text-center tw-font-medium tw-text-blue-gray-800 tw-text-sm tw-flex tw-items-center tw-justify-center tw-gap-1">
-                {categoryName}
-                <Tooltip content={categoryTooltip} placement="top">
-                  <svg className="tw-w-4 tw-h-4 tw-text-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                  </svg>
-                </Tooltip>
-              </div>
+              <div className="tw-text-center tw-font-medium tw-text-blue-gray-800 tw-text-sm">{categoryName}</div>
 
               {/* Photo Upload Area - กรอบสีเหลี่ยมเส้นประ */}
-              <div 
-                className="tw-border-2 tw-border-dashed tw-border-blue-gray-300 tw-rounded-lg tw-p-6 tw-min-h-[200px] tw-flex tw-items-center tw-justify-center tw-relative"
-                title={photoItems[categoryIndex]?.images?.length > 0 ? t.clickToChangePhoto : t.clickToUploadPhoto}
-              >
+              <div className="tw-border-2 tw-border-dashed tw-border-blue-gray-300 tw-rounded-lg tw-p-6 tw-min-h-[200px] tw-flex tw-items-center tw-justify-center tw-relative">
                 {photoItems[categoryIndex]?.images && photoItems[categoryIndex].images.length > 0 ? (
-                  <label 
-                    className="tw-w-full tw-h-full tw-flex tw-items-center tw-justify-center tw-cursor-pointer tw-relative"
-                    title={t.clickToChangePhoto}
-                  >
+                  <label className="tw-w-full tw-h-full tw-flex tw-items-center tw-justify-center tw-cursor-pointer tw-relative">
                     <input
                       type="file"
                       accept="image/*"
@@ -419,25 +388,21 @@ const ACPhotoSection: React.FC<ACPhotoSectionProps> = ({ initialItems, onItemsCh
                         fill
                         className="tw-object-contain tw-rounded-md"
                       />
-                      <Tooltip content={t.deletePhotoTooltip} placement="top">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            removeItemImage(categoryIndex, 0);
-                          }}
-                          className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-text-xs tw-rounded-full tw-w-7 tw-h-7 tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-transition-colors tw-shadow-md"
-                        >
-                          ×
-                        </button>
-                      </Tooltip>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          removeItemImage(categoryIndex, 0);
+                        }}
+                        className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-text-xs tw-rounded-full tw-w-7 tw-h-7 tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-transition-colors tw-shadow-md"
+                        title={t.deleteThis}
+                      >
+                        ×
+                      </button>
                     </div>
                   </label>
                 ) : (
-                  <label 
-                    className="tw-inline-flex tw-flex-col tw-items-center tw-gap-3 tw-cursor-pointer hover:tw-bg-blue-gray-50 tw-rounded-md tw-p-4 tw-transition-colors tw-mx-auto"
-                    title={t.clickToUploadPhoto}
-                  >
+                  <label className="tw-inline-flex tw-flex-col tw-items-center tw-gap-3 tw-cursor-pointer hover:tw-bg-blue-gray-50 tw-rounded-md tw-p-4 tw-transition-colors tw-mx-auto">
                     <input
                       type="file"
                       accept="image/*"

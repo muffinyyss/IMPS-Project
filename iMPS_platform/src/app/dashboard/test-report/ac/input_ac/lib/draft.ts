@@ -22,14 +22,6 @@ type Head = {
   serial_number?: string;
 };
 
-type TestFileRef = {
-  dbKey: string;
-  name: string;
-  itemIndex: number;
-  roundIndex: number;
-  handgun: "h1" | "h2";
-};
-
 type DraftData = {
   // ★ ไม่เก็บ head เพราะดึงจาก API / generate ใหม่ทุกครั้ง
   head?: Head;  // optional (เผื่อ draft เก่ายังมี)
@@ -41,7 +33,6 @@ type DraftData = {
   testRemark: string;
   imgRemark: string;
   photoRefs?: Record<number | string, (PhotoRef | { isNA: true })[]>;
-  testFileRefs?: TestFileRef[]; 
 };
 
 function safeStorage() {
