@@ -1980,13 +1980,18 @@ def _draw_photos_row(
 # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 
 TEST_ITEMS_CHARGER = [
-    "None (Normal operate)",
-    "CP short -120 Ohm",
-    "PE-PP-Cut",
-    "Remote Stop",
+    "Continuity PE",
+    "Insulation Cable",
+    "State A",
+    "State B",
+    "State C",
+    "CP Short",
+    "PE Cut",
     "Emergency",
-    "LDC +",
-    "LDC -",
+    "RCD type A",
+    "RCD type F",
+    "RCD type B",
+    "RDC-DD",
 ]
 
 def _get_test_files_list(doc: dict) -> List[Dict[str, Any]]:
