@@ -1071,9 +1071,12 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
 
         # กรณีพิเศษสำหรับ Emergency - มีเส้นตารางในส่วน Test Results
         if key_db == "emergency":
-            # ดึงข้อมูล Emergency จาก tests
-            item_r1 = r1_data_root.get(key_db, {})
-            h1_1, res_1 = _get_val_res(item_r1)
+            # ดึงข้อมูล Emergency จากระดับเดียวกับ tests (ไม่ใช่จาก r1)
+            emergency_data = data_src.get("emergency", {})
+            # ตรวจสอบค่า pass (เป็น boolean)
+            is_pass = emergency_data.get("pass", False)
+            res_1 = "pass" if is_pass else "fail"
+            h1_1 = ""  # emergency ไม่มีค่า h1
             
             label_w = col_checklist * 0.55
             checkbox_w = col_checklist * 0.45
@@ -1730,8 +1733,8 @@ def _draw_picture_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict):
     photo_categories = [
         ("nameplate", "Nameplate"),
         ("charger", "Charger"),
-        ("circuit_breaker", "Circuit Breaker"),
-        ("rcd", "RCD"),
+        ("testingEquipment", "Testing Equipment"),
+        ("testingEquipmentNameplate", "Testing Equipment Nameplate"),
         ("gun1", "GUN 1"),
         ("gun2", "GUN 2"),
     ]
