@@ -2321,17 +2321,35 @@ def draw_text_with_omega(pdf: FPDF, x: float, y: float, w: float, h: float,
     # คืนค่าฟอนต์เดิม
     pdf.set_font(base_font, "", FONT_MAIN)
 
-def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool, style: str = "tick"):
-    # วาดกรอบสี่เหลี่ยม
+# -------------------- Helpers / Layout constants --------------------
+LINE_W_OUTER = 0.22
+LINE_W_INNER = 0.22
+PADDING_X = 1.0
+PADDING_Y = 0.5       # ระยะ padding แนวตั้ง (ลดจาก 0.8)
+FONT_MAIN = 12.0
+FONT_SMALL = 12.0
+LINE_H = 4.8          # ระยะห่างบรรทัดทั่วไป (ลดจาก 5.5)
+LINE_H_HEADER = 4.0   # ระยะห่างบรรทัดสำหรับ header (ลดจาก 4.5)
+ROW_MIN_H = 6.5       # ความสูงแถวขั้นต่ำ (ลดจาก 7.5)
+CHECKBOX_SIZE = 4.0
+
+class HTML2PDF(FPDF, HTMLMixin):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.signature_data = None
+        self.base_font_name = "THSarabun"
+
+    def header(self):
+        # วาดเลขหน้าที่มุมขวาบนนอกกรอบเอกสาร
+        self.set_font(self.base_font_name, "", FONT_MAIN)
+        page_text = f"Page {self.page_no()}"
+        # วางที่มุมขวาบน นอกกรอบ (ขอบขวา - 25mm, ด้านบน 3mm)
+        self.set_xy(self.w - 25, 3)
+        self.cell(20, 5, page_text, 0, 0, "R")
+
+def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
     pdf.rect(x, y, size, size)
-    
-    if not checked:
-        return
-
-    # [ปรับแก้] กำหนดระยะร่นจากขอบ (Padding)
-    pad = 1.2 
-
-    if style == "tick":
+    if checked:
         lw_old = pdf.line_width
         pdf.set_line_width(0.6)
         
@@ -3379,6 +3397,7 @@ def _load_image_source_from_urlpath(
     if not url_path:
         return None, None
 
+    # Normalize
     raw = str(url_path).strip()
     p_abs = Path(raw)
     if p_abs.is_absolute() and p_abs.exists() and p_abs.is_file():
@@ -3758,6 +3777,7 @@ def _draw_photos_row(
 
     pdf.set_xy(x + q_w + g_w, y)
     return row_h
+
 
 # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 # ★★★ NEW: ฟังก์ชันสำหรับแสดงรายการไฟล์แนบและรวม PDF ★★★
@@ -4315,10 +4335,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "en") -> bytes:
     pdf.set_font(base_font, size=FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
 
-    # ตั้งค่าข้อมูลสำหรับ signature footer
+    # ตั้งค่าข้อมูลสำหรับ header
     pdf.base_font_name = base_font
-    pdf.signature_data = doc
-    pdf.show_signature_footer = True
 
     issue_id = str(doc.get("issue_id", "-"))
 
@@ -4413,10 +4431,21 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "en") -> bytes:
     # สร้างหน้ารูปภาพ
     _draw_picture_page(pdf, base_font, issue_id, doc, lang=lang)
 
+    # ★★★ วาดหน้ารายการไฟล์แนบ และเก็บ list ของ PDF ที่ต้องรวม ★★★
+    pdf_files_to_merge = _draw_attachments_list_page(pdf, base_font, issue_id, doc)
+
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_fill_color(255, 230, 100)
     
-    return _output_pdf_bytes(pdf)
+    # ★★★ Output PDF หลัก ★★★
+    main_pdf_bytes = _output_pdf_bytes(pdf)
+    
+    # ★★★ รวม PDF ที่แนบมา (ถ้ามี) ★★★
+    if pdf_files_to_merge:
+        print(f"[PDF Export] Merging {len(pdf_files_to_merge)} PDF attachment(s)...")
+        return _merge_pdfs(main_pdf_bytes, pdf_files_to_merge)
+    
+    return main_pdf_bytes
 
 def generate_pdf(data: dict, lang: str = None) -> bytes:
     # ตรวจสอบภาษาจาก parameter หรือจาก data
