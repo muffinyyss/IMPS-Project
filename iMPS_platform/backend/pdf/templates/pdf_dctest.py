@@ -11,6 +11,17 @@ from typing import Optional, Tuple, List, Dict, Any, Union
 from PIL import Image, ImageOps
 from io import BytesIO
 
+# ★★★ เพิ่ม import สำหรับรวม PDF ★★★
+try:
+    from PyPDF2 import PdfMerger, PdfReader, PdfWriter
+    HAS_PYPDF2 = True
+except ImportError:
+    HAS_PYPDF2 = False
+    PdfMerger = None  # type: ignore
+    PdfReader = None  # type: ignore
+    PdfWriter = None  # type: ignore
+    print("[Warning] PyPDF2 not installed. PDF merging disabled.")
+
 try:
     import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
 except Exception:
@@ -150,7 +161,6 @@ class HTML2PDF(FPDF, HTMLMixin):
         super().__init__(*args, **kwargs)
         self.signature_data = None
         self.base_font_name = "THSarabun"
-        self.show_signature_footer = False
 
     def header(self):
         # วาดเลขหน้าที่มุมขวาบนนอกกรอบเอกสาร
@@ -159,11 +169,6 @@ class HTML2PDF(FPDF, HTMLMixin):
         # วางที่มุมขวาบน นอกกรอบ (ขอบขวา - 25mm, ด้านบน 3mm)
         self.set_xy(self.w - 25, 3)
         self.cell(20, 5, page_text, 0, 0, "R")
-
-    def footer(self):
-        # วาดส่วนลายเซ็นที่ footer
-        if self.show_signature_footer and self.signature_data:
-            _draw_signature_footer(self, self.base_font_name, self.signature_data)
 
 def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
     pdf.rect(x, y, size, size)
@@ -307,7 +312,6 @@ def _resolve_logo_path() -> Optional[Path]:
 
 
 def _output_pdf_bytes(pdf: FPDF) -> bytes:
-
     data = pdf.output(dest="S")
     if isinstance(data, (bytes, bytearray)):
         return bytes(data)
@@ -493,20 +497,6 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
 def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
                                      table_width=None, safety=None, doc=None):
     
-    # =========================================================
-    # 🛠️ DEBUG ZONE: แสดงค่า safety ออกมาดู
-    # =========================================================
-    # print("\n" + "█" * 50)
-    # print(">>> DEBUG: SAFETY VARIABLE <<<")
-    # try:
-    #     # ใช้วิธีนี้เพื่อรองรับภาษาไทย และกัน Error กรณีมี Object แปลกๆ
-    #     print(json.dumps(safety, indent=4, ensure_ascii=False, default=str))
-    # except Exception as e:
-    #     print(f"Cannot JSON dump: {e}")
-    #     print(safety) # ถ้า dump ไม่ได้ ก็ print ดิบๆ
-    # print("█" * 50 + "\n")
-    # =========================================================
-
     # 1. รับข้อมูลเข้ามา (กัน Error ถ้าเป็น None)
     safety = safety or {} 
 
@@ -1373,14 +1363,11 @@ def _load_image_source_from_urlpath(
     if not url_path:
         return None, None
 
-    # print(f"[DEBUG] 🔍 กำลังหารูป: {url_path}")
-
     # Normalize
     raw = str(url_path).strip()
     # If it's already an absolute file path
     p_abs = Path(raw)
     if p_abs.is_absolute() and p_abs.exists() and p_abs.is_file():
-        # print(f"[DEBUG] ✅ พบเป็น absolute path: {p_abs}")
         return p_abs.as_posix(), _guess_img_type_from_ext(p_abs.as_posix())
 
     # Strip leading slash for easier joins
@@ -1413,9 +1400,7 @@ def _load_image_source_from_urlpath(
         if uploads_root.exists():
             candidate = uploads_root / rel_after_uploads
             tried_paths.append(candidate)
-            # print(f"[DEBUG] 📂 ตรวจสอบ backend/uploads: {candidate}")
             if candidate.exists() and candidate.is_file():
-                # print(f"[DEBUG] ✅ เจอไฟล์ใน backend/uploads: {candidate}")
                 return candidate.as_posix(), _guess_img_type_from_ext(candidate.as_posix())
 
     # Nothing found
@@ -1833,6 +1818,539 @@ def _draw_photos_row(
     pdf.set_xy(x + q_w + g_w, y)
     return row_h
 
+
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+# ★★★ NEW: ฟังก์ชันสำหรับแสดงรายการไฟล์แนบและรวม PDF ★★★
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
+# Mapping ชื่อรายการทดสอบ
+TEST_ITEMS_CHARGER = [
+    "None (Normal operate)",
+    "CP short -120 Ohm",
+    "PE-PP-Cut",
+    "Remote Stop",
+    "Emergency",
+    "LDC +",
+    "LDC -",
+]
+
+def _get_test_files_list(doc: dict) -> List[Dict[str, Any]]:
+    """
+    ดึงรายการไฟล์แนบทั้งหมดจาก test_files
+    Returns: List of dict with keys: test_type, item_index, round_index, handgun, filename, url, ext
+    """
+    test_files = doc.get("test_files", {}) or {}
+    files_list = []
+    
+    try:
+        for test_type in ["electrical", "charger"]:
+            type_data = test_files.get(test_type, {})
+            if not type_data or not isinstance(type_data, dict):
+                continue
+                
+            for item_index_str, rounds_data in type_data.items():
+                # ข้ามถ้า key ไม่ใช่ตัวเลข
+                try:
+                    item_index = int(item_index_str)
+                except (ValueError, TypeError):
+                    continue
+                
+                if not rounds_data or not isinstance(rounds_data, dict):
+                    continue
+                
+                for round_index_str, handguns_data in rounds_data.items():
+                    # ข้ามถ้า key ไม่ใช่ตัวเลข
+                    try:
+                        round_index = int(round_index_str)
+                    except (ValueError, TypeError):
+                        continue
+                    
+                    if not handguns_data or not isinstance(handguns_data, dict):
+                        continue
+                    
+                    for handgun in ["h1", "h2"]:
+                        file_data = handguns_data.get(handgun)
+                        if not file_data or not isinstance(file_data, dict):
+                            continue
+                        
+                        # ตรวจสอบว่ามี url หรือ filename
+                        if not file_data.get("url") and not file_data.get("filename"):
+                            continue
+                        
+                        files_list.append({
+                            "test_type": test_type,
+                            "item_index": item_index,
+                            "round_index": round_index,
+                            "handgun": handgun.upper(),
+                            "filename": file_data.get("filename", ""),
+                            "original_name": file_data.get("originalName", file_data.get("filename", "")),
+                            "url": file_data.get("url", ""),
+                            "ext": str(file_data.get("ext", "")).lower(),
+                        })
+    except Exception as e:
+        print(f"[PDF] Error parsing test_files: {e}")
+        return []
+    
+    return files_list
+
+
+def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict) -> List[Tuple[str, str, int, float, float, float, float]]:
+    """
+    วาดหน้ารายการไฟล์แนบ (แยกตามรอบ)
+    Returns: List of tuples (pdf_path, bookmark_name, page_num, x, y, w, h) สำหรับ PDF ที่ต้องรวม
+    """
+    files_list = _get_test_files_list(doc)
+    
+    if not files_list:
+        return []
+    
+    # ★★★ Step 1: เก็บข้อมูลไฟล์ PDF และนับหน้า ★★★
+    pdf_file_data = []  # [{path, bookmark, num_pages, file_info}, ...]
+    
+    # จัดกลุ่มและเรียงลำดับไฟล์
+    files_by_round: Dict[int, List[Dict]] = {}
+    for file_info in files_list:
+        round_idx = file_info["round_index"]
+        if round_idx not in files_by_round:
+            files_by_round[round_idx] = []
+        files_by_round[round_idx].append(file_info)
+    
+    sorted_rounds = sorted(files_by_round.keys())
+    for round_idx in sorted_rounds:
+        files_by_round[round_idx].sort(key=lambda x: (x["item_index"], 0 if x["handgun"] == "H1" else 1))
+    
+    # นับหน้าของแต่ละ PDF
+    for round_idx in sorted_rounds:
+        for file_info in files_by_round[round_idx]:
+            if file_info["ext"] == "pdf":
+                pdf_path = _resolve_test_file_path(file_info["url"])
+                if pdf_path and HAS_PYPDF2 and Path(pdf_path).exists():
+                    try:
+                        with open(pdf_path, 'rb') as f:
+                            reader = PdfReader(f)
+                            num_pages = len(reader.pages)
+                        
+                        item_idx = file_info["item_index"]
+                        if file_info["test_type"] == "charger" and 0 <= item_idx < len(TEST_ITEMS_CHARGER):
+                            item_name = TEST_ITEMS_CHARGER[item_idx]
+                        else:
+                            item_name = f"Item {item_idx + 1}"
+                        
+                        bookmark_name = f"R{round_idx+1}_{item_name}_{file_info['handgun']}"
+                        
+                        pdf_file_data.append({
+                            "path": pdf_path,
+                            "bookmark": bookmark_name,
+                            "num_pages": num_pages,
+                            "file_info": file_info,
+                        })
+                    except Exception as e:
+                        print(f"[PDF] Error reading {pdf_path}: {e}")
+    
+    # ★★★ Step 2: คำนวณเลขหน้าล่วงหน้า ★★★
+    # หน้าปัจจุบัน + หน้า list (ประมาณ 1-2 หน้า) = หน้าแรกของ PDF แนบ
+    # เราจะใช้ 2 pass: วาดก่อน แล้วคำนวณหน้าจริงหลัง output
+    
+    current_main_pages = pdf.page  # จำนวนหน้าปัจจุบันของ PDF หลัก
+    
+    # ประมาณจำนวนหน้าของ attachments list (1-2 หน้า)
+    estimated_list_pages = 1
+    if len(files_list) > 20:
+        estimated_list_pages = 2
+    if len(files_list) > 40:
+        estimated_list_pages = 3
+    
+    # คำนวณเลขหน้าเริ่มต้นของแต่ละ PDF
+    first_attachment_page = current_main_pages + estimated_list_pages
+    page_numbers = []  # เลขหน้าเริ่มต้นของแต่ละ PDF
+    current_page = first_attachment_page
+    
+    for pdf_info in pdf_file_data:
+        page_numbers.append(current_page)
+        current_page += pdf_info["num_pages"]
+    
+    # ★★★ Step 3: วาดหน้า Attachments List ★★★
+    pdf.add_page()
+    
+    header_bottom = _draw_header_attachments(pdf, base_font, issue_id)
+    
+    FRAME_INSET = 6
+    FRAME_BOTTOM = 5
+    pdf.set_line_width(LINE_W_OUTER)
+    pdf.rect(FRAME_INSET, header_bottom, 198, pdf.h - header_bottom - FRAME_BOTTOM)
+    pdf.set_line_width(LINE_W_INNER)
+    
+    y = header_bottom + 3
+    x0 = 10
+    page_w = pdf.w - 20
+    
+    pdf.set_font(base_font, "BU", FONT_MAIN)
+    pdf.set_xy(x0, y)
+    pdf.cell(page_w, 6, "Attached Test Files", border=0, align="L")
+    y += 8
+    
+    col_no = 10
+    col_test = 55
+    col_gun = 15
+    col_filename = page_w - col_no - col_test - col_gun - 15
+    col_page = 15
+    row_h = 6
+    
+    pdf_files_to_merge: List[Tuple[str, str, int, float, float, float, float]] = []
+    file_counter = 0
+    pdf_idx = 0
+    
+    for round_idx in sorted_rounds:
+        round_files = files_by_round[round_idx]
+        
+        if y + row_h * 4 > pdf.h - 45:
+            pdf.add_page()
+            y = 20
+        
+        pdf.set_font(base_font, "B", FONT_MAIN)
+        pdf.set_fill_color(220, 220, 220)
+        pdf.set_xy(x0, y)
+        pdf.cell(page_w, row_h + 1, f"Round {round_idx + 1}", 1, 0, "L", fill=True)
+        y += row_h + 2
+        
+        pdf.set_font(base_font, "B", FONT_SMALL)
+        pdf.set_fill_color(245, 245, 245)
+        pdf.set_xy(x0, y)
+        pdf.cell(col_no, row_h, "No.", 1, 0, "C", fill=True)
+        pdf.cell(col_test, row_h, "Test Item", 1, 0, "C", fill=True)
+        pdf.cell(col_gun, row_h, "Gun", 1, 0, "C", fill=True)
+        pdf.cell(col_filename, row_h, "Filename", 1, 0, "C", fill=True)
+        pdf.cell(col_page, row_h, "Page", 1, 0, "C", fill=True)
+        y += row_h
+        
+        pdf.set_font(base_font, "", FONT_SMALL)
+        
+        for file_info in round_files:
+            file_counter += 1
+            
+            if y + row_h > pdf.h - 45:
+                pdf.add_page()
+                y = 20
+                pdf.set_font(base_font, "B", FONT_SMALL)
+                pdf.set_fill_color(245, 245, 245)
+                pdf.set_xy(x0, y)
+                pdf.cell(col_no, row_h, "No.", 1, 0, "C", fill=True)
+                pdf.cell(col_test, row_h, "Test Item", 1, 0, "C", fill=True)
+                pdf.cell(col_gun, row_h, "Gun", 1, 0, "C", fill=True)
+                pdf.cell(col_filename, row_h, "Filename", 1, 0, "C", fill=True)
+                pdf.cell(col_page, row_h, "Page", 1, 0, "C", fill=True)
+                y += row_h
+                pdf.set_font(base_font, "", FONT_SMALL)
+            
+            if file_info["test_type"] == "charger":
+                item_idx = file_info["item_index"]
+                if 0 <= item_idx < len(TEST_ITEMS_CHARGER):
+                    item_name = TEST_ITEMS_CHARGER[item_idx]
+                else:
+                    item_name = f"Item {item_idx + 1}"
+            else:
+                item_name = f"Electrical Item {file_info['item_index'] + 1}"
+            
+            pdf.set_xy(x0, y)
+            pdf.cell(col_no, row_h, str(file_counter), 1, 0, "C")
+            pdf.cell(col_test, row_h, item_name[:30], 1, 0, "L")
+            pdf.cell(col_gun, row_h, file_info["handgun"], 1, 0, "C")
+            
+            filename_display = file_info["original_name"] or file_info["filename"]
+            
+            if file_info["ext"] == "pdf":
+                pdf_path = _resolve_test_file_path(file_info["url"])
+                if pdf_path and HAS_PYPDF2 and pdf_idx < len(pdf_file_data):
+                    pdf_info = pdf_file_data[pdf_idx]
+                    target_page = page_numbers[pdf_idx]
+                    pdf_idx += 1
+                    
+                    pdf.cell(col_filename, row_h, filename_display[:35], 1, 0, "L")
+                    
+                    link_x = pdf.get_x()
+                    link_y = y
+                    current_page_idx = pdf.page - 1
+                    
+                    pdf_files_to_merge.append((
+                        pdf_info["path"], 
+                        pdf_info["bookmark"], 
+                        current_page_idx,
+                        link_x, link_y, col_page, row_h
+                    ))
+                    
+                    # ★★★ แสดงเลขหน้า (สีน้ำเงิน + underline) ★★★
+                    pdf.set_text_color(0, 0, 255)
+                    pdf.set_font(base_font, "U", FONT_SMALL)
+                    pdf.cell(col_page, row_h, f"#{target_page}", 1, 0, "C")
+                    pdf.set_text_color(0, 0, 0)
+                    pdf.set_font(base_font, "", FONT_SMALL)
+                else:
+                    pdf.cell(col_filename, row_h, filename_display[:35], 1, 0, "L")
+                    pdf.cell(col_page, row_h, "N/A", 1, 0, "C")
+            else:
+                ext_display = f"[{file_info['ext'].upper()}]" if file_info['ext'] else ""
+                pdf.cell(col_filename, row_h, f"{filename_display[:30]} {ext_display}", 1, 0, "L")
+                pdf.cell(col_page, row_h, "-", 1, 0, "C")
+            
+            y += row_h
+        
+        y += 3
+    
+    y += 2
+    pdf.set_font(base_font, "I", FONT_SMALL)
+    pdf.set_xy(x0, y)
+    
+    pdf_count = len(pdf_files_to_merge)
+    other_count = len(files_list) - pdf_count
+    
+    summary_text = f"Total: {len(files_list)} file(s)"
+    if pdf_count > 0:
+        summary_text += f" | {pdf_count} PDF(s) merged - Click page number to jump"
+    if other_count > 0:
+        summary_text += f" | {other_count} non-PDF"
+    
+    pdf.cell(page_w, 5, summary_text, border=0, align="L")
+    
+    return pdf_files_to_merge
+
+
+def _draw_header_attachments(pdf: FPDF, base_font: str, issue_id: str = "-", inset_mm: float = 6.0) -> float:
+    """วาด Header สำหรับหน้า Attachments"""
+    page_w = pdf.w - 2*inset_mm
+    x0 = inset_mm
+    y_top = inset_mm + 2
+
+    col_left, col_mid = 40, 120
+    col_right = page_w - col_left - col_mid
+
+    h_all = 10
+
+    pdf.set_line_width(LINE_W_INNER)
+    
+    # ----- โลโก้ ----- #
+    pdf.rect(x0, y_top, col_left, h_all)
+    logo_path = _resolve_logo_path()
+    if logo_path:
+        IMG_W = 28
+        try:
+            from PIL import Image
+            with Image.open(logo_path) as img:
+                orig_w, orig_h = img.size
+                aspect_ratio = orig_h / orig_w
+                IMG_H = IMG_W * aspect_ratio
+            
+            img_x = x0 + (col_left - IMG_W) / 2
+            img_y = y_top + (h_all - IMG_H) / 2
+            pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
+        except Exception:
+            pass
+
+    # ----- กล่องกลาง ----- #
+    box_x = x0 + col_left
+    pdf.rect(box_x, y_top, col_mid, h_all)
+
+    pdf.set_font(base_font, "B", 20)
+    start_y = y_top + (h_all - LINE_H_HEADER) / 2
+
+    pdf.set_xy(box_x + 3, start_y)
+    pdf.cell(col_mid - 6, LINE_H_HEADER, "Attachments", align="C")
+
+    # ----- กล่องขวา (Issue ID) ----- #
+    xr = x0 + col_left + col_mid
+    pdf.rect(xr, y_top, col_right, h_all)
+
+    pdf.set_xy(xr, y_top + 1)
+    pdf.set_font(base_font, "B", FONT_MAIN - 1)
+    pdf.multi_cell(col_right, LINE_H_HEADER, f"Issue ID\n{issue_id}", align="C")
+
+    return y_top + h_all
+
+
+def _resolve_test_file_path(url_path: str) -> Optional[str]:
+    """
+    แปลง URL path เป็น absolute file path
+    """
+    if not url_path:
+        return None
+    
+    raw = str(url_path).strip()
+    
+    # Strip leading slash
+    clean_path = raw.lstrip("/")
+    
+    if clean_path.startswith("uploads/"):
+        rel_after_uploads = clean_path[len("uploads/"):]
+    else:
+        rel_after_uploads = clean_path
+    
+    # หา backend/uploads
+    current_file = Path(__file__).resolve()
+    backend_root = None
+    
+    for p in current_file.parents:
+        if p.name.lower() == "backend" and p.exists():
+            backend_root = p
+            break
+    
+    if backend_root is None:
+        for i in range(1, 4):
+            cand = current_file.parents[i] if i < len(current_file.parents) else None
+            if cand and (cand / "backend").exists():
+                backend_root = cand / "backend"
+                break
+    
+    if backend_root:
+        uploads_root = backend_root / "uploads"
+        if uploads_root.exists():
+            candidate = uploads_root / rel_after_uploads
+            if candidate.exists() and candidate.is_file():
+                return str(candidate)
+    
+    return None
+
+
+def _merge_pdfs(main_pdf_bytes: bytes, pdf_files_info: List[Tuple[str, str, int, float, float, float, float]]) -> bytes:
+    """
+    รวม PDF หลักกับ PDF ที่แนบมา พร้อมเพิ่ม bookmarks และ clickable links
+    pdf_files_info: List of (pdf_path, bookmark_name, link_page, x, y, w, h)
+    """
+    if not HAS_PYPDF2:
+        print("[PDF Merge] ⚠️ PyPDF2 not installed. Returning main PDF only.")
+        return main_pdf_bytes
+    
+    if not pdf_files_info:
+        return main_pdf_bytes
+    
+    try:
+        from PyPDF2.generic import (
+            ArrayObject, DictionaryObject, FloatObject,
+            NameObject, NumberObject
+        )
+        
+        # ตรวจสอบว่ามีไฟล์ PDF จริงๆ กี่ไฟล์
+        valid_pdf_files = []
+        for item in pdf_files_info:
+            pdf_path = item[0]
+            if pdf_path and Path(pdf_path).exists():
+                valid_pdf_files.append(item)
+        
+        if not valid_pdf_files:
+            print("[PDF Merge] ⚠️ No valid PDF files found. Returning main PDF only.")
+            return main_pdf_bytes
+        
+        # นับหน้า PDF หลัก
+        main_buffer = BytesIO(main_pdf_bytes)
+        main_reader = PdfReader(main_buffer)
+        main_page_count = len(main_reader.pages)
+        
+        # รวม PDF ด้วย PdfWriter
+        writer = PdfWriter()
+        
+        # เพิ่มหน้าจาก PDF หลัก
+        main_buffer.seek(0)
+        main_reader = PdfReader(main_buffer)
+        for page in main_reader.pages:
+            writer.add_page(page)
+        
+        # คำนวณเลขหน้าปลายทางและเพิ่ม PDF ที่แนบ
+        current_page = main_page_count  # หน้าถัดไปหลัง PDF หลัก (0-indexed)
+        link_info_list = []  # [(link_page, target_page, x, y, w, h), ...]
+        
+        for item in valid_pdf_files:
+            pdf_path, bookmark_name, link_page, x, y, w, h = item
+            try:
+                with open(pdf_path, 'rb') as f:
+                    attached_reader = PdfReader(f)
+                    num_pages = len(attached_reader.pages)
+                    
+                    # เก็บข้อมูล link - ใช้ current_page ที่คำนวณจริง
+                    target_page = current_page
+                    link_info_list.append((link_page, target_page, x, y, w, h))
+                    
+                    # เพิ่มหน้าจาก PDF ที่แนบ
+                    for page in attached_reader.pages:
+                        writer.add_page(page)
+                    
+                    # เพิ่ม bookmark
+                    try:
+                        writer.add_outline_item(
+                            f"{bookmark_name} (p.{current_page + 1})",
+                            target_page
+                        )
+                    except:
+                        pass
+                    
+                    print(f"[PDF Merge] ✅ Added: {Path(pdf_path).name} → Page {current_page + 1}")
+                    current_page += num_pages
+                    
+            except Exception as e:
+                print(f"[PDF Merge] ⚠️ Error adding {pdf_path}: {e}")
+                continue
+        
+        # เพิ่ม bookmark สำหรับ Report หลัก
+        try:
+            writer.add_outline_item("📋 Test Report", 0)
+        except:
+            pass
+        
+        # ★★★ เพิ่ม clickable links ★★★
+        PT_PER_MM = 72 / 25.4
+        PAGE_HEIGHT_MM = 297
+        
+        for link_page, target_page, x, y, w, h in link_info_list:
+            try:
+                page_obj = writer.pages[link_page]
+                
+                x1_pt = x * PT_PER_MM
+                x2_pt = (x + w) * PT_PER_MM
+                y_top_pt = (PAGE_HEIGHT_MM - y) * PT_PER_MM
+                y_bottom_pt = (PAGE_HEIGHT_MM - y - h) * PT_PER_MM
+                
+                link_annot = DictionaryObject()
+                link_annot[NameObject("/Type")] = NameObject("/Annot")
+                link_annot[NameObject("/Subtype")] = NameObject("/Link")
+                link_annot[NameObject("/Rect")] = ArrayObject([
+                    FloatObject(x1_pt),
+                    FloatObject(y_bottom_pt),
+                    FloatObject(x2_pt),
+                    FloatObject(y_top_pt),
+                ])
+                link_annot[NameObject("/Border")] = ArrayObject([
+                    NumberObject(0), NumberObject(0), NumberObject(0)
+                ])
+                link_annot[NameObject("/Dest")] = ArrayObject([
+                    writer.pages[target_page].indirect_reference,
+                    NameObject("/Fit")
+                ])
+                
+                if "/Annots" not in page_obj:
+                    page_obj[NameObject("/Annots")] = ArrayObject()
+                
+                page_obj[NameObject("/Annots")].append(link_annot)
+                
+                print(f"[PDF Link] ✅ Link: page {link_page + 1} → page {target_page + 1}")
+                
+            except Exception as e:
+                print(f"[PDF Link] ⚠️ Error: {e}")
+                continue
+        
+        # Output
+        output_buffer = BytesIO()
+        writer.write(output_buffer)
+        
+        output_buffer.seek(0)
+        return output_buffer.read()
+        
+    except Exception as e:
+        print(f"[PDF Merge] ❌ Merge failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return main_pdf_bytes
+
+
+# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+
+
 def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf = HTML2PDF(unit="mm", format="A4")
     pdf.set_margins(left=10, top=15, right=10)
@@ -1844,10 +2362,8 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     pdf.set_font(base_font, size=FONT_MAIN)
     pdf.set_line_width(LINE_W_INNER)
 
-    # ตั้งค่าข้อมูลสำหรับ signature footer
+    # ตั้งค่าข้อมูลสำหรับ header
     pdf.base_font_name = base_font
-    pdf.signature_data = doc
-    pdf.show_signature_footer = True
 
     issue_id = str(doc.get("issue_id", "-"))
 
@@ -1967,12 +2483,24 @@ def make_pm_report_html_pdf_bytes(doc: dict) -> bytes:
     row_h_date = 7
     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
 
+    # วาดหน้ารูปภาพ
     _draw_picture_page(pdf, base_font, issue_id, doc)
+
+    # ★★★ วาดหน้ารายการไฟล์แนบ และเก็บ list ของ PDF ที่ต้องรวม ★★★
+    pdf_files_to_merge = _draw_attachments_list_page(pdf, base_font, issue_id, doc)
 
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_fill_color(255, 230, 100)
     
-    return _output_pdf_bytes(pdf)
+    # ★★★ Output PDF หลัก ★★★
+    main_pdf_bytes = _output_pdf_bytes(pdf)
+    
+    # ★★★ รวม PDF ที่แนบมา (ถ้ามี) ★★★
+    if pdf_files_to_merge:
+        print(f"[PDF Export] Merging {len(pdf_files_to_merge)} PDF attachment(s)...")
+        return _merge_pdfs(main_pdf_bytes, pdf_files_to_merge)
+    
+    return main_pdf_bytes
 
 def generate_pdf(data: dict) -> bytes:
     return make_pm_report_html_pdf_bytes(data)
