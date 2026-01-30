@@ -170,7 +170,7 @@ export default function Landing() {
       </section>
 
       <div className="tw-mt-20"></div>
-      <Card className="tw-mb-60 tw-border-0 tw-shadow-none">
+      {/* <Card className="tw-mb-60 tw-border-0 tw-shadow-none">
         <CardBody className="tw-pt-20 tw-mt-20">
           <div className="tw-container tw-mx-auto">
             <div className="tw-mx-auto tw-mb-14 tw-max-w-[400px]">
@@ -193,16 +193,16 @@ export default function Landing() {
             </div>
           </div>
         </CardBody>
-      </Card>
+      </Card> */}
 
       {/* ================= LOREM ================= */}
-      <section className="tw-text-center tw-px-4 tw-pt-0 tw-pb-24">
+      {/* <section className="tw-text-center tw-px-4 tw-pt-0 tw-pb-24">
         <h1 className="tw-text-5xl tw-font-extrabold tw-mb-5">Lorem Ipsum</h1>
         <p className="tw-max-w-[720px] tw-mx-auto tw-text-gray-700 tw-leading-7">
           Lorem Ipsum is simply dummy text of the printing and typesetting industry.
           Lorem Ipsum has been the industry's standard dummy text ever since the 1500s...
         </p>
-      </section>
+      </section> */}
       <div className="tw-mt-20"></div>
 
     </div>

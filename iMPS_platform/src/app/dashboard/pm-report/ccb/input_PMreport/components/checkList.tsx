@@ -104,6 +104,12 @@ const T = {
     missingPF: { th: "ยังไม่ได้เลือกข้อ:", en: "Not selected:" },
     missingSummaryText: { th: "ยังไม่ได้กรอก Comment", en: "Comment not filled" },
     missingSummaryStatus: { th: "ยังไม่ได้เลือกสถานะสรุปผล (Pass/Fail/N/A)", en: "Summary status not selected (Pass/Fail/N/A)" },
+    // PMValidationCard translations
+    itemLabel: { th: "ข้อ", en: "Item" },
+    formStatus: { th: "สถานะการกรอกข้อมูล", en: "Form Completion Status" },
+    allCompleteReady: { th: "กรอกข้อมูลครบถ้วนแล้ว พร้อมบันทึก ✓", en: "All fields completed. Ready to save ✓" },
+    remaining: { th: "ยังขาดอีก {n} รายการ", en: "{n} items remaining" },
+    items: { th: "รายการ", en: "items" },
 
     // Alerts
     alertNoStation: { th: "ยังไม่ทราบ station_id", en: "Station ID not found" },
@@ -179,6 +185,75 @@ const T = {
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
+
+// Helper functions to generate scroll IDs
+const ID_PREFIX = "ccb-pm";
+
+// Convert CCB photo key number to formatted string (e.g., 101 → "10-1", 31 → "3-1", 90 → "9")
+const formatPhotoKeyNumber = (key: number): string => {
+    if (key === 90) return "9";
+    if (key >= 101 && key <= 106) return `10-${key - 100}`;
+    if (key >= 30 && key < 90) return `${Math.floor(key / 10)}-${key % 10}`;
+    return String(key);
+};
+
+const getPhotoIdFromKey = (key: string | number): string => {
+    if (typeof key === "number") return `${ID_PREFIX}-photo-${formatPhotoKeyNumber(key)}`;
+    const match = String(key).match(/^r(\d+)(?:_(\d+))?$/);
+    if (match) {
+        const [, qNo, subNo] = match;
+        return subNo ? `${ID_PREFIX}-photo-${qNo}-${subNo}` : `${ID_PREFIX}-photo-${qNo}`;
+    }
+    return `${ID_PREFIX}-photo-${key}`;
+};
+
+const getRemarkIdFromKey = (key: string | number): string => {
+    if (typeof key === "number") return `${ID_PREFIX}-remark-${key}`;
+    // Handle r9_main
+    if (key === "r9_main") return `${ID_PREFIX}-remark-9`;
+    // Handle r10_sub1, r10_sub2, etc.
+    const subMatch = String(key).match(/^r10_sub(\d+)$/);
+    if (subMatch) return `${ID_PREFIX}-remark-10-${subMatch[1]}`;
+    // Handle regular keys like r1, r3_1, r3_2
+    const match = String(key).match(/^r(\d+)(?:_(\d+))?$/);
+    if (match) {
+        const [, qNo, subNo] = match;
+        return subNo ? `${ID_PREFIX}-remark-${qNo}-${subNo}` : `${ID_PREFIX}-remark-${qNo}`;
+    }
+    return `${ID_PREFIX}-remark-${key}`;
+};
+
+const getInputIdFromKey = (key: string | number, subIdx?: number): string => {
+    if (typeof key === "number") return subIdx ? `${ID_PREFIX}-input-${key}-${subIdx}` : `${ID_PREFIX}-input-${key}`;
+    // Handle r9_main
+    if (key === "r9_main") return `${ID_PREFIX}-input-9`;
+    // Handle r10_sub1, r10_sub2, etc.
+    const subMatch = String(key).match(/^r10_sub(\d+)$/);
+    if (subMatch) return `${ID_PREFIX}-input-10-${subMatch[1]}`;
+    // Handle regular keys like r1, r3_1, r3_2
+    const match = String(key).match(/^r(\d+)(?:_(\d+))?$/);
+    if (match) {
+        const [, qNo, subNo] = match;
+        return subNo ? `${ID_PREFIX}-input-${qNo}-${subNo}` : `${ID_PREFIX}-input-${qNo}`;
+    }
+    return `${ID_PREFIX}-input-${key}`;
+};
+
+const getPfIdFromKey = (key: string | number): string => {
+    if (typeof key === "number") return `${ID_PREFIX}-pf-${key}`;
+    // Handle r9_main
+    if (key === "r9_main") return `${ID_PREFIX}-pf-9`;
+    // Handle r10_sub1, r10_sub2, etc.
+    const subMatch = String(key).match(/^r10_sub(\d+)$/);
+    if (subMatch) return `${ID_PREFIX}-pf-10-${subMatch[1]}`;
+    // Handle regular keys like r1, r3_1, r3_2
+    const match = String(key).match(/^r(\d+)(?:_(\d+))?$/);
+    if (match) {
+        const [, qNo, subNo] = match;
+        return subNo ? `${ID_PREFIX}-pf-${qNo}-${subNo}` : `${ID_PREFIX}-pf-${qNo}`;
+    }
+    return `${ID_PREFIX}-pf-${key}`;
+};
 
 type TabId = "pre" | "post";
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
@@ -370,6 +445,285 @@ function Section({ title, ok, children, lang }: { title: React.ReactNode; ok: bo
     );
 }
 
+// ==================== PMValidationCard Component ====================
+interface ValidationError {
+    section: string;
+    sectionIcon: string;
+    itemName: string;
+    message: string;
+    scrollId?: string;
+}
+
+function groupErrorsBySection(errors: ValidationError[]): Map<string, ValidationError[]> {
+    const map = new Map<string, ValidationError[]>();
+    errors.forEach((err) => {
+        const key = `${err.sectionIcon} ${err.section}`;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(err);
+    });
+    return map;
+}
+
+interface MissingInputItem {
+    qNo: number;
+    subNo?: number;
+    label: string;
+    fieldKey: string;
+}
+
+interface PMValidationCardProps {
+    lang: Lang;
+    displayTab: "pre" | "post";
+    isPostMode: boolean;
+    allPhotosAttached: boolean;
+    missingPhotoItems: string[];
+    allRequiredInputsFilled: boolean;
+    missingInputsDetailed: MissingInputItem[];
+    allRemarksFilledPre: boolean;
+    missingRemarksPre: string[];
+    allPFAnsweredPost: boolean;
+    missingPFItemsPost: string[];
+    allRemarksFilledPost: boolean;
+    missingRemarksPost: string[];
+    isSummaryFilled: boolean;
+    isSummaryCheckFilled: boolean;
+}
+
+function PMValidationCard({
+    lang, displayTab, isPostMode,
+    allPhotosAttached, missingPhotoItems,
+    allRequiredInputsFilled, missingInputsDetailed,
+    allRemarksFilledPre, missingRemarksPre,
+    allPFAnsweredPost, missingPFItemsPost,
+    allRemarksFilledPost, missingRemarksPost,
+    isSummaryFilled, isSummaryCheckFilled,
+}: PMValidationCardProps) {
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    const handleHeaderClick = () => {
+        setIsExpanded(!isExpanded);
+    };
+
+    const getPhotoScrollId = (item: string): string => {
+        const parts = item.split('.');
+        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-photo-${parts[0]}`;
+    };
+
+    const getRemarkScrollId = (item: string): string => {
+        const parts = item.split('.');
+        if (parts.length === 2) return `${ID_PREFIX}-remark-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-remark-${parts[0]}`;
+    };
+
+    const getPfButtonsScrollId = (item: string): string => {
+        const parts = item.split('.');
+        if (parts.length === 2) return `${ID_PREFIX}-pf-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-pf-${parts[0]}`;
+    };
+
+    const allErrors: ValidationError[] = useMemo(() => {
+        const errors: ValidationError[] = [];
+
+        // 1) Photo errors
+        if (!allPhotosAttached) {
+            missingPhotoItems.forEach((item) => {
+                errors.push({
+                    section: lang === "th" ? "รูปภาพ" : "Photos",
+                    sectionIcon: "📷",
+                    itemName: `${t("itemLabel", lang)} ${item}`,
+                    message: lang === "th" ? "ยังไม่ได้แนบรูป" : "Photo not attached",
+                    scrollId: getPhotoScrollId(item),
+                });
+            });
+        }
+
+        // 2) Input errors
+        if (!allRequiredInputsFilled) {
+            missingInputsDetailed.forEach(({ qNo, subNo, label }) => {
+                const scrollId = subNo ? `${ID_PREFIX}-input-${qNo}-${subNo}` : `${ID_PREFIX}-input-${qNo}`;
+                const itemDisplay = subNo ? `${qNo}.${subNo}` : `${qNo}`;
+                const message = lang === "th" ? `ยังไม่ได้กรอกค่า ${label}` : `${label} value not filled`;
+                errors.push({
+                    section: lang === "th" ? "ค่าที่ต้องกรอก" : "Required Inputs",
+                    sectionIcon: "📝",
+                    itemName: `${t("itemLabel", lang)} ${itemDisplay}`,
+                    message,
+                    scrollId,
+                });
+            });
+        }
+
+        // 3) Remark errors (Pre mode)
+        if (displayTab === "pre" && !allRemarksFilledPre) {
+            missingRemarksPre.forEach((item) => {
+                errors.push({
+                    section: lang === "th" ? "หมายเหตุ" : "Remarks",
+                    sectionIcon: "💬",
+                    itemName: `${t("itemLabel", lang)} ${item}`,
+                    message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
+                    scrollId: getRemarkScrollId(item),
+                });
+            });
+        }
+
+        // 4) Post mode errors
+        if (isPostMode) {
+            // PF status errors
+            if (!allPFAnsweredPost) {
+                missingPFItemsPost.forEach((item) => {
+                    errors.push({
+                        section: lang === "th" ? "สถานะ Pass/Fail" : "Pass/Fail Status",
+                        sectionIcon: "✅",
+                        itemName: `${t("itemLabel", lang)} ${item}`,
+                        message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail" : "Pass/Fail not selected",
+                        scrollId: getPfButtonsScrollId(item),
+                    });
+                });
+            }
+
+            // Remark errors (Post mode)
+            if (!allRemarksFilledPost) {
+                missingRemarksPost.forEach((item) => {
+                    errors.push({
+                        section: lang === "th" ? "หมายเหตุ (Post)" : "Remarks (Post)",
+                        sectionIcon: "💬",
+                        itemName: `${t("itemLabel", lang)} ${item}`,
+                        message: lang === "th" ? "ยังไม่ได้กรอกหมายเหตุ" : "Remark not filled",
+                        scrollId: getRemarkScrollId(item),
+                    });
+                });
+            }
+
+            // Summary errors
+            if (!isSummaryFilled) {
+                errors.push({
+                    section: lang === "th" ? "สรุปผล" : "Summary",
+                    sectionIcon: "📋",
+                    itemName: "Comment",
+                    message: lang === "th" ? "ยังไม่ได้กรอก Comment" : "Comment not filled",
+                    scrollId: `${ID_PREFIX}-summary-section`,
+                });
+            }
+            if (!isSummaryCheckFilled) {
+                errors.push({
+                    section: lang === "th" ? "สรุปผล" : "Summary",
+                    sectionIcon: "📋",
+                    itemName: lang === "th" ? "สถานะสรุป" : "Summary Status",
+                    message: lang === "th" ? "ยังไม่ได้เลือก Pass/Fail/N/A" : "Status not selected",
+                    scrollId: `${ID_PREFIX}-summary-section`,
+                });
+            }
+        }
+
+        return errors;
+    }, [
+        lang, displayTab, isPostMode,
+        allPhotosAttached, missingPhotoItems,
+        allRequiredInputsFilled, missingInputsDetailed,
+        allRemarksFilledPre, missingRemarksPre,
+        allPFAnsweredPost, missingPFItemsPost,
+        allRemarksFilledPost, missingRemarksPost,
+        isSummaryFilled, isSummaryCheckFilled
+    ]);
+
+    const groupedErrors = useMemo(() => groupErrorsBySection(allErrors), [allErrors]);
+    const isComplete = allErrors.length === 0;
+
+    const scrollToItem = (scrollId?: string) => {
+        if (!scrollId) return;
+        const element = document.getElementById(scrollId);
+        if (element) {
+            const rect = element.getBoundingClientRect();
+            const elementTop = rect.top + window.scrollY;
+            const elementHeight = rect.height;
+            const viewportHeight = window.innerHeight;
+            let targetScrollY = elementTop - (viewportHeight / 2) + (elementHeight / 2);
+            targetScrollY = Math.max(0, targetScrollY);
+            const maxScrollY = document.documentElement.scrollHeight - viewportHeight;
+            targetScrollY = Math.min(targetScrollY, maxScrollY);
+            window.scrollTo({ top: targetScrollY, behavior: "smooth" });
+            element.classList.add("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+            setTimeout(() => {
+                element.classList.remove("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
+            }, 2000);
+        }
+    };
+
+    return (
+        <div className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${isComplete ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"}`}>
+            <div className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"}`} onClick={handleHeaderClick}>
+                <div className="tw-flex tw-items-center tw-gap-3">
+                    {isComplete ? (
+                        <div className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-green-500 tw-flex tw-items-center tw-justify-center">
+                            <svg className="tw-w-6 tw-h-6 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                    ) : (
+                        <div className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-amber-500 tw-flex tw-items-center tw-justify-center">
+                            <svg className="tw-w-6 tw-h-6 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                    )}
+                    <div>
+                        <Typography className={`tw-font-bold tw-text-base ${isComplete ? "tw-text-green-800" : "tw-text-amber-800"}`}>
+                            {t("formStatus", lang)}
+                        </Typography>
+                        <Typography variant="small" className={isComplete ? "tw-text-green-600" : "tw-text-amber-600"}>
+                            {isComplete ? t("allCompleteReady", lang) : t("remaining", lang).replace("{n}", String(allErrors.length))}
+                        </Typography>
+                    </div>
+                </div>
+                <div className="tw-flex tw-items-center tw-gap-4">
+                    {!isComplete && (
+                        <div className="tw-hidden md:tw-flex tw-items-center tw-gap-2">
+                            {Array.from(groupedErrors.keys()).map((sectionKey) => (
+                                <span key={sectionKey} className="tw-text-xs tw-bg-amber-200 tw-text-amber-800 tw-px-2 tw-py-1 tw-rounded-full tw-font-medium">
+                                    {sectionKey.split(" ")[0]} {groupedErrors.get(sectionKey)?.length}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {!isComplete && (
+                        <svg className={`tw-w-6 tw-h-6 tw-text-amber-600 tw-transition-transform ${isExpanded ? "tw-rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    )}
+                </div>
+            </div>
+            {isExpanded && !isComplete && (
+                <div className="tw-px-4 tw-py-3 tw-max-h-80 tw-overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                    <div className="tw-space-y-4">
+                        {Array.from(groupedErrors.entries()).map(([sectionKey, sectionErrors]) => (
+                            <div key={sectionKey} className="tw-bg-white tw-rounded-lg tw-p-3 tw-border tw-border-amber-200">
+                                <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
+                                    <Typography className="tw-font-semibold tw-text-gray-800 tw-text-sm">{sectionKey}</Typography>
+                                    <span className="tw-text-xs tw-bg-amber-100 tw-text-amber-700 tw-px-2 tw-py-0.5 tw-rounded-full">
+                                        {sectionErrors.length} {t("items", lang)}
+                                    </span>
+                                </div>
+                                <ul className="tw-space-y-1 tw-max-h-40 tw-overflow-y-auto">
+                                    {sectionErrors.map((error, idx) => (
+                                        <li key={idx} className="tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-amber-700 tw-cursor-pointer hover:tw-text-amber-900 hover:tw-bg-amber-50 tw-rounded tw-px-1 tw-py-0.5 tw-transition-colors" onClick={(e) => { e.stopPropagation(); scrollToItem(error.scrollId); }}>
+                                            <span className="tw-text-amber-500 tw-mt-0.5">→</span>
+                                            <span>
+                                                <span className="tw-font-medium">{error.itemName}:</span>{" "}
+                                                <span className="tw-underline tw-underline-offset-2">{error.message}</span>
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function InputWithUnit<U extends string>({ label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, labelOnTop, required = true }: {
     label: string; value: string; unit: U; units: readonly U[]; onValueChange: (v: string) => void; onUnitChange: (u: U) => void; readOnly?: boolean; disabled?: boolean; labelOnTop?: boolean; required?: boolean;
 }) {
@@ -409,13 +763,13 @@ function InputWithUnit<U extends string>({ label, value, unit, units, onValueCha
     );
 }
 
-function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, lang }: {
+function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, aboveRemark, beforeRemark, inlineLeft, lang, id, remarkId }: {
     label: string; value: PF; onChange: (v: Exclude<PF, "">) => void; remark?: string; onRemarkChange?: (v: string) => void;
-    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; lang: Lang;
+    labels?: Partial<Record<Exclude<PF, "">, React.ReactNode>>; aboveRemark?: React.ReactNode; beforeRemark?: React.ReactNode; inlineLeft?: React.ReactNode; lang: Lang; id?: string; remarkId?: string;
 }) {
     const text = { PASS: labels?.PASS ?? t("pass", lang), FAIL: labels?.FAIL ?? t("fail", lang), NA: labels?.NA ?? t("na", lang) };
     const buttonGroup = (
-        <div className="tw-flex tw-gap-1.5 sm:tw-gap-2 tw-flex-wrap sm:tw-flex-nowrap tw-justify-end sm:tw-justify-start">
+        <div id={id} className="tw-flex tw-gap-1.5 sm:tw-gap-2 tw-flex-wrap sm:tw-flex-nowrap tw-justify-end sm:tw-justify-start">
             <Button size="sm" color="green" variant={value === "PASS" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("PASS")}>{text.PASS}</Button>
             <Button size="sm" color="red" variant={value === "FAIL" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("FAIL")}>{text.FAIL}</Button>
             <Button size="sm" color="blue-gray" variant={value === "NA" ? "filled" : "outlined"} className="tw-min-w-[56px] sm:tw-min-w-[72px] lg:tw-min-w-[84px] tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2" onClick={() => onChange("NA")}>{text.NA}</Button>
@@ -426,13 +780,13 @@ function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, a
         <div className="tw-space-y-2 sm:tw-space-y-3 tw-py-2 sm:tw-py-3">
             <Typography className="tw-font-medium tw-text-xs sm:tw-text-sm lg:tw-text-base">{label}</Typography>
             {onRemarkChange ? (
-                <div className="tw-w-full tw-min-w-0 tw-space-y-2">{aboveRemark}{buttonsRow}{beforeRemark}<Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full !tw-text-xs sm:!tw-text-sm" /></div>
+                <div className="tw-w-full tw-min-w-0 tw-space-y-2">{aboveRemark}{buttonsRow}{beforeRemark}<div id={remarkId}><Textarea label={t("remark", lang)} value={remark || ""} onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "!tw-w-full !tw-min-w-0" }} className="!tw-w-full !tw-text-xs sm:!tw-text-sm" /></div></div>
             ) : (<div className="tw-flex tw-flex-col sm:tw-flex-row tw-gap-2 sm:tw-items-center sm:tw-justify-between">{buttonsRow}</div>)}
         </div>
     );
 }
 
-function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang }: { photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>; max?: number; draftKey: string; qNo: number; lang: Lang; }) {
+function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id }: { photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>; max?: number; draftKey: string; qNo: number; lang: Lang; id?: string; }) {
     const fileRef = useRef<HTMLInputElement>(null);
     const handlePick = () => fileRef.current?.click();
     const handleFiles = async (list: FileList | null) => {
@@ -445,7 +799,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang }: {
     };
     const handleRemove = async (id: string) => { await delPhoto(draftKey, id); setPhotos((prev) => { const target = prev.find((p) => p.id === id); if (target?.preview) URL.revokeObjectURL(target.preview); return prev.filter((p) => p.id !== id); }); };
     return (
-        <div className="tw-space-y-2 sm:tw-space-y-3">
+        <div id={id} className="tw-space-y-2 sm:tw-space-y-3 tw-transition-all tw-duration-300">
             <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2"><Button size="sm" color="blue" variant="outlined" onClick={handlePick} className="tw-shrink-0 tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2">{t("attachPhoto", lang)}</Button></div>
             <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center tw-flex-wrap tw-text-[10px] sm:tw-text-xs">{t("maxPhotos", lang)} {max} {t("photos", lang)} • {t("cameraSupported", lang)}</Typography>
             <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => { void handleFiles(e.target.files); }} />
@@ -1034,7 +1388,7 @@ export default function CCBPMReport() {
     }).flatMap((q) => getRowKeysForQuestion(q, subBreakerCount)), [rowsPre, subBreakerCount]);
 
     const allPFAnsweredPre = useMemo(() => true, []); // Pre mode doesn't require PF
-    const missingPFItemsPre = useMemo(() => [] as number[], []);
+    const missingPFItemsPre = useMemo(() => [] as string[], []);
     const allPFAnsweredPost = useMemo(() => PF_KEYS_POST.every((k) => rowsPre[k]?.pf === "NA" || rows[k]?.pf !== ""), [rows, PF_KEYS_POST, rowsPre]);
     const missingPFItemsPost = useMemo(() => PF_KEYS_POST.filter((k) => rowsPre[k]?.pf !== "NA" && !rows[k]?.pf).map((k) => {
         // Handle r9_main
@@ -1136,6 +1490,29 @@ export default function CCBPMReport() {
         return r;
     }, [mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, rows, subBreakerCount, lang]);
 
+    // Detailed missing inputs for PMValidationCard
+    const missingInputsDetailed = useMemo(() => {
+        const r: { qNo: number; subNo?: number; label: string; fieldKey: string }[] = [];
+        // Main breaker (Q9)
+        if (rows["r9_main"]?.pf !== "NA") {
+            VOLTAGE_FIELDS_CCB.forEach((k) => {
+                const v = mMain.state[k]?.value ?? "";
+                if (!String(v).trim()) r.push({ qNo: 9, label: LABELS[k], fieldKey: k });
+            });
+        }
+        // Sub breakers (Q10)
+        for (let i = 0; i < subBreakerCount; i++) {
+            const rowKey = `r10_sub${i + 1}`;
+            if (rows[rowKey]?.pf === "NA") continue;
+            const m = M_SUB_LIST[i];
+            VOLTAGE_FIELDS_CCB.forEach((k) => {
+                const v = m.state[k]?.value ?? "";
+                if (!String(v).trim()) r.push({ qNo: 10, subNo: i + 1, label: LABELS[k], fieldKey: k });
+            });
+        }
+        return r;
+    }, [mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, rows, subBreakerCount]);
+
     const allRequiredInputsFilled = missingInputs.length === 0;
     const isSummaryFilled = summary.trim().length > 0;
     const isSummaryCheckFilled = summaryCheck !== "";
@@ -1225,11 +1602,66 @@ export default function CCBPMReport() {
         if (!res.ok) throw new Error(await res.text());
     }
 
+    // Helper function to scroll to first error element
+    const scrollToFirstError = (elementId: string) => {
+        const element = document.getElementById(elementId);
+        if (element) {
+            const rect = element.getBoundingClientRect();
+            const elementTop = rect.top + window.scrollY;
+            const viewportHeight = window.innerHeight;
+            let targetScrollY = elementTop - (viewportHeight / 2) + (rect.height / 2);
+            targetScrollY = Math.max(0, targetScrollY);
+            window.scrollTo({ top: targetScrollY, behavior: "smooth" });
+            element.classList.add("tw-ring-2", "tw-ring-red-400", "tw-bg-red-50");
+            setTimeout(() => {
+                element.classList.remove("tw-ring-2", "tw-ring-red-400", "tw-bg-red-50");
+            }, 3000);
+        }
+    };
+
+    const getFirstMissingPhotoScrollId = (): string | null => {
+        if (missingPhotoItemsPre.length === 0) return null;
+        const first = missingPhotoItemsPre[0];
+        const formatted = formatPhotoKeyNumber(first);
+        const parts = formatted.split('-');
+        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-photo-${parts[0]}`;
+    };
+
+    const getFirstMissingInputScrollId = (): string | null => {
+        if (missingInputsDetailed.length === 0) return null;
+        const { qNo, subNo } = missingInputsDetailed[0];
+        return subNo ? `${ID_PREFIX}-input-${qNo}-${subNo}` : `${ID_PREFIX}-question-${qNo}`;
+    };
+
+    const getFirstMissingRemarkScrollId = (): string | null => {
+        if (missingRemarksPre.length === 0) return null;
+        const first = missingRemarksPre[0];
+        const parts = first.split('.');
+        if (parts.length === 2) return `${ID_PREFIX}-remark-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-remark-${parts[0]}`;
+    };
+
     const onPreSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        if (!allPhotosAttachedPre) { alert(t("alertFillPhoto", lang)); return; }
-        if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
-        if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
+        if (!allPhotosAttachedPre) { 
+            alert(t("alertFillPhoto", lang)); 
+            const scrollId = getFirstMissingPhotoScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return; 
+        }
+        if (!allRequiredInputsFilled) { 
+            alert(t("alertInputNotComplete", lang)); 
+            const scrollId = getFirstMissingInputScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return; 
+        }
+        if (!allRemarksFilledPre) { 
+            alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); 
+            const scrollId = getFirstMissingRemarkScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return; 
+        }
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -1304,8 +1736,71 @@ export default function CCBPMReport() {
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
+    // Helper functions for Post mode scroll IDs
+    const getFirstMissingPhotoPostScrollId = (): string | null => {
+        if (missingPhotoItemsPost.length === 0) return null;
+        const first = missingPhotoItemsPost[0];
+        const formatted = formatPhotoKeyNumber(first);
+        const parts = formatted.split('-');
+        if (parts.length === 2) return `${ID_PREFIX}-photo-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-photo-${parts[0]}`;
+    };
+
+    const getFirstMissingPFScrollId = (): string | null => {
+        if (missingPFItemsPost.length === 0) return null;
+        const first = missingPFItemsPost[0];
+        const parts = first.split('.');
+        if (parts.length === 2) return `${ID_PREFIX}-pf-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-pf-${parts[0]}`;
+    };
+
+    const getFirstMissingRemarkPostScrollId = (): string | null => {
+        if (missingRemarksPost.length === 0) return null;
+        const first = missingRemarksPost[0];
+        const parts = first.split('.');
+        if (parts.length === 2) return `${ID_PREFIX}-remark-${parts[0]}-${parts[1]}`;
+        return `${ID_PREFIX}-remark-${parts[0]}`;
+    };
+
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
+        
+        // Validation checks with scroll to error
+        if (!allPhotosAttachedPost) {
+            alert(t("alertFillPhoto", lang));
+            const scrollId = getFirstMissingPhotoPostScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!allPFAnsweredPost) {
+            alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items");
+            const scrollId = getFirstMissingPFScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!allRequiredInputsFilled) {
+            alert(t("alertInputNotComplete", lang));
+            const scrollId = getFirstMissingInputScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!allRemarksFilledPost) {
+            alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`);
+            const scrollId = getFirstMissingRemarkPostScrollId();
+            if (scrollId) scrollToFirstError(scrollId);
+            return;
+        }
+        if (!isSummaryFilled) {
+            alert(t("missingSummaryText", lang));
+            scrollToFirstError(`${ID_PREFIX}-summary-section`);
+            return;
+        }
+        if (!isSummaryCheckFilled) {
+            alert(t("missingSummaryStatus", lang));
+            scrollToFirstError(`${ID_PREFIX}-summary-section`);
+            return;
+        }
+        
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -1426,18 +1921,21 @@ export default function CCBPMReport() {
                                         draftKey={currentDraftKey}
                                         qNo={q.no}
                                         lang={lang}
+                                        id={getPhotoIdFromKey(q.no)}
                                     />
                                 </div>
                             )}
-                            <Textarea
-                                label={t("remark", lang)}
-                                value={rows[q.key]?.remark || ""}
-                                onChange={(e) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })}
-                                rows={3}
-                                required
-                                containerProps={{ className: "!tw-min-w-0" }}
-                                className="!tw-w-full resize-none"
-                            />
+                            <div id={getRemarkIdFromKey(q.key)}>
+                                <Textarea
+                                    label={t("remark", lang)}
+                                    value={rows[q.key]?.remark || ""}
+                                    onChange={(e) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })}
+                                    rows={3}
+                                    required
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full resize-none"
+                                />
+                            </div>
                         </div>
                     </SectionCard>
                 );
@@ -1478,18 +1976,21 @@ export default function CCBPMReport() {
                                                     draftKey={currentDraftKey}
                                                     qNo={photoKey}
                                                     lang={lang}
+                                                    id={getPhotoIdFromKey(photoKey)}
                                                 />
                                             </div>
                                         )}
-                                        <Textarea
-                                            label={t("remark", lang)}
-                                            value={rows[item.key]?.remark || ""}
-                                            onChange={(e) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: e.target.value } })}
-                                            rows={3}
-                                            required
-                                            containerProps={{ className: "!tw-min-w-0" }}
-                                            className="!tw-w-full resize-none"
-                                        />
+                                        <div id={getRemarkIdFromKey(item.key)}>
+                                            <Textarea
+                                                label={t("remark", lang)}
+                                                value={rows[item.key]?.remark || ""}
+                                                onChange={(e) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: e.target.value } })}
+                                                rows={3}
+                                                required
+                                                containerProps={{ className: "!tw-min-w-0" }}
+                                                className="!tw-w-full resize-none"
+                                            />
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -1528,10 +2029,11 @@ export default function CCBPMReport() {
                                         draftKey={currentDraftKey}
                                         qNo={90}
                                         lang={lang}
+                                        id={getPhotoIdFromKey(90)}
                                     />
                                 </div>
                             )}
-                            <div className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4 tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
+                            <div id={getInputIdFromKey("r9_main")} className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4 tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
                                 {VOLTAGE_FIELDS_CCB.map((k) => (
                                     <InputWithUnit<UnitVoltage>
                                         key={`main-${k}`}
@@ -1544,15 +2046,17 @@ export default function CCBPMReport() {
                                     />
                                 ))}
                             </div>
-                            <Textarea
-                                label={t("remark", lang)}
-                                value={rows[rowKey]?.remark || ""}
-                                onChange={(e) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: e.target.value } })}
-                                rows={3}
-                                required
-                                containerProps={{ className: "!tw-min-w-0" }}
-                                className="!tw-w-full resize-none"
-                            />
+                            <div id={getRemarkIdFromKey("r9_main")}>
+                                <Textarea
+                                    label={t("remark", lang)}
+                                    value={rows[rowKey]?.remark || ""}
+                                    onChange={(e) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: e.target.value } })}
+                                    rows={3}
+                                    required
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full resize-none"
+                                />
+                            </div>
                         </div>
                     </SectionCard>
                 );
@@ -1631,12 +2135,13 @@ export default function CCBPMReport() {
                                                     draftKey={currentDraftKey}
                                                     qNo={photoKey}
                                                     lang={lang}
+                                                    id={getPhotoIdFromKey(photoKey)}
                                                 />
                                             </div>
                                         )}
 
                                         {/* Voltage inputs - 3 columns grid */}
-                                        <div className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3 tw-mb-3 ${isItemNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
+                                        <div id={getInputIdFromKey(rowKey)} className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3 tw-mb-3 ${isItemNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
                                             {VOLTAGE_FIELDS_CCB.map((k) => (
                                                 <InputWithUnit<UnitVoltage>
                                                     key={`sub${i}-${k}`}
@@ -1651,15 +2156,17 @@ export default function CCBPMReport() {
                                         </div>
 
                                         {/* Remark */}
-                                        <Textarea
-                                            label={t("remark", lang)}
-                                            value={rows[rowKey]?.remark || ""}
-                                            onChange={(e) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: e.target.value } })}
-                                            rows={3}
-                                            required
-                                            containerProps={{ className: "!tw-min-w-0" }}
-                                            className="!tw-w-full resize-none"
-                                        />
+                                        <div id={getRemarkIdFromKey(rowKey)}>
+                                            <Textarea
+                                                label={t("remark", lang)}
+                                                value={rows[rowKey]?.remark || ""}
+                                                onChange={(e) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: e.target.value } })}
+                                                rows={3}
+                                                required
+                                                containerProps={{ className: "!tw-min-w-0" }}
+                                                className="!tw-w-full resize-none"
+                                            />
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -1693,6 +2200,8 @@ export default function CCBPMReport() {
                             remark={rows[q.key]?.remark || ""}
                             onRemarkChange={(v) => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
                             lang={lang}
+                            id={getPfIdFromKey(q.key)}
+                            remarkId={getRemarkIdFromKey(q.key)}
                             aboveRemark={
                                 q.hasPhoto && (
                                     <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100">
@@ -1703,6 +2212,7 @@ export default function CCBPMReport() {
                                             draftKey={currentDraftKey}
                                             qNo={q.no}
                                             lang={lang}
+                                            id={getPhotoIdFromKey(q.no)}
                                         />
                                     </div>
                                 )
@@ -1741,6 +2251,8 @@ export default function CCBPMReport() {
                                         remark={rows[item.key]?.remark || ""}
                                         onRemarkChange={(v) => setRows({ ...rows, [item.key]: { ...rows[item.key], remark: v } })}
                                         lang={lang}
+                                        id={getPfIdFromKey(item.key)}
+                                        remarkId={getRemarkIdFromKey(item.key)}
                                         aboveRemark={
                                             q.hasPhoto && (
                                                 <div className="tw-pb-4 tw-border-b tw-border-gray-100">
@@ -1751,6 +2263,7 @@ export default function CCBPMReport() {
                                                         draftKey={currentDraftKey}
                                                         qNo={photoKey}
                                                         lang={lang}
+                                                        id={getPhotoIdFromKey(photoKey)}
                                                     />
                                                 </div>
                                             )
@@ -1782,6 +2295,7 @@ export default function CCBPMReport() {
                                             draftKey={currentDraftKey}
                                             qNo={90}
                                             lang={lang}
+                                            id={getPhotoIdFromKey(90)}
                                         />
                                     </div>
                                 )}
@@ -1794,6 +2308,8 @@ export default function CCBPMReport() {
                                         remark={rows[rowKey]?.remark || ""}
                                         onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
                                         lang={lang}
+                                        id={getPfIdFromKey(rowKey)}
+                                        remarkId={getRemarkIdFromKey(rowKey)}
                                         beforeRemark={renderPreRemarkElement(rowKey, mode)}
                                     />
                                 </div>
@@ -1817,7 +2333,7 @@ export default function CCBPMReport() {
                                     </div>
 
                                     <Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mt-2">{t("afterPM", lang)}</Typography>
-                                    <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4">
+                                    <div id={getInputIdFromKey("r9_main")} className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4">
                                         {VOLTAGE_FIELDS_CCB.map((k) => (
                                             <InputWithUnit<UnitVoltage>
                                                 key={`post-main-${k}`}
@@ -1881,6 +2397,7 @@ export default function CCBPMReport() {
                                                         draftKey={currentDraftKey}
                                                         qNo={photoKey}
                                                         lang={lang}
+                                                        id={getPhotoIdFromKey(photoKey)}
                                                     />
                                                 </div>
                                             )}
@@ -1893,6 +2410,8 @@ export default function CCBPMReport() {
                                                     remark={rows[rowKey]?.remark || ""}
                                                     onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
                                                     lang={lang}
+                                                    id={getPfIdFromKey(rowKey)}
+                                                    remarkId={getRemarkIdFromKey(rowKey)}
                                                     beforeRemark={renderPreRemarkElement(rowKey, mode)}
                                                 />
                                             </div>
@@ -1916,7 +2435,7 @@ export default function CCBPMReport() {
                                                 </div>
 
                                                 <Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mt-2">{t("afterPM", lang)}</Typography>
-                                                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
+                                                <div id={getInputIdFromKey(rowKey)} className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
                                                     {VOLTAGE_FIELDS_CCB.map((k) => (
                                                         <InputWithUnit<UnitVoltage>
                                                             key={`post-sub${i}-${k}`}
@@ -1977,6 +2496,16 @@ export default function CCBPMReport() {
             return String(no);
         }).join(", ");
     };
+
+    // Format missingPhotoItems as string[] for PMValidationCard
+    const missingPhotoItemsFormatted = useMemo(() => {
+        return missingPhotoItems.map(no => {
+            if (no === 90) return "9";
+            if (no >= 101 && no <= 106) return `10.${no - 100}`;
+            if (no >= 30 && no < 90) return `${Math.floor(no / 10)}.${no % 10}`;
+            return String(no);
+        });
+    }, [missingPhotoItems]);
 
     return (
         <section className="tw-pb-24">
@@ -2040,7 +2569,7 @@ export default function CCBPMReport() {
                         {QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 11)).map((q) => renderQuestionBlock(q, displayTab))}
                     </div>
 
-                    <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-px-0 sm:tw-px-2 lg:tw-px-4">
+                    <div id={`${ID_PREFIX}-summary-section`} className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-px-0 sm:tw-px-2 lg:tw-px-4">
                         <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
                         {displayTab === "post" && commentPre && (
                             <div className="tw-mb-2 sm:tw-mb-3 tw-p-2.5 sm:tw-p-3 tw-bg-amber-50 tw-rounded-lg tw-border tw-border-amber-300">
@@ -2079,52 +2608,30 @@ export default function CCBPMReport() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-flex tw-flex-col tw-gap-3 tw-px-3 sm:tw-px-4 lg:tw-px-6">
-                        <div className="tw-p-3 sm:tw-p-4 tw-flex tw-flex-col tw-gap-2 tw-bg-gray-50 tw-rounded-xl tw-border tw-border-gray-200">
-                            <Section title={t("validationPhotoTitle", lang)} ok={allPhotosAttached} lang={lang}>
-                                <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPhoto", lang)} {formatMissingPhotoItems(missingPhotoItems)}</Typography>
-                            </Section>
-                            <Section title={t("validationInputTitle", lang)} ok={allRequiredInputsFilled} lang={lang}>
-                                {allRequiredInputsFilled ? (
-                                    <Typography variant="small" className="!tw-text-green-600 tw-text-xs sm:tw-text-sm">{t("allComplete", lang)}</Typography>
-                                ) : (
-                                    <div className="tw-space-y-1">
-                                        <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingInput", lang)}</Typography>
-                                        <ul className="tw-list-disc tw-ml-4 sm:tw-ml-5 tw-text-xs sm:tw-text-sm tw-text-amber-700">
-                                            {missingInputs.map((line, i) => (<li key={i}>{line}</li>))}
-                                        </ul>
-                                    </div>
-                                )}
-                            </Section>
-                            {displayTab === "pre" && (
-                                <Section title={t("validationRemarkTitle", lang)} ok={allRemarksFilledPre} lang={lang}>
-                                    {missingRemarksPre.length > 0 && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingRemark", lang)} {missingRemarksPre.join(", ")}</Typography>}
-                                </Section>
-                            )}
-                            {isPostMode && (
-                                <>
-                                    <Section title={t("validationPFTitle", lang)} ok={allPFAnsweredForUI} lang={lang}>
-                                        <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingPF", lang)} {missingPFItemsForUI.join(", ")}</Typography>
-                                    </Section>
-                                    <Section title={t("validationRemarkTitlePost", lang)} ok={allRemarksFilledPost} lang={lang}>
-                                        {missingRemarksPost.length > 0 && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingRemark", lang)} {missingRemarksPost.join(", ")}</Typography>}
-                                    </Section>
-                                    <Section title={t("validationSummaryTitle", lang)} ok={isSummaryFilled && isSummaryCheckFilled} lang={lang}>
-                                        <div className="tw-space-y-1">
-                                            {!isSummaryFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryText", lang)}</Typography>}
-                                            {!isSummaryCheckFilled && <Typography variant="small" className="!tw-text-amber-700 tw-text-xs sm:tw-text-sm">{t("missingSummaryStatus", lang)}</Typography>}
-                                        </div>
-                                    </Section>
-                                </>
-                            )}
-                        </div>
+                        <PMValidationCard
+                            lang={lang}
+                            displayTab={displayTab}
+                            isPostMode={isPostMode}
+                            allPhotosAttached={allPhotosAttached}
+                            missingPhotoItems={missingPhotoItemsFormatted}
+                            allRequiredInputsFilled={allRequiredInputsFilled}
+                            missingInputsDetailed={missingInputsDetailed}
+                            allRemarksFilledPre={allRemarksFilledPre}
+                            missingRemarksPre={missingRemarksPre}
+                            allPFAnsweredPost={allPFAnsweredForUI}
+                            missingPFItemsPost={missingPFItemsForUI}
+                            allRemarksFilledPost={allRemarksFilledPost}
+                            missingRemarksPost={missingRemarksPost}
+                            isSummaryFilled={isSummaryFilled}
+                            isSummaryCheckFilled={isSummaryCheckFilled}
+                        />
                         <div className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-end tw-gap-2 sm:tw-gap-3">
                             {displayTab === "pre" ? (
                                 <Button
                                     type="button"
                                     onClick={onPreSave}
                                     disabled={!canGoAfter || submitting}
-                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto"
-                                    title={!allPhotosAttachedPre ? t("alertPhotoNotComplete", lang) : !allRequiredInputsFilled ? t("alertInputNotComplete", lang) : !allRemarksFilledPre ? `${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}` : undefined}
+                                    className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
                                 >
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
@@ -2133,8 +2640,7 @@ export default function CCBPMReport() {
                                     type="button"
                                     onClick={onFinalSave}
                                     disabled={!canFinalSave || submitting}
-                                    className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900 tw-w-full sm:tw-w-auto"
-                                    title={!canFinalSave ? t("alertCompleteAll", lang) : undefined}
+                                    className="tw-text-sm tw-py-2.5 tw-w-full sm:tw-w-auto tw-bg-gray-800 hover:tw-bg-gray-900 disabled:tw-bg-gray-800 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
                                 >
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>

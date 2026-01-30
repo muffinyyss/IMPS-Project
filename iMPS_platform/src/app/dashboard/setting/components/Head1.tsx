@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import React, { useEffect, useMemo, useState, useRef } from "react";
@@ -90,7 +88,7 @@ type ChargeState =
     | "faulted";
 
 type PLCSetting = {
-    station_id: string;
+    SN: string;
     dynamic_max_current1: number; // A
     dynamic_max_power1: number;   // kW
     cp_status1: "start" | "stop";           // 1 = start, 0 = stop
@@ -135,13 +133,6 @@ function PrimaryCTA({
         !!busy || isFinishing || isAvailable || !(isCharging || isPreparing || isFaulted);
 
     const label = isCharging ? "Stop Charging" : isFaulted ? "Try Again" : "Start Charging";
-    // const label = isFinishing
-    //     ? "Done"
-    //     : isCharging
-    //         ? "Stop Charging"
-    //         : isFaulted
-    //             ? "Try Again"
-    //             : "Start Charging";
 
     const Icon = busy
         ? ArrowPathIcon
@@ -225,7 +216,6 @@ function HeadRow({
                         onStart={onStart}
                         onStop={onStop}
                     />
-                    {/* <PrimaryCTA status={status} busy={!!busy} onStart={onStart} onStop={onStop} /> */}
                     <p className="tw-mt-2 tw-text-center tw-text-xs tw-text-blue-gray-500">
                         {charging ? "Vehicle is charging" : "Vehicle is idle"}
                     </p>
@@ -251,7 +241,7 @@ type SettingDoc = {
 
 export default function Head1() {
     const searchParams = useSearchParams();
-    const [stationId, setStationId] = useState<string | null>(null);
+    const [SN, setSN] = useState<string | null>(null);
     const initSavedRef = useRef(false);
 
     const [data, setData] = useState<SettingDoc | null>(null);
@@ -277,7 +267,6 @@ export default function Head1() {
     };
 
     // baseline สำหรับเช็คว่ามีการเปลี่ยนแปลงหรือไม่
-    // const [lastSaved, setLastSaved] = useState({ maxCurrentH1: 66, maxPowerH1: 136 });
     const [lastSaved, setLastSaved] = useState({ maxCurrentH1: 0, maxPowerH1: 0 });
     const isDirty =
         maxCurrentH1 !== lastSaved.maxCurrentH1 || maxPowerH1 !== lastSaved.maxPowerH1;
@@ -286,13 +275,13 @@ export default function Head1() {
     const isGlobalDisabled = !!busyH1;
 
     async function applySettings() {
-        if (!stationId) { console.warn("[Head1] no station_id"); return; }
+        if (!SN) { console.warn("[Head1] no SN"); return; }
         setSaving(true);
         setErr(null);
 
         try {
             // === สร้าง payload เฉพาะที่เปลี่ยน + ตาม activeLimiter ===
-            const bodyMAX: Record<string, number | string> = { station_id: stationId };
+            const bodyMAX: Record<string, number | string> = { SN: SN };
 
             if (activeLimiter === "current") {
                 if (isDirtyCurrent) bodyMAX["dynamic_max_current1"] = maxCurrentH1;
@@ -328,7 +317,7 @@ export default function Head1() {
 
             // === ส่ง CP ถ้ามีคำสั่งค้าง ===
             if (cpCmd1) {
-                const bodyCP = { station_id: stationId, cp_status1: cpCmd1 };
+                const bodyCP = { SN: SN, cp_status1: cpCmd1 };
                 const resCP = await fetch(`${API_BASE}/setting/PLC/CP`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -399,34 +388,26 @@ export default function Head1() {
         setMaxPowerH1((v) => Math.min(v, maxPowerSlider));
     }, [maxPowerSlider]);
 
-    // station_id จาก URL → localStorage
+    // SN จาก URL → localStorage
     useEffect(() => {
-        const sidFromUrl = searchParams.get("station_id");
-        if (sidFromUrl) {
-            setStationId(sidFromUrl);
-            localStorage.setItem("selected_station_id", sidFromUrl);
+        const snFromUrl = searchParams.get("SN");
+        if (snFromUrl) {
+            setSN(snFromUrl);
+            localStorage.setItem("selected_sn", snFromUrl);
             return;
         }
-        const sidLocal = localStorage.getItem("selected_station_id");
-        setStationId(sidLocal);
+        const snLocal = localStorage.getItem("selected_sn");
+        setSN(snLocal);
     }, [searchParams]);
-
-    // useEffect(() => {
-    //     if (!stationId) {
-    //         console.log("[Head1] no station_id → SSE will not start, sliders locked.");
-    //     } else {
-    //         console.log("[Head1] station_id =", stationId);
-    //     }
-    // }, [stationId]);
 
     // เปิด SSE ไปที่ /setting
     useEffect(() => {
-        if (!stationId) return;
+        if (!SN) return;
         setLoading(true);
         setErr(null);
 
         const es = new EventSource(
-            `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
+            `${API_BASE}/setting?SN=${encodeURIComponent(SN)}`,
             { withCredentials: true }
         );
 
@@ -461,7 +442,7 @@ export default function Head1() {
             es.removeEventListener("init", onInit);
             es.close();
         };
-    }, [stationId]);
+    }, [SN]);
 
 
 
@@ -480,7 +461,7 @@ export default function Head1() {
         const powW = toNum(data.dynamic_max_power1);
         if (powW !== null) setMaxPowerH1(Math.round(powW / 1000));
 
-        // ⬇️ เซ็ต baseline จากค่าจริง “ครั้งแรกที่มี data”
+        // ⬇️ เซ็ต baseline จากค่าจริง "ครั้งแรกที่มี data"
         if (!initSavedRef.current) {
             setLastSaved({
                 maxCurrentH1: curA !== null ? Math.round(curA) : 0,
@@ -501,8 +482,8 @@ export default function Head1() {
 
 
     async function sendCpCommand(action: "start" | "stop") {
-        if (!stationId) throw new Error("no station_id");
-        const body = { station_id: stationId, cp_status1: action };
+        if (!SN) throw new Error("no SN");
+        const body = { SN: SN, cp_status1: action };
         const res = await fetch(`${API_BASE}/setting/PLC/CP`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -551,14 +532,14 @@ export default function Head1() {
 
 
 
-    const hasStation = !!stationId;
+    const hasStation = !!SN;
     const hasData = !!data;
     const dynMaxCurrent1 = toNum(data?.dynamic_max_current1); // อาจเป็น null
 
-    // สไลเดอร์ Current: “เลื่อนไม่ได้” ถ้ายังไม่มี station หรือไม่มี data
+    // สไลเดอร์ Current: "เลื่อนไม่ได้" ถ้ายังไม่มี station หรือไม่มี data
     const disableCurrent = !(hasStation && hasData);
 
-    // สไลเดอร์ Power: “เลื่อนไม่ได้” ถ้ายังไม่มี station หรือไม่มี data หรือไม่มี dynMaxCurrent1 จริง
+    // สไลเดอร์ Power: "เลื่อนไม่ได้" ถ้ายังไม่มี station หรือไม่มี data หรือไม่มี dynMaxCurrent1 จริง
     const disablePower = !(hasStation && hasData && dynMaxCurrent1 !== null);
 
     // log สถานะล็อกฝั่ง UI
@@ -598,7 +579,7 @@ export default function Head1() {
 
             <div className="tw-space-y-8">
 
-                {/* -------- โซนสไลเดอร์ + ปุ่ม “ตกลง” ขวาล่าง -------- */}
+                {/* -------- โซนสไลเดอร์ + ปุ่ม "ตกลง" ขวาล่าง -------- */}
                 <div className="tw-space-y-6">
                     {/* แสดงค่าจริงจากสตรีม (อ่านอย่างเดียว ณ ตอนนี้) */}
                     <LimitRow
@@ -688,7 +669,7 @@ export default function Head1() {
                         </button>
                     </div>
 
-                    {/* ปุ่ม “ตกลง” — ชิดขวาล่าง, สีดำ, ไม่มีไอคอน */}
+                    {/* ปุ่ม "ตกลง" — ชิดขวาล่าง, สีดำ, ไม่มีไอคอน */}
                     <div className="tw-flex tw-justify-end">
                         <button
                             type="button"

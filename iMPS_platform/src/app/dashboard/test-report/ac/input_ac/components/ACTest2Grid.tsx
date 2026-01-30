@@ -1,11 +1,27 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Input, Button, Typography } from "@material-tailwind/react";
+import { Input, Button, Typography, Tooltip } from "@material-tailwind/react";
 
 /* ===================== Types ===================== */
 
 type Lang = "th" | "en";
+
+// File attachment for each test item
+export interface TestFile {
+  file: File;
+  url: string;
+  name: string;
+}
+
+// Files organized by: itemIndex -> round -> h1
+export interface TestFiles {
+  [itemIndex: number]: {
+    [roundIndex: number]: {
+      h1?: TestFile;
+    };
+  };
+}
 
 interface ACTestItem {
   category: string;
@@ -13,6 +29,8 @@ interface ACTestItem {
   testName: string;
   testNameTh?: string;
   unit?: string;
+  remarkKey?: string;
+  tooltip?: { th: string; en: string };
 }
 
 // Dynamic test results - support variable number of rounds
@@ -20,6 +38,7 @@ export interface TestCharger {
   rounds: { h1: string; result: string }[][]; // Array of rounds, each round has array of items
   type2Values: string[]; // For RCD type values
   remarks: string[];
+  files?: TestFiles; // File attachments
 }
 
 // Legacy format for backward compatibility
@@ -66,6 +85,12 @@ const translations = {
     round3Info: "รอบที่ 3 - ทดสอบซ้ำเฉพาะหัวข้อที่ไม่ผ่าน",
     allPassed: "ผ่านทุกหัวข้อทั้ง 2 รอบ",
     failedItemsCount: "หัวข้อที่ต้องทดสอบซ้ำ: {count} รายการ",
+    // File upload translations
+    attachFile: "แนบไฟล์",
+    changeFile: "เปลี่ยนไฟล์",
+    deleteFile: "ลบไฟล์",
+    fileTooltip: "แนบไฟล์เอกสารประกอบการทดสอบ",
+    viewFile: "ดูไฟล์",
   },
   en: {
     testingChecklist: "Testing Checklist",
@@ -99,6 +124,12 @@ const translations = {
     round3Info: "Round 3 - Retest failed items only",
     allPassed: "All items passed in both rounds",
     failedItemsCount: "Items to retest: {count}",
+    // File upload translations
+    attachFile: "Attach",
+    changeFile: "Change",
+    deleteFile: "Delete",
+    fileTooltip: "Attach document for this test",
+    viewFile: "View",
   },
 };
 
@@ -137,10 +168,11 @@ export type ChargerSafetyPayload = {
   chargerSafety: {
     tests: {
       [key: string]: Record<
-        "continuityPE" | "insulationCable" | "stateA" | "stateB" | "stateC" | "CPShort" | "PECut" | "emergency",
+        "continuityPE" | "insulationCable" | "stateA" | "stateB" | "stateC" | "CPShort" | "PECut",
         { h1: string; result: string }
       >;
     };
+    emergency: { pass: boolean }; // Like Isolation Transformer in DCTest1Grid
     rcd: {
       typeA: { value: string; unit: "mA" };
       typeF: { value: string; unit: "mA" };
@@ -150,6 +182,97 @@ export type ChargerSafetyPayload = {
     remarks: Record<string, string>;
     totalRounds: number;
   };
+};
+
+/* ===================== Tooltip translations ===================== */
+
+const tooltipTranslations = {
+  th: {
+    pass: "ผ่าน - คลิกเพื่อเลือก",
+    fail: "ไม่ผ่าน - คลิกเพื่อเลือก",
+    na: "ไม่มี/ไม่ทดสอบ - คลิกเพื่อเลือก",
+    passSelected: "ผ่าน (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+    failSelected: "ไม่ผ่าน (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+    naSelected: "ไม่มี/ไม่ทดสอบ (เลือกแล้ว) - คลิกเพื่อยกเลิก",
+  },
+  en: {
+    pass: "Pass - Click to select",
+    fail: "Fail - Click to select",
+    na: "N/A - Click to select",
+    passSelected: "Pass (Selected) - Click to deselect",
+    failSelected: "Fail (Selected) - Click to deselect",
+    naSelected: "N/A (Selected) - Click to deselect",
+  },
+};
+
+/* ===================== Helper: Filter Numeric Input ===================== */
+
+// อนุญาตเฉพาะ: ตัวเลข (0-9), จุดทศนิยม (.), เครื่องหมายลบ (-), มากกว่า (>), น้อยกว่า (<)
+const filterNumericInput = (value: string): { filtered: string; hasInvalid: boolean } => {
+  const filtered = value.replace(/[^0-9.\-><]/g, "");
+  const hasInvalid = filtered !== value;
+  return { filtered, hasInvalid };
+};
+
+/* ===================== UI: Numeric Input with Toast ===================== */
+
+const NumericInput: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+  lang?: Lang;
+}> = ({ value, onChange, placeholder, disabled, className, lang = "th" }) => {
+  const [showToast, setShowToast] = useState(false);
+
+  const toastMessage = lang === "th" 
+    ? "กรุณากรอกเฉพาะตัวเลข, จุด (.), ลบ (-), มากกว่า (>) หรือน้อยกว่า (<)" 
+    : "Please enter only numbers, dot (.), minus (-), greater than (>) or less than (<)";
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { filtered, hasInvalid } = filterNumericInput(e.target.value);
+    
+    if (hasInvalid) {
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000); // แสดง 5 วินาที
+    }
+    
+    onChange(filtered);
+  };
+
+  return (
+    <div className="tw-relative">
+      <input
+        type="text"
+        value={value}
+        onChange={handleChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={className}
+      />
+      
+      {/* Toast Notification - สีแดง */}
+      {showToast && (
+        <div className="tw-fixed tw-top-4 tw-left-1/2 tw-transform tw--translate-x-1/2 tw-z-[9999]">
+          <div className="tw-bg-red-600 tw-text-white tw-px-5 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-flex tw-items-center tw-gap-3 tw-text-sm tw-font-medium tw-border tw-border-red-700">
+            <svg className="tw-w-6 tw-h-6 tw-flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>{toastMessage}</span>
+            <button 
+              onClick={() => setShowToast(false)}
+              className="tw-ml-2 tw-text-white/80 hover:tw-text-white tw-transition-colors"
+            >
+              <svg className="tw-w-5 tw-h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 /* ===================== UI: Pass/Fail/NA Buttons - REDESIGNED ===================== */
@@ -166,6 +289,8 @@ export const PassFailButtons: React.FC<{
   const isFail = value === "FAIL" || value === "✗";
   const isNA = value === "NA";
 
+  const tt = tooltipTranslations[lang];
+
   const baseClass = size === "sm" 
     ? "tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-rounded-lg tw-transition-all tw-duration-200"
     : "tw-px-4 tw-py-2 tw-text-sm tw-font-semibold tw-rounded-lg tw-transition-all tw-duration-200";
@@ -174,6 +299,7 @@ export const PassFailButtons: React.FC<{
     <div className="tw-flex tw-gap-1.5">
       <button
         type="button"
+        title={isPass ? tt.passSelected : tt.pass}
         className={`${baseClass} ${
           isPass
             ? "tw-bg-green-500 tw-text-white tw-shadow-md tw-shadow-green-200"
@@ -186,6 +312,7 @@ export const PassFailButtons: React.FC<{
       </button>
       <button
         type="button"
+        title={isFail ? tt.failSelected : tt.fail}
         className={`${baseClass} ${
           isFail
             ? "tw-bg-red-500 tw-text-white tw-shadow-md tw-shadow-red-200"
@@ -199,6 +326,7 @@ export const PassFailButtons: React.FC<{
       {showNA && (
         <button
           type="button"
+          title={isNA ? tt.naSelected : tt.na}
           className={`${baseClass} ${
             isNA
               ? "tw-bg-gray-500 tw-text-white tw-shadow-md tw-shadow-gray-200"
@@ -214,6 +342,151 @@ export const PassFailButtons: React.FC<{
   );
 };
 
+/* ===================== UI: File Upload Button ===================== */
+
+const FileUploadButton: React.FC<{
+  file?: TestFile;
+  onUpload: (file: File) => void;
+  onDelete: () => void;
+  lang: Lang;
+  t: typeof translations["th"];
+  size?: "sm" | "md";
+  loading?: boolean;
+  disabled?: boolean;
+}> = ({ file, onUpload, onDelete, lang, t, size = "sm", loading = false, disabled = false }) => {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      onUpload(selectedFile);
+    }
+    // Reset input
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  };
+
+  const baseClass = size === "sm"
+    ? "tw-px-2 tw-py-1.5 tw-text-xs tw-font-medium tw-rounded-lg tw-transition-all tw-duration-200"
+    : "tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-rounded-lg tw-transition-all tw-duration-200";
+
+  // Get file icon based on extension
+  const getFileIcon = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (ext === 'pdf') {
+      return (
+        <svg className="tw-w-4 tw-h-4 tw-text-red-500" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+        </svg>
+      );
+    }
+    if (ext === 'doc' || ext === 'docx') {
+      return (
+        <svg className="tw-w-4 tw-h-4 tw-text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+        </svg>
+      );
+    }
+    if (ext === 'xls' || ext === 'xlsx') {
+      return (
+        <svg className="tw-w-4 tw-h-4 tw-text-green-500" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+        </svg>
+      );
+    }
+    if (['jpg', 'jpeg', 'png'].includes(ext || '')) {
+      return (
+        <svg className="tw-w-4 tw-h-4 tw-text-purple-500" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+        </svg>
+      );
+    }
+    return (
+      <svg className="tw-w-4 tw-h-4 tw-text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+      </svg>
+    );
+  };
+
+  // Loading spinner
+  const LoadingSpinner = () => (
+    <svg className="tw-w-3.5 tw-h-3.5 tw-animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="tw-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="tw-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+    </svg>
+  );
+
+  if (loading) {
+    return (
+      <div className={`${baseClass} tw-flex tw-items-center tw-gap-1 tw-bg-gray-100 tw-text-gray-400 tw-border tw-border-gray-300`}>
+        <LoadingSpinner />
+        <span className="tw-hidden sm:tw-inline">...</span>
+      </div>
+    );
+  }
+
+  if (file) {
+    return (
+      <div className="tw-flex tw-items-center tw-gap-1">
+        {/* File Preview */}
+        <Tooltip content={`${t.viewFile}: ${file.name}`} placement="top">
+          <a
+            href={file.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="tw-flex tw-items-center tw-gap-1 tw-px-2 tw-py-1 tw-rounded-md tw-bg-gray-100 tw-border tw-border-gray-300 hover:tw-bg-gray-200 tw-transition-all tw-max-w-[100px]"
+          >
+            {getFileIcon(file.name)}
+            <span className="tw-text-xs tw-text-gray-700 tw-truncate tw-max-w-[60px]">{file.name}</span>
+          </a>
+        </Tooltip>
+        
+        {/* Delete Button */}
+        <Tooltip content={t.deleteFile} placement="top">
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={disabled}
+            className="tw-w-6 tw-h-6 tw-flex tw-items-center tw-justify-center tw-rounded-full tw-bg-red-100 tw-text-red-600 hover:tw-bg-red-200 tw-transition-all disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+          >
+            <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </Tooltip>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+          className="tw-hidden"
+          onChange={handleFileChange}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <Tooltip content={t.fileTooltip} placement="top">
+      <label className={`${baseClass} tw-cursor-pointer tw-flex tw-items-center tw-gap-1 tw-bg-gray-100 tw-text-gray-600 tw-border tw-border-gray-300 hover:tw-bg-gray-200 hover:tw-border-gray-400 ${disabled ? 'tw-opacity-50 tw-cursor-not-allowed' : ''}`}>
+        <svg className="tw-w-3.5 tw-h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+        </svg>
+        <span className="tw-hidden sm:tw-inline">{t.attachFile}</span>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+          className="tw-hidden"
+          onChange={handleFileChange}
+          disabled={disabled}
+        />
+      </label>
+    </Tooltip>
+  );
+};
+
 /* ===================== Data (รายการทดสอบ) ===================== */
 
 export const AC_TEST2_DATA: ACTestItem[] = [
@@ -222,72 +495,96 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testName: "Continuity PE",
     testNameTh: "Continuity PE",
     unit: "Ω",
+    remarkKey: "continuityPE",
+    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE)", en: "Test continuity of protective earth conductor (PE)" },
   },
   {
     category: "Charger Safety",
     testName: "Insulation Cable",
     testNameTh: "Insulation Cable",
     unit: "MΩ",
+    remarkKey: "insulationCable",
+    tooltip: { th: "ทดสอบความต้านทานฉนวนของสายเคเบิล", en: "Test insulation resistance of cable" },
   },
   {
     category: "Charger Safety",
     testName: "State A",
     testNameTh: "State A",
     unit: "V",
+    remarkKey: "stateA",
+    tooltip: { th: "ทดสอบแรงดันไฟฟ้าที่สถานะ A (ไม่เชื่อมต่อ)", en: "Test voltage at State A (not connected)" },
   },
   {
     category: "Charger Safety",
     testName: "State B",
     testNameTh: "State B",
     unit: "V",
+    remarkKey: "stateB",
+    tooltip: { th: "ทดสอบแรงดันไฟฟ้าที่สถานะ B (เชื่อมต่อแล้ว)", en: "Test voltage at State B (connected)" },
   },
   {
     category: "Charger Safety",
     testName: "State C",
     testNameTh: "State C",
     unit: "V",
+    remarkKey: "stateC",
+    tooltip: { th: "ทดสอบแรงดันไฟฟ้าที่สถานะ C (กำลังชาร์จ)", en: "Test voltage at State C (charging)" },
   },
   {
     category: "Charger Safety",
     testName: "CP Short",
     testNameTh: "CP Short",
     unit: "V",
+    remarkKey: "cpShort",
+    tooltip: { th: "ทดสอบการตอบสนองเมื่อสาย CP ลัดวงจร", en: "Test response when CP line is shorted" },
   },
   {
     category: "Charger Safety",
     testName: "PE Cut",
     testNameTh: "PE Cut",
     unit: "V",
+    remarkKey: "peCut",
+    tooltip: { th: "ทดสอบการตอบสนองเมื่อสาย PE ถูกตัด", en: "Test response when PE line is cut" },
   },
   {
     category: "Charger Safety",
     testName: "Emergency",
     testNameTh: "Emergency",
     unit: "",
+    remarkKey: "emergency",
+    tooltip: { th: "ทดสอบการทำงานของปุ่มหยุดฉุกเฉิน", en: "Test emergency stop button functionality" },
   },
   {
     category: "Charger Safety",
     testName: "RCD type A",
     testNameTh: "RCD type A",
     unit: "mA",
+    remarkKey: "rcdTypeA",
+    tooltip: { th: "ทดสอบอุปกรณ์ป้องกันไฟรั่ว (RCD) ชนิด A", en: "Test Residual Current Device (RCD) type A" },
   },
   {
     category: "Charger Safety",
     testName: "RCD type F",
     testNameTh: "RCD type F",
     unit: "mA",
+    remarkKey: "rcdTypeF",
+    tooltip: { th: "ทดสอบอุปกรณ์ป้องกันไฟรั่ว (RCD) ชนิด F", en: "Test Residual Current Device (RCD) type F" },
   },
   {
     category: "Charger Safety",
     testName: "RCD type B",
     testNameTh: "RCD type B",
     unit: "mA",
+    remarkKey: "rcdTypeB",
+    tooltip: { th: "ทดสอบอุปกรณ์ป้องกันไฟรั่ว (RCD) ชนิด B", en: "Test Residual Current Device (RCD) type B" },
   },
   {
     category: "Charger Safety",
     testName: "RDC-DD",
     testNameTh: "RDC-DD",
     unit: "mA",
+    remarkKey: "rdcDD",
+    tooltip: { th: "ทดสอบอุปกรณ์ตรวจจับกระแสไฟฟ้ารั่ว DC", en: "Test DC residual current detection device" },
   },
 ];
 
@@ -311,10 +608,13 @@ const nameKey = (testName: string) => {
   return camelKey(n);
 };
 
+// แก้ไข buildRemarks ให้ใช้ remarkKey ถ้ามี
 export function buildRemarks(results: TestCharger, items: ACTestItem[]) {
   const remarks: Record<string, string> = {};
   items.forEach((it, i) => {
-    remarks[nameKey(it.testName)] = results.remarks[i] ?? "";
+    // ใช้ remarkKey ถ้ามี ไม่งั้นใช้ nameKey จาก testName
+    const key = it.remarkKey || nameKey(it.testName);
+    remarks[key] = results.remarks[i] ?? "";
   });
   return remarks;
 }
@@ -353,9 +653,12 @@ export function mapToChargerPayload(results: TestCharger, items: ACTestItem[] = 
       stateC: V(roundData, iStateC),
       CPShort: V(roundData, iCPShort),
       PECut: V(roundData, iPECut),
-      emergency: V(roundData, iEmergency),
     };
   });
+
+  // Emergency - stored like Isolation Transformer in DCTest1Grid (using type2Values)
+  const emergencyValue = iEmergency >= 0 ? results.type2Values[iEmergency] || "" : "";
+  const emergency = { pass: emergencyValue === "✓" || emergencyValue === "PASS" };
 
   const iRcdA = findIndex("RCD type A");
   const iRcdF = findIndex("RCD type F");
@@ -374,6 +677,7 @@ export function mapToChargerPayload(results: TestCharger, items: ACTestItem[] = 
   return {
     chargerSafety: {
       tests,
+      emergency,
       rcd,
       remarks,
       totalRounds: results.rounds.length,
@@ -479,23 +783,25 @@ export const allItemsPassed = (results: TestCharger, testItems: ACTestItem[]): b
   if (failedIndexes.length > 0) return false;
   
   // Check if all items have been tested (must have PASS or NA result in both rounds)
-  // Emergency only needs to be tested in round 1
+  // Emergency only needs to be tested in round 1 - uses type2Values
   let allTested = true;
   testItems.forEach((item, index) => {
     const isEmergencyItem = item.testName === "Emergency";
     const round1Result = results.rounds[0]?.[index]?.result;
     const round2Result = results.rounds[1]?.[index]?.result;
     
-    // Check if result is tested in round 1
-    const round1Tested = isPassResult(round1Result) || isNaResult(round1Result);
-    
-    // Emergency only needs round 1
+    // Emergency uses type2Values like Isolation Transformer
     if (isEmergencyItem) {
-      if (!round1Tested) {
+      const emergencyValue = results.type2Values[index];
+      const emergencyTested = emergencyValue === "PASS" || emergencyValue === "✓";
+      if (!emergencyTested) {
         allTested = false;
       }
       return;
     }
+    
+    // Check if result is tested in round 1
+    const round1Tested = isPassResult(round1Result) || isNaResult(round1Result);
     
     // Other items need both rounds
     const round2Tested = isPassResult(round2Result) || isNaResult(round2Result);
@@ -542,10 +848,10 @@ export const validateTestResults = (
       });
     }
 
-    // Emergency only needs validation in round 1
+    // Emergency only needs validation in round 1 - uses type2Values like Isolation Transformer
     if (isEmergencyItem) {
-      const result = results.rounds[0]?.[itemIndex]?.result;
-      if (!result || (result !== "PASS" && result !== "FAIL" && result !== "✓" && result !== "✗")) {
+      const emergencyValue = results.type2Values[itemIndex];
+      if (!emergencyValue || (emergencyValue !== "PASS" && emergencyValue !== "FAIL" && emergencyValue !== "✓" && emergencyValue !== "✗")) {
         errors.push({
           round: 1,
           itemIndex,
@@ -613,6 +919,8 @@ interface TestRoundCardProps {
   onResultChange: (roundIndex: number, itemIndex: number, field: "h1" | "result", value: string) => void;
   onType2Change: (itemIndex: number, value: string) => void;
   onRemarkChange: (itemIndex: number, value: string) => void;
+  onFileUpload: (roundIndex: number, itemIndex: number, file: File) => void;
+  onFileDelete: (roundIndex: number, itemIndex: number) => void;
   onRemoveRound: () => void;
   lang: Lang;
   t: typeof translations["th"];
@@ -630,6 +938,8 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
   onResultChange,
   onType2Change,
   onRemarkChange,
+  onFileUpload,
+  onFileDelete,
   onRemoveRound,
   lang,
   t,
@@ -642,6 +952,11 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
 
   const getTestResult = (itemIndex: number) => {
     return results.rounds[roundIndex]?.[itemIndex] || { h1: "", result: "" };
+  };
+
+  // Get file for specific item/round
+  const getFile = (itemIndex: number): TestFile | undefined => {
+    return results.files?.[itemIndex]?.[roundIndex]?.h1;
   };
 
   // Determine max rounds display
@@ -710,6 +1025,15 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             )}
           </Typography>
           
+          {/* Tooltip Icon */}
+          {item.tooltip && (
+            <Tooltip content={item.tooltip[lang]} placement="bottom">
+              <svg className="tw-w-4 tw-h-4 lg:tw-w-5 lg:tw-h-5 tw-text-gray-400 tw-cursor-help tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+            </Tooltip>
+          )}
+          
           {/* Show previous round badges for round 3 */}
           {showPreviousResults && prevResults && (
             <div className="tw-flex tw-gap-1 tw-ml-2">
@@ -736,13 +1060,13 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               {isFirstRound && (
                 <div className={`tw-flex tw-items-center tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 ${isNaSelected ? "tw-opacity-50" : ""}`}>
                   <span className="tw-text-xs tw-text-gray-600 tw-font-medium tw-whitespace-nowrap">{displayName}</span>
-                  <input
-                    type="text"
+                  <NumericInput
                     value={results.type2Values[actualIndex] || ""}
-                    onChange={(e) => onType2Change(actualIndex, e.target.value)}
+                    onChange={(v) => onType2Change(actualIndex, v)}
                     className="tw-w-16 lg:tw-w-20 tw-px-2 lg:tw-px-3 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg !tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
                     placeholder={t.valuePlaceholder}
                     disabled={isNaSelected}
+                    lang={lang}
                   />
                   <div className="tw-flex tw-items-center tw-justify-center tw-px-2 lg:tw-px-3 tw-py-1 lg:tw-py-1.5 tw-bg-gray-800 tw-text-white tw-font-bold tw-text-xs tw-rounded-lg">
                     mA
@@ -750,17 +1074,17 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                 </div>
               )}
               
-              {/* Row 2: H.1 (Measured Value) + Pass/Fail + Remark */}
+              {/* Row 2: H.1 (Measured Value) + Pass/Fail + File + Remark */}
               <div className="tw-flex tw-flex-wrap lg:tw-flex-nowrap tw-items-center tw-gap-2 lg:tw-gap-3">
                 <div className={`tw-flex tw-items-center tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 ${isInputDisabled ? "tw-opacity-50" : ""}`}>
                   <span className="tw-text-xs tw-text-gray-600 tw-font-medium tw-whitespace-nowrap">{t.h1}</span>
-                  <input
-                    type="text"
+                  <NumericInput
                     value={currentResult?.h1 || ""}
-                    onChange={(e) => onResultChange(roundIndex, actualIndex, "h1", e.target.value)}
+                    onChange={(v) => onResultChange(roundIndex, actualIndex, "h1", v)}
                     className="tw-w-16 lg:tw-w-20 tw-px-2 lg:tw-px-3 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg !tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
                     placeholder={t.valuePlaceholder}
                     disabled={isInputDisabled}
+                    lang={lang}
                   />
                   <div className="tw-flex tw-items-center tw-justify-center tw-px-2 lg:tw-px-3 tw-py-1 lg:tw-py-1.5 tw-bg-gray-800 tw-text-white tw-font-bold tw-text-xs tw-rounded-lg">
                     mA
@@ -777,8 +1101,21 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                     disabled={isButtonsDisabled}
                   />
                 </div>
+
+                {/* Desktop: File Upload inline */}
+                <div className="tw-hidden lg:tw-block">
+                  <FileUploadButton
+                    file={getFile(actualIndex)}
+                    onUpload={(file) => onFileUpload(roundIndex, actualIndex, file)}
+                    onDelete={() => onFileDelete(roundIndex, actualIndex)}
+                    lang={lang}
+                    t={t}
+                    size="sm"
+                    disabled={isNaSelected}
+                  />
+                </div>
                 
-                {/* Desktop: Remark inline */}
+                {/* Desktop: Remark inline - pushed to right */}
                 <div className="tw-hidden lg:tw-block tw-w-[150px] tw-flex-shrink-0 tw-ml-auto">
                   <input
                     type="text"
@@ -790,14 +1127,23 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
                 </div>
               </div>
               
-              {/* Mobile: PassFailButtons + Remark */}
-              <div className="tw-flex lg:tw-hidden tw-items-center tw-justify-between tw-gap-2">
+              {/* Mobile: PassFailButtons + File + Remark */}
+              <div className="tw-flex lg:tw-hidden tw-items-center tw-gap-2">
                 <PassFailButtons
                   value={currentResult?.result || ""}
                   onChange={(v) => onResultChange(roundIndex, actualIndex, "result", v)}
                   lang={lang}
                   size="sm"
                   disabled={isButtonsDisabled}
+                />
+                <FileUploadButton
+                  file={getFile(actualIndex)}
+                  onUpload={(file) => onFileUpload(roundIndex, actualIndex, file)}
+                  onDelete={() => onFileDelete(roundIndex, actualIndex)}
+                  lang={lang}
+                  t={t}
+                  size="sm"
+                  disabled={isNaSelected}
                 />
                 <input
                   type="text"
@@ -815,13 +1161,14 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
           <>
           <div className="tw-flex tw-flex-wrap lg:tw-flex-nowrap tw-items-center tw-gap-2 lg:tw-gap-3">
             {/* Emergency - only Pass/Fail buttons (no N/A), only first round */}
+            {/* Uses type2Values like Isolation Transformer in DCTest1Grid */}
             {isEmergencyItem && isFirstRound && (
               <>
                 {/* Desktop */}
                 <div className="tw-hidden lg:tw-flex tw-items-center tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3">
                   <PassFailButtons
-                    value={currentResult?.result || ""}
-                    onChange={(v) => onResultChange(roundIndex, actualIndex, "result", v)}
+                    value={results.type2Values[actualIndex] || ""}
+                    onChange={(v) => onType2Change(actualIndex, v)}
                     lang={lang}
                     showNA={false}
                     size="sm"
@@ -834,13 +1181,13 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             {!isNoH1Item && (
               <div className={`tw-flex tw-items-center tw-gap-2 tw-bg-gradient-to-r tw-from-gray-100 tw-to-transparent tw-rounded-xl tw-p-2 lg:tw-p-3 ${isInputDisabled ? "tw-opacity-50" : ""}`}>
                 <span className="tw-text-xs tw-text-gray-600 tw-font-medium">{t.h1}</span>
-                <input
-                  type="text"
+                <NumericInput
                   value={currentResult?.h1 || ""}
-                  onChange={(e) => onResultChange(roundIndex, actualIndex, "h1", e.target.value)}
+                  onChange={(v) => onResultChange(roundIndex, actualIndex, "h1", v)}
                   className="tw-w-16 lg:tw-w-20 tw-px-2 lg:tw-px-3 tw-py-1.5 lg:tw-py-2 tw-text-xs lg:tw-text-sm tw-text-center tw-border tw-border-gray-200 tw-rounded-lg !tw-bg-white focus:tw-border-gray-400 focus:tw-ring-2 focus:tw-ring-gray-200 tw-outline-none tw-transition-all disabled:tw-bg-gray-100 disabled:tw-cursor-not-allowed"
                   placeholder={t.valuePlaceholder}
                   disabled={isInputDisabled}
+                  lang={lang}
                 />
                 {item.unit && (
                   <div className="tw-flex tw-items-center tw-justify-center tw-px-2 lg:tw-px-3 tw-py-1 lg:tw-py-1.5 tw-bg-gray-800 tw-text-white tw-font-bold tw-text-xs tw-rounded-lg">
@@ -863,7 +1210,22 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               </div>
             )}
 
-            {/* Remark - Desktop */}
+            {/* File Upload - Desktop (for non-Emergency items) */}
+            {!isEmergencyItem && (
+              <div className="tw-hidden lg:tw-block">
+                <FileUploadButton
+                  file={getFile(actualIndex)}
+                  onUpload={(file) => onFileUpload(roundIndex, actualIndex, file)}
+                  onDelete={() => onFileDelete(roundIndex, actualIndex)}
+                  lang={lang}
+                  t={t}
+                  size="sm"
+                  disabled={isNaSelected}
+                />
+              </div>
+            )}
+
+            {/* Remark - Desktop - pushed to right */}
             <div className="tw-hidden lg:tw-block tw-w-[150px] tw-flex-shrink-0 tw-ml-auto">
               <input
                 type="text"
@@ -875,13 +1237,13 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Mobile only - PassFail + Remark */}
-          <div className="tw-flex lg:tw-hidden tw-items-center tw-justify-between tw-gap-2">
-            {/* Emergency - only Pass/Fail (no N/A) */}
+          {/* Row 2: Mobile only - PassFail + File + Remark */}
+          <div className="tw-flex lg:tw-hidden tw-items-center tw-gap-2">
+            {/* Emergency - only Pass/Fail (no N/A), uses type2Values */}
             {isEmergencyItem && isFirstRound && (
               <PassFailButtons
-                value={currentResult?.result || ""}
-                onChange={(v) => onResultChange(roundIndex, actualIndex, "result", v)}
+                value={results.type2Values[actualIndex] || ""}
+                onChange={(v) => onType2Change(actualIndex, v)}
                 lang={lang}
                 showNA={false}
                 size="sm"
@@ -889,13 +1251,24 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
             )}
             {/* Other items */}
             {!isEmergencyItem && (
-              <PassFailButtons
-                value={currentResult?.result || ""}
-                onChange={(v) => onResultChange(roundIndex, actualIndex, "result", v)}
-                lang={lang}
-                size="sm"
-                disabled={isButtonsDisabled}
-              />
+              <>
+                <PassFailButtons
+                  value={currentResult?.result || ""}
+                  onChange={(v) => onResultChange(roundIndex, actualIndex, "result", v)}
+                  lang={lang}
+                  size="sm"
+                  disabled={isButtonsDisabled}
+                />
+                <FileUploadButton
+                  file={getFile(actualIndex)}
+                  onUpload={(file) => onFileUpload(roundIndex, actualIndex, file)}
+                  onDelete={() => onFileDelete(roundIndex, actualIndex)}
+                  lang={lang}
+                  t={t}
+                  size="sm"
+                  disabled={isNaSelected}
+                />
+              </>
             )}
             <input
               type="text"
@@ -963,6 +1336,8 @@ interface TestResultsGridProps {
   onResultChange: (roundIndex: number, itemIndex: number, field: "h1" | "result", value: string) => void;
   onType2Change: (itemIndex: number, value: string) => void;
   onRemarkChange: (itemIndex: number, value: string) => void;
+  onFileUpload: (roundIndex: number, itemIndex: number, file: File) => void;
+  onFileDelete: (roundIndex: number, itemIndex: number) => void;
   onAddRound: () => void;
   onRemoveRound: () => void;
   lang: Lang;
@@ -977,6 +1352,8 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
   onResultChange,
   onType2Change,
   onRemarkChange,
+  onFileUpload,
+  onFileDelete,
   onAddRound,
   onRemoveRound,
   lang,
@@ -1038,6 +1415,8 @@ const TestResultsGrid: React.FC<TestResultsGridProps> = ({
             onResultChange={onResultChange}
             onType2Change={onType2Change}
             onRemarkChange={onRemarkChange}
+            onFileUpload={onFileUpload}
+            onFileDelete={onFileDelete}
             onRemoveRound={onRemoveRound}
             lang={lang}
             t={t}
@@ -1058,9 +1437,20 @@ export interface ACTestGridProps {
   initialResults?: TestCharger | LegacyTestResults;
   onResultsChange?: (results: TestCharger) => void;
   initialRounds?: number;
+  // API integration props
+  reportId?: string;
+  sn?: string;
+  testType?: "electrical" | "charger";
 }
 
-const ACTest2Grid: React.FC<ACTestGridProps> = ({ initialResults, onResultsChange, initialRounds = 2 }) => {
+const ACTest2Grid: React.FC<ACTestGridProps> = ({ 
+  initialResults, 
+  onResultsChange, 
+  initialRounds = 2,
+  reportId,
+  sn,
+  testType = "charger",
+}) => {
   const getInitialResults = (): TestCharger => {
     if (!initialResults) {
       return createEmptyResults(AC_TEST2_DATA.length, initialRounds);
@@ -1239,6 +1629,148 @@ const ACTest2Grid: React.FC<ACTestGridProps> = ({ initialResults, onResultsChang
     onResultsChange?.(newResults);
   };
 
+  // Handle file upload with API
+  const handleFileUpload = async (
+    roundIndex: number,
+    itemIndex: number,
+    file: File
+  ) => {
+    // If reportId and sn provided, upload to server
+    if (reportId && sn) {
+      try {
+        const formData = new FormData();
+        formData.append("sn", sn);
+        formData.append("test_type", testType);
+        formData.append("item_index", String(itemIndex));
+        formData.append("round_index", String(roundIndex));
+        formData.append("handgun", "h1");
+        formData.append("file", file);
+
+        const token = localStorage.getItem("auth_token") || "";
+        const res = await fetch(`/api/actestreport/${reportId}/test-files`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || "Upload failed");
+        }
+
+        const data = await res.json();
+        
+        // Update local state with server URL
+        const newFiles: TestFiles = { ...results.files };
+        if (!newFiles[itemIndex]) {
+          newFiles[itemIndex] = {};
+        }
+        if (!newFiles[itemIndex][roundIndex]) {
+          newFiles[itemIndex][roundIndex] = {};
+        }
+        
+        newFiles[itemIndex][roundIndex].h1 = { 
+          file, 
+          url: data.file?.url || URL.createObjectURL(file), 
+          name: file.name 
+        };
+        
+        const newResults = { ...results, files: newFiles };
+        setResults(newResults);
+        onResultsChange?.(newResults);
+      } catch (error) {
+        console.error("File upload error:", error);
+        alert(error instanceof Error ? error.message : "อัปโหลดไฟล์ไม่สำเร็จ");
+      }
+    } else {
+      // Local only (no API)
+      const url = URL.createObjectURL(file);
+      const newFiles: TestFiles = { ...results.files };
+      
+      if (!newFiles[itemIndex]) {
+        newFiles[itemIndex] = {};
+      }
+      if (!newFiles[itemIndex][roundIndex]) {
+        newFiles[itemIndex][roundIndex] = {};
+      }
+      
+      // Revoke old URL if exists
+      const oldFile = newFiles[itemIndex][roundIndex].h1;
+      if (oldFile?.url && oldFile.url.startsWith("blob:")) {
+        URL.revokeObjectURL(oldFile.url);
+      }
+      
+      newFiles[itemIndex][roundIndex].h1 = { file, url, name: file.name };
+      
+      const newResults = { ...results, files: newFiles };
+      setResults(newResults);
+      onResultsChange?.(newResults);
+    }
+  };
+
+  // Handle file delete with API
+  const handleFileDelete = async (
+    roundIndex: number,
+    itemIndex: number
+  ) => {
+    // If reportId and sn provided, delete from server
+    if (reportId && sn) {
+      try {
+        const token = localStorage.getItem("auth_token") || "";
+        const params = new URLSearchParams({
+          sn,
+          test_type: testType,
+          item_index: String(itemIndex),
+          round_index: String(roundIndex),
+          handgun: "h1",
+        });
+
+        const res = await fetch(`/api/actestreport/${reportId}/test-files?${params}`, {
+          method: "DELETE",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || "Delete failed");
+        }
+      } catch (error) {
+        console.error("File delete error:", error);
+        alert(error instanceof Error ? error.message : "ลบไฟล์ไม่สำเร็จ");
+        return;
+      }
+    }
+
+    // Update local state
+    const newFiles: TestFiles = { ...results.files };
+    
+    if (newFiles[itemIndex]?.[roundIndex]?.h1) {
+      // Revoke URL if blob
+      const fileData = newFiles[itemIndex][roundIndex].h1;
+      if (fileData?.url && fileData.url.startsWith("blob:")) {
+        URL.revokeObjectURL(fileData.url);
+      }
+      
+      delete newFiles[itemIndex][roundIndex].h1;
+      
+      // Clean up empty objects
+      if (Object.keys(newFiles[itemIndex][roundIndex]).length === 0) {
+        delete newFiles[itemIndex][roundIndex];
+      }
+      if (Object.keys(newFiles[itemIndex]).length === 0) {
+        delete newFiles[itemIndex];
+      }
+    }
+    
+    const newResults = { ...results, files: newFiles };
+    setResults(newResults);
+    onResultsChange?.(newResults);
+  };
+
   // Manual add round 3 (when all passed but user wants to add)
   const handleAddRound = () => {
     if (results.rounds.length >= 3) return;
@@ -1277,6 +1809,8 @@ const ACTest2Grid: React.FC<ACTestGridProps> = ({ initialResults, onResultsChang
         onResultChange={handleResultChange}
         onType2Change={handleType2Change}
         onRemarkChange={handleRemarkChange}
+        onFileUpload={handleFileUpload}
+        onFileDelete={handleFileDelete}
         onAddRound={handleAddRound}
         onRemoveRound={handleRemoveRound}
         lang={lang}

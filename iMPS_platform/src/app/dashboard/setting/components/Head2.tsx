@@ -1,4 +1,3 @@
-
 "use client";
 
 // import React, { useState } from "react";
@@ -92,7 +91,7 @@ type ChargeState =
     | "faulted";
 
 type PLCSetting = {
-    station_id: string;
+    SN: string;
     dynamic_max_current2: number; // A
     dynamic_max_power2: number;   // kW
     cp_status2: "start" | "stop";          // 1 = start, 0 = stop
@@ -238,7 +237,7 @@ function HeadRow({
     );
 }
 
-/* ------------------------------ Main: Head1 ------------------------------- */
+/* ------------------------------ Main: Head2 ------------------------------- */
 type SettingDoc = {
     _id: string;
     timestamp?: string;
@@ -252,10 +251,10 @@ type SettingDoc = {
     [key: string]: any;
 };
 
-export default function Head1() {
+export default function Head2() {
     const initSavedRef = useRef(false);
     const searchParams = useSearchParams();
-    const [stationId, setStationId] = useState<string | null>(null);
+    const [SN, setSN] = useState<string | null>(null);
 
     const [data, setData] = useState<SettingDoc | null>(null);
     const [err, setErr] = useState<string | null>(null);
@@ -291,16 +290,16 @@ export default function Head1() {
     // ไม่ใช่การ "บันทึก" — แค่ยืนยัน/ใช้ค่าปัจจุบัน
     // function applySettings() {
     //     console.log("apply settings:", { maxCurrentH2, maxPowerH2 });
-    //     // ถ้าต้องการให้ปุ่ม “ตกลง” กลับไปเป็น disable หลังยืนยัน:
+    //     // ถ้าต้องการให้ปุ่ม "ตกลง" กลับไปเป็น disable หลังยืนยัน:
     //     setLastSaved({ maxCurrentH2, maxPowerH2 });
     // }
     async function applySettings() {
-        if (!stationId) { console.warn("[Head1] no station_id"); return; }
+        if (!SN) { console.warn("[Head2] no SN"); return; }
         setSaving(true);
         setErr(null);
         try {
             // สร้าง payload ตาม activeLimiter
-            const changedMAX: Record<string, number | string> = { station_id: stationId };
+            const changedMAX: Record<string, number | string> = { SN: SN };
 
             if (activeLimiter === "current") {
                 if (isDirtyCurrent) changedMAX["dynamic_max_current2"] = maxCurrentH2;
@@ -330,7 +329,7 @@ export default function Head1() {
             }
 
             if (cpCmd2) {
-                const bodyCP = { station_id: stationId, cp_status2: cpCmd2 };
+                const bodyCP = { SN: SN, cp_status2: cpCmd2 };
                 const resCP = await fetch(`${API_BASE}/setting/PLC/CPH2`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -360,7 +359,7 @@ export default function Head1() {
         setMaxPowerH2(lastSaved.maxPowerH2);
         setActiveLimiter(null);
     };
-    // ด้านบนใน component Head1 (หลัง state/data พร้อมแล้ว)
+    // ด้านบนใน component Head2 (หลัง state/data พร้อมแล้ว)
     const maxForPowerSlider = useMemo(() => {
         const n = toNum(data?.dynamic_max_current1); // ← เอาจาก dynamic_max_current1
         return n !== null ? Math.max(0, Math.round(n)) : 600; // fallback 600
@@ -407,34 +406,26 @@ export default function Head1() {
         setMaxPowerH2((v) => Math.min(v, maxPowerSlider));
     }, [maxPowerSlider]);
 
-    // station_id จาก URL → localStorage
+    // SN จาก URL → localStorage
     useEffect(() => {
-        const sidFromUrl = searchParams.get("station_id");
-        if (sidFromUrl) {
-            setStationId(sidFromUrl);
-            localStorage.setItem("selected_station_id", sidFromUrl);
+        const snFromUrl = searchParams.get("SN");
+        if (snFromUrl) {
+            setSN(snFromUrl);
+            localStorage.setItem("selected_sn", snFromUrl);
             return;
         }
-        const sidLocal = localStorage.getItem("selected_station_id");
-        setStationId(sidLocal);
+        const snLocal = localStorage.getItem("selected_sn");
+        setSN(snLocal);
     }, [searchParams]);
-
-    // useEffect(() => {
-    //     if (!stationId) {
-    //         console.log("[Head1] no station_id → SSE will not start, sliders locked.");
-    //     } else {
-    //         console.log("[Head1] station_id =", stationId);
-    //     }
-    // }, [stationId]);
 
     // เปิด SSE ไปที่ /setting
     useEffect(() => {
-        if (!stationId) return;
+        if (!SN) return;
         setLoading(true);
         setErr(null);
 
         const es = new EventSource(
-            `${API_BASE}/setting?station_id=${encodeURIComponent(stationId)}`,
+            `${API_BASE}/setting?SN=${encodeURIComponent(SN)}`,
             { withCredentials: true }
         );
 
@@ -469,7 +460,7 @@ export default function Head1() {
             es.removeEventListener("init", onInit);
             es.close();
         };
-    }, [stationId]);
+    }, [SN]);
 
 
 
@@ -504,8 +495,8 @@ export default function Head1() {
     }, [data]);
 
     async function sendCpCommand(action: "start" | "stop") {
-        if (!stationId) throw new Error("no station_id");
-        const body = { station_id: stationId, cp_status2: action };
+        if (!SN) throw new Error("no SN");
+        const body = { SN: SN, cp_status2: action };
         const res = await fetch(`${API_BASE}/setting/PLC/CPH2`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -551,25 +542,25 @@ export default function Head1() {
         }
     };
 
-    const hasStation = !!stationId;
+    const hasStation = !!SN;
     const hasData = !!data;
     const dynMaxCurrent2 = toNum(data?.dynamic_max_current2); // อาจเป็น null
 
-    // สไลเดอร์ Current: “เลื่อนไม่ได้” ถ้ายังไม่มี station หรือไม่มี data
+    // สไลเดอร์ Current: "เลื่อนไม่ได้" ถ้ายังไม่มี station หรือไม่มี data
     const disableCurrent = !(hasStation && hasData);
 
-    // สไลเดอร์ Power: “เลื่อนไม่ได้” ถ้ายังไม่มี station หรือไม่มี data หรือไม่มี dynMaxCurrent1 จริง
+    // สไลเดอร์ Power: "เลื่อนไม่ได้" ถ้ายังไม่มี station หรือไม่มี data หรือไม่มี dynMaxCurrent1 จริง
     const disablePower = !(hasStation && hasData && dynMaxCurrent2 !== null);
 
     // log สถานะล็อกฝั่ง UI
     useEffect(() => {
-        console.log(`[Head1] slider lock states → Current: ${disableCurrent}, Power: ${disablePower} (dynMaxCurrent1=${dynMaxCurrent2})`);
+        console.log(`[Head2] slider lock states → Current: ${disableCurrent}, Power: ${disablePower} (dynMaxCurrent2=${dynMaxCurrent2})`);
     }, [disableCurrent, disablePower, dynMaxCurrent2]);
 
     const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
     return (
         <Card
-            // title="Head1"
+            // title="Head2"
             title={
                 <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
                     <span>Head2</span>
@@ -597,7 +588,7 @@ export default function Head1() {
 
             <div className="tw-space-y-8">
 
-                {/* -------- โซนสไลเดอร์ + ปุ่ม “ตกลง” ขวาล่าง -------- */}
+                {/* -------- โซนสไลเดอร์ + ปุ่ม "ตกลง" ขวาล่าง -------- */}
                 <div className="tw-space-y-6">
                     {/* แสดงค่าจริงจากสตรีม (อ่านอย่างเดียว ณ ตอนนี้) */}
                     {/* Current */}
@@ -701,26 +692,8 @@ export default function Head1() {
                             รีเซ็ต Power
                         </button>
                     </div>
-                    {/* <LimitRow
-                        label="Dynamic Max Current H2"
-                        unit="A"
-                        value={maxCurrentH2}
-                        onChange={setMaxCurrentH2}
-                        min={0}
-                        max={maxCurrentSlider}
-                        disabled={disableCurrent}
-                    />
-                    <LimitRow
-                        label="Dynamic Max Power H2"
-                        unit="kW"
-                        value={maxPowerH2}
-                        onChange={setMaxPowerH2}
-                        min={0}
-                        max={maxPowerSlider}
-                        disabled={disablePower}
-                    /> */}
 
-                    {/* ปุ่ม “ตกลง” — ชิดขวาล่าง, สีดำ, ไม่มีไอคอน */}
+                    {/* ปุ่ม "ตกลง" — ชิดขวาล่าง, สีดำ, ไม่มีไอคอน */}
                     <div className="tw-flex tw-justify-end">
                         <button
                             type="button"

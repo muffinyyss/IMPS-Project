@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Input, Typography } from "@material-tailwind/react";
+import { Input, Typography, Tooltip } from "@material-tailwind/react";
 
 // ===== Types =====
 type Lang = "th" | "en";
@@ -41,6 +41,16 @@ const translations = {
     missingFirmware: "ยังไม่ได้กรอกเวอร์ชันเฟิร์มแวร์",
     loading: "กำลังโหลด...",
     firmwarePlaceholder: "เช่น v1.0.0",
+    // Tooltips
+    issueIdTooltip: "รหัสเอกสารที่สร้างอัตโนมัติจากระบบ",
+    locationTooltip: "สถานที่ตั้งของเครื่องชาร์จ",
+    manufacturerTooltip: "ชื่อผู้ผลิตเครื่องชาร์จ",
+    modelTooltip: "รุ่นของเครื่องชาร์จ",
+    powerTooltip: "กำลังไฟฟ้าของเครื่องชาร์จ",
+    firmwareTooltip: "กรุณากรอกเวอร์ชันเฟิร์มแวร์ของเครื่อง",
+    serialTooltip: "หมายเลขเครื่องชาร์จ",
+    dateTooltip: "วันที่ทำการตรวจสอบ",
+    inspectorTooltip: "ชื่อผู้ตรวจสอบ",
   },
   en: {
     issueId: "Issue ID",
@@ -58,6 +68,16 @@ const translations = {
     missingFirmware: "Firmware Version is missing",
     loading: "Loading...",
     firmwarePlaceholder: "e.g. v1.0.0",
+    // Tooltips
+    issueIdTooltip: "Auto-generated document ID from system",
+    locationTooltip: "Location of the charger",
+    manufacturerTooltip: "Charger manufacturer name",
+    modelTooltip: "Charger model",
+    powerTooltip: "Charger power rating",
+    firmwareTooltip: "Please enter the firmware version",
+    serialTooltip: "Charger serial number",
+    dateTooltip: "Inspection date",
+    inspectorTooltip: "Inspector name",
   },
 };
 
@@ -135,12 +155,14 @@ export const ValidationSummary: React.FC<ValidationSummaryProps> = ({ head, lang
 
   return (
     <div
-      className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${isComplete ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-        }`}
+      className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${
+        isComplete ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+      }`}
     >
       <div
-        className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"
-          }`}
+        className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${
+          isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"
+        }`}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="tw-flex tw-items-center tw-gap-3">
@@ -223,7 +245,7 @@ export const ValidationSummary: React.FC<ValidationSummaryProps> = ({ head, lang
 export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
   const [lang, setLang] = useState<Lang>("th");
   const [inspector, setInspector] = useState<string>("-");
-
+  
   // ★★★ Track if user has edited firmware (to keep input enabled) ★★★
   const userEditedFirmware = React.useRef<boolean>(false);
   
@@ -296,7 +318,9 @@ export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
       {/* First Row - Issue ID, Location, Inspector */}
       <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4">
         <div>
-          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t.issueId}</label>
+          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
+            {t.issueId}
+          </label>
           <Input
             value={displayIssueId}
             readOnly
@@ -307,7 +331,9 @@ export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
         </div>
 
         <div className="md:tw-col-span-2">
-          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t.location}</label>
+          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
+            {t.location}
+          </label>
           <Input
             value={head.location || ""}
             readOnly
@@ -318,7 +344,9 @@ export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
         </div>
 
         <div>
-          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t.inspector}</label>
+          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
+            {t.inspector}
+          </label>
           <Input
             value={displayInspector}
             readOnly
@@ -332,7 +360,9 @@ export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
       {/* Second Row - Manufacturer, Model, Power */}
       <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
         <div>
-          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t.manufacturer}</label>
+          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
+            {t.manufacturer}
+          </label>
           <Input
             value={head.manufacturer || "-"}
             readOnly
@@ -343,7 +373,9 @@ export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
         </div>
 
         <div>
-          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t.model}</label>
+          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
+            {t.model}
+          </label>
           <Input
             value={head.model || "-"}
             readOnly
@@ -354,7 +386,9 @@ export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
         </div>
 
         <div>
-          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t.power}</label>
+          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
+            {t.power}
+          </label>
           <Input
             value={head.power || "-"}
             readOnly
@@ -368,9 +402,18 @@ export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
       {/* Third Row - Firmware Version, Serial Number, Inspection Date */}
       <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-4">
         <div id="ac-form-meta-firmware_version" className="tw-transition-all tw-duration-300 tw-rounded tw-p-2 tw--m-2">
-          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
+          <label className="tw-flex tw-items-center tw-gap-1 tw-text-sm tw-text-blue-gray-600 tw-mb-1">
             {t.firmwareVersion} {!firmwareFromApi && <span className="tw-text-red-500">*</span>}
+            {/* แสดง tooltip icon เฉพาะเมื่อไม่มีข้อมูล firmware จาก API */}
+            {!firmwareFromApi && (
+              <Tooltip content={t.firmwareTooltip} placement="top">
+                <svg className="tw-w-4 tw-h-4 tw-text-gray-400 tw-cursor-help" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+              </Tooltip>
+            )}
           </label>
+          {/* ★★★ ถ้า firmware มาจาก API → readonly, ถ้าไม่มี → ให้กรอก ★★★ */}
           {firmwareFromApi ? (
             <Input
               value={head.firmware_version || ""}
@@ -381,7 +424,6 @@ export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
             />
           ) : (
             <Input
-              // ★★★ ถ้าค่าเป็น "-" ให้แสดงเป็นช่องว่าง ★★★
               value={head.firmware_version === "-" ? "" : (head.firmware_version || "")}
               onChange={(e) => {
                 userEditedFirmware.current = true;
@@ -396,7 +438,9 @@ export default function ACFormMeta({ head, onHeadChange }: ACFormMetaProps) {
         </div>
 
         <div>
-          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t.serialNumber}</label>
+          <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">
+            {t.serialNumber}
+          </label>
           <Input
             value={head.serial_number || "-"}
             readOnly
