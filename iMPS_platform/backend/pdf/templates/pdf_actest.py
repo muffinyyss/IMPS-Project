@@ -240,21 +240,15 @@ TEST_ITEMS_CHARGER_AC_KEYS = [
     "pe_cut",
 ]
 
-# PE_ITEM_KEYS = [
-#     "left_cover",
-#     "right_cover",
-#     "front_cover",
-#     "back_cover",
-#     "charger_stand",
-#     "pin_pe",
-# ]
-
-
-
 def _get_test_files_list(doc: dict) -> List[Dict[str, Any]]:
     """ดึงรายการไฟล์แนบทั้งหมดจาก test_files"""
     test_files = doc.get("test_files", {}) or {}
     files_list = []
+    
+    MAX_ITEMS = {
+        "electrical": 6,  # PE items: left, right, front, back, stand, pin
+        "charger": 7      # Continuity PE, Insulation, State A/B/C, CP Short, PE Cut
+    }
     
     try:
         for test_type in ["electrical", "charger"]:
@@ -266,6 +260,11 @@ def _get_test_files_list(doc: dict) -> List[Dict[str, Any]]:
                 try:
                     item_index = int(item_index_str)
                 except (ValueError, TypeError):
+                    continue
+                
+                max_index = MAX_ITEMS.get(test_type, 7)
+                if item_index < 0 or item_index >= max_index:
+                    # print(f"[PDF] ⚠️ Skip invalid item_index {item_index} for {test_type} (max: {max_index-1})")
                     continue
                 
                 if not rounds_data or not isinstance(rounds_data, dict):
@@ -388,6 +387,214 @@ def _draw_header_attachments(pdf: FPDF, base_font: str, issue_id: str = "-", lan
 
     return y_top + h_all
 
+# def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict, lang: str = "en") -> List[Tuple[str, str, int, float, float, float, float]]:
+#     """วาดหน้ารายการไฟล์แนบ"""
+#     files_list = _get_test_files_list(doc)
+    
+#     if not files_list:
+#         return []
+    
+#     pdf_file_data = []
+#     files_by_round: Dict[int, List[Dict]] = {}
+    
+#     for file_info in files_list:
+#         round_idx = file_info["round_index"]
+#         if round_idx not in files_by_round:
+#             files_by_round[round_idx] = []
+#         files_by_round[round_idx].append(file_info)
+    
+#     sorted_rounds = sorted(files_by_round.keys())
+#     for round_idx in sorted_rounds:
+#         files_by_round[round_idx].sort(key=lambda x: (x["item_index"], 0 if x["handgun"] == "H1" else 1))
+    
+#     # นับหน้าของแต่ละ PDF
+#     for round_idx in sorted_rounds:
+#         for file_info in files_by_round[round_idx]:
+#             if file_info["ext"] == "pdf":
+#                 pdf_path = _resolve_test_file_path(file_info["url"])
+#                 if pdf_path and HAS_PYPDF2 and Path(pdf_path).exists():
+#                     try:
+#                         with open(pdf_path, 'rb') as f:
+#                             reader = PdfReader(f)
+#                             num_pages = len(reader.pages)
+                        
+#                         item_idx = file_info["item_index"]
+#                         if file_info["test_type"] == "charger" and 0 <= item_idx < len(TEST_ITEMS_CHARGER_AC):
+#                             # item_name = TEST_ITEMS_CHARGER_AC[item_idx]
+#                             item_name = get_text(lang, TEST_ITEMS_CHARGER_AC_KEYS[item_idx])
+#                         else:
+#                             item_name = f"Item {item_idx + 1}"
+                        
+#                         bookmark_name = f"R{round_idx+1}_{item_name}_{file_info['handgun']}"
+                        
+#                         pdf_file_data.append({
+#                             "path": pdf_path,
+#                             "bookmark": bookmark_name,
+#                             "num_pages": num_pages,
+#                             "file_info": file_info,
+#                         })
+#                     except Exception as e:
+#                         print(f"[PDF] Error reading {pdf_path}: {e}")
+    
+#     # คำนวณเลขหน้า
+#     current_main_pages = pdf.page
+#     estimated_list_pages = 1
+#     if len(files_list) > 20:
+#         estimated_list_pages = 2
+#     if len(files_list) > 40:
+#         estimated_list_pages = 3
+    
+#     first_attachment_page = current_main_pages + estimated_list_pages
+#     page_numbers = []
+#     current_page = first_attachment_page
+    
+#     for pdf_info in pdf_file_data:
+#         page_numbers.append(current_page)
+#         current_page += pdf_info["num_pages"]
+    
+#     # วาดหน้า Attachments List
+#     pdf.add_page()
+#     header_bottom = _draw_header_attachments(pdf, base_font, issue_id, lang)
+    
+#     FRAME_INSET = 6
+#     FRAME_BOTTOM = 5
+#     pdf.set_line_width(LINE_W_OUTER)
+#     pdf.rect(FRAME_INSET, header_bottom, 198, pdf.h - header_bottom - FRAME_BOTTOM)
+#     pdf.set_line_width(LINE_W_INNER)
+    
+#     y = header_bottom + 3
+#     x0 = 10
+#     page_w = pdf.w - 20
+    
+#     pdf.set_font(base_font, "BU", FONT_MAIN)
+#     pdf.set_xy(x0, y)
+#     pdf.cell(page_w, 6, get_text(lang, "attached_test_files"), border=0, align="L")
+#     y += 8
+    
+#     col_no = 10
+#     col_test = 55
+#     col_gun = 15
+#     col_filename = page_w - col_no - col_test - col_gun - 15
+#     col_page = 15
+#     row_h = 6
+    
+#     pdf_files_to_merge: List[Tuple[str, str, int, float, float, float, float]] = []
+#     file_counter = 0
+#     pdf_idx = 0
+    
+#     for round_idx in sorted_rounds:
+#         round_files = files_by_round[round_idx]
+        
+#         if y + row_h * 4 > pdf.h - 45:
+#             pdf.add_page()
+#             y = 20
+        
+#         pdf.set_font(base_font, "B", FONT_MAIN)
+#         pdf.set_fill_color(220, 220, 220)
+#         pdf.set_xy(x0, y)
+#         pdf.cell(page_w, row_h + 1, f"{get_text(lang, 'round')} {round_idx + 1}", 1, 0, "L", fill=True)
+#         y += row_h
+        
+#         pdf.set_font(base_font, "B", FONT_SMALL)
+#         pdf.set_fill_color(245, 245, 245)
+#         pdf.set_xy(x0, y)
+#         pdf.cell(col_no, row_h, get_text(lang, "no"), 1, 0, "C", fill=True)
+#         pdf.cell(col_test, row_h, get_text(lang, "test_item"), 1, 0, "C", fill=True)
+#         pdf.cell(col_gun, row_h, get_text(lang, "gun"), 1, 0, "C", fill=True)
+#         pdf.cell(col_filename, row_h, get_text(lang, "filename"), 1, 0, "C", fill=True)
+#         pdf.cell(col_page, row_h, get_text(lang, "page"), 1, 0, "C", fill=True)
+#         y += row_h
+        
+#         pdf.set_font(base_font, "", FONT_SMALL)
+        
+#         for file_info in round_files:
+#             file_counter += 1
+            
+#             if y + row_h > pdf.h - 45:
+#                 pdf.add_page()
+#                 y = 20
+#                 pdf.set_font(base_font, "B", FONT_SMALL)
+#                 pdf.set_fill_color(245, 245, 245)
+#                 pdf.set_xy(x0, y)
+#                 pdf.cell(col_no, row_h, get_text(lang, "no"), 1, 0, "C", fill=True)
+#                 pdf.cell(col_test, row_h, get_text(lang, "test_item"), 1, 0, "C", fill=True)
+#                 pdf.cell(col_gun, row_h, get_text(lang, "gun"), 1, 0, "C", fill=True)
+#                 pdf.cell(col_filename, row_h, get_text(lang, "filename"), 1, 0, "C", fill=True)
+#                 pdf.cell(col_page, row_h, get_text(lang, "page"), 1, 0, "C", fill=True)
+#                 y += row_h
+#                 pdf.set_font(base_font, "", FONT_SMALL)
+            
+#             if file_info["test_type"] == "charger":
+#                 item_idx = file_info["item_index"]
+#                 if 0 <= item_idx < len(TEST_ITEMS_CHARGER_AC):
+#                     # item_name = TEST_ITEMS_CHARGER_AC[item_idx]
+#                     item_name = get_text(lang, TEST_ITEMS_CHARGER_AC_KEYS[item_idx])
+#                 else:
+#                     item_name = f"Item {item_idx + 1}"
+#             else:
+#                 item_name = f"Electrical Item {file_info['item_index'] + 1}"
+            
+#             pdf.set_xy(x0, y)
+#             pdf.cell(col_no, row_h, str(file_counter), 1, 0, "C")
+#             pdf.cell(col_test, row_h, item_name[:30], 1, 0, "L")
+#             pdf.cell(col_gun, row_h, file_info["handgun"], 1, 0, "C")
+            
+#             filename_display = file_info["original_name"] or file_info["filename"]
+            
+#             if file_info["ext"] == "pdf":
+#                 pdf_path = _resolve_test_file_path(file_info["url"])
+#                 if pdf_path and HAS_PYPDF2 and pdf_idx < len(pdf_file_data):
+#                     pdf_info = pdf_file_data[pdf_idx]
+#                     target_page = page_numbers[pdf_idx]
+#                     pdf_idx += 1
+                    
+#                     pdf.cell(col_filename, row_h, filename_display[:35], 1, 0, "L")
+                    
+#                     link_x = pdf.get_x()
+#                     link_y = y
+#                     current_page_idx = pdf.page - 1
+                    
+#                     pdf_files_to_merge.append((
+#                         pdf_info["path"], 
+#                         pdf_info["bookmark"], 
+#                         current_page_idx,
+#                         link_x, link_y, col_page, row_h
+#                     ))
+                    
+#                     pdf.set_text_color(0, 0, 255)
+#                     pdf.set_font(base_font, "U", FONT_SMALL)
+#                     pdf.cell(col_page, row_h, f"#{target_page}", 1, 0, "C")
+#                     pdf.set_text_color(0, 0, 0)
+#                     pdf.set_font(base_font, "", FONT_SMALL)
+#                 else:
+#                     pdf.cell(col_filename, row_h, filename_display[:35], 1, 0, "L")
+#                     pdf.cell(col_page, row_h, get_text(lang, "na"), 1, 0, "C")
+#             else:
+#                 ext_display = f"[{file_info['ext'].upper()}]" if file_info['ext'] else ""
+#                 pdf.cell(col_filename, row_h, f"{filename_display[:30]} {ext_display}", 1, 0, "L")
+#                 pdf.cell(col_page, row_h, "-", 1, 0, "C")
+            
+#             y += row_h
+        
+#         y += 3
+    
+#     y += 2
+#     pdf.set_font(base_font, "I", FONT_SMALL)
+#     pdf.set_xy(x0, y)
+    
+#     pdf_count = len(pdf_files_to_merge)
+#     other_count = len(files_list) - pdf_count
+    
+#     summary_text = f"{get_text(lang, 'total')}: {len(files_list)} {get_text(lang, 'files')}"
+#     if pdf_count > 0:
+#         summary_text += f" | {pdf_count} {get_text(lang, 'pdfs_merged_click')}"
+#     if other_count > 0:
+#         summary_text += f" | {other_count} {get_text(lang, 'non_pdf')}"
+    
+#     pdf.cell(page_w, 5, summary_text, border=0, align="L")
+    
+#     return pdf_files_to_merge
+
 def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict, lang: str = "en") -> List[Tuple[str, str, int, float, float, float, float]]:
     """วาดหน้ารายการไฟล์แนบ"""
     files_list = _get_test_files_list(doc)
@@ -421,7 +628,6 @@ def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: d
                         
                         item_idx = file_info["item_index"]
                         if file_info["test_type"] == "charger" and 0 <= item_idx < len(TEST_ITEMS_CHARGER_AC):
-                            # item_name = TEST_ITEMS_CHARGER_AC[item_idx]
                             item_name = get_text(lang, TEST_ITEMS_CHARGER_AC_KEYS[item_idx])
                         else:
                             item_name = f"Item {item_idx + 1}"
@@ -480,7 +686,7 @@ def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: d
     row_h = 6
     
     pdf_files_to_merge: List[Tuple[str, str, int, float, float, float, float]] = []
-    file_counter = 0
+    # ❌ ลบบรรทัดนี้ออก: file_counter = 0
     pdf_idx = 0
     
     for round_idx in sorted_rounds:
@@ -508,8 +714,11 @@ def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: d
         
         pdf.set_font(base_font, "", FONT_SMALL)
         
+        # ✅ เพิ่มตัวนับใหม่สำหรับแต่ละรอบ
+        file_counter_in_round = 0
+        
         for file_info in round_files:
-            file_counter += 1
+            file_counter_in_round += 1  # ✅ นับใหม่ทุกรอบ (1, 2, 3...)
             
             if y + row_h > pdf.h - 45:
                 pdf.add_page()
@@ -528,7 +737,6 @@ def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: d
             if file_info["test_type"] == "charger":
                 item_idx = file_info["item_index"]
                 if 0 <= item_idx < len(TEST_ITEMS_CHARGER_AC):
-                    # item_name = TEST_ITEMS_CHARGER_AC[item_idx]
                     item_name = get_text(lang, TEST_ITEMS_CHARGER_AC_KEYS[item_idx])
                 else:
                     item_name = f"Item {item_idx + 1}"
@@ -536,7 +744,7 @@ def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: d
                 item_name = f"Electrical Item {file_info['item_index'] + 1}"
             
             pdf.set_xy(x0, y)
-            pdf.cell(col_no, row_h, str(file_counter), 1, 0, "C")
+            pdf.cell(col_no, row_h, str(file_counter_in_round), 1, 0, "C")  # ✅ ใช้ตัวนับรอบ
             pdf.cell(col_test, row_h, item_name[:30], 1, 0, "L")
             pdf.cell(col_gun, row_h, file_info["handgun"], 1, 0, "C")
             
