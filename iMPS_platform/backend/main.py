@@ -469,28 +469,32 @@ def charger_info(
     sn: str = Query(None),
     current: UserClaims = Depends(get_current_user),
 ):
-    # สร้าง query
     query = {}
     if sn:
-        query["SN"] = sn
+        # ลอง query หลาย field ด้วยค่าเดียวกัน
+        query = {"$or": [
+            {"SN": sn},
+            {"chargeBoxID": sn},
+            {"station_id": sn}
+        ]}
     elif station_id:
         query["station_id"] = station_id
     else:
         raise HTTPException(status_code=400, detail="station_id or sn required")
     
-    # ดึงข้อมูล charger
+    print(f"[DEBUG] query={query}")
+    
     doc = charger_collection.find_one(query, {"_id": 0})
     
     if not doc:
         raise HTTPException(status_code=404, detail="Charger not found")
     
-    # ดึง station_name จาก stations collection
+    # ดึง station_name
     station = station_collection.find_one(
         {"station_id": doc.get("station_id")},
         {"_id": 0, "station_name": 1}
     )
     
-    # เพิ่ม station_name เข้าไปใน response
     doc["station_name"] = station.get("station_name", "-") if station else "-"
 
     return {"station": doc}
@@ -10305,7 +10309,7 @@ async def cmreport_upload_photos(
 ):
     if current.role != "admin" and station_id not in set(current.station_ids):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
-    if not re.fullmatch(r"g\d+", group):
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
     coll = get_cmreport_collection_for(station_id)
@@ -10697,7 +10701,9 @@ async def cmreport_update_status(
             "issue_id","found_date","location","wo","sn",
             "equipment_list","problem_details","problem_type","severity",
             "reported_by","assignee","initial_cause","corrective_actions",
-            "resolved_date","repair_result","preventive_action","remarks"
+            "resolved_date","repair_result","preventive_action","remarks","faulty_equipment",
+            "repaired_equipment",      # array ของอุปกรณ์ที่แก้ไข
+            "inprogress_remarks",      # หมายเหตุสำหรับ In Progress
         }
         if "status" in body.job:
             js = body.job["status"]
@@ -12007,6 +12013,31 @@ async def utilization_stream(request: Request, sn: str = Query(...), current: Us
 
     return StreamingResponse(event_generator(), headers=headers)
 
+@app.get("/station/{sn}/device-keys")
+async def get_station_device_keys(
+    sn: str, 
+    current: UserClaims = Depends(get_current_user)
+):
+    """
+    ดึงเฉพาะ device keys สำหรับแสดงใน dropdown
+    sn = Serial Number ของ charger เช่น F1500624011
+    Returns: { "keys": ["DC_power_contractor1", "FUSE1", "Router", ...] }
+    """
+    coll = get_device_collection_for(sn)
+    
+    latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+    
+    if not latest:
+        return {"keys": []}
+    
+    # ลบ field ที่ไม่ต้องการแล้วเอาเฉพาะ keys
+    fields_to_exclude = {"_id", "timestamp", "timestamp_utc"}
+    keys = [k for k in latest.keys() if k not in fields_to_exclude]
+    
+    # เรียงลำดับตามชื่อ
+    keys.sort()
+    
+    return {"keys": keys}
 
 # ---------------------------------------------------------------------------------------
 # device page (station_id)
@@ -12063,10 +12094,10 @@ async def utilization_stream(request: Request, sn: str = Query(...), current: Us
 
 
 #-------------------------------------------------------------------- setting page
-def get_setting_collection_for(station_id: str):
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
-        raise HTTPException(status_code=400, detail="Bad station_id")
-    return settingDB.get_collection(str(station_id))
+def get_setting_collection_for(SN: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(SN)):
+        raise HTTPException(status_code=400, detail="Bad SN")
+    return settingDB.get_collection(str(SN))
 
 # (เลือกได้) สร้างดัชนีแบบ lazy ต่อสถานีที่ถูกเรียกใช้
 async def _ensure_util_index(coll):
@@ -12076,11 +12107,8 @@ async def _ensure_util_index(coll):
         pass
 
 @app.get("/setting/stream")
-async def setting_stream(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
-    # if current.role != "admin" and station_id not in set(current.station_ids):
-    #     raise HTTPException(status_code=403, detail="Forbidden station_id")
-
-    coll = get_setting_collection_for(station_id)
+async def setting_stream(request: Request, SN: str = Query(...), current: UserClaims = Depends(get_current_user)):
+    coll = get_setting_collection_for(SN)
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -12089,14 +12117,12 @@ async def setting_stream(request: Request, station_id: str = Query(...), current
     }
 
     async def event_generator():
-        # ส่ง snapshot ล่าสุดก่อน
         latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
         if latest:
             latest["_id"] = str(latest["_id"])
             latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp"))
             yield f"event: init\ndata: {json.dumps(latest)}\n\n"
 
-        # ต่อด้วย change stream (ต้องเป็น replica set / Atlas tier ที่รองรับ)
         try:
             async with coll.watch(full_document='updateLookup') as stream:
                 async for change in stream:
@@ -12109,7 +12135,6 @@ async def setting_stream(request: Request, station_id: str = Query(...), current
                     doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
                     yield f"data: {json.dumps(doc)}\n\n"
         except Exception:
-            # fallback: ถ้าใช้ไม่ได้ (เช่น standalone) ให้ polling
             last_id = latest.get("_id") if latest else None
             while not await request.is_disconnected():
                 doc = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
@@ -12125,23 +12150,18 @@ async def setting_stream(request: Request, station_id: str = Query(...), current
     return StreamingResponse(event_generator(), headers=headers)
 
 @app.get("/setting")
-async def setting_query(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
-    """
-    SSE แบบ query param:
-    - ส่ง snapshot ล่าสุดทันที (event: init)
-    - จากนั้น polling ของใหม่เป็นช่วง ๆ
-    """
+async def setting_query(request: Request, SN: str = Query(...), current: UserClaims = Depends(get_current_user)):
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     }
-    coll = get_setting_collection_for(station_id)
+    coll = get_setting_collection_for(SN)
 
     async def event_generator():
         last_id = None
-        latest = await coll.find_one({}, sort=[("_id", -1)])  # ⬅️ ไม่ต้อง filter station_id ภายในแล้ว
+        latest = await coll.find_one({}, sort=[("_id", -1)])
         if latest:
             latest["timestamp"] = latest.get("timestamp")
             last_id = latest.get("_id")
@@ -12157,7 +12177,6 @@ async def setting_query(request: Request, station_id: str = Query(...), current:
 
             doc = await coll.find_one({}, sort=[("_id", -1)])
             if doc and doc.get("_id") != last_id:
-                # doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp"))
                 doc["timestamp"] = doc.get("timestamp")
                 last_id = doc.get("_id")
                 yield f"data: {to_json(doc)}\n\n"
@@ -12172,33 +12191,29 @@ from pdf import pdf_routes1
 app.include_router(pdf_routes1.router)
 
 class PLCMaxSetting(BaseModel):
-    station_id: str = Field(..., min_length=1)
-    dynamic_max_current1: Optional[float] = None   # A
-    dynamic_max_power1: Optional[float] = None  
+    SN: str = Field(..., min_length=1)
+    dynamic_max_current1: Optional[float] = None
+    dynamic_max_power1: Optional[float] = None
 
 @app.post("/setting/PLC/MAX")
-async def setting_plc(payload: PLCMaxSetting):
+async def setting_plc_max(payload: PLCMaxSetting):
     now_iso = datetime.now().isoformat()
 
-    # ดึงเฉพาะคีย์ที่ client ส่งมาจริง ๆ (ไม่ดึง default None)
     try:
-        incoming = payload.model_dump(exclude_unset=True)   # Pydantic v2
+        incoming = payload.model_dump(exclude_unset=True)
     except Exception:
-        incoming = payload.dict(exclude_unset=True)         # Pydantic v1
+        incoming = payload.dict(exclude_unset=True)
 
-    station_id = incoming.get("station_id", payload.station_id)
+    SN = incoming.get("SN", payload.SN)
 
-    # สร้าง changes จากเฉพาะคีย์ที่มีใน request
     keys = ("dynamic_max_current1", "dynamic_max_power1")
     changes = {k: float(incoming[k]) for k in keys if k in incoming}
 
-    # logging ชัดเจน
     print(f"[{now_iso}] รับค่าจาก Front:")
-    print(f"  station_id = {station_id}")
+    print(f"  SN = {SN}")
     print("  dynamic_max_current1 =", changes.get("dynamic_max_current1", "(no change)"), "A")
     print("  dynamic_max_power1  =", changes.get("dynamic_max_power1",  "(no change)"), "kW")
 
-    # ถ้าไม่มีสักฟิลด์ → ไม่ publish (จะตอบ 200 หรือ 400 ก็ได้แล้วแต่ดีไซน์)
     if not changes:
         return {
             "ok": True,
@@ -12209,19 +12224,16 @@ async def setting_plc(payload: PLCMaxSetting):
                 "topic": MQTT_TOPIC,
                 "published": False,
             },
-            "data": {"station_id": station_id, "timestamp": now_iso},
+            "data": {"SN": SN, "timestamp": now_iso},
         }
 
-    # ประกอบ payload MQTT เฉพาะคีย์ที่เปลี่ยน
     msg = {
-        "station_id": station_id,
+        "SN": SN,
         **changes,
         "timestamp": now_iso,
-        # "source": "fastapi/setting_plc"
     }
     payload_str = json.dumps(msg, ensure_ascii=False)
 
-    # ส่งขึ้น MQTT
     published = False
     try:
         pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
@@ -12233,7 +12245,6 @@ async def setting_plc(payload: PLCMaxSetting):
         print(f"[MQTT] publish error: {e}")
         published = False
 
-    # ตอบกลับ frontend
     return {
         "ok": True,
         "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว (เฉพาะฟิลด์ที่เปลี่ยน)",
@@ -12245,31 +12256,29 @@ async def setting_plc(payload: PLCMaxSetting):
         },
         "data": msg,
     }
+
+
 class PLCCPCommand(BaseModel):
-    station_id: str
+    SN: str
     cp_status1: Literal["start", "stop"]
 
 @app.post("/setting/PLC/CP")
-async def setting_plc(payload: PLCCPCommand):
+async def setting_plc_cp(payload: PLCCPCommand):
     now_iso = datetime.now().isoformat()
 
-    # log ฝั่งเซิร์ฟเวอร์
     print(f"[{now_iso}] รับค่าจาก Front:")
-    print(f"  station_id = {payload.station_id}")
+    print(f"  SN = {payload.SN}")
     print(f"  cp_status1 = {payload.cp_status1}")
-    # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
+
     msg = {
-        "station_id": payload.station_id,
+        "SN": payload.SN,
         "cp_status1": payload.cp_status1,
         "timestamp": now_iso,
-        # "source": "fastapi/setting_plc"
     }
     payload_str = json.dumps(msg, ensure_ascii=False)
 
-    # ส่งขึ้น MQTT (QoS 1, ไม่ retain)
     try:
         pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
-        # รอให้ส่งเสร็จแบบสั้น ๆ (ถ้าต้องการความชัวร์)
         pub_result.wait_for_publish(timeout=2.0)
         published = pub_result.is_published()
         rc = pub_result.rc
@@ -12278,7 +12287,6 @@ async def setting_plc(payload: PLCCPCommand):
         print(f"[MQTT] publish error: {e}")
         published = False
 
-    # ตอบกลับ frontend
     return {
         "ok": True,
         "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",
@@ -12292,38 +12300,35 @@ async def setting_plc(payload: PLCCPCommand):
     }
 
 class PLCH2MaxSetting(BaseModel):
-    station_id: str = Field(..., min_length=1)
-    dynamic_max_current2: Optional[float] = None   # A  ← optional
-    dynamic_max_power2: Optional[float] = None     # kW (จาก front)
+    SN: str = Field(..., min_length=1)
+    dynamic_max_current2: Optional[float] = None
+    dynamic_max_power2: Optional[float] = None
 
 @app.post("/setting/PLC/MAXH2")
-async def setting_plc(payload: PLCH2MaxSetting):
+async def setting_plc_maxh2(payload: PLCH2MaxSetting):
     now_iso = datetime.now().isoformat()
 
-    # ดึงเฉพาะ fields ที่ client ส่งมา (ไม่ใช้ค่า default)
     try:
-        incoming = payload.model_dump(exclude_unset=True)  # Pydantic v2
+        incoming = payload.model_dump(exclude_unset=True)
     except Exception:
-        incoming = payload.dict(exclude_unset=True)        # Pydantic v1
+        incoming = payload.dict(exclude_unset=True)
 
-    station_id = incoming.get("station_id", payload.station_id)
+    SN = incoming.get("SN", payload.SN)
 
-    # บังคับว่าต้องมีอย่างน้อย 1 ฟิลด์จากสองตัวนี้
     keys = ("dynamic_max_current2", "dynamic_max_power2")
     changes = {k: float(incoming[k]) for k in keys if k in incoming}
 
     if not changes:
-        # ถ้าอยากให้ไม่ถือเป็น error ก็ return ok=False ได้เช่นกัน
         raise HTTPException(
             status_code=400,
             detail="At least one of dynamic_max_current2 or dynamic_max_power2 is required"
         )
 
-    print(f"[{now_iso}] รับค่าจาก Front: station_id={station_id}")
+    print(f"[{now_iso}] รับค่าจาก Front: SN={SN}")
     print("  dynamic_max_current2 =", changes.get("dynamic_max_current2", "(no change)"), "A")
     print("  dynamic_max_power2  =", changes.get("dynamic_max_power2", "(no change)"), "kW")
 
-    msg = {"station_id": station_id, **changes, "timestamp": now_iso}
+    msg = {"SN": SN, **changes, "timestamp": now_iso}
     payload_str = json.dumps(msg, ensure_ascii=False)
 
     published = False
@@ -12350,30 +12355,26 @@ async def setting_plc(payload: PLCH2MaxSetting):
     }
 
 class PLCH2CPCommand(BaseModel):
-    station_id: str
+    SN: str
     cp_status2: Literal["start", "stop"]
 
 @app.post("/setting/PLC/CPH2")
-async def setting_plc(payload: PLCH2CPCommand):
+async def setting_plc_cph2(payload: PLCH2CPCommand):
     now_iso = datetime.now().isoformat()
 
-    # log ฝั่งเซิร์ฟเวอร์
     print(f"[{now_iso}] รับค่าจาก Front:")
-    print(f"  station_id = {payload.station_id}")
+    print(f"  SN = {payload.SN}")
     print(f"  cp_status2 = {payload.cp_status2}")
-    # เตรียม message ที่จะส่งขึ้น MQTT (ใส่ timestamp เพิ่มให้)
+
     msg = {
-        "station_id": payload.station_id,
+        "SN": payload.SN,
         "cp_status2": payload.cp_status2,
         "timestamp": now_iso,
-        # "source": "fastapi/setting_plc"
     }
     payload_str = json.dumps(msg, ensure_ascii=False)
 
-    # ส่งขึ้น MQTT (QoS 1, ไม่ retain)
     try:
         pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
-        # รอให้ส่งเสร็จแบบสั้น ๆ (ถ้าต้องการความชัวร์)
         pub_result.wait_for_publish(timeout=2.0)
         published = pub_result.is_published()
         rc = pub_result.rc
@@ -12382,7 +12383,6 @@ async def setting_plc(payload: PLCH2CPCommand):
         print(f"[MQTT] publish error: {e}")
         published = False
 
-    # ตอบกลับ frontend
     return {
         "ok": True,
         "message": "รับค่าจาก frontend แล้ว และพยายามส่ง MQTT แล้ว",

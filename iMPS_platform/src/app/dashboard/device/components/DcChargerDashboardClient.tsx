@@ -9,13 +9,25 @@ import {
     MagnifyingGlassIcon,
     ChevronDownIcon,
     InboxIcon,
+    BoltIcon,
+    CpuChipIcon,
+    SignalIcon,
+    ShieldCheckIcon,
+    ChartBarIcon,
+    CogIcon,
+    ServerIcon,
+    Battery100Icon,
+    FunnelIcon,
+    PowerIcon,
+    WifiIcon,
+    ArrowsRightLeftIcon,
 } from "@heroicons/react/24/solid";
 
 /* =========================
    1) Types & Helpers
    ========================= */
 type Status = "ok" | "warn" | "error";
-type MetricType = "times" | "hour";
+type MetricType = "times" | "day";
 type Lang = "th" | "en";
 
 type Device = {
@@ -27,36 +39,36 @@ type Device = {
     metricType?: MetricType;
 };
 
-// ===== Lifetime Config (กำหนดที่ Frontend) =====
+// ===== Lifetime Config (กำหนดที่ Frontend) - หน่วยเป็นวัน =====
 const LIFETIME_CONFIG: Record<string, number> = {
-    // Contactors (times)
+    // Contactors (times - ครั้ง)
     "DC Power Contactor": 300000,
     "AC Power Contactor": 50000,
-    // Motor Starters (times)
+    // Motor Starters (times - ครั้ง)
     "Motor Starter": 30000,
-    // Fuses (hours)
-    "FUSE": 100000,
-    // RCCB (hours)
-    "RCCB": 87600, // 10 years
-    "RCBO": 87600,
-    // Energy Meter (hours)
-    "Energy Meter": 131400, // 15 years
-    // Controllers (hours)
-    "Charging Controller": 87600,
-    "Insulation Monitoring": 87600,
-    // Router & Network (hours)
-    "Router": 87600,
-    "OCPP Device": 87600,
-    // Other components (hours)
-    "Circuit Breaker": 100000,
-    "FAN Controller": 50000,
-    "Power supplies": 87600,
-    "DC Converter": 100000,
-    "Surge Protection": 87600,
-    "Disconnect Switch": 100000,
-    "Noise Filter": 100000,
+    // Fuses (days - วัน)
+    "FUSE": 4166, // ~11.4 years
+    // RCCB (days - วัน)
+    "RCCB": 3650, // 10 years
+    "RCBO": 3650,
+    // Energy Meter (days - วัน)
+    "Energy Meter": 5475, // 15 years
+    // Controllers (days - วัน)
+    "Charging Controller": 3650,
+    "Insulation Monitoring": 3650,
+    // Router & Network (days - วัน)
+    "Router": 3650,
+    "OCPP Device": 3650,
+    // Other components (days - วัน)
+    "Circuit Breaker": 4166,
+    "FAN Controller": 2083, // ~5.7 years
+    "Power supplies": 3650,
+    "DC Converter": 4166,
+    "Surge Protection": 3650,
+    "Disconnect Switch": 4166,
+    "Noise Filter": 4166,
     // Default
-    "default": 50000,
+    "default": 2083,
 };
 
 // หา lifetime จาก config
@@ -83,6 +95,16 @@ function getStatusColor(usagePercent: number): "green" | "yellow" | "red" {
     return "green";
 }
 
+// คำนวณ Status จาก value และ deviceName (ใช้ lifetime)
+function getDeviceStatus(deviceName: string, value: number): Status {
+    const lifetime = getLifetime(deviceName);
+    const usagePercent = calcUsagePercent(value, lifetime);
+    const color = getStatusColor(usagePercent);
+    if (color === "red") return "error";
+    if (color === "yellow") return "warn";
+    return "ok";
+}
+
 const colorClasses = {
     green: {
         bg: "tw-bg-green-500",
@@ -107,23 +129,15 @@ const colorClasses = {
     },
 };
 
-// แปลง value เป็นตัวเลข
+// แปลง value เป็นตัวเลข (วัน)
 function parseValueToNumber(value?: string, metricType?: MetricType): number {
     if (!value) return 0;
-    if (metricType === "hour") {
-        const mH = /(\d+)\s*h/gi.exec(value);
-        return mH ? Number(mH[1]) : 0;
+    if (metricType === "day") {
+        // ข้อมูลเก็บเป็นวินาที แปลงเป็นวัน
+        const seconds = Number(String(value).replace(/[^\d.-]/g, "")) || 0;
+        return Math.floor(seconds / 86400); // 86400 = 60*60*24 วินาทีต่อวัน
     }
     return Number(String(value).replace(/[^\d.-]/g, "")) || 0;
-}
-
-function parseTimes(s?: string) {
-    if (!s) return undefined;
-    const mH = /(\d+)\s*h/gi.exec(s || "");
-    const mM = /(\d+)\s*m/gi.exec(s || "");
-    const h = mH ? Number(mH[1]) : 0;
-    const m = mM ? Number(mM[1]) : 0;
-    return `${h} h ${m} m`;
 }
 
 function pickStatus(
@@ -142,8 +156,29 @@ function pickStatus(
     return "ok";
 }
 
+// ฟังก์ชันเลือก icon ตามชื่ออุปกรณ์
+function getDeviceIcon(deviceName: string) {
+    if (deviceName.includes("Contactor")) return BoltIcon;
+    if (deviceName.includes("Motor")) return CogIcon;
+    if (deviceName.includes("FUSE") || deviceName.includes("Fuse")) return ShieldCheckIcon;
+    if (deviceName.includes("RCCB") || deviceName.includes("RCBO")) return ShieldCheckIcon;
+    if (deviceName.includes("Energy Meter")) return ChartBarIcon;
+    if (deviceName.includes("Charging Controller")) return CpuChipIcon;
+    if (deviceName.includes("Insulation")) return SignalIcon;
+    if (deviceName.includes("Router")) return WifiIcon;
+    if (deviceName.includes("OCPP")) return ServerIcon;
+    if (deviceName.includes("FAN") || deviceName.includes("Fan")) return CogIcon;
+    if (deviceName.includes("Power supplies")) return Battery100Icon;
+    if (deviceName.includes("DC Converter")) return ArrowsRightLeftIcon;
+    if (deviceName.includes("Surge")) return ShieldCheckIcon;
+    if (deviceName.includes("Disconnect")) return PowerIcon;
+    if (deviceName.includes("Noise Filter")) return FunnelIcon;
+    if (deviceName.includes("Circuit Breaker")) return ShieldCheckIcon;
+    return CpuChipIcon; // default
+}
+
 /* =========================
-   2) Style 3: Circular Progress (เป๊ะๆ จากตัวอย่าง)
+   2) Device Card with Icon
    ========================= */
 function Style3Circular({ 
     name, 
@@ -159,57 +194,50 @@ function Style3Circular({
     const lifetime = getLifetime(name);
     const usagePercent = calcUsagePercent(value, lifetime);
     const color = getStatusColor(usagePercent);
-    const cls = colorClasses[color];
 
-    // SVG circular progress
-    const radius = 36;
-    const circumference = 2 * Math.PI * radius;
-    // Visual progress caps at 100% (full circle)
-    const visualPercent = Math.min(usagePercent, 100);
-    const strokeDashoffset = circumference - (visualPercent / 100) * circumference;
+    const strokeColor = color === "green" ? "#22c55e" : color === "yellow" ? "#f59e0b" : "#ef4444";
+    const bgColor = color === "green" ? "tw-bg-green-50" : color === "yellow" ? "tw-bg-amber-50" : "tw-bg-red-50";
+    const borderColor = color === "green" ? "tw-border-green-200" : color === "yellow" ? "tw-border-amber-200" : "tw-border-red-200";
+    const iconColor = color === "green" ? "tw-text-green-500" : color === "yellow" ? "tw-text-amber-500" : "tw-text-red-500";
+    const textColor = color === "green" ? "tw-text-green-600" : color === "yellow" ? "tw-text-amber-600" : "tw-text-red-600";
+
+    const DeviceIcon = getDeviceIcon(name);
 
     return (
-        <div className="tw-p-4 tw-bg-white tw-rounded-2xl tw-border tw-border-gray-200 tw-shadow-sm">
+        <div className="tw-p-4 tw-bg-white tw-rounded-xl tw-border tw-border-gray-100 hover:tw-border-gray-200 tw-transition-colors">
             <div className="tw-flex tw-items-center tw-gap-4">
-                {/* Circular Progress */}
-                <div className="tw-relative tw-flex-shrink-0">
-                    <svg className="tw-w-20 tw-h-20 tw-transform -tw-rotate-90">
-                        {/* Background circle */}
-                        <circle
-                            cx="40"
-                            cy="40"
-                            r={radius}
-                            stroke="#e5e7eb"
-                            strokeWidth="6"
-                            fill="none"
-                        />
-                        {/* Progress circle */}
-                        <circle
-                            cx="40"
-                            cy="40"
-                            r={radius}
-                            stroke={color === "green" ? "#22c55e" : color === "yellow" ? "#f59e0b" : "#ef4444"}
-                            strokeWidth="6"
-                            fill="none"
-                            strokeLinecap="round"
-                            strokeDasharray={circumference}
-                            strokeDashoffset={strokeDashoffset}
-                            className="tw-transition-all tw-duration-500"
-                        />
-                    </svg>
-                    <div className="tw-absolute tw-inset-0 tw-flex tw-items-center tw-justify-center">
-                        <span className={`tw-text-sm tw-font-bold ${cls.text}`}>
-                            {usagePercent.toFixed(0)}%
-                        </span>
-                    </div>
+                {/* Icon */}
+                <div className={`tw-relative tw-flex-shrink-0 tw-w-14 tw-h-14 tw-rounded-xl ${bgColor} ${borderColor} tw-border-2 tw-flex tw-items-center tw-justify-center`}>
+                    <DeviceIcon className={`tw-w-7 tw-h-7 ${iconColor}`} />
+                    {/* Status dot */}
+                    <div 
+                        className="tw-absolute -tw-top-1 -tw-right-1 tw-w-4 tw-h-4 tw-rounded-full tw-border-2 tw-border-white"
+                        style={{ backgroundColor: strokeColor }}
+                    />
                 </div>
                 
                 {/* Info */}
                 <div className="tw-flex-1 tw-min-w-0">
-                    <p className="tw-font-semibold tw-text-gray-800 tw-truncate">{name}</p>
-                    <p className="tw-text-lg tw-font-bold tw-text-gray-900">
-                        {value.toLocaleString()} <span className="tw-text-sm tw-font-normal tw-text-gray-400">/ {lifetime.toLocaleString()}</span> <span className="tw-text-sm tw-font-normal tw-text-gray-500">{unit}</span>
-                    </p>
+                    <p className="tw-font-medium tw-text-gray-800 tw-truncate tw-text-sm">{name}</p>
+                    <div className="tw-mt-0.5 tw-flex tw-items-baseline tw-gap-1">
+                        <span className="tw-text-base tw-font-bold tw-text-gray-900">{value.toLocaleString()}</span>
+                        <span className="tw-text-xs tw-text-gray-400">/ {lifetime.toLocaleString()} {unit}</span>
+                    </div>
+                    {/* Progress bar */}
+                    <div className="tw-mt-2 tw-flex tw-items-center tw-gap-2">
+                        <div className="tw-flex-1 tw-h-1.5 tw-bg-gray-100 tw-rounded-full tw-overflow-hidden">
+                            <div 
+                                className="tw-h-full tw-rounded-full tw-transition-all tw-duration-500"
+                                style={{ 
+                                    width: `${Math.min(usagePercent, 100)}%`,
+                                    backgroundColor: strokeColor
+                                }}
+                            />
+                        </div>
+                        <span className={`tw-text-xs tw-font-semibold ${textColor}`}>
+                            {usagePercent.toFixed(0)}%
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -221,12 +249,13 @@ function Style3Circular({
    ========================= */
 function LoadingSkeleton() {
     return (
-        <div className="tw-p-4 tw-bg-white tw-rounded-2xl tw-border tw-border-gray-200 tw-shadow-sm tw-animate-pulse">
+        <div className="tw-p-4 tw-bg-white tw-rounded-xl tw-border tw-border-gray-100 tw-animate-pulse">
             <div className="tw-flex tw-items-center tw-gap-4">
-                <div className="tw-w-20 tw-h-20 tw-bg-gray-200 tw-rounded-full tw-flex-shrink-0" />
+                <div className="tw-w-14 tw-h-14 tw-bg-gray-100 tw-rounded-xl tw-flex-shrink-0" />
                 <div className="tw-flex-1 tw-space-y-2">
-                    <div className="tw-h-4 tw-bg-gray-200 tw-rounded tw-w-3/4" />
-                    <div className="tw-h-6 tw-bg-gray-200 tw-rounded tw-w-1/2" />
+                    <div className="tw-h-4 tw-bg-gray-100 tw-rounded tw-w-3/4" />
+                    <div className="tw-h-4 tw-bg-gray-100 tw-rounded tw-w-1/2" />
+                    <div className="tw-h-1.5 tw-bg-gray-100 tw-rounded-full tw-w-full" />
                 </div>
             </div>
         </div>
@@ -235,11 +264,14 @@ function LoadingSkeleton() {
 
 function SideListSkeleton({ title }: { title: string }) {
     return (
-        <aside className="tw-rounded-3xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-p-4 sm:tw-p-5">
-            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                <p className="tw-text-sm tw-font-semibold tw-text-gray-800">{title}</p>
+        <aside className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-5 sm:tw-p-6">
+            <div className="tw-flex tw-items-center tw-justify-between tw-mb-5">
+                <div className="tw-flex tw-items-center tw-gap-2.5">
+                    <div className="tw-w-1 tw-h-5 tw-bg-gray-400 tw-rounded-full" />
+                    <p className="tw-text-sm tw-font-bold tw-text-gray-700 tw-uppercase tw-tracking-wide">{title}</p>
+                </div>
             </div>
-            <div className="tw-space-y-2.5 md:tw-space-y-3">
+            <div className="tw-space-y-3">
                 {[1, 2, 3, 4, 5].map((i) => (
                     <LoadingSkeleton key={i} />
                 ))}
@@ -274,15 +306,19 @@ function SideList({
     }, [items, filter, search]);
 
     return (
-        <aside className="tw-rounded-3xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-p-4 sm:tw-p-5">
-            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                <p className="tw-text-sm tw-font-semibold tw-text-gray-800">{title}</p>
+        <aside className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-5 sm:tw-p-6">
+            <div className="tw-flex tw-items-center tw-justify-between tw-mb-5">
+                <div className="tw-flex tw-items-center tw-gap-2.5">
+                    <div className="tw-w-1 tw-h-5 tw-bg-gray-400 tw-rounded-full" />
+                    <p className="tw-text-sm tw-font-bold tw-text-gray-700 tw-uppercase tw-tracking-wide">{title}</p>
+                </div>
+                <span className="tw-text-xs tw-font-medium tw-text-gray-400">{filtered.length} items</span>
             </div>
 
-            <div className="tw-space-y-2.5 md:tw-space-y-3">
+            <div className="tw-space-y-3">
                 {filtered.map((d) => {
                     const numericValue = parseValueToNumber(d.value, d.metricType);
-                    const unit = d.metricType === "hour" ? "h" : t.times;
+                    const unit = d.metricType === "day" ? t.day : t.times;
 
                     return (
                         <Style3Circular 
@@ -296,7 +332,7 @@ function SideList({
                 })}
 
                 {filtered.length === 0 && (
-                    <div className="tw-text-center tw-text-sm tw-text-gray-500 tw-py-4">
+                    <div className="tw-text-center tw-text-sm tw-text-gray-400 tw-py-4">
                         {t.noDevicesFound}
                     </div>
                 )}
@@ -367,7 +403,7 @@ function Group({
                     >
                         {filtered.map((d) => {
                             const numericValue = parseValueToNumber(d.value, d.metricType);
-                            const unit = d.metricType === "hour" ? "h" : t.times;
+                            const unit = d.metricType === "day" ? t.day : t.times;
 
                             return (
                                 <Style3Circular 
@@ -399,15 +435,16 @@ export default function DCChargerDashboard() {
     const [live, setLive] = useState<any | null>(null);
     const [loading, setLoading] = useState(true);
     const [connectionError, setConnectionError] = useState(false);
+    const [timestamp, setTimestamp] = useState<string>("");
     const esRef = useRef<EventSource | null>(null);
     const [stationId, setStationId] = useState<string>("");
 
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
-    // ===== Get station_id from URL or localStorage =====
+    // ===== Get sn from URL or localStorage =====
     useEffect(() => {
-        const sid = searchParams.get("station_id") 
-            || localStorage.getItem("selected_station_id")
+        const sid = searchParams.get("sn") 
+            || localStorage.getItem("selected_sn")
             || "";
         setStationId(sid);
     }, [searchParams]);
@@ -472,6 +509,7 @@ export default function DCChargerDashboard() {
                 loading: "กำลังโหลดข้อมูล...",
                 connecting: "กำลังเชื่อมต่อ...",
                 connectionFailed: "เชื่อมต่อไม่สำเร็จ กำลังลองใหม่...",
+                updated: "อัพเดตล่าสุด",
             },
             en: {
                 // Status
@@ -511,6 +549,7 @@ export default function DCChargerDashboard() {
                 loading: "Loading data...",
                 connecting: "Connecting...",
                 connectionFailed: "Connection failed. Retrying...",
+                updated: "Last Updated",
             },
         };
         return translations[lang];
@@ -529,8 +568,10 @@ export default function DCChargerDashboard() {
         setLoading(true);
         setConnectionError(false);
         setLive(null);
+        setTimestamp("");
 
-        const url = `${API_BASE}/utilization/stream?station_id=${encodeURIComponent(stationId)}`;
+        const ts = new Date().getTime();
+        const url = `${API_BASE}/utilization/stream?sn=${encodeURIComponent(stationId)}&timestamp=${ts}`;
         const es = new EventSource(url, { withCredentials: true });
         esRef.current = es;
 
@@ -538,6 +579,9 @@ export default function DCChargerDashboard() {
             try {
                 const data = JSON.parse((ev as MessageEvent).data);
                 setLive(data);
+                if (data.timestamp) {
+                    setTimestamp(new Date(data.timestamp).toLocaleString());
+                }
                 setLoading(false);
                 setConnectionError(false);
             } catch { }
@@ -547,6 +591,9 @@ export default function DCChargerDashboard() {
             try {
                 const data = JSON.parse(ev.data);
                 setLive(data);
+                if (data.timestamp) {
+                    setTimestamp(new Date(data.timestamp).toLocaleString());
+                }
                 setLoading(false);
                 setConnectionError(false);
             } catch { }
@@ -578,47 +625,60 @@ export default function DCChargerDashboard() {
     // ===== Mapping payload -> UI lists =====
     const { LEFT_LIST, RIGHT_LIST, CENTER_LIST, DEVICES } = useMemo(() => {
         const p = live || {};
+        
+        // Helper function to create device with proper status
+        const createDevice = (id: string, name: string, value: string | undefined, metricType: MetricType): Device => {
+            const numValue = parseValueToNumber(value, metricType);
+            return {
+                id,
+                name,
+                value: value ?? "",
+                status: getDeviceStatus(name, numValue),
+                metricType
+            };
+        };
+
         const left: Device[] = [
-            { id: "dc-contact-l", name: "DC Power Contactor1", value: String(p.DC_power_contractor1 ?? ""), status: pickStatus(p.DC_power_contractor1, p.DC_power_contractor1+(20/100),  p.DC_power_contractor1+(50/100)), metricType: "times" },
-            { id: "dc-contact-2", name: "DC Power Contactor2", value: String(p.DC_power_contractor2 ?? ""), status: pickStatus(p.DC_power_contractor2, p.DC_power_contractor2+(20/100),  p.DC_power_contractor2+(50/100)), metricType: "times" },
-            { id: "dc-contact-5", name: "DC Power Contactor5", value: String(p.DC_power_contractor5 ?? ""), status: pickStatus(p.DC_power_contractor5, p.DC_power_contractor5+(20/100),  p.DC_power_contractor5+(50/100)), metricType: "times" },
-            { id: "dc-contact-6", name: "DC Power Contactor6", value: String(p.DC_power_contractor6 ?? ""), status: pickStatus(p.DC_power_contractor6, p.DC_power_contractor6+(20/100),  p.DC_power_contractor6+(50/100)), metricType: "times" },
-            { id: "fuse1-l", name: "FUSE1", value: parseTimes(p.FUSE1), status: "ok", metricType: "hour" },
-            { id: "rccb1-l", name: "RCCB1", value: parseTimes(p.RCCB1), status: "ok", metricType: "hour" },
-            { id: "ac-contact-l", name: "AC Power Contactor1", value: String(p.AC_power_contractor1 ?? ""), status: pickStatus(p.AC_power_contractor1, p.AC_power_contractor1+(20/100),  p.AC_power_contractor1+(50/100)), metricType: "times" },
-            { id: "motor1-l", name: "Motor Starter1", value: String(p.motor_starter1 ?? ""), status: pickStatus(p.motor_starter1, p.motor_starter1+(20/100), p.motor_starter1+(50/100)), metricType: "times" },
-            { id: "motor2-2", name: "Motor Starter2", value: String(p.motor_starter2 ?? ""), status: pickStatus(p.motor_starter2, p.motor_starter2+(20/100), p.motor_starter2+(50/100)), metricType: "times" },
-            { id: "emeter1", name: "Energy Meter1", value: parseTimes(p.energyMeter1), status: "ok", metricType: "hour" },
-            { id: "charge-ctl1", name: "Charging Controller1", value: parseTimes(p.chargingController1), status: "ok", metricType: "hour" },
-            { id: "iso1", name: "Insulation Monitoring1", value: parseTimes(p.insulationMonitoring1), status: "ok", metricType: "hour" },
+            createDevice("dc-contact-l", "DC Power Contactor1", String(p.DC_power_contractor1 ?? ""), "times"),
+            createDevice("dc-contact-2", "DC Power Contactor2", String(p.DC_power_contractor2 ?? ""), "times"),
+            createDevice("dc-contact-5", "DC Power Contactor5", String(p.DC_power_contractor5 ?? ""), "times"),
+            createDevice("dc-contact-6", "DC Power Contactor6", String(p.DC_power_contractor6 ?? ""), "times"),
+            createDevice("fuse1-l", "FUSE1", String(p.FUSE1 ?? ""), "day"),
+            createDevice("rccb1-l", "RCCB1", String(p.RCCB1 ?? ""), "day"),
+            createDevice("ac-contact-l", "AC Power Contactor1", String(p.AC_power_contractor1 ?? ""), "times"),
+            createDevice("motor1-l", "Motor Starter1", String(p.motor_starter1 ?? ""), "times"),
+            createDevice("motor2-2", "Motor Starter2", String(p.motor_starter2 ?? ""), "times"),
+            createDevice("emeter1", "Energy Meter1", String(p.energyMeter1 ?? ""), "day"),
+            createDevice("charge-ctl1", "Charging Controller1", String(p.chargingController1 ?? ""), "day"),
+            createDevice("iso1", "Insulation Monitoring1", String(p.insulationMonitoring1 ?? ""), "day"),
         ];
 
         const right: Device[] = [
-            { id: "dc-contact-3", name: "DC Power Contactor3", value: String(p.DC_power_contractor3 ?? ""), status: pickStatus(p.DC_power_contractor3, p.DC_power_contractor3+(20/100), p.DC_power_contractor3+(50/100)), metricType: "times" },
-            { id: "dc-contact-4", name: "DC Power Contactor4", value: String(p.DC_power_contractor4 ?? ""), status: pickStatus(p.DC_power_contractor4, p.DC_power_contractor4+(20/100), p.DC_power_contractor4+(50/100)), metricType: "times" },
-            { id: "fuse2-2", name: "FUSE2", value: parseTimes(p.FUSE2), status: "ok", metricType: "hour" },
-            { id: "rccb2-2", name: "RCCB2", value: parseTimes(p.RCCB2), status: "ok", metricType: "hour" },
-            { id: "ac-contact-2", name: "AC Power Contactor2", value: String(p.AC_power_contractor2 ?? ""), status: pickStatus(p.AC_power_contractor2, p.AC_power_contractor2+(20/100), p.AC_power_contractor2+(50/100)), metricType: "times" },
-            { id: "motor3-3", name: "Motor Starter3", value: String(p.motor_starter3 ?? ""), status: pickStatus(p.motor_starter3, p.motor_starter3+(20/100), p.motor_starter3+(50/100)), metricType: "times" },
-            { id: "motor4-4", name: "Motor Starter4", value: String(p.motor_starter4 ?? ""), status: pickStatus(p.motor_starter4, p.motor_starter4+(20/100), p.motor_starter4+(50/100)), metricType: "times" },
-            { id: "motor5-5", name: "Motor Starter5", value: String(p.motor_starter5 ?? ""), status: pickStatus(p.motor_starter5, p.motor_starter5+(20/100), p.motor_starter5+(50/100)), metricType: "times" },
-            { id: "emeter2", name: "Energy Meter2", value: parseTimes(p.energyMeter2), status: "ok", metricType: "hour" },
-            { id: "charge-ctl2", name: "Charging Controller2", value: parseTimes(p.chargingController2), status: "ok", metricType: "hour" },
-            { id: "iso2", name: "Insulation Monitoring2", value: parseTimes(p.insulationMonitoring2), status: "ok", metricType: "hour" },
+            createDevice("dc-contact-3", "DC Power Contactor3", String(p.DC_power_contractor3 ?? ""), "times"),
+            createDevice("dc-contact-4", "DC Power Contactor4", String(p.DC_power_contractor4 ?? ""), "times"),
+            createDevice("fuse2-2", "FUSE2", String(p.FUSE2 ?? ""), "day"),
+            createDevice("rccb2-2", "RCCB2", String(p.RCCB2 ?? ""), "day"),
+            createDevice("ac-contact-2", "AC Power Contactor2", String(p.AC_power_contractor2 ?? ""), "times"),
+            createDevice("motor3-3", "Motor Starter3", String(p.motor_starter3 ?? ""), "times"),
+            createDevice("motor4-4", "Motor Starter4", String(p.motor_starter4 ?? ""), "times"),
+            createDevice("motor5-5", "Motor Starter5", String(p.motor_starter5 ?? ""), "times"),
+            createDevice("emeter2", "Energy Meter2", String(p.energyMeter2 ?? ""), "day"),
+            createDevice("charge-ctl2", "Charging Controller2", String(p.chargingController2 ?? ""), "day"),
+            createDevice("iso2", "Insulation Monitoring2", String(p.insulationMonitoring2 ?? ""), "day"),
         ];
 
         const center: Device[] = [
-            { id: "router-l", name: "Router", value: parseTimes(p.Router), status: "ok", metricType: "hour" },
-            { id: "fuse-ctl-l", name: "FUSE Control", value: parseTimes(p.FUSEControl), status: "ok", metricType: "hour" },
-            { id: "cb-fan-l", name: "Circuit Breaker fan", value: parseTimes(p.circuitBreakerFan), status: "ok", metricType: "hour" },
-            { id: "rcbo-l", name: "RCBO", value: parseTimes(p.RCBO), status: "ok", metricType: "hour" },
-            { id: "ocpp-r", name: "OCPP Device", value: parseTimes(p.OCPPDevice), status: "ok", metricType: "hour" },
-            { id: "fan-ctl-r", name: "FAN Controller", value: parseTimes(p.fanController), status: "ok", metricType: "hour" },
-            { id: "psu-r", name: "Power supplies", value: parseTimes(p.powerSupplies), status: "ok", metricType: "hour" },
-            { id: "dc-conv-r", name: "DC Converter", value: parseTimes(p.DCConverter), status: "ok", metricType: "hour" },
-            { id: "sp-r", name: "Surge Protection", value: parseTimes(p.surtgeProtection), status: "ok", metricType: "hour" },
-            { id: "disc-r", name: "Disconnect Switch", value: parseTimes(p.disconnectSwitch), status: "ok", metricType: "hour" },
-            { id: "noise-r", name: "Noise Filter", value: parseTimes(p.noiseFilter), status: "ok", metricType: "hour" },
+            createDevice("router-l", "Router", String(p.Router ?? ""), "day"),
+            createDevice("fuse-ctl-l", "FUSE Control", String(p.FUSEControl ?? ""), "day"),
+            createDevice("cb-fan-l", "Circuit Breaker fan", String(p.circuitBreakerFan ?? ""), "day"),
+            createDevice("rcbo-l", "RCBO", String(p.RCBO ?? ""), "day"),
+            createDevice("ocpp-r", "OCPP Device", String(p.OCPPDevice ?? ""), "day"),
+            createDevice("fan-ctl-r", "FAN Controller", String(p.fanController ?? ""), "day"),
+            createDevice("psu-r", "Power supplies", String(p.powerSupplies ?? ""), "day"),
+            createDevice("dc-conv-r", "DC Converter", String(p.DCConverter ?? ""), "day"),
+            createDevice("sp-r", "Surge Protection", String(p.surtgeProtection ?? ""), "day"),
+            createDevice("disc-r", "Disconnect Switch", String(p.disconnectSwitch ?? ""), "day"),
+            createDevice("noise-r", "Noise Filter", String(p.noiseFilter ?? ""), "day"),
         ];
 
         const all: Device[] = [...left, ...right, ...center];
@@ -647,18 +707,17 @@ export default function DCChargerDashboard() {
     }) => (
         <button
             onClick={() => setFilter(id)}
-            className={`tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-px-3 tw-py-1.5 tw-text-sm tw-border ${filter === id ? "tw-border-indigo-300 tw-bg-indigo-50 tw-text-indigo-700" : "tw-border-gray-200 tw-bg-white tw-text-gray-700"
-                }`}
+            className={`tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-px-4 tw-py-2 tw-text-sm tw-font-medium tw-transition-all tw-duration-200 tw-border ${filter === id 
+                ? "tw-bg-gray-900 tw-text-white tw-border-gray-900" 
+                : "tw-bg-white tw-text-gray-600 tw-border-gray-200 hover:tw-border-gray-300 hover:tw-bg-gray-50"
+            }`}
             aria-pressed={filter === id}
         >
-            {dot && <span className={`tw-h-2.5 tw-w-2.5 tw-rounded-full ${dot}`} />}
-            <span className="tw-flex tw-items-center tw-gap-1">
-                <span>{label}</span>
-                {value !== undefined && (
-                    <span className="tw-font-bold">{value}</span>
-                )}
-                {t.unit}
-            </span>
+            {dot && <span className={`tw-h-2 tw-w-2 tw-rounded-full ${dot}`} />}
+            <span>{label}</span>
+            {value !== undefined && (
+                <span className={`tw-font-semibold tw-text-xs ${filter === id ? "tw-text-gray-400" : "tw-text-gray-400"}`}>{value}</span>
+            )}
         </button>
     );
 
@@ -674,13 +733,13 @@ export default function DCChargerDashboard() {
     if (!stationId) {
         return (
             <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
-                <div className="tw-rounded-3xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-p-8 tw-text-center">
+                <div className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-8 tw-text-center">
                     <div className="tw-flex tw-justify-center tw-mb-4">
-                        <div className="tw-p-4 tw-rounded-full tw-bg-amber-100">
-                            <ExclamationTriangleIcon className="tw-h-12 tw-w-12 tw-text-amber-500" />
+                        <div className="tw-p-4 tw-rounded-full tw-bg-amber-50">
+                            <ExclamationTriangleIcon className="tw-h-10 tw-w-10 tw-text-amber-500" />
                         </div>
                     </div>
-                    <p className="tw-text-lg tw-text-gray-600">{t.noStationSelected}</p>
+                    <p className="tw-text-base tw-text-gray-600">{t.noStationSelected}</p>
                 </div>
             </div>
         );
@@ -691,21 +750,21 @@ export default function DCChargerDashboard() {
         return (
             <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
                 {/* Header skeleton */}
-                <div className="tw-rounded-3xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-p-4 md:tw-p-5">
-                    <div className="tw-flex tw-items-center tw-justify-center tw-gap-3 tw-py-2">
-                        <div className="tw-animate-spin tw-h-5 tw-w-5 tw-border-2 tw-border-gray-300 tw-border-t-gray-600 tw-rounded-full" />
-                        <span className="tw-text-gray-600">
+                <div className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-5 md:tw-p-6">
+                    <div className="tw-flex tw-items-center tw-gap-3 tw-py-2">
+                        <div className="tw-animate-spin tw-h-4 tw-w-4 tw-border-2 tw-border-gray-200 tw-border-t-gray-500 tw-rounded-full" />
+                        <span className="tw-text-sm tw-text-gray-500">
                             {connectionError ? t.connectionFailed : t.connecting}
                         </span>
                     </div>
                     <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-2">
                         {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="tw-h-9 tw-w-24 tw-bg-gray-100 tw-rounded-full tw-animate-pulse" />
+                            <div key={i} className="tw-h-8 tw-w-20 tw-bg-gray-100 tw-rounded-full tw-animate-pulse" />
                         ))}
                     </div>
                     <div className="tw-mt-4">
-                        <div className="tw-h-4 tw-w-24 tw-bg-gray-200 tw-rounded tw-animate-pulse tw-mb-2" />
-                        <div className="tw-h-12 tw-bg-gray-100 tw-rounded-2xl tw-animate-pulse" />
+                        <div className="tw-h-3 tw-w-20 tw-bg-gray-100 tw-rounded tw-animate-pulse tw-mb-2" />
+                        <div className="tw-h-10 tw-bg-gray-100 tw-rounded-lg tw-animate-pulse" />
                     </div>
                 </div>
 
@@ -731,14 +790,14 @@ export default function DCChargerDashboard() {
     if (!live || Object.keys(live).length === 0) {
         return (
             <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
-                <div className="tw-rounded-3xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-p-8 tw-text-center">
+                <div className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-8 tw-text-center">
                     <div className="tw-flex tw-justify-center tw-mb-4">
-                        <div className="tw-p-4 tw-rounded-full tw-bg-gray-100">
-                            <InboxIcon className="tw-h-12 tw-w-12 tw-text-gray-400" />
+                        <div className="tw-p-4 tw-rounded-full tw-bg-gray-50">
+                            <InboxIcon className="tw-h-10 tw-w-10 tw-text-gray-400" />
                         </div>
                     </div>
-                    <p className="tw-text-lg tw-text-gray-600">{t.noData}</p>
-                    <p className="tw-text-sm tw-text-gray-400 tw-mt-2">Station ID: {stationId}</p>
+                    <p className="tw-text-base tw-text-gray-600">{t.noData}</p>
+                    <p className="tw-text-sm tw-text-gray-400 tw-mt-1">Station ID: {stationId}</p>
                 </div>
             </div>
         );
@@ -748,41 +807,34 @@ export default function DCChargerDashboard() {
         <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
 
             {/* แผงสรุป/ค้นหา */}
-            <div className="tw-rounded-3xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/5 tw-p-4 md:tw-p-5">
-                <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-2">
-                    <FilterBtn id="all" label={t.all} value={errorList.length + warnList.length + okList.length} />
-                    <FilterBtn id="error" label={t.issues} dot="tw-bg-red-600" value={errorList.length} />
-                    <FilterBtn id="warn" label={t.monitor} dot="tw-bg-amber-500" value={warnList.length} />
-                    <FilterBtn id="ok" label={t.normal} dot="tw-bg-green-600" value={okList.length} />
-                </div>
+            <div className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-5 md:tw-p-6">
+                {/* Timestamp display */}
+                {timestamp && (
+                    <div className="tw-mb-5 tw-inline-flex tw-items-center tw-gap-2 tw-px-3 tw-py-1.5 tw-bg-gray-50 tw-rounded-full">
+                        <div className="tw-w-2 tw-h-2 tw-bg-green-500 tw-rounded-full tw-animate-pulse" />
+                        <span className="tw-text-xs tw-text-gray-500">{t.updated}</span>
+                        <span className="tw-text-sm tw-font-medium tw-text-gray-700">{timestamp}</span>
+                    </div>
+                )}
                 
-                {/* Lifetime Legend */}
-                {/* <div className="tw-mt-4 tw-flex tw-flex-wrap tw-items-center tw-gap-4 tw-py-2 tw-px-3 tw-bg-gray-50 tw-rounded-xl tw-text-xs">
-                    <span className="tw-text-gray-500 tw-font-medium">{t.lifetime}:</span>
-                    <div className="tw-flex tw-items-center tw-gap-1.5">
-                        <span className="tw-w-3 tw-h-3 tw-rounded-full tw-bg-green-500" />
-                        <span className="tw-text-gray-600">≤ 120%</span>
-                    </div>
-                    <div className="tw-flex tw-items-center tw-gap-1.5">
-                        <span className="tw-w-3 tw-h-3 tw-rounded-full tw-bg-amber-500" />
-                        <span className="tw-text-gray-600">&gt; 120%</span>
-                    </div>
-                    <div className="tw-flex tw-items-center tw-gap-1.5">
-                        <span className="tw-w-3 tw-h-3 tw-rounded-full tw-bg-red-500" />
-                        <span className="tw-text-gray-600">&gt; 150%</span>
-                    </div>
-                </div> */}
+                <div className="tw-flex tw-flex-wrap tw-gap-2">
+                    <FilterBtn id="all" label={t.all} value={errorList.length + warnList.length + okList.length} />
+                    <FilterBtn id="error" label={t.issues} dot="tw-bg-red-500" value={errorList.length} />
+                    <FilterBtn id="warn" label={t.monitor} dot="tw-bg-amber-500" value={warnList.length} />
+                    <FilterBtn id="ok" label={t.normal} dot="tw-bg-green-500" value={okList.length} />
+                </div>
 
-                <div className="tw-mt-4">
-                    <label className="tw-text-sm tw-text-gray-700">{t.searchDevices}</label>
-                    <div className="tw-relative tw-mt-1">
+                <div className="tw-mt-5">
+                    <label className="tw-text-xs tw-font-medium tw-text-gray-500 tw-uppercase tw-tracking-wide">{t.searchDevices}</label>
+                    <div className="tw-relative tw-mt-2">
                         <MagnifyingGlassIcon className="tw-absolute tw-left-3 tw-top-2.5 tw-h-5 tw-w-5 tw-text-gray-400" />
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder={t.searchPlaceholder}
-                            className="tw-w-full tw-pl-11 tw-pr-3.5 tw-py-3 tw-text-base tw-rounded-2xl tw-border tw-border-gray-200  
-                                       focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-indigo-200"
+                            className="tw-w-full tw-pl-10 tw-pr-4 tw-py-2.5 tw-text-sm tw-bg-gray-50 tw-text-gray-700 tw-rounded-lg tw-border tw-border-gray-200  
+                                       placeholder:tw-text-gray-400
+                                       focus:tw-outline-none focus:tw-border-gray-300 focus:tw-bg-white tw-transition-all"
                         />
                     </div>
                 </div>

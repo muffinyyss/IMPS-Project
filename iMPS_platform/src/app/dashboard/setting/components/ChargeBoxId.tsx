@@ -3,11 +3,14 @@ import React, { useEffect, useState } from "react";
 import Card from "./chargerSetting-card";
 import { useSearchParams } from "next/navigation";
 
-type StationInfoResponse = {
+type ChargerInfoResponse = {
   station?: {
+    SN?: string;
     station_id?: string;
     station_name?: string;
     chargeBoxID?: string;
+    // ฟิลด์อื่น ๆ ที่อาจมี
+    [key: string]: any;
   };
 };
 
@@ -15,30 +18,31 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 
 export default function ChargeBoxId() {
   const searchParams = useSearchParams();
-  const [stationId, setStationId] = useState<string | null>(null);
+  const [SN, setSN] = useState<string | null>(null);
 
   const [chargeBoxId, setChargeBoxId] = useState<string>("");
+  const [stationName, setStationName] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 1) ดึง station_id จาก URL → ถ้าไม่มีค่อย fallback localStorage
+  // 1) ดึง SN จาก URL → ถ้าไม่มีค่อย fallback localStorage
   useEffect(() => {
-    const sidFromUrl = searchParams.get("station_id");
-    if (sidFromUrl) {
-      setStationId(sidFromUrl);
+    const snFromUrl = searchParams.get("SN");
+    if (snFromUrl) {
+      setSN(snFromUrl);
       if (typeof window !== "undefined") {
-        localStorage.setItem("selected_station_id", sidFromUrl);
+        localStorage.setItem("selected_station_id", snFromUrl);
       }
       return;
     }
-    const sidLocal =
+    const snLocal =
       typeof window !== "undefined" ? localStorage.getItem("selected_station_id") : null;
-    setStationId(sidLocal);
+    setSN(snLocal);
   }, [searchParams]);
 
-  // 2) ดึงข้อมูลสถานีเมื่อ stationId เปลี่ยน
+  // 2) ดึงข้อมูล charger เมื่อ SN เปลี่ยน
   useEffect(() => {
-    if (!stationId) return;
+    if (!SN) return;
 
     const abort = new AbortController();
     (async () => {
@@ -47,10 +51,10 @@ export default function ChargeBoxId() {
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem("access_token") || "" : "";
         const res = await fetch(
-          `${API_BASE}/station/info?station_id=${encodeURIComponent(stationId)}`,
+          `${API_BASE}/charger/info?sn=${encodeURIComponent(SN)}`,
           {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
-            credentials: token ? "omit" : "include", // ถ้าไม่มี token ให้พึ่งคุกกี้ httpOnly
+            credentials: token ? "omit" : "include",
             signal: abort.signal,
           }
         );
@@ -60,7 +64,10 @@ export default function ChargeBoxId() {
           throw new Error("Unauthorized");
         }
         if (res.status === 403) {
-          throw new Error("Forbidden station_id");
+          throw new Error("Forbidden");
+        }
+        if (res.status === 404) {
+          throw new Error("Charger not found");
         }
         if (!res.ok) {
           let msg = `HTTP ${res.status}`;
@@ -71,8 +78,9 @@ export default function ChargeBoxId() {
           throw new Error(msg);
         }
 
-        const data: StationInfoResponse = await res.json();
+        const data: ChargerInfoResponse = await res.json();
         setChargeBoxId(data?.station?.chargeBoxID ?? "");
+        setStationName(data?.station?.station_name ?? "");
       } catch (e: any) {
         if (e?.name !== "AbortError") setError(e?.message || "fetch failed");
       } finally {
@@ -81,12 +89,12 @@ export default function ChargeBoxId() {
     })();
 
     return () => abort.abort();
-  }, [stationId]);
+  }, [SN]);
 
   return (
     <Card title="Charge Box ID :">
       <div className="tw-text-lg sm:tw-text-xl tw-font-semibold tw-text-blue-gray-900">
-        {!stationId
+        {!SN
           ? "ยังไม่ได้เลือกสถานี"
           : loading
           ? "กำลังโหลด..."
@@ -94,6 +102,11 @@ export default function ChargeBoxId() {
           ? <span className="tw-text-red-600">{error}</span>
           : (chargeBoxId || "—")}
       </div>
+      {/* {stationName && !loading && !error && (
+        <div className="tw-text-sm tw-text-blue-gray-500 tw-mt-1">
+          {stationName}
+        </div>
+      )} */}
     </Card>
   );
 }
