@@ -12,20 +12,19 @@ from PIL import Image, ImageOps
 from io import BytesIO
 
 try:
-    import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
-except Exception:
-    requests = None
-
-# ★★★ เพิ่ม import สำหรับรวม PDF ★★★
-try:
     from PyPDF2 import PdfMerger, PdfReader, PdfWriter
     HAS_PYPDF2 = True
 except ImportError:
     HAS_PYPDF2 = False
-    PdfMerger = None  # type: ignore
-    PdfReader = None  # type: ignore
-    PdfWriter = None  # type: ignore
+    PdfMerger = None
+    PdfReader = None
+    PdfWriter = None
     print("[Warning] PyPDF2 not installed. PDF merging disabled.")
+
+try:
+    import requests   # optional ถ้าไม่มี base_url ก็ไม่จำเป็น
+except Exception:
+    requests = None
 
 # -------------------- ฟอนต์ไทย --------------------
 FONT_CANDIDATES: Dict[str, List[str]] = {
@@ -44,6 +43,686 @@ UNICODE_FONT_CANDIDATES: List[str] = [
     "Arial.ttf",
     "ArialUnicode.ttf",
 ]
+
+# Font Configuration
+FONT_CONFIG = {
+    "en": {
+        "main": 12.0,
+        "small": 12.0,
+        "header": 20.0,
+        "line_h": 4.8,
+        "line_h_header": 4.0,
+        "row_min_h": 6.5,
+    },
+    "th": {
+        "main": 11.0,      
+        "small": 11.0,    
+        "header": 16.0,   
+        "line_h": 4.8,  
+        "line_h_header": 4.0, 
+        "row_min_h": 6.5,  
+    }
+}
+
+TRANSLATIONS = {
+    "th": {
+        "page": "หน้า",
+        "ev_charger_safety_test": "การทดสอบความปลอดภัยเครื่องชาร์จ EV",
+        "issue_id": "รหัสเอกสาร",
+        "manufacturer": "ผู้ผลิต",
+        "model": "รุ่น",
+        "power": "กำลังไฟ",
+        "serial_number": "หมายเลขเครื่อง",
+        "location": "สถานที่",
+        "firmware_version": "เวอร์ชันเฟิร์มแวร์",
+        "inspection_date": "วันที่ตรวจสอบ",
+        "equipment_identification_details": "รายละเอียดอุปกรณ์ทดสอบ",
+        "testing_topics_safety": "หัวข้อทดสอบความปลอดภัย (ด้านแหล่งจ่ายไฟ/อินพุต)",
+        "phase_sequence": "ลำดับเฟส",
+        "testing_checklist": "รายการตรวจสอบ",
+        "test_results": "ผลการทดสอบ (บันทึกผ่าน/ไม่ผ่าน) หรือค่าตัวเลข",
+        "1st_test": "ทดสอบครั้งที่ 1",
+        "2nd_test": "ทดสอบครั้งที่ 2",
+        "3rd_test": "ทดสอบครั้งที่ 3",
+        "remark": "หมายเหตุ",
+        "electrical_safety": "ความปลอดภัยทางไฟฟ้า",
+        "pe_continuity": "PE.Continuity",
+        "protective": "ตัวนำป้องกัน",
+        "conductors_of": "ของ",
+        "charger": "เครื่องชาร์จ",
+        "left_cover": "ฝาครอบซ้าย",
+        "right_cover": "ฝาครอบขวา",
+        "front_cover": "ฝาครอบหน้า",
+        "back_cover": "ฝาครอบหลัง",
+        "charger_stand": "ขาตั้งเครื่องชาร์จ",
+        "pin_pe": "Pin PE",
+        "rcd_type_a": "RCD ประเภท A",
+        "rcd_type_f": "RCD ประเภท F",
+        "rcd_type_b": "RCD ประเภท B",
+        "power_standby": "พลังงานขณะสแตนด์บาย",
+        "charging_process_testing": "การทดสอบกระบวนการชาร์จ",
+        "charger_safety": "ความปลอดภัยเครื่องชาร์จ",
+        "type2": "Type2",
+        "h1": "H.1",
+        "result": "ผลลัพธ์",
+        "continuity_pe": "Continuity PE",
+        "insulation_cable": "Insulation Cable",
+        "state_a": "สถานะ A",
+        "state_b": "สถานะ B",
+        "state_c": "สถานะ C",
+        "cp_short": "CP Short",
+        "pe_cut": "PE Cut",
+        "emergency": "ฉุกเฉิน",
+        "rcd_dd": "RCD-DD",
+        "photos": "รูปภาพ",
+        "nameplate": "ป้ายชื่อ",
+        "testing_equipment": "เครื่องมือทดสอบ",
+        "testing_equipment_nameplate": "Nameplate ของเครื่องมือทดสอบ",
+        "gun1": "หัวชาร์จที่ 1",
+        "gun2": "หัวชาร์จที่ 2",
+        "responsibility": "หน้าที่รับผิดชอบ",
+        "performed_by": "ดำเนินการโดย",
+        "approved_by": "อนุมัติโดย",
+        "witnessed_by": "เป็นพยานโดย",
+        "name": "ชื่อ",
+        "signature": "ลายเซ็น",
+        "date": "วันที่",
+        "company": "บริษัท",
+        "attachments": "ไฟล์แนบ",
+        "attached_test_files": "ไฟล์ทดสอบที่แนบมา",
+        "round": "รอบที่",
+        "no": "ลำดับ",
+        "test_item": "รายการทดสอบ",
+        "gun": "หัวชาร์จ",
+        "filename": "ชื่อไฟล์",
+        "total": "รวม",
+        "files": "ไฟล์",
+        "pdfs_merged_click": "PDF(s) ที่รวมแล้ว - คลิกเลขหน้าเพื่อไปยังหน้านั้น",
+        "non_pdf": "ไฟล์ที่ไม่ใช่ PDF",
+        "na": "ไม่มี",
+    },
+    "en": {
+        "page": "Page",
+        "ev_charger_safety_test": "EV Charger Safety Test",
+        "issue_id": "Issue ID",
+        "manufacturer": "Manufacturer",
+        "model": "Model",
+        "power": "Power",
+        "serial_number": "Serial Number",
+        "location": "Location",
+        "firmware_version": "Firmware Version",
+        "inspection_date": "Inspection Date",
+        "equipment_identification_details": "Equipment Identification Details",
+        "testing_topics_safety": "Testing Topics for Safety (Specifically Power Supply/Input Side)",
+        "phase_sequence": "Phase Sequence",
+        "testing_checklist": "Testing Checklist",
+        "test_results": "Test Results (Record as Pass/Fail) or Numeric Results",
+        "1st_test": "1st TEST",
+        "2nd_test": "2nd TEST",
+        "3rd_test": "3rd TEST",
+        "remark": "Remark",
+        "electrical_safety": "Electrical Safety",
+        "pe_continuity": "PE.Continuity",
+        "protective": "protective",
+        "conductors_of": "Conductors of",
+        "charger": "Charger",
+        "left_cover": "Left Cover",
+        "right_cover": "Right Cover",
+        "front_cover": "Front Cover",
+        "back_cover": "Back Cover",
+        "charger_stand": "Charger Stand",
+        "pin_pe": "Pin PE",
+        "rcd_type_a": "RCD type A",
+        "rcd_type_f": "RCD type F",
+        "rcd_type_b": "RCD type B",
+        "power_standby": "Power standby",
+        "charging_process_testing": "Charging Process Testing",
+        "charger_safety": "Charger Safety",
+        "type2": "Type2",
+        "h1": "H.1",
+        "result": "Result",
+        "continuity_pe": "Continuity PE",
+        "insulation_cable": "Insulation Cable",
+        "state_a": "State A",
+        "state_b": "State B",
+        "state_c": "State C",
+        "cp_short": "CP Short",
+        "pe_cut": "PE Cut",
+        "emergency": "Emergency",
+        "rcd_dd": "RCD-DD",
+        "photos": "Photos",
+        "nameplate": "Nameplate",
+        "testing_equipment": "Testing Equipment",
+        "testing_equipment_nameplate": "Testing Equipment Nameplate",
+        "gun1": "GUN 1",
+        "gun2": "GUN 2",
+        "responsibility": "Responsibility",
+        "performed_by": "Performed by",
+        "approved_by": "Approved by",
+        "witnessed_by": "Witnessed by",
+        "name": "Name",
+        "signature": "Signature",
+        "date": "Date",
+        "company": "Company",
+        "attachments": "Attachments",
+        "attached_test_files": "Attached Test Files",
+        "round": "Round",
+        "no": "No.",
+        "test_item": "Test Item",
+        "gun": "Gun",
+        "filename": "Filename",
+        "total": "Total",
+        "files": "file(s)",
+        "pdfs_merged_click": "PDF(s) merged - Click page number to jump",
+        "non_pdf": "non-PDF",
+        "na": "N/A",
+    }
+}
+
+# Mapping ชื่อรายการทดสอบ
+TEST_ITEMS_CHARGER_AC = [
+    "Continuity PE",
+    "Insulation Cable",
+    "State A",
+    "State B",
+    "State C",
+    "CP Short",
+    "PE Cut",
+]
+
+TEST_ITEMS_CHARGER_AC_KEYS = [
+    "continuity_pe",
+    "insulation_cable",
+    "state_a",
+    "state_b",
+    "state_c",
+    "cp_short",
+    "pe_cut",
+]
+
+# PE_ITEM_KEYS = [
+#     "left_cover",
+#     "right_cover",
+#     "front_cover",
+#     "back_cover",
+#     "charger_stand",
+#     "pin_pe",
+# ]
+
+
+
+def _get_test_files_list(doc: dict) -> List[Dict[str, Any]]:
+    """ดึงรายการไฟล์แนบทั้งหมดจาก test_files"""
+    test_files = doc.get("test_files", {}) or {}
+    files_list = []
+    
+    try:
+        for test_type in ["electrical", "charger"]:
+            type_data = test_files.get(test_type, {})
+            if not type_data or not isinstance(type_data, dict):
+                continue
+                
+            for item_index_str, rounds_data in type_data.items():
+                try:
+                    item_index = int(item_index_str)
+                except (ValueError, TypeError):
+                    continue
+                
+                if not rounds_data or not isinstance(rounds_data, dict):
+                    continue
+                
+                for round_index_str, handguns_data in rounds_data.items():
+                    try:
+                        round_index = int(round_index_str)
+                    except (ValueError, TypeError):
+                        continue
+                    
+                    if not handguns_data or not isinstance(handguns_data, dict):
+                        continue
+                    
+                    for handgun in ["h1", "h2"]:
+                        file_data = handguns_data.get(handgun)
+                        if not file_data or not isinstance(file_data, dict):
+                            continue
+                        
+                        if not file_data.get("url") and not file_data.get("filename"):
+                            continue
+                        
+                        files_list.append({
+                            "test_type": test_type,
+                            "item_index": item_index,
+                            "round_index": round_index,
+                            "handgun": handgun.upper(),
+                            "filename": file_data.get("filename", ""),
+                            "original_name": file_data.get("originalName", file_data.get("filename", "")),
+                            "url": file_data.get("url", ""),
+                            "ext": str(file_data.get("ext", "")).lower(),
+                        })
+    except Exception as e:
+        print(f"[PDF] Error parsing test_files: {e}")
+        return []
+    
+    return files_list
+
+def _resolve_test_file_path(url_path: str) -> Optional[str]:
+    """แปลง URL path เป็น absolute file path"""
+    if not url_path:
+        return None
+    
+    raw = str(url_path).strip()
+    clean_path = raw.lstrip("/")
+    
+    if clean_path.startswith("uploads/"):
+        rel_after_uploads = clean_path[len("uploads/"):]
+    else:
+        rel_after_uploads = clean_path
+    
+    current_file = Path(__file__).resolve()
+    backend_root = None
+    
+    for p in current_file.parents:
+        if p.name.lower() == "backend" and p.exists():
+            backend_root = p
+            break
+    
+    if backend_root is None:
+        for i in range(1, 4):
+            cand = current_file.parents[i] if i < len(current_file.parents) else None
+            if cand and (cand / "backend").exists():
+                backend_root = cand / "backend"
+                break
+    
+    if backend_root:
+        uploads_root = backend_root / "uploads"
+        if uploads_root.exists():
+            candidate = uploads_root / rel_after_uploads
+            if candidate.exists() and candidate.is_file():
+                return str(candidate)
+    
+    return None
+
+def _draw_header_attachments(pdf: FPDF, base_font: str, issue_id: str = "-", lang: str = "en", inset_mm: float = 6.0) -> float:
+    """วาด Header สำหรับหน้า Attachments"""
+    page_w = pdf.w - 2*inset_mm
+    x0 = inset_mm
+    y_top = inset_mm + 2
+
+    col_left, col_mid = 40, 120
+    col_right = page_w - col_left - col_mid
+    h_all = 10
+
+    pdf.set_line_width(LINE_W_INNER)
+    
+    # โลโก้
+    pdf.rect(x0, y_top, col_left, h_all)
+    logo_path = _resolve_logo_path()
+    if logo_path:
+        IMG_W = 28
+        try:
+            from PIL import Image
+            with Image.open(logo_path) as img:
+                orig_w, orig_h = img.size
+                aspect_ratio = orig_h / orig_w
+                IMG_H = IMG_W * aspect_ratio
+            
+            img_x = x0 + (col_left - IMG_W) / 2
+            img_y = y_top + (h_all - IMG_H) / 2
+            pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
+        except Exception:
+            pass
+
+    # กล่องกลาง
+    box_x = x0 + col_left
+    pdf.rect(box_x, y_top, col_mid, h_all)
+    pdf.set_font(base_font, "B", 20)
+    start_y = y_top + (h_all - LINE_H_HEADER) / 2
+    pdf.set_xy(box_x + 3, start_y)
+    pdf.cell(col_mid - 6, LINE_H_HEADER, get_text(lang, "attachments"), align="C")
+
+    # กล่องขวา
+    xr = x0 + col_left + col_mid
+    pdf.rect(xr, y_top, col_right, h_all)
+    pdf.set_xy(xr, y_top + 1)
+    pdf.set_font(base_font, "B", FONT_MAIN - 1)
+    pdf.multi_cell(col_right, LINE_H_HEADER, f"{get_text(lang, 'issue_id')}\n{issue_id}", align="C")
+
+    return y_top + h_all
+
+def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict, lang: str = "en") -> List[Tuple[str, str, int, float, float, float, float]]:
+    """วาดหน้ารายการไฟล์แนบ"""
+    files_list = _get_test_files_list(doc)
+    
+    if not files_list:
+        return []
+    
+    pdf_file_data = []
+    files_by_round: Dict[int, List[Dict]] = {}
+    
+    for file_info in files_list:
+        round_idx = file_info["round_index"]
+        if round_idx not in files_by_round:
+            files_by_round[round_idx] = []
+        files_by_round[round_idx].append(file_info)
+    
+    sorted_rounds = sorted(files_by_round.keys())
+    for round_idx in sorted_rounds:
+        files_by_round[round_idx].sort(key=lambda x: (x["item_index"], 0 if x["handgun"] == "H1" else 1))
+    
+    # นับหน้าของแต่ละ PDF
+    for round_idx in sorted_rounds:
+        for file_info in files_by_round[round_idx]:
+            if file_info["ext"] == "pdf":
+                pdf_path = _resolve_test_file_path(file_info["url"])
+                if pdf_path and HAS_PYPDF2 and Path(pdf_path).exists():
+                    try:
+                        with open(pdf_path, 'rb') as f:
+                            reader = PdfReader(f)
+                            num_pages = len(reader.pages)
+                        
+                        item_idx = file_info["item_index"]
+                        if file_info["test_type"] == "charger" and 0 <= item_idx < len(TEST_ITEMS_CHARGER_AC):
+                            # item_name = TEST_ITEMS_CHARGER_AC[item_idx]
+                            item_name = get_text(lang, TEST_ITEMS_CHARGER_AC_KEYS[item_idx])
+                        else:
+                            item_name = f"Item {item_idx + 1}"
+                        
+                        bookmark_name = f"R{round_idx+1}_{item_name}_{file_info['handgun']}"
+                        
+                        pdf_file_data.append({
+                            "path": pdf_path,
+                            "bookmark": bookmark_name,
+                            "num_pages": num_pages,
+                            "file_info": file_info,
+                        })
+                    except Exception as e:
+                        print(f"[PDF] Error reading {pdf_path}: {e}")
+    
+    # คำนวณเลขหน้า
+    current_main_pages = pdf.page
+    estimated_list_pages = 1
+    if len(files_list) > 20:
+        estimated_list_pages = 2
+    if len(files_list) > 40:
+        estimated_list_pages = 3
+    
+    first_attachment_page = current_main_pages + estimated_list_pages
+    page_numbers = []
+    current_page = first_attachment_page
+    
+    for pdf_info in pdf_file_data:
+        page_numbers.append(current_page)
+        current_page += pdf_info["num_pages"]
+    
+    # วาดหน้า Attachments List
+    pdf.add_page()
+    header_bottom = _draw_header_attachments(pdf, base_font, issue_id, lang)
+    
+    FRAME_INSET = 6
+    FRAME_BOTTOM = 5
+    pdf.set_line_width(LINE_W_OUTER)
+    pdf.rect(FRAME_INSET, header_bottom, 198, pdf.h - header_bottom - FRAME_BOTTOM)
+    pdf.set_line_width(LINE_W_INNER)
+    
+    y = header_bottom + 3
+    x0 = 10
+    page_w = pdf.w - 20
+    
+    pdf.set_font(base_font, "BU", FONT_MAIN)
+    pdf.set_xy(x0, y)
+    pdf.cell(page_w, 6, get_text(lang, "attached_test_files"), border=0, align="L")
+    y += 8
+    
+    col_no = 10
+    col_test = 55
+    col_gun = 15
+    col_filename = page_w - col_no - col_test - col_gun - 15
+    col_page = 15
+    row_h = 6
+    
+    pdf_files_to_merge: List[Tuple[str, str, int, float, float, float, float]] = []
+    file_counter = 0
+    pdf_idx = 0
+    
+    for round_idx in sorted_rounds:
+        round_files = files_by_round[round_idx]
+        
+        if y + row_h * 4 > pdf.h - 45:
+            pdf.add_page()
+            y = 20
+        
+        pdf.set_font(base_font, "B", FONT_MAIN)
+        pdf.set_fill_color(220, 220, 220)
+        pdf.set_xy(x0, y)
+        pdf.cell(page_w, row_h + 1, f"{get_text(lang, 'round')} {round_idx + 1}", 1, 0, "L", fill=True)
+        y += row_h
+        
+        pdf.set_font(base_font, "B", FONT_SMALL)
+        pdf.set_fill_color(245, 245, 245)
+        pdf.set_xy(x0, y)
+        pdf.cell(col_no, row_h, get_text(lang, "no"), 1, 0, "C", fill=True)
+        pdf.cell(col_test, row_h, get_text(lang, "test_item"), 1, 0, "C", fill=True)
+        pdf.cell(col_gun, row_h, get_text(lang, "gun"), 1, 0, "C", fill=True)
+        pdf.cell(col_filename, row_h, get_text(lang, "filename"), 1, 0, "C", fill=True)
+        pdf.cell(col_page, row_h, get_text(lang, "page"), 1, 0, "C", fill=True)
+        y += row_h
+        
+        pdf.set_font(base_font, "", FONT_SMALL)
+        
+        for file_info in round_files:
+            file_counter += 1
+            
+            if y + row_h > pdf.h - 45:
+                pdf.add_page()
+                y = 20
+                pdf.set_font(base_font, "B", FONT_SMALL)
+                pdf.set_fill_color(245, 245, 245)
+                pdf.set_xy(x0, y)
+                pdf.cell(col_no, row_h, get_text(lang, "no"), 1, 0, "C", fill=True)
+                pdf.cell(col_test, row_h, get_text(lang, "test_item"), 1, 0, "C", fill=True)
+                pdf.cell(col_gun, row_h, get_text(lang, "gun"), 1, 0, "C", fill=True)
+                pdf.cell(col_filename, row_h, get_text(lang, "filename"), 1, 0, "C", fill=True)
+                pdf.cell(col_page, row_h, get_text(lang, "page"), 1, 0, "C", fill=True)
+                y += row_h
+                pdf.set_font(base_font, "", FONT_SMALL)
+            
+            if file_info["test_type"] == "charger":
+                item_idx = file_info["item_index"]
+                if 0 <= item_idx < len(TEST_ITEMS_CHARGER_AC):
+                    # item_name = TEST_ITEMS_CHARGER_AC[item_idx]
+                    item_name = get_text(lang, TEST_ITEMS_CHARGER_AC_KEYS[item_idx])
+                else:
+                    item_name = f"Item {item_idx + 1}"
+            else:
+                item_name = f"Electrical Item {file_info['item_index'] + 1}"
+            
+            pdf.set_xy(x0, y)
+            pdf.cell(col_no, row_h, str(file_counter), 1, 0, "C")
+            pdf.cell(col_test, row_h, item_name[:30], 1, 0, "L")
+            pdf.cell(col_gun, row_h, file_info["handgun"], 1, 0, "C")
+            
+            filename_display = file_info["original_name"] or file_info["filename"]
+            
+            if file_info["ext"] == "pdf":
+                pdf_path = _resolve_test_file_path(file_info["url"])
+                if pdf_path and HAS_PYPDF2 and pdf_idx < len(pdf_file_data):
+                    pdf_info = pdf_file_data[pdf_idx]
+                    target_page = page_numbers[pdf_idx]
+                    pdf_idx += 1
+                    
+                    pdf.cell(col_filename, row_h, filename_display[:35], 1, 0, "L")
+                    
+                    link_x = pdf.get_x()
+                    link_y = y
+                    current_page_idx = pdf.page - 1
+                    
+                    pdf_files_to_merge.append((
+                        pdf_info["path"], 
+                        pdf_info["bookmark"], 
+                        current_page_idx,
+                        link_x, link_y, col_page, row_h
+                    ))
+                    
+                    pdf.set_text_color(0, 0, 255)
+                    pdf.set_font(base_font, "U", FONT_SMALL)
+                    pdf.cell(col_page, row_h, f"#{target_page}", 1, 0, "C")
+                    pdf.set_text_color(0, 0, 0)
+                    pdf.set_font(base_font, "", FONT_SMALL)
+                else:
+                    pdf.cell(col_filename, row_h, filename_display[:35], 1, 0, "L")
+                    pdf.cell(col_page, row_h, get_text(lang, "na"), 1, 0, "C")
+            else:
+                ext_display = f"[{file_info['ext'].upper()}]" if file_info['ext'] else ""
+                pdf.cell(col_filename, row_h, f"{filename_display[:30]} {ext_display}", 1, 0, "L")
+                pdf.cell(col_page, row_h, "-", 1, 0, "C")
+            
+            y += row_h
+        
+        y += 3
+    
+    y += 2
+    pdf.set_font(base_font, "I", FONT_SMALL)
+    pdf.set_xy(x0, y)
+    
+    pdf_count = len(pdf_files_to_merge)
+    other_count = len(files_list) - pdf_count
+    
+    summary_text = f"{get_text(lang, 'total')}: {len(files_list)} {get_text(lang, 'files')}"
+    if pdf_count > 0:
+        summary_text += f" | {pdf_count} {get_text(lang, 'pdfs_merged_click')}"
+    if other_count > 0:
+        summary_text += f" | {other_count} {get_text(lang, 'non_pdf')}"
+    
+    pdf.cell(page_w, 5, summary_text, border=0, align="L")
+    
+    return pdf_files_to_merge
+
+def _merge_pdfs(main_pdf_bytes: bytes, pdf_files_info: List[Tuple[str, str, int, float, float, float, float]]) -> bytes:
+    """รวม PDF หลักกับ PDF ที่แนบมา พร้อมเพิ่ม bookmarks และ clickable links"""
+    if not HAS_PYPDF2:
+        print("[PDF Merge] ⚠️ PyPDF2 not installed. Returning main PDF only.")
+        return main_pdf_bytes
+    
+    if not pdf_files_info:
+        return main_pdf_bytes
+    
+    try:
+        from PyPDF2.generic import (
+            ArrayObject, DictionaryObject, FloatObject,
+            NameObject, NumberObject
+        )
+        
+        valid_pdf_files = []
+        for item in pdf_files_info:
+            pdf_path = item[0]
+            if pdf_path and Path(pdf_path).exists():
+                valid_pdf_files.append(item)
+        
+        if not valid_pdf_files:
+            print("[PDF Merge] ⚠️ No valid PDF files found. Returning main PDF only.")
+            return main_pdf_bytes
+        
+        main_buffer = BytesIO(main_pdf_bytes)
+        main_reader = PdfReader(main_buffer)
+        main_page_count = len(main_reader.pages)
+        
+        writer = PdfWriter()
+        
+        main_buffer.seek(0)
+        main_reader = PdfReader(main_buffer)
+        for page in main_reader.pages:
+            writer.add_page(page)
+        
+        current_page = main_page_count
+        link_info_list = []
+        
+        for item in valid_pdf_files:
+            pdf_path, bookmark_name, link_page, x, y, w, h = item
+            try:
+                with open(pdf_path, 'rb') as f:
+                    attached_reader = PdfReader(f)
+                    num_pages = len(attached_reader.pages)
+                    
+                    target_page = current_page
+                    link_info_list.append((link_page, target_page, x, y, w, h))
+                    
+                    for page in attached_reader.pages:
+                        writer.add_page(page)
+                    
+                    try:
+                        writer.add_outline_item(
+                            f"{bookmark_name} (p.{current_page + 1})",
+                            target_page
+                        )
+                    except:
+                        pass
+                    
+                    current_page += num_pages
+                    
+            except Exception as e:
+                print(f"[PDF Merge] ⚠️ Error adding {pdf_path}: {e}")
+                continue
+        
+        try:
+            writer.add_outline_item("📋 Test Report", 0)
+        except:
+            pass
+        
+        PT_PER_MM = 72 / 25.4
+        PAGE_HEIGHT_MM = 297
+        
+        for link_page, target_page, x, y, w, h in link_info_list:
+            try:
+                page_obj = writer.pages[link_page]
+                
+                x1_pt = x * PT_PER_MM
+                x2_pt = (x + w) * PT_PER_MM
+                y_top_pt = (PAGE_HEIGHT_MM - y) * PT_PER_MM
+                y_bottom_pt = (PAGE_HEIGHT_MM - y - h) * PT_PER_MM
+                
+                link_annot = DictionaryObject()
+                link_annot[NameObject("/Type")] = NameObject("/Annot")
+                link_annot[NameObject("/Subtype")] = NameObject("/Link")
+                link_annot[NameObject("/Rect")] = ArrayObject([
+                    FloatObject(x1_pt),
+                    FloatObject(y_bottom_pt),
+                    FloatObject(x2_pt),
+                    FloatObject(y_top_pt),
+                ])
+                link_annot[NameObject("/Border")] = ArrayObject([
+                    NumberObject(0), NumberObject(0), NumberObject(0)
+                ])
+                link_annot[NameObject("/Dest")] = ArrayObject([
+                    writer.pages[target_page].indirect_reference,
+                    NameObject("/Fit")
+                ])
+                
+                if "/Annots" not in page_obj:
+                    page_obj[NameObject("/Annots")] = ArrayObject()
+                
+                page_obj[NameObject("/Annots")].append(link_annot)
+                
+            except Exception as e:
+                print(f"[PDF Link] ⚠️ Error: {e}")
+                continue
+        
+        output_buffer = BytesIO()
+        writer.write(output_buffer)
+        
+        output_buffer.seek(0)
+        return output_buffer.read()
+        
+    except Exception as e:
+        print(f"[PDF Merge] ❌ Merge failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return main_pdf_bytes
+
+def get_text(lang: str, key: str) -> str:
+    """ดึงข้อความตามภาษาที่เลือก"""
+    lang = lang.lower() if lang else "en"
+    if lang not in ["th", "en"]:
+        lang = "en"
+    return TRANSLATIONS[lang].get(key, TRANSLATIONS["en"].get(key, key))
 
 
 def add_all_thsarabun_fonts(pdf: FPDF, family_name: str = "THSarabun") -> bool:
@@ -162,19 +841,19 @@ class HTML2PDF(FPDF, HTMLMixin):
         self.signature_data = None
         self.base_font_name = "THSarabun"
         self.show_signature_footer = False
+        self.lang = "en"
 
     def header(self):
         # วาดเลขหน้าที่มุมขวาบนนอกกรอบเอกสาร
         self.set_font(self.base_font_name, "", FONT_MAIN)
-        page_text = f"Page {self.page_no()}"
-        # วางที่มุมขวาบน นอกกรอบ (ขอบขวา - 25mm, ด้านบน 3mm)
+        page_text = f"{get_text(self.lang, 'page')} {self.page_no()}"
         self.set_xy(self.w - 25, 3)
         self.cell(20, 5, page_text, 0, 0, "R")
 
     def footer(self):
         # วาดส่วนลายเซ็นที่ footer
         if self.show_signature_footer and self.signature_data:
-            _draw_signature_footer(self, self.base_font_name, self.signature_data)
+            _draw_signature_footer(self, self.base_font_name, self.signature_data, self.lang)
 
 def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool):
     pdf.rect(x, y, size, size)
@@ -326,60 +1005,114 @@ def _output_pdf_bytes(pdf: FPDF) -> bytes:
     return data.encode("latin1")
 
 
-def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", lang: str = "en", inset_mm: float = 6.0) -> float:
-    # ใช้ระยะเดียวกับกรอบนอก ไม่อิง l_margin/r_margin
+# def _draw_header(pdf: FPDF, base_font: str, issue_id: str = "-", inset_mm: float = 6.0) -> float:
+#     # ใช้ระยะเดียวกับกรอบนอก ไม่อิง l_margin/r_margin
+#     page_w = pdf.w - 2*inset_mm
+#     x0 = inset_mm
+#     y_top = inset_mm + 2  # เพิ่ม 2mm ให้ header ขยับลงมา (ลดจาก 4mm)
+
+#     col_left, col_mid = 40, 120
+#     col_right = page_w - col_left - col_mid
+
+#     # ▼▼ ลดความสูงลงให้เล็กขึ้น ▼▼
+#     h_all = 10        # ความสูง header (ลดจาก 11)
+#     h_right_top = 10  # ใช้ความสูงเต็มสำหรับ Issue ID (ลดจาก 11)
+
+#     pdf.set_line_width(LINE_W_INNER)
+    
+#     # ----- โลโก้ ----- #
+#     pdf.rect(x0, y_top, col_left, h_all)
+#     logo_path = _resolve_logo_path()
+#     if logo_path:
+#         IMG_W = 28  # ความกว้างที่ต้องการ
+        
+#         try:
+#             # คำนวณความสูงจริงจากอัตราส่วนของรูป
+#             from PIL import Image
+#             with Image.open(logo_path) as img:
+#                 orig_w, orig_h = img.size
+#                 aspect_ratio = orig_h / orig_w
+#                 IMG_H = IMG_W * aspect_ratio  # ความสูงจริงตามอัตราส่วน
+            
+#             # จัดกึ่งกลางทั้งแนวนอนและแนวตั้ง
+#             img_x = x0 + (col_left - IMG_W) / 2
+#             img_y = y_top + (h_all - IMG_H) / 2
+            
+#             pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
+#         except Exception:
+#             pass
+
+#     # ----- กล่องกลาง ----- #
+#     box_x = x0 + col_left
+#     pdf.rect(box_x, y_top, col_mid, h_all)
+
+#     pdf.set_font(base_font, "B", 20)   # ลดฟอนต์ลงจาก 25
+#     start_y = y_top + (h_all - LINE_H_HEADER) / 2
+
+#     pdf.set_xy(box_x + 3, start_y)
+#     pdf.cell(col_mid - 6, LINE_H_HEADER, "EV Charger Safety Test", align="C")
+
+#     # ----- กล่องขวา (Issue ID) ----- #
+#     xr = x0 + col_left + col_mid
+#     pdf.rect(xr, y_top, col_right, h_all)
+
+#     pdf.set_xy(xr, y_top + 1)
+#     pdf.set_font(base_font, "B", FONT_MAIN - 1)
+#     pdf.multi_cell(col_right, LINE_H_HEADER, f"Issue ID\n{issue_id}", align="C")
+
+#     return y_top + h_all
+
+def _draw_header(
+    pdf: FPDF, 
+    base_font: str, 
+    issue_id: str = "-", 
+    lang: str = "en",
+    inset_mm: float = 6.0,
+    
+) -> float:
+    # เพิ่ม parameter lang ตรงนี้ ^^^
     page_w = pdf.w - 2*inset_mm
     x0 = inset_mm
-    y_top = inset_mm + 2  # เพิ่ม 2mm ให้ header ขยับลงมา (ลดจาก 4mm)
+    y_top = inset_mm + 2
 
     col_left, col_mid = 40, 120
     col_right = page_w - col_left - col_mid
-
-    # ▼▼ ลดความสูงลงให้เล็กขึ้น ▼▼
-    h_all = 10        # ความสูง header (ลดจาก 11)
-    h_right_top = 10  # ใช้ความสูงเต็มสำหรับ Issue ID (ลดจาก 11)
+    h_all = 10
 
     pdf.set_line_width(LINE_W_INNER)
     
-    # ----- โลโก้ ----- #
+    # โลโก้
     pdf.rect(x0, y_top, col_left, h_all)
     logo_path = _resolve_logo_path()
     if logo_path:
-        IMG_W = 28  # ความกว้างที่ต้องการ
-        
+        IMG_W = 28
         try:
-            # คำนวณความสูงจริงจากอัตราส่วนของรูป
             from PIL import Image
             with Image.open(logo_path) as img:
                 orig_w, orig_h = img.size
                 aspect_ratio = orig_h / orig_w
-                IMG_H = IMG_W * aspect_ratio  # ความสูงจริงตามอัตราส่วน
+                IMG_H = IMG_W * aspect_ratio
             
-            # จัดกึ่งกลางทั้งแนวนอนและแนวตั้ง
             img_x = x0 + (col_left - IMG_W) / 2
             img_y = y_top + (h_all - IMG_H) / 2
-            
             pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
         except Exception:
             pass
 
-    # ----- กล่องกลาง ----- #
+    # กล่องกลาง - ใช้ get_text
     box_x = x0 + col_left
     pdf.rect(box_x, y_top, col_mid, h_all)
-
-    pdf.set_font(base_font, "B", 20)   # ลดฟอนต์ลงจาก 25
+    pdf.set_font(base_font, "B", 20)
     start_y = y_top + (h_all - LINE_H_HEADER) / 2
-
     pdf.set_xy(box_x + 3, start_y)
-    pdf.cell(col_mid - 6, LINE_H_HEADER, "EV Charger Safety Test", align="C")
+    pdf.cell(col_mid - 6, LINE_H_HEADER, get_text(lang, "ev_charger_safety_test"), align="C")
 
-    # ----- กล่องขวา (Issue ID) ----- #
+    # กล่องขวา - ใช้ get_text
     xr = x0 + col_left + col_mid
     pdf.rect(xr, y_top, col_right, h_all)
-
     pdf.set_xy(xr, y_top + 1)
     pdf.set_font(base_font, "B", FONT_MAIN - 1)
-    pdf.multi_cell(col_right, LINE_H_HEADER, f"Issue ID\n{issue_id}", align="C")
+    pdf.multi_cell(col_right, LINE_H_HEADER, f"{get_text(lang, 'issue_id')}\n{issue_id}", align="C")
 
     return y_top + h_all
 
@@ -418,40 +1151,82 @@ def _kv_underline(pdf: FPDF, base_font: str, x: float, y: float, w: float,
         pdf.set_xy(text_x, y + 0.2)
         pdf.cell(text_w, row_h - 1.2, str(value), border=0, align="L")
 
-def _draw_ev_header_form(pdf: FPDF, base_font: str, x: float, y: float, w: float,
-                         manufacturer: str = "", model: str = "", power: str = "",
-                         serial_no: str = "", location: str = "",
-                         firmware: str = "", inspection_date: str = "",
-                         lang: str = "en",
-                         power_w_mm: float = 32.0,   # กำหนดกว้างช่อง Power ที่นี่ (เช่น 28–36)
-                         gap_mm: float = 3.0) -> float:  # ระยะห่าง gap (ลดจาก 4.0)
+# def _draw_ev_header_form(pdf: FPDF, base_font: str, x: float, y: float, w: float,
+#                          manufacturer: str = "", model: str = "", power: str = "",
+#                          serial_no: str = "", location: str = "",
+#                          firmware: str = "", inspection_date: str = "",
+#                          power_w_mm: float = 32.0,   # กำหนดกว้างช่อง Power ที่นี่ (เช่น 28–36)
+#                          gap_mm: float = 3.0) -> float:  # ระยะห่าง gap (ลดจาก 4.0)
 
-    row_h = 5.5  # ความสูงแถว (ลดจาก 6)
+#     row_h = 5.5  # ความสูงแถว (ลดจาก 6)
+#     left_w = w / 2.0
+#     right_w = w - left_w
+
+#     lx, rx = x, x + left_w
+#     y0 = y + 0.2  # ระยะห่างแนวตั้งระหว่าง header กับตาราง (ลดจาก 0.8)
+
+#     # แถวที่ 1
+#     _kv_underline(pdf, base_font, lx, y0, left_w,  "Manufacturer", manufacturer, row_h)
+#     _kv_underline(pdf, base_font, rx, y0, right_w, "Location",     location,     row_h)
+#     y0 += row_h
+
+#     # แถวที่ 2  (Model + Power)
+#     model_w = max(left_w - power_w_mm - gap_mm, 40.0)  # เผื่อขั้นต่ำของ Model
+#     _kv_underline(pdf, base_font, lx, y0, model_w,          "Model",  model,  row_h)
+#     _kv_underline(pdf, base_font, lx + model_w + gap_mm, y0, power_w_mm,
+#               "Power", power, row_h, label_w=10.0, colon_w=2.0)
+#     _kv_underline(pdf, base_font, rx, y0, right_w, "Firmware Version", firmware, row_h)
+#     y0 += row_h
+
+#     # แถวที่ 3
+#     _kv_underline(pdf, base_font, lx, y0, left_w,  "Serial Number",  serial_no, row_h)
+#     _kv_underline(pdf, base_font, rx, y0, right_w, "Inspection Date", inspection_date, row_h)
+#     y0 += row_h
+
+#     return y0 + 0.5  # ระยะห่างหลัง section (ลดจาก 2)
+
+def _draw_ev_header_form(
+    pdf: FPDF, 
+    base_font: str, 
+    x: float, 
+    y: float, 
+    w: float,
+    manufacturer: str = "", 
+    model: str = "", 
+    power: str = "",
+    serial_no: str = "", 
+    location: str = "",
+    firmware: str = "", 
+    inspection_date: str = "",
+    power_w_mm: float = 32.0,
+    gap_mm: float = 3.0,
+    lang: str = "en"
+) -> float:
+
+    row_h = 5.5
     left_w = w / 2.0
     right_w = w - left_w
 
     lx, rx = x, x + left_w
-    y0 = y + 0.2  # ระยะห่างแนวตั้งระหว่าง header กับตาราง (ลดจาก 0.8)
+    y0 = y + 0.2
 
-    # แถวที่ 1
-    _kv_underline(pdf, base_font, lx, y0, left_w,  "Manufacturer", manufacturer, row_h)
-    _kv_underline(pdf, base_font, rx, y0, right_w, "Location",     location,     row_h)
+    # แก้ label ทั้งหมดเป็น get_text(lang, ...)
+    _kv_underline(pdf, base_font, lx, y0, left_w,  get_text(lang, "manufacturer"), manufacturer, row_h)
+    _kv_underline(pdf, base_font, rx, y0, right_w, get_text(lang, "location"),     location,     row_h)
     y0 += row_h
 
-    # แถวที่ 2  (Model + Power)
-    model_w = max(left_w - power_w_mm - gap_mm, 40.0)  # เผื่อขั้นต่ำของ Model
-    _kv_underline(pdf, base_font, lx, y0, model_w,          "Model",  model,  row_h)
+    model_w = max(left_w - power_w_mm - gap_mm, 40.0)
+    _kv_underline(pdf, base_font, lx, y0, model_w,          get_text(lang, "model"),  model,  row_h)
     _kv_underline(pdf, base_font, lx + model_w + gap_mm, y0, power_w_mm,
-              "Power", power, row_h, label_w=10.0, colon_w=2.0)
-    _kv_underline(pdf, base_font, rx, y0, right_w, "Firmware Version", firmware, row_h)
+              get_text(lang, "power"), power, row_h, label_w=10.0, colon_w=2.0)
+    _kv_underline(pdf, base_font, rx, y0, right_w, get_text(lang, "firmware_version"), firmware, row_h)
     y0 += row_h
 
-    # แถวที่ 3
-    _kv_underline(pdf, base_font, lx, y0, left_w,  "Serial Number",  serial_no, row_h)
-    _kv_underline(pdf, base_font, rx, y0, right_w, "Inspection Date", inspection_date, row_h)
+    _kv_underline(pdf, base_font, lx, y0, left_w,  get_text(lang, "serial_number"),  serial_no, row_h)
+    _kv_underline(pdf, base_font, rx, y0, right_w, get_text(lang, "inspection_date"), inspection_date, row_h)
     y0 += row_h
 
-    return y0 + 0.5  # ระยะห่างหลัง section (ลดจาก 2)
+    return y0 + 0.5
 
 def _kv_inline(pdf: FPDF, base_font: str, x: float, y: float, w: float,
                label: str, value: str = "", row_h: float = 8.0,
@@ -459,18 +1234,28 @@ def _kv_inline(pdf: FPDF, base_font: str, x: float, y: float, w: float,
     _kv_underline(pdf, base_font, x, y, w, label, value, row_h, label_w, colon_w)
 
 
-def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float, w: float,
-                                  items: List[Dict[str, str]] | None = None,
-                                  lang: str = "en",
-                                  num_rows: int = 2) -> float:
+def _draw_equipment_ident_details(
+    pdf: FPDF, 
+    base_font: str, 
+    x: float, 
+    y: float, 
+    w: float,
+    items: List[Dict[str, str]] | None = None,
+    num_rows: int = 2,
+    lang: str = "en"
+) -> float:
     
     # pdf.rect(6, 22, 198, 270)
     
     # pdf.rect(frame_x, frame_y, frame_w, frame_h)
+    # pdf.set_font(base_font, "BU", FONT_MAIN)
+    # pdf.set_xy(x, y)
+    # pdf.cell(w, 2, "Equipment Identification Details", border=0, ln=1, align="L")
+    # y = pdf.get_y() + 1.5  # ระยะห่างหลังหัวข้อ (ลดจาก 2.5)
     pdf.set_font(base_font, "BU", FONT_MAIN)
     pdf.set_xy(x, y)
-    pdf.cell(w, 2, "Equipment Identification Details", border=0, ln=1, align="L")
-    y = pdf.get_y() + 1.5  # ระยะห่างหลังหัวข้อ (ลดจาก 2.5)
+    pdf.cell(w, 2, get_text(lang, "equipment_identification_details"), border=0, ln=1, align="L")
+    y = pdf.get_y() + 1.5
 
     row_h = 5.5  # ความสูงแถว (ลดจาก 6.0)
     num_w = 5.0
@@ -493,32 +1278,32 @@ def _draw_equipment_ident_details(pdf: FPDF, base_font: str, x: float, y: float,
         pdf.cell(num_w, row_h, str(i + 1), border=0, align="L")
 
         cx = x + num_w
-        _kv_inline(pdf, base_font, cx, y, col1_w, "Manufacturer", m, row_h)
+        # _kv_inline(pdf, base_font, cx, y, col1_w, "Manufacturer", m, row_h)
+        # cx += col1_w + 2
+        # _kv_inline(pdf, base_font, cx, y, col2_w, "Model", mo, row_h, 15)
+        # cx += col2_w + 2
+        # _kv_inline(pdf, base_font, cx, y, col3_w, "Serial Number", sn, row_h)
+        _kv_inline(pdf, base_font, cx, y, col1_w, get_text(lang, "manufacturer"), m, row_h)
         cx += col1_w + 2
-        _kv_inline(pdf, base_font, cx, y, col2_w, "Model", mo, row_h, 15)
+        _kv_inline(pdf, base_font, cx, y, col2_w, get_text(lang, "model"), mo, row_h, 15)
         cx += col2_w + 2
-        _kv_inline(pdf, base_font, cx, y, col3_w, "Serial Number", sn, row_h)
+        _kv_inline(pdf, base_font, cx, y, col3_w, get_text(lang, "serial_number"), sn, row_h)
 
         y += row_h
 
     return y
 
-def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
-                                     table_width=None, safety=None, doc=None, lang="en"):
-    
-    # =========================================================
-    # 🛠️ DEBUG ZONE: แสดงค่า safety ออกมาดู
-    # =========================================================
-    # print("\n" + "█" * 50)
-    # print(">>> DEBUG: SAFETY VARIABLE <<<")
-    # try:
-    #     # ใช้วิธีนี้เพื่อรองรับภาษาไทย และกัน Error กรณีมี Object แปลกๆ
-    #     print(json.dumps(safety, indent=4, ensure_ascii=False, default=str))
-    # except Exception as e:
-    #     print(f"Cannot JSON dump: {e}")
-    #     print(safety) # ถ้า dump ไม่ได้ ก็ print ดิบๆ
-    # print("█" * 50 + "\n")
-    # =========================================================
+def draw_testing_topics_safety_section(
+    pdf, 
+    x, 
+    y, 
+    base_font, 
+    font_size,
+    table_width=None, 
+    safety=None, 
+    doc=None, 
+    lang="en"
+):
 
     # 1. รับข้อมูลเข้ามา (กัน Error ถ้าเป็น None)
     safety = safety or {} 
@@ -600,7 +1385,8 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     # Header บนสุด
     pdf.set_xy(x, y)
     pdf.set_font(base_font, "BU", font_size)
-    pdf.cell(table_width, 6, "Testing Topics for Safety (Specifically Power Supply/Input Side)", border=0, ln=1, align="L")
+    # pdf.cell(table_width, 6, "Testing Topics for Safety (Specifically Power Supply/Input Side)", border=0, ln=1, align="L")
+    pdf.cell(table_width, 6, get_text(lang, "testing_topics_safety"), border=0, ln=1, align="L")
 
     y = pdf.get_y() + 1
 
@@ -612,7 +1398,7 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
 
     pdf.set_font(base_font, "B", font_size)
     pdf.set_xy(x, y)
-    pdf.cell(28, 6, "Phase Sequence :", border=0, align="L")
+    pdf.cell(28, 6, f"{get_text(lang, 'phase_sequence')} :", border=0, align="L")
 
     # วาดข้อความ
     text_x = x + 28
@@ -638,16 +1424,20 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     # Header ตาราง
     pdf.set_font(base_font, "B", font_size)
     pdf.set_xy(x + col_cat, y)
-    pdf.cell(col_pe + col_item, h_header1+h_header2, "Testing Checklist", 1, 0, "C")
-    pdf.cell(col_test * 3, h_header1, "Test Results (Record as Pass/Fail) or Numeric Results", 1, 0, "C")
-    pdf.cell(col_remark, h_header1 + h_header2, "Remark", 1, 0, "C")
+    pdf.cell(col_pe + col_item, h_header1+h_header2, get_text(lang, "testing_checklist"), 1, 0, "C")
+    pdf.cell(col_test * 3, h_header1, get_text(lang, "test_results"), 1, 0, "C")
+    pdf.cell(col_remark, h_header1 + h_header2, get_text(lang, "remark"), 1, 0, "C")
     y += h_header1
 
     pdf.set_xy(x + col_cat, y)
     pdf.cell(col_pe + col_item, h_header2, "", 0, 0, "C")
-    pdf.cell(col_test, h_header2, "1st TEST", 1, 0, "C")
-    pdf.cell(col_test, h_header2, "2nd TEST", 1, 0, "C")
-    pdf.cell(col_test, h_header2, "3rd TEST", 1, 0, "C")
+    # pdf.cell(col_test, h_header2, "1st TEST", 1, 0, "C")
+    # pdf.cell(col_test, h_header2, "2nd TEST", 1, 0, "C")
+    # pdf.cell(col_test, h_header2, "3rd TEST", 1, 0, "C")
+    pdf.cell(col_test, h_header2, get_text(lang, "1st_test"), 1, 0, "C")
+    pdf.cell(col_test, h_header2, get_text(lang, "2nd_test"), 1, 0, "C")
+    pdf.cell(col_test, h_header2, get_text(lang, "3rd_test"), 1, 0, "C")
+
     y += h_header2
     y_body_start = y
 
@@ -656,7 +1446,17 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     # ==========================================
     # ส่วนที่ 1: PE.Continuity (แสดงผล Pass/Fail)
     # ==========================================
-    items = ["Left Cover", "Right Cover", "Front Cover", "Back Cover", "Charger Stand", "Pin PE"]
+    # items = ["Left Cover", "Right Cover", "Front Cover", "Back Cover", "Charger Stand", "Pin PE"]
+    # items = PE_ITEM_KEYS
+    items = [
+        ("left_cover", "leftCover"),
+        ("right_cover", "rightCover"),
+        ("front_cover", "frontCover"),
+        ("back_cover", "backCover"),
+        ("charger_stand", "chargerStand"),
+        ("pin_pe", "pinPE"),
+    ]
+
 
     # Mapping ชื่อรายการ -> Key ใน JSON ของคุณ
     pe_key_map = {
@@ -673,7 +1473,14 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     pe_h = pe_rows * h_row
     pdf.rect(x + col_cat, y, col_pe, pe_h) # กรอบ
 
-    pe_text_lines = ["PE.Continuity", "protective", "Conductors of", "Charger"]
+    # pe_text_lines = ["PE.Continuity", "protective", "Conductors of", "Charger"]
+    pe_text_lines = [
+        get_text(lang, "pe_continuity"),
+        get_text(lang, "protective"),
+        get_text(lang, "conductors_of"),
+        get_text(lang, "charger"),
+    ]
+
     text_y = y + (pe_h - (len(pe_text_lines) * 4.0)) / 2.0
     pdf.set_font(base_font, "", font_size - 1)
     for i, ln in enumerate(pe_text_lines):
@@ -684,50 +1491,91 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     # ดึง Data ก้อน PE Continuity
     pe_data = safety.get("peContinuity", {})
 
-    for txt in items:
-        row_y = y
-        db_key = pe_key_map.get(txt)
+    # for txt in items:
+    #     row_y = y
+    #     db_key = pe_key_map.get(txt)
 
-        # ดึงข้อมูล r1, r2, r3 (Value และ Result)
+    #     # ดึงข้อมูล r1, r2, r3 (Value และ Result)
+    #     v1, r1 = _get_val_res(pe_data.get("r1", {}).get(db_key))
+    #     v2, r2 = _get_val_res(pe_data.get("r2", {}).get(db_key))
+    #     v3, r3 = _get_val_res(pe_data.get("r3", {}).get(db_key))
+
+    #     # เพิ่มหน่วย Ω (โอมห์) ต่อท้ายค่าความต้านทาน
+    #     if v1.strip():
+    #         v1 = v1 + " Ω"
+    #     if v2.strip():
+    #         v2 = v2 + " Ω"
+    #     if v3.strip():
+    #         v3 = v3 + " Ω"
+
+    #     # remark_txt = safety.get("remarks", {}).get(db_key, "")
+    #     remark_txt = safety.get("remarks", {}).get(db_key, "")
+        
+    #     if remark_txt == "-":
+    #         remark_txt = ""
+
+    #     # วาดแถว
+    #     pdf.set_xy(x, row_y)
+    #     pdf.cell(col_cat, h_row, "", 0, 0, "C")
+    #     pdf.set_xy(x + col_cat + col_pe, row_y)
+    #     # pdf.cell(col_item, h_row, txt, 1, 0, "L")
+    #     pdf.cell(col_item, h_row, get_text(lang, txt), 1, 0, "L")
+
+    #     # วาดกรอบและเส้นแบ่งให้แน่นอน
+    #     current_x = pdf.get_x()
+        
+    #     # Test 1
+    #     pdf.rect(current_x, row_y, col_test, h_row)  # กรอบนอก
+    #     pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)  # เส้นกลาง
+    #     draw_result_pair(pdf, col_test, h_row, v1, r1)
+    #     current_x += col_test
+        
+    #     # Test 2
+    #     pdf.rect(current_x, row_y, col_test, h_row)
+    #     pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
+    #     draw_result_pair(pdf, col_test, h_row, v2, r2)
+    #     current_x += col_test
+        
+    #     # Test 3
+    #     pdf.rect(current_x, row_y, col_test, h_row)
+    #     pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
+    #     draw_result_pair(pdf, col_test, h_row, v3, r3)
+    #     current_x += col_test
+
+    #     pdf.set_xy(current_x, row_y)
+    #     pdf.cell(col_remark, h_row, remark_txt, 1, 0, "L")
+    #     y += h_row
+    
+    for label_key, db_key in items:
+        row_y = y
+
+        # ดึงข้อมูล r1, r2, r3
         v1, r1 = _get_val_res(pe_data.get("r1", {}).get(db_key))
         v2, r2 = _get_val_res(pe_data.get("r2", {}).get(db_key))
         v3, r3 = _get_val_res(pe_data.get("r3", {}).get(db_key))
 
-        # เพิ่มหน่วย Ω (โอมห์) ต่อท้ายค่าความต้านทาน
-        if v1.strip():
-            v1 = v1 + " Ω"
-        if v2.strip():
-            v2 = v2 + " Ω"
-        if v3.strip():
-            v3 = v3 + " Ω"
+        remark_txt = safety.get("remarks", {}).get(db_key, "") or ""
 
-        # remark_txt = safety.get("remarks", {}).get(db_key, "")
-        remark_txt = safety.get("remarks", {}).get(db_key, "")
-        
-        if remark_txt == "-":
-            remark_txt = ""
-
-        # วาดแถว
         pdf.set_xy(x, row_y)
         pdf.cell(col_cat, h_row, "", 0, 0, "C")
-        pdf.set_xy(x + col_cat + col_pe, row_y)
-        pdf.cell(col_item, h_row, txt, 1, 0, "L")
 
-        # วาดกรอบและเส้นแบ่งให้แน่นอน
+        pdf.set_xy(x + col_cat + col_pe, row_y)
+        pdf.cell(col_item, h_row, get_text(lang, label_key), 1, 0, "L")
+
         current_x = pdf.get_x()
-        
+
         # Test 1
-        pdf.rect(current_x, row_y, col_test, h_row)  # กรอบนอก
-        pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)  # เส้นกลาง
+        pdf.rect(current_x, row_y, col_test, h_row)
+        pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
         draw_result_pair(pdf, col_test, h_row, v1, r1)
         current_x += col_test
-        
+
         # Test 2
         pdf.rect(current_x, row_y, col_test, h_row)
         pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
         draw_result_pair(pdf, col_test, h_row, v2, r2)
         current_x += col_test
-        
+
         # Test 3
         pdf.rect(current_x, row_y, col_test, h_row)
         pdf.line(current_x + col_test/2, row_y, current_x + col_test/2, row_y + h_row)
@@ -736,17 +1584,20 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
 
         pdf.set_xy(current_x, row_y)
         pdf.cell(col_remark, h_row, remark_txt, 1, 0, "L")
+
         y += h_row
+
 
     
     # ==========================================
     # ส่วนที่ 2: RCD (แสดง Trip Time + Result)
     # ==========================================
     rcd_rows = [
-        ("RCD type A", "typeA", "mA"),
-        ("RCD type F", "typeF", "mA"),
-        ("RCD type B", "typeB", "mA"),
+        (get_text(lang, "rcd_type_a"), "typeA", "mA"),
+        (get_text(lang, "rcd_type_f"), "typeF", "mA"),
+        (get_text(lang, "rcd_type_b"), "typeB", "mA"),
     ]
+
     rcd_data = safety.get("rcd", {})
     rcd_remark_data = safety.get("remarks", {})
 
@@ -765,7 +1616,13 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
         trip3, res3 = _get_rcd_val_res(r3_data)
 
         # Remark
-        rem_key = "rcd" + key[0].upper() + key[1:]
+        # rem_key = "rcd" + key[0].upper() + key[1:]
+        rem_key = {
+            "typeA": "rcdTypeA",
+            "typeF": "rcdTypeF",
+            "typeB": "rcdTypeB",
+        }.get(key, "")
+
         remark_txt = rcd_remark_data.get(rem_key, "")
         
         if remark_txt == "-":
@@ -817,7 +1674,8 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
 
     pdf.set_xy(x, y)
     pdf.cell(col_cat, h_row, "", 0, 0, "C")
-    pdf.cell(col_pe, h_row, "Power standby", 1, 0, "L")
+    # pdf.cell(col_pe, h_row, "Power standby", 1, 0, "L")
+    pdf.cell(col_pe, h_row, get_text(lang, "power_standby"), 1, 0, "L")
     pdf.cell(col_item, h_row, "", 1, 0, "C")
 
     pdf.set_font(base_font, "", font_size - 1)
@@ -836,7 +1694,8 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     pdf.rect(x, table_y0, col_cat, total_height)  
 
     pdf.set_font(base_font, "B", 20)
-    text = "Electrical Safety"
+    # text = "Electrical Safety"
+    text = get_text(lang, "electrical_safety")
     text_w = pdf.get_string_width(text)
     text_x = x + col_cat / 2.0
     text_y = table_y0 + (total_height + text_w) / 2.0
@@ -851,8 +1710,16 @@ def draw_testing_topics_safety_section(pdf, x, y, base_font, font_size,
     return y
 
 
-def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
-                                    table_width=None, safety=None, doc=None, lang="en"):
+def draw_charging_procresss_testing(
+    pdf, 
+    x, 
+    y, 
+    base_font, 
+    font_size,
+    table_width=None, 
+    safety=None, 
+    lang="en"
+):
 
     # 1. จัดการข้อมูลนำเข้า
     safety = safety or {}
@@ -966,7 +1833,7 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
     # -----------------------------------------------------------
     pdf.set_xy(x, y)
     pdf.set_font(base_font, "BU", font_size)
-    pdf.cell(table_width, 6, "Charging Process Testing", 0, 1, "L")
+    pdf.cell(table_width, 6, get_text(lang, "charging_process_testing"), 0, 1, "L")
 
     y = pdf.get_y() + 1.5  # ระยะห่างหลังหัวข้อ (ลดจาก 2)
     table_y0 = y 
@@ -977,9 +1844,13 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
 
     # Row 1
     pdf.set_xy(x + col_cat, y)
-    pdf.cell(col_checklist, h_header * 2, "Testing Checklist", 1, 0, "C")
-    pdf.cell(col_test_group * 3, h_header, "Test Results (Record as Pass/Fail) or Numeric Results", 1, 0, "C")
-    pdf.cell(col_remark, h_header * 3, "Remark", 1, 0, "C")
+    # pdf.cell(col_checklist, h_header * 2, "Testing Checklist", 1, 0, "C")
+    # pdf.cell(col_test_group * 3, h_header, "Test Results (Record as Pass/Fail) or Numeric Results", 1, 0, "C")
+    # pdf.cell(col_remark, h_header * 3, "Remark", 1, 0, "C")
+    pdf.cell(col_checklist, h_header * 2, get_text(lang, "testing_checklist"), 1, 0, "C")
+    pdf.cell(col_test_group * 3, h_header, get_text(lang, "test_results"), 1, 0, "C")
+    pdf.cell(col_remark, h_header * 3, get_text(lang, "remark"), 1, 0, "C")
+
     y += h_header
 
     # Row 2
@@ -1007,14 +1878,15 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
     
     # รายการที่ต้องแสดง (Label ใน PDF, Key ใน JSON)
     items = [
-        ("Continuity PE",    "continuityPE",     "Ω"),   # ข้อ 1
-        ("Insulation Cable", "insulationCable",  "Ω"),   # ข้อ 2
-        ("State A",          "stateA",           "V"),   # ข้อ 3
-        ("State B",          "stateB",           "V"),   # ข้อ 4
-        ("State C",          "stateC",           "V"),   # ข้อ 5
-        ("CP Short",         "CPShort",          "V"),   # ข้อ 6
-        ("PE Cut",           "PECut",            "V"),   # ข้อ 7
+        ("continuity_pe", "continuityPE", "Ω"),
+        ("insulation_cable", "insulationCable", "Ω"),
+        ("state_a", "stateA", "V"),
+        ("state_b", "stateB", "V"),
+        ("state_c", "stateC", "V"),
+        ("cp_short", "CPShort", "V"),
+        ("pe_cut", "PECut", "V"),
     ]
+
 
     # ดึงข้อมูล r1, r2, r3 ออกมาเตรียมไว้ (เพื่อความง่ายในการเรียกใช้)
     # ตาม JSON: peContinuity -> r1 -> [key]
@@ -1044,7 +1916,9 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
         pdf.set_xy(x + col_cat, y)
 
         # 1. ชื่อรายการ
-        pdf.cell(col_checklist, h_row, label_txt, 1, 0, "L")
+        # pdf.cell(col_checklist, h_row, label_txt, 1, 0, "L")
+        pdf.cell(col_checklist, h_row, get_text(lang, label_txt), 1, 0, "L")
+
 
         # 2. ผลการทดสอบ 1st - ⭐ ส่งทั้ง value, result และ unit
         current_x = pdf.get_x()
@@ -1223,7 +2097,8 @@ def draw_charging_procresss_testing(pdf, x, y, base_font, font_size,
     pdf.rect(x, table_y0, col_cat, total_height)
     
     pdf.set_font(base_font, "B", 20)
-    text = "Charger Safety"
+    # text = "Charger Safety"
+    text = get_text(lang, "charger_safety")
     text_width = pdf.get_string_width(text)
     
     center_x = x + (col_cat / 2.0) + 2.5
@@ -1288,7 +2163,15 @@ def _draw_check(pdf: FPDF, x: float, y: float, size: float, checked: bool, style
         pdf.set_line_width(lw_old)
 
 
-def draw_remark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float, w: float, doc: dict = None, lang: str = "en") -> float:
+def draw_remark_and_symbol_section(
+    pdf: FPDF, 
+    base_font: str, 
+    x: float, 
+    y: float, 
+    w: float, 
+    doc: dict = None,
+    lang: str = "en"
+) -> float:
 
     # 1. รับข้อมูล (กัน Error ถ้า doc เป็น None)
     doc = doc or {}
@@ -1346,7 +2229,15 @@ def draw_remark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float
 
     return y
 
-def draw_IMGremark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: float, w: float, doc: dict = None) -> float:
+def draw_IMGremark_and_symbol_section(
+    pdf: FPDF, 
+    base_font: str, 
+    x: float, 
+    y: float, 
+    w: float, 
+    doc: dict = None,
+    lang: str = "en"
+) -> float:
 
     # 1. รับข้อมูล (กัน Error ถ้า doc เป็น None)
     doc = doc or {}
@@ -1405,7 +2296,7 @@ def draw_IMGremark_and_symbol_section(pdf: FPDF, base_font: str, x: float, y: fl
     return y
 
 
-def _draw_signature_footer(pdf: FPDF, base_font: str, db_data: dict) -> None:
+def _draw_signature_footer(pdf: FPDF, base_font: str, db_data: dict, lang: str = "en") -> None:
     """วาดส่วนลายเซ็นที่ footer ของทุกหน้า (ช่องว่างเปล่า)"""
 
     # 2. ตั้งค่าขนาดให้เต็มกรอบนอกสุดของเอกสาร
@@ -1429,11 +2320,25 @@ def _draw_signature_footer(pdf: FPDF, base_font: str, db_data: dict) -> None:
     pdf.set_xy(x, y)
     pdf.set_font(base_font, "B", FONT_MAIN)
 
+    # headers = [
+    #     ("Responsibility", col_label_w),
+    #     ("Performed by", col_data_w),
+    #     ("Approved by", col_data_w),
+    #     ("Witnessed by", col_data_w)
+    # ]
+    
     headers = [
-        ("Responsibility", col_label_w),
-        ("Performed by", col_data_w),
-        ("Approved by", col_data_w),
-        ("Witnessed by", col_data_w)
+        (get_text(lang, "responsibility"), col_label_w),
+        (get_text(lang, "performed_by"), col_data_w),
+        (get_text(lang, "approved_by"), col_data_w),
+        (get_text(lang, "witnessed_by"), col_data_w)
+    ]
+
+    rows_config = [
+        get_text(lang, "name"),
+        get_text(lang, "signature"),
+        get_text(lang, "date"),
+        get_text(lang, "company")
     ]
 
     # วาด header cells (ไม่ต้องใส่ border เพราะมีกรอบนอกแล้ว)
@@ -1632,10 +2537,16 @@ def load_image_autorotate(path_or_bytes: Union[str, Path, BytesIO]) -> BytesIO:
             return path_or_bytes
         return BytesIO() # Return empty buffer on failure
 
-def _draw_header_picture(pdf: FPDF, base_font: str, issue_id: str = "-", lang: str = "en", inset_mm: float = 6.0) -> float:
+def _draw_header_picture(
+    pdf: FPDF, 
+    base_font: str, 
+    issue_id: str = "-", 
+    inset_mm: float = 6.0, 
+    lang: str = "en"
+) -> float:
     page_w = pdf.w - 2*inset_mm
     x0 = inset_mm
-    y_top = inset_mm + 2  # เพิ่ม 2mm ให้ header ขยับลงมา (ลดจาก 4mm)
+    y_top = inset_mm + 2
 
     col_left, col_mid = 40, 120
     col_right = page_w - col_left - col_mid
@@ -1675,8 +2586,11 @@ def _draw_header_picture(pdf: FPDF, base_font: str, issue_id: str = "-", lang: s
     pdf.set_font(base_font, "B", 20)   # ลดฟอนต์ลงจาก 25
     start_y = y_top + (h_all - LINE_H_HEADER) / 2
 
+    # pdf.set_xy(box_x + 3, start_y)
+    # pdf.cell(col_mid - 6, LINE_H_HEADER, "Photos", align="C")
+    
     pdf.set_xy(box_x + 3, start_y)
-    pdf.cell(col_mid - 6, LINE_H_HEADER, "Photos", align="C")
+    pdf.cell(col_mid - 6, LINE_H_HEADER, get_text(lang, "photos"), align="C")
 
     # ----- กล่องขวา (Issue ID) ----- #
     xr = x0 + col_left + col_mid
@@ -1684,15 +2598,23 @@ def _draw_header_picture(pdf: FPDF, base_font: str, issue_id: str = "-", lang: s
 
     pdf.set_xy(xr, y_top + 1)
     pdf.set_font(base_font, "B", FONT_MAIN - 1)
-    pdf.multi_cell(col_right, LINE_H_HEADER, f"Issue ID\n{issue_id}", align="C")
+    # pdf.multi_cell(col_right, LINE_H_HEADER, f"Issue ID\n{issue_id}", align="C")
+    pdf.multi_cell(col_right, LINE_H_HEADER, f"{get_text(lang, 'issue_id')}\n{issue_id}", align="C")
 
     return y_top + h_all
 
-def _draw_picture_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict, lang: str = "en"):
+def _draw_picture_page(
+    pdf: FPDF, 
+    base_font: str, 
+    issue_id: str, 
+    doc: dict,
+    lang: str = "en"
+):
 
     pdf.add_page()
     
-    header_bottom = _draw_header_picture(pdf, base_font, issue_id, lang)
+    # header_bottom = _draw_header_picture(pdf, base_font, issue_id, lang)
+    header_bottom = _draw_header_picture(pdf, base_font, issue_id, 6.0, lang)
     FRAME_INSET = 6
     FRAME_BOTTOM = 5
     pdf.set_line_width(LINE_W_OUTER)
@@ -1707,7 +2629,8 @@ def _draw_picture_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict, lang
     # -------------------------------------------------------
     # 1. วาด Header Photos
     # -------------------------------------------------------
-    header_bottom_y = _draw_header_picture(pdf, base_font, issue_id, lang)
+    # header_bottom_y = _draw_header_picture(pdf, base_font, issue_id, lang)
+    header_bottom_y = _draw_header_picture(pdf, base_font, issue_id, 6.0, lang)
     y = header_bottom_y + 0.5  # ระยะห่างระหว่าง header กับเนื้อหา (ลดจาก 3)
     
     # -------------------------------------------------------
@@ -1975,552 +2898,190 @@ def _draw_photos_row(
     pdf.set_xy(x + q_w + g_w, y)
     return row_h
 
-# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-# ★★★ ฟังก์ชันสำหรับ Attachments และ PDF Merge ★★★
-# ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+# def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "en") -> bytes:
+    
+#     # ตั้งค่า font size ตามภาษา
+#     global FONT_MAIN, FONT_SMALL, LINE_H, LINE_H_HEADER, ROW_MIN_H
+    
+#     font_config = FONT_CONFIG.get(lang, FONT_CONFIG["en"])
+#     FONT_MAIN = font_config["main"]
+#     FONT_SMALL = font_config["small"]
+#     LINE_H = font_config["line_h"]
+#     LINE_H_HEADER = font_config["line_h_header"]
+#     ROW_MIN_H = font_config["row_min_h"]
+    
+#     pdf = HTML2PDF(unit="mm", format="A4")
+#     pdf.set_margins(left=10, top=15, right=10)
+#     pdf.set_auto_page_break(auto=True, margin=40)
 
-TEST_ITEMS_CHARGER = [
-    "Continuity PE",
-    "Insulation Cable",
-    "State A",
-    "State B",
-    "State C",
-    "CP Short",
-    "PE Cut",
-    "Emergency",
-    "RCD type A",
-    "RCD type F",
-    "RCD type B",
-    "RDC-DD",
-]
+#     # ตั้งค่าภาษา
+#     pdf.lang = lang
+    
+#     pdf = HTML2PDF(unit="mm", format="A4")
+#     pdf.set_margins(left=10, top=15, right=10)
+#     # Bottom margin = 5mm + 35mm (signature height) = 40mm
+#     pdf.set_auto_page_break(auto=True, margin=40)
 
-def _get_test_files_list(doc: dict) -> List[Dict[str, Any]]:
-    """
-    ดึงรายการไฟล์แนบทั้งหมดจาก test_files
-    Returns: List of dict with keys: test_type, item_index, round_index, handgun, filename, url, ext
-    """
-    test_files = doc.get("test_files", {}) or {}
-    files_list = []
-    
-    try:
-        for test_type in ["electrical", "charger"]:
-            type_data = test_files.get(test_type, {})
-            if not type_data or not isinstance(type_data, dict):
-                continue
-                
-            for item_index_str, rounds_data in type_data.items():
-                # ข้ามถ้า key ไม่ใช่ตัวเลข
-                try:
-                    item_index = int(item_index_str)
-                except (ValueError, TypeError):
-                    continue
-                
-                if not rounds_data or not isinstance(rounds_data, dict):
-                    continue
-                
-                for round_index_str, handguns_data in rounds_data.items():
-                    # ข้ามถ้า key ไม่ใช่ตัวเลข
-                    try:
-                        round_index = int(round_index_str)
-                    except (ValueError, TypeError):
-                        continue
-                    
-                    if not handguns_data or not isinstance(handguns_data, dict):
-                        continue
-                    
-                    for handgun in ["h1", "h2"]:
-                        file_data = handguns_data.get(handgun)
-                        if not file_data or not isinstance(file_data, dict):
-                            continue
-                        
-                        # ตรวจสอบว่ามี url หรือ filename
-                        if not file_data.get("url") and not file_data.get("filename"):
-                            continue
-                        
-                        files_list.append({
-                            "test_type": test_type,
-                            "item_index": item_index,
-                            "round_index": round_index,
-                            "handgun": handgun.upper(),
-                            "filename": file_data.get("filename", ""),
-                            "original_name": file_data.get("originalName", file_data.get("filename", "")),
-                            "url": file_data.get("url", ""),
-                            "ext": str(file_data.get("ext", "")).lower(),
-                        })
-    except Exception as e:
-        print(f"[PDF] Error parsing test_files: {e}")
-        return []
-    
-    return files_list
+#     # ---- โหลดฟอนต์ไทยให้แน่นอนก่อน set_font ----
+#     base_font = "THSarabun" if add_all_thsarabun_fonts(pdf) else "Arial"
+#     pdf.set_font(base_font, size=FONT_MAIN)
+#     pdf.set_line_width(LINE_W_INNER)
 
+#     # ตั้งค่าข้อมูลสำหรับ signature footer
+#     pdf.base_font_name = base_font
+#     pdf.signature_data = doc
+#     pdf.show_signature_footer = True
 
-def _resolve_test_file_path(url_path: str) -> Optional[str]:
-    """
-    แปลง URL path เป็น absolute file path
-    """
-    if not url_path:
-        return None
-    
-    raw = str(url_path).strip()
-    
-    # Strip leading slash
-    clean_path = raw.lstrip("/")
-    
-    if clean_path.startswith("uploads/"):
-        rel_after_uploads = clean_path[len("uploads/"):]
-    else:
-        rel_after_uploads = clean_path
-    
-    # หา backend/uploads
-    current_file = Path(__file__).resolve()
-    backend_root = None
-    
-    for p in current_file.parents:
-        if p.name.lower() == "backend" and p.exists():
-            backend_root = p
-            break
-    
-    if backend_root is None:
-        for i in range(1, 4):
-            cand = current_file.parents[i] if i < len(current_file.parents) else None
-            if cand and (cand / "backend").exists():
-                backend_root = cand / "backend"
-                break
-    
-    if backend_root:
-        uploads_root = backend_root / "uploads"
-        if uploads_root.exists():
-            candidate = uploads_root / rel_after_uploads
-            if candidate.exists() and candidate.is_file():
-                return str(candidate)
-    
-    return None
+#     issue_id = str(doc.get("issue_id", "-"))
 
+#     left = pdf.l_margin
+#     right = pdf.r_margin
+#     page_w = pdf.w - left - right - 1
+#     x0 = left + 0.5
+#     EDGE_ALIGN_FIX = (LINE_W_OUTER - LINE_W_INNER) / 2.0
 
-def _draw_header_attachments(pdf: FPDF, base_font: str, issue_id: str = "-", inset_mm: float = 6.0) -> float:
-    """วาด Header สำหรับหน้า Attachments"""
-    page_w = pdf.w - 2*inset_mm
-    x0 = inset_mm
-    y_top = inset_mm + 2
+#     col_left, col_mid = 40, 120
+#     col_right = page_w - col_left - col_mid
 
-    col_left, col_mid = 40, 120
-    col_right = page_w - col_left - col_mid
+    
+#     pdf.set_line_width(LINE_W_INNER)
 
-    h_all = 10
+#     # เริ่มหน้าแรกด้วย add_page แล้วเรียก header ทันที (สำคัญ)
+#     pdf.add_page()
+#     y = _draw_header(pdf, base_font, issue_id)
+    
+#     # ✅ วาดกรอบนอกครั้งเดียว (ชิดท้าย header)
+#     FRAME_INSET = 6  # ระยะห่างจากขอบกระดาษ
+#     FRAME_TOP = y  # ชิดติดท้าย header
+#     FRAME_BOTTOM = 5  # ระยะห่างจากขอบล่าง
+#     pdf.set_line_width(LINE_W_OUTER)  # ใช้เส้นหนาสำหรับกรอบนอก
+#     pdf.rect(FRAME_INSET, FRAME_TOP, 198, pdf.h - FRAME_TOP - FRAME_BOTTOM)
+#     pdf.set_line_width(LINE_W_INNER)  # คืนค่าเส้นปกติ
 
-    pdf.set_line_width(LINE_W_INNER)
-    
-    # ----- โลโก้ ----- #
-    pdf.rect(x0, y_top, col_left, h_all)
-    logo_path = _resolve_logo_path()
-    if logo_path:
-        IMG_W = 28
-        try:
-            from PIL import Image
-            with Image.open(logo_path) as img:
-                orig_w, orig_h = img.size
-                aspect_ratio = orig_h / orig_w
-                IMG_H = IMG_W * aspect_ratio
-            
-            img_x = x0 + (col_left - IMG_W) / 2
-            img_y = y_top + (h_all - IMG_H) / 2
-            pdf.image(logo_path.as_posix(), x=img_x, y=img_y, w=IMG_W)
-        except Exception:
-            pass
+#     # ====== ฟอร์มรายละเอียดตามภาพ ======
+#     head = doc.get("head", {}) or {}
+#     manufacturer = head.get("manufacturer")
+#     model        = head.get("model", "")
+#     power        = head.get("power", "")
+#     serial_no    = head.get("serial_number", "")
+#     location     = head.get("location", "")
+#     firmware     = head.get("firmware_version", "")
+#     inspection   = str(doc.get("inspection_date") or "")
 
-    # ----- กล่องกลาง ----- #
-    box_x = x0 + col_left
-    pdf.rect(box_x, y_top, col_mid, h_all)
+#     y = _draw_ev_header_form(pdf, base_font, x0, y, page_w,
+#                          manufacturer, model, power, serial_no,
+#                          location, firmware, inspection,
+#                          power_w_mm=30.0) 
 
-    pdf.set_font(base_font, "B", 20)
-    start_y = y_top + (h_all - LINE_H_HEADER) / 2
+#     eq = doc.get("equipment") or {}
+#     mans = eq.get("manufacturers") or []
+#     mods = eq.get("models") or []
+#     sns  = eq.get("serialNumbers") or []
 
-    pdf.set_xy(box_x + 3, start_y)
-    pdf.cell(col_mid - 6, LINE_H_HEADER, "Attachments", align="C")
+#     rows = max(len(mans), len(mods), len(sns))
 
-    # ----- กล่องขวา (Issue ID) ----- #
-    xr = x0 + col_left + col_mid
-    pdf.rect(xr, y_top, col_right, h_all)
-
-    pdf.set_xy(xr, y_top + 1)
-    pdf.set_font(base_font, "B", FONT_MAIN - 1)
-    pdf.multi_cell(col_right, LINE_H_HEADER, f"Issue ID\n{issue_id}", align="C")
-
-    return y_top + h_all
-
-
-def _draw_attachments_list_page(pdf: FPDF, base_font: str, issue_id: str, doc: dict) -> List[Tuple[str, str, int, float, float, float, float]]:
-    """
-    วาดหน้ารายการไฟล์แนบ (แยกตามรอบ)
-    Returns: List of tuples (pdf_path, bookmark_name, page_num, x, y, w, h) สำหรับ PDF ที่ต้องรวม
-    """
-    files_list = _get_test_files_list(doc)
-    
-    if not files_list:
-        return []
-    
-    # ★★★ Step 1: เก็บข้อมูลไฟล์ PDF และนับหน้า ★★★
-    pdf_file_data = []  # [{path, bookmark, num_pages, file_info}, ...]
-    
-    # จัดกลุ่มและเรียงลำดับไฟล์
-    files_by_round: Dict[int, List[Dict]] = {}
-    for file_info in files_list:
-        round_idx = file_info["round_index"]
-        if round_idx not in files_by_round:
-            files_by_round[round_idx] = []
-        files_by_round[round_idx].append(file_info)
-    
-    sorted_rounds = sorted(files_by_round.keys())
-    for round_idx in sorted_rounds:
-        files_by_round[round_idx].sort(key=lambda x: (x["item_index"], 0 if x["handgun"] == "H1" else 1))
-    
-    # นับหน้าของแต่ละ PDF
-    for round_idx in sorted_rounds:
-        for file_info in files_by_round[round_idx]:
-            if file_info["ext"] == "pdf":
-                pdf_path = _resolve_test_file_path(file_info["url"])
-                if pdf_path and HAS_PYPDF2 and Path(pdf_path).exists():
-                    try:
-                        with open(pdf_path, 'rb') as f:
-                            reader = PdfReader(f)
-                            num_pages = len(reader.pages)
-                        
-                        item_idx = file_info["item_index"]
-                        if file_info["test_type"] == "charger" and 0 <= item_idx < len(TEST_ITEMS_CHARGER):
-                            item_name = TEST_ITEMS_CHARGER[item_idx]
-                        else:
-                            item_name = f"Item {item_idx + 1}"
-                        
-                        bookmark_name = f"R{round_idx+1}_{item_name}_{file_info['handgun']}"
-                        
-                        pdf_file_data.append({
-                            "path": pdf_path,
-                            "bookmark": bookmark_name,
-                            "num_pages": num_pages,
-                            "file_info": file_info,
-                        })
-                    except Exception as e:
-                        print(f"[PDF] Error reading {pdf_path}: {e}")
-    
-    # ★★★ Step 2: คำนวณเลขหน้าล่วงหน้า ★★★
-    current_main_pages = pdf.page  # จำนวนหน้าปัจจุบันของ PDF หลัก
-    
-    # ประมาณจำนวนหน้าของ attachments list (1-2 หน้า)
-    estimated_list_pages = 1
-    if len(files_list) > 20:
-        estimated_list_pages = 2
-    if len(files_list) > 40:
-        estimated_list_pages = 3
-    
-    # คำนวณเลขหน้าเริ่มต้นของแต่ละ PDF
-    # +1 เพราะ current_main_pages คือหน้าปัจจุบัน และหน้า attachments list จะเพิ่มอีก
-    first_attachment_page = current_main_pages + estimated_list_pages + 1
-    page_numbers = []  # เลขหน้าเริ่มต้นของแต่ละ PDF
-    current_page = first_attachment_page
-    
-    for pdf_info in pdf_file_data:
-        page_numbers.append(current_page)
-        current_page += pdf_info["num_pages"]
-    
-    # ★★★ Step 3: วาดหน้า Attachments List ★★★
-    pdf.add_page()
-    
-    header_bottom = _draw_header_attachments(pdf, base_font, issue_id)
-    
-    FRAME_INSET = 6
-    FRAME_BOTTOM = 5
-    pdf.set_line_width(LINE_W_OUTER)
-    pdf.rect(FRAME_INSET, header_bottom, 198, pdf.h - header_bottom - FRAME_BOTTOM)
-    pdf.set_line_width(LINE_W_INNER)
-    
-    y = header_bottom + 3
-    x0 = 10
-    page_w = pdf.w - 20
-    
-    pdf.set_font(base_font, "BU", FONT_MAIN)
-    pdf.set_xy(x0, y)
-    pdf.cell(page_w, 6, "Attached Test Files", border=0, align="L")
-    y += 8
-    
-    col_no = 10
-    col_test = 55
-    col_gun = 15
-    col_filename = page_w - col_no - col_test - col_gun - 15
-    col_page = 15
-    row_h = 6
-    
-    pdf_files_to_merge: List[Tuple[str, str, int, float, float, float, float]] = []
-    file_counter = 0
-    pdf_idx = 0
-    
-    for round_idx in sorted_rounds:
-        round_files = files_by_round[round_idx]
+#     equip_items = []
+#     for i in range(rows):
+#         equip_items.append({
+#             "manufacturer": mans[i] if i < len(mans) else "",
+#             "model":        mods[i] if i < len(mods) else "",
+#             "serial_no":    sns[i]  if i < len(sns)  else "",
+#         })
         
-        if y + row_h * 4 > pdf.h - 45:
-            pdf.add_page()
-            y = 20
-        
-        pdf.set_font(base_font, "B", FONT_MAIN)
-        pdf.set_fill_color(220, 220, 220)
-        pdf.set_xy(x0, y)
-        pdf.cell(page_w, row_h + 1, f"Round {round_idx + 1}", 1, 0, "L", fill=True)
-        y += row_h + 2
-        
-        pdf.set_font(base_font, "B", FONT_SMALL)
-        pdf.set_fill_color(245, 245, 245)
-        pdf.set_xy(x0, y)
-        pdf.cell(col_no, row_h, "No.", 1, 0, "C", fill=True)
-        pdf.cell(col_test, row_h, "Test Item", 1, 0, "C", fill=True)
-        pdf.cell(col_gun, row_h, "Gun", 1, 0, "C", fill=True)
-        pdf.cell(col_filename, row_h, "Filename", 1, 0, "C", fill=True)
-        pdf.cell(col_page, row_h, "Page", 1, 0, "C", fill=True)
-        y += row_h
-        
-        pdf.set_font(base_font, "", FONT_SMALL)
-        
-        for file_info in round_files:
-            file_counter += 1
-            
-            if y + row_h > pdf.h - 45:
-                pdf.add_page()
-                y = 20
-                pdf.set_font(base_font, "B", FONT_SMALL)
-                pdf.set_fill_color(245, 245, 245)
-                pdf.set_xy(x0, y)
-                pdf.cell(col_no, row_h, "No.", 1, 0, "C", fill=True)
-                pdf.cell(col_test, row_h, "Test Item", 1, 0, "C", fill=True)
-                pdf.cell(col_gun, row_h, "Gun", 1, 0, "C", fill=True)
-                pdf.cell(col_filename, row_h, "Filename", 1, 0, "C", fill=True)
-                pdf.cell(col_page, row_h, "Page", 1, 0, "C", fill=True)
-                y += row_h
-                pdf.set_font(base_font, "", FONT_SMALL)
-            
-            if file_info["test_type"] == "charger":
-                item_idx = file_info["item_index"]
-                if 0 <= item_idx < len(TEST_ITEMS_CHARGER):
-                    item_name = TEST_ITEMS_CHARGER[item_idx]
-                else:
-                    item_name = f"Item {item_idx + 1}"
-            else:
-                item_name = f"Electrical Item {file_info['item_index'] + 1}"
-            
-            pdf.set_xy(x0, y)
-            pdf.cell(col_no, row_h, str(file_counter), 1, 0, "C")
-            pdf.cell(col_test, row_h, item_name[:30], 1, 0, "L")
-            pdf.cell(col_gun, row_h, file_info["handgun"], 1, 0, "C")
-            
-            filename_display = file_info["original_name"] or file_info["filename"]
-            
-            if file_info["ext"] == "pdf":
-                pdf_path = _resolve_test_file_path(file_info["url"])
-                if pdf_path and HAS_PYPDF2 and pdf_idx < len(pdf_file_data):
-                    pdf_info = pdf_file_data[pdf_idx]
-                    target_page = page_numbers[pdf_idx]
-                    pdf_idx += 1
-                    
-                    pdf.cell(col_filename, row_h, filename_display[:35], 1, 0, "L")
-                    
-                    link_x = pdf.get_x()
-                    link_y = y
-                    current_page_idx = pdf.page - 1
-                    
-                    pdf_files_to_merge.append((
-                        pdf_info["path"], 
-                        pdf_info["bookmark"], 
-                        current_page_idx,
-                        link_x, link_y, col_page, row_h
-                    ))
-                    
-                    # ★★★ แสดงเลขหน้า (สีน้ำเงิน + underline) ★★★
-                    pdf.set_text_color(0, 0, 255)
-                    pdf.set_font(base_font, "U", FONT_SMALL)
-                    pdf.cell(col_page, row_h, f"#{target_page}", 1, 0, "C")
-                    pdf.set_text_color(0, 0, 0)
-                    pdf.set_font(base_font, "", FONT_SMALL)
-                else:
-                    pdf.cell(col_filename, row_h, filename_display[:35], 1, 0, "L")
-                    pdf.cell(col_page, row_h, "N/A", 1, 0, "C")
-            else:
-                ext_display = f"[{file_info['ext'].upper()}]" if file_info['ext'] else ""
-                pdf.cell(col_filename, row_h, f"{filename_display[:30]} {ext_display}", 1, 0, "L")
-                pdf.cell(col_page, row_h, "-", 1, 0, "C")
-            
-            y += row_h
-        
-        y += 3
+#     electrical_safety = doc.get("electrical_safety", {})
+#     charger_safety = doc.get("charger_safety", {})
+#     remark_text = doc.get("remarks", {}).get("testRematk", "")
     
-    y += 2
-    pdf.set_font(base_font, "I", FONT_SMALL)
-    pdf.set_xy(x0, y)
     
-    pdf_count = len(pdf_files_to_merge)
-    other_count = len(files_list) - pdf_count
-    
-    summary_text = f"Total: {len(files_list)} file(s)"
-    if pdf_count > 0:
-        summary_text += f" | {pdf_count} PDF(s) merged - Click page number to jump"
-    if other_count > 0:
-        summary_text += f" | {other_count} non-PDF"
-    
-    pdf.cell(page_w, 5, summary_text, border=0, align="L")
-    
-    return pdf_files_to_merge
 
+#     y = _draw_equipment_ident_details(pdf, base_font, x0, y, page_w, equip_items, num_rows=5)
+#     y = draw_testing_topics_safety_section(
+#         pdf,
+#         x=x0,
+#         y=y,
+#         base_font=base_font,
+#         font_size=FONT_MAIN,
+#         table_width=page_w,
+#         safety=electrical_safety,
+#         doc=doc
+#     )
 
-def _merge_pdfs(main_pdf_bytes: bytes, pdf_files_info: List[Tuple[str, str, int, float, float, float, float]]) -> bytes:
-    """
-    รวม PDF หลักกับ PDF ที่แนบมา พร้อมเพิ่ม bookmarks และ clickable links
-    pdf_files_info: List of (pdf_path, bookmark_name, link_page, x, y, w, h)
-    """
-    if not HAS_PYPDF2:
-        print("[PDF Merge] ⚠️ PyPDF2 not installed. Returning main PDF only.")
-        return main_pdf_bytes
+#     y += 2
+#     y = draw_charging_procresss_testing(
+#         pdf,
+#         x=x0,
+#         y=y,
+#         base_font=base_font,
+#         font_size=FONT_MAIN,
+#         table_width=page_w,
+#         safety=charger_safety
+#     )
     
-    if not pdf_files_info:
-        return main_pdf_bytes
-    
-    try:
-        from PyPDF2.generic import (
-            ArrayObject, DictionaryObject, FloatObject,
-            NameObject, NumberObject
-        )
-        
-        # ตรวจสอบว่ามีไฟล์ PDF จริงๆ กี่ไฟล์
-        valid_pdf_files = []
-        for item in pdf_files_info:
-            pdf_path = item[0]
-            if pdf_path and Path(pdf_path).exists():
-                valid_pdf_files.append(item)
-        
-        if not valid_pdf_files:
-            print("[PDF Merge] ⚠️ No valid PDF files found. Returning main PDF only.")
-            return main_pdf_bytes
-        
-        # นับหน้า PDF หลัก
-        main_buffer = BytesIO(main_pdf_bytes)
-        main_reader = PdfReader(main_buffer)
-        main_page_count = len(main_reader.pages)
-        
-        # รวม PDF ด้วย PdfWriter
-        writer = PdfWriter()
-        
-        # เพิ่มหน้าจาก PDF หลัก
-        main_buffer.seek(0)
-        main_reader = PdfReader(main_buffer)
-        for page in main_reader.pages:
-            writer.add_page(page)
-        
-        # คำนวณเลขหน้าปลายทางและเพิ่ม PDF ที่แนบ
-        current_page = main_page_count  # หน้าถัดไปหลัง PDF หลัก (0-indexed)
-        link_info_list = []  # [(link_page, target_page, x, y, w, h), ...]
-        
-        for item in valid_pdf_files:
-            pdf_path, bookmark_name, link_page, x, y, w, h = item
-            try:
-                with open(pdf_path, 'rb') as f:
-                    attached_reader = PdfReader(f)
-                    num_pages = len(attached_reader.pages)
-                    
-                    # เก็บข้อมูล link - ใช้ current_page ที่คำนวณจริง
-                    target_page = current_page
-                    link_info_list.append((link_page, target_page, x, y, w, h))
-                    
-                    # เพิ่มหน้าจาก PDF ที่แนบ
-                    for page in attached_reader.pages:
-                        writer.add_page(page)
-                    
-                    # เพิ่ม bookmark
-                    try:
-                        writer.add_outline_item(
-                            f"{bookmark_name} (p.{current_page + 1})",
-                            target_page
-                        )
-                    except:
-                        pass
-                    
-                    print(f"[PDF Merge] ✅ Added: {Path(pdf_path).name} → Page {current_page + 1}")
-                    current_page += num_pages
-                    
-            except Exception as e:
-                print(f"[PDF Merge] ⚠️ Error adding {pdf_path}: {e}")
-                continue
-        
-        # เพิ่ม bookmark สำหรับ Report หลัก
-        try:
-            writer.add_outline_item("📋 Test Report", 0)
-        except:
-            pass
-        
-        # ★★★ เพิ่ม clickable links ★★★
-        PT_PER_MM = 72 / 25.4
-        PAGE_HEIGHT_MM = 297
-        
-        for link_page, target_page, x, y, w, h in link_info_list:
-            try:
-                page_obj = writer.pages[link_page]
-                
-                x1_pt = x * PT_PER_MM
-                x2_pt = (x + w) * PT_PER_MM
-                y_top_pt = (PAGE_HEIGHT_MM - y) * PT_PER_MM
-                y_bottom_pt = (PAGE_HEIGHT_MM - y - h) * PT_PER_MM
-                
-                link_annot = DictionaryObject()
-                link_annot[NameObject("/Type")] = NameObject("/Annot")
-                link_annot[NameObject("/Subtype")] = NameObject("/Link")
-                link_annot[NameObject("/Rect")] = ArrayObject([
-                    FloatObject(x1_pt),
-                    FloatObject(y_bottom_pt),
-                    FloatObject(x2_pt),
-                    FloatObject(y_top_pt),
-                ])
-                link_annot[NameObject("/Border")] = ArrayObject([
-                    NumberObject(0), NumberObject(0), NumberObject(0)
-                ])
-                link_annot[NameObject("/Dest")] = ArrayObject([
-                    writer.pages[target_page].indirect_reference,
-                    NameObject("/Fit")
-                ])
-                
-                if "/Annots" not in page_obj:
-                    page_obj[NameObject("/Annots")] = ArrayObject()
-                
-                page_obj[NameObject("/Annots")].append(link_annot)
-                
-                print(f"[PDF Link] ✅ Link: page {link_page + 1} → page {target_page + 1}")
-                
-            except Exception as e:
-                print(f"[PDF Link] ⚠️ Error: {e}")
-                continue
-        
-        # Output
-        output_buffer = BytesIO()
-        writer.write(output_buffer)
-        
-        output_buffer.seek(0)
-        return output_buffer.read()
-        
-    except Exception as e:
-        print(f"[PDF Merge] ❌ Merge failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return main_pdf_bytes
+#     y += 3
+#     y = draw_remark_and_symbol_section(pdf, base_font, x0, y, page_w, doc= doc)
 
+#     # Signature จะถูกวาดอัตโนมัติที่ footer ทุกหน้า
+
+#     item_w = 65
+#     result_w = 64
+#     remark_w = page_w - item_w - result_w
+
+#     # _ensure_space ต้องถูกนิยามหลังจาก y ถูกประกาศ (เพื่อให้ nonlocal ถูกต้อง)
+#     def _ensure_space(height_needed: float):
+#         nonlocal y
+#         if y + height_needed > (pdf.h - pdf.b_margin):
+#             pdf.add_page()
+#             y = _draw_header(pdf, base_font, issue_id)
+#             pdf.set_font(base_font, "", FONT_MAIN)
+
+#     pdf.set_font(base_font, "", FONT_MAIN)
+#     pdf.set_draw_color(0, 0, 0)
+
+#     # ช่องเซ็นชื่อ
+#     signer_labels = ["Performed by", "Approved by", "Witnessed by"]
+#     pdf.set_line_width(LINE_W_INNER)
+
+#     # ใช้ความกว้างของแต่ละคอลัมน์จริงแทน col_w
+#     col_widths = [item_w, result_w, remark_w]
+#     row_h_header = 12
+#     row_h_sig = 16
+#     row_h_name = 7
+#     row_h_date = 7
+#     total_sig_h = row_h_header + row_h_sig + row_h_name + row_h_date
+
+#     _draw_picture_page(pdf, base_font, issue_id, doc)
+
+#     pdf.set_font(base_font, "B", FONT_MAIN)
+#     pdf.set_fill_color(255, 230, 100)
+    
+#     return _output_pdf_bytes(pdf)
+
+# def generate_pdf(data: dict, lang: str = "en") -> bytes:
+#     # ตรวจสอบภาษาจาก parameter หรือจาก data
+#     if lang is None:
+#         lang = data.get("lang", "en")
+    
+#     # ตรวจสอบว่าเป็นภาษาที่รองรับ
+#     if lang not in ["th", "en"]:
+#         lang = "en"
+        
+#     return make_pm_report_html_pdf_bytes(data, lang=lang)
 
 # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-
 def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "en") -> bytes:
-    """
-    สร้าง PDF bytes จาก document dictionary
+    # ตั้งค่า font size ตามภาษา
+    global FONT_MAIN, FONT_SMALL, LINE_H, LINE_H_HEADER, ROW_MIN_H, FONT_HEADER
     
-    Args:
-        doc: Document dictionary ที่มีข้อมูลทั้งหมด
-        lang: ภาษาที่ต้องการ "th" สำหรับไทย, "en" สำหรับอังกฤษ (default: "en")
+    font_config = FONT_CONFIG.get(lang, FONT_CONFIG["en"])
+    FONT_MAIN = font_config["main"]
+    FONT_SMALL = font_config["small"]
+    FONT_HEADER = font_config["header"]
+    LINE_H = font_config["line_h"]
+    LINE_H_HEADER = font_config["line_h_header"]
+    ROW_MIN_H = font_config["row_min_h"]
     
-    Returns:
-        bytes: PDF file content
-    """
     pdf = HTML2PDF(unit="mm", format="A4")
-    pdf.set_margins(left=10, top=15, right=10)
+    pdf.set_margins(left=10, top=15, right=10)  
     pdf.set_auto_page_break(auto=True, margin=40)
 
     # ตั้งค่าภาษา
@@ -2617,7 +3178,6 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "en") -> bytes:
         font_size=FONT_MAIN,
         table_width=page_w,
         safety=charger_safety,
-        doc=doc,
         lang=lang
     )
     
@@ -2628,7 +3188,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "en") -> bytes:
     _draw_picture_page(pdf, base_font, issue_id, doc, lang=lang)
 
     # ★★★ วาดหน้ารายการไฟล์แนบ และเก็บ list ของ PDF ที่ต้องรวม ★★★
-    pdf_files_to_merge = _draw_attachments_list_page(pdf, base_font, issue_id, doc)
+    pdf_files_to_merge = _draw_attachments_list_page(pdf, base_font, issue_id, doc, lang)
 
     pdf.set_font(base_font, "B", FONT_MAIN)
     pdf.set_fill_color(255, 230, 100)
@@ -2638,7 +3198,6 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "en") -> bytes:
     
     # ★★★ รวม PDF ที่แนบมา (ถ้ามี) ★★★
     if pdf_files_to_merge:
-        print(f"[PDF Export] Merging {len(pdf_files_to_merge)} PDF attachment(s)...")
         return _merge_pdfs(main_pdf_bytes, pdf_files_to_merge)
     
     return main_pdf_bytes
