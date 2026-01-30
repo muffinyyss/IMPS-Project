@@ -14,13 +14,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 export default function SettingPage() {
   const [data, setData] = useState(null);
   const searchParams = useSearchParams();
-  const stationId = searchParams.get("station_id") || localStorage.getItem("selected_station_id");
+  const SN = searchParams.get("SN") || localStorage.getItem("selected_sn");
 
   useEffect(() => {
-    if (!stationId) return;
+    if (!SN) return;
 
     const es = new EventSource(
-      `${API_BASE}/setting?station_id=${stationId}`,
+      `${API_BASE}/setting?SN=${SN}`,
       { withCredentials: true }
     );
 
@@ -42,7 +42,7 @@ export default function SettingPage() {
     };
 
     return () => es.close();
-  }, [stationId]);
+  }, [SN]);
 
   return (
     <div className="tw-space-y-6 tw-mt-8">
