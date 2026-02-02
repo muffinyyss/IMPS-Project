@@ -39,6 +39,66 @@ type Device = {
     metricType?: MetricType;
 };
 
+// const DEVICE_IMAGES: Record<string, string> = {
+//     "DC Power Contactor": "/images/devices/dc-contactor.png",
+//     "AC Power Contactor": "/images/devices/ac-contactor.png",
+//     "Motor Starter": "/images/devices/motor-starter.png",
+//     "FUSE": "/images/devices/fuse.png",
+//     "RCCB": "/images/devices/rccb.png",
+//     "RCBO": "/images/devices/rcbo.png",
+//     "Circuit Breaker": "/images/devices/circuit-breaker.png",
+//     "Surge Protection": "/images/devices/surge-protection.png",
+//     "Energy Meter": "/images/devices/energy-meter.png",
+//     "Charging Controller": "/images/devices/charging-controller.png",
+//     "Insulation Monitoring": "/images/devices/insulation-monitor.png",
+//     "FAN Controller": "/images/devices/fan-controller.png",
+//     "Router": "/images/devices/router.png",
+//     "OCPP Device": "/images/devices/ocpp-device.png",
+//     "Power supplies": "/images/devices/power-supply.png",
+//     "DC Converter": "/images/devices/dc-converter.png",
+//     "Disconnect Switch": "/images/devices/disconnect-switch.png",
+//     "Noise Filter": "/images/devices/noise-filter.png",
+// };
+
+const DEVICE_IMAGES: Record<string, string> = {
+    // Contactors
+    "DC Power Contactor": "/img/charger_device/dc_contractor_new.png",
+    "AC Power Contactor": "/img/charger_device/AC Power Contactor (magnetic).jpg",
+    
+    // Motor Starters
+    "Motor Starter": "/img/charger_device/Motor Starter.png",
+    
+    // Fuses & Protection
+    "FUSE": "/img/charger_device/fuse.png",
+    "RCCB": "/img/charger_device/rccb.png",
+    "RCBO": "/img/charger_device/rcbo.jpg",
+    "Circuit Breaker": "/img/charger_device/circuit_breaker_fan.png",
+    "Surge Protection": "/img/charger_device/Surge Protection.png",
+    
+    // Meters & Controllers
+    "Energy Meter": "/img/charger_device/Energy Meter H1.png",
+    "Charging Controller": "/img/charger_device/PLC.jpg",
+    "Insulation Monitoring": "/img/charger_device/Insulation Monitoring H1.png",
+    "FAN Controller": "/img/charger_device/FAN Controller.jpg",
+    
+    // Network & Communication
+    "Router": "/img/charger_device/router.png",
+    "OCPP Device": "/img/charger_device/router.png",
+    
+    // Power Components
+    "Power supplies": "/img/charger_device/Power Supplies.jpg",
+    "DC Converter": "/img/charger_device/DC Converter.webp",
+    "Disconnect Switch": "/img/charger_device/Breaker (มอเตอร์ starter) (new).jpg",
+    "Noise Filter": "/img/charger_device/Noise Filter.png",
+};
+
+function getDeviceImage(deviceName: string): string | undefined {
+    for (const [key, imagePath] of Object.entries(DEVICE_IMAGES)) {
+        if (deviceName.includes(key)) return imagePath;
+    }
+    return undefined;
+}
+
 // ===== Lifetime Config (กำหนดที่ Frontend) - หน่วยเป็นวัน =====
 const LIFETIME_CONFIG: Record<string, number> = {
     // Contactors (times - ครั้ง)
@@ -184,12 +244,14 @@ function Style3Circular({
     name, 
     value, 
     unit,
-    t 
+    t,
+    imageUrl
 }: { 
     name: string;
     value: number;
     unit: string;
     t: any;
+    imageUrl?: string;
 }) {
     const lifetime = getLifetime(name);
     const usagePercent = calcUsagePercent(value, lifetime);
@@ -200,6 +262,7 @@ function Style3Circular({
     const borderColor = color === "green" ? "tw-border-green-200" : color === "yellow" ? "tw-border-amber-200" : "tw-border-red-200";
     const iconColor = color === "green" ? "tw-text-green-500" : color === "yellow" ? "tw-text-amber-500" : "tw-text-red-500";
     const textColor = color === "green" ? "tw-text-green-600" : color === "yellow" ? "tw-text-amber-600" : "tw-text-red-600";
+    const [imageError, setImageError] = useState(false);
 
     const DeviceIcon = getDeviceIcon(name);
 
@@ -207,11 +270,32 @@ function Style3Circular({
         <div className="tw-p-4 tw-bg-white tw-rounded-xl tw-border tw-border-gray-100 hover:tw-border-gray-200 tw-transition-colors">
             <div className="tw-flex tw-items-center tw-gap-4">
                 {/* Icon */}
-                <div className={`tw-relative tw-flex-shrink-0 tw-w-14 tw-h-14 tw-rounded-xl ${bgColor} ${borderColor} tw-border-2 tw-flex tw-items-center tw-justify-center`}>
-                    <DeviceIcon className={`tw-w-7 tw-h-7 ${iconColor}`} />
+                {/* <div className={`tw-relative tw-flex-shrink-0 tw-w-14 tw-h-14 tw-rounded-xl ${bgColor} ${borderColor} tw-border-2 tw-flex tw-items-center tw-justify-center`}>
+                    <DeviceIcon className={`tw-w-7 tw-h-7 ${iconColor}`} /> */}
+                    {/* Status dot */}
+                    {/* <div 
+                        className="tw-absolute -tw-top-1 -tw-right-1 tw-w-4 tw-h-4 tw-rounded-full tw-border-2 tw-border-white"
+                        style={{ backgroundColor: strokeColor }}
+                    /> */}
+                    
+                {/* </div> */}
+
+                {/* Icon or Image */}
+                <div className={`tw-relative tw-flex-shrink-0 tw-w-20 tw-h-20 tw-rounded-xl ${bgColor} ${borderColor} tw-border-2 tw-flex tw-items-center tw-justify-center`}>
+                    {imageUrl && !imageError ? (
+                        <img 
+                            src={imageUrl}
+                            alt={name}
+                            className="tw-w-full tw-h-full tw-object-cover tw-rounded-lg"
+                            onError={() => setImageError(true)}
+                        />
+                    ) : (
+                        <DeviceIcon className={`tw-w-9 tw-h-9 ${iconColor}`} />
+                    )}
+                    
                     {/* Status dot */}
                     <div 
-                        className="tw-absolute -tw-top-1 -tw-right-1 tw-w-4 tw-h-4 tw-rounded-full tw-border-2 tw-border-white"
+                        className="tw-absolute -tw-top-0.5 -tw-right-1.5 tw-w-3 tw-h-3 tw-rounded-full tw-shadow-md tw-z-10"
                         style={{ backgroundColor: strokeColor }}
                     />
                 </div>
@@ -326,6 +410,7 @@ function SideList({
                             name={d.name}
                             value={numericValue}
                             unit={unit}
+                            imageUrl={d.imageUrl}
                             t={t}
                         />
                     );
@@ -634,7 +719,8 @@ export default function DCChargerDashboard() {
                 name,
                 value: value ?? "",
                 status: getDeviceStatus(name, numValue),
-                metricType
+                metricType,
+                imageUrl: getDeviceImage(name)
             };
         };
 
