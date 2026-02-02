@@ -496,7 +496,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "Continuity PE",
     unit: "Ω",
     remarkKey: "continuityPE",
-    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE)", en: "Test continuity of protective earth conductor (PE)" },
+    tooltip: { th: "วัดความต่อเนื่องจาก Pin PE ที่หัวชาร์จ (Connector) ถึงจุดต่อหลักดิน ค่าความต้านทานที่ได้ต้องไม่เกิน 0.1 Ω", en: "Measure continuity from the PE pin at the charging connector to the main ground point. Resistance value must not exceed 0.1 Ω" },
   },
   {
     category: "Charger Safety",
@@ -504,7 +504,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "Insulation Cable",
     unit: "MΩ",
     remarkKey: "insulationCable",
-    tooltip: { th: "ทดสอบความต้านทานฉนวนของสายเคเบิล", en: "Test insulation resistance of cable" },
+    tooltip: { th: "วัดค่าความเป็นฉนวนของสายด้วยการจ่ายแรงดัน 500VDC (L-N, L-PE) ค่าที่ได้ต้องมากกว่าหรือเท่ากับ 1.0 MΩ (ปลดแหล่งจ่ายก่อนทำการทดสอบ)", en: "Measure cable insulation by applying 500VDC (L-N, L-PE). The value must be greater than or equal to 1.0 MΩ (disconnect power source before testing)" },
   },
   {
     category: "Charger Safety",
@@ -512,7 +512,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "State A",
     unit: "V",
     remarkKey: "stateA",
-    tooltip: { th: "ทดสอบแรงดันไฟฟ้าที่สถานะ A (ไม่เชื่อมต่อ)", en: "Test voltage at State A (not connected)" },
+    tooltip: { th: "ทำการจำลองสถานะ Available (State A) ต้องมีแรงดันของวงจรควบคุมการอัดประจุเท่ากับ 12VDC และไม่มีปล่อยกระแสไฟฟ้าเพื่อการอัดประจุ", en: "Simulate Available state (State A). Control circuit voltage must be 12VDC with no charging current output" },
   },
   {
     category: "Charger Safety",
@@ -520,7 +520,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "State B",
     unit: "V",
     remarkKey: "stateB",
-    tooltip: { th: "ทดสอบแรงดันไฟฟ้าที่สถานะ B (เชื่อมต่อแล้ว)", en: "Test voltage at State B (connected)" },
+    tooltip: { th: "ทำการจำลองสถานะ Preparing (State B) ต้องมีแรงดันของวงจรควบคุมการอัดประจุเท่ากับ 9VDC และไม่มีปล่อยกระแสไฟฟ้าเพื่อการอัดประจุ", en: "Simulate Preparing state (State B). Control circuit voltage must be 9VDC with no charging current output" },
   },
   {
     category: "Charger Safety",
@@ -528,7 +528,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "State C",
     unit: "V",
     remarkKey: "stateC",
-    tooltip: { th: "ทดสอบแรงดันไฟฟ้าที่สถานะ C (กำลังชาร์จ)", en: "Test voltage at State C (charging)" },
+    tooltip: { th: "ทำการจำลองสถานะ Charging (State C) ต้องมีแรงดันของวงจรควบคุมการอัดประจุเท่ากับ 6VDC และมีปล่อยกระแสไฟฟ้าเพื่อการอัดประจุ", en: "Simulate Charging state (State C). Control circuit voltage must be 6VDC with charging current output" },
   },
   {
     category: "Charger Safety",
@@ -536,7 +536,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "CP Short",
     unit: "V",
     remarkKey: "cpShort",
-    tooltip: { th: "ทดสอบการตอบสนองเมื่อสาย CP ลัดวงจร", en: "Test response when CP line is shorted" },
+    tooltip: { th: "ทดสอบการตอบสนองเมื่อสาย CP ลัดวงจร", en: "Test response when CP (Control Pilot) line is shorted" },
   },
   {
     category: "Charger Safety",
@@ -544,7 +544,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "PE Cut",
     unit: "V",
     remarkKey: "peCut",
-    tooltip: { th: "ทดสอบการตอบสนองเมื่อสาย PE ถูกตัด", en: "Test response when PE line is cut" },
+    tooltip: { th: "จำลองสถานการณ์ขณะชาร์จสายดินหลุด/ขาด เครื่องต้องตรวจพบความผิดปกติและหยุดการทำงานทันที", en: "Simulate scenario where ground wire is disconnected/cut during charging. The device must detect the fault and stop immediately" },
   },
   {
     category: "Charger Safety",
@@ -552,7 +552,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "Emergency",
     unit: "",
     remarkKey: "emergency",
-    tooltip: { th: "ทดสอบการทำงานของปุ่มหยุดฉุกเฉิน", en: "Test emergency stop button functionality" },
+    tooltip: { th: "ทดสอบกดปุ่มหยุดฉุกเฉินขณะชาร์จ เครื่องต้องตัดการจ่ายไฟและหยุดการทำงานทันที", en: "Test emergency stop button during charging. The device must cut power and stop immediately" },
   },
   {
     category: "Charger Safety",
@@ -560,7 +560,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "RCD type A",
     unit: "mA",
     remarkKey: "rcdTypeA",
-    tooltip: { th: "ทดสอบอุปกรณ์ป้องกันไฟรั่ว (RCD) ชนิด A", en: "Test Residual Current Device (RCD) type A" },
+    tooltip: { th: "จำลองกระแสรั่วไหลชนิดกระแสสลับ (AC) หรือกระแสตรงแบบพัลส์ (Pulse DC) ขณะชาร์จซึ่งอุปกรณ์ต้องตัดไฟภายในเวลา 300 ms (ถ้ามี)", en: "Simulate AC or pulsating DC leakage current during charging. The device must trip within 300 ms (if applicable)" },
   },
   {
     category: "Charger Safety",
@@ -568,7 +568,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "RCD type F",
     unit: "mA",
     remarkKey: "rcdTypeF",
-    tooltip: { th: "ทดสอบอุปกรณ์ป้องกันไฟรั่ว (RCD) ชนิด F", en: "Test Residual Current Device (RCD) type F" },
+    tooltip: { th: "จำลองสถานการณ์กระแสรั่วไหลชนิดความถี่ผสมขณะชาร์จ ซึ่งอุปกรณ์ต้องตัดไฟภายในเวลา 300 ms (ถ้ามี)", en: "Simulate mixed frequency leakage current scenario during charging. The device must trip within 300 ms (if applicable)" },
   },
   {
     category: "Charger Safety",
@@ -576,7 +576,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "RCD type B",
     unit: "mA",
     remarkKey: "rcdTypeB",
-    tooltip: { th: "ทดสอบอุปกรณ์ป้องกันไฟรั่ว (RCD) ชนิด B", en: "Test Residual Current Device (RCD) type B" },
+    tooltip: { th: "จำลองสถานการณ์กระแสรั่วไหลชนิดกระแสสลับ (AC), กระแสตรงแบบพัลส์ (Pulse DC) หรือกระแสตรง (DC)ขณะชาร์จ ซึ่งอุปกรณ์ต้องตัดไฟภายในเวลา 300 ms (ถ้ามี)", en: "Simulate AC, pulsating DC, or smooth DC leakage current scenario during charging. The device must trip within 300 ms (if applicable)" },
   },
   {
     category: "Charger Safety",
@@ -584,7 +584,7 @@ export const AC_TEST2_DATA: ACTestItem[] = [
     testNameTh: "RDC-DD",
     unit: "mA",
     remarkKey: "rdcDD",
-    tooltip: { th: "ทดสอบอุปกรณ์ตรวจจับกระแสไฟฟ้ารั่ว DC", en: "Test DC residual current detection device" },
+    tooltip: { th: "จำลองสถานการณ์กระแสรั่วไหลชนิดกระแสตรง (DC) ขณะมีการรั่วไหลมากกว่าหรือเท่ากับ 6 mA ซึ่งอุปกรณ์ต้องตัดไฟภายในเวลา 10s", en: "Simulate DC leakage current scenario when leakage is greater than or equal to 6 mA. The device must trip within 10s" },
   },
 ];
 
