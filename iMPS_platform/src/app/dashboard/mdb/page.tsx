@@ -567,6 +567,13 @@ export default function MDBPage() {
                     />
                 </CardBody>
             </Card>
+            {/* Panel ข้อมูล MDB เต็มกว้าง */}
+            {/* <div className="tw-mb-6">
+                <MDBInfo
+                        {...MDB}
+                    />
+            </div> */}
+              
 
             <DateRangePicker
                 startDate={draftStart}  // ใช้ draftStart แทน startDate
