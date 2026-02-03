@@ -118,7 +118,7 @@ export default function MDBInfo({
     PL123N_peak,
 }: MDBType) {
     return (
-        <div className={`tw-w-full tw-space-y-6 tw-shadow-md${className}`}>
+        <div className={`tw-w-full tw-space-y-6 ${className}`}>
             {/* ===== Top quick stats ===== */}
             {/* Power Block Section */}
             {/* <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 md:tw-gap-6"> */}
