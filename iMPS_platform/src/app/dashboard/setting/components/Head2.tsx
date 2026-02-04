@@ -511,6 +511,15 @@ export default function Head2() {
     }
 
     const startH2 = async () => {
+        const confirmed = window.confirm(
+            "คุณต้องการเริ่มชาร์จหัว2จริงหรือไม่?\n\nกด OK เพื่อยืนยัน หรือ Cancel เพื่อยกเลิก"
+        );
+        
+        if (!confirmed) {
+            console.log("[Head2] Start charging cancelled by user");
+            return;
+        }
+
         try {
             setBusyH2(true);
             setCpCmd2("start");
@@ -530,6 +539,15 @@ export default function Head2() {
     };
 
     const stopH2 = async () => {
+        const confirmed = window.confirm(
+            "คุณต้องการหยุดชาร์จหัว2จริงหรือไม่?\n\nกด OK เพื่อยืนยัน หรือ Cancel เพื่อยกเลิก"
+        );
+        
+        if (!confirmed) {
+            console.log("[Head2] Stop charging cancelled by user");
+            return;
+        }
+
         try {
             setBusyH2(true);
             setCpCmd2("stop");

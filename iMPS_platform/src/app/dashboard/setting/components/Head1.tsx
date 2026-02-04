@@ -498,6 +498,20 @@ export default function Head1() {
     }
 
     const startH1 = async () => {
+        const confirmed = window.confirm(
+            "คุณต้องการเริ่มชาร์จหัว1จริงหรือไม่?\n\nกด OK เพื่อยืนยัน หรือ Cancel เพื่อยกเลิก"
+        );
+        
+        if (!confirmed) {
+            console.log("[Head1] Start charging cancelled by user");
+            return;
+        }
+
+        // alert("✅ ยืนยันการเริ่มชาร์จแล้ว\n(ทดสอบ - ไม่ได้ส่งคำสั่งจริง)");
+        // console.log("[TEST] Start command confirmed but NOT sent to API");
+        // return; // ← หยุดตรงนี้
+
+
         try {
             setBusyH1(true);
             setCpCmd1("start");
@@ -513,6 +527,21 @@ export default function Head1() {
     };
 
     const stopH1 = async () => {
+
+        const confirmed = window.confirm(
+            "คุณต้องการหยุดชาร์จหัว1จริงหรือไม่?\n\nกด OK เพื่อยืนยัน หรือ Cancel เพื่อยกเลิก"
+        );
+        
+        if (!confirmed) {
+            console.log("[Head1] Stop charging cancelled by user");
+            return;
+        }
+
+        // ✅ โหมดทดสอบ - แสดง alert แทนการส่งคำสั่งจริง
+        // alert("✅ ยืนยันการหยุดชาร์จแล้ว\n(ทดสอบ - ไม่ได้ส่งคำสั่งจริง)");
+        // console.log("[TEST] Stop command confirmed but NOT sent to API");
+        // return; // ← หยุดตรงนี้
+
         try {
             setBusyH1(true);
             setCpCmd1("stop");
