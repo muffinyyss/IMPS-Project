@@ -45,6 +45,7 @@ function Row({
 }
 
 export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
+    console.log(`[EvPanel Head ${head}] data (JSON) =`, JSON.stringify(data, null, 2));
 
     // helper format
     const toNum = (v: any): number | null => {
