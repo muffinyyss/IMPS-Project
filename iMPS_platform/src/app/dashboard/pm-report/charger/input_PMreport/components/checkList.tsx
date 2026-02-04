@@ -993,11 +993,17 @@ async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
 // ==================== REVERSE GEOCODING ====================
 async function reverseGeocode(lat: number, lng: number): Promise<string> {
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // timeout 3 วินาที
+        
         const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th&zoom=18`;
         const res = await fetch(url, {
-            headers: { "User-Agent": "PM-Checklist-App/1.0" }
+            headers: { "User-Agent": "PM-Checklist-App/1.0" },
+            signal: controller.signal,
         });
-        if (!res.ok) return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) return `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
         const data = await res.json();
         
         // สร้างชื่อสถานที่จาก address components
@@ -1021,9 +1027,10 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
             return result;
         }
         
-        return data.display_name?.substring(0, 50) || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        return data.display_name?.substring(0, 50) || `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     } catch {
-        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        // ถ้า API ไม่ตอบ ใช้พิกัด GPS แทน
+        return `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     }
 }
 
@@ -1106,10 +1113,17 @@ function PhotoMultiInput({
         const files = Array.from(list).slice(0, remain);
         
         // ดึง GPS และแปลงเป็นชื่อสถานที่
-        const gps = await getCurrentGPS();
-        const locationText = gps 
-            ? await reverseGeocode(gps.lat, gps.lng)
-            : "ไม่สามารถระบุตำแหน่งได้";
+        let locationText = "";
+        try {
+            const gps = await getCurrentGPS();
+            if (gps) {
+                locationText = await reverseGeocode(gps.lat, gps.lng);
+            } else {
+                locationText = "ไม่สามารถระบุตำแหน่งได้";
+            }
+        } catch {
+            locationText = "ไม่สามารถระบุตำแหน่งได้";
+        }
         
         const items: PhotoItem[] = await Promise.all(
             files.map(async (f, i) => {
@@ -1136,7 +1150,7 @@ function PhotoMultiInput({
     return (
         <div id={id} className="tw-space-y-3 tw-transition-all tw-duration-300">
             <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
-                <Button size="sm" color="blue" variant="filled" onClick={handleCamera} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
+                <Button size="sm" color="blue" variant="outlined" onClick={handleCamera} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
                     <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
