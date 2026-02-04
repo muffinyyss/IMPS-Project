@@ -62,6 +62,8 @@ const T = {
     save: { th: "บันทึก", en: "Save" },
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
     attachPhoto: { th: "แนบรูป / ถ่ายรูป", en: "Attach / Take Photo" },
+    takePhoto: { th: "ถ่ายรูป", en: "Take Photo" },
+    selectFromGallery: { th: "เลือกจากคลัง", en: "Gallery" },
     na: { th: "N/A", en: "N/A" },
     cancelNA: { th: "ยกเลิก N/A", en: "Cancel N/A" },
     pass: { th: "PASS", en: "PASS" },
@@ -80,6 +82,7 @@ const T = {
     emergencyStopCount: { th: "จำนวนปุ่มหยุดฉุกเฉิน:", en: "Emergency stops:" },
     qrCodeCount: { th: "จำนวน QR CODE:", en: "QR CODEs:" },
     warningSignCount: { th: "จำนวนป้ายเตือน:", en: "Warning signs:" },
+    ventilationSignCount: { th: "จำนวนป้ายเตือนระบายอากาศ:", en: "Ventilation signs:" },
     cpVoltageCount: { th: "จำนวนสาย CP:", en: "CP cables:" },
     airFilterCount: { th: "จำนวนแผ่นกรอง:", en: "Air filters:" },
     chargingTestCount: { th: "จำนวนสายทดสอบ:", en: "Test cables:" },
@@ -128,6 +131,7 @@ const T = {
     formStatus: { th: "สถานะการกรอกข้อมูล", en: "Form Completion Status" },
     allCompleteReady: { th: "กรอกข้อมูลครบถ้วนแล้ว พร้อมบันทึก ✓", en: "All fields completed. Ready to save ✓" },
     remaining: { th: "ยังขาดอีก {n} รายการ", en: "{n} items remaining" },
+    cleaningCount: { th: "จำนวนรายการทำความสะอาด:", en: "Cleaning items:" },
     items: { th: "รายการ", en: "items" },
 
     // Alerts
@@ -195,6 +199,7 @@ type Question = {
     hasPhoto?: boolean;
     tooltip?: BilingualText;
     items?: { key: string; label: BilingualText }[];
+    postOnly?: boolean;
 };
 
 const UNITS = { voltage: ["V"] as const };
@@ -226,15 +231,22 @@ const QUESTIONS: Question[] = [
     { no: 5, key: "r5", label: { th: "5) ตรวจสอบปุ่มหยุดฉุกเฉิน", en: "5) Check emergency stop button" }, kind: "group", hasPhoto: true, items: [{ label: { th: "5.1) ปุ่มหยุดฉุกเฉินที่ 1", en: "5.1) Emergency stop 1" }, key: "r5_1" }], tooltip: { th: "ตรวจสอบกลไกการกดและการคลายล็อกและตรวจสอบหน้าสัมผัสทางไฟฟ้าว่าไม่มีคราบสกปรก", en: "Check press/release mechanism and electrical contacts" } },
     { no: 6, key: "r6", label: { th: "6) ตรวจสอบ QR CODE", en: "6) Check QR CODE" }, kind: "group", hasPhoto: true, items: [{ label: { th: "6.1) QR CODE ที่ 1", en: "6.1) QR CODE 1" }, key: "r6_1" }], tooltip: { th: "ตรวจสอบความคมชัดของ QR CODE และการยึดติดของสติ๊กเกอร์", en: "Check QR CODE clarity and sticker adhesion" } },
     { no: 7, key: "r7", label: { th: "7) ตรวจสอบป้ายเตือนระวังไฟฟ้าช็อก", en: "7) Check electric shock warning sign" }, kind: "group", hasPhoto: true, items: [{ label: { th: "7.1) ป้ายเตือนระวังไฟฟ้าช็อกที่ 1", en: "7.1) Warning sign 1" }, key: "r7_1" }], tooltip: { th: "ตรวจสอบการติดตั้งและความชัดเจนของป้ายเตือนอันตราย", en: "Check installation and clarity of warning signs" } },
-    { no: 8, key: "r8", label: { th: "8) ตรวจสอบป้ายเตือนต้องการระบายอากาศ", en: "8) Check ventilation warning sign" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบระยะ Clearance รอบตู้ตามป้ายระบุ เพื่อไม่ให้มีสิ่งของวางกีดขวางทางลม", en: "Check clearance around cabinet per signage" } },
-    { no: 9, key: "r9", label: { th: "9) ตรวจสอบป้ายเตือนปุ่มฉุกเฉิน", en: "9) Check emergency button warning sign" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสว่างหรือการสะท้อนแสงของป้ายบ่งชี้ตำแหน่งปุ่ม Emergency เพื่อให้มองเห็นได้ในสภาวะแสงน้อย", en: "Check sign visibility in low light conditions" } },
+    { 
+        no: 8, key: "r8", label: { th: "8) ตรวจสอบป้ายเตือนต้องการระบายอากาศ", en: "8) Check ventilation warning sign" }, kind: "group", hasPhoto: true, 
+        tooltip: { th: "ตรวจสอบระยะ Clearance รอบตู้ตามป้ายระบุ เพื่อไม่ให้มีสิ่งของวางกีดขวางทางลม", en: "Check clearance around cabinet per signage" },
+        items: [
+            { label: { th: "8.1) ป้ายเตือนต้องการระบายอากาศ (ขาเข้า)", en: "8.1) Ventilation warning sign (inlet)" }, key: "r8_1" },
+            { label: { th: "8.2) ป้ายเตือนต้องการระบายอากาศ (ขาออก)", en: "8.2) Ventilation warning sign (outlet)" }, key: "r8_2" },
+        ]
+    },
+    { no: 9, key: "r9", label: { th: "9) ตรวจสอบป้ายบ่งชี้ปุ่มฉุกเฉิน", en: "9) Check emergency button indicator sign" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสว่างหรือการสะท้อนแสงของป้ายบ่งชี้ตำแหน่งปุ่ม Emergency เพื่อให้มองเห็นได้ในสภาวะแสงน้อย", en: "Check sign visibility in low light conditions" } },
     { no: 10, key: "r10", label: { th: "10) ตรวจสอบแรงดันไฟฟ้าที่พิน CP", en: "10) Check CP pin voltage" }, kind: "group", hasPhoto: true, items: [{ label: { th: "10.1) แรงดันไฟฟ้าที่พิน CP สายที่ 1", en: "10.1) CP pin voltage cable 1" }, key: "r10_1" }], tooltip: { th: "วัดค่าแรงดันระหว่าง pin CP และ PE", en: "Measure voltage between CP and PE pins" } },
     {
         no: 11, key: "r11", label: { th: "11) ตรวจสอบแผ่นกรองอากาศ", en: "11) Check air filter" }, kind: "group", hasPhoto: true,
         tooltip: { th: "ตรวจสอบสภาพแผ่นกรองอากาศและทิศทางการไหลของอากาศ", en: "Check air filter condition and airflow direction" },
         items: [
-            { label: { th: "11.1) แผ่นกรองอากาศ (ด้านซ้าย)", en: "11.1) Air filter (left)" }, key: "r11_1" },
-            { label: { th: "11.2) แผ่นกรองอากาศ (ด้านขวา)", en: "11.2) Air filter (right)" }, key: "r11_2" },
+            { label: { th: "11.1) แผ่นกรองอากาศ (ขาเข้า)", en: "11.1) Air filter (inlet)" }, key: "r11_1" },
+            { label: { th: "11.2) แผ่นกรองอากาศ (ขาออก)", en: "11.2) Air filter (outlet)" }, key: "r11_2" },
             { label: { th: "11.3) แผ่นกรองอากาศ (ด้านหน้า)", en: "11.3) Air filter (front)" }, key: "r11_3" },
             { label: { th: "11.4) แผ่นกรองอากาศ (ด้านหลัง)", en: "11.4) Air filter (back)" }, key: "r11_4" },
         ]
@@ -245,7 +257,17 @@ const QUESTIONS: Question[] = [
     { no: 15, key: "r15", label: { th: "15) ตรวจสอบลำดับเฟส", en: "15) Check phase sequence" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบทิศทางการเรียงเฟส", en: "Check phase sequence direction" } },
     { no: 16, key: "r16", label: { th: "16) วัดแรงดันไฟฟ้าด้านเข้า", en: "16) Measure input voltage" }, kind: "measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าระหว่างเฟส และระหว่างเฟสกับนิวทรัล/กราวด์", en: "Measure phase-to-phase and phase-to-neutral/ground voltage" } },
     { no: 17, key: "r17", label: { th: "17) ทดสอบการอัดประจุ", en: "17) Charging test" }, kind: "group", hasPhoto: true, items: [{ label: { th: "17.1) ทดสอบการอัดประจุ สายที่ 1", en: "17.1) Charging test cable 1" }, key: "r17_1" }], tooltip: { th: "ตรวจสอบการทำงานร่วมกับ EV Simulator หรือรถจริง", en: "Test with EV Simulator or actual vehicle" } },
-    { no: 18, key: "r18", label: { th: "18) ทำความสะอาด", en: "18) Cleaning" }, kind: "simple", hasPhoto: true, tooltip: { th: "ทำความสะอาดหน้าจอ, คราบสะสมบนหัวชาร์จและพื้นที่บริเวณฐานเครื่อง", en: "Clean screen, connector buildup and base area" } },
+
+    // ===== ข้อ 18 - ทำความสะอาด (Post-PM only) =====
+    {
+        no: 18, key: "r18", label: { th: "18) ทำความสะอาด", en: "18) Cleaning" }, kind: "group", hasPhoto: true, postOnly: true,
+        tooltip: { th: "ทำความสะอาด Router, หน้าจอ, คราบสะสมบนหัวชาร์จและพื้นที่บริเวณฐานเครื่อง", en: "Clean Router, screen, connector buildup and base area" },
+        items: [
+            { label: { th: "18.1) Router - ทำความสะอาดหน้าสัมผัสซิม1และซิม2", en: "18.1) Router - Clean SIM1 and SIM2 contacts" }, key: "r18_1" },
+            { label: { th: "18.2) Router - ทำความสะอาด port lan", en: "18.2) Router - Clean LAN port" }, key: "r18_2" },
+            { label: { th: "18.3) ทำความสะอาดทั่วไป", en: "18.3) General cleaning" }, key: "r18_3" },
+        ]
+    },
 ];
 
 // ==================== DYNAMIC LABEL GENERATORS ====================
@@ -255,12 +277,17 @@ const getDynamicLabel = {
     emergencyStop: (idx: number, lang: Lang) => lang === "th" ? `5.${idx}) ปุ่มหยุดฉุกเฉินที่ ${idx}` : `5.${idx}) Emergency stop ${idx}`,
     qrCode: (idx: number, lang: Lang) => lang === "th" ? `6.${idx}) QR CODE ที่ ${idx}` : `6.${idx}) QR CODE ${idx}`,
     warningSign: (idx: number, lang: Lang) => lang === "th" ? `7.${idx}) ป้ายเตือนระวังไฟฟ้าช็อกที่ ${idx}` : `7.${idx}) Warning sign ${idx}`,
+    ventilationSignInlet: (lang: Lang) => lang === "th" ? "8.1) ป้ายเตือนต้องการระบายอากาศ (ขาเข้า)" : "8.1) Ventilation warning sign (inlet)",
+    ventilationSignOutlet: (lang: Lang) => lang === "th" ? "8.2) ป้ายเตือนต้องการระบายอากาศ (ขาออก)" : "8.2) Ventilation warning sign (outlet)",
     cpVoltage: (idx: number, lang: Lang) => lang === "th" ? `10.${idx}) แรงดันไฟฟ้าที่พิน CP สายที่ ${idx}` : `10.${idx}) CP pin voltage cable ${idx}`,
-    airFilterLeft: (lang: Lang) => lang === "th" ? "11.1) แผ่นกรองอากาศ (ด้านซ้าย)" : "11.1) Air filter (left)",
-    airFilterRight: (lang: Lang) => lang === "th" ? "11.2) แผ่นกรองอากาศ (ด้านขวา)" : "11.2) Air filter (right)",
+    airFilterLeft: (lang: Lang) => lang === "th" ? "11.1) แผ่นกรองอากาศ (ขาเข้า)" : "11.1) Air filter (inlet)",
+    airFilterRight: (lang: Lang) => lang === "th" ? "11.2) แผ่นกรองอากาศ (ขาออก)" : "11.2) Air filter (outlet)",
     airFilterFront: (lang: Lang) => lang === "th" ? "11.3) แผ่นกรองอากาศ (ด้านหน้า)" : "11.3) Air filter (front)",
     airFilterBack: (lang: Lang) => lang === "th" ? "11.4) แผ่นกรองอากาศ (ด้านหลัง)" : "11.4) Air filter (back)",
     chargingTest: (idx: number, lang: Lang) => lang === "th" ? `17.${idx}) ทดสอบการอัดประจุ สายที่ ${idx}` : `17.${idx}) Charging test cable ${idx}`,
+    cleaningSim: (lang: Lang) => lang === "th" ? "18.1) Router - ทำความสะอาดหน้าสัมผัสซิม1และซิม2" : "18.1) Router - Clean SIM1 and SIM2 contacts",
+    cleaningLan: (lang: Lang) => lang === "th" ? "18.2) Router - ทำความสะอาด port lan" : "18.2) Router - Clean LAN port",
+    cleaningGeneral: (lang: Lang) => lang === "th" ? "18.3) ทำความสะอาดทั่วไป" : "18.3) General cleaning",
 };
 
 function getQuestionLabel(q: Question, mode: TabId, lang: Lang): string {
@@ -285,12 +312,27 @@ function createFixedItems(qNo: number, count: number, lang: Lang): { key: string
     }));
 }
 
+function getFixedItemsQ8(lang: Lang): { key: string; label: string }[] {
+    return [
+        { key: "r8_1", label: getDynamicLabel.ventilationSignInlet(lang) },
+        { key: "r8_2", label: getDynamicLabel.ventilationSignOutlet(lang) },
+    ];
+}
+
 function getFixedItemsQ11(lang: Lang): { key: string; label: string }[] {
     return [
         { key: "r11_1", label: getDynamicLabel.airFilterLeft(lang) },
         { key: "r11_2", label: getDynamicLabel.airFilterRight(lang) },
         { key: "r11_3", label: getDynamicLabel.airFilterFront(lang) },
         { key: "r11_4", label: getDynamicLabel.airFilterBack(lang) },
+    ];
+}
+
+function getFixedItemsQ18(lang: Lang): { key: string; label: string }[] {
+    return [
+        { key: "r18_1", label: getDynamicLabel.cleaningSim(lang) },
+        { key: "r18_2", label: getDynamicLabel.cleaningLan(lang) },
+        { key: "r18_3", label: getDynamicLabel.cleaningGeneral(lang) },
     ];
 }
 
@@ -435,7 +477,7 @@ function SectionCard({ title, subtitle, children, tooltip, id }: {
     id?: string;
 }) {
     const qNumber = title?.match(/^(\d+)\)/)?.[1];
-    
+
     return (
         <div id={id} className="tw-bg-white tw-rounded-xl tw-border tw-border-gray-200 tw-shadow-sm tw-overflow-hidden tw-transition-all tw-duration-300">
             {title && (
@@ -634,7 +676,7 @@ function PMValidationCard({
                 let scrollId: string;
                 let itemDisplay: string;
                 let message: string;
-                
+
                 if (qNo === 10 && subNo) {
                     // Item 10 CP sub-items: 10.1, 10.2, etc.
                     scrollId = `pm-input-10-${subNo}`;
@@ -650,7 +692,7 @@ function PMValidationCard({
                     itemDisplay = subNo ? `${qNo}.${subNo}` : `${qNo}`;
                     message = lang === "th" ? `ยังไม่ได้กรอกค่า ${label}` : `${label} value not filled`;
                 }
-                
+
                 errors.push({
                     section: lang === "th" ? "ค่าที่ต้องกรอก" : "Required Inputs",
                     sectionIcon: "📝",
@@ -752,15 +794,13 @@ function PMValidationCard({
 
     return (
         <div
-            className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${
-                isComplete ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
-            }`}
+            className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${isComplete ? "tw-border-green-200 tw-bg-green-50" : "tw-border-amber-200 tw-bg-amber-50"
+                }`}
         >
             {/* Header */}
             <div
-                className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${
-                    isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"
-                }`}
+                className={`tw-px-4 tw-py-3 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${isComplete ? "tw-bg-green-100" : "tw-bg-amber-100"
+                    }`}
                 onClick={() => setIsExpanded(!isExpanded)}
             >
                 <div className="tw-flex tw-items-center tw-gap-3">
@@ -859,12 +899,12 @@ function PMValidationCard({
     );
 }
 
-function InputWithUnit<U extends string>({ 
-    label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, labelOnTop, required = true, isNA = false, onNAChange, lang 
+function InputWithUnit<U extends string>({
+    label, value, unit, units, onValueChange, onUnitChange, readOnly, disabled, labelOnTop, required = true, isNA = false, onNAChange, lang
 }: {
     label: string; value: string; unit: U; units: readonly U[];
     onValueChange: (v: string) => void; onUnitChange: (u: U) => void;
-    readOnly?: boolean; disabled?: boolean; labelOnTop?: boolean; required?: boolean; 
+    readOnly?: boolean; disabled?: boolean; labelOnTop?: boolean; required?: boolean;
     isNA?: boolean; onNAChange?: (isNA: boolean) => void; lang: Lang;
 }) {
     const [showError, setShowError] = useState(false);
@@ -898,14 +938,14 @@ function InputWithUnit<U extends string>({
         <div className="tw-space-y-1">
             <div className="tw-flex tw-items-center tw-gap-2">
                 <div className="tw-flex-1 tw-relative">
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         inputMode="text"
                         pattern="-?[0-9]*\.?[0-9]*"
                         value={value}
                         onChange={handleChange}
-                        readOnly={readOnly} 
-                        disabled={disabled} 
+                        readOnly={readOnly}
+                        disabled={disabled}
                         required={required}
                         placeholder=" "
                         className={`tw-peer tw-w-full tw-h-10 tw-px-3 tw-pt-4 tw-pb-1 tw-text-sm tw-border tw-rounded-lg tw-outline-none focus:tw-ring-1 ${showError ? "tw-border-red-500 focus:tw-border-red-500 focus:tw-ring-red-500" : "tw-border-gray-300 focus:tw-border-blue-500 focus:tw-ring-blue-500"} ${disabled ? "tw-bg-gray-100 tw-text-gray-500" : "tw-bg-white"}`}
@@ -930,28 +970,158 @@ function InputWithUnit<U extends string>({
     );
 }
 
+// ==================== GET GPS LOCATION ====================
+async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            resolve(null);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                resolve({
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                });
+            },
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+    });
+}
+
+// ==================== REVERSE GEOCODING ====================
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+    try {
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th&zoom=18`;
+        const res = await fetch(url, {
+            headers: { "User-Agent": "PM-Checklist-App/1.0" }
+        });
+        if (!res.ok) return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        const data = await res.json();
+        
+        // สร้างชื่อสถานที่จาก address components
+        const addr = data.address || {};
+        const parts: string[] = [];
+        
+        // เลือกข้อมูลที่สำคัญ
+        if (addr.road) parts.push(addr.road);
+        if (addr.suburb) parts.push(addr.suburb);
+        else if (addr.neighbourhood) parts.push(addr.neighbourhood);
+        if (addr.subdistrict) parts.push(addr.subdistrict);
+        else if (addr.district) parts.push(addr.district);
+        if (addr.city) parts.push(addr.city);
+        else if (addr.town) parts.push(addr.town);
+        else if (addr.province) parts.push(addr.province);
+        
+        if (parts.length > 0) {
+            // จำกัดความยาวไม่เกิน 50 ตัวอักษร
+            let result = parts.slice(0, 3).join(", ");
+            if (result.length > 50) result = result.substring(0, 47) + "...";
+            return result;
+        }
+        
+        return data.display_name?.substring(0, 50) || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } catch {
+        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    }
+}
+
+// ==================== ADD TIMESTAMP TO IMAGE ====================
+async function addTimestampToImage(file: File, locationText: string): Promise<File> {
+    return new Promise((resolve) => {
+        const img = document.createElement("img");
+        img.onload = () => {
+            URL.revokeObjectURL(img.src);
+            
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d")!;
+            
+            // วาดรูปภาพ
+            ctx.drawImage(img, 0, 0);
+            
+            // สร้าง timestamp text
+            const now = new Date();
+            const timestamp = now.toLocaleString("th-TH", {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: false,
+            });
+            
+            // คำนวณขนาด font ตามขนาดรูป
+            const fontSize = Math.max(14, Math.floor(img.width * 0.022));
+            const padding = Math.floor(fontSize * 0.5);
+            const lineHeight = fontSize * 1.3;
+            
+            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+            const timestampWidth = ctx.measureText(timestamp).width;
+            const locationWidth = ctx.measureText(locationText).width;
+            const maxTextWidth = Math.max(timestampWidth, locationWidth);
+            const totalHeight = lineHeight * 2;
+            
+            // วาด background สีดำโปร่งใส
+            const bgX = img.width - maxTextWidth - padding * 2 - 10;
+            const bgY = img.height - totalHeight - padding * 2 - 10;
+            ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+            ctx.fillRect(bgX, bgY, maxTextWidth + padding * 2, totalHeight + padding * 2);
+            
+            // วาด text สีขาว
+            ctx.fillStyle = "#FFFFFF";
+            ctx.textBaseline = "top";
+            ctx.fillText(timestamp, bgX + padding, bgY + padding);
+            ctx.fillText(locationText, bgX + padding, bgY + padding + lineHeight);
+            
+            // แปลงกลับเป็น File
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    resolve(new File([blob], file.name, { type: "image/jpeg" }));
+                } else {
+                    resolve(file);
+                }
+            }, "image/jpeg", 0.9);
+        };
+        img.onerror = () => resolve(file);
+        img.src = URL.createObjectURL(file);
+    });
+}
+
 function PhotoMultiInput({
     photos, setPhotos, max = 10, draftKey, qNo, lang, id,
 }: {
     label?: string; photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
 }) {
-    const fileRef = useRef<HTMLInputElement>(null);
-    const handlePick = () => fileRef.current?.click();
+    const cameraRef = useRef<HTMLInputElement>(null);
+    const handleCamera = () => cameraRef.current?.click();
 
     const handleFiles = async (list: FileList | null) => {
         if (!list) return;
         const remain = Math.max(0, max - photos.length);
         const files = Array.from(list).slice(0, remain);
+        
+        // ดึง GPS และแปลงเป็นชื่อสถานที่
+        const gps = await getCurrentGPS();
+        const locationText = gps 
+            ? await reverseGeocode(gps.lat, gps.lng)
+            : "ไม่สามารถระบุตำแหน่งได้";
+        
         const items: PhotoItem[] = await Promise.all(
             files.map(async (f, i) => {
+                // เพิ่ม timestamp และชื่อสถานที่ลงบนรูปภาพ
+                const fileWithTimestamp = await addTimestampToImage(f, locationText);
                 const photoId = `${qNo}-${Date.now()}-${i}-${f.name}`;
-                const ref = await putPhoto(draftKey, photoId, f);
-                return { id: photoId, file: f, preview: URL.createObjectURL(f), remark: "", ref };
+                const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
+                return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
             })
         );
         setPhotos((prev) => [...prev, ...items]);
-        if (fileRef.current) fileRef.current.value = "";
+        if (cameraRef.current) cameraRef.current.value = "";
     };
 
     const handleRemove = async (id: string) => {
@@ -965,13 +1135,19 @@ function PhotoMultiInput({
 
     return (
         <div id={id} className="tw-space-y-3 tw-transition-all tw-duration-300">
-            <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
-                <Button size="sm" color="blue" variant="outlined" onClick={handlePick} className="tw-shrink-0">{t("attachPhoto", lang)}</Button>
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
+                <Button size="sm" color="blue" variant="filled" onClick={handleCamera} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
+                    <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {t("takePhoto", lang)}
+                </Button>
             </div>
             <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-                {t("maxPhotos", lang)} {max} {t("photos", lang)} • {t("cameraSupported", lang)}
+                {t("maxPhotos", lang)} {max} {t("photos", lang)}
             </Typography>
-            <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden"
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="tw-hidden"
                 onChange={(e) => { void handleFiles(e.target.files); }} />
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
@@ -1062,7 +1238,7 @@ function DynamicItemsSection({
                         const photoId = `pm-photo-${qNo}-${subNo}`;
                         const remarkId = `pm-remark-${qNo}-${subNo}`;
                         const pfButtonsId = `pm-pf-${qNo}-${subNo}`;
-                        
+
                         if (isSkipped) {
                             return (
                                 <div key={item.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
@@ -1078,7 +1254,7 @@ function DynamicItemsSection({
                                 </div>
                             );
                         }
-                        
+
                         const checkboxElement = showDustFilterCheckbox && dustFilterChanged !== undefined && setDustFilterChanged ? (
                             <label className="tw-flex tw-items-center tw-gap-2 tw-text-xs sm:tw-text-sm tw-text-gray-700 tw-py-2">
                                 <input type="checkbox" className="tw-h-4 tw-w-4 tw-rounded tw-border-gray-300 tw-text-gray-700 focus:tw-ring-gray-500"
@@ -1350,11 +1526,11 @@ export default function ChargerPMForm() {
     const [sn, setSn] = useState<string | null>(null);
     const [draftId, setDraftId] = useState<string | null>(null);
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
-    
+
     const key = useMemo(() => draftKey(sn), [sn]);
     const postKey = useMemo(() => `${draftKey(sn)}:${editId}:post`, [sn, editId]);
     const currentDraftKey = isPostMode ? postKey : key;
-    
+
     useEffect(() => {
         if (typeof window === "undefined") return;
         const params = new URLSearchParams(window.location.search);
@@ -1364,7 +1540,7 @@ export default function ChargerPMForm() {
             window.history.replaceState({}, "", url);
         }
     }, []);
-    
+
     const [inspector, setInspector] = useState<string>("");
     const [dustFilterChanged, setDustFilterChanged] = useState<Record<string, boolean>>({});
     const [postApiLoaded, setPostApiLoaded] = useState(false);
@@ -1377,7 +1553,9 @@ export default function ChargerPMForm() {
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
         QUESTIONS.forEach((q) => { initial[q.key] = { pf: "", remark: "" }; });
+        getFixedItemsQ8("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
         getFixedItemsQ11("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+        getFixedItemsQ18("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
         return initial;
     });
 
@@ -1434,9 +1612,11 @@ export default function ChargerPMForm() {
         3: createFixedItems(3, job.chargingCables, lang),
         4: createFixedItems(4, job.chargingCables, lang),
         6: createFixedItems(6, job.chargingCables, lang),
+        8: getFixedItemsQ8(lang),
         10: createFixedItems(10, job.chargingCables, lang),
         11: getFixedItemsQ11(lang),
         17: createFixedItems(17, job.chargingCables, lang),
+        18: getFixedItemsQ18(lang),
     }), [job.chargingCables, lang]);
 
     useEffect(() => {
@@ -1451,7 +1631,13 @@ export default function ChargerPMForm() {
                     });
                 }
             });
+            getFixedItemsQ8(lang).forEach((item) => {
+                if (!next[item.key]) { next[item.key] = { pf: "", remark: "" }; changed = true; }
+            });
             getFixedItemsQ11(lang).forEach((item) => {
+                if (!next[item.key]) { next[item.key] = { pf: "", remark: "" }; changed = true; }
+            });
+            getFixedItemsQ18(lang).forEach((item) => {
                 if (!next[item.key]) { next[item.key] = { pf: "", remark: "" }; changed = true; }
             });
             return changed ? next : prev;
@@ -1552,7 +1738,7 @@ export default function ChargerPMForm() {
         if (!sn || isPostMode) return;
         const draft = loadDraftLocal(key);
         if (!draft) return;
-        
+
         // โหลดข้อมูล rows
         if (draft.rows) {
             setRows(prev => ({ ...prev, ...draft.rows }));
@@ -1562,27 +1748,27 @@ export default function ChargerPMForm() {
             if (q5Count > 0) setQ5Items(Array.from({ length: q5Count }, (_, idx) => ({ key: `r5_${idx + 1}`, label: getDynamicLabel.emergencyStop(idx + 1, lang) })));
             if (q7Count > 0) setQ7Items(Array.from({ length: q7Count }, (_, idx) => ({ key: `r7_${idx + 1}`, label: getDynamicLabel.warningSign(idx + 1, lang) })));
         }
-        
+
         // โหลด CP values
         if (draft.cp) {
             setCp(draft.cp);
         }
-        
+
         // โหลด m16 (voltage measurements)
         if (draft.m16) {
             m16.setState(draft.m16);
         }
-        
+
         // โหลด summary
         if (draft.summary) {
             setSummary(draft.summary);
         }
-        
+
         // โหลด dustFilterChanged
         if (draft.dustFilterChanged) {
             setDustFilterChanged(draft.dustFilterChanged);
         }
-        
+
         // โหลด photos จาก IndexedDB ด้วย photoRefs
         if (draft.photoRefs) {
             (async () => {
@@ -1620,37 +1806,37 @@ export default function ChargerPMForm() {
         if (!sn || !isPostMode || !editId || !postApiLoaded) return;
         const draft = loadDraftLocal(postKey);
         if (!draft) return;
-        
+
         // โหลดข้อมูล rows (merge กับ data จาก API)
         if (draft.rows) {
             setRows(prev => ({ ...prev, ...draft.rows }));
         }
-        
+
         // โหลด CP values
         if (draft.cp) {
             setCp(draft.cp);
         }
-        
+
         // โหลด m16 (voltage measurements)
         if (draft.m16) {
             m16.setState(draft.m16);
         }
-        
+
         // โหลด summary
         if (draft.summary) {
             setSummary(draft.summary);
         }
-        
+
         // โหลด summaryCheck (Post mode only)
         if (draft.summaryCheck) {
             setSummaryCheck(draft.summaryCheck);
         }
-        
+
         // โหลด dustFilterChanged
         if (draft.dustFilterChanged) {
             setDustFilterChanged(draft.dustFilterChanged);
         }
-        
+
         // โหลด photos จาก IndexedDB ด้วย photoRefs
         if (draft.photoRefs) {
             (async () => {
@@ -1686,11 +1872,11 @@ export default function ChargerPMForm() {
     // Validations
     const validPhotoKeysPre = useMemo(() => {
         const keys: { key: string | number; label: string }[] = [];
-        QUESTIONS.filter(q => q.hasPhoto && q.no !== 18).forEach((q) => {
+        QUESTIONS.filter(q => q.hasPhoto && !q.postOnly).forEach((q) => { // เพิ่ม !q.postOnly
             if (q.kind === "simple" || q.kind === "measure") { keys.push({ key: q.no, label: `${q.no}` }); }
             else if (q.no === 5) { q5Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` })); }
             else if (q.no === 7) { q7Items.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` })); }
-            else if ([3, 4, 6, 10, 11, 17].includes(q.no)) {
+            else if ([3, 4, 6, 8, 10, 11, 17].includes(q.no)) {
                 const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
                 if (fixedItems) { fixedItems.forEach((item, idx) => keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` })); }
             }
@@ -1708,7 +1894,7 @@ export default function ChargerPMForm() {
                 q5Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` }); });
             } else if (q.no === 7) {
                 q7Items.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` }); });
-            } else if ([3, 4, 6, 10, 11, 17].includes(q.no)) {
+            } else if ([3, 4, 6, 8, 10, 11, 17, 18].includes(q.no)) {
                 const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
                 if (fixedItems) { fixedItems.forEach((item, idx) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push({ key: `${q.no}_${idx}`, label: `${q.no}.${idx + 1}` }); }); }
             }
@@ -1729,7 +1915,7 @@ export default function ChargerPMForm() {
     // missingInputs now stores detailed info for each missing item
     const missingInputsDetailed = useMemo(() => {
         const result: { qNo: number; subNo?: number; label: string; fieldKey: string }[] = [];
-        
+
         // Item 10 - CP values
         (fixedItemsMap[10] || []).forEach((item, idx) => {
             if (rowsPre[item.key]?.pf === "NA") return;
@@ -1743,7 +1929,7 @@ export default function ChargerPMForm() {
                 });
             }
         });
-        
+
         // Item 16 - Voltage measurements
         if (rowsPre["r16"]?.pf !== "NA" && rows["r16"]?.pf !== "NA") {
             VOLTAGE1_FIELDS.forEach((k) => {
@@ -1756,12 +1942,12 @@ export default function ChargerPMForm() {
                 }
             });
         }
-        
+
         return result;
     }, [cpIsNA, cp, fixedItemsMap, m16.state, rows, rowsPre]);
 
     const allRequiredInputsFilled = useMemo(() => missingInputsDetailed.length === 0, [missingInputsDetailed]);
-    
+
     // Keep missingInputsTextLines for backward compatibility (used in button title)
     const missingInputsTextLines = useMemo(() => {
         const grouped: Record<number, string[]> = {};
@@ -1775,11 +1961,11 @@ export default function ChargerPMForm() {
 
     const validRemarkKeys = useMemo(() => {
         const keys: string[] = [];
-        QUESTIONS.forEach((q) => {
+        QUESTIONS.filter(q => !q.postOnly).forEach((q) => { // เพิ่ม filter !q.postOnly
             if (q.kind === "simple" || q.kind === "measure") { keys.push(q.key); }
             if (q.no === 5) { q5Items.forEach((item) => keys.push(item.key)); }
             else if (q.no === 7) { q7Items.forEach((item) => keys.push(item.key)); }
-            else if ([3, 4, 6, 10, 11, 17].includes(q.no)) {
+            else if ([3, 4, 6, 8, 10, 11, 17].includes(q.no)) {
                 const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
                 if (fixedItems) { fixedItems.forEach((item) => keys.push(item.key)); }
             }
@@ -1808,7 +1994,7 @@ export default function ChargerPMForm() {
             if (q.kind === "simple" || q.kind === "measure") { if (rowsPre[q.key]?.pf === "NA") return; keys.push(q.key); }
             if (q.no === 5) { q5Items.forEach((item) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push(item.key); }); }
             else if (q.no === 7) { q7Items.forEach((item) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push(item.key); }); }
-            else if ([3, 4, 6, 10, 11, 17].includes(q.no)) {
+            else if ([3, 4, 6, 8, 10, 11, 17, 18].includes(q.no)) {
                 const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
                 if (fixedItems) { fixedItems.forEach((item) => { if (rowsPre[item.key]?.pf === "NA") return; keys.push(item.key); }); }
             }
@@ -1835,7 +2021,7 @@ export default function ChargerPMForm() {
             if (q.kind === "simple" || q.kind === "measure") { if (rowsPre[q.key]?.pf !== "NA") { keys.push(q.key); } return; }
             if (q.no === 5) { q5Items.forEach((item) => { if (rowsPre[item.key]?.pf !== "NA") { keys.push(item.key); } }); }
             else if (q.no === 7) { q7Items.forEach((item) => { if (rowsPre[item.key]?.pf !== "NA") { keys.push(item.key); } }); }
-            else if ([3, 4, 6, 10, 11, 17].includes(q.no)) {
+            else if ([3, 4, 6, 8, 10, 11, 17, 18].includes(q.no)) {
                 const fixedItems = fixedItemsMap[q.no as keyof typeof fixedItemsMap];
                 if (fixedItems) { fixedItems.forEach((item) => { if (rowsPre[item.key]?.pf !== "NA") { keys.push(item.key); } }); }
             }
@@ -1918,6 +2104,7 @@ export default function ChargerPMForm() {
                         {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} addItem={addQ5Item} removeItem={removeQ5Item} addButtonLabel={t("addEmergencyStop", lang)} countLabel={t("emergencyStopCount", lang)} count={q5Items.length} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                         {q.no === 6 && fixedItems && <DynamicItemsSection qNo={6} items={fixedItems} editable={false} countLabel={t("qrCodeCount", lang)} count={job.chargingCables} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                         {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} addItem={addQ7Item} removeItem={removeQ7Item} addButtonLabel={t("addWarningSign", lang)} countLabel={t("warningSignCount", lang)} count={q7Items.length} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 8 && fixedItems && <DynamicItemsSection qNo={8} items={fixedItems} editable={false} countLabel={t("ventilationSignCount", lang)} count={2} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                         {q.no === 10 && fixedItems && (
                             <DynamicItemsSection qNo={10} items={fixedItems} editable={false} countLabel={t("cpVoltageCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang}
                                 renderAdditionalFields={(item, idx, isNA) => (
@@ -1954,13 +2141,14 @@ export default function ChargerPMForm() {
                     {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} editable={false} countLabel={t("emergencyStopCount", lang)} count={q5Items.length} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
                     {q.no === 6 && fixedItems && <DynamicItemsSection qNo={6} items={fixedItems} editable={false} countLabel={t("qrCodeCount", lang)} count={job.chargingCables} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
                     {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} editable={false} countLabel={t("warningSignCount", lang)} count={q7Items.length} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 8 && fixedItems && <DynamicItemsSection qNo={8} items={fixedItems} editable={false} countLabel={t("ventilationSignCount", lang)} count={2} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
                     {q.no === 10 && fixedItems && (
                         <DynamicItemsSection qNo={10} items={fixedItems} editable={false} countLabel={t("cpVoltageCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true}
                             renderAdditionalFields={(item, idx, isNA) => (
                                 <div className="tw-flex tw-flex-col tw-gap-3">
                                     <div className="tw-max-w-xs">
                                         <InputWithUnit<UnitVoltage> label={lang === "th" ? "CP (ก่อน PM)" : "CP (Pre PM)"} value={cpPre[item.key]?.value ?? ""} unit={cpPre[item.key]?.unit ?? "V"} units={["V"] as const}
-                                            onValueChange={() => {}} onUnitChange={() => {}} disabled={true} required={false} labelOnTop lang={lang} />
+                                            onValueChange={() => { }} onUnitChange={() => { }} disabled={true} required={false} labelOnTop lang={lang} />
                                     </div>
                                     <div className="tw-max-w-xs">
                                         <InputWithUnit<UnitVoltage> label={lang === "th" ? "CP (หลัง PM)" : "CP (Post PM)"} value={cp[item.key]?.value ?? ""} unit={cp[item.key]?.unit ?? "V"} units={["V"] as const}
@@ -1972,6 +2160,25 @@ export default function ChargerPMForm() {
                     )}
                     {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} countLabel={t("airFilterCount", lang)} count={4} countUnit={t("piece", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} showDustFilterCheckbox dustFilterChanged={dustFilterChanged} setDustFilterChanged={setDustFilterChanged} />}
                     {q.no === 17 && fixedItems && <DynamicItemsSection qNo={17} items={fixedItems} editable={false} countLabel={t("chargingTestCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 18 && fixedItems && (
+                        <DynamicItemsSection
+                            qNo={18}
+                            items={fixedItems}
+                            editable={false}
+                            countLabel={t("cleaningCount", lang)}
+                            count={3}
+                            countUnit={t("items", lang)}
+                            photos={photos}
+                            setPhotos={setPhotos}
+                            rows={rows}
+                            setRows={setRows}
+                            rowsPre={rowsPre}
+                            draftKey={currentDraftKey}
+                            lang={lang}
+                            isPostMode={true}
+                           
+                        />
+                    )}
                 </div>
             </SectionCard>
         );
@@ -2155,7 +2362,7 @@ export default function ChargerPMForm() {
                     </div>
 
                     <div className="tw-mt-6 sm:tw-mt-8 tw-space-y-4 sm:tw-space-y-6">
-                        {QUESTIONS.filter((q) => !(displayTab === "pre" && q.no === 18)).map((q) => renderQuestionBlock(q, displayTab))}
+                        {QUESTIONS.filter((q) => !(displayTab === "pre" && q.postOnly)).map((q) => renderQuestionBlock(q, displayTab))}
                     </div>
 
                     <div id="pm-summary-section" className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
@@ -2194,7 +2401,7 @@ export default function ChargerPMForm() {
                                     {submitting ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             ) : (
-                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting} 
+                                <Button type="button" onClick={onFinalSave} disabled={!canFinalSave || submitting}
                                     className="tw-text-sm tw-py-2.5 tw-bg-gray-800 hover:tw-bg-gray-900"
                                     title={!canFinalSave ? t("alertCompleteAll", lang) : undefined}>
                                     {submitting ? t("saving", lang) : t("save", lang)}
