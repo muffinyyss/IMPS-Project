@@ -1196,9 +1196,9 @@ function PhotoMultiInput({
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
                     {photos.map((p) => (
-                        <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col">
-                            <div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">
-                                {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}
+                        <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-gray-100 tw-shadow-xs tw-flex tw-flex-col">
+                            <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-100">
+                                {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-contain" />}
                                 <button onClick={() => { void handleRemove(p.id); }}
                                     className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
