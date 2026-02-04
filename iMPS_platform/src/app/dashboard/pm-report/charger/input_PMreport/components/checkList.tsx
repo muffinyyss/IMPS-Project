@@ -19,6 +19,9 @@ import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 
+// Global variable to store station name for GPS fallback
+let globalStationName = "";
+
 type TabId = "pre" | "post";
 
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
@@ -973,19 +976,46 @@ function InputWithUnit<U extends string>({
 // ==================== GET GPS LOCATION ====================
 async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
     return new Promise((resolve) => {
+        // ตรวจสอบว่า browser รองรับ Geolocation หรือไม่
         if (!navigator.geolocation) {
+            console.log("Geolocation not supported");
             resolve(null);
             return;
         }
+        
+        // ตรวจสอบ Secure Context (HTTPS) - จำเป็นสำหรับ iOS
+        if (window.isSecureContext === false) {
+            console.log("Not a secure context (HTTPS required for geolocation)");
+            resolve(null);
+            return;
+        }
+        
+        // ตั้ง timeout fallback
+        const timeoutId = setTimeout(() => {
+            console.log("GPS timeout after 10s");
+            resolve(null);
+        }, 10000);
+        
         navigator.geolocation.getCurrentPosition(
             (position) => {
+                clearTimeout(timeoutId);
+                console.log("GPS success:", position.coords.latitude, position.coords.longitude);
                 resolve({
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
                 });
             },
-            () => resolve(null),
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            (error) => {
+                clearTimeout(timeoutId);
+                console.log("GPS error:", error.code, error.message);
+                // error.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
+                resolve(null);
+            },
+            { 
+                enableHighAccuracy: false, // false = เร็วกว่า, ใช้ได้บน iOS
+                timeout: 8000, 
+                maximumAge: 60000 // cache 1 นาที
+            }
         );
     });
 }
@@ -1145,11 +1175,12 @@ function PhotoMultiInput({
             if (gps) {
                 locationText = await reverseGeocode(gps.lat, gps.lng);
             } else {
-                locationText = "ไม่สามารถระบุตำแหน่งได้";
+                // ใช้ globalStationName (station_name) แทนถ้า GPS ไม่ทำงาน
+                locationText = globalStationName || "ไม่สามารถระบุตำแหน่งได้";
             }
         } catch (err) {
             console.error("GPS error:", err);
-            locationText = "ไม่สามารถระบุตำแหน่งได้";
+            locationText = globalStationName || "ไม่สามารถระบุตำแหน่งได้";
         }
         console.log("Location text:", locationText);
         
@@ -1695,7 +1726,11 @@ export default function ChargerPMForm() {
         (async () => {
             try {
                 const data = await fetchReport(editId, sn);
-                if (data.job) setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.chargingCables || prev.chargingCables || 1 }));
+                if (data.job) {
+                    setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.chargingCables || prev.chargingCables || 1 }));
+                    // Set global station name for GPS fallback
+                    globalStationName = data.job.station_name || "";
+                }
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data?.measures_pre?.cp) {
                     const cpData: Record<string, { value: string; unit: UnitVoltage }> = {};
