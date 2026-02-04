@@ -1624,6 +1624,14 @@ export default function ChargerPMForm() {
         issue_id: "", chargerNo: "", sn: "", model: "", power: "", brand: "", station_name: "", date: "", chargingCables: 1,
     });
 
+    // Sync globalStationName whenever job.station_name changes
+    useEffect(() => {
+        if (job.station_name) {
+            globalStationName = job.station_name;
+            console.log("globalStationName set to:", globalStationName);
+        }
+    }, [job.station_name]);
+
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
         const initial: Record<string, { pf: PF; remark: string }> = {};
@@ -1808,6 +1816,8 @@ export default function ChargerPMForm() {
                     date: prev.date || new Date().toISOString().slice(0, 10),
                     chargingCables: st.chargingCables || prev.chargingCables || 1,
                 }));
+                // Set global station name for GPS fallback
+                if (st.station_name) globalStationName = st.station_name;
             })
             .catch((err) => console.error("load charger info failed:", err));
     }, [isPostMode]);
