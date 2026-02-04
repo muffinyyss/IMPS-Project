@@ -1039,61 +1039,80 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
     return new Promise((resolve) => {
         const img = document.createElement("img");
         img.onload = () => {
-            URL.revokeObjectURL(img.src);
-            
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = img.height;
-            const ctx = canvas.getContext("2d")!;
-            
-            // วาดรูปภาพ
-            ctx.drawImage(img, 0, 0);
-            
-            // สร้าง timestamp text
-            const now = new Date();
-            const timestamp = now.toLocaleString("th-TH", {
-                year: "numeric",
-                month: "2-digit",
-                day: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-                hour12: false,
-            });
-            
-            // คำนวณขนาด font ตามขนาดรูป
-            const fontSize = Math.max(14, Math.floor(img.width * 0.022));
-            const padding = Math.floor(fontSize * 0.5);
-            const lineHeight = fontSize * 1.3;
-            
-            ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-            const timestampWidth = ctx.measureText(timestamp).width;
-            const locationWidth = ctx.measureText(locationText).width;
-            const maxTextWidth = Math.max(timestampWidth, locationWidth);
-            const totalHeight = lineHeight * 2;
-            
-            // วาด background สีดำโปร่งใส
-            const bgX = img.width - maxTextWidth - padding * 2 - 10;
-            const bgY = img.height - totalHeight - padding * 2 - 10;
-            ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-            ctx.fillRect(bgX, bgY, maxTextWidth + padding * 2, totalHeight + padding * 2);
-            
-            // วาด text สีขาว
-            ctx.fillStyle = "#FFFFFF";
-            ctx.textBaseline = "top";
-            ctx.fillText(timestamp, bgX + padding, bgY + padding);
-            ctx.fillText(locationText, bgX + padding, bgY + padding + lineHeight);
-            
-            // แปลงกลับเป็น File
-            canvas.toBlob((blob) => {
-                if (blob) {
-                    resolve(new File([blob], file.name, { type: "image/jpeg" }));
-                } else {
+            try {
+                URL.revokeObjectURL(img.src);
+                
+                const canvas = document.createElement("canvas");
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext("2d");
+                
+                if (!ctx) {
+                    console.error("Canvas context not available");
                     resolve(file);
+                    return;
                 }
-            }, "image/jpeg", 0.9);
+                
+                // วาดรูปภาพ
+                ctx.drawImage(img, 0, 0);
+                
+                // สร้าง timestamp text
+                const now = new Date();
+                const timestamp = now.toLocaleString("th-TH", {
+                    year: "numeric",
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    hour12: false,
+                });
+                
+                // คำนวณขนาด font ตามขนาดรูป
+                const fontSize = Math.max(14, Math.floor(img.width * 0.022));
+                const padding = Math.floor(fontSize * 0.5);
+                const lineHeight = fontSize * 1.3;
+                
+                ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+                const timestampWidth = ctx.measureText(timestamp).width;
+                const locationWidth = ctx.measureText(locationText).width;
+                const maxTextWidth = Math.max(timestampWidth, locationWidth);
+                const totalHeight = lineHeight * 2;
+                
+                // วาด background สีดำโปร่งใส
+                const bgX = img.width - maxTextWidth - padding * 2 - 10;
+                const bgY = img.height - totalHeight - padding * 2 - 10;
+                ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+                ctx.fillRect(bgX, bgY, maxTextWidth + padding * 2, totalHeight + padding * 2);
+                
+                // วาด text สีขาว
+                ctx.fillStyle = "#FFFFFF";
+                ctx.textBaseline = "top";
+                ctx.fillText(timestamp, bgX + padding, bgY + padding);
+                ctx.fillText(locationText, bgX + padding, bgY + padding + lineHeight);
+                
+                console.log("Timestamp added:", timestamp, locationText);
+                
+                // แปลงกลับเป็น File
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        const newFile = new File([blob], file.name, { type: "image/jpeg" });
+                        console.log("File with timestamp created:", newFile.size);
+                        resolve(newFile);
+                    } else {
+                        console.error("Canvas toBlob failed");
+                        resolve(file);
+                    }
+                }, "image/jpeg", 0.9);
+            } catch (err) {
+                console.error("Error in addTimestampToImage:", err);
+                resolve(file);
+            }
         };
-        img.onerror = () => resolve(file);
+        img.onerror = (err) => {
+            console.error("Image load error:", err);
+            resolve(file);
+        };
         img.src = URL.createObjectURL(file);
     });
 }
@@ -1108,27 +1127,38 @@ function PhotoMultiInput({
     const handleCamera = () => cameraRef.current?.click();
 
     const handleFiles = async (list: FileList | null) => {
-        if (!list) return;
+        if (!list || list.length === 0) {
+            console.log("No files selected");
+            return;
+        }
+        console.log("Files received:", list.length);
+        
         const remain = Math.max(0, max - photos.length);
         const files = Array.from(list).slice(0, remain);
         
         // ดึง GPS และแปลงเป็นชื่อสถานที่
         let locationText = "";
         try {
+            console.log("Getting GPS...");
             const gps = await getCurrentGPS();
+            console.log("GPS result:", gps);
             if (gps) {
                 locationText = await reverseGeocode(gps.lat, gps.lng);
             } else {
                 locationText = "ไม่สามารถระบุตำแหน่งได้";
             }
-        } catch {
+        } catch (err) {
+            console.error("GPS error:", err);
             locationText = "ไม่สามารถระบุตำแหน่งได้";
         }
+        console.log("Location text:", locationText);
         
         const items: PhotoItem[] = await Promise.all(
             files.map(async (f, i) => {
+                console.log("Processing file:", f.name, f.size);
                 // เพิ่ม timestamp และชื่อสถานที่ลงบนรูปภาพ
                 const fileWithTimestamp = await addTimestampToImage(f, locationText);
+                console.log("File after timestamp:", fileWithTimestamp.size);
                 const photoId = `${qNo}-${Date.now()}-${i}-${f.name}`;
                 const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
                 return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
