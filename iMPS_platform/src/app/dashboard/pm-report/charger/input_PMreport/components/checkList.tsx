@@ -2,10 +2,6 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import {
     Button,
-    Card,
-    CardBody,
-    CardHeader,
-    CardFooter,
     Input,
     Typography,
     Textarea,
@@ -16,11 +12,13 @@ import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../li
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
-import { putPhoto, getPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
+import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
-
-// Global variable to store station name for GPS fallback
-let globalStationName = "";
+import { apiFetch } from "@/utils/api";
+// Station name for GPS fallback — module-level is safe here because:
+// 1) "use client" component, only runs in browser
+// 2) Only one ChargerPMForm mounts at a time
+let _stationNameForGPS = "";
 
 type TabId = "pre" | "post";
 
@@ -342,7 +340,7 @@ function getFixedItemsQ18(lang: Lang): { key: string; label: string }[] {
 // ==================== API FUNCTIONS ====================
 async function getChargerInfoBySN(sn: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`;
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await apiFetch(url, { cache: "no-store" });
     if (res.status === 404) throw new Error("Charger not found");
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
     const json = await res.json();
@@ -354,7 +352,7 @@ async function fetchPreviewIssueId(sn: string, pmDate: string): Promise<string |
     u.searchParams.set("sn", sn);
     u.searchParams.set("pm_date", pmDate);
     const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    const r = await apiFetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
     if (!r.ok) return null;
     const j = await r.json();
     return (j && typeof j.issue_id === "string") ? j.issue_id : null;
@@ -365,7 +363,7 @@ async function fetchPreviewDocName(sn: string, pmDate: string): Promise<string |
     u.searchParams.set("sn", sn);
     u.searchParams.set("pm_date", pmDate);
     const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    const r = await apiFetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
     if (!r.ok) return null;
     const j = await r.json();
     return (j && typeof j.doc_name === "string") ? j.doc_name : null;
@@ -374,7 +372,7 @@ async function fetchPreviewDocName(sn: string, pmDate: string): Promise<string |
 async function fetchReport(reportId: string, sn: string) {
     const token = localStorage.getItem("access_token") ?? "";
     const url = `${API_BASE}/pmreport/get?sn=${sn}&report_id=${reportId}`;
-    const res = await fetch(url, { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+    const res = await apiFetch(url, { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
     if (!res.ok) throw new Error(await res.text());
     return await res.json();
 }
@@ -978,28 +976,24 @@ async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
     return new Promise((resolve) => {
         // ตรวจสอบว่า browser รองรับ Geolocation หรือไม่
         if (!navigator.geolocation) {
-            console.log("Geolocation not supported");
             resolve(null);
             return;
         }
         
         // ตรวจสอบ Secure Context (HTTPS) - จำเป็นสำหรับ iOS
         if (window.isSecureContext === false) {
-            console.log("Not a secure context (HTTPS required for geolocation)");
             resolve(null);
             return;
         }
         
         // ตั้ง timeout fallback
         const timeoutId = setTimeout(() => {
-            console.log("GPS timeout after 10s");
             resolve(null);
         }, 10000);
         
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 clearTimeout(timeoutId);
-                console.log("GPS success:", position.coords.latitude, position.coords.longitude);
                 resolve({
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
@@ -1007,7 +1001,6 @@ async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
             },
             (error) => {
                 clearTimeout(timeoutId);
-                console.log("GPS error:", error.code, error.message);
                 // error.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
                 resolve(null);
             },
@@ -1027,7 +1020,7 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
         const timeoutId = setTimeout(() => controller.abort(), 3000); // timeout 3 วินาที
         
         const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th&zoom=18`;
-        const res = await fetch(url, {
+        const res = await apiFetch(url, {
             headers: { "User-Agent": "PM-Checklist-App/1.0" },
             signal: controller.signal,
         });
@@ -1109,9 +1102,9 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                 const maxTextWidth = Math.max(timestampWidth, locationWidth);
                 const totalHeight = lineHeight * 2;
                 
-                // วาด background สีดำโปร่งใส
-                const bgX = img.width - maxTextWidth - padding * 2 - 10;
-                const bgY = img.height - totalHeight - padding * 2 - 10;
+                // วาด background สีดำโปร่งใส (clamp ไม่ให้ติดลบกรณีรูปเล็ก)
+                const bgX = Math.max(0, img.width - maxTextWidth - padding * 2 - 10);
+                const bgY = Math.max(0, img.height - totalHeight - padding * 2 - 10);
                 ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
                 ctx.fillRect(bgX, bgY, maxTextWidth + padding * 2, totalHeight + padding * 2);
                 
@@ -1121,13 +1114,11 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                 ctx.fillText(timestamp, bgX + padding, bgY + padding);
                 ctx.fillText(locationText, bgX + padding, bgY + padding + lineHeight);
                 
-                console.log("Timestamp added:", timestamp, locationText);
                 
                 // แปลงกลับเป็น File
                 canvas.toBlob((blob) => {
                     if (blob) {
                         const newFile = new File([blob], file.name, { type: "image/jpeg" });
-                        console.log("File with timestamp created:", newFile.size);
                         resolve(newFile);
                     } else {
                         console.error("Canvas toBlob failed");
@@ -1158,10 +1149,8 @@ function PhotoMultiInput({
 
     const handleFiles = async (list: FileList | null) => {
         if (!list || list.length === 0) {
-            console.log("No files selected");
             return;
         }
-        console.log("Files received:", list.length);
         
         const remain = Math.max(0, max - photos.length);
         const files = Array.from(list).slice(0, remain);
@@ -1169,27 +1158,22 @@ function PhotoMultiInput({
         // ดึง GPS และแปลงเป็นชื่อสถานที่
         let locationText = "";
         try {
-            console.log("Getting GPS...");
             const gps = await getCurrentGPS();
-            console.log("GPS result:", gps);
             if (gps) {
                 locationText = await reverseGeocode(gps.lat, gps.lng);
             } else {
-                // ใช้ globalStationName (station_name) แทนถ้า GPS ไม่ทำงาน
-                locationText = globalStationName || "ไม่สามารถระบุตำแหน่งได้";
+                // ใช้ station name แทนถ้า GPS ไม่ทำงาน
+                locationText = _stationNameForGPS || "ไม่สามารถระบุตำแหน่งได้";
             }
         } catch (err) {
             console.error("GPS error:", err);
-            locationText = globalStationName || "ไม่สามารถระบุตำแหน่งได้";
+            locationText = _stationNameForGPS || "ไม่สามารถระบุตำแหน่งได้";
         }
-        console.log("Location text:", locationText);
         
         const items: PhotoItem[] = await Promise.all(
             files.map(async (f, i) => {
-                console.log("Processing file:", f.name, f.size);
                 // เพิ่ม timestamp และชื่อสถานที่ลงบนรูปภาพ
                 const fileWithTimestamp = await addTimestampToImage(f, locationText);
-                console.log("File after timestamp:", fileWithTimestamp.size);
                 const photoId = `${qNo}-${Date.now()}-${i}-${f.name}`;
                 const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
                 return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
@@ -1222,7 +1206,7 @@ function PhotoMultiInput({
             <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
                 {t("maxPhotos", lang)} {max} {t("photos", lang)}
             </Typography>
-            <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="tw-hidden"
+            <input ref={cameraRef} type="file" accept="image/*" className="tw-hidden"
                 onChange={(e) => { void handleFiles(e.target.files); }} />
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
@@ -1594,12 +1578,21 @@ export default function ChargerPMForm() {
     const isPostMode = action === "post";
 
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
+
+    // ⚡ Fix: ใช้ ref เก็บค่าล่าสุดของ photos เพื่อ cleanup ตอน unmount
+    const photosRef = useRef(photos);
+    useEffect(() => { photosRef.current = photos; }, [photos]);
+    useEffect(() => {
+        return () => {
+            Object.values(photosRef.current).flat().forEach(p => {
+                if (p.preview && p.preview.startsWith("blob:")) URL.revokeObjectURL(p.preview);
+            });
+        };
+    }, []);
     const [cpPre, setCpPre] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
     const [cp, setCp] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
-    const [cpIsNA, setCpIsNA] = useState<boolean>(false);
     const [summary, setSummary] = useState<string>("");
     const [sn, setSn] = useState<string | null>(null);
-    const [draftId, setDraftId] = useState<string | null>(null);
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
 
     const key = useMemo(() => draftKey(sn), [sn]);
@@ -1624,13 +1617,8 @@ export default function ChargerPMForm() {
         issue_id: "", chargerNo: "", sn: "", model: "", power: "", brand: "", station_name: "", date: "", chargingCables: 1,
     });
 
-    // Sync globalStationName whenever job.station_name changes
-    useEffect(() => {
-        if (job.station_name) {
-            globalStationName = job.station_name;
-            console.log("globalStationName set to:", globalStationName);
-        }
-    }, [job.station_name]);
+    // Sync station name for GPS fallback
+    useEffect(() => { if (job.station_name) _stationNameForGPS = job.station_name; }, [job.station_name]);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
@@ -1662,10 +1650,28 @@ export default function ChargerPMForm() {
     };
     const removeQ5Item = (index: number) => {
         if (q5Items.length > 1) {
-            const keyToDelete = q5Items[index].key;
-            const newItems = q5Items.filter((_, i) => i !== index).map((_, idx) => ({ key: `r5_${idx + 1}`, label: getDynamicLabel.emergencyStop(idx + 1, lang) }));
+            const oldItems = q5Items;
+            const survivingItems = oldItems.filter((_, i) => i !== index);
+            const newItems = survivingItems.map((_, idx) => ({ key: `r5_${idx + 1}`, label: getDynamicLabel.emergencyStop(idx + 1, lang) }));
             setQ5Items(newItems);
-            setRows(prev => { const next = { ...prev }; delete next[keyToDelete]; return next; });
+            setRows(prev => {
+                const next = { ...prev };
+                const survivingData = survivingItems.map(item => next[item.key] ?? { pf: "" as PF, remark: "" });
+                oldItems.forEach(item => { delete next[item.key]; });
+                newItems.forEach((item, idx) => { next[item.key] = survivingData[idx]; });
+                return next;
+            });
+            // ⚡ Fix: migrate photos ตาม index ใหม่ + revoke blob ของ item ที่ถูกลบ
+            setPhotos(prev => {
+                const next = { ...prev };
+                const removedPhotos = next[`5_${index}`] || [];
+                removedPhotos.forEach(p => { if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview); });
+                const survivingIndices = oldItems.map((_, i) => i).filter(i => i !== index);
+                const survivingPhotos = survivingIndices.map(i => next[`5_${i}`] || []);
+                oldItems.forEach((_, i) => { delete next[`5_${i}`]; });
+                survivingPhotos.forEach((photoList, idx) => { next[`5_${idx}`] = photoList; });
+                return next;
+            });
         }
     };
     const initQ5Items = (count: number) => {
@@ -1681,10 +1687,28 @@ export default function ChargerPMForm() {
     };
     const removeQ7Item = (index: number) => {
         if (q7Items.length > 1) {
-            const keyToDelete = q7Items[index].key;
-            const newItems = q7Items.filter((_, i) => i !== index).map((_, idx) => ({ key: `r7_${idx + 1}`, label: getDynamicLabel.warningSign(idx + 1, lang) }));
+            const oldItems = q7Items;
+            const survivingItems = oldItems.filter((_, i) => i !== index);
+            const newItems = survivingItems.map((_, idx) => ({ key: `r7_${idx + 1}`, label: getDynamicLabel.warningSign(idx + 1, lang) }));
             setQ7Items(newItems);
-            setRows(prev => { const next = { ...prev }; delete next[keyToDelete]; return next; });
+            setRows(prev => {
+                const next = { ...prev };
+                const survivingData = survivingItems.map(item => next[item.key] ?? { pf: "" as PF, remark: "" });
+                oldItems.forEach(item => { delete next[item.key]; });
+                newItems.forEach((item, idx) => { next[item.key] = survivingData[idx]; });
+                return next;
+            });
+            // ⚡ Fix: migrate photos ตาม index ใหม่ + revoke blob ของ item ที่ถูกลบ
+            setPhotos(prev => {
+                const next = { ...prev };
+                const removedPhotos = next[`7_${index}`] || [];
+                removedPhotos.forEach(p => { if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview); });
+                const survivingIndices = oldItems.map((_, i) => i).filter(i => i !== index);
+                const survivingPhotos = survivingIndices.map(i => next[`7_${i}`] || []);
+                oldItems.forEach((_, i) => { delete next[`7_${i}`]; });
+                survivingPhotos.forEach((photoList, idx) => { next[`7_${idx}`] = photoList; });
+                return next;
+            });
         }
     };
     const initQ7Items = (count: number) => {
@@ -1736,8 +1760,6 @@ export default function ChargerPMForm() {
                 const data = await fetchReport(editId, sn);
                 if (data.job) {
                     setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.chargingCables || prev.chargingCables || 1 }));
-                    // Set global station name for GPS fallback
-                    globalStationName = data.job.station_name || "";
                 }
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data?.measures_pre?.cp) {
@@ -1769,7 +1791,7 @@ export default function ChargerPMForm() {
         if (!token) return;
         (async () => {
             try {
-                const res = await fetch(`${API_BASE}/me`, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include" });
+                const res = await apiFetch(`${API_BASE}/me`, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include" });
                 if (!res.ok) return;
                 const data: Me = await res.json();
                 setMe(data);
@@ -1812,12 +1834,10 @@ export default function ChargerPMForm() {
                 setJob((prev) => ({
                     ...prev, chargerNo: st.chargerNo ?? prev.chargerNo, sn: st.SN ?? prev.sn,
                     model: st.model ?? prev.model, brand: st.brand ?? prev.brand,
-                    power: st.power ?? prev.model, station_name: st.station_name ?? prev.station_name,
+                    power: st.power ?? prev.power, station_name: st.station_name ?? prev.station_name,
                     date: prev.date || new Date().toISOString().slice(0, 10),
                     chargingCables: st.chargingCables || prev.chargingCables || 1,
                 }));
-                // Set global station name for GPS fallback
-                if (st.station_name) globalStationName = st.station_name;
             })
             .catch((err) => console.error("load charger info failed:", err));
     }, [isPostMode]);
@@ -1860,17 +1880,21 @@ export default function ChargerPMForm() {
 
         // โหลด photos จาก IndexedDB ด้วย photoRefs
         if (draft.photoRefs) {
+            let canceled = false;
+            const cleanup = () => { canceled = true; };
             (async () => {
                 const loadedPhotos: Record<string | number, PhotoItem[]> = {};
                 for (const [photoKey, refs] of Object.entries(draft.photoRefs as Record<string, (PhotoRef | { isNA: true })[]>)) {
+                    if (canceled) return;
                     if (!refs || refs.length === 0) continue;
                     const items: PhotoItem[] = [];
                     for (const ref of refs) {
+                        if (canceled) return;
                         if ('isNA' in ref && ref.isNA) {
                             items.push({ id: `na-${photoKey}`, isNA: true });
                         } else if ('dbKey' in ref) {
                             const file = await getPhotoByDbKey(ref.dbKey);
-                            if (file) {
+                            if (file && !canceled) {
                                 items.push({
                                     id: ref.id,
                                     file,
@@ -1885,8 +1909,9 @@ export default function ChargerPMForm() {
                         loadedPhotos[photoKey] = items;
                     }
                 }
-                setPhotos(prev => ({ ...prev, ...loadedPhotos }));
+                if (!canceled) setPhotos(prev => ({ ...prev, ...loadedPhotos }));
             })();
+            return cleanup;
         }
     }, [sn, key, isPostMode]);
 
@@ -1928,17 +1953,21 @@ export default function ChargerPMForm() {
 
         // โหลด photos จาก IndexedDB ด้วย photoRefs
         if (draft.photoRefs) {
+            let canceled = false;
+            const cleanup = () => { canceled = true; };
             (async () => {
                 const loadedPhotos: Record<string | number, PhotoItem[]> = {};
                 for (const [photoKey, refs] of Object.entries(draft.photoRefs as Record<string, (PhotoRef | { isNA: true })[]>)) {
+                    if (canceled) return;
                     if (!refs || refs.length === 0) continue;
                     const items: PhotoItem[] = [];
                     for (const ref of refs) {
+                        if (canceled) return;
                         if ('isNA' in ref && ref.isNA) {
                             items.push({ id: `na-${photoKey}`, isNA: true });
                         } else if ('dbKey' in ref) {
                             const file = await getPhotoByDbKey(ref.dbKey);
-                            if (file) {
+                            if (file && !canceled) {
                                 items.push({
                                     id: ref.id,
                                     file,
@@ -1953,8 +1982,9 @@ export default function ChargerPMForm() {
                         loadedPhotos[photoKey] = items;
                     }
                 }
-                setPhotos(prev => ({ ...prev, ...loadedPhotos }));
+                if (!canceled) setPhotos(prev => ({ ...prev, ...loadedPhotos }));
             })();
+            return cleanup;
         }
     }, [sn, postKey, isPostMode, editId, postApiLoaded]);
 
@@ -2009,7 +2039,7 @@ export default function ChargerPMForm() {
         (fixedItemsMap[10] || []).forEach((item, idx) => {
             if (rowsPre[item.key]?.pf === "NA") return;
             if (rows[item.key]?.pf === "NA") return;
-            if (!cpIsNA && !cp[item.key]?.value?.trim()) {
+            if (!cp[item.key]?.value?.trim()) {
                 result.push({
                     qNo: 10,
                     subNo: idx + 1,
@@ -2033,7 +2063,7 @@ export default function ChargerPMForm() {
         }
 
         return result;
-    }, [cpIsNA, cp, fixedItemsMap, m16.state, rows, rowsPre]);
+    }, [cp, fixedItemsMap, m16.state, rows, rowsPre]);
 
     const allRequiredInputsFilled = useMemo(() => missingInputsDetailed.length === 0, [missingInputsDetailed]);
 
@@ -2129,11 +2159,9 @@ export default function ChargerPMForm() {
     const isSummaryCheckFilled = summaryCheck !== "";
     const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
 
-    const handleUnitChange = (no: number, key: string, u: UnitVoltage) => {
+    const handleUnitChange = (no: number, _key: string, u: UnitVoltage) => {
         const m = MEASURE_BY_NO[no];
         if (!m) return;
-        const firstKey = (FIELD_GROUPS[no]?.keys ?? [key])[0] as string;
-        if (key !== firstKey) m.patch(firstKey, { unit: u });
         m.syncUnits(u);
     };
 
@@ -2305,7 +2333,7 @@ export default function ChargerPMForm() {
                 ctx.drawImage(img, 0, 0, width, height);
                 canvas.toBlob((blob) => { if (blob && blob.size < file.size) resolve(new File([blob], file.name, { type: "image/jpeg" })); else resolve(file); }, "image/jpeg", quality);
             };
-            img.onerror = () => resolve(file);
+            img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
             img.src = URL.createObjectURL(file);
         });
     }
@@ -2320,12 +2348,13 @@ export default function ChargerPMForm() {
         compressedFiles.forEach((f) => form.append("files", f));
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/pmreport/${reportId}/pre/photos` : `${API_BASE}/pmreport/${reportId}/post/photos`;
-        const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
+        const res = await apiFetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
     }
 
     const onPreSave = async () => {
         if (!sn) { alert(t("alertNoSN", lang)); return; }
+        if (!allPhotosAttachedPre) { alert(t("alertPhotoNotComplete", lang)); return; }
         if (!allRequiredInputsFilled) { alert(t("alertFillRequired", lang)); return; }
         if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
         if (submitting) return;
@@ -2335,15 +2364,23 @@ export default function ChargerPMForm() {
             const pm_date = job.date?.trim() || "";
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
             const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId };
-            const submitRes = await fetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+            const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!submitRes.ok) throw new Error(await submitRes.text());
             const { report_id, doc_name } = await submitRes.json() as { report_id: string; doc_name?: string };
             if (doc_name) setDocName(doc_name);
-            const uploadPromises: Promise<void>[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadPromises.push(uploadGroupPhotos(report_id, sn, `g${no}`, files, "pre")); } });
-            if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
+            // ⚡ ใช้ allSettled เพื่อตรวจสอบว่ากลุ่มไหน fail
+            const uploadEntries: { group: string; promise: Promise<void> }[] = [];
+            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadEntries.push({ group: no, promise: uploadGroupPhotos(report_id, sn, `g${no}`, files, "pre") }); } });
+            if (uploadEntries.length > 0) {
+                const results = await Promise.allSettled(uploadEntries.map(e => e.promise));
+                const failedGroups = results.map((r, i) => r.status === "rejected" ? uploadEntries[i].group : null).filter(Boolean);
+                if (failedGroups.length > 0) {
+                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
+                    return; // ไม่ clear draft เพื่อให้ user ลองใหม่ได้
+                }
+            }
             const allPhotos = Object.values(photos).flat();
-            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+            Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => {});
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
@@ -2356,15 +2393,24 @@ export default function ChargerPMForm() {
         try {
             const token = localStorage.getItem("access_token");
             const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
-            const submitRes = await fetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+            const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!submitRes.ok) throw new Error(await submitRes.text());
             const { report_id } = await submitRes.json() as { report_id: string };
-            const uploadPromises: Promise<void>[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadPromises.push(uploadGroupPhotos(report_id, sn, `g${no}`, files, "post")); } });
-            if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
-            await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ sn: sn }) });
+            // ⚡ ใช้ allSettled เพื่อตรวจสอบว่ากลุ่มไหน fail
+            const uploadEntries: { group: string; promise: Promise<void> }[] = [];
+            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadEntries.push({ group: no, promise: uploadGroupPhotos(report_id, sn, `g${no}`, files, "post") }); } });
+            if (uploadEntries.length > 0) {
+                const results = await Promise.allSettled(uploadEntries.map(e => e.promise));
+                const failedGroups = results.map((r, i) => r.status === "rejected" ? uploadEntries[i].group : null).filter(Boolean);
+                if (failedGroups.length > 0) {
+                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
+                    return; // ไม่ finalize เพื่อให้ user ลองใหม่ได้
+                }
+            }
+            const finalizeRes = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ sn: sn }) });
+            if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             const allPhotos = Object.values(photos).flat();
-            await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
+            Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => {});
             clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }

@@ -1,77 +1,133 @@
-type DraftData = {
-  job: any;
-  rows: any;
-  summary: string;
-  // รูปแนบ (เพิ่มในเวอร์ชันใหม่)
-  photos?: any;
+/**
+ * Draft utilities for CM Report
+ * ใช้ localStorage เก็บข้อมูลร่างระหว่างกรอกฟอร์ม
+ */
 
-  // โครงสร้างใหม่: ค่าวัดของ "ข้อ 9" (Main + ย่อย 1–5)
-  m9_0?: any;
-  m9_1?: any;
-  m9_2?: any;
-  m9_3?: any;
-  m9_4?: any;
-  m9_5?: any;
+const DRAFT_PREFIX = "cm-draft-";
 
-  // โครงสร้างเก่า (เผื่อมี draft เก่าค้างอยู่ให้โหลดได้ ไม่ error)
-  cp?: any;
-  m4?: any;
-  m5?: any;
-  m6?: any;
-  m7?: any;
-  m8?: any;
+/**
+ * สร้าง draft key จาก station_id
+ */
+export function draftKey(stationId: string | null): string {
+    return `${DRAFT_PREFIX}${stationId || "unknown"}`;
+}
 
-  // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
-  // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
+/**
+ * สร้าง draft key สำหรับ edit mode
+ */
+export function draftKeyEdit(stationId: string | null, editId: string): string {
+    return `${DRAFT_PREFIX}${stationId || "unknown"}:edit:${editId}`;
+}
+
+/**
+ * บันทึก draft ลง localStorage
+ */
+export function saveDraftLocal<T extends object>(key: string, data: T): void {
+    try {
+        const payload = {
+            ...data,
+            _savedAt: Date.now(),
+            _version: 2,  // bump version for new structure
+        };
+        localStorage.setItem(key, JSON.stringify(payload));
+    } catch (error) {
+        console.warn("[Draft] Failed to save draft:", error);
+    }
+}
+
+/**
+ * โหลด draft จาก localStorage
+ */
+export function loadDraftLocal<T>(key: string): T | null {
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        
+        const parsed = JSON.parse(raw);
+        
+        // ตรวจสอบว่า draft หมดอายุหรือยัง (7 วัน)
+        const savedAt = parsed._savedAt;
+        if (savedAt && Date.now() - savedAt > 7 * 24 * 60 * 60 * 1000) {
+            clearDraftLocal(key);
+            return null;
+        }
+        
+        return parsed as T;
+    } catch (error) {
+        console.warn("[Draft] Failed to load draft:", error);
+        return null;
+    }
+}
+
+/**
+ * ลบ draft จาก localStorage
+ */
+export function clearDraftLocal(key: string): void {
+    try {
+        localStorage.removeItem(key);
+    } catch (error) {
+        console.warn("[Draft] Failed to clear draft:", error);
+    }
+}
+
+/**
+ * ตรวจสอบว่ามี draft อยู่หรือไม่
+ */
+export function hasDraft(key: string): boolean {
+    try {
+        return localStorage.getItem(key) !== null;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * ดึงเวลาที่บันทึก draft ล่าสุด
+ */
+export function getDraftSavedAt(key: string): Date | null {
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        
+        const parsed = JSON.parse(raw);
+        return parsed._savedAt ? new Date(parsed._savedAt) : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * ลบ draft ทั้งหมดของ CM report
+ */
+export function clearAllCMDrafts(): void {
+    try {
+        const keys = Object.keys(localStorage).filter(k => k.startsWith(DRAFT_PREFIX));
+        keys.forEach(k => localStorage.removeItem(k));
+    } catch (error) {
+        console.warn("[Draft] Failed to clear all drafts:", error);
+    }
+}
+
+/**
+ * Type สำหรับ CM Draft Data (flat structure - no job object)
+ */
+export type CMDraftData = {
+    // Form fields (flat)
+    issueId: string;
+    docName: string;
+    foundDate: string;
+    location: string;
+    problemDetails: string;
+    severity: "" | "Low" | "Medium" | "High" | "Critical";
+    status: "" | "Open" | "In Progress";
+    remarks_open: string;
+    faultyEquipment: string;
+    
+    // Other fields
+    reported_by: string;
+    summary: string;
+    
+    // Metadata
+    _savedAt?: number;
+    _version?: number;
 };
-
-function safeStorage() {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-// export function draftKeyCCB(stationId?: string | null, draftId = "default") {
-//   return `pmDraft:v2:ccb:${stationId ?? "unknown"}:${draftId}`;
-// }
-export function draftKeyCCB(stationId: string | null | undefined, draftId = "default") {
-  // ทำ key ต่อสถานี (มี station_id จะดีที่สุด)
-  return `pmDraft:v2:ccb:${stationId ?? "unknown"}:${draftId}`;
-}
-
-
-export function saveDraftLocal(key: string, data: DraftData) {
-  const ls = safeStorage();
-  if (!ls) return;
-  try {
-    ls.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.error("saveDraftLocal failed:", e);
-  }
-}
-
-export function loadDraftLocal<T = DraftData>(key: string): T | null {
-  const ls = safeStorage();
-  if (!ls) return null;
-  try {
-    const raw = ls.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as T;
-  } catch (e) {
-    console.error("loadDraftLocal failed:", e);
-    return null;
-  }
-}
-
-export function clearDraftLocal(key: string) {
-  const ls = safeStorage();
-  if (!ls) return;
-  try {
-    ls.removeItem(key);
-  } catch (e) {
-    console.error("clearDraftLocal failed:", e);
-  }
-}

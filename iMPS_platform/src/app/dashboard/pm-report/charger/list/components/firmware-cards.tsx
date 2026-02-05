@@ -21,15 +21,15 @@ function StatCardClassic({
         <div className="tw-flex tw-items-center tw-justify-center tw-w-8 tw-h-8 sm:tw-w-9 sm:tw-h-9 lg:tw-w-11 lg:tw-h-11 tw-rounded-lg tw-bg-gradient-to-br tw-from-blue-gray-800 tw-to-blue-gray-900 tw-shadow-sm tw-flex-shrink-0">
           <Icon className="tw-w-4 tw-h-4 sm:tw-w-4.5 sm:tw-h-4.5 lg:tw-w-5 lg:tw-h-5 tw-text-white" />
         </div>
-        
+
         {/* Text Content */}
         <div className="tw-flex-1 tw-min-w-0">
           <div className="tw-text-right">
             <p className="tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs tw-font-medium tw-text-blue-gray-500 tw-leading-tight">
               {item.title}
             </p>
-            <p 
-              className="tw-text-xs sm:tw-text-sm lg:tw-text-base tw-font-bold tw-text-blue-gray-900 tw-mt-0.5 sm:tw-mt-1 lg:tw-mt-1.5 tw-truncate tw-leading-tight" 
+            <p
+              className="tw-text-xs sm:tw-text-sm lg:tw-text-base tw-font-bold tw-text-blue-gray-900 tw-mt-0.5 sm:tw-mt-1 lg:tw-mt-1.5 tw-truncate tw-leading-tight"
               title={item.value}
             >
               {item.value}
@@ -37,10 +37,10 @@ function StatCardClassic({
           </div>
         </div>
       </div>
-      
+
       {/* Divider */}
       <div className="tw-border-t tw-border-blue-gray-50" />
-      
+
       {/* Footer */}
       <div className="tw-px-2.5 sm:tw-px-3 lg:tw-px-4 tw-py-1.5 sm:tw-py-2 lg:tw-py-3 tw-bg-gray-50/50">
         <p className="tw-text-blue-gray-600 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs">
@@ -84,10 +84,13 @@ export default function StatisticsCards() {
       try {
         setLoading(true);
         setErr(null);
-        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? undefined : undefined;
-        const data = await loadPmReport(sn, token);
+        const data = await loadPmReport(sn);
         if (alive) setPm(data);
       } catch (e: any) {
+        if (e?.status === 401) {
+          window.location.href = "/session-expired";
+          return;
+        }
         if (alive) { setPm(fallback); setErr(e?.message ?? "Failed to load data"); }
       } finally {
         if (alive) setLoading(false);
@@ -134,7 +137,7 @@ export default function StatisticsCards() {
           </p>
         </div>
       )}
-      
+
       {/* Error Message */}
       {err && (
         <div className="tw-flex tw-items-center tw-gap-2 tw-mt-2 tw-p-2 sm:tw-p-2.5 lg:tw-p-3 tw-bg-red-50 tw-rounded-lg tw-border tw-border-red-100">
@@ -146,7 +149,7 @@ export default function StatisticsCards() {
       )}
 
       {/* Cards Grid */}
-      <div 
+      <div
         className={`
           tw-mt-2.5 sm:tw-mt-3 lg:tw-mt-4 
           tw-mb-2.5 sm:tw-mb-3 lg:tw-mb-4 
