@@ -114,6 +114,7 @@ SUB_ROW_TITLES_TH = {
     
     "r11_1": "แผ่นกรองระบายอากาศ (ขาเข้า)",
     "r11_2": "แผ่นกรองระบายอากาศ (ขาออก)",
+    "r11_3": "แผ่นกรองระบายอากาศ (ด้านหลัง)",
     
     "r17_1": "สายที่ 1",
     "r17_2": "สายที่ 2",
@@ -142,6 +143,7 @@ SUB_ROW_TITLES_EN = {
     
     "r11_1": "Air filter (inlet)",
     "r11_2": "Air filter (outlet)",
+    "r11_3": "Air filter (rear)",
     
     "r17_1": "Charging test cable 1",
     "r17_2": "Charging test cable 2",
