@@ -53,7 +53,7 @@ SMTP_PASS = os.getenv("SMTP_PASS", "depllvpufjwtpysc")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
 # BASE = Path(__file__).parent
-app = FastAPI()
+# app = FastAPI()
 
 client1 = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
 client = AsyncIOMotorClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
@@ -179,15 +179,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # CORS (ระบุ origin จริงในโปรดักชัน)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["ETag"],              # ให้ FE อ่าน ETag ได้ (ใช้ใน /outputModule6)
-    max_age=86400  
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["http://localhost:3001"],  # ระบุให้ตรง
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+#     expose_headers=["ETag"],
+#     max_age=86400,
+# )
 
 def _validate_station_id(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
@@ -252,7 +252,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 class UserClaims(BaseModel):
     sub: str
     user_id: Optional[str] = None
-    username: str
+    username: Optional[str] = None
     role: str = "user"
     company: Optional[str] = None
     station_ids: List[str] = []
@@ -5324,7 +5324,7 @@ def get_pmurl_coll_upload(sn: str):
 async def _get_charger_by_sn(sn: str) -> dict:
     """Get charger document by SN, raise 404 if not found"""
     # FIX #1: เพิ่ม await — charger_collection เป็น Motor async collection
-    charger = await charger_collection.find_one({"SN": sn})
+    charger = charger_collection.find_one({"SN": sn})
     if not charger:
         raise HTTPException(status_code=404, detail=f"Charger with SN '{sn}' not found")
     return charger
@@ -5471,19 +5471,14 @@ async def pmreport_list(
     pm_date_arr = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
     return {"items": items, "pm_date": pm_date_arr, "page": page, "pageSize": pageSize, "total": total}
 
-# เดิม (path param)
-@app.get("/pmreport/latest/{sn}")
-async def pmreport_latest(sn: str, current: UserClaims = Depends(get_current_user)):
-    """Get latest PM info for a charger by SN (path param)"""
-    return await _pmreport_latest_core(sn, current)
 
 # ใหม่ (query param)
-@app.get("/pmreport/latest/")
-async def pmreport_latest_q(
-    sn: str = Query(..., description="Charger Serial Number"),
+@app.get("/pmreport/latest/{sn}")
+async def pmreport_latest_by_path(
+    sn: str = Path(..., description="Charger Serial Number"),
     current: UserClaims = Depends(get_current_user),
 ):
-    """Get latest PM info for a charger by SN (query param)"""
+    """Get latest PM info for a charger by SN (path param)"""
     return await _pmreport_latest_core(sn, current)
 
 class PMMeasureRow(BaseModel):
