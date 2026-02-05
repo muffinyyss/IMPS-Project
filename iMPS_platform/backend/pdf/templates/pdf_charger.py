@@ -66,7 +66,7 @@ ROW_TITLES_TH = {
     "r15": "ตรวจสอบลำดับเฟส",
     "r16": "วัดแรงดันไฟฟ้าด้านเข้า",
     "r17": "ทดสอบการอัดประจุ",
-    "r18": "ทำความสะอาด"
+    "r18": "ทำความสะอาด",
 }
 
 # English version
@@ -88,7 +88,7 @@ ROW_TITLES_EN = {
     "r15": "Check phase sequence",
     "r16": "Measure input voltage",
     "r17": "Charging test",
-    "r18": "Cleaning"
+    "r18": "Cleaning",
 }
 
 # Default to Thai
@@ -116,24 +116,37 @@ SUB_ROW_TITLES_TH = {
     
     "r17_1": "สายที่ 1",
     "r17_2": "สายที่ 2",
+    
+    "r18_1": "Router-ทำความสะอาดหน้าสัมผัสซิม1และซิม2",
+    "r18_2": "Router-ทำความสะอาด PORT LAN",
+    "r18_3": "ทำความสะอาดทั่วไป",
 }
 
 # English version
 SUB_ROW_TITLES_EN = {
     "r3_1": "Charging cable 1",
     "r3_2": "Charging cable 2",
+    
     "r4_1": "Connector 1",
     "r4_2": "Connector 2",
+    
     "r6_1": "QR CODE 1",
     "r6_2": "QR CODE 2",
+    
     "r10_1": "CP pin voltage cable 1",
     "r10_2": "CP pin voltage cable 2",
+    
     "r11_1": "Air filter (left)",
     "r11_2": "Air filter (right)",
     "r11_3": "Air filter (front)",
     "r11_4": "Air filter (back)",
+    
     "r17_1": "Charging test cable 1",
     "r17_2": "Charging test cable 2",
+    
+    "r18_1": "Clean SIM1 and SIM2 contacts",
+    "r18_2": "Clean LAN port",
+    "r18_3": "General cleaning",
 }
 
 # Default to Thai
@@ -143,7 +156,7 @@ SUB_ROW_TITLES = SUB_ROW_TITLES_TH
 DYNAMIC_SUB_ROWS = {5, 7}
 
 # ข้อที่มีข้อย่อยคงที่
-FIXED_SUB_ROWS = {3: 2, 4: 2, 6: 2, 10: 2, 11: 4, 17: 2}
+FIXED_SUB_ROWS = {3: 2, 4: 2, 6: 2, 10: 2, 11: 4, 17: 2, 18: 3}
 
 
 # -------------------- Utilities / Core helpers --------------------
@@ -1358,6 +1371,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
     checks = _rows_to_checks(doc.get("rows") or {}, doc.get("measures") or {}, row_titles, sub_row_titles, lang)
     checks_pre = _rows_to_checks(doc.get("rows_pre") or {}, doc.get("measures_pre") or {}, row_titles, sub_row_titles, lang)
+    
 
     # ========== เลือกข้อความตามภาษา ==========
     if lang == "en":
@@ -1762,6 +1776,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
             remark_h = max(remark_h, LINE_H * 6)
         elif row_num == 10 and not has_subs:
             remark_h = max(remark_h, LINE_H * 3)
+            
+        
 
         # --- ความสูงสำหรับข้อที่มีข้อย่อย ---
         if has_subs:
