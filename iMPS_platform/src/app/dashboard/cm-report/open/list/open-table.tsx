@@ -15,11 +15,12 @@ import {
 import {
   Button, Card, CardBody, CardHeader, Typography, CardFooter, Input,
 } from "@material-tailwind/react";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import { apiFetch } from "@/utils/api";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -36,11 +37,10 @@ const T = {
   // Table Headers
   colNo: { th: "ลำดับ", en: "No." },
   colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
-  colIssueId: { th: "Issue ID", en: "Issue ID" },
-  colCmDate: { th: "วันที่ CM", en: "CM Date" },
-  colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
+  colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
+  colCmDate: { th: "วันที่แจ้ง", en: "Found Date" },
+  colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
   colStatus: { th: "สถานะ", en: "Status" },
-  colAction: { th: "จัดการ", en: "Action" },
 
   // Pagination
   entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
@@ -73,8 +73,6 @@ const T = {
 
   // Tooltips
   uploadPdf: { th: "อัพโหลด PDF", en: "Upload PDF" },
-  edit: { th: "แก้ไข", en: "Edit" },
-  noIdToEdit: { th: "ไม่มี ID สำหรับแก้ไข", en: "No ID to edit" },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -87,7 +85,7 @@ type TData = {
   cm_date: string;   // YYYY-MM-DD
   position: string;  // YYYY-MM-DD ใช้ sort/filter
   office: string;    // ลิงก์ไฟล์
-  inspector?: string;
+  reported_by?: string;
   status: string;
 };
 
@@ -119,17 +117,17 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [stationId, setStationId] = useState<string | null>(null);
 
   useEffect(() => {
-      const sidFromUrl = searchParams.get("station_id");
-      if (sidFromUrl) {
-        setStationId(sidFromUrl);
-        localStorage.setItem("selected_station_id", sidFromUrl);
-        return;
-      }
-      const sidLocal = localStorage.getItem("selected_station_id");
-      setStationId(sidLocal);
-    }, [searchParams]);
+    const sidFromUrl = searchParams.get("station_id");
+    if (sidFromUrl) {
+      setStationId(sidFromUrl);
+      localStorage.setItem("selected_station_id", sidFromUrl);
+      return;
+    }
+    const sidLocal = localStorage.getItem("selected_station_id");
+    setStationId(sidLocal);
+  }, [searchParams]);
 
-  const statusFromTab = (searchParams.get("status") ?? "open").toLowerCase();
+  const statusFromTab = (searchParams.get("status") ?? searchParams.get("tab") ?? "open").toLowerCase();
   const statusLabel = statusFromTab
     .split(/[-_ ]+/)
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
@@ -147,24 +145,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       params.set("view", "form");
     } else {
       params.delete("view");
-      params.delete("edit_id"); 
+      params.delete("edit_id");
     }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
 
-  const useHttpOnlyCookie = true;
-  function makeHeaders(): Record<string, string> {
-    const h: Record<string, string> = { "Content-Type": "application/json" };
-    if (!useHttpOnlyCookie) {
-      const t = token || (typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "");
-      if (t) h.Authorization = `Bearer ${t}`;
-    }
-    return h;
-  }
-  const fetchOpts: RequestInit = {
-    headers: makeHeaders(),
-    ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
-  };
 
   // Date formatting with language support
   function formatDate(iso?: string, currentLang: Lang = lang) {
@@ -223,21 +208,20 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const fetchRows = async () => {
     if (!stationId) { setData([]); return; }
     setLoading(true);
-    
+
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
         u.searchParams.set("station_id", stationId);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
-        // u.searchParams.set("status", "open"); // ส่งให้ backend กรอง Open
-        u.searchParams.set("status", statusFromTab); // กรองตามแท็บปัจจุบัน
+        u.searchParams.set("status", statusFromTab);
         return u.toString();
       };
 
       const [cmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL("/cmreport/list"), fetchOpts),
-        fetch(makeURL("/cmurl/list"), fetchOpts),
+        apiFetch(makeURL("/cmreport/list")),
+        apiFetch(makeURL("/cmurl/list")),
       ]);
 
       let cmItems: any[] = [];
@@ -252,7 +236,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
 
-      // อนุญาตอันที่ไม่มี status (เช่นเอกสาร URL ภายนอก) ผ่านได้
       const isOpen = (it: any) => {
         const hasStatus = it?.status != null || it?.job?.status != null;
         if (!hasStatus) return true;
@@ -263,10 +246,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       cmItems = cmItems.filter(isOpen);
       urlItems = urlItems.filter(isOpen);
 
-
-
       const cmRows: TData[] = cmItems.map((it: any) => {
-
         const isoDay = toISODateOnly(it.cm_date ?? it.createdAt ?? "");
         const rawUploaded =
           it.file_url
@@ -290,15 +270,15 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const generatedUrl = id ? `${apiBase}/pdf/${encodeURIComponent(id)}/file` : "";
         const fileUrl = uploadedUrl || generatedUrl;
 
-        return { 
-          id, 
+        return {
+          id,
           doc_name: it.doc_name || "",
           issue_id: it.issue_id || "",
           cm_date: isoDay,
-          position: isoDay, 
-          office: fileUrl, 
-          inspector: it.inspector || it.technician || "",
-          status: getStatusText(it) || "-", 
+          position: isoDay,
+          office: fileUrl,
+          reported_by: it.reported_by || it.technician || "",
+          status: getStatusText(it) || "-",
         };
       });
 
@@ -310,15 +290,15 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           ?? it.file
           ?? it.path;
 
-        return { 
-          id: it.id || it._id || "", 
+        return {
+          id: it.id || it._id || "",
           doc_name: it.doc_name || "",
           issue_id: it.issue_id || "",
           cm_date: isoDay,
-          position: isoDay, 
-          office: resolveFileHref(raw, apiBase), 
-          inspector: it.inspector || it.technician || "",
-          status: getStatusText(it) || "-", 
+          position: isoDay,
+          office: resolveFileHref(raw, apiBase),
+          reported_by: it.reported_by || it.technician || "",
+          status: getStatusText(it) || "-",
         };
       });
 
@@ -328,24 +308,27 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         return da < db ? 1 : da > db ? -1 : 0;
       });
 
-      // ถ้าไม่มีอะไรเลยก็เคลียร์ (ให้ตารางขึ้น “ไม่มีข้อมูล”)
       if (!allRows.length) { setData([]); return; }
 
       setData(allRows);
     } catch (err) {
       console.error("fetch both lists error:", err);
-      setData([]); // ❗ ไม่มี fallback ตัวอย่าง
+      setData([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // ==================== FIX: เพิ่ม mode และ statusFromTab เป็น dependency ====================
   useEffect(() => {
+    // ไม่ fetch ถ้าอยู่ใน form mode
+    if (mode !== "list") return;
+
     let alive = true;
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId]);
+  }, [apiBase, stationId, mode, statusFromTab]);
 
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
@@ -404,9 +387,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
-      accessorFn: (row) => row.inspector || "-",
-      id: "inspector",
-      header: () => t("colInspector", lang),
+      accessorFn: (row) => row.reported_by || "-",
+      id: "reported_by",
+      header: () => t("colReportedBy", lang),
       cell: (info: CellContext<TData, unknown>) => (
         <span className="tw-block tw-truncate" title={info.getValue() as string}>
           {info.getValue() as React.ReactNode}
@@ -440,44 +423,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-    {
-      accessorFn: (row) => row.office,
-      id: "action",
-      header: () => t("colAction", lang),
-      enableSorting: false,
-      cell: (info: CellContext<TData, unknown>) => {
-        const row = info.row.original as TData;
-        const url = info.getValue() as string | undefined;
-        const hasUrl = typeof url === "string" && url.length > 0;
-
-        const handleEdit = (e: React.MouseEvent) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!row?.id) return;
-          goEdit(row);
-        };
-
-        return (
-          <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-            {/* Edit */}
-            <button
-              type="button"
-              onClick={handleEdit}
-              disabled={!row?.id}
-              className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-p-1.5 sm:tw-p-2 tw-transition-colors
-            ${row?.id ? "tw-text-amber-700 hover:tw-text-amber-900 hover:tw-bg-amber-50" : "tw-text-blue-gray-300 tw-cursor-not-allowed"}`}
-              title={row?.id ? t("edit", lang) : t("noIdToEdit", lang)}
-            >
-              <PencilSquareIcon className="tw-h-4 tw-w-4 sm:tw-h-5 sm:tw-w-5" />
-            </button>
-          </div>
-        );
-      },
-      size: 80,
-      minSize: 60,
-      maxSize: 100,
-      meta: { headerAlign: "center", cellAlign: "center" },
-    }
   ], [lang]);
 
   const table = useReactTable({
@@ -511,10 +456,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     fd.append("station_id", stationId);
     fd.append("rows", JSON.stringify({ reportDate, urls }));
 
-    const res = await fetch(`${apiBase}/cmurl/upload`, {
-      method: "POST",
-      body: fd,
-      credentials: "include",
+    const res = await apiFetch(`${apiBase}/cmurl/upload`, {
+      method: "POST", body: fd,
     });
 
     if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
@@ -551,10 +494,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       fd.append("status", statusFromTab);
       pendingFiles.forEach((f) => fd.append("files", f));
 
-      const res = await fetch(`${apiBase}/cmurl/upload-files`, {
-        method: "POST",
-        body: fd,
-        credentials: "include",
+      const res = await apiFetch(`${apiBase}/cmurl/upload-files`, {
+        method: "POST", body: fd,
       });
 
       if (!res.ok) {
@@ -574,22 +515,27 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   }
 
   const goAdd = () => setView("form");
-  // const goList = () => setView("list");
   const goList = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("view");
-    params.delete("edit_id"); // 👈 ลบด้วย
+    params.delete("edit_id");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
+
   function goEdit(row: TData) {
     if (!row?.id) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "form");
-    params.set("edit_id", row.id);       // 👈 ให้ฟอร์มใช้โหลดข้อมูล
+    params.set("edit_id", row.id);
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
-
+  // Handle row click
+  const handleRowClick = (row: TData) => {
+    if (row?.id) {
+      goEdit(row);
+    }
+  };
 
   if (mode === "form") {
     return (
@@ -603,21 +549,21 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     <>
       {/* Main Card */}
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
-        
+
         {/* Card Header */}
         <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0">
           <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-3 sm:tw-gap-4">
             {/* Title Section */}
             <div className="tw-min-w-0 tw-flex-1">
-              <Typography 
-                variant="h5" 
-                color="blue-gray" 
+              <Typography
+                variant="h5"
+                color="blue-gray"
                 className="tw-text-sm sm:tw-text-base lg:tw-text-lg tw-leading-tight tw-font-semibold"
               >
                 {t("pageTitle", lang)}
               </Typography>
-              <Typography 
-                variant="small" 
+              <Typography
+                variant="small"
                 className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-leading-relaxed tw-font-normal tw-text-blue-gray-400 tw-mt-0.5"
               >
                 {t("pageSubtitle", lang)}
@@ -668,7 +614,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         {/* Card Body - Search & Entries per page */}
         <CardBody className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-border-t tw-border-blue-gray-50">
           <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-stretch sm:tw-items-center tw-gap-2.5 sm:tw-gap-3 lg:tw-gap-4">
-            
+
             {/* Entries per page */}
             <div className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2 tw-flex-shrink-0">
               <select
@@ -682,8 +628,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                   </option>
                 ))}
               </select>
-              <Typography 
-                variant="small" 
+              <Typography
+                variant="small"
                 className="tw-text-blue-gray-500 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-whitespace-nowrap"
               >
                 {t("entriesPerPage", lang)}
@@ -762,9 +708,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                   </tr>
                 ) : table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row, index) => (
-                    <tr 
-                      key={row.id} 
-                      className={`tw-transition-colors hover:tw-bg-blue-50/50 ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-gray-50/30'}`}
+                    <tr
+                      key={row.id}
+                      onClick={() => handleRowClick(row.original)}
+                      className={`tw-transition-colors hover:tw-bg-blue-50/50 tw-cursor-pointer ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-gray-50/30'}`}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
@@ -810,19 +757,19 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
             {t("page", lang)} <strong className="tw-text-blue-gray-800">{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)} <strong className="tw-text-blue-gray-800">{table.getPageCount() || 1}</strong>
           </Typography>
           <div className="tw-flex tw-gap-1.5 sm:tw-gap-2 tw-order-1 sm:tw-order-2">
-            <Button 
-              size="sm" 
-              variant="outlined" 
-              onClick={() => table.previousPage()} 
+            <Button
+              size="sm"
+              variant="outlined"
+              onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
               className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors"
             >
               <ChevronLeftIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
             </Button>
-            <Button 
-              size="sm" 
-              variant="outlined" 
-              onClick={() => table.nextPage()} 
+            <Button
+              size="sm"
+              variant="outlined"
+              onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
               className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors"
             >
@@ -833,9 +780,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       </Card>
 
       {/* Upload Dialog */}
-      <Dialog 
-        open={dateOpen} 
-        handler={setDateOpen} 
+      <Dialog
+        open={dateOpen}
+        handler={setDateOpen}
         size="sm"
         className="tw-mx-4 tw-max-w-[calc(100vw-2rem)] sm:tw-max-w-md tw-rounded-xl sm:tw-rounded-2xl"
       >
@@ -877,8 +824,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           >
             {t("cancel", lang)}
           </Button>
-          <Button 
-            onClick={uploadPdfs} 
+          <Button
+            onClick={uploadPdfs}
             size="sm"
             className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all"
           >

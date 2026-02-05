@@ -2,7 +2,7 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Button, Card, CardBody, CardHeader, CardFooter, Typography, Input } from "@material-tailwind/react";
-
+import { apiFetch } from "@/utils/api";
 /** ---------- Config API ---------- */
 // NEW: ตั้งค่า base ของ backend
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -63,10 +63,12 @@ async function compressImage(file: File, maxW = 1600, maxH = 1600, quality = 0.8
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close(); // ปล่อย GPU/memory resource
   return new Promise<File>((resolve) => {
     canvas.toBlob((blob) => {
-      resolve(new File([blob as Blob], file.name.replace(/\.(\w+)$/, "_min.$1"), {
-        type: (blob as Blob).type || file.type || "image/jpeg",
+      if (!blob) { resolve(file); return; }
+      resolve(new File([blob], file.name.replace(/\.(\w+)$/, "_min.$1"), {
+        type: blob.type || file.type || "image/jpeg",
         lastModified: Date.now(),
       }));
     }, "image/jpeg", quality);
@@ -74,30 +76,49 @@ async function compressImage(file: File, maxW = 1600, maxH = 1600, quality = 0.8
 }
 function bytesToMB(n: number) { return (n / (1024 * 1024)).toFixed(2); }
 
-/** ---------- Reusable Photo Slot ---------- */
-function PhotoSlot({
-  item, onPickReplace, onRemove, onRemarkChange, indexLabel,
+/** ---------- Reusable Photo Slot (Memoized) ----------
+ *  รับ groupKey + index เป็น props แทน inline closure
+ *  เพื่อให้ React.memo สามารถ skip re-render ได้เมื่อ props ไม่เปลี่ยน
+ */
+const PhotoSlot = React.memo(function PhotoSlot({
+  item, groupKey, index, onPickReplace, onRemove, onRemarkChange, indexLabel,
 }: {
-  item: PhotoItem; indexLabel: string;
-  onPickReplace: (file: File) => void;
-  onRemove: () => void;
-  onRemarkChange: (remark: string) => void;
+  item: PhotoItem;
+  groupKey: GroupKey;
+  index: number;
+  indexLabel: string;
+  onPickReplace: (gk: GroupKey, idx: number, file: File) => void;
+  onRemove: (gk: GroupKey, idx: number) => void;
+  onRemarkChange: (gk: GroupKey, idx: number, remark: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const handlePick = useCallback(
+    (file: File) => onPickReplace(groupKey, index, file),
+    [groupKey, index, onPickReplace],
+  );
+  const handleRemove = useCallback(
+    () => onRemove(groupKey, index),
+    [groupKey, index, onRemove],
+  );
+  const handleRemark = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => onRemarkChange(groupKey, index, e.target.value),
+    [groupKey, index, onRemarkChange],
+  );
+
   return (
     <div className="tw-relative tw-rounded-xl tw-border tw-border-blue-gray-200 tw-bg-white tw-overflow-hidden tw-flex tw-flex-col">
       <label
         className="tw-flex-1 tw-min-h-[200px] sm:tw-min-h-[180px] md:tw-min-h-[144px] tw-flex tw-items-center tw-justify-center tw-text-center tw-p-3 hover:tw-bg-blue-gray-50 cursor-pointer"
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) onPickReplace(f); }}
+        onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handlePick(f); }}
       >
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
-          capture="environment"
           className="tw-hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickReplace(f); e.currentTarget.value = ""; }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePick(f); e.currentTarget.value = ""; }}
         />
         {!item.preview ? (
           <div className="tw-space-y-1">
@@ -112,13 +133,13 @@ function PhotoSlot({
 
       {/* remark + actions */}
       <div className="tw-p-2 tw-flex tw-gap-2 tw-border-t tw-border-blue-gray-100 tw-flex-col sm:tw-flex-row">
-        <Input label="หมายเหตุ" value={item.remark || ""} crossOrigin="" onChange={(e) => onRemarkChange(e.target.value)} containerProps={{ className: "tw-w-full sm:tw-flex-1 tw-min-w-0" }} />
+        <Input label="หมายเหตุ" value={item.remark || ""} crossOrigin="" onChange={handleRemark} containerProps={{ className: "tw-w-full sm:tw-flex-1 tw-min-w-0" }} />
         {item.preview && (
-          <Button size="sm" variant="text" color="red" onClick={onRemove} className="tw-w-full sm:tw-w-auto sm:tw-shrink-0">ลบ</Button>
+          <Button size="sm" variant="text" color="red" onClick={handleRemove} className="tw-w-full sm:tw-w-auto sm:tw-shrink-0">ลบ</Button>
         )}
       </div>
 
-      {/* NEW: สถานะอัปโหลด */}
+      {/* สถานะอัปโหลด */}
       {item.uploading && (
         <div className="tw-absolute tw-inset-x-0 tw-bottom-0 tw-bg-white/80 tw-text-center tw-text-xs tw-py-1">กำลังอัปโหลด...</div>
       )}
@@ -127,25 +148,38 @@ function PhotoSlot({
       )}
     </div>
   );
-}
+});
 
-function AddPhotoTile({ onAddFiles, label = "เพิ่มรูป", className = "" }: { onAddFiles: (files: FileList | File[]) => void; label?: string; className?: string; }) {
+/** ---------- Add Photo Tile (Memoized) ---------- */
+const AddPhotoTile = React.memo(function AddPhotoTile({
+  groupKey, onAddFiles, label = "เพิ่มรูป", className = "",
+}: {
+  groupKey: GroupKey;
+  onAddFiles: (gk: GroupKey, files: FileList | File[]) => void;
+  label?: string;
+  className?: string;
+}) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleAdd = useCallback(
+    (files: FileList | File[]) => onAddFiles(groupKey, files),
+    [groupKey, onAddFiles],
+  );
+
   return (
     <div className={`tw-relative tw-rounded-xl tw-border tw-border-dashed tw-border-blue-gray-300 tw-bg-white tw-overflow-hidden tw-flex tw-flex-col ${className}`}>
       <label
         className="tw-flex-1 tw-min-h-[200px] sm:tw-min-h-[180px] md:tw-min-h-[144px] tw-flex tw-flex-col tw-items-center tw-justify-center tw-text-center tw-p-3 hover:tw-bg-blue-gray-50 cursor-pointer"
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.length) onAddFiles(e.dataTransfer.files); }}
+        onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.length) handleAdd(e.dataTransfer.files); }}
       >
         <input
           ref={inputRef}
           type="file"
           accept="image/*"
           multiple
-          capture="environment"
           className="tw-hidden"
-          onChange={(e) => { if (e.target.files?.length) onAddFiles(e.target.files); e.currentTarget.value = ""; }}
+          onChange={(e) => { if (e.target.files?.length) handleAdd(e.target.files); e.currentTarget.value = ""; }}
         />
         <Typography className="tw-font-medium">+ {label}</Typography>
         <Typography variant="small" className="!tw-text-blue-gray-500">รองรับเลือกหลายไฟล์ & ลาก-วางหลายไฟล์</Typography>
@@ -153,7 +187,85 @@ function AddPhotoTile({ onAddFiles, label = "เพิ่มรูป", classNam
       </label>
     </div>
   );
-}
+});
+
+/** ---------- Group Card (Memoized) ----------
+ *  แยกแต่ละกลุ่มเป็น component — การเปลี่ยนแปลงใน g1 จะไม่ทำให้ g2–g10 re-render
+ */
+const GroupCard = React.memo(function GroupCard({
+  group, items, remarkValue, uploadingAll,
+  onAddFiles, onReplace, onRemove, onRemarkChange,
+  onGroupRemarkChange, onUploadGroup,
+}: {
+  group: PhotoGroup;
+  items: PhotoItem[];
+  remarkValue: string;
+  uploadingAll: boolean;
+  onAddFiles: (gk: GroupKey, files: FileList | File[]) => void;
+  onReplace: (gk: GroupKey, idx: number, file: File) => void;
+  onRemove: (gk: GroupKey, idx: number) => void;
+  onRemarkChange: (gk: GroupKey, idx: number, remark: string) => void;
+  onGroupRemarkChange: (gk: GroupKey, value: string) => void;
+  onUploadGroup: (gk: GroupKey) => void;
+}) {
+  const hasFilesToUpload = items.some((it) => it.file);
+  const isGroupUploading = items.some((it) => it.uploading);
+
+  const handleGroupRemark = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => onGroupRemarkChange(group.key, e.target.value),
+    [group.key, onGroupRemarkChange],
+  );
+  const handleUpload = useCallback(
+    () => onUploadGroup(group.key),
+    [group.key, onUploadGroup],
+  );
+
+  return (
+    <Card className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
+      <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
+        <Typography className="tw-font-semibold">{group.title}</Typography>
+        {group.subtitle && <Typography variant="small" className="!tw-text-blue-gray-500">{group.subtitle}</Typography>}
+      </CardHeader>
+
+      <CardBody className="tw-space-y-4">
+        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-3 lg:tw-grid-cols-4 tw-gap-3">
+          {items.map((item, idx) => (
+            <PhotoSlot
+              key={item.id}
+              item={item}
+              groupKey={group.key}
+              index={idx}
+              indexLabel={`ภาพที่ ${idx + 1}`}
+              onPickReplace={onReplace}
+              onRemove={onRemove}
+              onRemarkChange={onRemarkChange}
+            />
+          ))}
+          <AddPhotoTile
+            className="tw-col-span-full sm:tw-col-span-1"
+            groupKey={group.key}
+            onAddFiles={onAddFiles}
+          />
+        </div>
+
+        {/* ปุ่มอัปโหลดเฉพาะกลุ่มนี้ */}
+        {hasFilesToUpload && (
+          <div className="tw-flex tw-justify-end">
+            <Button color="blue" variant="filled" size="sm" onClick={handleUpload}
+              disabled={uploadingAll || isGroupUploading}>
+              อัปโหลดหัวข้อ {group.key.toUpperCase()}
+            </Button>
+          </div>
+        )}
+
+        <div className="tw-pt-1">
+          <Input label="หมายเหตุรวมของหัวข้อนี้" value={remarkValue} crossOrigin=""
+            onChange={handleGroupRemark} />
+        </div>
+      </CardBody>
+    </Card>
+  );
+});
 
 /** ---------- Main Page 2: Photos ---------- */
 export default function PMReportPhotos({ onBack, stationId, reportId }: PMReportPhotosProps) {
@@ -171,7 +283,12 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
   const [uploadingAll, setUploadingAll] = useState(false);
 
   const fileToItem = useCallback(async (file: File): Promise<PhotoItem> => {
-    const small = await compressImage(file);
+    let small: File;
+    try {
+      small = await compressImage(file);
+    } catch {
+      return { id: crypto.randomUUID(), error: "ไม่สามารถอ่านไฟล์รูปภาพได้" };
+    }
     const dataURL = await new Promise<string>((res) => {
       const reader = new FileReader();
       reader.onload = () => res(reader.result as string);
@@ -179,6 +296,8 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
     });
     return { id: crypto.randomUUID(), file: small, preview: dataURL };
   }, []);
+
+  /** ---------- Stable callbacks (รับ groupKey เป็น param แทน closure) ---------- */
 
   const addFilesToGroup = useCallback(async (gk: GroupKey, files: FileList | File[]) => {
     const arr = Array.from(files);
@@ -192,7 +311,7 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
     setGroups((prev) => {
       const next = { ...prev };
       const list = [...next[gk]];
-      list[idx] = { ...list[idx], ...item, error: undefined };
+      list[idx] = { ...list[idx], ...item, url: undefined, path: undefined, error: undefined };
       next[gk] = list;
       return next;
     });
@@ -208,7 +327,7 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
     });
   }, []);
 
-  const removeFromGroup = (gk: GroupKey, idx: number) => {
+  const removeFromGroup = useCallback((gk: GroupKey, idx: number) => {
     setGroups((prev) => {
       const next = { ...prev };
       const list = [...next[gk]];
@@ -216,16 +335,35 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
       next[gk] = list;
       return next;
     });
-  };
+  }, []);
+
+  const updateGroupRemark = useCallback((gk: GroupKey, value: string) => {
+    setGroupRemark((prev) => ({ ...prev, [gk]: value }));
+  }, []);
 
   const totalBytes = useMemo(() => {
     const files = Object.values(groups).flat().map((x) => x.file).filter(Boolean) as File[];
     return files.reduce((sum, f) => sum + f.size, 0);
   }, [groups]);
 
-  /** ---------- NEW: อัปโหลดไป backend ---------- */
-  async function uploadGroup(gk: GroupKey) {
-    const list = groups[gk];
+  /** ---------- Upload logic ---------- */
+  // ใช้ ref เก็บค่าที่เปลี่ยนบ่อย เพื่อให้ stable callback อ่านค่าล่าสุดได้
+  const groupRemarkRef = useRef(groupRemark);
+  groupRemarkRef.current = groupRemark;
+  const stationIdRef = useRef(stationId);
+  stationIdRef.current = stationId;
+  const reportIdRef = useRef(reportId);
+  reportIdRef.current = reportId;
+
+  const uploadGroup = useCallback(async (gk: GroupKey) => {
+    // อ่าน list จาก state ล่าสุดผ่าน functional setState
+    const list = await new Promise<PhotoItem[]>((resolve) => {
+      setGroups((prev) => {
+        resolve(prev[gk]);
+        return prev;
+      });
+    });
+
     const files = list.filter((it) => it.file);
     if (files.length === 0) return;
 
@@ -236,32 +374,28 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
     }));
 
     const fd = new FormData();
-    // แนบไฟล์หลายไฟล์ ชื่อ field = "files"
     files.forEach((it) => { if (it.file) fd.append("files", it.file, it.file.name); });
-    // meta เสริม (remark ต่อรูป)
-    const remarks = list.map((it) => it.remark ?? "");
+    const remarks = files.map((it) => it.remark ?? "");
     fd.append("remarks", JSON.stringify(remarks));
+    fd.append("groupRemark", groupRemarkRef.current[gk] ?? "");
 
-    const url = `${API_BASE}/pmreport/upload?station_id=${encodeURIComponent(stationId)}&report_id=${encodeURIComponent(reportId)}&group=${encodeURIComponent(gk)}`;
+    const url = `${API_BASE}/pmreport/upload?station_id=${encodeURIComponent(stationIdRef.current)}&report_id=${encodeURIComponent(reportIdRef.current)}&group=${encodeURIComponent(gk)}`;
 
     try {
-      const res = await fetch(url, { method: "POST", body: fd, credentials: "include" });
+      const res = await apiFetch(url, { method: "POST", body: fd, credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json() as {
         files: Array<{ index: number; url: string; path: string; filename: string }>;
       };
 
-      // เขียนผลลัพธ์กลับเข้า state (แมปตาม index ต้นฉบับ)
       setGroups((prev) => {
         const next = { ...prev };
         const arr = [...next[gk]];
         json.files.forEach((f, i) => {
-          // พยายามจับคู่ด้วยลำดับไฟล์ในคำขอนี้
           const idx = arr.findIndex((it) => it.uploading);
           const target = idx >= 0 ? idx : i;
           if (arr[target]) {
             arr[target] = { ...arr[target], url: f.url, path: f.path, uploading: false };
-            // อัปโหลดแล้วจะลบ object File ทิ้งเพื่อไม่ให้ซ้ำซ้อนในหน่วยความจำ
             delete arr[target].file;
           }
         });
@@ -275,12 +409,11 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
       }));
       throw err;
     }
-  }
+  }, []); // stable — อ่านค่าจาก ref เท่านั้น
 
   async function uploadAll() {
     setUploadingAll(true);
     try {
-      // อัปโหลดทีละกลุ่ม (กันโหลดหนักเกินไป)
       for (const g of GROUPS) {
         await uploadGroup(g.key);
       }
@@ -292,7 +425,7 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
     }
   }
 
-  /** ---------- เดโม่ payload (ยังใช้ได้) ---------- */
+  /** ---------- เดโม่ payload ---------- */
   const collectPayload = () => {
     const payload = {
       groups: Object.fromEntries(
@@ -313,8 +446,6 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
     alert("รวมข้อมูลรูปแล้ว — ดูใน console");
   };
 
-  const remaining = useMemo(() => GROUPS.filter((g) => groups[g.key].length === 0).length, [groups]);
-
   return (
     <section className="tw-mx-0 tw-px-3 md:tw-px-6 xl:tw-px-0 tw-pb-24">
       <Card className="tw-mt-3 tw-shadow-none">
@@ -325,59 +456,37 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
       </Card>
 
       {GROUPS.map((g) => (
-        <Card key={g.key} className="tw-mt-4 tw-shadow-sm tw-border tw-border-blue-gray-100">
-          <CardHeader floated={false} shadow={false} className="tw-px-4 tw-pt-4 tw-pb-2">
-            <Typography className="tw-font-semibold">{g.title}</Typography>
-            {g.subtitle && <Typography variant="small" className="!tw-text-blue-gray-500">{g.subtitle}</Typography>}
-          </CardHeader>
-
-          <CardBody className="tw-space-y-4">
-            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-3 lg:tw-grid-cols-4 tw-gap-3">
-              {groups[g.key].map((item, idx) => (
-                <PhotoSlot
-                  key={item.id}
-                  item={item}
-                  indexLabel={`ภาพที่ ${idx + 1}`}
-                  onPickReplace={(f) => replaceFileInGroup(g.key, idx, f)}
-                  onRemove={() => removeFromGroup(g.key, idx)}
-                  onRemarkChange={(val) => updateRemarkInGroup(g.key, idx, val)}
-                />
-              ))}
-              <AddPhotoTile className="tw-col-span-full sm:tw-col-span-1" onAddFiles={(files) => addFilesToGroup(g.key, files)} />
-            </div>
-
-            {/* ปุ่มอัปโหลดเฉพาะกลุ่มนี้ */}
-            {groups[g.key].some((it) => it.file) && (
-              <div className="tw-flex tw-justify-end">
-                <Button color="blue" variant="filled" size="sm" onClick={() => uploadGroup(g.key)} disabled={uploadingAll}>
-                  อัปโหลดหัวข้อ {g.key.toUpperCase()}
-                </Button>
-              </div>
-            )}
-
-            <div className="tw-pt-1">
-              <Input label="หมายเหตุรวมของหัวข้อนี้" value={groupRemark[g.key]} crossOrigin=""
-                onChange={(e) => setGroupRemark((prev) => ({ ...prev, [g.key]: e.target.value }))} />
-            </div>
-          </CardBody>
-        </Card>
+        <GroupCard
+          key={g.key}
+          group={g}
+          items={groups[g.key]}
+          remarkValue={groupRemark[g.key]}
+          uploadingAll={uploadingAll}
+          onAddFiles={addFilesToGroup}
+          onReplace={replaceFileInGroup}
+          onRemove={removeFromGroup}
+          onRemarkChange={updateRemarkInGroup}
+          onGroupRemarkChange={updateGroupRemark}
+          onUploadGroup={uploadGroup}
+        />
       ))}
 
-      <CardFooter className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-between tw-gap-3 tw-mt-8">
-        <div className="tw-text-sm tw-text-blue-gray-600">หน้าอัปโหลดรูปภาพ</div>
-        <div className="tw-flex tw-gap-2">
-          {/* NEW: อัปโหลดทั้งหมด */}
-          <Button color="blue" type="button" onClick={uploadAll} disabled={uploadingAll}>
-            {uploadingAll ? "กำลังอัปโหลด..." : "อัปโหลดทั้งหมด"}
-          </Button>
-          <Button variant="outlined" color="blue-gray" type="button" onClick={collectPayload} disabled={uploadingAll}>
-            บันทึกชั่วคราว (Log)
-          </Button>
-          <Button variant="filled" color="blue-gray" type="button" onClick={() => onBack?.()} disabled={uploadingAll}>
-            กลับไป Checklist
-          </Button>
-        </div>
-      </CardFooter>
+      <Card className="tw-mt-8 tw-shadow-none">
+        <CardFooter className="tw-flex tw-flex-col sm:tw-flex-row tw-justify-between tw-gap-3">
+          <div className="tw-text-sm tw-text-blue-gray-600">หน้าอัปโหลดรูปภาพ</div>
+          <div className="tw-flex tw-gap-2">
+            <Button color="blue" type="button" onClick={uploadAll} disabled={uploadingAll}>
+              {uploadingAll ? "กำลังอัปโหลด..." : "อัปโหลดทั้งหมด"}
+            </Button>
+            <Button variant="outlined" color="blue-gray" type="button" onClick={collectPayload} disabled={uploadingAll}>
+              บันทึกชั่วคราว (Log)
+            </Button>
+            <Button variant="filled" color="blue-gray" type="button" onClick={() => onBack?.()} disabled={uploadingAll}>
+              กลับไป Checklist
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
     </section>
   );
 }
