@@ -106,6 +106,9 @@ SUB_ROW_TITLES_TH = {
     "r6_1": "QR CODE ที่ 1",
     "r6_2": "QR CODE ที่ 2",
     
+    "r8_1": "ป้ายเตือนต้องการระบายอากาศ (ขาเข้า)",
+    "r8_2": "ป้ายเตือนต้องการระบายอากาศ (ขาออก)",
+    
     "r10_1": "แรงดันไฟฟ้าที่พิน CP สายที่ 1",
     "r10_2": "แรงดันไฟฟ้าที่พิน CP สายที่ 2",
     
@@ -133,6 +136,9 @@ SUB_ROW_TITLES_EN = {
     "r6_1": "QR CODE 1",
     "r6_2": "QR CODE 2",
     
+    "r8_1": "Ventilation warning sign (inlet)",
+    "r8_2": "Ventilation warning sign (outlet)",
+    
     "r10_1": "CP pin voltage cable 1",
     "r10_2": "CP pin voltage cable 2",
     
@@ -156,7 +162,7 @@ SUB_ROW_TITLES = SUB_ROW_TITLES_TH
 DYNAMIC_SUB_ROWS = {5, 7}
 
 # ข้อที่มีข้อย่อยคงที่
-FIXED_SUB_ROWS = {3: 2, 4: 2, 6: 2, 10: 2, 11: 4, 17: 2, 18: 3}
+FIXED_SUB_ROWS = {3: 2, 4: 2, 6: 2, 8: 2, 10: 2, 11: 4, 17: 2, 18: 3}
 
 
 # -------------------- Utilities / Core helpers --------------------
