@@ -57,7 +57,7 @@ ROW_TITLES_TH = {
     "r6": "ตรวจสอบ QR CODE",
     "r7": "ตรวจสอบป้ายเตือนระวังไฟฟ้าช็อก",
     "r8": "ป้ายเตือนต้องการระบายอากาศ",
-    "r9": "ป้ายเตือนปุ่มฉุกเฉิน",
+    "r9": "ตรวจสอบป้ายบ่งชี้ปุ่มฉุกเฉิน",
     "r10": "ตรวจสอบแรงดันไฟฟ้าที่พิน CP",
     "r11": "ตรวจสอบแผ่นกรองระบายอากาศ",
     "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
@@ -79,7 +79,7 @@ ROW_TITLES_EN = {
     "r6": "Check QR CODE",
     "r7": "Electric shock warning sign",
     "r8": "Ventilation warning sign",
-    "r9": "Emergency button warning sign",
+    "r9": "Check emergency button sign",
     "r10": "Check CP pin voltage",
     "r11": "Check air filter",
     "r12": "Check electrical connections",
@@ -112,10 +112,8 @@ SUB_ROW_TITLES_TH = {
     "r10_1": "แรงดันไฟฟ้าที่พิน CP สายที่ 1",
     "r10_2": "แรงดันไฟฟ้าที่พิน CP สายที่ 2",
     
-    "r11_1": "แผ่นกรองระบายอากาศ (ด้านซ้าย)",
-    "r11_2": "แผ่นกรองระบายอากาศ (ด้านขวา)",
-    "r11_3": "แผ่นกรองระบายอากาศ (ด้านหน้า)",
-    "r11_4": "แผ่นกรองระบายอากาศ (ด้านหลัง)",
+    "r11_1": "แผ่นกรองระบายอากาศ (ขาเข้า)",
+    "r11_2": "แผ่นกรองระบายอากาศ (ขาออก)",
     
     "r17_1": "สายที่ 1",
     "r17_2": "สายที่ 2",
@@ -142,10 +140,8 @@ SUB_ROW_TITLES_EN = {
     "r10_1": "CP pin voltage cable 1",
     "r10_2": "CP pin voltage cable 2",
     
-    "r11_1": "Air filter (left)",
-    "r11_2": "Air filter (right)",
-    "r11_3": "Air filter (front)",
-    "r11_4": "Air filter (back)",
+    "r11_1": "Air filter (inlet)",
+    "r11_2": "Air filter (outlet)",
     
     "r17_1": "Charging test cable 1",
     "r17_2": "Charging test cable 2",
@@ -162,7 +158,7 @@ SUB_ROW_TITLES = SUB_ROW_TITLES_TH
 DYNAMIC_SUB_ROWS = {5, 7}
 
 # ข้อที่มีข้อย่อยคงที่
-FIXED_SUB_ROWS = {3: 2, 4: 2, 6: 2, 8: 2, 10: 2, 11: 4, 17: 2, 18: 3}
+FIXED_SUB_ROWS = {3: 2, 4: 2, 6: 2, 8: 2, 10: 2, 11: 2, 17: 2, 18: 3}
 
 
 # -------------------- Utilities / Core helpers --------------------
