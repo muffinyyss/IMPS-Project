@@ -137,15 +137,17 @@ SUB_ROW_TITLES_EN = {
     "r6_1": "QR CODE 1",
     "r6_2": "QR CODE 2",
     
-    "r8_1": "Ventilation warning sign (inlet)",
-    "r8_2": "Ventilation warning sign (outlet)",
+    "r8_1": "Ventilation warning sign (left)",
+    "r8_2": "Ventilation warning sign (right)",
     
     "r10_1": "CP pin voltage cable 1",
     "r10_2": "CP pin voltage cable 2",
     
-    "r11_1": "Air filter (inlet)",
-    "r11_2": "Air filter (outlet)",
-    "r11_3": "Air filter (rear)",
+    "r11_1": "Air filter (left)",
+    "r11_2": "Air filter (right)",
+    "r11_3": "Air filter (front)",
+    "r11_4": "Air filter (back)",
+    "r11_5": "Air filter (bottom)",
     
     "r17_1": "Charging test cable 1",
     "r17_2": "Charging test cable 2",
@@ -162,7 +164,7 @@ SUB_ROW_TITLES = SUB_ROW_TITLES_TH
 DYNAMIC_SUB_ROWS = {5, 7}
 
 # ข้อที่มีข้อย่อยคงที่
-FIXED_SUB_ROWS = {3: 2, 4: 2, 6: 2, 8: 2, 10: 2, 11: 2, 17: 2, 18: 3}
+FIXED_SUB_ROWS = {3: 2, 4: 2, 6: 2, 8: 2, 10: 2, 11: 5, 17: 2, 18: 3}
 
 
 # -------------------- Utilities / Core helpers --------------------
