@@ -125,7 +125,7 @@ const getTestName = (item: DCTestItem, lang: Lang, t: typeof translations["th"])
   if (lang === "th" && item.testNameTh) {
     return item.testNameTh;
   }
-  
+
   const nameMap: Record<string, keyof typeof translations["th"]> = {
     "None (Normal operate)": "noneNormal",
     "CP short -120 Ohm": "cpShort",
@@ -140,7 +140,7 @@ const getTestName = (item: DCTestItem, lang: Lang, t: typeof translations["th"])
   if (key && t[key]) {
     return t[key] as string;
   }
-  
+
   return item.testName;
 };
 
@@ -195,7 +195,7 @@ export const PassFailButtons: React.FC<{
 
   const tt = tooltipTranslations[lang];
 
-  const baseClass = size === "sm" 
+  const baseClass = size === "sm"
     ? "tw-px-3 tw-py-1.5 tw-text-xs tw-font-semibold tw-rounded-lg tw-transition-all tw-duration-200"
     : "tw-px-4 tw-py-2 tw-text-sm tw-font-semibold tw-rounded-lg tw-transition-all tw-duration-200";
 
@@ -204,11 +204,10 @@ export const PassFailButtons: React.FC<{
       <button
         type="button"
         title={isPass ? tt.passSelected : tt.pass}
-        className={`${baseClass} ${
-          isPass
+        className={`${baseClass} ${isPass
             ? "tw-bg-green-500 tw-text-white tw-shadow-md tw-shadow-green-200"
             : "tw-bg-white tw-text-green-600 tw-border-2 tw-border-green-200 hover:tw-border-green-400 hover:tw-bg-green-50"
-        }`}
+          }`}
         onClick={() => onChange(isPass ? "" : "PASS")}
         disabled={disabled}
       >
@@ -217,11 +216,10 @@ export const PassFailButtons: React.FC<{
       <button
         type="button"
         title={isFail ? tt.failSelected : tt.fail}
-        className={`${baseClass} ${
-          isFail
+        className={`${baseClass} ${isFail
             ? "tw-bg-red-500 tw-text-white tw-shadow-md tw-shadow-red-200"
             : "tw-bg-white tw-text-red-600 tw-border-2 tw-border-red-200 hover:tw-border-red-400 hover:tw-bg-red-50"
-        }`}
+          }`}
         onClick={() => onChange(isFail ? "" : "FAIL")}
         disabled={disabled}
       >
@@ -231,11 +229,10 @@ export const PassFailButtons: React.FC<{
         <button
           type="button"
           title={isNA ? tt.naSelected : tt.na}
-          className={`${baseClass} ${
-            isNA
+          className={`${baseClass} ${isNA
               ? "tw-bg-gray-500 tw-text-white tw-shadow-md tw-shadow-gray-200"
               : "tw-bg-white tw-text-gray-600 tw-border-2 tw-border-gray-200 hover:tw-border-gray-400 hover:tw-bg-gray-50"
-          }`}
+            }`}
           onClick={() => onChange(isNA ? "" : "NA")}
           disabled={disabled}
         >
@@ -345,7 +342,7 @@ const FileUploadButton: React.FC<{
             <span className="tw-text-xs tw-text-gray-700 tw-truncate tw-max-w-[60px]">{file.name}</span>
           </a>
         </Tooltip>
-        
+
         {/* Delete Button */}
         <Tooltip content={t.deleteFile} placement="top">
           <button
@@ -401,7 +398,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "ไม่มี (ทำงานปกติ)",
     unit: "",
     remarkKey: "noneNormalOperate",
-    tooltip: { th: "ทดสอบการทำงานปกติของเครื่องชาร์จโดยไม่มีการจำลองความผิดปกติ", en: "Test normal charger operation without any fault simulation" },
+    tooltip: { th: "ทดสอบชาร์จแบบปกติให้ตรวจสอบ แรงดัน isolation ต้องมีแรงดันทดสอบตามระดับแรงดัน ของรถและขั้นตอน precharge ต้องมี กระแสน้อยกว่าสองแอมป์", en: "Test normal charging to verify that the isolation voltage meets the required test voltage for the vehicle's voltage level, and the precharge process must have current less than 2 amps" },
   },
   {
     category: "Charger Safety",
@@ -585,19 +582,19 @@ export interface FailedItem {
 
 export const getFailedItems = (results: TestCharger, testItems: DCTestItem[]): FailedItem[] => {
   const failedItems: FailedItem[] = [];
-  
+
   testItems.forEach((item, index) => {
     const round1H1 = results.rounds[0]?.[index]?.h1;
     const round1H2 = results.rounds[0]?.[index]?.h2;
     const round2H1 = results.rounds[1]?.[index]?.h1;
     const round2H2 = results.rounds[1]?.[index]?.h2;
-    
+
     // Check if H1 failed in either round
     const h1Failed = isFailResult(round1H1) || isFailResult(round2H1);
-    
+
     // Check if H2 failed in either round
     const h2Failed = isFailResult(round1H2) || isFailResult(round2H2);
-    
+
     // If either H1 or H2 failed, add to list
     if (h1Failed || h2Failed) {
       failedItems.push({
@@ -607,7 +604,7 @@ export const getFailedItems = (results: TestCharger, testItems: DCTestItem[]): F
       });
     }
   });
-  
+
   return failedItems;
 };
 
@@ -619,11 +616,11 @@ export const getFailedItemIndexes = (results: TestCharger, testItems: DCTestItem
 // Check if all items passed in both rounds (no FAIL results AND all tested)
 export const allItemsPassed = (results: TestCharger, testItems: DCTestItem[]): boolean => {
   if (results.rounds.length < 2) return false;
-  
+
   // Check if there are any failed items
   const failedIndexes = getFailedItemIndexes(results, testItems);
   if (failedIndexes.length > 0) return false;
-  
+
   // Check if all items have been tested (H1 and H2 must have PASS or NA result in both rounds)
   let allTested = true;
   testItems.forEach((item, index) => {
@@ -631,21 +628,21 @@ export const allItemsPassed = (results: TestCharger, testItems: DCTestItem[]): b
     const round1H2 = results.rounds[0]?.[index]?.h2;
     const round2H1 = results.rounds[1]?.[index]?.h1;
     const round2H2 = results.rounds[1]?.[index]?.h2;
-    
+
     // Check if H1 is tested in both rounds
     const h1Round1Tested = isPassResult(round1H1) || isNaResult(round1H1);
     const h1Round2Tested = isPassResult(round2H1) || isNaResult(round2H1);
-    
+
     // Check if H2 is tested in both rounds
     const h2Round1Tested = isPassResult(round1H2) || isNaResult(round1H2);
     const h2Round2Tested = isPassResult(round2H2) || isNaResult(round2H2);
-    
+
     // All H1 and H2 must be tested
     if (!h1Round1Tested || !h1Round2Tested || !h2Round1Tested || !h2Round2Tested) {
       allTested = false;
     }
   });
-  
+
   return allTested;
 };
 
@@ -679,8 +676,8 @@ export const validateTestResults = (
           itemIndex,
           itemName: displayName,
           field: "H1",
-          message: lang === "th" 
-            ? `รอบ ${roundIndex + 1}: ยังไม่ได้เลือก H1 (PASS/FAIL/NA)` 
+          message: lang === "th"
+            ? `รอบ ${roundIndex + 1}: ยังไม่ได้เลือก H1 (PASS/FAIL/NA)`
             : `Round ${roundIndex + 1}: H1 (PASS/FAIL/NA) not selected`,
         });
       }
@@ -691,8 +688,8 @@ export const validateTestResults = (
           itemIndex,
           itemName: displayName,
           field: "H2",
-          message: lang === "th" 
-            ? `รอบ ${roundIndex + 1}: ยังไม่ได้เลือก H2 (PASS/FAIL/NA)` 
+          message: lang === "th"
+            ? `รอบ ${roundIndex + 1}: ยังไม่ได้เลือก H2 (PASS/FAIL/NA)`
             : `Round ${roundIndex + 1}: H2 (PASS/FAIL/NA) not selected`,
         });
       }
@@ -761,7 +758,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
 
   // Determine max rounds display
   const maxRoundsDisplay = totalRounds >= 3 ? "3" : "2";
-  
+
   // Check if round 3 has failed items AND is auto-added (should show in red)
   const isRound3WithFailedItems = isRound3 && failedItems.length > 0 && !canRemove;
 
@@ -771,7 +768,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
   };
 
   // For round 3 with failed items, create list of items to show with their failed info
-  const itemsToShowWithInfo = isRound3WithFailedItems 
+  const itemsToShowWithInfo = isRound3WithFailedItems
     ? failedItems.map(fi => ({ item: testItems[fi.itemIndex], failedInfo: fi }))
     : testItems.map((item, idx) => ({ item, failedInfo: null as FailedItem | null }));
 
@@ -789,11 +786,11 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
     const displayName = getTestName(item, lang, t);
     const currentResult = getTestResult(actualIndex);
     const itemId = `test2-item-${actualIndex}-round-${roundNumber}`;
-    
+
     // Determine which H to show
     const showH1 = !isRound3WithFailedItems || (failedInfo?.h1Failed ?? true);
     const showH2 = !isRound3WithFailedItems || (failedInfo?.h2Failed ?? true);
-    
+
     // Show previous round results for round 3 with failed items
     const showPreviousResults = isRound3WithFailedItems;
     const prevResults = showPreviousResults ? getPreviousResults(actualIndex) : null;
@@ -802,9 +799,8 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
       <div
         id={itemId}
         key={`${roundNumber}-${item.testName}`}
-        className={`tw-py-6 tw-px-5 tw-transition-all tw-duration-300 hover:tw-bg-gray-50/50 ${
-          !isLast ? "tw-border-b tw-border-gray-100" : ""
-        }`}
+        className={`tw-py-6 tw-px-5 tw-transition-all tw-duration-300 hover:tw-bg-gray-50/50 ${!isLast ? "tw-border-b tw-border-gray-100" : ""
+          }`}
       >
         {/* Test Name */}
         <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
@@ -814,7 +810,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
           <Typography className="tw-font-semibold tw-text-gray-800 tw-text-base">
             {displayName}
           </Typography>
-          
+
           {/* Tooltip Icon */}
           {item.tooltip && (
             <Tooltip content={item.tooltip[lang]} placement="bottom">
@@ -823,7 +819,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               </svg>
             </Tooltip>
           )}
-          
+
           {/* Show previous round badges for round 3 */}
           {showPreviousResults && prevResults && (
             <div className="tw-flex tw-gap-1 tw-ml-2">
@@ -971,7 +967,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               const displayName = getTestName(item, lang, t);
               const currentResult = getTestResult(actualIndex);
               const showH1 = !isRound3WithFailedItems || (failedInfo?.h1Failed ?? true);
-              
+
               return (
                 <div key={`h1-${actualIndex}`} className="tw-px-4 tw-py-3">
                   {/* Row 1: Test Name */}
@@ -1030,7 +1026,7 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               const displayName = getTestName(item, lang, t);
               const currentResult = getTestResult(actualIndex);
               const showH2 = !isRound3WithFailedItems || (failedInfo?.h2Failed ?? true);
-              
+
               return (
                 <div key={`h2-${actualIndex}`} className="tw-px-4 tw-py-3">
                   {/* Row 1: Test Name */}
@@ -1189,9 +1185,9 @@ export interface DCTestGridProps {
   testType?: "electrical" | "charger";
 }
 
-const DCTest2Grid: React.FC<DCTestGridProps> = ({ 
-  initialResults, 
-  onResultsChange, 
+const DCTest2Grid: React.FC<DCTestGridProps> = ({
+  initialResults,
+  onResultsChange,
   initialRounds = 2,
   reportId,
   sn,
@@ -1201,11 +1197,11 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
     if (!initialResults) {
       return createEmptyResults(DC_TEST_DATA.length, initialRounds);
     }
-    
+
     if ('test1' in initialResults && 'test2' in initialResults && 'test3' in initialResults) {
       return convertLegacyToNew(initialResults as LegacyTestResults);
     }
-    
+
     // Ensure at least 2 rounds
     const results = initialResults as TestCharger;
     if (results.rounds.length < 2) {
@@ -1215,7 +1211,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
       }
       return { ...results, rounds: newRounds };
     }
-    
+
     return results;
   };
 
@@ -1230,7 +1226,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
       } else {
         newResults = initialResults as TestCharger;
       }
-      
+
       // Ensure at least 2 rounds
       if (newResults.rounds.length < 2) {
         const newRounds = [...newResults.rounds];
@@ -1239,7 +1235,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
         }
         newResults = { ...newResults, rounds: newRounds };
       }
-      
+
       setResults(newResults);
     }
   }, [initialResults]);
@@ -1272,7 +1268,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
       if (failedIndexes.length > 0) {
         // Auto add round 3
         const newRound = createEmptyRound(DC_TEST_DATA.length);
-        
+
         const newResults = {
           ...results,
           rounds: [...results.rounds, newRound]
@@ -1287,7 +1283,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
   useEffect(() => {
     if (results.rounds.length === 3 && !isRound3Manual) {
       const failedIndexes = getFailedItemIndexes(results, DC_TEST_DATA);
-      
+
       // Remove round 3 immediately if no failed items (all passed)
       if (failedIndexes.length === 0) {
         const newResults = {
@@ -1309,9 +1305,9 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
     const newResults = { ...results };
     newResults.rounds = [...newResults.rounds];
     newResults.rounds[roundIndex] = [...newResults.rounds[roundIndex]];
-    newResults.rounds[roundIndex][itemIndex] = { 
-      ...newResults.rounds[roundIndex][itemIndex], 
-      [field]: value 
+    newResults.rounds[roundIndex][itemIndex] = {
+      ...newResults.rounds[roundIndex][itemIndex],
+      [field]: value
     };
     setResults(newResults);
     onResultsChange?.(newResults);
@@ -1327,9 +1323,9 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
   // Manual add round 3 (when all passed but user wants to add)
   const handleAddRound = () => {
     if (results.rounds.length >= 3) return;
-    
+
     const newRound = createEmptyRound(DC_TEST_DATA.length);
-    
+
     const newResults = {
       ...results,
       rounds: [...results.rounds, newRound]
@@ -1343,7 +1339,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
   const handleRemoveRound = () => {
     // Only allow removing round 3 if it was manually added
     if (results.rounds.length !== 3 || !isRound3Manual) return;
-    
+
     const newResults = {
       ...results,
       rounds: results.rounds.slice(0, 2)
@@ -1386,7 +1382,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
         }
 
         const data = await res.json();
-        
+
         // Update local state with server URL
         const newFiles: TestFiles = { ...results.files };
         if (!newFiles[itemIndex]) {
@@ -1395,13 +1391,13 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
         if (!newFiles[itemIndex][roundIndex]) {
           newFiles[itemIndex][roundIndex] = {};
         }
-        
-        newFiles[itemIndex][roundIndex][field] = { 
-          file, 
-          url: data.file?.url || URL.createObjectURL(file), 
-          name: file.name 
+
+        newFiles[itemIndex][roundIndex][field] = {
+          file,
+          url: data.file?.url || URL.createObjectURL(file),
+          name: file.name
         };
-        
+
         const newResults = { ...results, files: newFiles };
         setResults(newResults);
         onResultsChange?.(newResults);
@@ -1413,22 +1409,22 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
       // Local only (no API)
       const url = URL.createObjectURL(file);
       const newFiles: TestFiles = { ...results.files };
-      
+
       if (!newFiles[itemIndex]) {
         newFiles[itemIndex] = {};
       }
       if (!newFiles[itemIndex][roundIndex]) {
         newFiles[itemIndex][roundIndex] = {};
       }
-      
+
       // Revoke old URL if exists
       const oldFile = newFiles[itemIndex][roundIndex][field];
       if (oldFile?.url && oldFile.url.startsWith("blob:")) {
         URL.revokeObjectURL(oldFile.url);
       }
-      
+
       newFiles[itemIndex][roundIndex][field] = { file, url, name: file.name };
-      
+
       const newResults = { ...results, files: newFiles };
       setResults(newResults);
       onResultsChange?.(newResults);
@@ -1473,16 +1469,16 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
 
     // Update local state
     const newFiles: TestFiles = { ...results.files };
-    
+
     if (newFiles[itemIndex]?.[roundIndex]?.[field]) {
       // Revoke URL if blob
       const fileData = newFiles[itemIndex][roundIndex][field];
       if (fileData?.url && fileData.url.startsWith("blob:")) {
         URL.revokeObjectURL(fileData.url);
       }
-      
+
       delete newFiles[itemIndex][roundIndex][field];
-      
+
       // Clean up empty objects
       if (Object.keys(newFiles[itemIndex][roundIndex]).length === 0) {
         delete newFiles[itemIndex][roundIndex];
@@ -1491,7 +1487,7 @@ const DCTest2Grid: React.FC<DCTestGridProps> = ({
         delete newFiles[itemIndex];
       }
     }
-    
+
     const newResults = { ...results, files: newFiles };
     setResults(newResults);
     onResultsChange?.(newResults);
