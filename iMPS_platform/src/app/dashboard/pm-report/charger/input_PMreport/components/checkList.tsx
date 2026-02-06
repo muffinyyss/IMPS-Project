@@ -20,6 +20,37 @@ import { apiFetch } from "@/utils/api";
 // 2) Only one ChargerPMForm mounts at a time
 let _stationNameForGPS = "";
 
+// ==================== GPS + ADDRESS CACHE ====================
+// Pre-fetch GPS + ที่อยู่ตั้งแต่เปิดหน้า เพื่อไม่ให้รูปแรกโหลดนาน
+let _cachedLocation: { text: string; timestamp: number } | null = null;
+let _locationFetching = false;
+const LOCATION_CACHE_MAX_AGE = 5 * 60 * 1000; // 5 นาที
+
+async function prefetchLocation(): Promise<void> {
+    if (_locationFetching) return;
+    _locationFetching = true;
+    try {
+        const gps = await getCurrentGPS();
+        if (gps) {
+            const text = await reverseGeocode(gps.lat, gps.lng);
+            _cachedLocation = { text, timestamp: Date.now() };
+        }
+    } catch { /* silent */ }
+    _locationFetching = false;
+}
+
+async function getCachedLocation(): Promise<string> {
+    // ถ้ามี cache อยู่และยังไม่หมดอายุ ใช้เลย
+    if (_cachedLocation && (Date.now() - _cachedLocation.timestamp) < LOCATION_CACHE_MAX_AGE) {
+        // refresh เบื้องหลังสำหรับรูปถัดไป
+        void prefetchLocation();
+        return _cachedLocation.text;
+    }
+    // ถ้าไม่มี cache ต้องรอ fetch
+    await prefetchLocation();
+    return _cachedLocation?.text || "ไม่สามารถระบุตำแหน่งได้";
+}
+
 type TabId = "pre" | "post";
 
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
@@ -981,88 +1012,157 @@ function InputWithUnit<U extends string>({
 
 // ==================== GET GPS LOCATION ====================
 async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
-    return new Promise((resolve) => {
-        // ตรวจสอบว่า browser รองรับ Geolocation หรือไม่
-        if (!navigator.geolocation) {
-            resolve(null);
-            return;
-        }
-        
-        // ตรวจสอบ Secure Context (HTTPS) - จำเป็นสำหรับ iOS
-        if (window.isSecureContext === false) {
-            resolve(null);
-            return;
-        }
-        
-        // ตั้ง timeout fallback
-        const timeoutId = setTimeout(() => {
-            resolve(null);
-        }, 10000);
-        
+    if (!navigator.geolocation) return null;
+    if (window.isSecureContext === false) return null;
+
+    // ลอง cached ก่อน (เร็วมาก ~0ms)
+    const fast = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+        const t = setTimeout(() => resolve(null), 2000);
         navigator.geolocation.getCurrentPosition(
-            (position) => {
-                clearTimeout(timeoutId);
-                resolve({
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                });
-            },
-            (error) => {
-                clearTimeout(timeoutId);
-                // error.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
-                resolve(null);
-            },
-            { 
-                enableHighAccuracy: false, // false = เร็วกว่า, ใช้ได้บน iOS
-                timeout: 8000, 
-                maximumAge: 60000 // cache 1 นาที
-            }
+            (pos) => { clearTimeout(t); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+            () => { clearTimeout(t); resolve(null); },
+            { enableHighAccuracy: false, timeout: 1500, maximumAge: 300000 } // cache 5 นาที
+        );
+    });
+    if (fast) return fast;
+
+    // ถ้า cache ไม่มี ลอง high accuracy
+    return new Promise((resolve) => {
+        const t = setTimeout(() => resolve(null), 8000);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => { clearTimeout(t); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+            () => { clearTimeout(t); resolve(null); },
+            { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
         );
     });
 }
 
 // ==================== REVERSE GEOCODING ====================
-async function reverseGeocode(lat: number, lng: number): Promise<string> {
+const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ?? "";
+
+async function reverseGeocodeGoogle(lat: number, lng: number): Promise<string | null> {
+    if (!GOOGLE_MAPS_KEY) return null;
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // timeout 3 วินาที
-        
-        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th&zoom=18`;
-        const res = await apiFetch(url, {
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=th&result_type=street_address|route|premise|subpremise|establishment&key=${GOOGLE_MAPS_KEY}`;
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data.status !== "OK" || !data.results?.length) return null;
+
+        // ใช้ผลลัพธ์แรกที่ละเอียดที่สุด
+        const best = data.results[0];
+        const components = best.address_components || [];
+
+        const get = (type: string) => components.find((c: any) => c.types?.includes(type))?.long_name || "";
+
+        const streetNumber = get("street_number");
+        const route = get("route");                          // ถนน/ซอย
+        const sublocality2 = get("sublocality_level_2");     // ซอยย่อย
+        const sublocality1 = get("sublocality_level_1");     // แขวง/ตำบล
+        const locality = get("locality");                     // เขต/อำเภอ
+        const adminArea2 = get("administrative_area_level_2"); // อำเภอ (บางที)
+        const adminArea1 = get("administrative_area_level_1"); // จังหวัด
+        const premise = get("premise");                       // ชื่ออาคาร/สถานที่
+
+        const parts: string[] = [];
+
+        // ชื่อสถานที่/อาคาร
+        if (premise) parts.push(premise);
+
+        // บ้านเลขที่ + ถนน
+        if (streetNumber && route) parts.push(`${streetNumber} ${route}`);
+        else if (route) parts.push(route);
+
+        // ซอยย่อย
+        if (sublocality2 && !parts.some(p => p.includes(sublocality2))) parts.push(sublocality2);
+
+        // ตำบล/แขวง
+        const sub = sublocality1;
+        if (sub && !parts.some(p => p.includes(sub))) parts.push(sub);
+
+        // อำเภอ/เขต
+        const dist = locality || adminArea2;
+        if (dist && !parts.some(p => p.includes(dist))) parts.push(dist);
+
+        // จังหวัด
+        if (adminArea1 && !parts.some(p => p.includes(adminArea1))) parts.push(adminArea1);
+
+        if (parts.length > 0) {
+            let result = parts.join(" ");
+            if (result.length > 80) result = result.substring(0, 77) + "...";
+            return result;
+        }
+
+        // fallback: ใช้ formatted_address จาก Google
+        if (best.formatted_address) {
+            const addr = best.formatted_address.replace(/\s*\d{5}\s*/, " ").replace(/ประเทศไทย/g, "").trim();
+            return addr.length > 80 ? addr.substring(0, 77) + "..." : addr;
+        }
+
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+async function reverseGeocodeNominatim(lat: number, lng: number): Promise<string> {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th&zoom=21&addressdetails=1`;
+        const res = await fetch(url, {
             headers: { "User-Agent": "PM-Checklist-App/1.0" },
             signal: controller.signal,
         });
         clearTimeout(timeoutId);
-        
-        if (!res.ok) return `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        if (!res.ok) return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
         const data = await res.json();
-        
-        // สร้างชื่อสถานที่จาก address components
+
         const addr = data.address || {};
+        const poi = addr.amenity || addr.building || addr.shop || addr.tourism || addr.leisure || addr.office || addr.industrial || "";
+        let roadPart = "";
+        const houseNo = addr.house_number || "";
+        const road = addr.road || addr.pedestrian || addr.footway || "";
+        if (houseNo && road) roadPart = `${houseNo} ${road}`;
+        else if (road) roadPart = road;
+
+        const village = addr.village || addr.hamlet || addr.neighbourhood || addr.residential || addr.quarter || "";
+        const subdistrict = addr.subdistrict || addr.suburb || "";
+        const district = addr.district || addr.city_district || addr.county || "";
+        const province = addr.province || addr.state || addr.city || addr.town || "";
+
+        const rawParts = [poi, roadPart, village, subdistrict, district, province].filter(Boolean);
         const parts: string[] = [];
-        
-        // เลือกข้อมูลที่สำคัญ
-        if (addr.road) parts.push(addr.road);
-        if (addr.suburb) parts.push(addr.suburb);
-        else if (addr.neighbourhood) parts.push(addr.neighbourhood);
-        if (addr.subdistrict) parts.push(addr.subdistrict);
-        else if (addr.district) parts.push(addr.district);
-        if (addr.city) parts.push(addr.city);
-        else if (addr.town) parts.push(addr.town);
-        else if (addr.province) parts.push(addr.province);
-        
+        for (const p of rawParts) {
+            if (!parts.some(existing => existing.includes(p) || p.includes(existing))) parts.push(p);
+        }
+
         if (parts.length > 0) {
-            // จำกัดความยาวไม่เกิน 50 ตัวอักษร
-            let result = parts.slice(0, 3).join(", ");
-            if (result.length > 50) result = result.substring(0, 47) + "...";
+            let result = parts.slice(0, 4).join(" ");
+            if (result.length > 70) result = result.substring(0, 67) + "...";
             return result;
         }
-        
-        return data.display_name?.substring(0, 50) || `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+        if (data.display_name) {
+            const short = data.display_name.split(",").slice(0, 4).join(",").trim();
+            return short.length > 70 ? short.substring(0, 67) + "..." : short;
+        }
+
+        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     } catch {
-        // ถ้า API ไม่ตอบ ใช้พิกัด GPS แทน
-        return `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     }
+}
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+    // ลอง Google ก่อน (ละเอียดกว่า)
+    const google = await reverseGeocodeGoogle(lat, lng);
+    if (google) return google;
+    // fallback Nominatim
+    return reverseGeocodeNominatim(lat, lng);
 }
 
 // ==================== ADD TIMESTAMP TO IMAGE ====================
@@ -1174,19 +1274,7 @@ function PhotoMultiInput({
     const [landscapeWarning, setLandscapeWarning] = useState(false);
 
     const processFile = async (file: File): Promise<PhotoItem> => {
-        let locationText = "";
-        try {
-            const gps = await getCurrentGPS();
-            if (gps) {
-                locationText = await reverseGeocode(gps.lat, gps.lng);
-            } else {
-                locationText = _stationNameForGPS || "ไม่สามารถระบุตำแหน่งได้";
-            }
-        } catch (err) {
-            console.error("GPS error:", err);
-            locationText = _stationNameForGPS || "ไม่สามารถระบุตำแหน่งได้";
-        }
-
+        const locationText = await getCachedLocation();
         const fileWithTimestamp = await addTimestampToImage(file, locationText);
         const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
         const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
@@ -1701,6 +1789,8 @@ export default function ChargerPMForm() {
 
     // Sync station name for GPS fallback
     useEffect(() => { if (job.station_name) _stationNameForGPS = job.station_name; }, [job.station_name]);
+    // Pre-fetch GPS + ที่อยู่ตั้งแต่เปิดหน้า เพื่อให้รูปแรกไม่ต้องรอ
+    useEffect(() => { void prefetchLocation(); }, []);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
