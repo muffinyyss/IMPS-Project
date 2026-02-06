@@ -20,7 +20,7 @@ export default function BasicPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "https://localhost:8000";
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

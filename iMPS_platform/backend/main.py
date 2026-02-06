@@ -232,11 +232,11 @@ class LoginRequest(BaseModel):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://203.154.130.132:3000",
-        "http://203.154.130.132:3001",
+        "https://localhost:3000",
+        "https://localhost:3001",
+        "https://127.0.0.1:3000",
+        "https://203.154.130.132:3000",
+        "https://203.154.130.132:3001",
     ],
     allow_credentials=True,
     allow_methods=["*"],
