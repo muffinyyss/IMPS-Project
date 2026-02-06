@@ -5879,6 +5879,7 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
     return {"ok": True, "report_id": str(res.inserted_id), "issue_id": issue_id, "doc_name": doc_name}
 
 
+
 class PMPostIn(BaseModel):
     report_id: str | None = None
     sn: str  # Changed from station_id to sn
@@ -5982,7 +5983,8 @@ os.makedirs(UPLOADS_ROOT, exist_ok=True)
 
 app.mount("/uploads", StaticFiles(directory=UPLOADS_ROOT, html=False), name="uploads")
 
-ALLOWED_EXTS = {"jpg","jpeg","png","webp","gif","pdf"}
+# ALLOWED_EXTS = {"jpg","jpeg","png","webp","gif","pdf"}
+ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "pdf", "heic", "heif"}
 MAX_FILE_MB = 20
 
 # FIX #4 & #6: เติม unique suffix + ป้องกันชื่อพิเศษ เช่น "." หรือ ".."
