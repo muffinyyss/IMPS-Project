@@ -224,6 +224,8 @@ type PhotoItem = {
     error?: string;
     ref?: PhotoRef;
     isNA?: boolean;
+    createdAt?: string;
+    location?: string;
 };
 
 type BilingualText = { th: string; en: string };
@@ -1205,8 +1207,10 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                 const lineHeight = fontSize * 1.3;
                 
                 ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-                const timestampWidth = ctx.measureText(timestamp).width;
-                const locationWidth = ctx.measureText(locationText).width;
+                const timestampDisplay = timestamp;
+                const locationDisplay = `📍 ${locationText}`;
+                const timestampWidth = ctx.measureText(timestampDisplay).width;
+                const locationWidth = ctx.measureText(locationDisplay).width;
                 const maxTextWidth = Math.max(timestampWidth, locationWidth);
                 const totalHeight = lineHeight * 2;
                 
@@ -1219,8 +1223,8 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                 // วาด text สีขาว
                 ctx.fillStyle = "#FFFFFF";
                 ctx.textBaseline = "top";
-                ctx.fillText(timestamp, bgX + padding, bgY + padding);
-                ctx.fillText(locationText, bgX + padding, bgY + padding + lineHeight);
+                ctx.fillText(timestampDisplay, bgX + padding, bgY + padding);
+                ctx.fillText(locationDisplay, bgX + padding, bgY + padding + lineHeight);
                 
                 
                 // แปลงกลับเป็น File
@@ -1278,7 +1282,8 @@ function PhotoMultiInput({
         const fileWithTimestamp = await addTimestampToImage(file, locationText);
         const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
         const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
-        return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
+        const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref, createdAt: now, location: locationText };
     };
 
     const handleFiles = async (list: FileList | null, fromCamera: boolean) => {
@@ -1384,6 +1389,13 @@ function PhotoMultiInput({
                         <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-gray-100 tw-shadow-xs tw-flex tw-flex-col">
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-100">
                                 {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-contain" />}
+                                {/* Timestamp & Location overlay */}
+                                {(p.createdAt || p.location) && (
+                                    <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
+                                        {p.createdAt && <span className="tw-block tw-font-mono">{p.createdAt}</span>}
+                                        {p.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {p.location}</span>}
+                                    </span>
+                                )}
                                 <button onClick={() => { void handleRemove(p.id); }}
                                     className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
@@ -1748,6 +1760,10 @@ export default function ChargerPMForm() {
     const isPostMode = action === "post";
 
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
+
+    // ⚡ Fix: เก็บ report_id ที่ submit JSON สำเร็จแล้ว เพื่อไม่ให้ submit ซ้ำตอน retry upload
+    const preReportIdRef = useRef<string | null>(null);
+    const postReportIdRef = useRef<string | null>(null);
 
     // ⚡ Fix: ใช้ ref เก็บค่าล่าสุดของ photos เพื่อ cleanup ตอน unmount
     const photosRef = useRef(photos);
@@ -2524,6 +2540,39 @@ export default function ChargerPMForm() {
         if (!res.ok) throw new Error(await res.text());
     }
 
+    // ⚡ Retry wrapper: ลองซ้ำ 3 ครั้ง + exponential backoff
+    async function uploadGroupPhotosWithRetry(reportId: string, sn: string, group: string, files: File[], side: TabId, maxRetries = 3): Promise<void> {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                await uploadGroupPhotos(reportId, sn, group, files, side);
+                return; // สำเร็จ → จบ
+            } catch (err) {
+                if (attempt === maxRetries) throw err; // ครบ retry แล้ว → throw
+                const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000); // 1s, 2s, 4s (max 8s)
+                await new Promise(r => setTimeout(r, delay));
+            }
+        }
+    }
+
+    // ⚡ Batch upload: อัปโหลดทีละ concurrency กลุ่ม แทนยิงพร้อมกันทั้งหมด
+    async function uploadPhotosInBatches(
+        entries: { group: string; files: File[] }[],
+        reportId: string, sn: string, side: TabId,
+        concurrency = 3
+    ): Promise<string[]> {
+        const failedGroups: string[] = [];
+        for (let i = 0; i < entries.length; i += concurrency) {
+            const batch = entries.slice(i, i + concurrency);
+            const results = await Promise.allSettled(
+                batch.map(e => uploadGroupPhotosWithRetry(reportId, sn, `g${e.group}`, e.files, side))
+            );
+            results.forEach((r, idx) => {
+                if (r.status === "rejected") failedGroups.push(batch[idx].group);
+            });
+        }
+        return failedGroups;
+    }
+
     const onPreSave = async () => {
         if (!sn) { alert(t("alertNoSN", lang)); return; }
         if (!allPhotosAttachedPre) { alert(t("alertPhotoNotComplete", lang)); return; }
@@ -2533,24 +2582,47 @@ export default function ChargerPMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const pm_date = job.date?.trim() || "";
-            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-            const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId };
-            const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
-            if (!submitRes.ok) throw new Error(await submitRes.text());
-            const { report_id, doc_name } = await submitRes.json() as { report_id: string; doc_name?: string };
-            if (doc_name) setDocName(doc_name);
-            // ⚡ ใช้ allSettled เพื่อตรวจสอบว่ากลุ่มไหน fail
-            const uploadEntries: { group: string; promise: Promise<void> }[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadEntries.push({ group: no, promise: uploadGroupPhotos(report_id, sn, `g${no}`, files, "pre") }); } });
+
+            // ⚡ ตรวจสอบ report_id: ref > draft > submit ใหม่
+            let report_id = preReportIdRef.current;
+            if (!report_id) {
+                // ลองโหลดจาก draft (กรณี refresh หลัง submit สำเร็จแต่รูป fail)
+                const draft = loadDraftLocal(key);
+                if (draft?.pendingReportId) {
+                    report_id = draft.pendingReportId;
+                    preReportIdRef.current = report_id;
+                }
+            }
+            if (!report_id) {
+                const pm_date = job.date?.trim() || "";
+                const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+                const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId };
+                const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+                if (!submitRes.ok) throw new Error(await submitRes.text());
+                const jsonRes = await submitRes.json() as { report_id: string; doc_name?: string };
+                report_id = jsonRes.report_id;
+                if (jsonRes.doc_name) setDocName(jsonRes.doc_name);
+                preReportIdRef.current = report_id;
+                // ⚡ บันทึก report_id ลง draft เผื่อ user refresh หน้า
+                saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, cp, m16: m16.state, summary, dustFilterChanged, photoRefs });
+            }
+
+            // ⚡ เตรียม entries สำหรับ upload (เฉพาะกลุ่มที่มี file จริง)
+            const uploadEntries: { group: string; files: File[] }[] = [];
+            Object.entries(photos).forEach(([no, list]) => {
+                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
+                if (files.length > 0) uploadEntries.push({ group: no, files });
+            });
+
+            // ⚡ อัปโหลดทีละ batch (3 กลุ่มพร้อมกัน) + retry แต่ละกลุ่ม 3 ครั้ง
             if (uploadEntries.length > 0) {
-                const results = await Promise.allSettled(uploadEntries.map(e => e.promise));
-                const failedGroups = results.map((r, i) => r.status === "rejected" ? uploadEntries[i].group : null).filter(Boolean);
+                const failedGroups = await uploadPhotosInBatches(uploadEntries, report_id, sn, "pre");
                 if (failedGroups.length > 0) {
                     alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
                     return; // ไม่ clear draft เพื่อให้ user ลองใหม่ได้
                 }
             }
+            preReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
             const allPhotos = Object.values(photos).flat();
             Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => {});
             clearDraftLocal(key);
@@ -2564,16 +2636,37 @@ export default function ChargerPMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
-            const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
-            if (!submitRes.ok) throw new Error(await submitRes.text());
-            const { report_id } = await submitRes.json() as { report_id: string };
-            // ⚡ ใช้ allSettled เพื่อตรวจสอบว่ากลุ่มไหน fail
-            const uploadEntries: { group: string; promise: Promise<void> }[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadEntries.push({ group: no, promise: uploadGroupPhotos(report_id, sn, `g${no}`, files, "post") }); } });
+
+            // ⚡ ตรวจสอบ report_id: ref > draft > submit ใหม่
+            let report_id = postReportIdRef.current;
+            if (!report_id) {
+                const draft = loadDraftLocal(postKey);
+                if (draft?.pendingReportId) {
+                    report_id = draft.pendingReportId;
+                    postReportIdRef.current = report_id;
+                }
+            }
+            if (!report_id) {
+                const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
+                const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+                if (!submitRes.ok) throw new Error(await submitRes.text());
+                const jsonRes = await submitRes.json() as { report_id: string };
+                report_id = jsonRes.report_id;
+                postReportIdRef.current = report_id;
+                // ⚡ บันทึก report_id ลง draft เผื่อ user refresh หน้า
+                saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs });
+            }
+
+            // ⚡ เตรียม entries สำหรับ upload (เฉพาะกลุ่มที่มี file จริง)
+            const uploadEntries: { group: string; files: File[] }[] = [];
+            Object.entries(photos).forEach(([no, list]) => {
+                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
+                if (files.length > 0) uploadEntries.push({ group: no, files });
+            });
+
+            // ⚡ อัปโหลดทีละ batch (3 กลุ่มพร้อมกัน) + retry แต่ละกลุ่ม 3 ครั้ง
             if (uploadEntries.length > 0) {
-                const results = await Promise.allSettled(uploadEntries.map(e => e.promise));
-                const failedGroups = results.map((r, i) => r.status === "rejected" ? uploadEntries[i].group : null).filter(Boolean);
+                const failedGroups = await uploadPhotosInBatches(uploadEntries, report_id, sn, "post");
                 if (failedGroups.length > 0) {
                     alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
                     return; // ไม่ finalize เพื่อให้ user ลองใหม่ได้
@@ -2581,6 +2674,7 @@ export default function ChargerPMForm() {
             }
             const finalizeRes = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ sn: sn }) });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
+            postReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
             const allPhotos = Object.values(photos).flat();
             Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => {});
             clearDraftLocal(postKey);

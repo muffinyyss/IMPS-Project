@@ -14,6 +14,9 @@ type DraftData = {
   // inspector?: string;
   dustFilterChanged?: Record<string, boolean>;
   photoRefs?: Record<number | string, (PhotoRef | { isNA: true })[]>;
+  // ⚡ เก็บ report_id ที่ submit JSON สำเร็จแล้ว — เผื่อ user refresh แล้วกดบันทึกซ้ำ
+  //   จะได้ไม่ insert document ซ้ำใน MongoDB
+  pendingReportId?: string | null;
   // หมายเหตุ: ไฟล์รูป (File) เก็บใน localStorage ไม่ได้
   // ถ้าจะเก็บรูปจริง แนะนำ IndexedDB (localforage/idb-keyval)
 };
