@@ -1147,8 +1147,8 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
 }
 
 // ==================== CAMERA MODAL (getUserMedia) ====================
-function CameraModal({ open, onClose, onCapture, lang }: {
-    open: boolean; onClose: () => void; onCapture: (file: File) => void; lang: Lang;
+function CameraModal({ open, onClose, onCapture, onRetry, lang }: {
+    open: boolean; onClose: () => void; onCapture: (file: File) => void; onRetry?: () => void; lang: Lang;
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
@@ -1185,14 +1185,28 @@ function CameraModal({ open, onClose, onCapture, lang }: {
         };
     }, [open]);
 
+    const [permDenied, setPermDenied] = useState(false);
+
     useEffect(() => {
         if (!open) return;
         setReady(false);
         setError("");
+        setPermDenied(false);
         let cancelled = false;
 
         (async () => {
             try {
+                // ตรวจสอบ permission ก่อน
+                if (navigator.permissions) {
+                    try {
+                        const perm = await navigator.permissions.query({ name: "camera" as PermissionName });
+                        if (perm.state === "denied") {
+                            if (!cancelled) setPermDenied(true);
+                            return;
+                        }
+                    } catch { /* ข้าม — บาง browser ไม่ support */ }
+                }
+
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
                     audio: false,
@@ -1204,8 +1218,13 @@ function CameraModal({ open, onClose, onCapture, lang }: {
                     await videoRef.current.play();
                     setReady(true);
                 }
-            } catch (err) {
-                if (!cancelled) setError(lang === "th" ? "ไม่สามารถเปิดกล้องได้ กรุณาอนุญาตการใช้งานกล้อง" : "Cannot access camera. Please grant camera permission.");
+            } catch (err: any) {
+                if (cancelled) return;
+                if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
+                    setPermDenied(true);
+                } else {
+                    setError(lang === "th" ? "ไม่สามารถเปิดกล้องได้" : "Cannot access camera.");
+                }
             }
         })();
 
@@ -1237,13 +1256,52 @@ function CameraModal({ open, onClose, onCapture, lang }: {
 
     return (
         <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-bg-black tw-flex tw-flex-col">
-            {error ? (
+            {(error || permDenied) ? (
                 <div className="tw-flex-1 tw-flex tw-items-center tw-justify-center tw-p-6">
-                    <div className="tw-text-center tw-text-white">
-                        <p className="tw-text-lg tw-mb-4">{error}</p>
-                        <Button size="sm" color="white" variant="outlined" onClick={onClose}>
-                            {lang === "th" ? "ปิด" : "Close"}
-                        </Button>
+                    <div className="tw-text-center tw-text-white tw-max-w-sm">
+                        {permDenied ? (
+                            <>
+                                <svg className="tw-w-16 tw-h-16 tw-text-amber-400 tw-mx-auto tw-mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                </svg>
+                                <p className="tw-text-amber-400 tw-text-lg tw-font-bold tw-mb-3">
+                                    {lang === "th" ? "กล้องถูกบล็อก" : "Camera Blocked"}
+                                </p>
+                                <p className="tw-text-white/90 tw-text-sm tw-mb-4">
+                                    {lang === "th" ? "กรุณาอนุญาตการใช้งานกล้องตามขั้นตอนนี้:" : "Please allow camera access:"}
+                                </p>
+                                <div className="tw-text-left tw-bg-white/10 tw-rounded-xl tw-p-4 tw-mb-5 tw-text-sm tw-space-y-2">
+                                    <p className="tw-text-white/90">
+                                        {lang === "th" ? "1. กดที่ 🔒 ไอคอนแม่กุญแจ (ข้างช่อง URL ด้านบน)" : "1. Tap the 🔒 lock icon (next to URL bar)"}
+                                    </p>
+                                    <p className="tw-text-white/90">
+                                        {lang === "th" ? "2. กด \"สิทธิ์\" หรือ \"Permissions\"" : "2. Tap \"Permissions\""}
+                                    </p>
+                                    <p className="tw-text-white/90">
+                                        {lang === "th" ? "3. เปิดสิทธิ์ \"กล้อง\" ให้เป็น \"อนุญาต\"" : "3. Set \"Camera\" to \"Allow\""}
+                                    </p>
+                                    <p className="tw-text-white/90">
+                                        {lang === "th" ? "4. กลับมากดถ่ายรูปใหม่" : "4. Come back and try again"}
+                                    </p>
+                                </div>
+                                <div className="tw-flex tw-flex-col tw-gap-2">
+                                    <Button size="sm" color="amber" variant="filled" onClick={() => { onClose(); if (onRetry) setTimeout(onRetry, 500); }}
+                                        className="tw-w-full">
+                                        {lang === "th" ? "ลองใหม่" : "Try Again"}
+                                    </Button>
+                                    <Button size="sm" color="white" variant="outlined" onClick={onClose} className="tw-w-full">
+                                        {lang === "th" ? "ปิด" : "Close"}
+                                    </Button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <p className="tw-text-lg tw-mb-4">{error}</p>
+                                <Button size="sm" color="white" variant="outlined" onClick={onClose}>
+                                    {lang === "th" ? "ปิด" : "Close"}
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </div>
             ) : (
@@ -1350,7 +1408,7 @@ function PhotoMultiInput({
 
     return (
         <div id={id} className="tw-space-y-3 tw-transition-all tw-duration-300">
-            {isMobile && <CameraModal open={cameraOpen} onClose={() => setCameraOpen(false)} onCapture={(file) => { void handleCameraCapture(file); }} lang={lang} />}
+            {isMobile && <CameraModal open={cameraOpen} onClose={() => setCameraOpen(false)} onCapture={(file) => { void handleCameraCapture(file); }} onRetry={() => setCameraOpen(true)} lang={lang} />}
             <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
                 {isMobile ? (
                     <Button size="sm" color="blue" variant="outlined" onClick={() => setCameraOpen(true)} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
