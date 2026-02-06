@@ -232,9 +232,9 @@ class LoginRequest(BaseModel):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://localhost:3000",
-        "https://localhost:3001",
-        "https://127.0.0.1:3000",
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
         "https://203.154.130.132:3000",
         "https://203.154.130.132:3001",
         "https://imps.egatdiamond.co.th", 
@@ -5828,7 +5828,37 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
         year_seq = await _next_year_seq(db, sn, pm_type, d)
         doc_name = f"{sn}_{year_seq}/{d.year}"
 
-    # ---- insert ----
+    # ======================================================================
+    # ⚡ FIX: Idempotent — ถ้ามี draft สำหรับ sn + pm_date + side="pre"
+    #   อยู่แล้ว → update แทน insert → ป้องกัน document ซ้ำ
+    # ======================================================================
+    existing_draft = await coll.find_one(
+        {"sn": sn, "pm_date": body.pm_date, "side": "pre", "status": "draft"},
+        {"_id": 1, "issue_id": 1, "doc_name": 1},
+    )
+
+    if existing_draft:
+        # ⚡ มี draft อยู่แล้ว → update doc เดิม + คืน report_id เดิม
+        await coll.update_one(
+            {"_id": existing_draft["_id"]},
+            {"$set": {
+                "station_id": station_id,
+                "chargeBoxID": charger.get("chargeBoxID"),
+                "job": body.job,
+                "rows_pre": body.rows_pre or {},
+                "measures_pre": body.measures_pre,
+                "inspector": body.inspector,
+                "timestamp": datetime.now(timezone.utc),
+            }},
+        )
+        return {
+            "ok": True,
+            "report_id": str(existing_draft["_id"]),
+            "issue_id": existing_draft.get("issue_id") or issue_id,
+            "doc_name": existing_draft.get("doc_name") or doc_name,
+        }
+
+    # ⚡ ไม่มี draft → insert ใหม่ตามปกติ
     doc = {
         "sn": sn,
         "station_id": station_id,
@@ -5847,6 +5877,7 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
     }
     res = await coll.insert_one(doc)
     return {"ok": True, "report_id": str(res.inserted_id), "issue_id": issue_id, "doc_name": doc_name}
+
 
 class PMPostIn(BaseModel):
     report_id: str | None = None
@@ -5897,22 +5928,46 @@ async def pmreport_post_submit(
             "report_id": body.report_id,
         }
 
-    # ---------- กรณี 2: ไม่มี report_id → INSERT ใหม่ ----------
+    # ---------- กรณี 2: ไม่มี report_id ----------
     # Validate charger exists
     charger = await _get_charger_by_sn(sn)
-    
-    doc = {
-        "sn": sn,
-        "station_id": charger.get("station_id"),
-        "chargeBoxID": charger.get("chargeBoxID"),
+
+    # ======================================================================
+    # ⚡ FIX: Idempotent — ถ้ามี draft สำหรับ sn + side="post" + status="draft"
+    #   อยู่แล้ว → update แทน insert → ป้องกัน document ซ้ำ
+    # ======================================================================
+    existing_draft = await coll.find_one(
+        {"sn": sn, "side": "post", "status": "draft"},
+        {"_id": 1},
+        sort=[("timestamp", -1)],  # เอาอันล่าสุด
+    )
+
+    update_fields = {
         "rows": body.rows,
         "measures": body.measures,
         "summary": body.summary,
         "summaryCheck": body.summaryCheck,
         "dust_filter": body.dust_filter,
+        "side": "post",
+        "timestamp_post": datetime.now(timezone.utc),
+    }
+
+    if existing_draft:
+        # ⚡ มี draft อยู่แล้ว → update doc เดิม
+        await coll.update_one({"_id": existing_draft["_id"]}, {"$set": update_fields})
+        return {
+            "ok": True,
+            "report_id": str(existing_draft["_id"]),
+        }
+
+    # ⚡ ไม่มี draft → insert ใหม่
+    doc = {
+        "sn": sn,
+        "station_id": charger.get("station_id"),
+        "chargeBoxID": charger.get("chargeBoxID"),
+        **update_fields,
         "photos": {},
         "status": "draft",
-        "side": "post",
         "timestamp": datetime.now(timezone.utc),
     }
     res = await coll.insert_one(doc)
