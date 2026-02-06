@@ -1146,200 +1146,14 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
     });
 }
 
-// ==================== CAMERA MODAL (getUserMedia) ====================
-function CameraModal({ open, onClose, onCapture, onRetry, lang }: {
-    open: boolean; onClose: () => void; onCapture: (file: File) => void; onRetry?: () => void; lang: Lang;
-}) {
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const streamRef = useRef<MediaStream | null>(null);
-    const [ready, setReady] = useState(false);
-    const [error, setError] = useState("");
-    const [isLandscape, setIsLandscape] = useState(false);
-
-    // ตรวจจับแนวจอ
-    useEffect(() => {
-        if (!open) return;
-        const check = () => {
-            if (typeof screen !== "undefined" && screen.orientation) {
-                const type = screen.orientation.type;
-                setIsLandscape(type.startsWith("landscape"));
-            } else {
-                setIsLandscape(window.innerWidth > window.innerHeight);
-            }
-        };
-        check();
-
-        const onOrientationChange = () => check();
-        const onResize = () => check();
-
-        if (screen.orientation) {
-            screen.orientation.addEventListener("change", onOrientationChange);
-        }
-        window.addEventListener("resize", onResize);
-
-        return () => {
-            if (screen.orientation) {
-                screen.orientation.removeEventListener("change", onOrientationChange);
-            }
-            window.removeEventListener("resize", onResize);
-        };
-    }, [open]);
-
-    const [permDenied, setPermDenied] = useState(false);
-
-    useEffect(() => {
-        if (!open) return;
-        setReady(false);
-        setError("");
-        setPermDenied(false);
-        let cancelled = false;
-
-        (async () => {
-            try {
-                // ตรวจสอบ permission ก่อน
-                if (navigator.permissions) {
-                    try {
-                        const perm = await navigator.permissions.query({ name: "camera" as PermissionName });
-                        if (perm.state === "denied") {
-                            if (!cancelled) setPermDenied(true);
-                            return;
-                        }
-                    } catch { /* ข้าม — บาง browser ไม่ support */ }
-                }
-
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
-                    audio: false,
-                });
-                if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
-                streamRef.current = stream;
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                    await videoRef.current.play();
-                    setReady(true);
-                }
-            } catch (err: any) {
-                if (cancelled) return;
-                if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
-                    setPermDenied(true);
-                } else {
-                    setError(lang === "th" ? "ไม่สามารถเปิดกล้องได้" : "Cannot access camera.");
-                }
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-            streamRef.current?.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-        };
-    }, [open, lang]);
-
-    const capture = () => {
-        const video = videoRef.current;
-        if (!video) return;
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(video, 0, 0);
-        canvas.toBlob((blob) => {
-            if (!blob) return;
-            const file = new File([blob], `photo_${Date.now()}.jpg`, { type: "image/jpeg" });
-            onCapture(file);
-            onClose();
-        }, "image/jpeg", 0.9);
-    };
-
-    if (!open) return null;
-
-    return (
-        <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-bg-black tw-flex tw-flex-col">
-            {(error || permDenied) ? (
-                <div className="tw-flex-1 tw-flex tw-items-center tw-justify-center tw-p-6">
-                    <div className="tw-text-center tw-text-white tw-max-w-sm">
-                        {permDenied ? (
-                            <>
-                                <svg className="tw-w-16 tw-h-16 tw-text-amber-400 tw-mx-auto tw-mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                                </svg>
-                                <p className="tw-text-amber-400 tw-text-lg tw-font-bold tw-mb-3">
-                                    {lang === "th" ? "กล้องถูกบล็อก" : "Camera Blocked"}
-                                </p>
-                                <p className="tw-text-white/90 tw-text-sm tw-mb-4">
-                                    {lang === "th" ? "กรุณาอนุญาตการใช้งานกล้องตามขั้นตอนนี้:" : "Please allow camera access:"}
-                                </p>
-                                <div className="tw-text-left tw-bg-white/10 tw-rounded-xl tw-p-4 tw-mb-5 tw-text-sm tw-space-y-2">
-                                    <p className="tw-text-white/90">
-                                        {lang === "th" ? "1. กดที่ 🔒 ไอคอนแม่กุญแจ (ข้างช่อง URL ด้านบน)" : "1. Tap the 🔒 lock icon (next to URL bar)"}
-                                    </p>
-                                    <p className="tw-text-white/90">
-                                        {lang === "th" ? "2. กด \"สิทธิ์\" หรือ \"Permissions\"" : "2. Tap \"Permissions\""}
-                                    </p>
-                                    <p className="tw-text-white/90">
-                                        {lang === "th" ? "3. เปิดสิทธิ์ \"กล้อง\" ให้เป็น \"อนุญาต\"" : "3. Set \"Camera\" to \"Allow\""}
-                                    </p>
-                                    <p className="tw-text-white/90">
-                                        {lang === "th" ? "4. กลับมากดถ่ายรูปใหม่" : "4. Come back and try again"}
-                                    </p>
-                                </div>
-                                <div className="tw-flex tw-flex-col tw-gap-2">
-                                    <Button size="sm" color="amber" variant="filled" onClick={() => { onClose(); if (onRetry) setTimeout(onRetry, 500); }}
-                                        className="tw-w-full">
-                                        {lang === "th" ? "ลองใหม่" : "Try Again"}
-                                    </Button>
-                                    <Button size="sm" color="white" variant="outlined" onClick={onClose} className="tw-w-full">
-                                        {lang === "th" ? "ปิด" : "Close"}
-                                    </Button>
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <p className="tw-text-lg tw-mb-4">{error}</p>
-                                <Button size="sm" color="white" variant="outlined" onClick={onClose}>
-                                    {lang === "th" ? "ปิด" : "Close"}
-                                </Button>
-                            </>
-                        )}
-                    </div>
-                </div>
-            ) : (
-                <>
-                    <div className="tw-flex-1 tw-relative tw-overflow-hidden">
-                        <video ref={videoRef} playsInline autoPlay muted className="tw-w-full tw-h-full tw-object-cover" />
-                        {!ready && (
-                            <div className="tw-absolute tw-inset-0 tw-flex tw-items-center tw-justify-center">
-                                <p className="tw-text-white tw-text-lg">{lang === "th" ? "กำลังเปิดกล้อง..." : "Opening camera..."}</p>
-                            </div>
-                        )}
-                        {isLandscape && (
-                            <div className="tw-absolute tw-inset-0 tw-bg-black/80 tw-flex tw-flex-col tw-items-center tw-justify-center tw-z-10 tw-p-6">
-                                <svg className="tw-w-16 tw-h-16 tw-text-amber-400 tw-mb-4 tw-animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                </svg>
-                                <p className="tw-text-amber-400 tw-text-lg tw-font-bold tw-text-center tw-mb-2">
-                                    {lang === "th" ? "กรุณาหมุนจอเป็นแนวตั้ง" : "Please rotate to portrait"}
-                                </p>
-                                <p className="tw-text-white/70 tw-text-sm tw-text-center">
-                                    {lang === "th" ? "ถ่ายรูปได้เฉพาะแนวตั้งเท่านั้น" : "Photos can only be taken in portrait mode"}
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                    <div className="tw-flex tw-items-center tw-justify-center tw-gap-6 tw-py-5 tw-bg-black/80">
-                        <button onClick={onClose} className="tw-w-12 tw-h-12 tw-rounded-full tw-border-2 tw-border-white tw-flex tw-items-center tw-justify-center tw-text-white tw-text-xl">✕</button>
-                        <button onClick={capture} disabled={!ready || isLandscape}
-                            className="tw-w-18 tw-h-18 tw-rounded-full tw-border-4 tw-border-white tw-bg-white/20 tw-flex tw-items-center tw-justify-center disabled:tw-opacity-40"
-                            style={{ width: 72, height: 72 }}>
-                            <div className="tw-w-14 tw-h-14 tw-rounded-full tw-bg-white" style={{ width: 56, height: 56 }} />
-                        </button>
-                        <div className="tw-w-12" />
-                    </div>
-                </>
-            )}
-        </div>
-    );
+// ==================== PHOTO INPUT ====================
+function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(img.src); };
+        img.onerror = () => { reject(new Error("Cannot read image")); URL.revokeObjectURL(img.src); };
+        img.src = URL.createObjectURL(file);
+    });
 }
 
 function isMobileDevice(): boolean {
@@ -1354,12 +1168,12 @@ function PhotoMultiInput({
     label?: string; photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
 }) {
-    const [cameraOpen, setCameraOpen] = useState(false);
+    const cameraRef = useRef<HTMLInputElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const isMobile = useMemo(() => isMobileDevice(), []);
+    const [landscapeWarning, setLandscapeWarning] = useState(false);
 
-    const processFile = async (file: File) => {
-        // ดึง GPS และแปลงเป็นชื่อสถานที่
+    const processFile = async (file: File): Promise<PhotoItem> => {
         let locationText = "";
         try {
             const gps = await getCurrentGPS();
@@ -1376,24 +1190,41 @@ function PhotoMultiInput({
         const fileWithTimestamp = await addTimestampToImage(file, locationText);
         const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
         const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
-        return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref } as PhotoItem;
+        return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
     };
 
-    // มือถือ: รับไฟล์จากกล้อง (ทีละรูป)
-    const handleCameraCapture = async (file: File) => {
-        const remain = Math.max(0, max - photos.length);
-        if (remain <= 0) return;
-        const item = await processFile(file);
-        setPhotos((prev) => [...prev, item]);
-    };
-
-    // PC: รับไฟล์จาก file picker (หลายรูป)
-    const handleFileSelect = async (list: FileList | null) => {
+    const handleFiles = async (list: FileList | null, fromCamera: boolean) => {
         if (!list || list.length === 0) return;
         const remain = Math.max(0, max - photos.length);
         const files = Array.from(list).slice(0, remain);
-        const items = await Promise.all(files.map((f) => processFile(f)));
-        setPhotos((prev) => [...prev, ...items]);
+
+        const accepted: PhotoItem[] = [];
+        let hasLandscape = false;
+
+        for (const f of files) {
+            // ถ้าถ่ายจากกล้อง ตรวจสอบแนวรูป
+            if (fromCamera) {
+                try {
+                    const dim = await getImageDimensions(f);
+                    if (dim.width > dim.height) {
+                        hasLandscape = true;
+                        continue; // ข้ามรูปแนวนอน
+                    }
+                } catch { /* ถ้าอ่านไม่ได้ให้ผ่าน */ }
+            }
+            const item = await processFile(f);
+            accepted.push(item);
+        }
+
+        if (accepted.length > 0) {
+            setPhotos((prev) => [...prev, ...accepted]);
+        }
+
+        if (hasLandscape) {
+            setLandscapeWarning(true);
+        }
+
+        if (cameraRef.current) cameraRef.current.value = "";
         if (fileRef.current) fileRef.current.value = "";
     };
 
@@ -1408,10 +1239,31 @@ function PhotoMultiInput({
 
     return (
         <div id={id} className="tw-space-y-3 tw-transition-all tw-duration-300">
-            {isMobile && <CameraModal open={cameraOpen} onClose={() => setCameraOpen(false)} onCapture={(file) => { void handleCameraCapture(file); }} onRetry={() => setCameraOpen(true)} lang={lang} />}
+            {/* Landscape warning modal */}
+            {landscapeWarning && (
+                <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-bg-black/70 tw-flex tw-items-center tw-justify-center tw-p-6" onClick={() => setLandscapeWarning(false)}>
+                    <div className="tw-bg-white tw-rounded-2xl tw-p-6 tw-max-w-sm tw-text-center tw-shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <svg className="tw-w-14 tw-h-14 tw-text-amber-500 tw-mx-auto tw-mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        <p className="tw-text-lg tw-font-bold tw-text-gray-800 tw-mb-2">
+                            {lang === "th" ? "กรุณาถ่ายรูปแนวตั้ง" : "Please take portrait photos"}
+                        </p>
+                        <p className="tw-text-sm tw-text-gray-600 tw-mb-4">
+                            {lang === "th"
+                                ? "รูปที่ถ่ายเป็นแนวนอนจะไม่ถูกรับ กรุณาหมุนมือถือเป็นแนวตั้งแล้วถ่ายใหม่"
+                                : "Landscape photos are not accepted. Please hold your phone upright and retake."}
+                        </p>
+                        <Button size="sm" color="amber" variant="filled" onClick={() => setLandscapeWarning(false)} className="tw-w-full">
+                            {lang === "th" ? "รับทราบ" : "OK"}
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
                 {isMobile ? (
-                    <Button size="sm" color="blue" variant="outlined" onClick={() => setCameraOpen(true)} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
+                    <Button size="sm" color="blue" variant="outlined" onClick={() => cameraRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
                         <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1423,11 +1275,18 @@ function PhotoMultiInput({
                         <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
-                        {t("selectFromGallery", lang)}
+                        {t("attachPhoto", lang)}
                     </Button>
                 )}
             </div>
-            {!isMobile && <input ref={fileRef} type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => { void handleFileSelect(e.target.files); }} />}
+
+            {/* มือถือ: input เปิดกล้องตรง */}
+            {isMobile && <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="tw-hidden"
+                onChange={(e) => { void handleFiles(e.target.files, true); }} />}
+            {/* PC: input เลือกไฟล์ */}
+            {!isMobile && <input ref={fileRef} type="file" accept="image/*" multiple className="tw-hidden"
+                onChange={(e) => { void handleFiles(e.target.files, false); }} />}
+
             <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
                 {t("maxPhotos", lang)} {max} {t("photos", lang)}
             </Typography>
