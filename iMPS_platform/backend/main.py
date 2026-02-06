@@ -237,6 +237,7 @@ app.add_middleware(
         "https://127.0.0.1:3000",
         "https://203.154.130.132:3000",
         "https://203.154.130.132:3001",
+        "https://imps.egatdiamond.co.th", 
     ],
     allow_credentials=True,
     allow_methods=["*"],
