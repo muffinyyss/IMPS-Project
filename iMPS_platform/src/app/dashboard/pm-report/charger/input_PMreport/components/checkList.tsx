@@ -2537,18 +2537,16 @@ export default function ChargerPMForm() {
         });
     }
 
-    async function uploadGroupPhotos(reportId: string, sn: string, group: string, files: File[], side: TabId) {
-        if (files.length === 0) return;
-        const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
+    // ⚡ FIX 413: ส่งทีละรูป (sequential) แทนรวมทั้งกลุ่ม → ไม่เกิน nginx body limit
+    async function uploadSinglePhoto(reportId: string, sn: string, group: string, file: File, side: TabId) {
         const form = new FormData();
         form.append("sn", sn);
         form.append("group", group);
         form.append("side", side);
-        compressedFiles.forEach((f) => form.append("files", f, ensureJpgFilename(f.name)));
+        form.append("files", file, ensureJpgFilename(file.name));
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/pmreport/${reportId}/pre/photos` : `${API_BASE}/pmreport/${reportId}/post/photos`;
-        // ⚡ Log request info for debugging
-        console.log(`[upload] ${group} → ${url} | files: ${compressedFiles.length} | sizes: ${compressedFiles.map(f => `${(f.size/1024).toFixed(0)}KB`).join(", ")} | names: ${compressedFiles.map(f => f.name).join(", ")}`);
+        console.log(`[upload] ${group} → 1 file | size: ${(file.size/1024).toFixed(0)}KB | name: ${file.name}`);
         const res = await apiFetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
         if (!res.ok) {
             const errText = await res.text().catch(() => "");
@@ -2558,22 +2556,32 @@ export default function ChargerPMForm() {
         }
     }
 
-    // ⚡ Retry wrapper: ลองซ้ำ 3 ครั้ง + exponential backoff
-    async function uploadGroupPhotosWithRetry(reportId: string, sn: string, group: string, files: File[], side: TabId, maxRetries = 3): Promise<void> {
+    async function uploadGroupPhotos(reportId: string, sn: string, group: string, files: File[], side: TabId) {
+        if (files.length === 0) return;
+        const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
+        // ⚡ ส่งทีละรูป sequential + retry แต่ละรูป — ป้องกัน 413 + ไม่ duplicate
+        for (let i = 0; i < compressedFiles.length; i++) {
+            console.log(`[upload] ${group} file ${i + 1}/${compressedFiles.length}`);
+            await uploadSinglePhotoWithRetry(reportId, sn, group, compressedFiles[i], side);
+        }
+    }
+
+    // ⚡ Retry ระดับรูปเดียว — ไม่ re-upload รูปที่สำเร็จแล้ว
+    async function uploadSinglePhotoWithRetry(reportId: string, sn: string, group: string, file: File, side: TabId, maxRetries = 3): Promise<void> {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                await uploadGroupPhotos(reportId, sn, group, files, side);
-                return; // สำเร็จ → จบ
+                await uploadSinglePhoto(reportId, sn, group, file, side);
+                return;
             } catch (err: any) {
-                console.warn(`[upload retry] ${group} attempt ${attempt}/${maxRetries} failed:`, err?.message);
-                if (attempt === maxRetries) throw err; // ครบ retry แล้ว → throw
-                const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000); // 1s, 2s, 4s (max 8s)
+                console.warn(`[upload retry] ${group} file "${file.name}" attempt ${attempt}/${maxRetries} failed:`, err?.message);
+                if (attempt === maxRetries) throw err;
+                const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
                 await new Promise(r => setTimeout(r, delay));
             }
         }
     }
 
-    // ⚡ Batch upload: อัปโหลดทีละ concurrency กลุ่ม แทนยิงพร้อมกันทั้งหมด
+    // ⚡ Batch upload: อัปโหลดทีละ concurrency กลุ่ม (retry อยู่ระดับรูปเดียวแล้ว)
     async function uploadPhotosInBatches(
         entries: { group: string; files: File[] }[],
         reportId: string, sn: string, side: TabId,
@@ -2583,7 +2591,7 @@ export default function ChargerPMForm() {
         for (let i = 0; i < entries.length; i += concurrency) {
             const batch = entries.slice(i, i + concurrency);
             const results = await Promise.allSettled(
-                batch.map(e => uploadGroupPhotosWithRetry(reportId, sn, `g${e.group}`, e.files, side))
+                batch.map(e => uploadGroupPhotos(reportId, sn, `g${e.group}`, e.files, side))
             );
             results.forEach((r, idx) => {
                 if (r.status === "rejected") {
