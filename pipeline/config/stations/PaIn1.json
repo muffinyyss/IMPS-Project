@@ -1,0 +1,37 @@
+{
+    "stationId": "PaIn1",
+    "serialNumber": "F1500824011",
+    
+    "hardware": {
+        "dcContractorCount": 6,
+        "powerModuleCount": 5,
+        "dcFanCount": 8,
+        "fanType": "FIXED",
+        "energyMeterType": "PILOT",
+        "powerModuleDefaults": {
+            "pm1": 2,
+            "pm2": 3
+        }
+    },
+    
+    "topics": {
+        "plc": "OCPP/PaIn1/PLC",
+        "pi5Heartbeat": "OCPP/PaIn1/heartbeatPI5",
+        "ebError": "OCPP/Elex_PT_PaIn1_1/error",
+        "ebTemp": "OCPP/Elex_PT_PaIn1_1/edgeboxTemp",
+        "ebHeartbeat": "OCPP/Elex_PT_PaIn1_1/heartbeat",
+        "ebCountDevice": "OCPP/PaIn1/totaltime",
+        "router": "PratunamPhraIn1",
+        "mdbRaw": "MDB_PaIn1",
+        "ambient": "ev_charging/temperature/modbus/slave5/PaIn1",
+        "bme280": "ev_charging/temperature/bme280/PaIn1",
+        "insulation1": "ev_charging/insulation/slave3/measurement/PaIn1",
+        "insulation2": "ev_charging/insulation/slave4/measurement/PaIn1",
+        "fanRpm": null
+    },
+    
+    "serviceLife": {
+        "commitDate": "2024-04-28", 
+        "endDate": "2025-10-02T16:00:00"
+    }
+}

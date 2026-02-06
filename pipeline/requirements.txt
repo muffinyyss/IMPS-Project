@@ -1,0 +1,14 @@
+# MQTT
+paho-mqtt>=2.0.0
+
+# MongoDB
+pymongo>=4.5.0
+
+# Utilities
+python-dateutil>=2.8.2
+
+# Logging
+colorlog>=6.7.0
+
+# Environment
+python-dotenv>=1.0.0

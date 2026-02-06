@@ -1,0 +1,37 @@
+{
+    "stationId": "PEATest",
+    "serialNumber": "TESTSetting",
+    
+    "hardware": {
+        "dcContractorCount": 6,
+        "powerModuleCount": 5,
+        "dcFanCount": 8,
+        "fanType": "FIXED",
+        "energyMeterType": "PILOT",
+        "powerModuleDefaults": {
+            "pm1": 2,
+            "pm2": 3
+        }
+    },
+    
+    "topics": {
+        "plc": "OCPP/PEATest/PLC",
+        "pi5Heartbeat": "OCPP/PEATest/heartbeatPI5",
+        "ebError": "OCPP/PEATest/error",
+        "ebTemp": "OCPP/PEATest/edgeboxTemp",
+        "ebHeartbeat": "OCPP/PEATest/heartbeat",
+        "ebCountDevice": "OCPP/PEATest/totaltime",
+        "router": "PEATest",
+        "mdbRaw": "MDB_PEATest",
+        "ambient": "ev_charging/temperature/modbus/slave5/PEATest",
+        "bme280": "ev_charging/temperature/bme280/PEATest",
+        "insulation1": "ev_charging/insulation/slave3/measurement/PEATest",
+        "insulation2": "ev_charging/insulation/slave4/measurement/PEATest",
+        "fanRpm": null
+    },
+    
+    "serviceLife": {
+        "commitDate": "2026-02-3", 
+        "endDate": "2026-02-04T1:00:00"
+    }
+}
