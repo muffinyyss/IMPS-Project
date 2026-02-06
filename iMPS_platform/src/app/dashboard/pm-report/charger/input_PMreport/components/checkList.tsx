@@ -1168,6 +1168,15 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
 }
 
 // ==================== ADD TIMESTAMP TO IMAGE ====================
+// ⚡ FIX: แปลงชื่อไฟล์ให้นามสกุลตรงกับ content จริง (JPEG)
+// เช่น "IMG_1234.HEIC" → "IMG_1234.jpg", "photo.PNG" → "photo.jpg"
+function ensureJpgFilename(name: string): string {
+    if (!name) return `image_${Date.now()}.jpg`;
+    const dot = name.lastIndexOf(".");
+    if (dot <= 0) return `${name}.jpg`;
+    return `${name.substring(0, dot)}.jpg`;
+}
+
 async function addTimestampToImage(file: File, locationText: string): Promise<File> {
     return new Promise((resolve) => {
         const img = document.createElement("img");
@@ -1230,7 +1239,8 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                 // แปลงกลับเป็น File
                 canvas.toBlob((blob) => {
                     if (blob) {
-                        const newFile = new File([blob], file.name, { type: "image/jpeg" });
+                        // ⚡ FIX: ใช้ ensureJpgFilename เพื่อแก้นามสกุลให้ตรงกับ content (JPEG)
+                        const newFile = new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" });
                         resolve(newFile);
                     } else {
                         console.error("Canvas toBlob failed");
@@ -2519,7 +2529,8 @@ export default function ChargerPMForm() {
                 canvas.width = width; canvas.height = height;
                 const ctx = canvas.getContext("2d")!;
                 ctx.drawImage(img, 0, 0, width, height);
-                canvas.toBlob((blob) => { if (blob && blob.size < file.size) resolve(new File([blob], file.name, { type: "image/jpeg" })); else resolve(file); }, "image/jpeg", quality);
+                // ⚡ FIX: ใช้ ensureJpgFilename เพื่อแก้นามสกุลให้ตรงกับ content (JPEG)
+                canvas.toBlob((blob) => { if (blob && blob.size < file.size) resolve(new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" })); else resolve(file); }, "image/jpeg", quality);
             };
             img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
             img.src = URL.createObjectURL(file);
@@ -2533,11 +2544,18 @@ export default function ChargerPMForm() {
         form.append("sn", sn);
         form.append("group", group);
         form.append("side", side);
-        compressedFiles.forEach((f) => form.append("files", f));
+        compressedFiles.forEach((f) => form.append("files", f, ensureJpgFilename(f.name)));
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/pmreport/${reportId}/pre/photos` : `${API_BASE}/pmreport/${reportId}/post/photos`;
+        // ⚡ Log request info for debugging
+        console.log(`[upload] ${group} → ${url} | files: ${compressedFiles.length} | sizes: ${compressedFiles.map(f => `${(f.size/1024).toFixed(0)}KB`).join(", ")} | names: ${compressedFiles.map(f => f.name).join(", ")}`);
         const res = await apiFetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+            const errText = await res.text().catch(() => "");
+            const errMsg = `[${res.status}] ${group}: ${errText || res.statusText}`;
+            console.error(`[upload FAIL] ${errMsg}`);
+            throw new Error(errMsg);
+        }
     }
 
     // ⚡ Retry wrapper: ลองซ้ำ 3 ครั้ง + exponential backoff
@@ -2546,7 +2564,8 @@ export default function ChargerPMForm() {
             try {
                 await uploadGroupPhotos(reportId, sn, group, files, side);
                 return; // สำเร็จ → จบ
-            } catch (err) {
+            } catch (err: any) {
+                console.warn(`[upload retry] ${group} attempt ${attempt}/${maxRetries} failed:`, err?.message);
                 if (attempt === maxRetries) throw err; // ครบ retry แล้ว → throw
                 const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000); // 1s, 2s, 4s (max 8s)
                 await new Promise(r => setTimeout(r, delay));
@@ -2559,18 +2578,21 @@ export default function ChargerPMForm() {
         entries: { group: string; files: File[] }[],
         reportId: string, sn: string, side: TabId,
         concurrency = 3
-    ): Promise<string[]> {
-        const failedGroups: string[] = [];
+    ): Promise<{ group: string; error: string }[]> {
+        const failures: { group: string; error: string }[] = [];
         for (let i = 0; i < entries.length; i += concurrency) {
             const batch = entries.slice(i, i + concurrency);
             const results = await Promise.allSettled(
                 batch.map(e => uploadGroupPhotosWithRetry(reportId, sn, `g${e.group}`, e.files, side))
             );
             results.forEach((r, idx) => {
-                if (r.status === "rejected") failedGroups.push(batch[idx].group);
+                if (r.status === "rejected") {
+                    const errMsg = r.reason?.message || r.reason?.toString() || "unknown error";
+                    failures.push({ group: batch[idx].group, error: errMsg });
+                }
             });
         }
-        return failedGroups;
+        return failures;
     }
 
     const onPreSave = async () => {
@@ -2616,9 +2638,12 @@ export default function ChargerPMForm() {
 
             // ⚡ อัปโหลดทีละ batch (3 กลุ่มพร้อมกัน) + retry แต่ละกลุ่ม 3 ครั้ง
             if (uploadEntries.length > 0) {
-                const failedGroups = await uploadPhotosInBatches(uploadEntries, report_id, sn, "pre");
-                if (failedGroups.length > 0) {
-                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
+                const failures = await uploadPhotosInBatches(uploadEntries, report_id, sn, "pre");
+                if (failures.length > 0) {
+                    const groupNums = failures.map(f => f.group).join(", ");
+                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
+                    console.error("[Pre-PM upload failures]", failures);
+                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${details}`);
                     return; // ไม่ clear draft เพื่อให้ user ลองใหม่ได้
                 }
             }
@@ -2666,9 +2691,12 @@ export default function ChargerPMForm() {
 
             // ⚡ อัปโหลดทีละ batch (3 กลุ่มพร้อมกัน) + retry แต่ละกลุ่ม 3 ครั้ง
             if (uploadEntries.length > 0) {
-                const failedGroups = await uploadPhotosInBatches(uploadEntries, report_id, sn, "post");
-                if (failedGroups.length > 0) {
-                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
+                const failures = await uploadPhotosInBatches(uploadEntries, report_id, sn, "post");
+                if (failures.length > 0) {
+                    const groupNums = failures.map(f => f.group).join(", ");
+                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
+                    console.error("[Post-PM upload failures]", failures);
+                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${details}`);
                     return; // ไม่ finalize เพื่อให้ user ลองใหม่ได้
                 }
             }
