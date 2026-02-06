@@ -2,10 +2,6 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import {
     Button,
-    Card,
-    CardBody,
-    CardHeader,
-    CardFooter,
     Input,
     Typography,
     Textarea,
@@ -16,11 +12,13 @@ import { draftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal } from "../li
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
-import { putPhoto, getPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
+import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
-
-// Global variable to store station name for GPS fallback
-let globalStationName = "";
+import { apiFetch } from "@/utils/api";
+// Station name for GPS fallback — module-level is safe here because:
+// 1) "use client" component, only runs in browser
+// 2) Only one ChargerPMForm mounts at a time
+let _stationNameForGPS = "";
 
 type TabId = "pre" | "post";
 
@@ -92,6 +90,11 @@ const T = {
     unit: { th: "ตัว", en: "units" },
     cable: { th: "เส้น", en: "cables" },
     piece: { th: "ชิ้น", en: "pieces" },
+    connector: { th: "หัว", en: "connectors" },
+    button: { th: "ปุ่ม", en: "buttons" },
+    qrUnit: { th: "อัน", en: "pcs" },
+    sign: { th: "แผ่น", en: "signs" },
+    filter: { th: "แผ่น", en: "filters" },
 
     // Remarks
     remark: { th: "หมายเหตุ *", en: "Remark *" },
@@ -238,8 +241,8 @@ const QUESTIONS: Question[] = [
         no: 8, key: "r8", label: { th: "8) ตรวจสอบป้ายเตือนต้องการระบายอากาศ", en: "8) Check ventilation warning sign" }, kind: "group", hasPhoto: true, 
         tooltip: { th: "ตรวจสอบระยะ Clearance รอบตู้ตามป้ายระบุ เพื่อไม่ให้มีสิ่งของวางกีดขวางทางลม", en: "Check clearance around cabinet per signage" },
         items: [
-            { label: { th: "8.1) ป้ายเตือนต้องการระบายอากาศ (ขาเข้า)", en: "8.1) Ventilation warning sign (inlet)" }, key: "r8_1" },
-            { label: { th: "8.2) ป้ายเตือนต้องการระบายอากาศ (ขาออก)", en: "8.2) Ventilation warning sign (outlet)" }, key: "r8_2" },
+            { label: { th: "8.1) ป้ายเตือนต้องการระบายอากาศ (ด้านซ้าย)", en: "8.1) Ventilation warning sign (inlet)" }, key: "r8_1" },
+            { label: { th: "8.2) ป้ายเตือนต้องการระบายอากาศ (ด้านขวา)", en: "8.2) Ventilation warning sign (outlet)" }, key: "r8_2" },
         ]
     },
     { no: 9, key: "r9", label: { th: "9) ตรวจสอบป้ายบ่งชี้ปุ่มฉุกเฉิน", en: "9) Check emergency button indicator sign" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสว่างหรือการสะท้อนแสงของป้ายบ่งชี้ตำแหน่งปุ่ม Emergency เพื่อให้มองเห็นได้ในสภาวะแสงน้อย", en: "Check sign visibility in low light conditions" } },
@@ -248,10 +251,11 @@ const QUESTIONS: Question[] = [
         no: 11, key: "r11", label: { th: "11) ตรวจสอบแผ่นกรองอากาศ", en: "11) Check air filter" }, kind: "group", hasPhoto: true,
         tooltip: { th: "ตรวจสอบสภาพแผ่นกรองอากาศและทิศทางการไหลของอากาศ", en: "Check air filter condition and airflow direction" },
         items: [
-            { label: { th: "11.1) แผ่นกรองอากาศ (ขาเข้า)", en: "11.1) Air filter (inlet)" }, key: "r11_1" },
-            { label: { th: "11.2) แผ่นกรองอากาศ (ขาออก)", en: "11.2) Air filter (outlet)" }, key: "r11_2" },
+            { label: { th: "11.1) แผ่นกรองอากาศ (ด้านซ้าย)", en: "11.1) Air filter (inlet)" }, key: "r11_1" },
+            { label: { th: "11.2) แผ่นกรองอากาศ (ด้านขวา)", en: "11.2) Air filter (outlet)" }, key: "r11_2" },
             { label: { th: "11.3) แผ่นกรองอากาศ (ด้านหน้า)", en: "11.3) Air filter (front)" }, key: "r11_3" },
             { label: { th: "11.4) แผ่นกรองอากาศ (ด้านหลัง)", en: "11.4) Air filter (back)" }, key: "r11_4" },
+            { label: { th: "11.5) แผ่นกรองอากาศ (ด้านล่าง)", en: "11.5) Air filter (bottom)" }, key: "r11_5" },
         ]
     },
     { no: 12, key: "r12", label: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at cable connection points and inspect for burn marks using thermal imaging camera" } },
@@ -280,13 +284,14 @@ const getDynamicLabel = {
     emergencyStop: (idx: number, lang: Lang) => lang === "th" ? `5.${idx}) ปุ่มหยุดฉุกเฉินที่ ${idx}` : `5.${idx}) Emergency stop ${idx}`,
     qrCode: (idx: number, lang: Lang) => lang === "th" ? `6.${idx}) QR CODE ที่ ${idx}` : `6.${idx}) QR CODE ${idx}`,
     warningSign: (idx: number, lang: Lang) => lang === "th" ? `7.${idx}) ป้ายเตือนระวังไฟฟ้าช็อกที่ ${idx}` : `7.${idx}) Warning sign ${idx}`,
-    ventilationSignInlet: (lang: Lang) => lang === "th" ? "8.1) ป้ายเตือนต้องการระบายอากาศ (ขาเข้า)" : "8.1) Ventilation warning sign (inlet)",
-    ventilationSignOutlet: (lang: Lang) => lang === "th" ? "8.2) ป้ายเตือนต้องการระบายอากาศ (ขาออก)" : "8.2) Ventilation warning sign (outlet)",
+    ventilationSignInlet: (lang: Lang) => lang === "th" ? "8.1) ป้ายเตือนต้องการระบายอากาศ (ด้านซ้าย)" : "8.1) Ventilation warning sign (inlet)",
+    ventilationSignOutlet: (lang: Lang) => lang === "th" ? "8.2) ป้ายเตือนต้องการระบายอากาศ (ด้านขวา)" : "8.2) Ventilation warning sign (outlet)",
     cpVoltage: (idx: number, lang: Lang) => lang === "th" ? `10.${idx}) แรงดันไฟฟ้าที่พิน CP สายที่ ${idx}` : `10.${idx}) CP pin voltage cable ${idx}`,
-    airFilterLeft: (lang: Lang) => lang === "th" ? "11.1) แผ่นกรองอากาศ (ขาเข้า)" : "11.1) Air filter (inlet)",
-    airFilterRight: (lang: Lang) => lang === "th" ? "11.2) แผ่นกรองอากาศ (ขาออก)" : "11.2) Air filter (outlet)",
+    airFilterLeft: (lang: Lang) => lang === "th" ? "11.1) แผ่นกรองอากาศ (ด้านซ้าย)" : "11.1) Air filter (inlet)",
+    airFilterRight: (lang: Lang) => lang === "th" ? "11.2) แผ่นกรองอากาศ (ด้านขวา)" : "11.2) Air filter (outlet)",
     airFilterFront: (lang: Lang) => lang === "th" ? "11.3) แผ่นกรองอากาศ (ด้านหน้า)" : "11.3) Air filter (front)",
     airFilterBack: (lang: Lang) => lang === "th" ? "11.4) แผ่นกรองอากาศ (ด้านหลัง)" : "11.4) Air filter (back)",
+    airFilterBottom: (lang: Lang) => lang === "th" ? "11.5) แผ่นกรองอากาศ (ด้านล่าง)" : "11.5) Air filter (bottom)",
     chargingTest: (idx: number, lang: Lang) => lang === "th" ? `17.${idx}) ทดสอบการอัดประจุ สายที่ ${idx}` : `17.${idx}) Charging test cable ${idx}`,
     cleaningSim: (lang: Lang) => lang === "th" ? "18.1) Router - ทำความสะอาดหน้าสัมผัสซิม1และซิม2" : "18.1) Router - Clean SIM1 and SIM2 contacts",
     cleaningLan: (lang: Lang) => lang === "th" ? "18.2) Router - ทำความสะอาด port lan" : "18.2) Router - Clean LAN port",
@@ -328,6 +333,7 @@ function getFixedItemsQ11(lang: Lang): { key: string; label: string }[] {
         { key: "r11_2", label: getDynamicLabel.airFilterRight(lang) },
         { key: "r11_3", label: getDynamicLabel.airFilterFront(lang) },
         { key: "r11_4", label: getDynamicLabel.airFilterBack(lang) },
+        { key: "r11_5", label: getDynamicLabel.airFilterBottom(lang) },
     ];
 }
 
@@ -342,7 +348,7 @@ function getFixedItemsQ18(lang: Lang): { key: string; label: string }[] {
 // ==================== API FUNCTIONS ====================
 async function getChargerInfoBySN(sn: string): Promise<StationPublic> {
     const url = `${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`;
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await apiFetch(url, { cache: "no-store" });
     if (res.status === 404) throw new Error("Charger not found");
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
     const json = await res.json();
@@ -354,7 +360,7 @@ async function fetchPreviewIssueId(sn: string, pmDate: string): Promise<string |
     u.searchParams.set("sn", sn);
     u.searchParams.set("pm_date", pmDate);
     const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    const r = await apiFetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
     if (!r.ok) return null;
     const j = await r.json();
     return (j && typeof j.issue_id === "string") ? j.issue_id : null;
@@ -365,7 +371,7 @@ async function fetchPreviewDocName(sn: string, pmDate: string): Promise<string |
     u.searchParams.set("sn", sn);
     u.searchParams.set("pm_date", pmDate);
     const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await fetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    const r = await apiFetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
     if (!r.ok) return null;
     const j = await r.json();
     return (j && typeof j.doc_name === "string") ? j.doc_name : null;
@@ -374,7 +380,7 @@ async function fetchPreviewDocName(sn: string, pmDate: string): Promise<string |
 async function fetchReport(reportId: string, sn: string) {
     const token = localStorage.getItem("access_token") ?? "";
     const url = `${API_BASE}/pmreport/get?sn=${sn}&report_id=${reportId}`;
-    const res = await fetch(url, { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+    const res = await apiFetch(url, { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
     if (!res.ok) throw new Error(await res.text());
     return await res.json();
 }
@@ -978,28 +984,24 @@ async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
     return new Promise((resolve) => {
         // ตรวจสอบว่า browser รองรับ Geolocation หรือไม่
         if (!navigator.geolocation) {
-            console.log("Geolocation not supported");
             resolve(null);
             return;
         }
         
         // ตรวจสอบ Secure Context (HTTPS) - จำเป็นสำหรับ iOS
         if (window.isSecureContext === false) {
-            console.log("Not a secure context (HTTPS required for geolocation)");
             resolve(null);
             return;
         }
         
         // ตั้ง timeout fallback
         const timeoutId = setTimeout(() => {
-            console.log("GPS timeout after 10s");
             resolve(null);
         }, 10000);
         
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 clearTimeout(timeoutId);
-                console.log("GPS success:", position.coords.latitude, position.coords.longitude);
                 resolve({
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
@@ -1007,7 +1009,6 @@ async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
             },
             (error) => {
                 clearTimeout(timeoutId);
-                console.log("GPS error:", error.code, error.message);
                 // error.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
                 resolve(null);
             },
@@ -1027,7 +1028,7 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
         const timeoutId = setTimeout(() => controller.abort(), 3000); // timeout 3 วินาที
         
         const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th&zoom=18`;
-        const res = await fetch(url, {
+        const res = await apiFetch(url, {
             headers: { "User-Agent": "PM-Checklist-App/1.0" },
             signal: controller.signal,
         });
@@ -1109,9 +1110,9 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                 const maxTextWidth = Math.max(timestampWidth, locationWidth);
                 const totalHeight = lineHeight * 2;
                 
-                // วาด background สีดำโปร่งใส
-                const bgX = img.width - maxTextWidth - padding * 2 - 10;
-                const bgY = img.height - totalHeight - padding * 2 - 10;
+                // วาด background สีดำโปร่งใส (clamp ไม่ให้ติดลบกรณีรูปเล็ก)
+                const bgX = Math.max(0, img.width - maxTextWidth - padding * 2 - 10);
+                const bgY = Math.max(0, img.height - totalHeight - padding * 2 - 10);
                 ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
                 ctx.fillRect(bgX, bgY, maxTextWidth + padding * 2, totalHeight + padding * 2);
                 
@@ -1121,13 +1122,11 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                 ctx.fillText(timestamp, bgX + padding, bgY + padding);
                 ctx.fillText(locationText, bgX + padding, bgY + padding + lineHeight);
                 
-                console.log("Timestamp added:", timestamp, locationText);
                 
                 // แปลงกลับเป็น File
                 canvas.toBlob((blob) => {
                     if (blob) {
                         const newFile = new File([blob], file.name, { type: "image/jpeg" });
-                        console.log("File with timestamp created:", newFile.size);
                         resolve(newFile);
                     } else {
                         console.error("Canvas toBlob failed");
@@ -1147,6 +1146,22 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
     });
 }
 
+// ==================== PHOTO INPUT ====================
+function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(img.src); };
+        img.onerror = () => { reject(new Error("Cannot read image")); URL.revokeObjectURL(img.src); };
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+function isMobileDevice(): boolean {
+    if (typeof navigator === "undefined") return false;
+    return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+        || ("ontouchstart" in window && navigator.maxTouchPoints > 0);
+}
+
 function PhotoMultiInput({
     photos, setPhotos, max = 10, draftKey, qNo, lang, id,
 }: {
@@ -1154,49 +1169,63 @@ function PhotoMultiInput({
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
 }) {
     const cameraRef = useRef<HTMLInputElement>(null);
-    const handleCamera = () => cameraRef.current?.click();
+    const fileRef = useRef<HTMLInputElement>(null);
+    const isMobile = useMemo(() => isMobileDevice(), []);
+    const [landscapeWarning, setLandscapeWarning] = useState(false);
 
-    const handleFiles = async (list: FileList | null) => {
-        if (!list || list.length === 0) {
-            console.log("No files selected");
-            return;
-        }
-        console.log("Files received:", list.length);
-        
-        const remain = Math.max(0, max - photos.length);
-        const files = Array.from(list).slice(0, remain);
-        
-        // ดึง GPS และแปลงเป็นชื่อสถานที่
+    const processFile = async (file: File): Promise<PhotoItem> => {
         let locationText = "";
         try {
-            console.log("Getting GPS...");
             const gps = await getCurrentGPS();
-            console.log("GPS result:", gps);
             if (gps) {
                 locationText = await reverseGeocode(gps.lat, gps.lng);
             } else {
-                // ใช้ globalStationName (station_name) แทนถ้า GPS ไม่ทำงาน
-                locationText = globalStationName || "ไม่สามารถระบุตำแหน่งได้";
+                locationText = _stationNameForGPS || "ไม่สามารถระบุตำแหน่งได้";
             }
         } catch (err) {
             console.error("GPS error:", err);
-            locationText = globalStationName || "ไม่สามารถระบุตำแหน่งได้";
+            locationText = _stationNameForGPS || "ไม่สามารถระบุตำแหน่งได้";
         }
-        console.log("Location text:", locationText);
-        
-        const items: PhotoItem[] = await Promise.all(
-            files.map(async (f, i) => {
-                console.log("Processing file:", f.name, f.size);
-                // เพิ่ม timestamp และชื่อสถานที่ลงบนรูปภาพ
-                const fileWithTimestamp = await addTimestampToImage(f, locationText);
-                console.log("File after timestamp:", fileWithTimestamp.size);
-                const photoId = `${qNo}-${Date.now()}-${i}-${f.name}`;
-                const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
-                return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
-            })
-        );
-        setPhotos((prev) => [...prev, ...items]);
+
+        const fileWithTimestamp = await addTimestampToImage(file, locationText);
+        const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
+        const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
+        return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
+    };
+
+    const handleFiles = async (list: FileList | null, fromCamera: boolean) => {
+        if (!list || list.length === 0) return;
+        const remain = Math.max(0, max - photos.length);
+        const files = Array.from(list).slice(0, remain);
+
+        const accepted: PhotoItem[] = [];
+        let hasLandscape = false;
+
+        for (const f of files) {
+            // ถ้าถ่ายจากกล้อง ตรวจสอบแนวรูป
+            if (fromCamera) {
+                try {
+                    const dim = await getImageDimensions(f);
+                    if (dim.width > dim.height) {
+                        hasLandscape = true;
+                        continue; // ข้ามรูปแนวนอน
+                    }
+                } catch { /* ถ้าอ่านไม่ได้ให้ผ่าน */ }
+            }
+            const item = await processFile(f);
+            accepted.push(item);
+        }
+
+        if (accepted.length > 0) {
+            setPhotos((prev) => [...prev, ...accepted]);
+        }
+
+        if (hasLandscape) {
+            setLandscapeWarning(true);
+        }
+
         if (cameraRef.current) cameraRef.current.value = "";
+        if (fileRef.current) fileRef.current.value = "";
     };
 
     const handleRemove = async (id: string) => {
@@ -1210,20 +1239,57 @@ function PhotoMultiInput({
 
     return (
         <div id={id} className="tw-space-y-3 tw-transition-all tw-duration-300">
+            {/* Landscape warning modal */}
+            {landscapeWarning && (
+                <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-bg-black/70 tw-flex tw-items-center tw-justify-center tw-p-6" onClick={() => setLandscapeWarning(false)}>
+                    <div className="tw-bg-white tw-rounded-2xl tw-p-6 tw-max-w-sm tw-text-center tw-shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <svg className="tw-w-14 tw-h-14 tw-text-amber-500 tw-mx-auto tw-mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        <p className="tw-text-lg tw-font-bold tw-text-gray-800 tw-mb-2">
+                            {lang === "th" ? "กรุณาถ่ายรูปแนวตั้ง" : "Please take portrait photos"}
+                        </p>
+                        <p className="tw-text-sm tw-text-gray-600 tw-mb-4">
+                            {lang === "th"
+                                ? "รูปที่ถ่ายเป็นแนวนอนจะไม่ถูกรับ กรุณาหมุนมือถือเป็นแนวตั้งแล้วถ่ายใหม่"
+                                : "Landscape photos are not accepted. Please hold your phone upright and retake."}
+                        </p>
+                        <Button size="sm" color="amber" variant="filled" onClick={() => setLandscapeWarning(false)} className="tw-w-full">
+                            {lang === "th" ? "รับทราบ" : "OK"}
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
-                <Button size="sm" color="blue" variant="outlined" onClick={handleCamera} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
-                    <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    {t("takePhoto", lang)}
-                </Button>
+                {isMobile ? (
+                    <Button size="sm" color="blue" variant="outlined" onClick={() => cameraRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
+                        <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        {t("takePhoto", lang)}
+                    </Button>
+                ) : (
+                    <Button size="sm" color="blue" variant="outlined" onClick={() => fileRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
+                        <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        {t("attachPhoto", lang)}
+                    </Button>
+                )}
             </div>
+
+            {/* มือถือ: input เปิดกล้องตรง */}
+            {isMobile && <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="tw-hidden"
+                onChange={(e) => { void handleFiles(e.target.files, true); }} />}
+            {/* PC: input เลือกไฟล์ */}
+            {!isMobile && <input ref={fileRef} type="file" accept="image/*" multiple className="tw-hidden"
+                onChange={(e) => { void handleFiles(e.target.files, false); }} />}
+
             <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
                 {t("maxPhotos", lang)} {max} {t("photos", lang)}
             </Typography>
-            <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="tw-hidden"
-                onChange={(e) => { void handleFiles(e.target.files); }} />
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
                     {photos.map((p) => (
@@ -1594,12 +1660,21 @@ export default function ChargerPMForm() {
     const isPostMode = action === "post";
 
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
+
+    // ⚡ Fix: ใช้ ref เก็บค่าล่าสุดของ photos เพื่อ cleanup ตอน unmount
+    const photosRef = useRef(photos);
+    useEffect(() => { photosRef.current = photos; }, [photos]);
+    useEffect(() => {
+        return () => {
+            Object.values(photosRef.current).flat().forEach(p => {
+                if (p.preview && p.preview.startsWith("blob:")) URL.revokeObjectURL(p.preview);
+            });
+        };
+    }, []);
     const [cpPre, setCpPre] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
     const [cp, setCp] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
-    const [cpIsNA, setCpIsNA] = useState<boolean>(false);
     const [summary, setSummary] = useState<string>("");
     const [sn, setSn] = useState<string | null>(null);
-    const [draftId, setDraftId] = useState<string | null>(null);
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
 
     const key = useMemo(() => draftKey(sn), [sn]);
@@ -1624,13 +1699,8 @@ export default function ChargerPMForm() {
         issue_id: "", chargerNo: "", sn: "", model: "", power: "", brand: "", station_name: "", date: "", chargingCables: 1,
     });
 
-    // Sync globalStationName whenever job.station_name changes
-    useEffect(() => {
-        if (job.station_name) {
-            globalStationName = job.station_name;
-            console.log("globalStationName set to:", globalStationName);
-        }
-    }, [job.station_name]);
+    // Sync station name for GPS fallback
+    useEffect(() => { if (job.station_name) _stationNameForGPS = job.station_name; }, [job.station_name]);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
@@ -1662,10 +1732,28 @@ export default function ChargerPMForm() {
     };
     const removeQ5Item = (index: number) => {
         if (q5Items.length > 1) {
-            const keyToDelete = q5Items[index].key;
-            const newItems = q5Items.filter((_, i) => i !== index).map((_, idx) => ({ key: `r5_${idx + 1}`, label: getDynamicLabel.emergencyStop(idx + 1, lang) }));
+            const oldItems = q5Items;
+            const survivingItems = oldItems.filter((_, i) => i !== index);
+            const newItems = survivingItems.map((_, idx) => ({ key: `r5_${idx + 1}`, label: getDynamicLabel.emergencyStop(idx + 1, lang) }));
             setQ5Items(newItems);
-            setRows(prev => { const next = { ...prev }; delete next[keyToDelete]; return next; });
+            setRows(prev => {
+                const next = { ...prev };
+                const survivingData = survivingItems.map(item => next[item.key] ?? { pf: "" as PF, remark: "" });
+                oldItems.forEach(item => { delete next[item.key]; });
+                newItems.forEach((item, idx) => { next[item.key] = survivingData[idx]; });
+                return next;
+            });
+            // ⚡ Fix: migrate photos ตาม index ใหม่ + revoke blob ของ item ที่ถูกลบ
+            setPhotos(prev => {
+                const next = { ...prev };
+                const removedPhotos = next[`5_${index}`] || [];
+                removedPhotos.forEach(p => { if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview); });
+                const survivingIndices = oldItems.map((_, i) => i).filter(i => i !== index);
+                const survivingPhotos = survivingIndices.map(i => next[`5_${i}`] || []);
+                oldItems.forEach((_, i) => { delete next[`5_${i}`]; });
+                survivingPhotos.forEach((photoList, idx) => { next[`5_${idx}`] = photoList; });
+                return next;
+            });
         }
     };
     const initQ5Items = (count: number) => {
@@ -1681,10 +1769,28 @@ export default function ChargerPMForm() {
     };
     const removeQ7Item = (index: number) => {
         if (q7Items.length > 1) {
-            const keyToDelete = q7Items[index].key;
-            const newItems = q7Items.filter((_, i) => i !== index).map((_, idx) => ({ key: `r7_${idx + 1}`, label: getDynamicLabel.warningSign(idx + 1, lang) }));
+            const oldItems = q7Items;
+            const survivingItems = oldItems.filter((_, i) => i !== index);
+            const newItems = survivingItems.map((_, idx) => ({ key: `r7_${idx + 1}`, label: getDynamicLabel.warningSign(idx + 1, lang) }));
             setQ7Items(newItems);
-            setRows(prev => { const next = { ...prev }; delete next[keyToDelete]; return next; });
+            setRows(prev => {
+                const next = { ...prev };
+                const survivingData = survivingItems.map(item => next[item.key] ?? { pf: "" as PF, remark: "" });
+                oldItems.forEach(item => { delete next[item.key]; });
+                newItems.forEach((item, idx) => { next[item.key] = survivingData[idx]; });
+                return next;
+            });
+            // ⚡ Fix: migrate photos ตาม index ใหม่ + revoke blob ของ item ที่ถูกลบ
+            setPhotos(prev => {
+                const next = { ...prev };
+                const removedPhotos = next[`7_${index}`] || [];
+                removedPhotos.forEach(p => { if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview); });
+                const survivingIndices = oldItems.map((_, i) => i).filter(i => i !== index);
+                const survivingPhotos = survivingIndices.map(i => next[`7_${i}`] || []);
+                oldItems.forEach((_, i) => { delete next[`7_${i}`]; });
+                survivingPhotos.forEach((photoList, idx) => { next[`7_${idx}`] = photoList; });
+                return next;
+            });
         }
     };
     const initQ7Items = (count: number) => {
@@ -1736,8 +1842,6 @@ export default function ChargerPMForm() {
                 const data = await fetchReport(editId, sn);
                 if (data.job) {
                     setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.chargingCables || prev.chargingCables || 1 }));
-                    // Set global station name for GPS fallback
-                    globalStationName = data.job.station_name || "";
                 }
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data?.measures_pre?.cp) {
@@ -1769,7 +1873,7 @@ export default function ChargerPMForm() {
         if (!token) return;
         (async () => {
             try {
-                const res = await fetch(`${API_BASE}/me`, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include" });
+                const res = await apiFetch(`${API_BASE}/me`, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include" });
                 if (!res.ok) return;
                 const data: Me = await res.json();
                 setMe(data);
@@ -1812,12 +1916,10 @@ export default function ChargerPMForm() {
                 setJob((prev) => ({
                     ...prev, chargerNo: st.chargerNo ?? prev.chargerNo, sn: st.SN ?? prev.sn,
                     model: st.model ?? prev.model, brand: st.brand ?? prev.brand,
-                    power: st.power ?? prev.model, station_name: st.station_name ?? prev.station_name,
+                    power: st.power ?? prev.power, station_name: st.station_name ?? prev.station_name,
                     date: prev.date || new Date().toISOString().slice(0, 10),
                     chargingCables: st.chargingCables || prev.chargingCables || 1,
                 }));
-                // Set global station name for GPS fallback
-                if (st.station_name) globalStationName = st.station_name;
             })
             .catch((err) => console.error("load charger info failed:", err));
     }, [isPostMode]);
@@ -1860,17 +1962,21 @@ export default function ChargerPMForm() {
 
         // โหลด photos จาก IndexedDB ด้วย photoRefs
         if (draft.photoRefs) {
+            let canceled = false;
+            const cleanup = () => { canceled = true; };
             (async () => {
                 const loadedPhotos: Record<string | number, PhotoItem[]> = {};
                 for (const [photoKey, refs] of Object.entries(draft.photoRefs as Record<string, (PhotoRef | { isNA: true })[]>)) {
+                    if (canceled) return;
                     if (!refs || refs.length === 0) continue;
                     const items: PhotoItem[] = [];
                     for (const ref of refs) {
+                        if (canceled) return;
                         if ('isNA' in ref && ref.isNA) {
                             items.push({ id: `na-${photoKey}`, isNA: true });
                         } else if ('dbKey' in ref) {
                             const file = await getPhotoByDbKey(ref.dbKey);
-                            if (file) {
+                            if (file && !canceled) {
                                 items.push({
                                     id: ref.id,
                                     file,
@@ -1885,8 +1991,9 @@ export default function ChargerPMForm() {
                         loadedPhotos[photoKey] = items;
                     }
                 }
-                setPhotos(prev => ({ ...prev, ...loadedPhotos }));
+                if (!canceled) setPhotos(prev => ({ ...prev, ...loadedPhotos }));
             })();
+            return cleanup;
         }
     }, [sn, key, isPostMode]);
 
@@ -1928,17 +2035,21 @@ export default function ChargerPMForm() {
 
         // โหลด photos จาก IndexedDB ด้วย photoRefs
         if (draft.photoRefs) {
+            let canceled = false;
+            const cleanup = () => { canceled = true; };
             (async () => {
                 const loadedPhotos: Record<string | number, PhotoItem[]> = {};
                 for (const [photoKey, refs] of Object.entries(draft.photoRefs as Record<string, (PhotoRef | { isNA: true })[]>)) {
+                    if (canceled) return;
                     if (!refs || refs.length === 0) continue;
                     const items: PhotoItem[] = [];
                     for (const ref of refs) {
+                        if (canceled) return;
                         if ('isNA' in ref && ref.isNA) {
                             items.push({ id: `na-${photoKey}`, isNA: true });
                         } else if ('dbKey' in ref) {
                             const file = await getPhotoByDbKey(ref.dbKey);
-                            if (file) {
+                            if (file && !canceled) {
                                 items.push({
                                     id: ref.id,
                                     file,
@@ -1953,8 +2064,9 @@ export default function ChargerPMForm() {
                         loadedPhotos[photoKey] = items;
                     }
                 }
-                setPhotos(prev => ({ ...prev, ...loadedPhotos }));
+                if (!canceled) setPhotos(prev => ({ ...prev, ...loadedPhotos }));
             })();
+            return cleanup;
         }
     }, [sn, postKey, isPostMode, editId, postApiLoaded]);
 
@@ -2009,7 +2121,7 @@ export default function ChargerPMForm() {
         (fixedItemsMap[10] || []).forEach((item, idx) => {
             if (rowsPre[item.key]?.pf === "NA") return;
             if (rows[item.key]?.pf === "NA") return;
-            if (!cpIsNA && !cp[item.key]?.value?.trim()) {
+            if (!cp[item.key]?.value?.trim()) {
                 result.push({
                     qNo: 10,
                     subNo: idx + 1,
@@ -2033,7 +2145,7 @@ export default function ChargerPMForm() {
         }
 
         return result;
-    }, [cpIsNA, cp, fixedItemsMap, m16.state, rows, rowsPre]);
+    }, [cp, fixedItemsMap, m16.state, rows, rowsPre]);
 
     const allRequiredInputsFilled = useMemo(() => missingInputsDetailed.length === 0, [missingInputsDetailed]);
 
@@ -2129,11 +2241,9 @@ export default function ChargerPMForm() {
     const isSummaryCheckFilled = summaryCheck !== "";
     const canFinalSave = allPhotosAttachedPost && allPFAnsweredPost && allRequiredInputsFilled && allRemarksFilledPost && isSummaryFilled && isSummaryCheckFilled;
 
-    const handleUnitChange = (no: number, key: string, u: UnitVoltage) => {
+    const handleUnitChange = (no: number, _key: string, u: UnitVoltage) => {
         const m = MEASURE_BY_NO[no];
         if (!m) return;
-        const firstKey = (FIELD_GROUPS[no]?.keys ?? [key])[0] as string;
-        if (key !== firstKey) m.patch(firstKey, { unit: u });
         m.syncUnits(u);
     };
 
@@ -2189,11 +2299,11 @@ export default function ChargerPMForm() {
                         {q.hasPhoto && q.kind === "simple" && <PhotoRemarkSection qKey={q.key} qNo={q.no} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                         {q.no === 16 && <PhotoRemarkSection qKey={q.key} qNo={q.no} middleContent={renderMeasureGrid(q.no)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                         {q.no === 3 && fixedItems && <DynamicItemsSection qNo={3} items={fixedItems} editable={false} countLabel={t("cableCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
-                        {q.no === 4 && fixedItems && <DynamicItemsSection qNo={4} items={fixedItems} editable={false} countLabel={t("connectorCount", lang)} count={job.chargingCables} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
-                        {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} addItem={addQ5Item} removeItem={removeQ5Item} addButtonLabel={t("addEmergencyStop", lang)} countLabel={t("emergencyStopCount", lang)} count={q5Items.length} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
-                        {q.no === 6 && fixedItems && <DynamicItemsSection qNo={6} items={fixedItems} editable={false} countLabel={t("qrCodeCount", lang)} count={job.chargingCables} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
-                        {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} addItem={addQ7Item} removeItem={removeQ7Item} addButtonLabel={t("addWarningSign", lang)} countLabel={t("warningSignCount", lang)} count={q7Items.length} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
-                        {q.no === 8 && fixedItems && <DynamicItemsSection qNo={8} items={fixedItems} editable={false} countLabel={t("ventilationSignCount", lang)} count={2} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 4 && fixedItems && <DynamicItemsSection qNo={4} items={fixedItems} editable={false} countLabel={t("connectorCount", lang)} count={job.chargingCables} countUnit={t("connector", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} addItem={addQ5Item} removeItem={removeQ5Item} addButtonLabel={t("addEmergencyStop", lang)} countLabel={t("emergencyStopCount", lang)} count={q5Items.length} countUnit={t("button", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 6 && fixedItems && <DynamicItemsSection qNo={6} items={fixedItems} editable={false} countLabel={t("qrCodeCount", lang)} count={job.chargingCables} countUnit={t("qrUnit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} addItem={addQ7Item} removeItem={removeQ7Item} addButtonLabel={t("addWarningSign", lang)} countLabel={t("warningSignCount", lang)} count={q7Items.length} countUnit={t("sign", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 8 && fixedItems && <DynamicItemsSection qNo={8} items={fixedItems} editable={false} countLabel={t("ventilationSignCount", lang)} count={2} countUnit={t("sign", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                         {q.no === 10 && fixedItems && (
                             <DynamicItemsSection qNo={10} items={fixedItems} editable={false} countLabel={t("cpVoltageCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang}
                                 renderAdditionalFields={(item, idx, isNA) => (
@@ -2204,7 +2314,7 @@ export default function ChargerPMForm() {
                                     </div>
                                 )} />
                         )}
-                        {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} countLabel={t("airFilterCount", lang)} count={4} countUnit={t("piece", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
+                        {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} countLabel={t("airFilterCount", lang)} count={5} countUnit={t("filter", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                         {q.no === 17 && fixedItems && <DynamicItemsSection qNo={17} items={fixedItems} editable={false} countLabel={t("chargingTestCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} draftKey={currentDraftKey} lang={lang} />}
                     </div>
                 </SectionCard>
@@ -2226,11 +2336,11 @@ export default function ChargerPMForm() {
                     {q.hasPhoto && q.kind === "simple" && <PhotoRemarkSection qKey={q.key} qNo={q.no} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
                     {q.no === 16 && <PhotoRemarkSection qKey={q.key} qNo={q.no} middleContent={renderMeasureGridWithPre(q.no)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
                     {q.no === 3 && fixedItems && <DynamicItemsSection qNo={3} items={fixedItems} editable={false} countLabel={t("cableCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
-                    {q.no === 4 && fixedItems && <DynamicItemsSection qNo={4} items={fixedItems} editable={false} countLabel={t("connectorCount", lang)} count={job.chargingCables} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
-                    {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} editable={false} countLabel={t("emergencyStopCount", lang)} count={q5Items.length} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
-                    {q.no === 6 && fixedItems && <DynamicItemsSection qNo={6} items={fixedItems} editable={false} countLabel={t("qrCodeCount", lang)} count={job.chargingCables} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
-                    {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} editable={false} countLabel={t("warningSignCount", lang)} count={q7Items.length} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
-                    {q.no === 8 && fixedItems && <DynamicItemsSection qNo={8} items={fixedItems} editable={false} countLabel={t("ventilationSignCount", lang)} count={2} countUnit={t("unit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 4 && fixedItems && <DynamicItemsSection qNo={4} items={fixedItems} editable={false} countLabel={t("connectorCount", lang)} count={job.chargingCables} countUnit={t("connector", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 5 && <DynamicItemsSection qNo={5} items={q5Items} editable={false} countLabel={t("emergencyStopCount", lang)} count={q5Items.length} countUnit={t("button", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 6 && fixedItems && <DynamicItemsSection qNo={6} items={fixedItems} editable={false} countLabel={t("qrCodeCount", lang)} count={job.chargingCables} countUnit={t("qrUnit", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 7 && <DynamicItemsSection qNo={7} items={q7Items} editable={false} countLabel={t("warningSignCount", lang)} count={q7Items.length} countUnit={t("sign", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
+                    {q.no === 8 && fixedItems && <DynamicItemsSection qNo={8} items={fixedItems} editable={false} countLabel={t("ventilationSignCount", lang)} count={2} countUnit={t("sign", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
                     {q.no === 10 && fixedItems && (
                         <DynamicItemsSection qNo={10} items={fixedItems} editable={false} countLabel={t("cpVoltageCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true}
                             renderAdditionalFields={(item, idx, isNA) => (
@@ -2247,7 +2357,7 @@ export default function ChargerPMForm() {
                                 </div>
                             )} />
                     )}
-                    {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} countLabel={t("airFilterCount", lang)} count={4} countUnit={t("piece", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} showDustFilterCheckbox dustFilterChanged={dustFilterChanged} setDustFilterChanged={setDustFilterChanged} />}
+                    {q.no === 11 && fixedItems && <DynamicItemsSection qNo={11} items={fixedItems} editable={false} countLabel={t("airFilterCount", lang)} count={5} countUnit={t("filter", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} showDustFilterCheckbox dustFilterChanged={dustFilterChanged} setDustFilterChanged={setDustFilterChanged} />}
                     {q.no === 17 && fixedItems && <DynamicItemsSection qNo={17} items={fixedItems} editable={false} countLabel={t("chargingTestCount", lang)} count={job.chargingCables} countUnit={t("cable", lang)} photos={photos} setPhotos={setPhotos} rows={rows} setRows={setRows} rowsPre={rowsPre} draftKey={currentDraftKey} lang={lang} isPostMode={true} />}
                     {q.no === 18 && fixedItems && (
                         <DynamicItemsSection
@@ -2305,7 +2415,7 @@ export default function ChargerPMForm() {
                 ctx.drawImage(img, 0, 0, width, height);
                 canvas.toBlob((blob) => { if (blob && blob.size < file.size) resolve(new File([blob], file.name, { type: "image/jpeg" })); else resolve(file); }, "image/jpeg", quality);
             };
-            img.onerror = () => resolve(file);
+            img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
             img.src = URL.createObjectURL(file);
         });
     }
@@ -2320,12 +2430,13 @@ export default function ChargerPMForm() {
         compressedFiles.forEach((f) => form.append("files", f));
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/pmreport/${reportId}/pre/photos` : `${API_BASE}/pmreport/${reportId}/post/photos`;
-        const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
+        const res = await apiFetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
         if (!res.ok) throw new Error(await res.text());
     }
 
     const onPreSave = async () => {
         if (!sn) { alert(t("alertNoSN", lang)); return; }
+        if (!allPhotosAttachedPre) { alert(t("alertPhotoNotComplete", lang)); return; }
         if (!allRequiredInputsFilled) { alert(t("alertFillRequired", lang)); return; }
         if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
         if (submitting) return;
@@ -2335,15 +2446,23 @@ export default function ChargerPMForm() {
             const pm_date = job.date?.trim() || "";
             const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
             const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId };
-            const submitRes = await fetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+            const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!submitRes.ok) throw new Error(await submitRes.text());
             const { report_id, doc_name } = await submitRes.json() as { report_id: string; doc_name?: string };
             if (doc_name) setDocName(doc_name);
-            const uploadPromises: Promise<void>[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadPromises.push(uploadGroupPhotos(report_id, sn, `g${no}`, files, "pre")); } });
-            if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
+            // ⚡ ใช้ allSettled เพื่อตรวจสอบว่ากลุ่มไหน fail
+            const uploadEntries: { group: string; promise: Promise<void> }[] = [];
+            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadEntries.push({ group: no, promise: uploadGroupPhotos(report_id, sn, `g${no}`, files, "pre") }); } });
+            if (uploadEntries.length > 0) {
+                const results = await Promise.allSettled(uploadEntries.map(e => e.promise));
+                const failedGroups = results.map((r, i) => r.status === "rejected" ? uploadEntries[i].group : null).filter(Boolean);
+                if (failedGroups.length > 0) {
+                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
+                    return; // ไม่ clear draft เพื่อให้ user ลองใหม่ได้
+                }
+            }
             const allPhotos = Object.values(photos).flat();
-            await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+            Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => {});
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
@@ -2356,15 +2475,24 @@ export default function ChargerPMForm() {
         try {
             const token = localStorage.getItem("access_token");
             const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
-            const submitRes = await fetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+            const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
             if (!submitRes.ok) throw new Error(await submitRes.text());
             const { report_id } = await submitRes.json() as { report_id: string };
-            const uploadPromises: Promise<void>[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadPromises.push(uploadGroupPhotos(report_id, sn, `g${no}`, files, "post")); } });
-            if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
-            await fetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ sn: sn }) });
+            // ⚡ ใช้ allSettled เพื่อตรวจสอบว่ากลุ่มไหน fail
+            const uploadEntries: { group: string; promise: Promise<void> }[] = [];
+            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadEntries.push({ group: no, promise: uploadGroupPhotos(report_id, sn, `g${no}`, files, "post") }); } });
+            if (uploadEntries.length > 0) {
+                const results = await Promise.allSettled(uploadEntries.map(e => e.promise));
+                const failedGroups = results.map((r, i) => r.status === "rejected" ? uploadEntries[i].group : null).filter(Boolean);
+                if (failedGroups.length > 0) {
+                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
+                    return; // ไม่ finalize เพื่อให้ user ลองใหม่ได้
+                }
+            }
+            const finalizeRes = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ sn: sn }) });
+            if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             const allPhotos = Object.values(photos).flat();
-            await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
+            Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => {});
             clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }

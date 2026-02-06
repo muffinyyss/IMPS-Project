@@ -1,5 +1,6 @@
 // app/pm-report/charger/input_PMreport/lib/draft.ts
 import type { PhotoRef } from "./draftPhotos";
+import { delAllPhotosForDraft } from "./draftPhotos";
 
 type PF = "PASS" | "FAIL" | "NA" | "";
 
@@ -54,12 +55,36 @@ export function loadDraftLocal<T = DraftData>(key: string): T | null {
   }
 }
 
-export function clearDraftLocal(key: string) {
+/** ลบ draft ทั้งหมด — ทั้ง localStorage และรูปใน IndexedDB */
+export async function clearDraftLocal(key: string) {
+  // 1) อ่าน photoRefs จาก draft ก่อนลบ เพื่อลบรูปให้ตรง key
   const ls = safeStorage();
-  if (!ls) return;
+  let photoRefs: DraftData["photoRefs"] | undefined;
+  if (ls) {
+    try {
+      const raw = ls.getItem(key);
+      if (raw) {
+        const data = JSON.parse(raw) as DraftData;
+        photoRefs = data.photoRefs;
+      }
+    } catch {
+      // ถ้า parse ไม่ได้ก็ไม่เป็นไร จะ fallback scan ใน delAllPhotosForDraft
+    }
+  }
+
+  // 2) ลบรูปใน IndexedDB (async — ไม่ block)
   try {
-    ls.removeItem(key);
-  } catch (e) {
-    console.error("clearDraftLocal failed:", e);
+    await delAllPhotosForDraft(key, photoRefs);
+  } catch {
+    // error ถูก log ใน delAllPhotosForDraft แล้ว
+  }
+
+  // 3) ลบ localStorage
+  if (ls) {
+    try {
+      ls.removeItem(key);
+    } catch (e) {
+      console.error("clearDraftLocal failed:", e);
+    }
   }
 }
