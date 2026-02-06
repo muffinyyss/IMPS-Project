@@ -1214,7 +1214,7 @@ function PhotoMultiInput({
             <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
                 {t("maxPhotos", lang)} {max} {t("photos", lang)}
             </Typography>
-            <input ref={cameraRef} type="file" accept="image/*" className="tw-hidden"
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="tw-hidden"
                 onChange={(e) => { void handleFiles(e.target.files); }} />
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
