@@ -24,8 +24,10 @@ export default function BasicSignupPage() {
   const [password, setPassword] = useState("");
   const [tel, setTel] = useState("");
   const [company, setCompany] = useState("");
+  const [role, setRole] = useState("");
   const [message, setMessage] = useState("");
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+  
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
@@ -35,22 +37,25 @@ export default function BasicSignupPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, email, password, tel ,company}),
+        body: JSON.stringify({
+          username, email, password, tel, company,
+          role: role || "owner",
+        }),
       });
 
       if (!res.ok) {
-        throw new Error("Failed to insert user");
-      }else{
-        alert("Register success ✅");
-        router.push("/auth/signin/basic"); // <-- redirect ไป login
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to insert user");
       }
 
       const data = await res.json();
       console.log(data);
-      setMessage(`User created: ${data.username} (${data.email})`);
-    } catch (error) {
+      alert("Register success ✅");
+      router.push("/auth/signin/basic");
+
+    } catch (error: any) {
       console.error(error);
-      setMessage("Error creating user");
+      alert(error.message || "Error creating user");  // ✅ แจ้งเตือนชัดเจน
     }
   };
 
@@ -187,71 +192,31 @@ export default function BasicSignupPage() {
                 color="blue-gray"
                 className="-tw-mb-3 !tw-font-medium"
               >
-                Comppany Name
+                Company Name
               </Typography>
               <Input size="lg" label="Company name" type="text" value={company} onChange={(e) => setCompany(e.target.value)} />
             </div>
 
-            <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-2 tw-relative">
+            <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-6">
               <Typography
                 variant="small"
                 color="blue-gray"
-                className="-tw-mb-1 !tw-font-medium"
+                className="-tw-mb-3 !tw-font-medium"
               >
-                เลือกสถานี
+                Role
               </Typography>
-
-              <Input
+              <Select
                 size="lg"
-                label="พิมพ์เพื่อค้นหา / เลือกสถานี"
-                type="text"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setOpen(true);
-                  setActive(-1);
-                }}
-                onFocus={() => setOpen(true)}
-                onKeyDown={onKeyDown}
-                onBlur={() => setTimeout(() => setOpen(false), 120)}
-                placeholder="พิมพ์เพื่อค้นหา / เลือกสถานี"
-                className="border p-2 rounded w-full"
-                crossOrigin=""
-              />
-
-              {open && (
-                // <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border rounded shadow max-h-64 overflow-auto">
-                <div
-                  className="tw-absolute tw-z-50 tw-top-[100%] tw-left-0 tw-right-0 tw-mt-2 tw-bg-white tw-border tw-rounded-lg tw-shadow-lg tw-max-h-64 tw-overflow-auto"
-                  role="listbox"
-                >
-                  {stations.length > 0 ? (
-                    stations.map((item, idx) => (
-                      <button
-                        type="button"
-                        key={item}
-                        role="option"
-
-                        // className="w-full text-left px-3 py-2 hover:bg-blue-100"
-                        className={`tw-w-full tw-text-left tw-px-3 tw-py-2 hover:tw-bg-blue-gray-50 focus:tw-bg-blue-gray-50 ${idx === active ? "tw-bg-blue-gray-50" : ""
-                          }`}
-                        onMouseEnter={() => setActive(idx)}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => selectItem(item)}
-                      >
-                        {item}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-3 py-2 text-gray-500">
-                      ไม่พบสถานีที่ค้นหา
-                    </div>
-                  )}
-                </div>
-              )}
+                label="Select Role"
+                value={role}
+                onChange={(val) => setRole(val ?? "")}
+              >
+                <Option value="admin">Admin</Option>
+                <Option value="owner">Owner</Option>
+              </Select>
             </div>
 
-            <Checkbox
+            {/* <Checkbox
               label={
                 <Typography
                   variant="small"
@@ -267,7 +232,8 @@ export default function BasicSignupPage() {
                 </Typography>
               }
               containerProps={{ className: "-tw-ml-2.5" }}
-            />
+            /> */}
+
             <Button className="tw-mt-6" fullWidth type="submit">
               Register Now
             </Button>
