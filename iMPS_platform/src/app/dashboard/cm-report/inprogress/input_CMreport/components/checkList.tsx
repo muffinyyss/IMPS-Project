@@ -133,9 +133,20 @@ function base64ToBlobUrl(base64: string): string {
 // ==================== TYPES ====================
 type Severity = "" | "Low" | "Medium" | "High" | "Critical";
 type Status = "" | "Open" | "In Progress" | "Closed";
-type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; };
-type PhotoItem = { id: string; file: File | null; preview: string; isServer?: boolean; serverUrl?: string; };
+type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
+type PhotoItem = { id: string; file: File | null; preview: string; isServer?: boolean; serverUrl?: string; createdAt?: string; uploadedAtRaw?: string; location?: string; };
 type CorrectiveItem = { text: string; beforeImages: PhotoItem[]; afterImages: PhotoItem[]; };
+
+/** แปลง uploadedAt → display string, รองรับทั้ง ISO date และ string ที่ format แล้ว */
+function formatPhotoDate(dateStr: string | undefined): string | undefined {
+    if (!dateStr) return undefined;
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime()) && d.getFullYear() > 1970) {
+        return d.toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    }
+    // ถ้า parse ไม่ได้ = string ที่ format แล้ว → ใช้ตรงๆ
+    return dateStr;
+}
 
 type Job = {
     issue_id: string; doc_name: string; found_date: string; location: string;
@@ -147,7 +158,9 @@ type Job = {
     preventive_action: string[];
     repaired_equipment: string[];
     inprogress_remarks: string;
+    repair_result_remark: string; // หมายเหตุผลหลังซ่อม (ติดตามผล/รออะไหล่)
     cause: string; // NEW: สาเหตุ
+    problem_type_other: string; // ระบุเมื่อเลือก อื่นๆ
 };
 
 type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; };
@@ -160,10 +173,25 @@ const REPAIR_OPTIONS = [
     { value: "อยู่ระหว่างการรออะไหล่", th: "อยู่ระหว่างการรออะไหล่", en: "Waiting for Parts" },
 ] as const;
 
+const PROBLEM_TYPE_OPTIONS = [
+    { value: "Hardware", th: "Hardware (ฮาร์ดแวร์)", en: "Hardware" },
+    { value: "Software", th: "Software (ซอฟต์แวร์)", en: "Software" },
+    { value: "Network", th: "Network (เครือข่าย)", en: "Network" },
+    { value: "Other", th: "อื่นๆ", en: "Other" },
+] as const;
+
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
 const MAX_PHOTOS = 5;
 const FIXED_EQUIPMENT = ["MDB", "CCB", "CB-BOX", "Station"] as const;
+
+// ==================== อุปกรณ์ภายในของแต่ละ Non-Charger (Placeholder - แก้ทีหลัง) ====================
+const NON_CHARGER_DEVICES: Record<string, string[]> = {
+    mdb: ["MCCB", "ACB", "Surge Arrester", "Power Meter", "Busbar", "CT", "PT"],
+    ccb: ["MCCB", "Contactor", "Relay", "Terminal Block", "Fuse", "Wiring"],
+    "cb-box": ["MCB", "RCBO", "Surge Protection", "Terminal Block", "Busbar"],
+    station: ["Network Switch", "Router", "UPS", "CCTV", "Access Control", "Fire Alarm", "Lighting"],
+};
 
 const INITIAL_JOB: Job = {
     issue_id: "", doc_name: "", found_date: "", location: "", problem_details: "",
@@ -174,7 +202,9 @@ const INITIAL_JOB: Job = {
     preventive_action: [""],
     repaired_equipment: [],
     inprogress_remarks: "",
+    repair_result_remark: "",
     cause: "", // NEW
+    problem_type_other: "",
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -185,6 +215,7 @@ function CMValidationCard({ validations, lang }: { validations: ValidationItem[]
     const requiredValidations = validations.filter(v => v.isRequired);
     const allRequiredValid = requiredValidations.every(v => v.isValid);
     const missingCount = requiredValidations.filter(v => !v.isValid).length;
+    const completedCount = requiredValidations.filter(v => v.isValid).length;
 
     const scrollToElement = (scrollId?: string) => {
         if (!scrollId) return;
@@ -197,41 +228,42 @@ function CMValidationCard({ validations, lang }: { validations: ValidationItem[]
     };
 
     return (
-        <div className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${allRequiredValid ? "tw-border-green-200 tw-bg-green-50 tw-shadow-green-500/10" : "tw-border-orange-200 tw-bg-orange-50 tw-shadow-orange-500/10"}`}>
-            <div className={`tw-px-5 tw-py-4 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${allRequiredValid ? "tw-bg-green-100 hover:tw-bg-green-150" : "tw-bg-orange-100 hover:tw-bg-orange-150"} tw-transition-colors`} onClick={() => setIsExpanded(!isExpanded)}>
+        <div className={`tw-rounded-xl tw-border tw-shadow-sm tw-overflow-hidden ${allRequiredValid ? "tw-border-green-200 tw-bg-green-50 tw-shadow-green-500/10" : "tw-border-amber-300 tw-bg-amber-50 tw-shadow-amber-500/10"}`}>
+            <div className={`tw-px-5 tw-py-4 tw-cursor-pointer tw-flex tw-items-center tw-justify-between ${allRequiredValid ? "tw-bg-green-100 hover:tw-bg-green-150" : "tw-bg-amber-100 hover:tw-bg-amber-200/60"} tw-transition-colors`} onClick={() => setIsExpanded(!isExpanded)}>
                 <div className="tw-flex tw-items-center tw-gap-3">
-                    <div className={`tw-w-10 tw-h-10 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md ${allRequiredValid ? "tw-bg-green-500" : "tw-bg-orange-500"}`}>
+                    <div className={`tw-w-10 tw-h-10 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md ${allRequiredValid ? "tw-bg-green-500" : "tw-bg-amber-500"}`}>
                         {allRequiredValid ? <CheckCircleIcon className="tw-w-6 tw-h-6 tw-text-white" /> : <ExclamationTriangleIcon className="tw-w-6 tw-h-6 tw-text-white" />}
                     </div>
                     <div>
-                        <p className={`tw-font-bold tw-text-base ${allRequiredValid ? "tw-text-green-800" : "tw-text-orange-800"}`}>{t("formStatus", lang)}</p>
-                        <p className={`tw-text-sm ${allRequiredValid ? "tw-text-green-600" : "tw-text-orange-600"}`}>
-                            {allRequiredValid ? t("allComplete", lang) : `${t("remaining", lang)} ${missingCount} ${t("items", lang)}`}
+                        <p className={`tw-font-bold tw-text-base ${allRequiredValid ? "tw-text-green-800" : "tw-text-amber-800"}`}>{t("formStatus", lang)}</p>
+                        <p className={`tw-text-sm ${allRequiredValid ? "tw-text-green-600" : "tw-text-amber-700"}`}>
+                            {allRequiredValid ? t("allComplete", lang) : `${completedCount}/${requiredValidations.length} — ${t("remaining", lang)} ${missingCount} ${t("items", lang)}`}
                         </p>
                     </div>
                 </div>
-                {!allRequiredValid && (
-                    <svg className={`tw-w-6 tw-h-6 ${allRequiredValid ? "tw-text-green-600" : "tw-text-orange-600"} tw-transition-transform ${isExpanded ? "tw-rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                )}
+                <svg className={`tw-w-6 tw-h-6 ${allRequiredValid ? "tw-text-green-600" : "tw-text-amber-700"} tw-transition-transform ${isExpanded ? "tw-rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
             </div>
-            {isExpanded && !allRequiredValid && (
+            {isExpanded && (
                 <div className="tw-px-5 tw-py-4 tw-space-y-3">
-                    <div className="tw-bg-white tw-rounded-lg tw-p-4 tw-border tw-border-orange-200">
-                        <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
-                            <p className="tw-font-semibold tw-text-blue-gray-800 tw-text-sm">📋 {t("remaining", lang)} {t("items", lang)}</p>
-                            <span className="tw-text-xs tw-bg-orange-100 tw-text-orange-700 tw-px-2.5 tw-py-0.5 tw-rounded-full tw-font-semibold">{missingCount}</span>
+                    {/* ⚠️ รายการที่ยังไม่ได้กรอก */}
+                    {missingCount > 0 && (
+                        <div className="tw-bg-white tw-rounded-lg tw-p-4 tw-border tw-border-amber-300">
+                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                <p className="tw-font-semibold tw-text-amber-800 tw-text-sm">⚠️ {lang === "th" ? "ยังไม่ได้กรอก" : "Missing"}</p>
+                                <span className="tw-text-xs tw-bg-amber-100 tw-text-amber-800 tw-px-2.5 tw-py-0.5 tw-rounded-full tw-font-semibold">{missingCount}</span>
+                            </div>
+                            <ul className="tw-space-y-1.5">
+                                {requiredValidations.filter(v => !v.isValid).map(v => (
+                                    <li key={v.key} onClick={() => scrollToElement(v.scrollId)} className="tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-amber-800 tw-cursor-pointer hover:tw-text-amber-900 hover:tw-bg-amber-50 tw-rounded tw-px-2 tw-py-1 tw-transition-colors">
+                                        <span className="tw-text-amber-600 tw-mt-0.5 tw-font-bold">→</span>
+                                        <span><span className="tw-font-semibold">{v.label}:</span> <span className="tw-underline tw-underline-offset-2">{v.message}</span></span>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
-                        <ul className="tw-space-y-1.5">
-                            {validations.filter(v => v.isRequired && !v.isValid).map(v => (
-                                <li key={v.key} onClick={() => scrollToElement(v.scrollId)} className="tw-flex tw-items-start tw-gap-2 tw-text-sm tw-text-orange-700 tw-cursor-pointer hover:tw-text-orange-900 hover:tw-bg-orange-50 tw-rounded tw-px-2 tw-py-1 tw-transition-colors">
-                                    <span className="tw-text-orange-500 tw-mt-0.5 tw-font-bold">→</span>
-                                    <span><span className="tw-font-semibold">{v.label}:</span> <span className="tw-underline tw-underline-offset-2">{v.message}</span></span>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
+                    )}
                 </div>
             )}
         </div>
@@ -252,6 +284,12 @@ function PhotoUpload({ photos_problem, onAdd, onRemove, max, disabled, lang }: {
                     {photos_problem.map(photo => (
                         <div key={photo.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-200 tw-bg-blue-gray-50 tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
                             <img src={photo.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                            {(photo.createdAt || photo.location) && (
+                                <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
+                                    {photo.createdAt && <span className="tw-block tw-font-mono">{photo.createdAt}</span>}
+                                    {photo.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {photo.location}</span>}
+                                </span>
+                            )}
                             {photo.isServer && (
                                 <span className="tw-absolute tw-bottom-1 tw-left-1 tw-text-[10px] tw-bg-blue-500 tw-text-white tw-px-1.5 tw-py-0.5 tw-rounded">Saved</span>
                             )}
@@ -290,7 +328,7 @@ function getSeverityColor(severity: string) {
     switch (severity?.toLowerCase()) {
         case "critical": return { dot: "tw-bg-red-500", text: "tw-text-red-700" };
         case "high": return { dot: "tw-bg-orange-500", text: "tw-text-orange-700" };
-        case "medium": return { dot: "tw-bg-yellow-500", text: "tw-text-yellow-700" };
+        case "medium": return { dot: "tw-bg-amber-500", text: "tw-text-amber-700" };
         case "low": return { dot: "tw-bg-green-500", text: "tw-text-green-700" };
         default: return { dot: "tw-bg-gray-400", text: "tw-text-gray-600" };
     }
@@ -378,8 +416,10 @@ export default function CMInProgressForm() {
                     ? pendingDraft.preventive_action
                     : [""],
                 inprogress_remarks: pendingDraft.inprogress_remarks || "",
-                problem_type: (pendingDraft as any).problem_type || prev.problem_type,
-                cause: (pendingDraft as any).cause || prev.cause,
+                repair_result_remark: pendingDraft.repair_result_remark || "",
+                problem_type: pendingDraft.problem_type || prev.problem_type,
+                problem_type_other: pendingDraft.problem_type_other || prev.problem_type_other,
+                cause: pendingDraft.cause || prev.cause,
             }));
         }
         setShowDraftPrompt(false);
@@ -426,6 +466,7 @@ export default function CMInProgressForm() {
             job.repair_result ||
             job.preventive_action.some((p: string) => p.trim() !== "") ||
             job.inprogress_remarks ||
+            job.repair_result_remark ||
             job.problem_type ||
             job.cause;
         if (!hasData) return;
@@ -449,14 +490,16 @@ export default function CMInProgressForm() {
                 repair_result: job.repair_result,
                 preventive_action: job.preventive_action,
                 inprogress_remarks: job.inprogress_remarks,
+                repair_result_remark: job.repair_result_remark,
                 problem_type: job.problem_type,
+                problem_type_other: job.problem_type_other,
                 cause: job.cause,
-            } as any;
+            };
             await saveDraftNow(draftData);
         } catch (e) {
             console.error("Failed to save draft with images:", e);
         }
-    }, [job.corrective_actions, job.repaired_equipment, job.repair_result, job.preventive_action, job.inprogress_remarks, job.problem_type, job.cause, editId, stationId, saveDraftNow]);
+    }, [job.corrective_actions, job.repaired_equipment, job.repair_result, job.preventive_action, job.inprogress_remarks, job.repair_result_remark, job.problem_type, job.problem_type_other, job.cause, editId, stationId, saveDraftNow]);
 
     const draftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     useEffect(() => {
@@ -478,19 +521,26 @@ export default function CMInProgressForm() {
     }, [saveDraftWithImages, editId, stationId]);
 
     // ==================== VALIDATION ====================
-    const validations = useMemo<ValidationItem[]>(() => [
-        { key: "problemType", label: t("validProblemType", lang), isValid: !!job.problem_type.trim(), message: t("notFilled", lang), isRequired: true, scrollId: "cm-problem-type" },
-        { key: "cause", label: t("validCause", lang), isValid: !!job.cause.trim(), message: t("notFilled", lang), isRequired: true, scrollId: "cm-cause" },
-        { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: job.corrective_actions.some((a: CorrectiveItem) => a.text.trim() !== ""), message: t("notFilled", lang), isRequired: true, scrollId: "cm-corrective" },
-        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.beforeImages.length > 0), message: t("notFilled", lang), isRequired: true, scrollId: "cm-corrective" },
-        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.afterImages.length > 0), message: t("notFilled", lang), isRequired: true, scrollId: "cm-corrective" },
-        { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: true, scrollId: "cm-repair-result" },
-    ], [job, lang]);
-    const canSave = useMemo(() => validations.filter(v => v.isRequired).every(v => v.isValid), [validations]);
-
     const isClosedResult = useMemo(() => {
         return job.repair_result === "แก้ไขสำเร็จ" || job.repair_result === "แก้ไขไม่สำเร็จ";
     }, [job.repair_result]);
+
+    const isMonitoringResult = useMemo(() => {
+        return job.repair_result === "อยู่ระหว่างการติดตามผล" || job.repair_result === "อยู่ระหว่างการรออะไหล่";
+    }, [job.repair_result]);
+
+    const validations = useMemo<ValidationItem[]>(() => [
+        { key: "problemType", label: t("validProblemType", lang), isValid: !!job.problem_type.trim(), message: t("notSelected", lang), isRequired: true, scrollId: "cm-problem-type" },
+        { key: "problemTypeOther", label: lang === "th" ? "ระบุประเภทปัญหา (อื่นๆ)" : "Specify Problem Type (Other)", isValid: !!job.problem_type_other.trim(), message: t("notFilled", lang), isRequired: job.problem_type === "Other", scrollId: "cm-problem-type" },
+        { key: "cause", label: t("validCause", lang), isValid: !!job.cause.trim(), message: t("notFilled", lang), isRequired: true, scrollId: "cm-cause" },
+        { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: job.corrective_actions.some((a: CorrectiveItem) => a.text.trim() !== ""), message: t("notFilled", lang), isRequired: true, scrollId: "cm-corrective" },
+        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.beforeImages.length > 0), message: t("notFilled", lang), isRequired: true, scrollId: "cm-corrective" },
+        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.afterImages.length > 0), message: t("notFilled", lang), isRequired: isClosedResult, scrollId: "cm-corrective" },
+        { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: true, scrollId: "cm-repair-result" },
+        { key: "preventiveAction", label: t("preventiveAction", lang), isValid: job.preventive_action.some((p: string) => p.trim() !== ""), message: t("notFilled", lang), isRequired: isClosedResult, scrollId: "cm-preventive" },
+        { key: "inprogressRemarks", label: lang === "th" ? "หมายเหตุผลหลังซ่อม" : "Repair Result Remark", isValid: !!job.repair_result_remark.trim(), message: t("notFilled", lang), isRequired: isMonitoringResult, scrollId: "cm-repair-result" },
+    ], [job, lang, isClosedResult, isMonitoringResult]);
+    const canSave = useMemo(() => validations.filter(v => v.isRequired).every(v => v.isValid), [validations]);
 
     const targetStatus = isClosedResult ? "Closed" : "In Progress";
     const targetTab = isClosedResult ? "closed" : "in-progress";
@@ -500,6 +550,47 @@ export default function CMInProgressForm() {
     const localTodayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
     const displayToISO = (s: string) => { if (!s) return localTodayISO(); const p = s.split("/"); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : localTodayISO(); };
     const isoToDisplay = (s: string) => { if (!s) return localTodayFormatted(); const p = s.slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : localTodayFormatted(); };
+
+    // ==================== GPS & TIMESTAMP ====================
+    const gpsCache = useRef<{ location?: string; fetched: boolean; promise?: Promise<string | undefined> }>({ fetched: false });
+
+    const fetchGpsLocation = useCallback(async (): Promise<string | undefined> => {
+        try {
+            if (!navigator.geolocation) { console.warn("[GPS] Geolocation not supported"); return undefined; }
+            const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 });
+            });
+            const { latitude, longitude } = pos.coords;
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=th&zoom=16`);
+                if (!res.ok) return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                const data = await res.json();
+                const addr = data.address || {};
+                const parts = [addr.road, addr.suburb || addr.neighbourhood, addr.city_district || addr.town || addr.city, addr.state || addr.province].filter(Boolean);
+                return parts.length > 0 ? parts.join(", ") : (data.display_name?.split(",").slice(0, 3).join(",") || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+            } catch {
+                return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            }
+        } catch {
+            return undefined;
+        }
+    }, []);
+
+    const getGpsCached = useCallback((): Promise<string | undefined> => {
+        if (gpsCache.current.fetched) return Promise.resolve(gpsCache.current.location);
+        if (!gpsCache.current.promise) {
+            gpsCache.current.promise = fetchGpsLocation().then(loc => {
+                gpsCache.current = { location: loc, fetched: true };
+                return loc;
+            });
+        }
+        return gpsCache.current.promise;
+    }, [fetchGpsLocation]);
+
+    // Pre-fetch GPS ตอนเปิดหน้า
+    useEffect(() => { getGpsCached(); }, [getGpsCached]);
+
+    const getNowTimestamp = () => new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
     // ==================== CORRECTIVE ACTIONS HANDLERS ====================
     const addCorrectiveAction = () => {
@@ -528,10 +619,16 @@ export default function CMInProgressForm() {
 
     const addCorrectiveBeforeImages = (index: number, files: FileList | null) => {
         if (!files) return;
+        const now = getNowTimestamp();
+        const nowISO = new Date().toISOString();
+        const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;
         const newImages: PhotoItem[] = Array.from(files).slice(0, MAX_PHOTOS).map((file, i) => ({
             id: `before-${Date.now()}-${index}-${i}-${file.name}`,
             file,
             preview: URL.createObjectURL(file),
+            createdAt: now,
+            uploadedAtRaw: nowISO,
+            location: cachedLoc,
         }));
         setJob(prev => ({
             ...prev,
@@ -539,14 +636,33 @@ export default function CMInProgressForm() {
                 i === index ? { ...item, beforeImages: [...item.beforeImages, ...newImages].slice(0, MAX_PHOTOS) } : item
             )
         }));
+        // ถ้า cache ยังไม่พร้อม → fill location ทีหลัง
+        if (!cachedLoc) {
+            const imageIds = newImages.map(img => img.id);
+            getGpsCached().then(loc => {
+                if (!loc) return;
+                setJob(prev => ({
+                    ...prev,
+                    corrective_actions: prev.corrective_actions.map((item, i) =>
+                        i === index ? { ...item, beforeImages: item.beforeImages.map(img => imageIds.includes(img.id) ? { ...img, location: loc } : img) } : item
+                    )
+                }));
+            });
+        }
     };
 
     const addCorrectiveAfterImages = (index: number, files: FileList | null) => {
         if (!files) return;
+        const now = getNowTimestamp();
+        const nowISO = new Date().toISOString();
+        const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;
         const newImages: PhotoItem[] = Array.from(files).slice(0, MAX_PHOTOS).map((file, i) => ({
             id: `after-${Date.now()}-${index}-${i}-${file.name}`,
             file,
             preview: URL.createObjectURL(file),
+            createdAt: now,
+            uploadedAtRaw: nowISO,
+            location: cachedLoc,
         }));
         setJob(prev => ({
             ...prev,
@@ -554,6 +670,19 @@ export default function CMInProgressForm() {
                 i === index ? { ...item, afterImages: [...item.afterImages, ...newImages].slice(0, MAX_PHOTOS) } : item
             )
         }));
+        // ถ้า cache ยังไม่พร้อม → fill location ทีหลัง
+        if (!cachedLoc) {
+            const imageIds = newImages.map(img => img.id);
+            getGpsCached().then(loc => {
+                if (!loc) return;
+                setJob(prev => ({
+                    ...prev,
+                    corrective_actions: prev.corrective_actions.map((item, i) =>
+                        i === index ? { ...item, afterImages: item.afterImages.map(img => imageIds.includes(img.id) ? { ...img, location: loc } : img) } : item
+                    )
+                }));
+            });
+        }
     };
 
     const removeCorrectiveBeforeImage = (actionIndex: number, imageId: string) => {
@@ -620,28 +749,58 @@ export default function CMInProgressForm() {
         return () => { alive = false; };
     }, [stationId]);
 
+    // ==================== FETCH DEVICES BASED ON FAULTY EQUIPMENT ====================
     useEffect(() => {
-        if (chargers.length === 0) return;
-        const sn = chargers[0]?.SN || chargers[0]?.sn;
-        if (!sn) return;
+        const faultyEq = job.faulty_equipment;
+        if (!faultyEq || !stationId) {
+            setDevices([]);
+            return;
+        }
 
         let alive = true;
         setLoadingDevices(true);
+
         (async () => {
             try {
-                const res = await fetch(`${API_BASE}/station/${encodeURIComponent(sn)}/device-keys`, { credentials: "include" });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (alive) setDevices(data.keys || []);
+                if (faultyEq.startsWith("charger_")) {
+                    // Charger → ดึง device-keys จาก SN ของ charger ตัวนั้น
+                    const chargerId = faultyEq.replace("charger_", "");
+                    const charger = chargers.find(c =>
+                        String(c.chargerNo) === chargerId ||
+                        String(c.charger_id) === chargerId
+                    );
+                    const sn = charger?.SN || charger?.sn;
+                    if (!sn) { if (alive) setDevices([]); return; }
+
+                    const res = await fetch(`${API_BASE}/station/${encodeURIComponent(sn)}/device-keys`, { credentials: "include" });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (alive) setDevices(data.keys || []);
+                    } else {
+                        if (alive) setDevices([]);
+                    }
+                } else {
+                    // Non-charger (MDB, CCB, CB-BOX, Station) → ใช้ข้อมูล static ที่ frontend
+                    const deviceList = NON_CHARGER_DEVICES[faultyEq.toLowerCase()] || [];
+                    if (alive) setDevices(deviceList);
                 }
             } catch {
-                setDevices([]);
+                if (alive) setDevices([]);
             } finally {
                 if (alive) setLoadingDevices(false);
             }
         })();
         return () => { alive = false; };
-    }, [chargers]);
+    }, [job.faulty_equipment, chargers, stationId]);
+
+    // Clear repaired_equipment เมื่อเปลี่ยนอุปกรณ์ที่พัง
+    const prevFaultyRef = useRef(job.faulty_equipment);
+    useEffect(() => {
+        if (prevFaultyRef.current !== job.faulty_equipment) {
+            setJob(prev => ({ ...prev, repaired_equipment: [] }));
+            prevFaultyRef.current = job.faulty_equipment;
+        }
+    }, [job.faulty_equipment]);
 
     useEffect(() => {
     if (!editId || !stationId) return;
@@ -666,9 +825,11 @@ export default function CMInProgressForm() {
                 
                 // ✅ ดึงจาก flat fields โดยตรง
                 problem_type: data.problem_type ?? "",
+                problem_type_other: data.problem_type_other ?? "",
                 cause: data.cause ?? "",
                 repair_result: data.repair_result ?? "",
                 inprogress_remarks: data.inprogress_remarks ?? "",
+                repair_result_remark: data.repair_result_remark ?? "",
                 resolved_date: data.resolved_date ? isoToDisplay(data.resolved_date) : "",
                 
                 repaired_equipment: Array.isArray(data.repaired_equipment)
@@ -680,23 +841,54 @@ export default function CMInProgressForm() {
                     : [""],
                     
                 corrective_actions: Array.isArray(data.corrective_actions) && data.corrective_actions.length > 0
-                    ? data.corrective_actions.map((a: any) => ({
-                        text: a.text || "",
-                        beforeImages: (a.beforeImages || []).map((img: any, idx: number) => ({
-                            id: `server-before-${idx}-${img.name || img.url}`,
-                            file: null,
-                            preview: img.url?.startsWith("http") ? img.url : `${API_BASE}${img.url}`,
-                            isServer: true,
-                            serverUrl: img.url,
-                        })),
-                        afterImages: (a.afterImages || []).map((img: any, idx: number) => ({
-                            id: `server-after-${idx}-${img.name || img.url}`,
-                            file: null,
-                            preview: img.url?.startsWith("http") ? img.url : `${API_BASE}${img.url}`,
-                            isServer: true,
-                            serverUrl: img.url,
-                        })),
-                    }))
+                    ? (() => {
+                        // สร้าง lookup map จาก photos_repair เพื่อหา uploadedAt/location ที่หายไป
+                        const repairPhotoMap: Record<string, { uploadedAt?: string; location?: string }> = {};
+                        if (data.photos_repair) {
+                            for (const [, photoList] of Object.entries(data.photos_repair)) {
+                                if (Array.isArray(photoList)) {
+                                    (photoList as any[]).forEach((p: any) => {
+                                        if (p.url) {
+                                            repairPhotoMap[p.url] = {
+                                                uploadedAt: p.uploadedAt,
+                                                location: p.location,
+                                            };
+                                        }
+                                    });
+                                }
+                            }
+                        }
+
+                        return data.corrective_actions.map((a: any) => ({
+                            text: a.text || "",
+                            beforeImages: (a.beforeImages || []).map((img: any, idx: number) => {
+                                const repair = repairPhotoMap[img.url] || {};
+                                return {
+                                    id: `server-before-${idx}-${img.name || img.url}`,
+                                    file: null,
+                                    preview: img.url?.startsWith("http") ? img.url : `${API_BASE}${img.url}`,
+                                    isServer: true,
+                                    serverUrl: img.url,
+                                    createdAt: formatPhotoDate(img.uploadedAt || repair.uploadedAt),
+                                    uploadedAtRaw: img.uploadedAt || repair.uploadedAt || undefined,
+                                    location: img.location || repair.location || undefined,
+                                };
+                            }),
+                            afterImages: (a.afterImages || []).map((img: any, idx: number) => {
+                                const repair = repairPhotoMap[img.url] || {};
+                                return {
+                                    id: `server-after-${idx}-${img.name || img.url}`,
+                                    file: null,
+                                    preview: img.url?.startsWith("http") ? img.url : `${API_BASE}${img.url}`,
+                                    isServer: true,
+                                    serverUrl: img.url,
+                                    createdAt: formatPhotoDate(img.uploadedAt || repair.uploadedAt),
+                                    uploadedAtRaw: img.uploadedAt || repair.uploadedAt || undefined,
+                                    location: img.location || repair.location || undefined,
+                                };
+                            }),
+                        }));
+                    })()
                     : [{ text: "", beforeImages: [], afterImages: [] }],
             }));
             
@@ -720,6 +912,9 @@ export default function CMInProgressForm() {
                                 preview: fullUrl,
                                 isServer: true,
                                 serverUrl: p.url,
+                                createdAt: formatPhotoDate(p.uploadedAt),
+                                uploadedAtRaw: p.uploadedAt || undefined,
+                                location: (p as any).location || undefined,
                             });
                         });
                     }
@@ -761,13 +956,15 @@ export default function CMInProgressForm() {
             const uploadedCorrectiveActions = await Promise.all(
                 job.corrective_actions.map(async (action, actionIndex) => {
                     // Upload before images
-                    const uploadedBeforeImages: { name: string; url: string }[] = [];
+                    const uploadedBeforeImages: { name: string; url: string; location?: string; uploadedAt?: string }[] = [];
                     for (const img of action.beforeImages) {
                         if (img.isServer && img.serverUrl) {
-                            // รูปที่ upload แล้ว - ใช้ URL เดิม
+                            // รูปที่ upload แล้ว - ใช้ URL เดิม + เก็บ metadata
                             uploadedBeforeImages.push({
                                 name: img.file?.name || `image_${img.id}`,
-                                url: img.serverUrl
+                                url: img.serverUrl,
+                                location: img.location,
+                                uploadedAt: img.uploadedAtRaw || img.createdAt,
                             });
                         } else if (img.file) {
                             // รูปใหม่ - upload
@@ -776,6 +973,7 @@ export default function CMInProgressForm() {
                             formData.append("group", `before_${actionIndex}`);
                             formData.append("phase", "repair");
                             formData.append("files", img.file);
+                            if (img.location) formData.append("location", img.location);
 
                             const uploadRes = await fetch(
                                 `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
@@ -786,7 +984,9 @@ export default function CMInProgressForm() {
                                 if (uploadData.files?.[0]) {
                                     uploadedBeforeImages.push({
                                         name: uploadData.files[0].filename,
-                                        url: uploadData.files[0].url
+                                        url: uploadData.files[0].url,
+                                        location: img.location || uploadData.files[0].location,
+                                        uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
                                     });
                                 }
                             }
@@ -802,6 +1002,7 @@ export default function CMInProgressForm() {
                                 formData.append("group", `before_${actionIndex}`);
                             formData.append("phase", "repair");
                                 formData.append("files", file);
+                                if (img.location) formData.append("location", img.location);
 
                                 const uploadRes = await fetch(
                                     `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
@@ -812,7 +1013,9 @@ export default function CMInProgressForm() {
                                     if (uploadData.files?.[0]) {
                                         uploadedBeforeImages.push({
                                             name: uploadData.files[0].filename,
-                                            url: uploadData.files[0].url
+                                            url: uploadData.files[0].url,
+                                            location: img.location || uploadData.files[0].location,
+                                            uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
                                         });
                                     }
                                 }
@@ -823,12 +1026,14 @@ export default function CMInProgressForm() {
                     }
 
                     // Upload after images (same logic)
-                    const uploadedAfterImages: { name: string; url: string }[] = [];
+                    const uploadedAfterImages: { name: string; url: string; location?: string; uploadedAt?: string }[] = [];
                     for (const img of action.afterImages) {
                         if (img.isServer && img.serverUrl) {
                             uploadedAfterImages.push({
                                 name: img.file?.name || `image_${img.id}`,
-                                url: img.serverUrl
+                                url: img.serverUrl,
+                                location: img.location,
+                                uploadedAt: img.uploadedAtRaw || img.createdAt,
                             });
                         } else if (img.file) {
                             const formData = new FormData();
@@ -836,6 +1041,7 @@ export default function CMInProgressForm() {
                             formData.append("group", `after_${actionIndex}`);
                             formData.append("phase", "repair");
                             formData.append("files", img.file);
+                            if (img.location) formData.append("location", img.location);
 
                             const uploadRes = await fetch(
                                 `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
@@ -846,7 +1052,9 @@ export default function CMInProgressForm() {
                                 if (uploadData.files?.[0]) {
                                     uploadedAfterImages.push({
                                         name: uploadData.files[0].filename,
-                                        url: uploadData.files[0].url
+                                        url: uploadData.files[0].url,
+                                        location: img.location || uploadData.files[0].location,
+                                        uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
                                     });
                                 }
                             }
@@ -861,6 +1069,7 @@ export default function CMInProgressForm() {
                                 formData.append("group", `after_${actionIndex}`);
                             formData.append("phase", "repair");
                                 formData.append("files", file);
+                                if (img.location) formData.append("location", img.location);
 
                                 const uploadRes = await fetch(
                                     `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
@@ -871,7 +1080,9 @@ export default function CMInProgressForm() {
                                     if (uploadData.files?.[0]) {
                                         uploadedAfterImages.push({
                                             name: uploadData.files[0].filename,
-                                            url: uploadData.files[0].url
+                                            url: uploadData.files[0].url,
+                                            location: img.location || uploadData.files[0].location,
+                                            uploadedAt: uploadData.files[0].uploadedAt || img.uploadedAtRaw || new Date().toISOString(),
                                         });
                                     }
                                 }
@@ -889,15 +1100,8 @@ export default function CMInProgressForm() {
                 })
             );
 
-            // ==================== STEP 2: Save job data ====================
-            const jobPayload = {
-                ...job,
-                found_date: displayToISO(job.found_date),
-                resolved_date: isClosedResult ? (job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()) : "",
-                status: targetStatus,
-                corrective_actions: uploadedCorrectiveActions,  // ✅ ใช้ข้อมูลที่ upload แล้ว
-            };
-
+            // ==================== STEP 2: Save data ====================
+            // ส่ง flat fields ตรงๆ (ไม่ wrap ใน job)
             const res = await fetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
@@ -905,8 +1109,17 @@ export default function CMInProgressForm() {
                 body: JSON.stringify({
                     station_id: stationId,
                     status: targetStatus,
-                    job: jobPayload,
-                    inspector
+                    inspector,
+                    problem_type: job.problem_type,
+                    problem_type_other: job.problem_type_other,
+                    cause: job.cause,
+                    corrective_actions: uploadedCorrectiveActions,
+                    repaired_equipment: job.repaired_equipment,
+                    repair_result: job.repair_result,
+                    preventive_action: job.preventive_action,
+                    inprogress_remarks: job.inprogress_remarks,
+                    repair_result_remark: job.repair_result_remark,
+                    resolved_date: isClosedResult ? (job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()) : "",
                 })
             });
             if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
@@ -933,8 +1146,8 @@ export default function CMInProgressForm() {
                 <div className="tw-fixed tw-inset-0 tw-bg-black/50 tw-flex tw-items-center tw-justify-center tw-z-50">
                     <div className="tw-bg-white tw-rounded-2xl tw-shadow-2xl tw-p-6 tw-mx-4 tw-max-w-md tw-w-full">
                         <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
-                            <div className="tw-w-12 tw-h-12 tw-rounded-full tw-bg-gray-100 tw-flex tw-items-center tw-justify-center">
-                                <ExclamationTriangleIcon className="tw-w-6 tw-h-6 tw-text-gray-600" />
+                            <div className="tw-w-12 tw-h-12 tw-rounded-full tw-bg-amber-100 tw-flex tw-items-center tw-justify-center">
+                                <ExclamationTriangleIcon className="tw-w-6 tw-h-6 tw-text-amber-600" />
                             </div>
                             <div>
                                 <h3 className="tw-font-bold tw-text-gray-900 tw-text-lg">
@@ -960,7 +1173,7 @@ export default function CMInProgressForm() {
                             </button>
                             <button
                                 onClick={applyDraft}
-                                className="tw-flex-1 tw-px-4 tw-py-2.5 tw-rounded-xl tw-bg-gray-700 tw-text-white tw-font-medium hover:tw-bg-gray-800 tw-transition-colors"
+                                className="tw-flex-1 tw-px-4 tw-py-2.5 tw-rounded-xl tw-bg-amber-500 tw-text-white tw-font-medium hover:tw-bg-amber-600 tw-transition-colors"
                             >
                                 {lang === "th" ? "โหลด" : "Load"}
                             </button>
@@ -1063,10 +1276,10 @@ export default function CMInProgressForm() {
                     </div>
 
                     {/* Section 1: Problem Details (Readonly) */}
-                    <div className="tw-mb-6 tw-rounded-xl tw-overflow-hidden tw-border tw-border-red-200 tw-bg-white tw-shadow-lg">
-                        <div className="tw-flex tw-items-center tw-gap-3 tw-bg-gradient-to-r tw-from-red-500 tw-to-red-600 tw-px-6 tw-py-4 tw-text-white">
-                            <div className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-white tw-text-red-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-lg tw-shadow-lg">1</div>
-                            <span className="tw-font-bold tw-text-xl">{t("problemDetails", lang)}</span>
+                    <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
+                        <div className="tw-flex tw-items-center tw-gap-3 tw-bg-red-600 hover:tw-bg-red-700 tw-px-4 tw-py-3 tw-text-white tw-cursor-pointer tw-transition-colors">
+                            <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-red-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">1</div>
+                            <span className="tw-font-semibold tw-text-base">{t("problemDetails", lang)}</span>
                             <span className="tw-ml-auto tw-text-xs tw-bg-white/20 tw-px-2.5 tw-py-1 tw-rounded-full tw-font-medium">Read Only</span>
                         </div>
 
@@ -1109,15 +1322,17 @@ export default function CMInProgressForm() {
 
                             {/* Problem Details */}
                             <div>
-                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("details", lang)}</label>
+                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("problemSummarySection", lang)}</label>
                                 <Textarea value={job.problem_details || ""} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
                             </div>
 
-                            {/* Remarks */}
+                            {/* Remarks - ซ่อนถ้าไม่มีหมายเหตุ */}
+                            {(job.remarks || "").trim() && (job.remarks || "").trim() !== "-" && (
                             <div>
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks", lang)}</label>
                                 <Textarea value={job.remarks || ""} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
                             </div>
+                            )}
 
                             {/* Job Status */}
                             <div>
@@ -1137,10 +1352,10 @@ export default function CMInProgressForm() {
                     </div>
 
                     {/* Section 2: Problem Found (Editable) */}
-                    <div className="tw-mb-6 tw-rounded-xl tw-overflow-hidden tw-border tw-border-blue-200 tw-bg-white tw-shadow-lg">
-                        <div className="tw-flex tw-items-center tw-gap-3 tw-bg-gradient-to-r tw-from-blue-500 tw-to-blue-600 tw-px-6 tw-py-4 tw-text-white">
-                            <div className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-white tw-text-blue-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-lg tw-shadow-lg">2</div>
-                            <span className="tw-font-bold tw-text-xl">{t("problemSummarySection", lang)}</span>
+                    <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
+                        <div className="tw-flex tw-items-center tw-gap-3 tw-bg-blue-600 hover:tw-bg-blue-700 tw-px-4 tw-py-3 tw-text-white tw-cursor-pointer tw-transition-colors">
+                            <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-blue-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">2</div>
+                            <span className="tw-font-semibold tw-text-base">{t("problemSummarySection", lang)}</span>
                         </div>
 
                         <div className="tw-p-6 tw-space-y-5">
@@ -1150,13 +1365,31 @@ export default function CMInProgressForm() {
                                     <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
                                     {t("problemType", lang)} <span className="tw-text-red-500">*</span>
                                 </label>
-                                <input
-                                    type="text"
-                                    value={job.problem_type}
-                                    onChange={(e) => setJob(prev => ({ ...prev, problem_type: e.target.value }))}
-                                    placeholder={lang === "th" ? "กรอกประเภทปัญหา..." : "Enter problem type..."}
-                                    className="tw-w-full md:tw-w-96 tw-h-10 tw-px-3 tw-border tw-border-gray-300 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-blue-400 tw-transition-colors"
-                                />
+                                <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start tw-gap-3">
+                                    <select
+                                        value={job.problem_type}
+                                        onChange={(e) => setJob(prev => ({ ...prev, problem_type: e.target.value, problem_type_other: e.target.value === "Other" ? prev.problem_type_other : "" }))}
+                                        className="tw-w-full md:tw-w-96 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-blue-500/20 focus:tw-border-blue-500 tw-transition-all tw-cursor-pointer tw-flex-shrink-0"
+                                    >
+                                        <option value="">{lang === "th" ? "-- เลือกประเภทปัญหา --" : "-- Select problem type --"}</option>
+                                        {PROBLEM_TYPE_OPTIONS.map((opt) => (
+                                            <option key={opt.value} value={opt.value}>
+                                                {lang === "en" ? opt.en : opt.th}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {job.problem_type === "Other" && (
+                                        <div className="tw-flex-1 tw-w-full">
+                                            <input
+                                                type="text"
+                                                value={job.problem_type_other}
+                                                onChange={e => setJob(prev => ({ ...prev, problem_type_other: e.target.value }))}
+                                                placeholder={lang === "th" ? "กรุณาระบุประเภทปัญหา *" : "Please specify problem type *"}
+                                                className="tw-w-full tw-h-12 tw-px-4 tw-border tw-border-gray-200 tw-rounded-xl tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-blue-500/20 focus:tw-border-blue-500 tw-transition-all"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Cause */}
@@ -1177,10 +1410,10 @@ export default function CMInProgressForm() {
                     </div>
 
                     {/* Section 3: Corrective Actions (Editable) */}
-                    <div className="tw-mb-6 tw-rounded-xl tw-overflow-hidden tw-border tw-border-amber-200 tw-bg-white tw-shadow-lg">
-                        <div className="tw-flex tw-items-center tw-gap-3 tw-bg-gradient-to-r tw-from-amber-500 tw-to-amber-600 tw-px-6 tw-py-4 tw-text-white">
-                            <div className="tw-w-10 tw-h-10 tw-rounded-full tw-bg-white tw-text-amber-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-lg tw-shadow-lg">3</div>
-                            <span className="tw-font-bold tw-text-xl">{t("correctiveSection", lang)}</span>
+                    <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
+                        <div className="tw-flex tw-items-center tw-gap-3 tw-bg-amber-600 hover:tw-bg-amber-700 tw-px-4 tw-py-3 tw-text-white tw-cursor-pointer tw-transition-colors">
+                            <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-amber-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">3</div>
+                            <span className="tw-font-semibold tw-text-base">{t("correctiveSection", lang)}</span>
                         </div>
 
                         <div className="tw-p-6 tw-space-y-6">
@@ -1213,17 +1446,21 @@ export default function CMInProgressForm() {
                                         isSearchable
                                         isLoading={loadingDevices}
                                         placeholder={t("selectEquipmentPlaceholder", lang)}
-                                        noOptionsMessage={() => lang === "th" ? "ไม่พบข้อมูล" : "No options"}
+                                        noOptionsMessage={() => job.faulty_equipment
+                                            ? (lang === "th" ? "ไม่พบอุปกรณ์ภายในอุปกรณ์นี้" : "No internal devices found")
+                                            : (lang === "th" ? "กรุณาเลือกอุปกรณ์ที่พังก่อน" : "Please select faulty equipment first")
+                                        }
                                         formatCreateLabel={(inputValue) => lang === "th" ? `เพิ่ม "${inputValue}"` : `Add "${inputValue}"`}
                                         value={job.repaired_equipment.map(val => ({ value: val, label: formatDeviceName(val) }))}
                                         onChange={(options) => setJob({ ...job, repaired_equipment: options ? options.map(opt => opt.value) : [] })}
                                         options={devices.map(key => ({ value: key, label: formatDeviceName(key) }))}
+                                        isDisabled={!job.faulty_equipment}
                                         styles={{
                                             control: (base, state) => ({
                                                 ...base,
                                                 minHeight: "42px",
                                                 borderColor: state.isFocused ? "#f59e0b" : "#e5e7eb",
-                                                backgroundColor: "#ffffff",
+                                                backgroundColor: !job.faulty_equipment ? "#f9fafb" : "#ffffff",
                                                 borderRadius: "8px",
                                                 boxShadow: state.isFocused ? "0 0 0 3px rgba(245, 158, 11, 0.15)" : "none",
                                                 "&:hover": { borderColor: "#f59e0b" },
@@ -1309,6 +1546,12 @@ export default function CMInProgressForm() {
                                                                     {action.beforeImages.map((img) => (
                                                                         <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-red-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
                                                                             <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                                            {(img.createdAt || img.location) && (
+                                                                                <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
+                                                                                    {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
+                                                                                    {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
+                                                                                </span>
+                                                                            )}
                                                                             <button type="button" onClick={() => removeCorrectiveBeforeImage(i, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all">
                                                                                 <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
                                                                             </button>
@@ -1327,7 +1570,7 @@ export default function CMInProgressForm() {
                                                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
                                                                 <span className="tw-text-sm tw-font-semibold tw-text-green-700 tw-flex tw-items-center tw-gap-2">
                                                                     <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-green-500"></span>
-                                                                    {t("afterPhoto", lang)} <span className="tw-text-red-500">*</span>
+                                                                    {t("afterPhoto", lang)} {isClosedResult && <span className="tw-text-red-500">*</span>}
                                                                 </span>
                                                                 <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-green-300 tw-text-green-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-green-50 tw-shadow-sm tw-transition-all">
                                                                     <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addCorrectiveAfterImages(i, e.target.files)} />
@@ -1340,6 +1583,12 @@ export default function CMInProgressForm() {
                                                                     {action.afterImages.map((img) => (
                                                                         <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-green-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
                                                                             <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                                            {(img.createdAt || img.location) && (
+                                                                                <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
+                                                                                    {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
+                                                                                    {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
+                                                                                </span>
+                                                                            )}
                                                                             <button type="button" onClick={() => removeCorrectiveAfterImage(i, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all">
                                                                                 <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
                                                                             </button>
@@ -1348,7 +1597,10 @@ export default function CMInProgressForm() {
                                                                 </div>
                                                             ) : (
                                                                 <div className="tw-text-center tw-py-6 tw-text-green-600 tw-text-sm tw-font-medium">
-                                                                    {lang === "th" ? "⚠️ กรุณาแนบรูปหลังแก้ไข" : "⚠️ Please attach after image"}
+                                                                    {isClosedResult
+                                                                        ? (lang === "th" ? "⚠️ กรุณาแนบรูปหลังแก้ไข" : "⚠️ Please attach after image")
+                                                                        : (lang === "th" ? "ยังไม่มีรูปหลังแก้ไข" : "No after image yet")
+                                                                    }
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1370,11 +1622,11 @@ export default function CMInProgressForm() {
                             </div>
 
                             {/* Preventive Action */}
-                            <div className="tw-space-y-3">
+                            <div id="cm-preventive" className="tw-space-y-3">
                                 <div className="tw-flex tw-items-center tw-justify-between">
                                     <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                         <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
-                                        {t("preventiveAction", lang)}
+                                        {t("preventiveAction", lang)} {isClosedResult && <span className="tw-text-red-500">*</span>}
                                     </label>
                                     <button type="button" onClick={addPreventiveAction} className="tw-text-sm tw-font-semibold tw-rounded-lg tw-bg-amber-500 tw-text-white tw-px-4 tw-py-2 hover:tw-bg-amber-600 tw-shadow-md hover:tw-shadow-lg tw-transition-all tw-flex tw-items-center tw-gap-1.5">
                                         <span className="tw-text-lg tw-leading-none">+</span> {t("addPreventive", lang)}
@@ -1409,18 +1661,32 @@ export default function CMInProgressForm() {
                                     <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
                                     {t("repairResult", lang)} <span className="tw-text-red-500">*</span>
                                 </label>
-                                <select
-                                    value={job.repair_result}
-                                    onChange={(e) => setJob(prev => ({ ...prev, repair_result: e.target.value }))}
-                                    className="tw-w-full md:tw-w-96 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer"
-                                >
-                                    <option value="">{lang === "th" ? "-- เลือกผลหลังซ่อม --" : "-- Select repair result --"}</option>
-                                    {REPAIR_OPTIONS.map((opt) => (
-                                        <option key={opt.value} value={opt.value}>
-                                            {lang === "en" ? opt.en : opt.th}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start tw-gap-3">
+                                    <select
+                                        value={job.repair_result}
+                                        onChange={(e) => setJob(prev => ({ ...prev, repair_result: e.target.value }))}
+                                        className="tw-w-full md:tw-w-96 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer tw-flex-shrink-0"
+                                    >
+                                        <option value="">{lang === "th" ? "-- เลือกผลหลังซ่อม --" : "-- Select repair result --"}</option>
+                                        {REPAIR_OPTIONS.map((opt) => (
+                                            <option key={opt.value} value={opt.value}>
+                                                {lang === "en" ? opt.en : opt.th}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {/* Inline remarks - แสดงเมื่อเลือก ติดตามผล / รออะไหล่ */}
+                                    {(job.repair_result === "อยู่ระหว่างการติดตามผล" || job.repair_result === "อยู่ระหว่างการรออะไหล่") && (
+                                        <div className="tw-flex-1 tw-w-full">
+                                                <input
+                                                    type="text"
+                                                    value={job.repair_result_remark}
+                                                    onChange={e => setJob(prev => ({ ...prev, repair_result_remark: e.target.value }))}
+                                                    placeholder={lang === "th" ? "กรอกหมายเหตุ *" : "Enter remarks *"}
+                                                    className="tw-w-full tw-h-12 tw-px-4 tw-border tw-border-gray-200 tw-rounded-xl tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all"
+                                                />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>

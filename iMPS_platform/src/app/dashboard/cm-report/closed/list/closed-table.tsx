@@ -40,6 +40,8 @@ const T = {
   colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
   colCmDate: { th: "วันที่แจ้ง", en: "Found Date" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
+  colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
+  colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
   colStatus: { th: "สถานะ", en: "Status" },
 
   // Pagination
@@ -88,10 +90,12 @@ type TData = {
   id?: string;
   doc_name?: string;
   issue_id?: string;
-  cm_date: string;   // YYYY-MM-DD
-  position: string;  // YYYY-MM-DD ใช้ sort/filter
-  office: string;    // ลิงก์ไฟล์
+  cm_date: string;
+  position: string;
+  office: string;
   reported_by?: string;
+  location?: string;
+  problem_details?: string;
   status: string;
 };
 
@@ -246,7 +250,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       };
     }
 
-    return { previewHref: u, downloadHref: u, isPdfEndpoint: false };
+    const withStation = appendParam(u, "station_id", stationId || "");
+    return { previewHref: withStation, downloadHref: withStation, isPdfEndpoint: false };
   }
 
   const fetchRows = async () => {
@@ -311,7 +316,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         }
 
         const id = extractId(it);
-        const generatedUrl = id ? `${apiBase}/pdf/cm/${encodeURIComponent(id)}/export` : "";
+        const generatedUrl = id ? `${apiBase}/pdf/cm/${encodeURIComponent(id)}/export?station_id=${encodeURIComponent(stationId || "")}` : "";
         const fileUrl = uploadedUrl || generatedUrl;
 
         return { 
@@ -322,6 +327,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay, 
           office: fileUrl, 
           reported_by: it.reported_by || it.technician || "",
+          location: it.faulty_equipment || "",
+          problem_details: it.problem_details || "",
           status: getStatusText(it) || "-", 
         };
       });
@@ -342,6 +349,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay, 
           office: resolveFileHref(raw, apiBase), 
           reported_by: it.reported_by || it.technician || "",
+          location: it.faulty_equipment || "",
+          problem_details: it.problem_details || "",
           status: getStatusText(it) || "-", 
         };
       });
@@ -445,6 +454,34 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
+      accessorFn: (row) => row.location || "-",
+      id: "location",
+      header: () => t("colLocation", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 150,
+      minSize: 100,
+      maxSize: 200,
+      meta: { headerAlign: "center", cellAlign: "left" },
+    },
+    {
+      accessorFn: (row) => row.problem_details || "-",
+      id: "problem_details",
+      header: () => t("colProblemDetails", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 200,
+      minSize: 120,
+      maxSize: 300,
+      meta: { headerAlign: "center", cellAlign: "left" },
+    },
+    {
       accessorFn: (row) => row.status ?? "-",
       id: "status",
       header: () => t("colStatus", lang),
@@ -453,7 +490,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const sl = s.toLowerCase();
         const color =
           sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
-            sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
+            sl === "closed" || sl === "close" ? "tw-bg-red-100 tw-text-red-800" :
               sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
                 "tw-bg-blue-gray-100 tw-text-blue-gray-800";
         return (
