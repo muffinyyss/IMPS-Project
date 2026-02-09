@@ -67,17 +67,33 @@ export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
         return table[c] ?? "-";
     };
 
+    const getCpStatus = (icp: any, usl: any): string => {
+        const icpVal = Number(icp);
+        const uslVal = String(usl ?? "");
+
+        if (icpVal === 1 && uslVal === "0") return "Available";
+        if (icpVal === 2 && uslVal === "0") return "Preparing";
+        if (icpVal === 2 && uslVal === "5") return "Insulation fault";
+        if (icpVal === 2 && uslVal === "15") return "Please unplug";
+        if (icpVal === 6 && uslVal === "0") return "Communication error";
+        if (icpVal === 7 && uslVal === "0") return "Suspended";
+        if (icpVal === 7 && uslVal === "13") return "Charging";
+
+
+        return "Unknown";
+    };
+
     //  เตรียม rows จาก data จริง
     const rows = useMemo(
             () => {
                 const config1 = [
-                        { label: "CP State Head 1", value: (data?.CP_status1) },
+                        { label: "CP State Head 1", value: getCpStatus(data?.icp1, data?.usl1) },
                         { label: "Target Voltage Head 1 ", value: fmtNum(data?.target_voltage1), unit: "V" },
                         { label: "Target Current Head 1 ", value: fmtNum(data?.target_current1), unit: "A" },
                     ];
                 const config2 = [
             // รายการข้อมูลสำหรับ Head 2
-                        { label: "CP State Head 2", value: (data?.CP_status2) },
+                        { label: "CP State Head 2", value: getCpStatus(data?.icp2, data?.usl2) },
                         { label: "Target Voltage Head 2 ", value: fmtNum(data?.target_voltage2), unit: "V" },
                         { label: "Target Current Head 2 ", value: fmtNum(data?.target_current2), unit: "A" },
                     ];
