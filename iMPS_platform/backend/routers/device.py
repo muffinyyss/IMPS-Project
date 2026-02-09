@@ -1,0 +1,101 @@
+"""Device utilization routes (by SN)"""
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi.responses import StreamingResponse
+from datetime import datetime, timezone
+import json, re, asyncio
+
+from config import deviceDB, _ensure_utc_iso
+from deps import UserClaims, get_current_user
+
+router = APIRouter()
+
+# ----------------------------------------------------------------------- device page (SN)
+def get_device_collection_for(station_id: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+    return deviceDB.get_collection(str(station_id))
+
+# (เลือกได้) สร้างดัชนีแบบ lazy ต่อสถานีที่ถูกเรียกใช้
+async def _ensure_util_index(coll):
+    try:
+        await coll.create_index([("timestamp", -1), ("_id", -1)])
+    except Exception:
+        pass
+
+@router.get("/utilization/stream")
+async def utilization_stream(request: Request, sn: str = Query(...), current: UserClaims = Depends(get_current_user)):
+
+    coll = get_device_collection_for(sn)
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    async def event_generator():
+        # ส่ง snapshot ล่าสุดก่อน
+        latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+        if latest:
+            latest["_id"] = str(latest["_id"])
+            latest["timestamp_utc"] = _ensure_utc_iso(latest.get("timestamp_utc"))
+            yield f"event: init\ndata: {json.dumps(latest)}\n\n"
+
+        # ต่อด้วย change stream (ต้องเป็น replica set / Atlas tier ที่รองรับ)
+        try:
+            async with coll.watch(full_document='updateLookup') as stream:
+                async for change in stream:
+                    if await request.is_disconnected():
+                        break
+                    doc = change.get("fullDocument")
+                    if not doc:
+                        continue
+                    doc["_id"] = str(doc["_id"])
+                    doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
+                    yield f"data: {json.dumps(doc)}\n\n"
+        except Exception:
+            # fallback: ถ้าใช้ไม่ได้ (เช่น standalone) ให้ polling
+            last_id = latest.get("_id") if latest else None
+            while not await request.is_disconnected():
+                doc = await coll.find_one({}, sort=[("timestamp_utc", -1), ("_id", -1)])
+                if doc and str(doc["_id"]) != str(last_id):
+                    last_id = str(doc["_id"])
+                    doc["_id"] = last_id
+                    doc["timestamp_utc"] = _ensure_utc_iso(doc.get("timestamp_utc"))
+                    yield f"data: {json.dumps(doc)}\n\n"
+                else:
+                    yield ": keep-alive\n\n"
+                await asyncio.sleep(5)
+
+    return StreamingResponse(event_generator(), headers=headers)
+
+@router.get("/station/{sn}/device-keys")
+async def get_station_device_keys(
+    sn: str, 
+    current: UserClaims = Depends(get_current_user)
+):
+    """
+    ดึงเฉพาะ device keys สำหรับแสดงใน dropdown
+    sn = Serial Number ของ charger เช่น F1500624011
+    Returns: { "keys": ["DC_power_contractor1", "FUSE1", "Router", ...] }
+    """
+    coll = get_device_collection_for(sn)
+    
+    latest = await coll.find_one({}, sort=[("timestamp", -1), ("_id", -1)])
+    
+    if not latest:
+        return {"keys": []}
+    
+    # ลบ field ที่ไม่ต้องการแล้วเอาเฉพาะ keys
+    fields_to_exclude = {"_id", "timestamp", "timestamp_utc"}
+    keys = [k for k in latest.keys() if k not in fields_to_exclude]
+    
+    # เรียงลำดับตามชื่อ
+    keys.sort()
+    
+    return {"keys": keys}
+
+# ---------------------------------------------------------------------------------------
+# device page (station_id)
+# ---------------------------------------------------------------------------------------
+#             latest["_id"] = str(latest["_id"])
