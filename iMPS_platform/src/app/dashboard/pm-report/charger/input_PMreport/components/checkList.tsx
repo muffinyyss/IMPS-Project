@@ -20,6 +20,37 @@ import { apiFetch } from "@/utils/api";
 // 2) Only one ChargerPMForm mounts at a time
 let _stationNameForGPS = "";
 
+// ==================== GPS + ADDRESS CACHE ====================
+// Pre-fetch GPS + ที่อยู่ตั้งแต่เปิดหน้า เพื่อไม่ให้รูปแรกโหลดนาน
+let _cachedLocation: { text: string; timestamp: number } | null = null;
+let _locationFetching = false;
+const LOCATION_CACHE_MAX_AGE = 5 * 60 * 1000; // 5 นาที
+
+async function prefetchLocation(): Promise<void> {
+    if (_locationFetching) return;
+    _locationFetching = true;
+    try {
+        const gps = await getCurrentGPS();
+        if (gps) {
+            const text = await reverseGeocode(gps.lat, gps.lng);
+            _cachedLocation = { text, timestamp: Date.now() };
+        }
+    } catch { /* silent */ }
+    _locationFetching = false;
+}
+
+async function getCachedLocation(): Promise<string> {
+    // ถ้ามี cache อยู่และยังไม่หมดอายุ ใช้เลย
+    if (_cachedLocation && (Date.now() - _cachedLocation.timestamp) < LOCATION_CACHE_MAX_AGE) {
+        // refresh เบื้องหลังสำหรับรูปถัดไป
+        void prefetchLocation();
+        return _cachedLocation.text;
+    }
+    // ถ้าไม่มี cache ต้องรอ fetch
+    await prefetchLocation();
+    return _cachedLocation?.text || "ไม่สามารถระบุตำแหน่งได้";
+}
+
 type TabId = "pre" | "post";
 
 const TABS: { id: TabId; label: string; slug: "pre" | "post" }[] = [
@@ -193,6 +224,8 @@ type PhotoItem = {
     error?: string;
     ref?: PhotoRef;
     isNA?: boolean;
+    createdAt?: string;
+    location?: string;
 };
 
 type BilingualText = { th: string; en: string };
@@ -981,91 +1014,169 @@ function InputWithUnit<U extends string>({
 
 // ==================== GET GPS LOCATION ====================
 async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
-    return new Promise((resolve) => {
-        // ตรวจสอบว่า browser รองรับ Geolocation หรือไม่
-        if (!navigator.geolocation) {
-            resolve(null);
-            return;
-        }
-        
-        // ตรวจสอบ Secure Context (HTTPS) - จำเป็นสำหรับ iOS
-        if (window.isSecureContext === false) {
-            resolve(null);
-            return;
-        }
-        
-        // ตั้ง timeout fallback
-        const timeoutId = setTimeout(() => {
-            resolve(null);
-        }, 10000);
-        
+    if (!navigator.geolocation) return null;
+    if (window.isSecureContext === false) return null;
+
+    // ลอง cached ก่อน (เร็วมาก ~0ms)
+    const fast = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+        const t = setTimeout(() => resolve(null), 2000);
         navigator.geolocation.getCurrentPosition(
-            (position) => {
-                clearTimeout(timeoutId);
-                resolve({
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                });
-            },
-            (error) => {
-                clearTimeout(timeoutId);
-                // error.code: 1 = PERMISSION_DENIED, 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT
-                resolve(null);
-            },
-            { 
-                enableHighAccuracy: false, // false = เร็วกว่า, ใช้ได้บน iOS
-                timeout: 8000, 
-                maximumAge: 60000 // cache 1 นาที
-            }
+            (pos) => { clearTimeout(t); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+            () => { clearTimeout(t); resolve(null); },
+            { enableHighAccuracy: false, timeout: 1500, maximumAge: 300000 } // cache 5 นาที
+        );
+    });
+    if (fast) return fast;
+
+    // ถ้า cache ไม่มี ลอง high accuracy
+    return new Promise((resolve) => {
+        const t = setTimeout(() => resolve(null), 8000);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => { clearTimeout(t); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+            () => { clearTimeout(t); resolve(null); },
+            { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
         );
     });
 }
 
 // ==================== REVERSE GEOCODING ====================
-async function reverseGeocode(lat: number, lng: number): Promise<string> {
+const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ?? "";
+
+async function reverseGeocodeGoogle(lat: number, lng: number): Promise<string | null> {
+    if (!GOOGLE_MAPS_KEY) return null;
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // timeout 3 วินาที
-        
-        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th&zoom=18`;
-        const res = await apiFetch(url, {
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=th&result_type=street_address|route|premise|subpremise|establishment&key=${GOOGLE_MAPS_KEY}`;
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data.status !== "OK" || !data.results?.length) return null;
+
+        // ใช้ผลลัพธ์แรกที่ละเอียดที่สุด
+        const best = data.results[0];
+        const components = best.address_components || [];
+
+        const get = (type: string) => components.find((c: any) => c.types?.includes(type))?.long_name || "";
+
+        const streetNumber = get("street_number");
+        const route = get("route");                          // ถนน/ซอย
+        const sublocality2 = get("sublocality_level_2");     // ซอยย่อย
+        const sublocality1 = get("sublocality_level_1");     // แขวง/ตำบล
+        const locality = get("locality");                     // เขต/อำเภอ
+        const adminArea2 = get("administrative_area_level_2"); // อำเภอ (บางที)
+        const adminArea1 = get("administrative_area_level_1"); // จังหวัด
+        const premise = get("premise");                       // ชื่ออาคาร/สถานที่
+
+        const parts: string[] = [];
+
+        // ชื่อสถานที่/อาคาร
+        if (premise) parts.push(premise);
+
+        // บ้านเลขที่ + ถนน
+        if (streetNumber && route) parts.push(`${streetNumber} ${route}`);
+        else if (route) parts.push(route);
+
+        // ซอยย่อย
+        if (sublocality2 && !parts.some(p => p.includes(sublocality2))) parts.push(sublocality2);
+
+        // ตำบล/แขวง
+        const sub = sublocality1;
+        if (sub && !parts.some(p => p.includes(sub))) parts.push(sub);
+
+        // อำเภอ/เขต
+        const dist = locality || adminArea2;
+        if (dist && !parts.some(p => p.includes(dist))) parts.push(dist);
+
+        // จังหวัด
+        if (adminArea1 && !parts.some(p => p.includes(adminArea1))) parts.push(adminArea1);
+
+        if (parts.length > 0) {
+            let result = parts.join(" ");
+            if (result.length > 80) result = result.substring(0, 77) + "...";
+            return result;
+        }
+
+        // fallback: ใช้ formatted_address จาก Google
+        if (best.formatted_address) {
+            const addr = best.formatted_address.replace(/\s*\d{5}\s*/, " ").replace(/ประเทศไทย/g, "").trim();
+            return addr.length > 80 ? addr.substring(0, 77) + "..." : addr;
+        }
+
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+async function reverseGeocodeNominatim(lat: number, lng: number): Promise<string> {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th&zoom=21&addressdetails=1`;
+        const res = await fetch(url, {
             headers: { "User-Agent": "PM-Checklist-App/1.0" },
             signal: controller.signal,
         });
         clearTimeout(timeoutId);
-        
-        if (!res.ok) return `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        if (!res.ok) return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
         const data = await res.json();
-        
-        // สร้างชื่อสถานที่จาก address components
+
         const addr = data.address || {};
+        const poi = addr.amenity || addr.building || addr.shop || addr.tourism || addr.leisure || addr.office || addr.industrial || "";
+        let roadPart = "";
+        const houseNo = addr.house_number || "";
+        const road = addr.road || addr.pedestrian || addr.footway || "";
+        if (houseNo && road) roadPart = `${houseNo} ${road}`;
+        else if (road) roadPart = road;
+
+        const village = addr.village || addr.hamlet || addr.neighbourhood || addr.residential || addr.quarter || "";
+        const subdistrict = addr.subdistrict || addr.suburb || "";
+        const district = addr.district || addr.city_district || addr.county || "";
+        const province = addr.province || addr.state || addr.city || addr.town || "";
+
+        const rawParts = [poi, roadPart, village, subdistrict, district, province].filter(Boolean);
         const parts: string[] = [];
-        
-        // เลือกข้อมูลที่สำคัญ
-        if (addr.road) parts.push(addr.road);
-        if (addr.suburb) parts.push(addr.suburb);
-        else if (addr.neighbourhood) parts.push(addr.neighbourhood);
-        if (addr.subdistrict) parts.push(addr.subdistrict);
-        else if (addr.district) parts.push(addr.district);
-        if (addr.city) parts.push(addr.city);
-        else if (addr.town) parts.push(addr.town);
-        else if (addr.province) parts.push(addr.province);
-        
+        for (const p of rawParts) {
+            if (!parts.some(existing => existing.includes(p) || p.includes(existing))) parts.push(p);
+        }
+
         if (parts.length > 0) {
-            // จำกัดความยาวไม่เกิน 50 ตัวอักษร
-            let result = parts.slice(0, 3).join(", ");
-            if (result.length > 50) result = result.substring(0, 47) + "...";
+            let result = parts.slice(0, 4).join(" ");
+            if (result.length > 70) result = result.substring(0, 67) + "...";
             return result;
         }
-        
-        return data.display_name?.substring(0, 50) || `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+        if (data.display_name) {
+            const short = data.display_name.split(",").slice(0, 4).join(",").trim();
+            return short.length > 70 ? short.substring(0, 67) + "..." : short;
+        }
+
+        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     } catch {
-        // ถ้า API ไม่ตอบ ใช้พิกัด GPS แทน
-        return `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     }
 }
 
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+    // ลอง Google ก่อน (ละเอียดกว่า)
+    const google = await reverseGeocodeGoogle(lat, lng);
+    if (google) return google;
+    // fallback Nominatim
+    return reverseGeocodeNominatim(lat, lng);
+}
+
 // ==================== ADD TIMESTAMP TO IMAGE ====================
+// ⚡ FIX: แปลงชื่อไฟล์ให้นามสกุลตรงกับ content จริง (JPEG)
+// เช่น "IMG_1234.HEIC" → "IMG_1234.jpg", "photo.PNG" → "photo.jpg"
+function ensureJpgFilename(name: string): string {
+    if (!name) return `image_${Date.now()}.jpg`;
+    const dot = name.lastIndexOf(".");
+    if (dot <= 0) return `${name}.jpg`;
+    return `${name.substring(0, dot)}.jpg`;
+}
+
 async function addTimestampToImage(file: File, locationText: string): Promise<File> {
     return new Promise((resolve) => {
         const img = document.createElement("img");
@@ -1105,8 +1216,10 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                 const lineHeight = fontSize * 1.3;
                 
                 ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-                const timestampWidth = ctx.measureText(timestamp).width;
-                const locationWidth = ctx.measureText(locationText).width;
+                const timestampDisplay = timestamp;
+                const locationDisplay = `📍 ${locationText}`;
+                const timestampWidth = ctx.measureText(timestampDisplay).width;
+                const locationWidth = ctx.measureText(locationDisplay).width;
                 const maxTextWidth = Math.max(timestampWidth, locationWidth);
                 const totalHeight = lineHeight * 2;
                 
@@ -1119,14 +1232,15 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                 // วาด text สีขาว
                 ctx.fillStyle = "#FFFFFF";
                 ctx.textBaseline = "top";
-                ctx.fillText(timestamp, bgX + padding, bgY + padding);
-                ctx.fillText(locationText, bgX + padding, bgY + padding + lineHeight);
+                ctx.fillText(timestampDisplay, bgX + padding, bgY + padding);
+                ctx.fillText(locationDisplay, bgX + padding, bgY + padding + lineHeight);
                 
                 
                 // แปลงกลับเป็น File
                 canvas.toBlob((blob) => {
                     if (blob) {
-                        const newFile = new File([blob], file.name, { type: "image/jpeg" });
+                        // ⚡ FIX: ใช้ ensureJpgFilename เพื่อแก้นามสกุลให้ตรงกับ content (JPEG)
+                        const newFile = new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" });
                         resolve(newFile);
                     } else {
                         console.error("Canvas toBlob failed");
@@ -1174,23 +1288,12 @@ function PhotoMultiInput({
     const [landscapeWarning, setLandscapeWarning] = useState(false);
 
     const processFile = async (file: File): Promise<PhotoItem> => {
-        let locationText = "";
-        try {
-            const gps = await getCurrentGPS();
-            if (gps) {
-                locationText = await reverseGeocode(gps.lat, gps.lng);
-            } else {
-                locationText = _stationNameForGPS || "ไม่สามารถระบุตำแหน่งได้";
-            }
-        } catch (err) {
-            console.error("GPS error:", err);
-            locationText = _stationNameForGPS || "ไม่สามารถระบุตำแหน่งได้";
-        }
-
+        const locationText = await getCachedLocation();
         const fileWithTimestamp = await addTimestampToImage(file, locationText);
         const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
         const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
-        return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
+        const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref, createdAt: now, location: locationText };
     };
 
     const handleFiles = async (list: FileList | null, fromCamera: boolean) => {
@@ -1296,6 +1399,13 @@ function PhotoMultiInput({
                         <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-gray-100 tw-shadow-xs tw-flex tw-flex-col">
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-100">
                                 {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-contain" />}
+                                {/* Timestamp & Location overlay */}
+                                {(p.createdAt || p.location) && (
+                                    <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
+                                        {p.createdAt && <span className="tw-block tw-font-mono">{p.createdAt}</span>}
+                                        {p.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {p.location}</span>}
+                                    </span>
+                                )}
                                 <button onClick={() => { void handleRemove(p.id); }}
                                     className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
@@ -1661,6 +1771,10 @@ export default function ChargerPMForm() {
 
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
 
+    // ⚡ Fix: เก็บ report_id ที่ submit JSON สำเร็จแล้ว เพื่อไม่ให้ submit ซ้ำตอน retry upload
+    const preReportIdRef = useRef<string | null>(null);
+    const postReportIdRef = useRef<string | null>(null);
+
     // ⚡ Fix: ใช้ ref เก็บค่าล่าสุดของ photos เพื่อ cleanup ตอน unmount
     const photosRef = useRef(photos);
     useEffect(() => { photosRef.current = photos; }, [photos]);
@@ -1701,6 +1815,8 @@ export default function ChargerPMForm() {
 
     // Sync station name for GPS fallback
     useEffect(() => { if (job.station_name) _stationNameForGPS = job.station_name; }, [job.station_name]);
+    // Pre-fetch GPS + ที่อยู่ตั้งแต่เปิดหน้า เพื่อให้รูปแรกไม่ต้องรอ
+    useEffect(() => { void prefetchLocation(); }, []);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
@@ -2413,25 +2529,78 @@ export default function ChargerPMForm() {
                 canvas.width = width; canvas.height = height;
                 const ctx = canvas.getContext("2d")!;
                 ctx.drawImage(img, 0, 0, width, height);
-                canvas.toBlob((blob) => { if (blob && blob.size < file.size) resolve(new File([blob], file.name, { type: "image/jpeg" })); else resolve(file); }, "image/jpeg", quality);
+                // ⚡ FIX: ใช้ ensureJpgFilename เพื่อแก้นามสกุลให้ตรงกับ content (JPEG)
+                canvas.toBlob((blob) => { if (blob && blob.size < file.size) resolve(new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" })); else resolve(file); }, "image/jpeg", quality);
             };
             img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
             img.src = URL.createObjectURL(file);
         });
     }
 
-    async function uploadGroupPhotos(reportId: string, sn: string, group: string, files: File[], side: TabId) {
-        if (files.length === 0) return;
-        const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
+    // ⚡ FIX 413: ส่งทีละรูป (sequential) แทนรวมทั้งกลุ่ม → ไม่เกิน nginx body limit
+    async function uploadSinglePhoto(reportId: string, sn: string, group: string, file: File, side: TabId) {
         const form = new FormData();
         form.append("sn", sn);
         form.append("group", group);
         form.append("side", side);
-        compressedFiles.forEach((f) => form.append("files", f));
+        form.append("files", file, ensureJpgFilename(file.name));
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/pmreport/${reportId}/pre/photos` : `${API_BASE}/pmreport/${reportId}/post/photos`;
+        console.log(`[upload] ${group} → 1 file | size: ${(file.size/1024).toFixed(0)}KB | name: ${file.name}`);
         const res = await apiFetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+            const errText = await res.text().catch(() => "");
+            const errMsg = `[${res.status}] ${group}: ${errText || res.statusText}`;
+            console.error(`[upload FAIL] ${errMsg}`);
+            throw new Error(errMsg);
+        }
+    }
+
+    async function uploadGroupPhotos(reportId: string, sn: string, group: string, files: File[], side: TabId) {
+        if (files.length === 0) return;
+        const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
+        // ⚡ ส่งทีละรูป sequential + retry แต่ละรูป — ป้องกัน 413 + ไม่ duplicate
+        for (let i = 0; i < compressedFiles.length; i++) {
+            console.log(`[upload] ${group} file ${i + 1}/${compressedFiles.length}`);
+            await uploadSinglePhotoWithRetry(reportId, sn, group, compressedFiles[i], side);
+        }
+    }
+
+    // ⚡ Retry ระดับรูปเดียว — ไม่ re-upload รูปที่สำเร็จแล้ว
+    async function uploadSinglePhotoWithRetry(reportId: string, sn: string, group: string, file: File, side: TabId, maxRetries = 3): Promise<void> {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                await uploadSinglePhoto(reportId, sn, group, file, side);
+                return;
+            } catch (err: any) {
+                console.warn(`[upload retry] ${group} file "${file.name}" attempt ${attempt}/${maxRetries} failed:`, err?.message);
+                if (attempt === maxRetries) throw err;
+                const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+                await new Promise(r => setTimeout(r, delay));
+            }
+        }
+    }
+
+    // ⚡ Batch upload: อัปโหลดทีละ concurrency กลุ่ม (retry อยู่ระดับรูปเดียวแล้ว)
+    async function uploadPhotosInBatches(
+        entries: { group: string; files: File[] }[],
+        reportId: string, sn: string, side: TabId,
+        concurrency = 3
+    ): Promise<{ group: string; error: string }[]> {
+        const failures: { group: string; error: string }[] = [];
+        for (let i = 0; i < entries.length; i += concurrency) {
+            const batch = entries.slice(i, i + concurrency);
+            const results = await Promise.allSettled(
+                batch.map(e => uploadGroupPhotos(reportId, sn, `g${e.group}`, e.files, side))
+            );
+            results.forEach((r, idx) => {
+                if (r.status === "rejected") {
+                    const errMsg = r.reason?.message || r.reason?.toString() || "unknown error";
+                    failures.push({ group: batch[idx].group, error: errMsg });
+                }
+            });
+        }
+        return failures;
     }
 
     const onPreSave = async () => {
@@ -2443,24 +2612,50 @@ export default function ChargerPMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const pm_date = job.date?.trim() || "";
-            const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-            const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId };
-            const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
-            if (!submitRes.ok) throw new Error(await submitRes.text());
-            const { report_id, doc_name } = await submitRes.json() as { report_id: string; doc_name?: string };
-            if (doc_name) setDocName(doc_name);
-            // ⚡ ใช้ allSettled เพื่อตรวจสอบว่ากลุ่มไหน fail
-            const uploadEntries: { group: string; promise: Promise<void> }[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadEntries.push({ group: no, promise: uploadGroupPhotos(report_id, sn, `g${no}`, files, "pre") }); } });
+
+            // ⚡ ตรวจสอบ report_id: ref > draft > submit ใหม่
+            let report_id = preReportIdRef.current;
+            if (!report_id) {
+                // ลองโหลดจาก draft (กรณี refresh หลัง submit สำเร็จแต่รูป fail)
+                const draft = loadDraftLocal(key);
+                if (draft?.pendingReportId) {
+                    report_id = draft.pendingReportId;
+                    preReportIdRef.current = report_id;
+                }
+            }
+            if (!report_id) {
+                const pm_date = job.date?.trim() || "";
+                const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
+                const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId };
+                const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+                if (!submitRes.ok) throw new Error(await submitRes.text());
+                const jsonRes = await submitRes.json() as { report_id: string; doc_name?: string };
+                report_id = jsonRes.report_id;
+                if (jsonRes.doc_name) setDocName(jsonRes.doc_name);
+                preReportIdRef.current = report_id;
+                // ⚡ บันทึก report_id ลง draft เผื่อ user refresh หน้า
+                saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, cp, m16: m16.state, summary, dustFilterChanged, photoRefs });
+            }
+
+            // ⚡ เตรียม entries สำหรับ upload (เฉพาะกลุ่มที่มี file จริง)
+            const uploadEntries: { group: string; files: File[] }[] = [];
+            Object.entries(photos).forEach(([no, list]) => {
+                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
+                if (files.length > 0) uploadEntries.push({ group: no, files });
+            });
+
+            // ⚡ อัปโหลดทีละ batch (3 กลุ่มพร้อมกัน) + retry แต่ละกลุ่ม 3 ครั้ง
             if (uploadEntries.length > 0) {
-                const results = await Promise.allSettled(uploadEntries.map(e => e.promise));
-                const failedGroups = results.map((r, i) => r.status === "rejected" ? uploadEntries[i].group : null).filter(Boolean);
-                if (failedGroups.length > 0) {
-                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
+                const failures = await uploadPhotosInBatches(uploadEntries, report_id, sn, "pre");
+                if (failures.length > 0) {
+                    const groupNums = failures.map(f => f.group).join(", ");
+                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
+                    console.error("[Pre-PM upload failures]", failures);
+                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${details}`);
                     return; // ไม่ clear draft เพื่อให้ user ลองใหม่ได้
                 }
             }
+            preReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
             const allPhotos = Object.values(photos).flat();
             Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => {});
             clearDraftLocal(key);
@@ -2474,23 +2669,48 @@ export default function ChargerPMForm() {
         setSubmitting(true);
         try {
             const token = localStorage.getItem("access_token");
-            const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
-            const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
-            if (!submitRes.ok) throw new Error(await submitRes.text());
-            const { report_id } = await submitRes.json() as { report_id: string };
-            // ⚡ ใช้ allSettled เพื่อตรวจสอบว่ากลุ่มไหน fail
-            const uploadEntries: { group: string; promise: Promise<void> }[] = [];
-            Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) { uploadEntries.push({ group: no, promise: uploadGroupPhotos(report_id, sn, `g${no}`, files, "post") }); } });
+
+            // ⚡ ตรวจสอบ report_id: ref > draft > submit ใหม่
+            let report_id = postReportIdRef.current;
+            if (!report_id) {
+                const draft = loadDraftLocal(postKey);
+                if (draft?.pendingReportId) {
+                    report_id = draft.pendingReportId;
+                    postReportIdRef.current = report_id;
+                }
+            }
+            if (!report_id) {
+                const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
+                const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+                if (!submitRes.ok) throw new Error(await submitRes.text());
+                const jsonRes = await submitRes.json() as { report_id: string };
+                report_id = jsonRes.report_id;
+                postReportIdRef.current = report_id;
+                // ⚡ บันทึก report_id ลง draft เผื่อ user refresh หน้า
+                saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs });
+            }
+
+            // ⚡ เตรียม entries สำหรับ upload (เฉพาะกลุ่มที่มี file จริง)
+            const uploadEntries: { group: string; files: File[] }[] = [];
+            Object.entries(photos).forEach(([no, list]) => {
+                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
+                if (files.length > 0) uploadEntries.push({ group: no, files });
+            });
+
+            // ⚡ อัปโหลดทีละ batch (3 กลุ่มพร้อมกัน) + retry แต่ละกลุ่ม 3 ครั้ง
             if (uploadEntries.length > 0) {
-                const results = await Promise.allSettled(uploadEntries.map(e => e.promise));
-                const failedGroups = results.map((r, i) => r.status === "rejected" ? uploadEntries[i].group : null).filter(Boolean);
-                if (failedGroups.length > 0) {
-                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${failedGroups.join(", ")} — ${lang === "th" ? "กรุณาลองใหม่" : "please try again"}`);
+                const failures = await uploadPhotosInBatches(uploadEntries, report_id, sn, "post");
+                if (failures.length > 0) {
+                    const groupNums = failures.map(f => f.group).join(", ");
+                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
+                    console.error("[Post-PM upload failures]", failures);
+                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${details}`);
                     return; // ไม่ finalize เพื่อให้ user ลองใหม่ได้
                 }
             }
             const finalizeRes = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ sn: sn }) });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
+            postReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
             const allPhotos = Object.values(photos).flat();
             Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => {});
             clearDraftLocal(postKey);

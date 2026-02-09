@@ -76,6 +76,20 @@ async function compressImage(file: File, maxW = 1600, maxH = 1600, quality = 0.8
 }
 function bytesToMB(n: number) { return (n / (1024 * 1024)).toFixed(2); }
 
+// ⚡ Retry helper: exponential backoff
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000); // 1s, 2s, 4s (max 8s)
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error("unreachable"); // TypeScript guard
+}
+
 /** ---------- Reusable Photo Slot (Memoized) ----------
  *  รับ groupKey + index เป็น props แทน inline closure
  *  เพื่อให้ React.memo สามารถ skip re-render ได้เมื่อ props ไม่เปลี่ยน
@@ -382,11 +396,14 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
     const url = `${API_BASE}/pmreport/upload?station_id=${encodeURIComponent(stationIdRef.current)}&report_id=${encodeURIComponent(reportIdRef.current)}&group=${encodeURIComponent(gk)}`;
 
     try {
-      const res = await apiFetch(url, { method: "POST", body: fd, credentials: "include" });
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json() as {
-        files: Array<{ index: number; url: string; path: string; filename: string }>;
-      };
+      // ⚡ FIX: ใช้ withRetry ลองซ้ำ 3 ครั้ง + exponential backoff
+      const json = await withRetry(async () => {
+        const res = await apiFetch(url, { method: "POST", body: fd, credentials: "include" });
+        if (!res.ok) throw new Error(await res.text());
+        return await res.json() as {
+          files: Array<{ index: number; url: string; path: string; filename: string }>;
+        };
+      });
 
       setGroups((prev) => {
         const next = { ...prev };
@@ -411,15 +428,34 @@ export default function PMReportPhotos({ onBack, stationId, reportId }: PMReport
     }
   }, []); // stable — อ่านค่าจาก ref เท่านั้น
 
+  // ⚡ FIX: uploadAll ใช้ continue on fail — ไม่หยุดทั้งหมดเมื่อกลุ่มใดกลุ่มหนึ่ง fail
   async function uploadAll() {
     setUploadingAll(true);
+    const failedGroups: string[] = [];
     try {
       for (const g of GROUPS) {
-        await uploadGroup(g.key);
+        // ข้ามกลุ่มที่ไม่มีไฟล์ต้อง upload
+        const hasFiles = await new Promise<boolean>((resolve) => {
+          setGroups((prev) => {
+            resolve(prev[g.key].some((it) => it.file));
+            return prev;
+          });
+        });
+        if (!hasFiles) continue;
+
+        try {
+          await uploadGroup(g.key);
+        } catch {
+          // ⚡ จำกลุ่มที่ fail แต่ไม่หยุด loop → อัปโหลดกลุ่มถัดไปต่อ
+          failedGroups.push(g.key.replace("g", ""));
+        }
       }
-      alert("อัปโหลดรูปครบแล้ว ✅");
-    } catch {
-      // error รายกลุ่มมีแสดงอยู่แล้ว
+
+      if (failedGroups.length > 0) {
+        alert(`อัปโหลดรูปไม่สำเร็จในหัวข้อ: ${failedGroups.join(", ")} — กรุณาลองใหม่`);
+      } else {
+        alert("อัปโหลดรูปครบแล้ว ✅");
+      }
     } finally {
       setUploadingAll(false);
     }

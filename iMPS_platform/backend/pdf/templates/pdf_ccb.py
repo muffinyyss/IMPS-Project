@@ -385,7 +385,7 @@ def _load_image_source_from_urlpath(
         return None, None
     
     # 1) backend/uploads (เช็คก่อน - เร็วที่สุด)
-    if not url_path.startswith("http"):  # ข้าม http URL
+    if not url_path.startswith("https"):  # ข้าม http URL
         # print("[DEBUG] 📂 ลองหาใน backend/uploads...")
         
         backend_root = Path(__file__).resolve().parents[2]
