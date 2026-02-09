@@ -40,6 +40,8 @@ const T = {
   colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
   colCmDate: { th: "วันที่แจ้ง", en: "Found Date" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
+  colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
+  colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
   colStatus: { th: "สถานะ", en: "Status" },
 
   // Pagination
@@ -82,10 +84,12 @@ type TData = {
   id?: string;
   doc_name?: string;
   issue_id?: string;
-  cm_date: string;   // YYYY-MM-DD
-  position: string;  // YYYY-MM-DD ใช้ sort/filter
-  office: string;    // ลิงก์ไฟล์
+  cm_date: string;
+  position: string;
+  office: string;
   reported_by?: string;
+  location?: string;
+  problem_details?: string;
   status: string;
 };
 
@@ -100,6 +104,8 @@ const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
+  const [userRole, setUserRole] = useState<string>("");
+  const isTechnician = userRole.toLowerCase() === "technician";
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
@@ -126,6 +132,23 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     const sidLocal = localStorage.getItem("selected_station_id");
     setStationId(sidLocal);
   }, [searchParams]);
+
+  // Fetch current user role from /me
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiFetch(`${apiBase}/me`);
+        if (res.ok) {
+          const user = await res.json();
+          if (alive) setUserRole(user.role ?? "");
+        }
+      } catch (err) {
+        console.error("fetch /me error:", err);
+      }
+    })();
+    return () => { alive = false; };
+  }, [apiBase]);
 
   const statusFromTab = (searchParams.get("status") ?? searchParams.get("tab") ?? "open").toLowerCase();
   const statusLabel = statusFromTab
@@ -278,6 +301,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: fileUrl,
           reported_by: it.reported_by || it.technician || "",
+          location: it.faulty_equipment || "",
+          problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
         };
       });
@@ -298,6 +323,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || it.technician || "",
+          location: it.faulty_equipment || "",
+          problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
         };
       });
@@ -399,6 +426,34 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       minSize: 80,
       maxSize: 160,
       meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.location || "-",
+      id: "location",
+      header: () => t("colLocation", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 150,
+      minSize: 100,
+      maxSize: 200,
+      meta: { headerAlign: "center", cellAlign: "left" },
+    },
+    {
+      accessorFn: (row) => row.problem_details || "-",
+      id: "problem_details",
+      header: () => t("colProblemDetails", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 200,
+      minSize: 120,
+      maxSize: 300,
+      meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
       accessorFn: (row) => row.status ?? "-",
@@ -571,6 +626,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
             </div>
 
             {/* Buttons Section */}
+            {!isTechnician && (
             <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
               <input
                 ref={pdfInputRef}
@@ -608,6 +664,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                 <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("add", lang)}</span>
               </Button>
             </div>
+            )}
           </div>
         </CardHeader>
 

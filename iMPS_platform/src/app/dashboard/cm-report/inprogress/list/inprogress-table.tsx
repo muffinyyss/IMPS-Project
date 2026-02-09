@@ -38,6 +38,8 @@ const T = {
   colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
   colFoundDate: { th: "วันที่แจ้ง", en: "Found Date" },
   colReportedBy: { th: "ผู้ตรวจสอบ", en: "Reported by" },
+  colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
+  colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
   colStatus: { th: "สถานะ", en: "Status" },
   colRepairResult: { th: "ผลการซ่อม", en: "Repair Result" },
 
@@ -81,11 +83,13 @@ type TData = {
   id?: string;
   doc_name?: string;
   issue_id?: string;
-  cm_date: string;   // YYYY-MM-DD
-  position: string;  // YYYY-MM-DD ใช้ sort/filter
-  office: string;    // ลิงก์ไฟล์
+  cm_date: string;
+  position: string;
+  office: string;
   reported_by?: string;
   repair_result?: string;
+  location?: string;
+  problem_details?: string;
   status: string;
 };
 
@@ -289,6 +293,8 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           office: fileUrl, 
           reported_by: it.reported_by || "",
           repair_result: it.repair_result || "",
+          location: it.faulty_equipment || "",
+          problem_details: it.problem_details || "",
           status: getStatusText(it) || "-", 
         };
       });
@@ -310,6 +316,8 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           office: resolveFileHref(raw, apiBase), 
           reported_by: it.reported_by || "",
           repair_result: it.repair_result || "",
+          location: it.faulty_equipment || "",
+          problem_details: it.problem_details || "",
           status: getStatusText(it) || "-", 
         };
       });
@@ -331,12 +339,14 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     }
   };
 
+  // ✅ Auto-refresh: refetch เมื่อกลับจาก form → list
   useEffect(() => {
+    if (mode !== "list") return;
     let alive = true;
     (async () => { await fetchRows(); })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBase, stationId]);
+  }, [apiBase, stationId, mode]);
 
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
@@ -407,6 +417,34 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       minSize: 80,
       maxSize: 160,
       meta: { headerAlign: "center", cellAlign: "center" },
+    },
+    {
+      accessorFn: (row) => row.location || "-",
+      id: "location",
+      header: () => t("colLocation", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 150,
+      minSize: 100,
+      maxSize: 200,
+      meta: { headerAlign: "center", cellAlign: "left" },
+    },
+    {
+      accessorFn: (row) => row.problem_details || "-",
+      id: "problem_details",
+      header: () => t("colProblemDetails", lang),
+      cell: (info: CellContext<TData, unknown>) => (
+        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+          {info.getValue() as React.ReactNode}
+        </span>
+      ),
+      size: 200,
+      minSize: 120,
+      maxSize: 300,
+      meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
       accessorFn: (row) => row.repair_result || "-",

@@ -64,8 +64,8 @@ const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 // ==================== TYPES ====================
 type Severity = "" | "Low" | "Medium" | "High" | "Critical";
 type Status = "" | "Open" | "In Progress";
-type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; };
-type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; };
+type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
+type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; createdAt?: string; location?: string; };
 type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; };
 type StationPublic = { station_id: string; station_name: string; };
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
@@ -175,6 +175,15 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
                     {photos_open.map(photo => (
                         <div key={photo.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-200 tw-bg-blue-gray-50 tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
                             <img src={photo.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                            {/* Timestamp & Location overlay */}
+                            {(photo.createdAt || photo.location) && (
+                                <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
+                                    {photo.createdAt && <span className="tw-block tw-font-mono">{photo.createdAt}</span>}
+                                    {photo.location && (
+                                        <span className="tw-block tw-opacity-80 tw-truncate">📍 {photo.location}</span>
+                                    )}
+                                </span>
+                            )}
                             {photo.isServer && (
                                 <span className="tw-absolute tw-bottom-1 tw-left-1 tw-text-[10px] tw-bg-blue-500 tw-text-white tw-px-1.5 tw-py-0.5 tw-rounded">Saved</span>
                             )}
@@ -264,22 +273,80 @@ export default function CMOpenForm() {
     };
 
     // ==================== PHOTO HANDLERS ====================
+    // Pre-fetch GPS + reverse geocode ตอนเปิดหน้า เก็บ cache ไว้ใช้ตอนแนบรูปทันที
+    const gpsCache = useRef<{ location?: string; fetched: boolean; promise?: Promise<string | undefined> }>({ fetched: false });
+
+    const fetchGpsLocation = useCallback(async (): Promise<string | undefined> => {
+        try {
+            if (!navigator.geolocation) { console.warn("[GPS] Geolocation not supported"); return undefined; }
+            const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 });
+            });
+            const { latitude, longitude } = pos.coords;
+            console.log("[GPS] Got coords:", latitude, longitude);
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=th&zoom=16`);
+                if (!res.ok) return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+                const data = await res.json();
+                const addr = data.address || {};
+                const parts = [addr.road, addr.suburb || addr.neighbourhood, addr.city_district || addr.town || addr.city, addr.state || addr.province].filter(Boolean);
+                const result = parts.length > 0 ? parts.join(", ") : (data.display_name?.split(",").slice(0, 3).join(",") || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+                console.log("[GPS] Resolved location:", result);
+                return result;
+            } catch (e) {
+                console.warn("[GPS] Reverse geocode failed, using coords:", e);
+                return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            }
+        } catch (e) {
+            console.warn("[GPS] Failed to get position:", e);
+            return undefined;
+        }
+    }, []);
+
+    const getGpsCached = useCallback((): Promise<string | undefined> => {
+        if (gpsCache.current.fetched) return Promise.resolve(gpsCache.current.location);
+        if (!gpsCache.current.promise) {
+            gpsCache.current.promise = fetchGpsLocation().then(loc => {
+                gpsCache.current = { location: loc, fetched: true };
+                return loc;
+            });
+        }
+        return gpsCache.current.promise;
+    }, [fetchGpsLocation]);
+
+    // Pre-fetch GPS ตอนเปิดหน้า
+    useEffect(() => { if (!isEdit) getGpsCached(); }, [isEdit, getGpsCached]);
+
     const handleAddPhotos = useCallback(async (files: FileList) => {
         const remain = MAX_PHOTOS - photos_open.length;
         const filesToAdd = Array.from(files).slice(0, remain);
         
+        const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;
+
+        // แสดงรูปทันที พร้อม location ถ้า cache พร้อมแล้ว
+        const newPhotoIds: string[] = [];
         const newPhotos: PhotoItem[] = await Promise.all(
             filesToAdd.map(async (file, i) => {
                 const photoId = `${Date.now()}-${i}-${file.name}`;
+                newPhotoIds.push(photoId);
                 let ref;
                 if (!isEdit && draftKey) {
                     ref = await putPhoto(draftKey, photoId, file);
                 }
-                return { id: photoId, file, preview: URL.createObjectURL(file), ref };
+                return { id: photoId, file, preview: URL.createObjectURL(file), ref, createdAt: now, location: cachedLoc };
             })
         );
         setPhotosOpen(prev => [...prev, ...newPhotos]);
-    }, [photos_open.length, draftKey, isEdit]);
+
+        // ถ้า cache ยังไม่พร้อม รอแล้ว fill ทีหลัง
+        if (!cachedLoc) {
+            getGpsCached().then(loc => {
+                if (!loc) return;
+                setPhotosOpen(prev => prev.map(p => newPhotoIds.includes(p.id) ? { ...p, location: loc } : p));
+            });
+        }
+    }, [photos_open.length, draftKey, isEdit, getGpsCached]);
 
     const handleRemovePhoto = useCallback(async (id: string) => {
         await delPhoto(id);
@@ -325,7 +392,7 @@ export default function CMOpenForm() {
             try {
                 const savedPhotos = await getPhotosByDraftKey(draftKey);
                 if (savedPhotos.length > 0) {
-                    const loadedPhotos: PhotoItem[] = savedPhotos.map((ref: PhotoRef) => ({ id: ref.id, file: photoRefToFile(ref), preview: createPreviewUrl(ref), ref }));
+                    const loadedPhotos: PhotoItem[] = savedPhotos.map((ref: PhotoRef) => ({ id: ref.id, file: photoRefToFile(ref), preview: createPreviewUrl(ref), ref, createdAt: new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) }));
                     setPhotosOpen(loadedPhotos);
                 }
             } catch (err) { console.warn("[Draft] Failed to load photos:", err); }
@@ -400,6 +467,8 @@ export default function CMOpenForm() {
                                     preview: fullUrl,
                                     isServer: true,
                                     serverUrl: p.url,
+                                    createdAt: p.uploadedAt ? new Date(p.uploadedAt).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : undefined,
+                                    location: (p as any).location || undefined,
                                 });
                             });
                         }
@@ -425,6 +494,9 @@ export default function CMOpenForm() {
         fd.append("group", "cm_photos");
         fd.append("phase", "problem");
         newPhotos.forEach(p => fd.append("files", p.file, p.file.name));
+        // ส่ง location ของรูปแรกที่มี (รูปทั้งหมดถ่ายจากที่เดียวกัน)
+        const photoLocation = newPhotos.find(p => p.location)?.location || "";
+        if (photoLocation) fd.append("location", photoLocation);
         const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`, { method: "POST", body: fd, credentials: "include" });
         if (!res.ok) throw new Error(`Upload failed`);
     }
@@ -642,11 +714,13 @@ export default function CMOpenForm() {
                         </div>
                     </div>
 
-                    {/* RemarksOpen Section */}
+                    {/* RemarksOpen Section - ซ่อนเมื่อ edit และไม่มีหมายเหตุ */}
+                    {(!isEdit || (remarks_open.trim() && remarks_open.trim() !== "-")) && (
                     <div className="tw-mb-6">
                         <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks_open", lang)}</label>
                         <Textarea value={remarks_open} onChange={e => setRemarksOpen(e.target.value)} readOnly={isEdit} rows={1} className={`!tw-w-full !tw-border-blue-gray-200 ${isEdit ? "!tw-bg-gray-100 !tw-text-blue-gray-700" : "!tw-bg-white"}`} containerProps={{ className: "!tw-min-w-0" }} />
                     </div>
+                    )}
 
                     {/* Validation Card */}
                     {!isEdit && <div className="tw-mb-6"><CMValidationCard validations={validations} lang={lang} /></div>}
