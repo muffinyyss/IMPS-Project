@@ -803,131 +803,131 @@ export default function CMInProgressForm() {
     }, [job.faulty_equipment]);
 
     useEffect(() => {
-    if (!editId || !stationId) return;
-    (async () => {
-        try {
-            const res = await fetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`, { credentials: "include" });
-            if (!res.ok) return;
-            const data = await res.json();
-            const rawDate = data.cm_date ?? data.found_date ?? "";
-            
-            setJob(prev => ({
-                ...prev,
-                doc_name: data.doc_name ?? "",
-                issue_id: data.issue_id ?? "",
-                found_date: rawDate ? isoToDisplay(rawDate) : localTodayFormatted(),
-                location: data.location ?? prev.location,
-                problem_details: data.problem_details ?? "",
-                severity: (data.severity ?? "") as Severity,
-                status: (data.status ?? "In Progress") as Status,
-                remarks: data.remarks_open ?? "",
-                faulty_equipment: data.faulty_equipment ?? "",
-                
-                // ✅ ดึงจาก flat fields โดยตรง
-                problem_type: data.problem_type ?? "",
-                problem_type_other: data.problem_type_other ?? "",
-                cause: data.cause ?? "",
-                repair_result: data.repair_result ?? "",
-                inprogress_remarks: data.inprogress_remarks ?? "",
-                repair_result_remark: data.repair_result_remark ?? "",
-                resolved_date: data.resolved_date ? isoToDisplay(data.resolved_date) : "",
-                
-                repaired_equipment: Array.isArray(data.repaired_equipment)
-                    ? data.repaired_equipment
-                    : [],
-                    
-                preventive_action: Array.isArray(data.preventive_action) && data.preventive_action.length > 0
-                    ? data.preventive_action
-                    : [""],
-                    
-                corrective_actions: Array.isArray(data.corrective_actions) && data.corrective_actions.length > 0
-                    ? (() => {
-                        // สร้าง lookup map จาก photos_repair เพื่อหา uploadedAt/location ที่หายไป
-                        const repairPhotoMap: Record<string, { uploadedAt?: string; location?: string }> = {};
-                        if (data.photos_repair) {
-                            for (const [, photoList] of Object.entries(data.photos_repair)) {
-                                if (Array.isArray(photoList)) {
-                                    (photoList as any[]).forEach((p: any) => {
-                                        if (p.url) {
-                                            repairPhotoMap[p.url] = {
-                                                uploadedAt: p.uploadedAt,
-                                                location: p.location,
-                                            };
-                                        }
-                                    });
+        if (!editId || !stationId) return;
+        (async () => {
+            try {
+                const res = await fetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`, { credentials: "include" });
+                if (!res.ok) return;
+                const data = await res.json();
+                const rawDate = data.cm_date ?? data.found_date ?? "";
+
+                setJob(prev => ({
+                    ...prev,
+                    doc_name: data.doc_name ?? "",
+                    issue_id: data.issue_id ?? "",
+                    found_date: rawDate ? isoToDisplay(rawDate) : localTodayFormatted(),
+                    location: data.location ?? prev.location,
+                    problem_details: data.problem_details ?? "",
+                    severity: (data.severity ?? "") as Severity,
+                    status: (data.status ?? "In Progress") as Status,
+                    remarks: data.remarks_open ?? "",
+                    faulty_equipment: data.faulty_equipment ?? "",
+
+                    // ✅ ดึงจาก flat fields โดยตรง
+                    problem_type: data.problem_type ?? "",
+                    problem_type_other: data.problem_type_other ?? "",
+                    cause: data.cause ?? "",
+                    repair_result: data.repair_result ?? "",
+                    inprogress_remarks: data.inprogress_remarks ?? "",
+                    repair_result_remark: data.repair_result_remark ?? "",
+                    resolved_date: data.resolved_date ? isoToDisplay(data.resolved_date) : "",
+
+                    repaired_equipment: Array.isArray(data.repaired_equipment)
+                        ? data.repaired_equipment
+                        : [],
+
+                    preventive_action: Array.isArray(data.preventive_action) && data.preventive_action.length > 0
+                        ? data.preventive_action
+                        : [""],
+
+                    corrective_actions: Array.isArray(data.corrective_actions) && data.corrective_actions.length > 0
+                        ? (() => {
+                            // สร้าง lookup map จาก photos_repair เพื่อหา uploadedAt/location ที่หายไป
+                            const repairPhotoMap: Record<string, { uploadedAt?: string; location?: string }> = {};
+                            if (data.photos_repair) {
+                                for (const [, photoList] of Object.entries(data.photos_repair)) {
+                                    if (Array.isArray(photoList)) {
+                                        (photoList as any[]).forEach((p: any) => {
+                                            if (p.url) {
+                                                repairPhotoMap[p.url] = {
+                                                    uploadedAt: p.uploadedAt,
+                                                    location: p.location,
+                                                };
+                                            }
+                                        });
+                                    }
                                 }
                             }
-                        }
 
-                        return data.corrective_actions.map((a: any) => ({
-                            text: a.text || "",
-                            beforeImages: (a.beforeImages || []).map((img: any, idx: number) => {
-                                const repair = repairPhotoMap[img.url] || {};
-                                return {
-                                    id: `server-before-${idx}-${img.name || img.url}`,
-                                    file: null,
-                                    preview: img.url?.startsWith("http") ? img.url : `${API_BASE}${img.url}`,
-                                    isServer: true,
-                                    serverUrl: img.url,
-                                    createdAt: formatPhotoDate(img.uploadedAt || repair.uploadedAt),
-                                    uploadedAtRaw: img.uploadedAt || repair.uploadedAt || undefined,
-                                    location: img.location || repair.location || undefined,
-                                };
-                            }),
-                            afterImages: (a.afterImages || []).map((img: any, idx: number) => {
-                                const repair = repairPhotoMap[img.url] || {};
-                                return {
-                                    id: `server-after-${idx}-${img.name || img.url}`,
-                                    file: null,
-                                    preview: img.url?.startsWith("http") ? img.url : `${API_BASE}${img.url}`,
-                                    isServer: true,
-                                    serverUrl: img.url,
-                                    createdAt: formatPhotoDate(img.uploadedAt || repair.uploadedAt),
-                                    uploadedAtRaw: img.uploadedAt || repair.uploadedAt || undefined,
-                                    location: img.location || repair.location || undefined,
-                                };
-                            }),
-                        }));
-                    })()
-                    : [{ text: "", beforeImages: [], afterImages: [] }],
-            }));
-            
-            setReportedBy(data.reported_by ?? "");
-            
-            // ✅ ดึง inspector จาก data ถ้ามี (ไม่ override จาก /me)
-            if (data.inspector) {
-                setInspector(data.inspector);
-            }
+                            return data.corrective_actions.map((a: any) => ({
+                                text: a.text || "",
+                                beforeImages: (a.beforeImages || []).map((img: any, idx: number) => {
+                                    const repair = repairPhotoMap[img.url] || {};
+                                    return {
+                                        id: `server-before-${idx}-${img.name || img.url}`,
+                                        file: null,
+                                        preview: img.url?.startsWith("http") ? img.url : `${API_BASE}${img.url}`,
+                                        isServer: true,
+                                        serverUrl: img.url,
+                                        createdAt: formatPhotoDate(img.uploadedAt || repair.uploadedAt),
+                                        uploadedAtRaw: img.uploadedAt || repair.uploadedAt || undefined,
+                                        location: img.location || repair.location || undefined,
+                                    };
+                                }),
+                                afterImages: (a.afterImages || []).map((img: any, idx: number) => {
+                                    const repair = repairPhotoMap[img.url] || {};
+                                    return {
+                                        id: `server-after-${idx}-${img.name || img.url}`,
+                                        file: null,
+                                        preview: img.url?.startsWith("http") ? img.url : `${API_BASE}${img.url}`,
+                                        isServer: true,
+                                        serverUrl: img.url,
+                                        createdAt: formatPhotoDate(img.uploadedAt || repair.uploadedAt),
+                                        uploadedAtRaw: img.uploadedAt || repair.uploadedAt || undefined,
+                                        location: img.location || repair.location || undefined,
+                                    };
+                                }),
+                            }));
+                        })()
+                        : [{ text: "", beforeImages: [], afterImages: [] }],
+                }));
 
-            // Photos สำหรับ Section 1
-            if (data.photos_problem) {
-                const serverPhotos: PhotoItem[] = [];
-                for (const [group, photoList] of Object.entries(data.photos_problem)) {
-                    if (Array.isArray(photoList)) {
-                        (photoList as ServerPhoto[]).forEach((p, i) => {
-                            const fullUrl = p.url.startsWith("http") ? p.url : `${API_BASE}${p.url}`;
-                            serverPhotos.push({
-                                id: `server-${group}-${i}-${p.filename}`,
-                                file: null,
-                                preview: fullUrl,
-                                isServer: true,
-                                serverUrl: p.url,
-                                createdAt: formatPhotoDate(p.uploadedAt),
-                                uploadedAtRaw: p.uploadedAt || undefined,
-                                location: (p as any).location || undefined,
+                setReportedBy(data.reported_by ?? "");
+
+                // ✅ ดึง inspector จาก data ถ้ามี (ไม่ override จาก /me)
+                if (data.inspector) {
+                    setInspector(data.inspector);
+                }
+
+                // Photos สำหรับ Section 1
+                if (data.photos_problem) {
+                    const serverPhotos: PhotoItem[] = [];
+                    for (const [group, photoList] of Object.entries(data.photos_problem)) {
+                        if (Array.isArray(photoList)) {
+                            (photoList as ServerPhoto[]).forEach((p, i) => {
+                                const fullUrl = p.url.startsWith("http") ? p.url : `${API_BASE}${p.url}`;
+                                serverPhotos.push({
+                                    id: `server-${group}-${i}-${p.filename}`,
+                                    file: null,
+                                    preview: fullUrl,
+                                    isServer: true,
+                                    serverUrl: p.url,
+                                    createdAt: formatPhotoDate(p.uploadedAt),
+                                    uploadedAtRaw: p.uploadedAt || undefined,
+                                    location: (p as any).location || undefined,
+                                });
                             });
-                        });
+                        }
+                    }
+                    if (serverPhotos.length > 0) {
+                        setPhotosProblem(serverPhotos);
                     }
                 }
-                if (serverPhotos.length > 0) {
-                    setPhotosProblem(serverPhotos);
-                }
+            } catch (e) {
+                console.error("Failed to load cmreport:", e);
             }
-        } catch (e) {
-            console.error("Failed to load cmreport:", e);
-        }
-    })();
-}, [editId, stationId]);
+        })();
+    }, [editId, stationId]);
 
     useEffect(() => {
         let alive = true;
@@ -1000,7 +1000,7 @@ export default function CMInProgressForm() {
                                 const formData = new FormData();
                                 formData.append("station_id", stationId);
                                 formData.append("group", `before_${actionIndex}`);
-                            formData.append("phase", "repair");
+                                formData.append("phase", "repair");
                                 formData.append("files", file);
                                 if (img.location) formData.append("location", img.location);
 
@@ -1067,7 +1067,7 @@ export default function CMInProgressForm() {
                                 const formData = new FormData();
                                 formData.append("station_id", stationId);
                                 formData.append("group", `after_${actionIndex}`);
-                            formData.append("phase", "repair");
+                                formData.append("phase", "repair");
                                 formData.append("files", file);
                                 if (img.location) formData.append("location", img.location);
 
@@ -1110,16 +1110,18 @@ export default function CMInProgressForm() {
                     station_id: stationId,
                     status: targetStatus,
                     inspector,
-                    problem_type: job.problem_type,
-                    problem_type_other: job.problem_type_other,
-                    cause: job.cause,
-                    corrective_actions: uploadedCorrectiveActions,
-                    repaired_equipment: job.repaired_equipment,
-                    repair_result: job.repair_result,
-                    preventive_action: job.preventive_action,
-                    inprogress_remarks: job.inprogress_remarks,
-                    repair_result_remark: job.repair_result_remark,
-                    resolved_date: isClosedResult ? (job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()) : "",
+                    job: {
+                        problem_type: job.problem_type,
+                        problem_type_other: job.problem_type_other,
+                        cause: job.cause,
+                        corrective_actions: uploadedCorrectiveActions,
+                        repaired_equipment: job.repaired_equipment,
+                        repair_result: job.repair_result,
+                        preventive_action: job.preventive_action,
+                        inprogress_remarks: job.inprogress_remarks,
+                        repair_result_remark: job.repair_result_remark,
+                        resolved_date: isClosedResult ? (job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()) : "",
+                    }
                 })
             });
             if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
@@ -1328,10 +1330,10 @@ export default function CMInProgressForm() {
 
                             {/* Remarks - ซ่อนถ้าไม่มีหมายเหตุ */}
                             {(job.remarks || "").trim() && (job.remarks || "").trim() !== "-" && (
-                            <div>
-                                <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks", lang)}</label>
-                                <Textarea value={job.remarks || ""} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
-                            </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks", lang)}</label>
+                                    <Textarea value={job.remarks || ""} readOnly rows={2} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
+                                </div>
                             )}
 
                             {/* Job Status */}
@@ -1677,13 +1679,13 @@ export default function CMInProgressForm() {
                                     {/* Inline remarks - แสดงเมื่อเลือก ติดตามผล / รออะไหล่ */}
                                     {(job.repair_result === "อยู่ระหว่างการติดตามผล" || job.repair_result === "อยู่ระหว่างการรออะไหล่") && (
                                         <div className="tw-flex-1 tw-w-full">
-                                                <input
-                                                    type="text"
-                                                    value={job.repair_result_remark}
-                                                    onChange={e => setJob(prev => ({ ...prev, repair_result_remark: e.target.value }))}
-                                                    placeholder={lang === "th" ? "กรอกหมายเหตุ *" : "Enter remarks *"}
-                                                    className="tw-w-full tw-h-12 tw-px-4 tw-border tw-border-gray-200 tw-rounded-xl tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all"
-                                                />
+                                            <input
+                                                type="text"
+                                                value={job.repair_result_remark}
+                                                onChange={e => setJob(prev => ({ ...prev, repair_result_remark: e.target.value }))}
+                                                placeholder={lang === "th" ? "กรอกหมายเหตุ *" : "Enter remarks *"}
+                                                className="tw-w-full tw-h-12 tw-px-4 tw-border tw-border-gray-200 tw-rounded-xl tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all"
+                                            />
                                         </div>
                                     )}
                                 </div>
