@@ -233,6 +233,7 @@ async def cmreport_list(
         "job": 1,
         "repair_result": 1,
         "repair_result_remark": 1,
+        
         "createdAt": 1
     }).sort(
         [("createdAt", -1), ("_id", -1)]
@@ -669,6 +670,7 @@ async def cmreport_detail_path(
         "inprogress_remarks": doc.get("inprogress_remarks") or "",
         "repair_result_remark": doc.get("repair_result_remark") or "",
         "resolved_date": doc.get("resolved_date") or "",
+        "start_repair_date": doc.get("start_repair_date") or "",
         
         "photos_problem": doc.get("photos_problem", {}),
         "photos_repair": doc.get("photos_repair", {}),
@@ -729,7 +731,7 @@ async def cmreport_update_status(
             "faulty_equipment",
             "repaired_equipment",
             "inprogress_remarks",
-            "cause", "problem_type_other","repair_result_remark", # ✅ เพิ่มใหม่
+            "cause", "problem_type_other","repair_result_remark","start_repair_date", # ✅ เพิ่มใหม่
         }
         
         if "status" in body.job:
@@ -741,6 +743,12 @@ async def cmreport_update_status(
         for k, v in body.job.items():
             if k in allowed_job_keys:
                 updates[k] = v  # บันทึกเป็น flat field แทน job.xxx
+
+        if "start_repair_date" in updates:
+            existing = await coll.find_one({"_id": oid}, {"start_repair_date": 1})
+            if existing and existing.get("start_repair_date"):
+                # มีอยู่แล้ว → ไม่ overwrite
+                del updates["start_repair_date"]
 
         if "found_date" in body.job and body.job.get("found_date"):
             try:

@@ -67,7 +67,8 @@ const T = {
     repairResult: { th: "ผลหลังซ่อม", en: "Repair Result" },
     preventiveAction: { th: "วิธีป้องกันไม่ให้เกิดซ้ำ", en: "Preventive Action" },
     addPreventive: { th: "เพิ่ม", en: "Add" },
-    resolvedDate: { th: "วันที่แก้ไข", en: "Resolved Date" },
+    resolvedDate: { th: "วันที่เริ่มแก้ไข", en: "Start Repair Date" },
+    completedDate: { th: "วันที่แก้ไขเสร็จ", en: "Completed Date" },
 
     // Section 3 - Problem Summary
     problemSummarySection: { th: "ปัญหาที่พบ", en: "Problem Found" },
@@ -153,6 +154,7 @@ type Job = {
     problem_details: string; problem_type: string; severity: Severity;
     initial_cause: string; status: Status; remarks: string; faulty_equipment: string;
     corrective_actions: CorrectiveItem[];
+    start_repair_date: string;
     resolved_date: string;
     repair_result: string;
     preventive_action: string[];
@@ -198,6 +200,7 @@ const INITIAL_JOB: Job = {
     problem_type: "", severity: "", initial_cause: "", status: "", remarks: "", faulty_equipment: "",
     corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }],
     resolved_date: "",
+    start_repair_date: "",
     repair_result: "",
     preventive_action: [""],
     repaired_equipment: [],
@@ -794,8 +797,21 @@ export default function CMInProgressForm() {
     }, [job.faulty_equipment, chargers, stationId]);
 
     // Clear repaired_equipment เมื่อเปลี่ยนอุปกรณ์ที่พัง
-    const prevFaultyRef = useRef(job.faulty_equipment);
+    // const prevFaultyRef = useRef(job.faulty_equipment);
+    // useEffect(() => {
+    //     if (prevFaultyRef.current !== job.faulty_equipment) {
+    //         setJob(prev => ({ ...prev, repaired_equipment: [] }));
+    //         prevFaultyRef.current = job.faulty_equipment;
+    //     }
+    // }, [job.faulty_equipment]);
+    const prevFaultyRef = useRef<string | null>(null); // เปลี่ยนจาก job.faulty_equipment
+
     useEffect(() => {
+        // ครั้งแรก (โหลดจาก server) → แค่ set ref, ไม่ล้าง
+        if (prevFaultyRef.current === null) {
+            prevFaultyRef.current = job.faulty_equipment;
+            return;
+        }
         if (prevFaultyRef.current !== job.faulty_equipment) {
             setJob(prev => ({ ...prev, repaired_equipment: [] }));
             prevFaultyRef.current = job.faulty_equipment;
@@ -822,6 +838,7 @@ export default function CMInProgressForm() {
                     status: (data.status ?? "In Progress") as Status,
                     remarks: data.remarks_open ?? "",
                     faulty_equipment: data.faulty_equipment ?? "",
+                    start_repair_date: data.start_repair_date || "",
 
                     // ✅ ดึงจาก flat fields โดยตรง
                     problem_type: data.problem_type ?? "",
@@ -840,25 +857,29 @@ export default function CMInProgressForm() {
                         ? data.preventive_action
                         : [""],
 
-                    corrective_actions: Array.isArray(data.corrective_actions) && data.corrective_actions.length > 0
-                        ? (() => {
-                            // สร้าง lookup map จาก photos_repair เพื่อหา uploadedAt/location ที่หายไป
-                            const repairPhotoMap: Record<string, { uploadedAt?: string; location?: string }> = {};
-                            if (data.photos_repair) {
-                                for (const [, photoList] of Object.entries(data.photos_repair)) {
-                                    if (Array.isArray(photoList)) {
-                                        (photoList as any[]).forEach((p: any) => {
-                                            if (p.url) {
-                                                repairPhotoMap[p.url] = {
-                                                    uploadedAt: p.uploadedAt,
-                                                    location: p.location,
-                                                };
-                                            }
-                                        });
-                                    }
+                    corrective_actions: (() => {
+                        // สร้าง lookup map จาก photos_repair
+                        const repairPhotoMap: Record<string, { uploadedAt?: string; location?: string }> = {};
+                        const repairByGroup: Record<string, any[]> = {};
+
+                        if (data.photos_repair) {
+                            for (const [group, photoList] of Object.entries(data.photos_repair)) {
+                                if (Array.isArray(photoList)) {
+                                    repairByGroup[group] = photoList as any[];
+                                    (photoList as any[]).forEach((p: any) => {
+                                        if (p.url) {
+                                            repairPhotoMap[p.url] = {
+                                                uploadedAt: p.uploadedAt,
+                                                location: p.location,
+                                            };
+                                        }
+                                    });
                                 }
                             }
+                        }
 
+                        // ✅ ถ้ามี corrective_actions ใน DB → ใช้ตามปกติ
+                        if (Array.isArray(data.corrective_actions) && data.corrective_actions.length > 0) {
                             return data.corrective_actions.map((a: any) => ({
                                 text: a.text || "",
                                 beforeImages: (a.beforeImages || []).map((img: any, idx: number) => {
@@ -888,8 +909,55 @@ export default function CMInProgressForm() {
                                     };
                                 }),
                             }));
-                        })()
-                        : [{ text: "", beforeImages: [], afterImages: [] }],
+                        }
+
+                        // ✅ Fallback: reconstruct จาก photos_repair
+                        if (Object.keys(repairByGroup).length > 0) {
+                            // หา action indexes จาก group names: before_0, after_0, before_1, after_1, ...
+                            const actionIndexes = new Set<number>();
+                            for (const group of Object.keys(repairByGroup)) {
+                                const match = group.match(/^(before|after)_(\d+)$/);
+                                if (match) actionIndexes.add(parseInt(match[2]));
+                            }
+
+                            // const maxIndex = actionIndexes.size > 0 ? Math.max(...actionIndexes) : 0;
+                            const maxIndex = actionIndexes.size > 0 ? Math.max(...Array.from(actionIndexes)) : 0;
+                            const actions: CorrectiveItem[] = [];
+
+                            for (let i = 0; i <= maxIndex; i++) {
+                                const beforePhotos = repairByGroup[`before_${i}`] || [];
+                                const afterPhotos = repairByGroup[`after_${i}`] || [];
+
+                                actions.push({
+                                    text: "",
+                                    beforeImages: beforePhotos.map((p: any, idx: number) => ({
+                                        id: `server-before-${i}-${idx}-${p.filename || p.url}`,
+                                        file: null,
+                                        preview: p.url?.startsWith("http") ? p.url : `${API_BASE}${p.url}`,
+                                        isServer: true,
+                                        serverUrl: p.url,
+                                        createdAt: formatPhotoDate(p.uploadedAt),
+                                        uploadedAtRaw: p.uploadedAt || undefined,
+                                        location: p.location || undefined,
+                                    })),
+                                    afterImages: afterPhotos.map((p: any, idx: number) => ({
+                                        id: `server-after-${i}-${idx}-${p.filename || p.url}`,
+                                        file: null,
+                                        preview: p.url?.startsWith("http") ? p.url : `${API_BASE}${p.url}`,
+                                        isServer: true,
+                                        serverUrl: p.url,
+                                        createdAt: formatPhotoDate(p.uploadedAt),
+                                        uploadedAtRaw: p.uploadedAt || undefined,
+                                        location: p.location || undefined,
+                                    })),
+                                });
+                            }
+
+                            if (actions.length > 0) return actions;
+                        }
+
+                        return [{ text: "", beforeImages: [], afterImages: [] }];
+                    })(),
                 }));
 
                 setReportedBy(data.reported_by ?? "");
@@ -1120,6 +1188,7 @@ export default function CMInProgressForm() {
                         preventive_action: job.preventive_action,
                         inprogress_remarks: job.inprogress_remarks,
                         repair_result_remark: job.repair_result_remark,
+                        start_repair_date: job.start_repair_date || localTodayISO(),
                         resolved_date: isClosedResult ? (job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()) : "",
                     }
                 })
@@ -1420,7 +1489,8 @@ export default function CMInProgressForm() {
 
                         <div className="tw-p-6 tw-space-y-6">
                             {/* Row 1: Resolved Date & Repaired Equipment */}
-                            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-5">
+                            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-5">
+                                {/* วันที่เริ่มแก้ไข — readonly */}
                                 <div className="tw-space-y-2">
                                     <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                         <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
@@ -1428,14 +1498,41 @@ export default function CMInProgressForm() {
                                     </label>
                                     <Input
                                         type="text"
-                                        value={localTodayFormatted()}
+                                        value={job.start_repair_date ? isoToDisplay(job.start_repair_date) : localTodayFormatted()}
                                         readOnly
                                         crossOrigin=""
                                         className="!tw-w-full !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-lg"
                                         style={{ backgroundColor: "#f3f4f6", color: "#374151" }}
                                         containerProps={{ className: "!tw-min-w-0" }}
                                     />
+                                    {/* {!job.start_repair_date && (
+                                        <p className="tw-text-xs tw-text-amber-500">
+                                            {lang === "th" ? "* บันทึกอัตโนมัติเมื่อกดบันทึก" : "* Auto-set on first save"}
+                                        </p>
+                                    )} */}
                                 </div>
+
+                                {/* วันที่แก้ไขเสร็จ — readonly, แสดงเฉพาะ Closed */}
+                                {isClosedResult && (
+                                    <div className="tw-space-y-2">
+                                        <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                            <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-green-500"></span>
+                                            {t("completedDate", lang)}
+                                        </label>
+                                        <Input
+                                            type="text"
+                                            value={job.resolved_date ? job.resolved_date : localTodayFormatted()}
+                                            readOnly
+                                            crossOrigin=""
+                                            className="!tw-w-full !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-lg"
+                                            style={{ backgroundColor: "#f3f4f6", color: "#374151" }}
+                                            containerProps={{ className: "!tw-min-w-0" }}
+                                        />
+                                        {/* <p className="tw-text-xs tw-text-green-600">
+                                            {lang === "th" ? "* บันทึกอัตโนมัติเมื่อปิดงาน" : "* Auto-set on close"}
+                                        </p> */}
+                                    </div>
+                                )}
 
                                 <div className="tw-space-y-2">
                                     <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
