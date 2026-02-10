@@ -12,17 +12,17 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 type TabId = "Open" | "In Progress" | "Closed";
 
 const TABS: { id: TabId; label: string; slug: "open" | "in-progress" | "closed" }[] = [
-  { id: "Open",        label: "Open",        slug: "open" },
+  { id: "Open", label: "Open", slug: "open" },
   { id: "In Progress", label: "In Progress", slug: "in-progress" },
-  { id: "Closed",      label: "Closed",      slug: "closed" },
+  { id: "Closed", label: "Closed", slug: "closed" },
 ];
 
 function slugToTab(slug: string | null): TabId {
   switch (slug) {
     case "in-progress": return "In Progress";
-    case "closed":      return "Closed";
+    case "closed": return "Closed";
     case "open":
-    default:            return "Open";
+    default: return "Open";
   }
 }
 
@@ -84,51 +84,106 @@ export default function DataTablesPage() {
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
+  // return (
+  //   <Tabs id="data-tabs" value={active} key={active} className="tw-w-full">
+  //     <div className="tw-w-full tw-flex tw-justify-start tw-overflow-x-auto tw-scrollbar-hide">
+  //       <TabsHeader
+  //         className={`tw-bg-gray-100 tw-rounded-xl tw-p-1 tw-border tw-border-gray-200 tw-overflow-visible tw-w-fit tw-gap-1 tw-m-0
+  //           ${isFormView ? "tw-pointer-events-none tw-opacity-60" : ""}
+  //         `}
+  //         // indicatorProps={{ className: "tw-h-full tw-rounded-lg tw-bg-white tw-shadow tw-ring-1 tw-ring-gray-200" }}
+  //         indicatorProps={{ className: "!tw-h-full !tw-rounded-lg !tw-bg-gray-900 !tw-shadow-md" }}
+  //       >
+  //         {TABS.map((t) => (
+  //           <Tab
+  //             key={t.id}
+  //             value={t.id}
+  //             onClick={() => go(t.id)}
+  //             className="
+  //               tw-rounded-lg tw-px-5 tw-py-2
+  //               tw-text-sm md:tw-text-base tw-font-medium
+  //               tw-flex tw-flex-nowrap tw-items-center tw-justify-center tw-gap-2
+  //               tw-whitespace-nowrap tw-leading-none
+  //               tw-text-gray-600 data-[hover=true]:tw-text-gray-900 aria-selected:tw-text-white
+  //               tw-min-w-[140px] md:tw-min-w-[160px]
+  //             "
+  //           >
+  //             <span>{t.label}</span>
+  //           </Tab>
+  //         ))}
+  //       </TabsHeader>
+  //     </div>
+
+  //     <TabsBody
+  //       animate={{ initial: { y: 6, opacity: 0 }, mount: { y: 0, opacity: 1 }, unmount: { y: 6, opacity: 0 } }}
+  //       className="tw-pt-3"
+  //     >
+  //       <TabPanel value="Open" className="tw-p-0">
+  //         <div className="tw-space-y-5"><OpenTables /></div>
+  //       </TabPanel>
+
+  //       <TabPanel value="In Progress" className="tw-p-0">
+  //         <div className="tw-space-y-5"><InProgressTables /></div>
+  //       </TabPanel>
+
+  //       <TabPanel value="Closed" className="tw-p-0">
+  //         <div className="tw-space-y-5"><ClosedTables /></div>
+  //       </TabPanel>
+  //     </TabsBody>
+  //   </Tabs>
+  // );
+
+  const TAB_ICONS: Record<TabId, string> = {
+    "Open": "🔴",
+    "In Progress": "🟡",
+    "Closed": "🟢",
+  };
+
   return (
-    <Tabs id="data-tabs" value={active} key={active} className="tw-w-full">
-      <div className="tw-w-full tw-flex tw-justify-start tw-overflow-x-auto tw-scrollbar-hide">
-        <TabsHeader
-          className={`tw-bg-gray-100 tw-rounded-xl tw-p-1 tw-border tw-border-gray-200 tw-overflow-visible tw-w-fit tw-gap-1 tw-m-0
-            ${isFormView ? "tw-pointer-events-none tw-opacity-60" : ""}
-          `}
-          indicatorProps={{ className: "tw-h-full tw-rounded-lg tw-bg-white tw-shadow tw-ring-1 tw-ring-gray-200" }}
-        >
-          {TABS.map((t) => (
-            <Tab
-              key={t.id}
-              value={t.id}
-              onClick={() => go(t.id)}
-              className="
-                tw-rounded-lg tw-px-5 tw-py-2
-                tw-text-sm md:tw-text-base tw-font-medium
-                tw-flex tw-flex-nowrap tw-items-center tw-justify-center tw-gap-2
-                tw-whitespace-nowrap tw-leading-none
-                tw-text-gray-700 data-[hover=true]:tw-text-gray-900 aria-selected:tw-text-gray-900
-                tw-min-w-[140px] md:tw-min-w-[160px]
-              "
-            >
-              <span>{t.label}</span>
-            </Tab>
-          ))}
-        </TabsHeader>
+    <div className="tw-w-full">
+      {/* Custom Tabs */}
+      <div className={`tw-w-full tw-flex tw-justify-start tw-overflow-x-auto tw-scrollbar-hide ${isFormView ? "tw-pointer-events-none tw-opacity-60" : ""}`}>
+        <div className="tw-inline-flex tw-items-center tw-gap-1 tw-p-1 tw-bg-gray-100 tw-rounded-xl tw-border tw-border-gray-200">
+          {TABS.map((tab) => {
+            const isActive = active === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => go(tab.id)}
+                className={`
+                  tw-relative tw-flex tw-items-center tw-justify-center tw-gap-2
+                  tw-rounded-lg tw-px-5 tw-py-2.5
+                  tw-text-sm md:tw-text-base tw-font-semibold
+                  tw-whitespace-nowrap tw-leading-none
+                  tw-min-w-[130px] md:tw-min-w-[150px]
+                  tw-transition-all tw-duration-300 tw-ease-out
+                  focus:tw-outline-none
+                  ${isActive
+                    ? "tw-bg-gray-900 tw-text-white tw-shadow-lg tw-shadow-gray-900/25 tw-scale-[1.02]"
+                    : "tw-bg-transparent tw-text-gray-500 hover:tw-text-gray-800 hover:tw-bg-white/60"
+                  }
+                `}
+              >
+                <span>{tab.label}</span>
+                
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <TabsBody
-        animate={{ initial: { y: 6, opacity: 0 }, mount: { y: 0, opacity: 1 }, unmount: { y: 6, opacity: 0 } }}
-        className="tw-pt-3"
-      >
-        <TabPanel value="Open" className="tw-p-0">
-          <div className="tw-space-y-5"><OpenTables /></div>
-        </TabPanel>
-
-        <TabPanel value="In Progress" className="tw-p-0">
-          <div className="tw-space-y-5"><InProgressTables /></div>
-        </TabPanel>
-
-        <TabPanel value="Closed" className="tw-p-0">
-          <div className="tw-space-y-5"><ClosedTables /></div>
-        </TabPanel>
-      </TabsBody>
-    </Tabs>
+      {/* Tab Content */}
+      <div className="tw-pt-4">
+        {active === "Open" && (
+          <div className="tw-space-y-5 tw-animate-[fadeIn_0.3s_ease-out]"><OpenTables /></div>
+        )}
+        {active === "In Progress" && (
+          <div className="tw-space-y-5 tw-animate-[fadeIn_0.3s_ease-out]"><InProgressTables /></div>
+        )}
+        {active === "Closed" && (
+          <div className="tw-space-y-5 tw-animate-[fadeIn_0.3s_ease-out]"><ClosedTables /></div>
+        )}
+      </div>
+    </div>
   );
 }
