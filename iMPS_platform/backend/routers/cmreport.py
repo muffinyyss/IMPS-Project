@@ -756,13 +756,3 @@ async def cmreport_update_status(
 
     return {"ok": True, "status": updates["status"]}
 
-#---------------------------------------------------------------------- Test Report (DC)
-def get_dc_testreport_collection_for(sn: str):
-    _validate_station_id(sn)
-    coll = DCTestReportDB.get_collection(str(sn))
-    return coll
-
-def get_dcurl_coll_upload(sn: str):
-    _validate_station_id(sn)
-    coll = DCUrlDB.get_collection(str(sn))
-    return coll
