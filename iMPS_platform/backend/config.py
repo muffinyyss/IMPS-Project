@@ -126,8 +126,18 @@ def get_mdb_collection_for(station_id: str):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return MDB_DB.get_collection(str(station_id))
 
+class _MongoEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, ObjectId):
+            return str(o)
+        if isinstance(o, Decimal128):
+            return float(o.to_decimal())
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return super().default(o)
+
 def to_json(obj) -> str:
-    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), cls=_MongoEncoder)
 
 def _ensure_utc_iso(v):
     if isinstance(v, datetime):

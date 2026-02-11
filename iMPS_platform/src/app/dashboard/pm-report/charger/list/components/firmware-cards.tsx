@@ -14,11 +14,13 @@ function StatCardClassic({
 }) {
   const Icon = item.icon;
   return (
-    <div className="tw-rounded-xl tw-bg-white tw-border tw-border-blue-gray-100 tw-shadow-sm tw-overflow-hidden tw-h-full tw-transition-shadow hover:tw-shadow-md">
+    // <div className="tw-rounded-xl tw-bg-white tw-border tw-border-blue-gray-100 tw-shadow-sm tw-overflow-hidden tw-h-full tw-transition-shadow hover:tw-shadow-md">
+    <div className="tw-rounded-xl tw-bg-white tw-border tw-border-blue-gray-100 tw-shadow-sm tw-overflow-hidden tw-h-full tw-transition-all tw-duration-300 hover:tw-shadow-lg hover:tw--translate-y-0.5 hover:tw-border-blue-200">
       {/* Main Content */}
       <div className="tw-flex tw-items-start tw-gap-2 sm:tw-gap-3 lg:tw-gap-4 tw-p-2.5 sm:tw-p-3 lg:tw-p-4">
         {/* Icon Container */}
-        <div className="tw-flex tw-items-center tw-justify-center tw-w-8 tw-h-8 sm:tw-w-9 sm:tw-h-9 lg:tw-w-11 lg:tw-h-11 tw-rounded-lg tw-bg-gradient-to-br tw-from-blue-gray-800 tw-to-blue-gray-900 tw-shadow-sm tw-flex-shrink-0">
+        {/* <div className="tw-flex tw-items-center tw-justify-center tw-w-8 tw-h-8 sm:tw-w-9 sm:tw-h-9 lg:tw-w-11 lg:tw-h-11 tw-rounded-lg tw-bg-gradient-to-br tw-from-blue-gray-800 tw-to-blue-gray-900 tw-shadow-sm tw-flex-shrink-0"> */}
+        <div className="tw-flex tw-items-center tw-justify-center tw-w-8 tw-h-8 sm:tw-w-9 sm:tw-h-9 lg:tw-w-11 lg:tw-h-11 tw-rounded-xl tw-bg-gray-900 tw-shadow-md tw-flex-shrink-0">
           <Icon className="tw-w-4 tw-h-4 sm:tw-w-4.5 sm:tw-h-4.5 lg:tw-w-5 lg:tw-h-5 tw-text-white" />
         </div>
 
@@ -28,8 +30,10 @@ function StatCardClassic({
             <p className="tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs tw-font-medium tw-text-blue-gray-500 tw-leading-tight">
               {item.title}
             </p>
+            {/* <p
+              className="tw-text-xs sm:tw-text-sm lg:tw-text-base tw-font-bold tw-text-blue-gray-900 tw-mt-0.5 sm:tw-mt-1 lg:tw-mt-1.5 tw-truncate tw-leading-tight" */}
             <p
-              className="tw-text-xs sm:tw-text-sm lg:tw-text-base tw-font-bold tw-text-blue-gray-900 tw-mt-0.5 sm:tw-mt-1 lg:tw-mt-1.5 tw-truncate tw-leading-tight"
+              className="tw-text-xs sm:tw-text-sm lg:tw-text-base tw-font-bold tw-text-blue-gray-900 tw-mt-0.5 sm:tw-mt-1 lg:tw-mt-1.5 tw-truncate tw-leading-tight tw-font-mono"
               title={item.value}
             >
               {item.value}
@@ -130,8 +134,10 @@ export default function StatisticsCards() {
     <div className="tw-px-2 sm:tw-px-0">
       {/* Message when no charger selected */}
       {!sn && (
-        <div className="tw-flex tw-items-center tw-gap-2 tw-mt-2 tw-p-2 sm:tw-p-2.5 lg:tw-p-3 tw-bg-blue-50 tw-rounded-lg tw-border tw-border-blue-100">
-          <div className="tw-w-1.5 tw-h-1.5 sm:tw-w-2 sm:tw-h-2 tw-rounded-full tw-bg-blue-400 tw-animate-pulse tw-flex-shrink-0" />
+        // <div className="tw-flex tw-items-center tw-gap-2 tw-mt-2 tw-p-2 sm:tw-p-2.5 lg:tw-p-3 tw-bg-blue-50 tw-rounded-lg tw-border tw-border-blue-100">
+        //   <div className="tw-w-1.5 tw-h-1.5 sm:tw-w-2 sm:tw-h-2 tw-rounded-full tw-bg-blue-400 tw-animate-pulse tw-flex-shrink-0" />
+        <div className="tw-flex tw-items-center tw-gap-2 tw-mt-2 tw-p-2 sm:tw-p-2.5 lg:tw-p-3 tw-bg-amber-50 tw-rounded-xl tw-border tw-border-amber-200 tw-shadow-sm">
+          <div className="tw-w-1.5 tw-h-1.5 sm:tw-w-2 sm:tw-h-2 tw-rounded-full tw-bg-amber-500 tw-animate-pulse tw-flex-shrink-0" />
           <p className="tw-text-[10px] sm:tw-text-xs lg:tw-text-sm tw-text-blue-gray-600 tw-font-medium">
             Select a charger from the top bar to display PM Report
           </p>
