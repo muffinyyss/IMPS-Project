@@ -268,11 +268,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     if (view === "form") params.set("view", "form");
     else params.delete("view");
-    
+
     if (sn && !params.has("sn")) {
       params.set("sn", sn);
     }
-    
+
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -280,7 +280,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const fetchRows = useCallback(async () => {
     if (!sn) { setData([]); return; }
     setLoading(true);
-    
+
     try {
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
@@ -492,11 +492,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
             aria-label="Preview"
             target="_blank"
             rel="noopener noreferrer"
-            className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 ${
-              hasUrl 
-                ? "tw-text-red-600 hover:tw-text-red-800 hover:tw-bg-red-50" 
-                : "tw-text-blue-gray-300 tw-cursor-not-allowed"
-            }`}
+            className={`tw-inline-flex tw-items-center tw-justify-center tw-rounded tw-px-2 tw-py-1 ${hasUrl
+              ? "tw-text-red-600 hover:tw-text-red-800 hover:tw-bg-red-50"
+              : "tw-text-blue-gray-300 tw-cursor-not-allowed"
+              }`}
             onClick={(e) => { if (!hasUrl) e.preventDefault(); }}
             title={hasUrl ? t.viewPdf : t.noFile}
           >
@@ -616,8 +615,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   return (
     <>
-      <Card className="tw-border tw-border--gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
-        <CardHeader floated={false} shadow={false}
+      {/* <Card className="tw-border tw-border--gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4"> */}
+      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
+        {/* <CardHeader floated={false} shadow={false}
           className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-3 md:tw-!px-4 tw-!py-3 md:tw-!py-4 tw-mb-6">
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
@@ -668,10 +668,53 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               </Button>
             </div>
           </div>
-        </CardHeader>
+        </CardHeader> */}
 
+        <CardHeader floated={false} shadow={false}
+          className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30">
+          <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-3 sm:tw-gap-4">
+            <div className="tw-min-w-0 tw-flex-1">
+              <Typography variant="h5" color="blue-gray" className="tw-text-sm sm:tw-text-base lg:tw-text-lg tw-leading-tight tw-font-semibold">
+                {t.title}
+              </Typography>
+              <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-leading-relaxed tw-font-normal tw-text-blue-gray-400 tw-mt-0.5">
+                {t.subtitle}
+              </Typography>
+            </div>
+
+            <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
+              <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" multiple className="tw-hidden" onChange={handlePdfChange} />
+              <Button
+                variant="outlined"
+                size="sm"
+                disabled={!sn}
+                onClick={() => pdfInputRef.current?.click()}
+                className="tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4 tw-flex tw-items-center tw-justify-center tw-gap-1 sm:tw-gap-1.5 tw-border-blue-gray-200 tw-font-medium hover:tw-bg-blue-gray-50 tw-transition-colors"
+                title={t.upload}>
+                <ArrowUpTrayIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 tw-flex-shrink-0" />
+                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t.upload}</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={goAdd}
+                disabled={!sn}
+                className={`
+                  tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-xl tw-px-3 sm:tw-px-4 lg:tw-px-5
+                  tw-flex tw-items-center tw-justify-center tw-font-semibold tw-tracking-wide
+                  ${!sn
+                    ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+                    : "tw-bg-gray-900 hover:tw-bg-black tw-text-white"}
+                  tw-shadow-lg tw-transition-all
+                `}
+                title={sn ? "" : t.selectStation}>
+                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t.add}</span>
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
         {/* FILTER BAR */}
-        <CardBody className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4">
+        {/* <CardBody className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4"> */}
+        <CardBody className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-border-t tw-border-blue-gray-50">
           <div className="tw-flex tw-items-center tw-gap-3 tw-flex-none">
             <select
               value={table.getState().pagination.pageSize}
@@ -701,7 +744,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                   <col key={header.id} style={{ width: header.getSize() }} />
                 ))}
               </colgroup>
-              <thead className="tw-bg-gray-50 tw-sticky tw-top-0">
+              {/* <thead className="tw-bg-gray-50 tw-sticky tw-top-0"> */}
+              <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800 tw-sticky tw-top-0">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
                     {hg.headers.map((header) => {
@@ -710,18 +754,26 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                       return (
                         <th key={header.id} style={{ width: header.getSize() }}
                           onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                          className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
-                            } ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-100" : ""}`}>
+                          // className={`tw-p-3 md:tw-p-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
+                          //   } ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-100" : ""}`}>
+                          className={`tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-uppercase !tw-font-semibold tw-whitespace-nowrap tw-border-b tw-border-gray-700 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
+                            } ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-700 tw-transition-colors tw-select-none" : ""}`}>
                           {canSort ? (
                             <Typography color="blue-gray"
-                              className={`tw-flex tw-items-center tw-gap-1 md:tw-gap-2 tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"
+                              // className={`tw-flex tw-items-center tw-gap-1 md:tw-gap-2 tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"
+                              //   }`}>
+                              // {flexRender(header.column.columnDef.header, header.getContext())}
+                              // <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
+                              className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"
                                 }`}>
                               {flexRender(header.column.columnDef.header, header.getContext())}
-                              <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
+                              <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0 tw-text-white/60" />
                             </Typography>
                           ) : (
                             <Typography color="blue-gray"
-                              className={`tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
+                              // className={`tw-text-[10px] sm:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
+                              //   }`}>
+                              className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"
                                 }`}>
                               {flexRender(header.column.columnDef.header, header.getContext())}
                             </Typography>
@@ -736,13 +788,17 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {t.loading}
+                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                      <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
+                        <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin"></div>
+                        <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t.loading}</span>
+                      </div>
                     </td>
                   </tr>
                 ) : table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row) => (
-                    <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50 hover:tw-bg-blue-gray-50/50 tw-transition-colors">
+                    // <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50 hover:tw-bg-blue-gray-50/50 tw-transition-colors">
+                    <tr key={row.id} className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${row.index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'}`}>
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
                         return (
@@ -760,8 +816,15 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={columns.length} className="tw-text-center tw-py-8 tw-text-blue-gray-400">
-                      {!sn ? t.selectStation : t.noData}
+                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                      <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
+                        <div className="tw-w-10 tw-h-10 sm:tw-w-12 sm:tw-h-12 lg:tw-w-16 lg:tw-h-16 tw-rounded-full tw-bg-blue-gray-50 tw-flex tw-items-center tw-justify-center">
+                          <DocumentArrowDownIcon className="tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 lg:tw-w-8 lg:tw-h-8 tw-text-blue-gray-300" />
+                        </div>
+                        <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm tw-font-medium">
+                          {!sn ? t.selectStation : t.noData}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -771,7 +834,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         </CardFooter>
 
         {/* PAGINATION */}
-        <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4 tw-py-4">
+        {/* <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-justify-between tw-gap-3 tw-px-3 md:tw-px-4 tw-py-4">
           <span className="tw-text-sm">
             <Typography className="!tw-font-bold tw-inline">{t.page}</Typography>{" "}
             <strong>{table.getState().pagination.pageIndex + 1} {t.of} {table.getPageCount()}</strong>
@@ -784,6 +847,21 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
             <Button variant="outlined" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="disabled:tw-opacity-30 tw-py-2 tw-px-2">
               <ChevronRightIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
               <span className="tw-sr-only">Next</span>
+            </Button>
+          </div>
+        </div> */}
+        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-100">
+          <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-text-blue-gray-600 tw-order-2 sm:tw-order-1">
+            {t.page} <strong className="tw-text-blue-gray-800">{table.getState().pagination.pageIndex + 1}</strong> {t.of} <strong className="tw-text-blue-gray-800">{table.getPageCount() || 1}</strong>
+          </Typography>
+          <div className="tw-flex tw-gap-1.5 sm:tw-gap-2 tw-order-1 sm:tw-order-2">
+            <Button size="sm" variant="outlined" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
+              className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors">
+              <ChevronLeftIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
+            </Button>
+            <Button size="sm" variant="outlined" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
+              className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors">
+              <ChevronRightIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
             </Button>
           </div>
         </div>

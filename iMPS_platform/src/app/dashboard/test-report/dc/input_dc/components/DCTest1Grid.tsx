@@ -265,7 +265,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Left Cover", 
     testNameTh: "ฝาครอบซ้าย", 
     unit: "",
-    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านซ้าย", en: "Test PE continuity at left cover area" }
+    tooltip: { th: "วัดค่าความต่อเนื่องระหว่างฝาครอบด้านซ้ายกับกราวด์หลัก ค่าที่ได้ต้องไม่เกิน 0.1 Ω (ถ้ามี)", en: "Measure PE continuity between the left cover and main ground. The value must not exceed 0.1 Ω (if applicable)" }
   },
   { 
     category: "Electrical Safety", 
@@ -273,7 +273,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Right Cover", 
     testNameTh: "ฝาครอบขวา", 
     unit: "",
-    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านขวา", en: "Test PE continuity at right cover area" }
+    tooltip: { th: "วัดค่าความต่อเนื่องระหว่างฝาครอบด้านขวากับกราวด์หลัก ค่าที่ได้ต้องไม่เกิน 0.1 Ω (ถ้ามี)", en: "Measure PE continuity between the right cover and main ground. The value must not exceed 0.1 Ω (if applicable)" }
   },
   { 
     category: "Electrical Safety", 
@@ -281,7 +281,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Front Cover", 
     testNameTh: "ฝาครอบหน้า", 
     unit: "",
-    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านหน้า", en: "Test PE continuity at front cover area" }
+    tooltip: { th: "วัดค่าความต่อเนื่องระหว่างฝาครอบด้านหน้ากับกราวด์หลัก ค่าที่ได้ต้องไม่เกิน 0.1 Ω (ถ้ามี)", en: "Measure PE continuity between the front cover and main ground. The value must not exceed 0.1 Ω (if applicable)" }
   },
   { 
     category: "Electrical Safety", 
@@ -289,7 +289,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Back Cover", 
     testNameTh: "ฝาครอบหลัง", 
     unit: "",
-    tooltip: { th: "ทดสอบความต่อเนื่องของตัวนำป้องกัน (PE) บริเวณฝาครอบด้านหลัง", en: "Test PE continuity at back cover area" }
+    tooltip: { th: "วัดค่าความต่อเนื่องระหว่างฝาครอบด้านหลังกับกราวด์หลัก ค่าที่ได้ต้องไม่เกิน 0.1 Ω (ถ้ามี)", en: "Measure PE continuity between the back cover and main ground. The value must not exceed 0.1 Ω (if applicable)" }
   },
   { 
     category: "Electrical Safety", 
@@ -297,7 +297,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Pin PE H.1", 
     testNameTh: "Pin PE H.1", 
     unit: "",
-    tooltip: { th: "ทดสอบความต่อเนื่องของขั้ว PE ที่หัวชาร์จ 1", en: "Test PE pin continuity at charging head 1" }
+    tooltip: { th: "ตรวจสอบความต่อเนื่องจากขากราวด์ (Pin PE) ที่หัวจ่ายที่1 มายังกราวด์หลัก ค่าที่ได้ต้องไม่เกิน 0.1 Ω", en: "Verify PE continuity from the ground pin (Pin PE) at charging head 1 to the main ground. The value must not exceed 0.1 Ω" }
   },
   { 
     category: "Electrical Safety", 
@@ -305,7 +305,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Pin PE H.2", 
     testNameTh: "Pin PE H.2", 
     unit: "",
-    tooltip: { th: "ทดสอบความต่อเนื่องของขั้ว PE ที่หัวชาร์จ 2", en: "Test PE pin continuity at charging head 2" }
+    tooltip: { th: "ตรวจสอบความต่อเนื่องจากขากราวด์ (Pin PE) ที่หัวจ่ายที่2 มายังกราวด์หลัก ค่าที่ได้ต้องไม่เกิน 0.1 Ω", en: "Verify PE continuity from the ground pin (Pin PE) at charging head 2 to the main ground. The value must not exceed 0.1 Ω" }
   },
   { 
     category: "Electrical Safety", 
@@ -313,7 +313,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "RCD type A", 
     testNameTh: "RCD ชนิด A", 
     unit: "mA",
-    tooltip: { th: "ทดสอบการทำงานของ RCD ชนิด A สำหรับกระแสไฟฟ้ากระแสสลับ", en: "Test RCD type A operation for AC fault current" }
+    tooltip: { th: "จำลองกระแสรั่วไหลชนิดกระแสสลับ (AC) หรือกระแสตรงแบบพัลส์ (Pulse DC) ซึ่งอุปกรณ์ต้องตัดไฟภายในเวลา 300 ms (ถ้ามี)", en: "Simulate AC or pulsating DC leakage current. The device must trip within 300 ms (if applicable)" }
   },
   { 
     category: "Electrical Safety", 
@@ -321,7 +321,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "RCD type F", 
     testNameTh: "RCD ชนิด F", 
     unit: "mA",
-    tooltip: { th: "ทดสอบการทำงานของ RCD ชนิด F สำหรับกระแสไฟฟ้าผสม", en: "Test RCD type F operation for mixed frequency fault current" }
+    tooltip: { th: "จำลองสถานการณ์กระแสรั่วไหลชนิดความถี่ผสม ซึ่งอุปกรณ์ต้องตัดไฟภายในเวลา 300 ms (ถ้ามี)", en: "Simulate mixed-frequency leakage current. The device must trip within 300 ms (if applicable)" }
   },
   { 
     category: "Electrical Safety", 
@@ -329,7 +329,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "RCD type B", 
     testNameTh: "RCD ชนิด B", 
     unit: "mA",
-    tooltip: { th: "ทดสอบการทำงานของ RCD ชนิด B สำหรับกระแสไฟฟ้ากระแสตรง", en: "Test RCD type B operation for DC fault current" }
+    tooltip: { th: "จำลองสถานการณ์กระแสรั่วไหลชนิดกระแสสลับ (AC), กระแสตรงแบบพัลส์ (Pulse DC) หรือกระแสตรง (DC) ซึ่งอุปกรณ์ต้องตัดไฟภายในเวลา 300 ms (ถ้ามี)", en: "Simulate AC, pulsating DC, or smooth DC leakage current. The device must trip within 300 ms (if applicable)" }
   },
   { 
     category: "Electrical Safety", 
@@ -337,7 +337,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Isolation Transformer", 
     testNameTh: "หม้อแปลงแยก", 
     unit: "",
-    tooltip: { th: "ตรวจสอบการมีหม้อแปลงแยกในระบบ", en: "Check if isolation transformer is present in the system" }
+    tooltip: { th: "PowerModule เครื่องชาร์จเป็นแบบ Isolation Transformer หรือไม่", en: "Check whether the charger's power module is an isolation transformer type or not" }
   },
   { 
     category: "Electrical Safety", 
@@ -345,7 +345,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testName: "Power standby", 
     testNameTh: "พลังงานขณะสแตนด์บาย", 
     unit: "",
-    tooltip: { th: "วัดค่าพลังงานที่เครื่องใช้ขณะอยู่ในโหมดสแตนด์บาย (L1, L2, L3)", en: "Measure power consumption during standby mode (L1, L2, L3)" }
+    tooltip: { th: "ตรวจสอบกระแสไฟฟ้าขณะเครื่องพร้อมใช้งาน", en: "Measure the electrical current while the charger is in standby mode (L1, L2, L3)" }
   },
 ];
 

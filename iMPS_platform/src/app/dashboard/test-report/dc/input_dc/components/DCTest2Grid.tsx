@@ -398,7 +398,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "ไม่มี (ทำงานปกติ)",
     unit: "",
     remarkKey: "noneNormalOperate",
-    tooltip: { th: "ทดสอบชาร์จแบบปกติให้ตรวจสอบ แรงดัน isolation ต้องมีแรงดันทดสอบตามระดับแรงดัน ของรถและขั้นตอน precharge ต้องมี กระแสน้อยกว่าสองแอมป์", en: "Test normal charging to verify that the isolation voltage meets the required test voltage for the vehicle's voltage level, and the precharge process must have current less than 2 amps" },
+    tooltip: { th: "การทดสอบการชาร์จแบบปกติ ให้สังเหตุแรงดันไฟฟ้าในการทดสอบค่าความเป็นฉนวนต้องไม่น้อยกว่าแรงดันสูงสุดของแบตเตอรรี่รถไฟฟ้า และขั้นตอน PreCharge เครื่องชาร์จต้องจ่ายกระแสไม่เกิน 2 A", en: "Test normal charging operation. Observe that the insulation test voltage must not be less than the maximum voltage of the EV battery, and during the PreCharge process, the charger must supply no more than 2 A" },
   },
   {
     category: "Charger Safety",
@@ -407,7 +407,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "CP ลัดวงจร -120 โอห์ม",
     unit: "",
     remarkKey: "cPShort120ohm",
-    tooltip: { th: "ทดสอบการตอบสนองเมื่อสาย CP ลัดวงจรที่ -120 โอห์ม", en: "Test response when CP line is shorted at -120 Ohm" },
+    tooltip: { th: "ทดสอบการตอบสนองของเครื่องอัดประจุไฟฟ้า เมื่อสูญเสียความต่อเนื่องทางไฟฟ้าของวงจรตัวนำควบคุมการอัดประจุ (Control Pilot : CP)", en: "Test the charger's response when the electrical continuity of the Control Pilot (CP) circuit is lost" },
   },
   {
     category: "Charger Safety",
@@ -416,7 +416,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "PE-PP-ตัด",
     unit: "",
     remarkKey: "pEPPCut",
-    tooltip: { th: "ทดสอบการตอบสนองเมื่อสาย PE หรือ PP ถูกตัด", en: "Test response when PE or PP line is cut" },
+    tooltip: { th: "ทดสอบการตอบสนองของเครื่องอัดประจุไฟฟ้า เมื่อที่เกิดการสูญเสียความต่อเนื่องของตัวนำระบบดิน ระหว่างเครื่องอัดประจุไฟฟ้ากับยานยนต์ไฟฟ้าขณะอัดประจุ", en: "Test the charger's response when the protective earth (PE) conductor continuity between the charger and the EV is lost during charging" },
   },
   {
     category: "Charger Safety",
@@ -425,7 +425,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "หยุดระยะไกล",
     unit: "",
     remarkKey: "remoteStop",
-    tooltip: { th: "ทดสอบการหยุดการชาร์จผ่านการควบคุมระยะไกล", en: "Test remote stop charging functionality" },
+    tooltip: { th: "เพื่อทดสอบการหยุดทำงานของเครื่องอัดประจุไฟฟ้า เมื่อต่องการจะหยุดการอัดประจุ", en: "Test the charger's ability to stop charging when a remote stop command is issued" },
   },
   {
     category: "Charger Safety",
@@ -434,7 +434,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "ฉุกเฉิน",
     unit: "",
     remarkKey: "emergency",
-    tooltip: { th: "ทดสอบการทำงานของปุ่มหยุดฉุกเฉิน", en: "Test emergency stop button functionality" },
+    tooltip: { th: "เพื่อทดสอบการตอบสนองของเครื่องอัดประจุไฟฟ้าขณะชาร์จ เมื่อกดปุ่มหยุดฉุกเฉิน เครื่องชาร์ต้องหยุดจ่ายกระแสไฟฟ้าทันที", en: "Test the charger's response during charging when the emergency stop button is pressed. The charger must immediately stop supplying current" },
   },
   {
     category: "Charger Safety",
@@ -443,7 +443,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "LDC +",
     unit: "",
     remarkKey: "lDCPlus",
-    tooltip: { th: "ทดสอบการตรวจจับรถยนต์ไฟฟ้า (LDC) ขั้วบวก", en: "Test EV detection (LDC) positive terminal" },
+    tooltip: { th: "ทดสอบการตอบสนองของเครื่องอัดประจุไฟฟ้า เมื่อยานยนต์ไฟฟ้าหรือสายอัดประจุด้านขั้วบวกของเครื่องอัดประจุไฟฟ้ามีค่าความเป็นฉนวนที่ต่ำกว่ามาตรฐานกำหนดที่ (>100 kΩ)", en: "Test the charger's response when the insulation resistance on the positive terminal of the charger's charging cable or EV falls below the standard threshold (>100 kΩ)" },
   },
   {
     category: "Charger Safety",
@@ -452,7 +452,7 @@ export const DC_TEST_DATA: DCTestItem[] = [
     testNameTh: "LDC -",
     unit: "",
     remarkKey: "lDCMinus",
-    tooltip: { th: "ทดสอบการตรวจจับรถยนต์ไฟฟ้า (LDC) ขั้วลบ", en: "Test EV detection (LDC) negative terminal" },
+    tooltip: { th: "ทดสอบการตอบสนองของเครื่องอัดประจุไฟฟ้า เมื่อยานยนต์ไฟฟ้าหรือสายอัดประจุด้านขั้วลบของเครื่องอัดประจุไฟฟ้ามีค่าความเป็นฉนวนที่ต่ำกว่ามาตรฐานกำหนด(>100 kΩ)", en: "Test the charger's response when the insulation resistance on the negative terminal of the charger's charging cable or EV falls below the standard threshold (>100 kΩ)" },
   },
 ];
 
@@ -971,7 +971,16 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               return (
                 <div key={`h1-${actualIndex}`} className="tw-px-4 tw-py-3">
                   {/* Row 1: Test Name */}
-                  <div className="tw-text-sm tw-font-medium tw-text-gray-700 tw-mb-2">{displayName}</div>
+                  <div className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-medium tw-text-gray-700 tw-mb-2">
+                    {displayName}
+                    {item.tooltip && (
+                      <Tooltip content={item.tooltip[lang]} placement="bottom">
+                        <svg className="tw-w-4 tw-h-4 tw-text-gray-400 tw-cursor-help tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </Tooltip>
+                    )}
+                  </div>
                   {/* Row 2: Buttons + Photo + Remark */}
                   <div className="tw-flex tw-items-center tw-gap-2">
                     {!showH1 && isRound3WithFailedItems ? (
@@ -1030,7 +1039,16 @@ const TestRoundCard: React.FC<TestRoundCardProps> = ({
               return (
                 <div key={`h2-${actualIndex}`} className="tw-px-4 tw-py-3">
                   {/* Row 1: Test Name */}
-                  <div className="tw-text-sm tw-font-medium tw-text-gray-700 tw-mb-2">{displayName}</div>
+                  <div className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-medium tw-text-gray-700 tw-mb-2">
+                    {displayName}
+                    {item.tooltip && (
+                      <Tooltip content={item.tooltip[lang]} placement="bottom">
+                        <svg className="tw-w-4 tw-h-4 tw-text-gray-400 tw-cursor-help tw-flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                      </Tooltip>
+                    )}
+                  </div>
                   {/* Row 2: Buttons + Photo + Remark */}
                   <div className="tw-flex tw-items-center tw-gap-2">
                     {!showH2 && isRound3WithFailedItems ? (
