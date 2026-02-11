@@ -52,7 +52,7 @@ const NavIconButton = ({
     className={`
       tw-relative
       tw-flex tw-items-center tw-justify-center
-      tw-w-9 tw-h-9
+      tw-w-8 tw-h-8
       tw-bg-gray-900
       hover:tw-bg-gray-700
       tw-rounded-full
@@ -253,18 +253,25 @@ export function DashboardNavbar() {
   };
 
   return (
-    <div
-      className={`
-        tw-rounded-2xl tw-transition-all tw-duration-300 tw-w-full
-        ${fixedNavbar
-          ? "tw-sticky tw-top-4 tw-z-40 tw-backdrop-blur-xl tw-bg-white/80 tw-shadow-lg tw-shadow-gray-200/50 tw-border tw-border-gray-100"
-          : "tw-bg-transparent"
-        }
-      `}
-    >
-      <div className="tw-px-4 sm:tw-px-6 tw-py-4">
+    <>
+      {/* Spacer to prevent content from hiding behind fixed navbar */}
+      <div className="tw-h-[60px] tw-w-full tw-shrink-0" />
+
+      <div
+        className="
+          tw-fixed tw-top-2 tw-right-4
+          tw-z-40
+          tw-transition-all tw-duration-300
+          tw-backdrop-blur-xl tw-bg-white/80
+          tw-shadow-md tw-shadow-gray-200/50
+          tw-border tw-border-gray-100
+          tw-rounded-2xl
+        "
+        style={{ left: "var(--content-ml, 1rem)" }}
+      >
+        <div className="tw-px-4 sm:tw-px-6 tw-py-2">
         {/* ===== Single Row Layout ===== */}
-        <div className="tw-flex tw-items-center tw-justify-between tw-gap-4">
+        <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
 
           {/* Left: Title & Breadcrumbs */}
           <div className="tw-min-w-0 tw-flex-shrink-0">
@@ -288,7 +295,7 @@ export function DashboardNavbar() {
                 </div>
 
                 {/* Title */}
-                <h1 className="tw-text-lg sm:tw-text-xl lg:tw-text-2xl tw-font-bold tw-text-gray-900 tw-tracking-tight tw-truncate tw-capitalize">
+                <h1 className="tw-text-base sm:tw-text-lg lg:tw-text-xl tw-font-bold tw-text-gray-900 tw-tracking-tight tw-truncate tw-capitalize">
                   {title}
                 </h1>
               </>
@@ -307,12 +314,12 @@ export function DashboardNavbar() {
                     <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-2">
                       {/* Station Pill */}
                       <div className="
-                        tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-1.5
+                        tw-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1
                         tw-bg-gray-900
                         tw-rounded-full
                         tw-shadow-sm
                       ">
-                        <MapPinIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                        <MapPinIcon className="tw-h-3.5 tw-w-3.5 tw-text-white" />
                         <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[100px] lg:tw-max-w-[150px] tw-truncate">
                           {selectedStationName || selectedStationId}
                         </span>
@@ -320,12 +327,12 @@ export function DashboardNavbar() {
 
                       {/* Charger Pill */}
                       <div className="
-                        tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-1.5
+                        tw-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1
                         tw-bg-gray-900
                         tw-rounded-full
                         tw-shadow-sm
                       ">
-                        <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                        <ChargerBoxIcon className="tw-h-3.5 tw-w-3.5 tw-text-white" />
                         <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[80px] lg:tw-max-w-[120px] tw-truncate">
                           {selectedChargerNo ? `#${selectedChargerNo}` : ""} {selectedSN}
                         </span>
@@ -409,7 +416,7 @@ export function DashboardNavbar() {
                     onClick={() => router.push("/dashboard/stations")}
                     className="
                       tw-flex tw-items-center tw-gap-2
-                      tw-px-3 tw-py-1.5 tw-rounded-full
+                      tw-px-2.5 tw-py-1 tw-rounded-full
                       tw-bg-gray-900
                       hover:tw-bg-gray-800
                       tw-transition-all tw-duration-200
@@ -427,7 +434,7 @@ export function DashboardNavbar() {
 
             {/* Divider - Only show when has selection */}
             {!isStationsPage && hasChargerSelected && (
-              <div className="tw-hidden sm:tw-block tw-w-px tw-h-8 tw-bg-gray-200" />
+              <div className="tw-hidden sm:tw-block tw-w-px tw-h-6 tw-bg-gray-200" />
             )}
 
             {/* Notification Bell - Consistent Style */}
@@ -456,7 +463,7 @@ export function DashboardNavbar() {
               onClick={() => setOpenSidenav(dispatch, !openSidenav)}
               className="
                 xl:tw-hidden
-                tw-p-2 tw-rounded-full
+                tw-p-1.5 tw-rounded-full
                 tw-bg-white hover:tw-bg-gray-50
                 tw-border tw-border-gray-200
                 tw-text-gray-600
@@ -474,7 +481,8 @@ export function DashboardNavbar() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
