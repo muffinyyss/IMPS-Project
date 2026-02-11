@@ -13,7 +13,7 @@ import json, re, uuid, pathlib, secrets
 
 from config import (
     users_collection, station_collection, charger_collection,
-    charger_onoff, _validate_station_id, th_tz,
+    charger_onoff, _validate_station_id, th_tz, settingDB,
 )
 from deps import UserClaims, get_current_user
 from routers.pm_helpers import (
@@ -73,26 +73,6 @@ def parse_iso_utc(s: str) -> Optional[datetime]:
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except Exception:
         return None
-
-#     อ่านเอกสารล่าสุดจาก stationsOnOff/<station_id>
-#     โครงสร้าง doc:
-#         }},
-
-
-#     SN:str
-#     WO:str 
-#     PLCFirmware:str 
-#     PIFirmware:str 
-#     RTFirmware:str
-#     chargeBoxID: str 
-
-
-#     SN:str
-#     WO:str 
-#     PLCFirmware:str 
-#     PIFirmware:str 
-#     RTFirmware:str 
-#     chargeBoxID:str
 
 
 def to_object_id_or_400(s: str) -> ObjectId:
@@ -181,16 +161,16 @@ def parse_iso_any_tz(s: str) -> datetime | None:
 # ------------------------------------ new station
 # ----- Charger Models -----
 class ChargerCreate(BaseModel):
-    chargeBoxID: str
-    chargerNo: Optional[int] = None  # Auto-generated if not provided
+    chargeBoxID: Optional[str] = ""      # ← เปลี่ยนจาก str เป็น Optional
+    chargerNo: Optional[int] = None
     brand: str
     model: str
     SN: str
-    WO: str
+    WO: Optional[str] = ""               # ← เปลี่ยน
     power: Optional[str] = ""
-    PLCFirmware: str
-    PIFirmware: str
-    RTFirmware: str
+    PLCFirmware: Optional[str] = ""      # ← เปลี่ยน
+    PIFirmware: Optional[str] = ""       # ← เปลี่ยน
+    RTFirmware: Optional[str] = ""       # ← เปลี่ยน
     commissioningDate: Optional[str] = None
     warrantyYears: Optional[int] = 1
     numberOfCables: Optional[int] = 1
@@ -223,16 +203,16 @@ class ChargerUpdate(BaseModel):
 class ChargerOut(BaseModel):
     id: str
     station_id: str
-    chargeBoxID: str
+    chargeBoxID: Optional[str] = ""      # ← เปลี่ยน
     chargerNo: Optional[int] = None
     brand: str
     model: str
     SN: str
-    WO: str
+    WO: Optional[str] = ""               # ← เปลี่ยน
     power: Optional[str] = ""
-    PLCFirmware: str
-    PIFirmware: str
-    RTFirmware: str
+    PLCFirmware: Optional[str] = ""      # ← เปลี่ยน
+    PIFirmware: Optional[str] = ""       # ← เปลี่ยน
+    RTFirmware: Optional[str] = ""       # ← เปลี่ยน
     commissioningDate: Optional[str] = None
     warrantyYears: Optional[int] = 1
     numberOfCables: Optional[int] = 1
@@ -571,16 +551,16 @@ def create_station_with_chargers(
         
         charger_doc = {
             "station_id": station_id,
-            "chargeBoxID": charger.chargeBoxID.strip(),
+            "chargeBoxID": charger.chargeBoxID.strip() if charger.chargeBoxID else "",
             "chargerNo": charger_no,
             "brand": charger.brand.strip(),
             "model": charger.model.strip(),
             "SN": charger.SN.strip(),
-            "WO": charger.WO.strip(),
+            "WO": charger.WO.strip() if charger.WO else "",
             "power": charger.power.strip() if charger.power else "",
-            "PLCFirmware": charger.PLCFirmware.strip(),
-            "PIFirmware": charger.PIFirmware.strip(),
-            "RTFirmware": charger.RTFirmware.strip(),
+            "PLCFirmware": charger.PLCFirmware.strip() if charger.PLCFirmware else "",
+            "PIFirmware": charger.PIFirmware.strip() if charger.PIFirmware else "",
+            "RTFirmware": charger.RTFirmware.strip() if charger.RTFirmware else "",
             "commissioningDate": charger.commissioningDate,
             "warrantyYears": charger.warrantyYears if charger.warrantyYears else 1,
             "numberOfCables": charger.numberOfCables if charger.numberOfCables else 1,
@@ -707,16 +687,16 @@ def add_charger_to_station(
     
     charger_doc = {
         "station_id": station_id,
-        "chargeBoxID": body.chargeBoxID.strip(),
+        "chargeBoxID": body.chargeBoxID.strip() if body.chargeBoxID else "",
         "chargerNo": charger_no,
         "brand": body.brand.strip(),
         "model": body.model.strip(),
         "SN": body.SN.strip(),
-        "WO": body.WO.strip(),
+        "WO": body.WO.strip() if body.WO else "",
         "power": body.power.strip() if body.power else "",
-        "PLCFirmware": body.PLCFirmware.strip(),
-        "PIFirmware": body.PIFirmware.strip(),
-        "RTFirmware": body.RTFirmware.strip(),
+        "PLCFirmware": body.PLCFirmware.strip() if body.PLCFirmware else "",
+        "PIFirmware": body.PIFirmware.strip() if body.PIFirmware else "",
+        "RTFirmware": body.RTFirmware.strip() if body.RTFirmware else "",
         "commissioningDate": body.commissioningDate,
         "warrantyYears": body.warrantyYears if body.warrantyYears else 1,
         "numberOfCables": body.numberOfCables if body.numberOfCables else 1,
@@ -901,3 +881,68 @@ def get_chargers_by_station(
     
     chargers = list(charger_collection.find({"station_id": station_id}).sort("chargerNo", 1))
     return {"chargers": [format_charger(c).dict() for c in chargers]}
+
+
+class AvailabilityOut(BaseModel):
+    station_id: str
+    total: int
+    available: int
+
+@router.get("/station-availability/{station_id}")
+async def get_station_availability(
+    station_id: str,
+):
+    station = station_collection.find_one({"station_id": station_id})
+    if not station:
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    chargers = list(charger_collection.find({"station_id": station_id}, {"SN": 1}))
+
+    total = 0
+    available = 0
+    per_charger = []  # ← เพิ่ม
+
+    for charger in chargers:
+        sn = charger.get("SN", "")
+        if not sn or sn == "-":
+            continue
+
+        try:
+            coll = settingDB[sn]
+            doc = await coll.find_one(
+                {},
+                {"_id": 0},
+                sort=[("_id", -1)]
+        )
+            if not doc:
+                continue
+
+            c_total = 0
+            c_available = 0
+            n = 1
+            while f"icp{n}" in doc:
+                c_total += 1
+                try:
+                    icp = int(doc.get(f"icp{n}", 0))
+                    usl = int(doc.get(f"usl{n}", 1))
+                except (ValueError, TypeError):
+                    n += 1
+                    continue
+                if icp == 1 and usl == 0:
+                    c_available += 1
+                n += 1
+
+            total += c_total
+            available += c_available
+            per_charger.append({"sn": sn, "total": c_total, "available": c_available})
+
+        except Exception as e:
+            print(f"[availability] Error for SN {sn}: {e}")
+            continue
+
+    return {
+        "station_id": station_id,
+        "total": total,
+        "available": available,
+        "chargers": per_charger,  # ← เพิ่ม
+    }

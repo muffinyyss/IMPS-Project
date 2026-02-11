@@ -28,10 +28,14 @@ export type ChargerForm = {
     PIFirmware: string;
     RTFirmware: string;
     chargeBoxID: string;
+    ocppUrl: string;
     commissioningDate: string;
     warrantyYears: number;
     numberOfCables: number;
     is_active: boolean;
+    location: string;
+    description: string;
+    chargerType: string;
     chargerImage: File | null;
     deviceImage: File | null;
 };
@@ -41,6 +45,8 @@ export type StationForm = {
     station_name: string;
     owner: string;
     is_active: boolean;
+    location: string;
+    description: string;
     stationImage: File | null;
     mdbImage: File | null;
 };
@@ -112,10 +118,14 @@ const createEmptyCharger = (chargerNo: number): ChargerForm => ({
     PIFirmware: "",
     RTFirmware: "",
     chargeBoxID: "",
+    ocppUrl: "",
     commissioningDate: getTodayDate(),
     warrantyYears: 1,
     numberOfCables: 1,
     is_active: true,
+    location: "",
+    description: "",
+    chargerType: "DC",
     chargerImage: null,
     deviceImage: null,
 });
@@ -167,6 +177,8 @@ export default function AddStationModal({
                 status: "สถานะ",
                 active: "เปิดใช้งาน",
                 inactive: "ปิดใช้งาน",
+                location: "สถานที่ตั้ง",
+                description: "รายละเอียด",
 
                 // Station Images
                 stationImages: "📷 รูปภาพสถานี",
@@ -179,7 +191,10 @@ export default function AddStationModal({
                 chargerNo: "ตู้ชาร์จ #",
 
                 // Charger Form Labels
-                chargerBoxId: "รหัสตู้ชาร์จ",
+                chargerBoxId: "รหัสตู้ชาร์จ (Charge Box ID)",
+                ocppUrl: "OCPP URL",
+                ocppSection: "🔌 OCPP",
+                chargerType: "ประเภทตู้ชาร์จ",
                 chargerNoAuto: "ตู้ที่ (อัตโนมัติ)",
                 auto: "อัตโนมัติ",
                 brand: "ยี่ห้อ",
@@ -193,7 +208,6 @@ export default function AddStationModal({
                 commissioningDate: "วันที่เริ่มใช้งาน",
                 warrantyYears: "ระยะรับประกัน (ปี)",
                 numberOfCables: "จำนวนสายชาร์จ",
-
                 // Charger Images
                 chargerImages: "📷 รูปภาพตู้ชาร์จ",
                 charger: "ตู้ชาร์จ",
@@ -223,6 +237,8 @@ export default function AddStationModal({
                 status: "Status",
                 active: "Active",
                 inactive: "Inactive",
+                location: "Location",
+                description: "Description",
 
                 // Station Images
                 stationImages: "📷 Station Images",
@@ -235,7 +251,10 @@ export default function AddStationModal({
                 chargerNo: "Charger #",
 
                 // Charger Form Labels
-                chargerBoxId: "Charger Box ID",
+                chargerBoxId: "Charge Box ID",
+                ocppUrl: "OCPP URL",
+                ocppSection: "🔌 OCPP",
+                chargerType: "Charger Type",
                 chargerNoAuto: "Charger No. (Auto)",
                 auto: "Auto",
                 brand: "Brand",
@@ -249,7 +268,6 @@ export default function AddStationModal({
                 commissioningDate: "Commissioning Date",
                 warrantyYears: "Warranty (Years)",
                 numberOfCables: "Number of Cables",
-
                 // Charger Images
                 chargerImages: "📷 Charger Images",
                 charger: "Charger",
@@ -278,6 +296,8 @@ export default function AddStationModal({
         station_name: "",
         owner: "",
         is_active: true,
+        location: "",
+        description: "",
         stationImage: null,
         mdbImage: null,
     });
@@ -290,6 +310,7 @@ export default function AddStationModal({
 
     // Charger image previews
     const [chargerPreviews, setChargerPreviews] = useState<Record<string, { charger: string; device: string }>>({});
+    const isFlexxfast = (brand: string) => brand.trim().toLowerCase() === "flexxfast";
 
     // Chargers array
     const [chargers, setChargers] = useState<ChargerForm[]>([createEmptyCharger(1)]);
@@ -442,7 +463,7 @@ export default function AddStationModal({
             return;
         }
 
-        if (chargers.some((c) => !c.chargeBoxID.trim())) {
+        if (chargers.some((c) => isFlexxfast(c.brand) && !c.chargeBoxID.trim())) {
             alert(t.pleaseFillChargerBoxId);
             setSubmitting(false);
             return;
@@ -454,6 +475,8 @@ export default function AddStationModal({
                 station_name: station.station_name.trim(),
                 owner: (station.owner || currentUser).trim(),
                 is_active: station.is_active,
+                location: station.location.trim(),
+                description: station.description.trim(),
             },
             chargers: chargers.map((c) => ({
                 chargerNo: c.chargerNo,
@@ -466,10 +489,14 @@ export default function AddStationModal({
                 PIFirmware: c.PIFirmware.trim(),
                 RTFirmware: c.RTFirmware.trim(),
                 chargeBoxID: c.chargeBoxID.trim(),
+                ocppUrl: c.ocppUrl.trim(),
                 commissioningDate: c.commissioningDate,
                 warrantyYears: c.warrantyYears,
                 numberOfCables: c.numberOfCables,
                 is_active: c.is_active,
+                location: c.location.trim(),
+                description: c.description.trim(),
+                chargerType: c.chargerType,
             })),
         };
 
@@ -522,6 +549,8 @@ export default function AddStationModal({
             station_name: "",
             owner: "",
             is_active: true,
+            location: "",
+            description: "",
             stationImage: null,
             mdbImage: null,
         });
@@ -559,6 +588,20 @@ export default function AddStationModal({
                             {t.stationInformation}
                         </Typography>
                         <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                            <Input
+                                label={t.location}
+                                value={station.location}
+                                onChange={(e) => onStationChange("location", e.target.value)}
+                                crossOrigin={undefined}
+                            />
+
+                            <Input
+                                label={t.description}
+                                value={station.description}
+                                onChange={(e) => onStationChange("description", e.target.value)}
+                                crossOrigin={undefined}
+                            />
+
                             <div className="tw-space-y-1">
                                 <Input
                                     label={t.stationName}
@@ -703,14 +746,6 @@ export default function AddStationModal({
                                 </div>
 
                                 <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-3">
-                                    <Input
-                                        label={t.chargerBoxId}
-                                        required
-                                        value={charger.chargeBoxID}
-                                        onChange={(e) => onChargerChange(charger.id, "chargeBoxID", e.target.value)}
-                                        crossOrigin={undefined}
-                                    />
-
                                     <div className="tw-relative">
                                         <Input
                                             label={t.chargerNoAuto}
@@ -724,6 +759,29 @@ export default function AddStationModal({
                                             ({t.auto})
                                         </span>
                                     </div>
+
+                                    <Input
+                                        label={t.location}
+                                        value={charger.location}
+                                        onChange={(e) => onChargerChange(charger.id, "location", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+
+                                    <Input
+                                        label={t.description}
+                                        value={charger.description}
+                                        onChange={(e) => onChargerChange(charger.id, "description", e.target.value)}
+                                        crossOrigin={undefined}
+                                    />
+
+                                    <Select
+                                        label={t.chargerType}
+                                        value={charger.chargerType}
+                                        onChange={(v) => onChargerChange(charger.id, "chargerType", v ?? "DC")}
+                                    >
+                                        <Option value="DC">DC</Option>
+                                        <Option value="AC">AC</Option>
+                                    </Select>
 
                                     <Input
                                         label={t.brand}
@@ -747,40 +805,44 @@ export default function AddStationModal({
                                         crossOrigin={undefined}
                                     />
                                     <Input
-                                        label={t.workOrder}
-                                        required
-                                        value={charger.WO}
-                                        onChange={(e) => onChargerChange(charger.id, "WO", e.target.value)}
-                                        crossOrigin={undefined}
-                                    />
-                                    <Input
                                         label={t.power}
                                         required
                                         value={charger.power}
                                         onChange={(e) => onChargerChange(charger.id, "power", e.target.value)}
                                         crossOrigin={undefined}
                                     />
-                                    <Input
-                                        label={t.plcFirmware}
-                                        required
-                                        value={charger.PLCFirmware}
-                                        onChange={(e) => onChargerChange(charger.id, "PLCFirmware", e.target.value)}
-                                        crossOrigin={undefined}
-                                    />
-                                    <Input
-                                        label={t.piFirmware}
-                                        required
-                                        value={charger.PIFirmware}
-                                        onChange={(e) => onChargerChange(charger.id, "PIFirmware", e.target.value)}
-                                        crossOrigin={undefined}
-                                    />
-                                    <Input
-                                        label={t.routerFirmware}
-                                        required
-                                        value={charger.RTFirmware}
-                                        onChange={(e) => onChargerChange(charger.id, "RTFirmware", e.target.value)}
-                                        crossOrigin={undefined}
-                                    />
+                                    {isFlexxfast(charger.brand) && (
+                                        <>
+                                            <Input
+                                                label={t.workOrder}
+                                                required
+                                                value={charger.WO}
+                                                onChange={(e) => onChargerChange(charger.id, "WO", e.target.value)}
+                                                crossOrigin={undefined}
+                                            />
+                                            <Input
+                                                label={t.plcFirmware}
+                                                required
+                                                value={charger.PLCFirmware}
+                                                onChange={(e) => onChargerChange(charger.id, "PLCFirmware", e.target.value)}
+                                                crossOrigin={undefined}
+                                            />
+                                            <Input
+                                                label={t.piFirmware}
+                                                required
+                                                value={charger.PIFirmware}
+                                                onChange={(e) => onChargerChange(charger.id, "PIFirmware", e.target.value)}
+                                                crossOrigin={undefined}
+                                            />
+                                            <Input
+                                                label={t.routerFirmware}
+                                                required
+                                                value={charger.RTFirmware}
+                                                onChange={(e) => onChargerChange(charger.id, "RTFirmware", e.target.value)}
+                                                crossOrigin={undefined}
+                                            />
+                                        </>
+                                    )}
                                     <Input
                                         label={t.commissioningDate}
                                         type="date"
@@ -818,6 +880,30 @@ export default function AddStationModal({
                                         <Option value="false">{t.inactive}</Option>
                                     </Select>
                                 </div>
+
+                                {/* OCPP Section - only for Flexxfast */}
+                                {isFlexxfast(charger.brand) && (
+                                    <div className="tw-mt-4 tw-pt-4 tw-border-t tw-border-blue-gray-100">
+                                        <Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-semibold tw-mb-3">
+                                            {t.ocppSection}
+                                        </Typography>
+                                        <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
+                                            <Input
+                                                label={t.chargerBoxId}
+                                                required
+                                                value={charger.chargeBoxID}
+                                                onChange={(e) => onChargerChange(charger.id, "chargeBoxID", e.target.value)}
+                                                crossOrigin={undefined}
+                                            />
+                                            <Input
+                                                label={t.ocppUrl}
+                                                value={charger.ocppUrl}
+                                                onChange={(e) => onChargerChange(charger.id, "ocppUrl", e.target.value)}
+                                                crossOrigin={undefined}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Charger Images */}
                                 <div className="tw-mt-4 tw-pt-4 tw-border-t tw-border-blue-gray-100">
