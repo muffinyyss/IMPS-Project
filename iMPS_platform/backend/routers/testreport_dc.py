@@ -24,6 +24,16 @@ from routers.pm_helpers import (
 
 router = APIRouter()
 
+def get_dc_testreport_collection_for(sn: str):
+    _validate_station_id(sn)
+    coll = DCTestReportDB.get_collection(str(sn))
+    return coll
+
+def get_dcurl_coll_upload(sn: str):
+    _validate_station_id(sn)
+    coll = DCUrlDB.get_collection(str(sn))
+    return coll
+
 
 @router.get("/dctestreport/list")
 async def dctestreport_list(
