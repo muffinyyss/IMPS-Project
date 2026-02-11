@@ -270,8 +270,8 @@ const QUESTIONS: Question[] = [
     { no: 5, key: "r5", label: { th: "5) ตรวจสอบปุ่มหยุดฉุกเฉิน", en: "5) Check emergency stop button" }, kind: "group", hasPhoto: true, items: [{ label: { th: "5.1) ปุ่มหยุดฉุกเฉินที่ 1", en: "5.1) Emergency stop 1" }, key: "r5_1" }], tooltip: { th: "ตรวจสอบกลไกการกดและการคลายล็อกและตรวจสอบหน้าสัมผัสทางไฟฟ้าว่าไม่มีคราบสกปรก", en: "Check press/release mechanism and electrical contacts" } },
     { no: 6, key: "r6", label: { th: "6) ตรวจสอบ QR CODE", en: "6) Check QR CODE" }, kind: "group", hasPhoto: true, items: [{ label: { th: "6.1) QR CODE ที่ 1", en: "6.1) QR CODE 1" }, key: "r6_1" }], tooltip: { th: "ตรวจสอบความคมชัดของ QR CODE และการยึดติดของสติ๊กเกอร์", en: "Check QR CODE clarity and sticker adhesion" } },
     { no: 7, key: "r7", label: { th: "7) ตรวจสอบป้ายเตือนระวังไฟฟ้าช็อก", en: "7) Check electric shock warning sign" }, kind: "group", hasPhoto: true, items: [{ label: { th: "7.1) ป้ายเตือนระวังไฟฟ้าช็อกที่ 1", en: "7.1) Warning sign 1" }, key: "r7_1" }], tooltip: { th: "ตรวจสอบการติดตั้งและความชัดเจนของป้ายเตือนอันตราย", en: "Check installation and clarity of warning signs" } },
-    { 
-        no: 8, key: "r8", label: { th: "8) ตรวจสอบป้ายเตือนต้องการระบายอากาศ", en: "8) Check ventilation warning sign" }, kind: "group", hasPhoto: true, 
+    {
+        no: 8, key: "r8", label: { th: "8) ตรวจสอบป้ายเตือนต้องการระบายอากาศ", en: "8) Check ventilation warning sign" }, kind: "group", hasPhoto: true,
         tooltip: { th: "ตรวจสอบระยะ Clearance รอบตู้ตามป้ายระบุ เพื่อไม่ให้มีสิ่งของวางกีดขวางทางลม", en: "Check clearance around cabinet per signage" },
         items: [
             { label: { th: "8.1) ป้ายเตือนต้องการระบายอากาศ (ด้านซ้าย)", en: "8.1) Ventilation warning sign (inlet)" }, key: "r8_1" },
@@ -1183,21 +1183,21 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
         img.onload = () => {
             try {
                 URL.revokeObjectURL(img.src);
-                
+
                 const canvas = document.createElement("canvas");
                 canvas.width = img.width;
                 canvas.height = img.height;
                 const ctx = canvas.getContext("2d");
-                
+
                 if (!ctx) {
                     console.error("Canvas context not available");
                     resolve(file);
                     return;
                 }
-                
+
                 // วาดรูปภาพ
                 ctx.drawImage(img, 0, 0);
-                
+
                 // สร้าง timestamp text
                 const now = new Date();
                 const timestamp = now.toLocaleString("th-TH", {
@@ -1209,33 +1209,39 @@ async function addTimestampToImage(file: File, locationText: string): Promise<Fi
                     second: "2-digit",
                     hour12: false,
                 });
-                
+
                 // คำนวณขนาด font ตามขนาดรูป
                 const fontSize = Math.max(14, Math.floor(img.width * 0.022));
                 const padding = Math.floor(fontSize * 0.5);
                 const lineHeight = fontSize * 1.3;
-                
+
                 ctx.font = `bold ${fontSize}px Arial, sans-serif`;
                 const timestampDisplay = timestamp;
                 const locationDisplay = `📍 ${locationText}`;
                 const timestampWidth = ctx.measureText(timestampDisplay).width;
                 const locationWidth = ctx.measureText(locationDisplay).width;
-                const maxTextWidth = Math.max(timestampWidth, locationWidth);
                 const totalHeight = lineHeight * 2;
-                
-                // วาด background สีดำโปร่งใส (clamp ไม่ให้ติดลบกรณีรูปเล็ก)
-                const bgX = Math.max(0, img.width - maxTextWidth - padding * 2 - 10);
+
+                // ⚡ FIX: ใช้ความกว้างคงที่ + anchor มุมล่างซ้าย → ตำแหน่งไม่เพี้ยน
+                const boxWidth = Math.max(
+                    Math.floor(img.width * 0.6),
+                    Math.max(timestampWidth, locationWidth) + padding * 2
+                );
+                const bgX = 10;
                 const bgY = Math.max(0, img.height - totalHeight - padding * 2 - 10);
                 ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-                ctx.fillRect(bgX, bgY, maxTextWidth + padding * 2, totalHeight + padding * 2);
-                
-                // วาด text สีขาว
+                ctx.fillRect(bgX, bgY, boxWidth, totalHeight + padding * 2);
+
                 ctx.fillStyle = "#FFFFFF";
                 ctx.textBaseline = "top";
                 ctx.fillText(timestampDisplay, bgX + padding, bgY + padding);
-                ctx.fillText(locationDisplay, bgX + padding, bgY + padding + lineHeight);
-                
-                
+                let locText = locationDisplay;
+                while (ctx.measureText(locText).width > boxWidth - padding * 2 && locText.length > 10) {
+                    locText = locText.slice(0, -4) + "...";
+                }
+                ctx.fillText(locText, bgX + padding, bgY + padding + lineHeight);
+
+
                 // แปลงกลับเป็น File
                 canvas.toBlob((blob) => {
                     if (blob) {
@@ -1400,12 +1406,12 @@ function PhotoMultiInput({
                             <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-100">
                                 {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-contain" />}
                                 {/* Timestamp & Location overlay */}
-                                {(p.createdAt || p.location) && (
+                                {/* {(p.createdAt || p.location) && (
                                     <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
                                         {p.createdAt && <span className="tw-block tw-font-mono">{p.createdAt}</span>}
                                         {p.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {p.location}</span>}
                                     </span>
-                                )}
+                                )} */}
                                 <button onClick={() => { void handleRemove(p.id); }}
                                     className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
                             </div>
@@ -2491,7 +2497,7 @@ export default function ChargerPMForm() {
                             draftKey={currentDraftKey}
                             lang={lang}
                             isPostMode={true}
-                           
+
                         />
                     )}
                 </div>
@@ -2546,7 +2552,7 @@ export default function ChargerPMForm() {
         form.append("files", file, ensureJpgFilename(file.name));
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/pmreport/${reportId}/pre/photos` : `${API_BASE}/pmreport/${reportId}/post/photos`;
-        console.log(`[upload] ${group} → 1 file | size: ${(file.size/1024).toFixed(0)}KB | name: ${file.name}`);
+        console.log(`[upload] ${group} → 1 file | size: ${(file.size / 1024).toFixed(0)}KB | name: ${file.name}`);
         const res = await apiFetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
         if (!res.ok) {
             const errText = await res.text().catch(() => "");
@@ -2657,7 +2663,7 @@ export default function ChargerPMForm() {
             }
             preReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
             const allPhotos = Object.values(photos).flat();
-            Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => {});
+            Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => { });
             clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
@@ -2712,7 +2718,7 @@ export default function ChargerPMForm() {
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             postReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
             const allPhotos = Object.values(photos).flat();
-            Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => {});
+            Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => { });
             clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
