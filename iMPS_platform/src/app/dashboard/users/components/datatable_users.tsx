@@ -375,28 +375,80 @@ export default function SearchDataTables() {
     { accessorFn: (r: UserRow) => r.username ?? "-", id: "username", header: () => "username", cell: (i: any) => i.getValue() },
     { accessorFn: (r: UserRow) => r.email ?? "-",    id: "email",    header: () => "email",    cell: (i: any) => i.getValue() },
     { accessorFn: (r: UserRow) => r.tel ?? "-",    id: "tel",    header: () => "tel",    cell: (i: any) => i.getValue() },
-    { accessorFn: (r: UserRow) => r.company ?? "-",  id: "company",  header: () => "company",  cell: (i: any) => i.getValue() },
-    { accessorFn: (r: UserRow) => r.role ?? "-",     id: "role",     header: () => "role",     cell: (i: any) => i.getValue() },
+    // { accessorFn: (r: UserRow) => r.company ?? "-",  id: "company",  header: () => "company",  cell: (i: any) => i.getValue() },
+    {
+      accessorFn: (r: UserRow) => r.company ?? "-",
+      id: "company",
+      header: () => "company",
+      cell: (i: any) => {
+        const company = (i.getValue() as string) || "-";
+        if (company === "-" || !company.trim()) {
+          return <span className="tw-text-blue-gray-300 tw-text-xs tw-italic">—</span>;
+        }
+        const palette = [
+          "tw-bg-blue-50 tw-text-blue-700 tw-ring-1 tw-ring-blue-200",
+          "tw-bg-emerald-50 tw-text-emerald-700 tw-ring-1 tw-ring-emerald-200",
+          "tw-bg-violet-50 tw-text-violet-700 tw-ring-1 tw-ring-violet-200",
+          "tw-bg-rose-50 tw-text-rose-700 tw-ring-1 tw-ring-rose-200",
+          "tw-bg-amber-50 tw-text-amber-700 tw-ring-1 tw-ring-amber-200",
+          "tw-bg-cyan-50 tw-text-cyan-700 tw-ring-1 tw-ring-cyan-200",
+          "tw-bg-pink-50 tw-text-pink-700 tw-ring-1 tw-ring-pink-200",
+          "tw-bg-teal-50 tw-text-teal-700 tw-ring-1 tw-ring-teal-200",
+          "tw-bg-indigo-50 tw-text-indigo-700 tw-ring-1 tw-ring-indigo-200",
+          "tw-bg-orange-50 tw-text-orange-700 tw-ring-1 tw-ring-orange-200",
+        ];
+        // hash ชื่อ company ให้ได้สีคงที่ต่อชื่อเดียวกัน
+        let hash = 0;
+        for (let i = 0; i < company.length; i++) {
+          hash = company.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const cls = palette[Math.abs(hash) % palette.length];
+        return (
+          <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-md tw-text-xs tw-font-semibold ${cls}`}>
+            🏢 {company}
+          </span>
+        );
+      },
+    },
+    {
+      accessorFn: (r: UserRow) => r.role ?? "-",
+      id: "role",
+      header: () => "role",
+      cell: (i: any) => {
+        const role = i.getValue() as string;
+        const colorMap: Record<string, string> = {
+          admin: "tw-bg-purple-50 tw-text-purple-700 tw-ring-1 tw-ring-purple-200",
+          owner: "tw-bg-blue-50 tw-text-blue-700 tw-ring-1 tw-ring-blue-200",
+          technician: "tw-bg-amber-50 tw-text-amber-700 tw-ring-1 tw-ring-amber-200",
+        };
+        const cls = colorMap[role] || "tw-bg-gray-50 tw-text-gray-600 tw-ring-1 tw-ring-gray-200";
+        return (
+          <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-md tw-text-xs tw-font-semibold ${cls}`}>
+            {role}
+          </span>
+        );
+      },
+    },
     {
       id: "actions",
       header: () => "actions",
       enableSorting: false,
       size: 80,
       cell: ({ row }: { row: Row<UserRow> }) => (
-        <span className="tw-inline-flex tw-items-center tw-gap-2 tw-pr-2">
+        <span className="tw-inline-flex tw-items-center tw-gap-1.5">
           <button
             title="Edit user"
             onClick={() => handleEdit(row.original)}
-            className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-blue-50 tw-transition"
+            className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-blue-50 tw-ring-1 tw-ring-blue-200/60 hover:tw-bg-blue-600 hover:tw-ring-blue-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"
           >
-            <PencilSquareIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-700" />
+            <PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600 group-hover/btn:tw-text-white tw-transition-colors" />
           </button>
           <button
             title="Delete user"
             onClick={() => handleDelete(row.original)}
-            className="tw-rounded tw-p-1 tw-border tw-border-blue-gray-100 hover:tw-bg-red-50 tw-transition"
+            className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-red-50 tw-ring-1 tw-ring-red-200/60 hover:tw-bg-red-600 hover:tw-ring-red-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"
           >
-            <TrashIcon className="tw-h-5 tw-w-5 tw-text-red-600" />
+            <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500 group-hover/btn:tw-text-white tw-transition-colors" />
           </button>
         </span>
       ),
@@ -435,7 +487,7 @@ export default function SearchDataTables() {
         <CardHeader
           floated={false}
           shadow={false}
-          className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-3 md:tw-!px-4 tw-!py-3 md:tw-!py-4 tw-mb-6"
+          className="tw-flex tw-flex-col md:tw-flex-row tw-items-start md:tw-items-center tw-gap-3 tw-!px-4 sm:tw-!px-6 tw-!py-5 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30 tw-rounded-t-xl tw-mb-6"
         >
           <div className="tw-ml-3">
             <Typography color="blue-gray" variant="h5" className="tw-text-base sm:tw-text-lg md:tw-text-xl">
@@ -450,10 +502,10 @@ export default function SearchDataTables() {
             <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 sm:tw-gap-3 tw-justify-end tw-w-full md:tw-w-auto md:tw-mt-6">
               <Button
                 onClick={() => setOpenAdd(true)}
-                size="lg"
-                className="tw-h-11 tw-rounded-xl tw-px-4 tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white tw-shadow-[0_6px_14px_rgba(0,0,0,0.12),0_3px_6px_rgba(0,0,0,0.08)] focus-visible:tw-ring-2 focus-visible:tw-ring-blue-500/50 focus:tw-outline-none"
+                size="sm"
+                className="tw-flex tw-items-center tw-gap-2 tw-px-4 sm:tw-px-5 tw-py-2.5 tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-text-white tw-font-semibold tw-text-xs sm:tw-text-sm tw-shadow-lg tw-flex-shrink-0 tw-normal-case tw-tracking-wide"
               >
-                +add
+                <span className="tw-text-base tw-leading-none">+</span> ADD USER
               </Button>
             </div>
           </div>
@@ -499,7 +551,7 @@ export default function SearchDataTables() {
             <div className="tw-p-4 tw-text-red-600">{err}</div>
           ) : (
             <table className="tw-table-auto tw-text-left tw-w-full tw-min-w-max">
-              <thead className="tw-bg-gray-50">
+              <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
@@ -510,10 +562,10 @@ export default function SearchDataTables() {
                       >
                         <Typography
                           color="blue-gray"
-                          className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40"
+                          className="tw-flex tw-items-center tw-justify-between tw-gap-2 tw-text-[11px] !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white"
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />
+                          <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4 tw-text-white/60" />
                         </Typography>
                       </th>
                     ))}
@@ -523,7 +575,7 @@ export default function SearchDataTables() {
               <tbody>
                 {table.getRowModel().rows.length ? (
                   table.getRowModel().rows.map((row) => (
-                    <tr key={row.id} className="odd:tw-bg-white even:tw-bg-gray-50">
+                    <tr key={row.id} className="odd:tw-bg-white even:tw-bg-blue-gray-50/30 hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] tw-transition-colors">
                       {row.getVisibleCells().map((cell) => (
                         <td key={cell.id} className="!tw-border-y !tw-border-x-0">
                           <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500 tw-py-4 tw-px-4">
@@ -545,32 +597,22 @@ export default function SearchDataTables() {
           )}
         </CardFooter>
 
-        <div className="tw-flex tw-items-center tw-justify-end tw-gap-6 tw-px-10 tw-py-6">
-          <span className="tw-flex tw-items-center tw-gap-1">
-            <Typography className="!tw-font-bold">Page</Typography>
-            <strong>
-              {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-            </strong>
-          </span>
-          <div className="tw-flex tw-items-center tw-gap-2">
-            <Button
-              variant="outlined"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              className="disabled:tw-opacity-30 tw-py-2 tw-px-2"
-            >
-              <ChevronLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-            </Button>
-            <Button
-              variant="outlined"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              className="disabled:tw-opacity-30 tw-py-2 tw-px-2"
-            >
-              <ChevronRightIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-            </Button>
+        <div className="tw-flex tw-items-center tw-justify-between tw-px-6 tw-py-4 tw-border-t tw-border-blue-gray-100">
+          <Typography variant="small" className="!tw-text-blue-gray-400">
+            {data.length} Users
+          </Typography>
+          <div className="tw-flex tw-items-center tw-gap-4">
+            <span className="tw-text-sm tw-text-blue-gray-600">
+              Page <strong>{table.getState().pagination.pageIndex + 1}</strong> of <strong>{table.getPageCount()}</strong>
+            </span>
+            <div className="tw-flex tw-items-center tw-gap-1">
+              <Button variant="outlined" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="disabled:tw-opacity-30 tw-py-1.5 tw-px-2 tw-rounded-lg tw-border-blue-gray-200">
+                <ChevronLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-600 tw-stroke-2" />
+              </Button>
+              <Button variant="outlined" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="disabled:tw-opacity-30 tw-py-1.5 tw-px-2 tw-rounded-lg tw-border-blue-gray-200">
+                <ChevronRightIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-600 tw-stroke-2" />
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
@@ -767,7 +809,7 @@ export default function SearchDataTables() {
             <Button variant="outlined" type="button" onClick={() => setOpenEdit(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="tw-bg-blue-600" disabled={saving}>
+            <Button type="submit" className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black" disabled={saving}>
               {saving ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
