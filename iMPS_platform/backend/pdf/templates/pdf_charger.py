@@ -1280,6 +1280,65 @@ def _draw_job_info_block(
 
     return y + box_h
 
+def _filter_r11_na_subs(rows_data: dict, item_text: str, item_remark: str, label_remark: str) -> Tuple[str, str]:
+    """กรองข้อย่อยของข้อ 11 ที่มีค่า NA ออก
+    
+    Returns:
+        (filtered_text, filtered_remark)
+    """
+    text_lines = item_text.split("\n")
+    remark_lines = item_remark.split("\n") if item_remark else []
+    
+    # สร้าง dict สำหรับ lookup remark
+    remark_dict = {}
+    for r_line in remark_lines:
+        r_line = r_line.strip()
+        if not r_line:
+            continue
+        match = re.match(r"^(\d+\.\d+)\)\s*(.*)$", r_line)
+        if match:
+            sub_key = match.group(1)
+            sub_remark = match.group(2).strip()
+            remark_dict[sub_key] = sub_remark
+    
+    # กรองบรรทัดที่ไม่เป็น NA
+    filtered_lines = []
+    filtered_remark_lines = []
+    
+    for i, line in enumerate(text_lines):
+        line = line.strip()
+        if not line:
+            continue
+        
+        if i == 0:
+            # หัวข้อหลัก
+            filtered_lines.append(line)
+            filtered_remark_lines.append("")  # บรรทัดแรกของ remark ว่างเสมอ
+        else:
+            # ข้อย่อย - เช็คว่าเป็น NA หรือไม่
+            sub_match = re.match(r"(\d+\.\d+)\)", line)
+            if sub_match:
+                sub_key = sub_match.group(1)
+                # หา key ในรูปแบบ r11_1, r11_2, etc.
+                sub_idx_str = sub_key.split('.')[1]
+                row_key = f"r11_{sub_idx_str}"
+                
+                # เช็คค่า pf
+                row_data = rows_data.get(row_key, {})
+                pf_value = _norm_result(row_data.get("pf", ""))
+                
+                # ถ้าไม่เป็น NA ถึงจะแสดง
+                if pf_value != "na":
+                    filtered_lines.append(line)
+                    
+                    # เพิ่ม remark ถ้ามี
+                    if sub_key in remark_dict and remark_dict[sub_key] and remark_dict[sub_key] != "-":
+                        filtered_remark_lines.append(f"{sub_key}) {remark_dict[sub_key]}")
+                    else:
+                        filtered_remark_lines.append("")
+    
+    return "\n".join(filtered_lines), "\n".join(filtered_remark_lines)
+
 
 # -------------------- PDF output helper --------------------
 def _output_pdf_bytes(pdf: FPDF) -> bytes:
@@ -1952,6 +2011,11 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         # ========== สร้าง question text พร้อมข้อย่อย (ไม่แสดง remark) ==========
         has_subs = it.get("has_subs", False)
         item_text = it.get("text", "")
+        
+        if idx == 11 and has_subs:
+            rows = doc.get("rows", {})
+            filtered_text, _ = _filter_r11_na_subs(rows, item_text, "", label_remark)
+            item_text = filtered_text
         
         if has_subs:
             # แยกบรรทัดของ text
