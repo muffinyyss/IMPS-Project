@@ -869,7 +869,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     {/* Main Card */}
     <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
       {/* Card Header */}
-      <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0">
+      {/* <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0"> */}
+      <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30">
         <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-3 sm:tw-gap-4">
           {/* Title */}
           <div className="tw-min-w-0 tw-flex-1">
@@ -915,14 +916,15 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
               size="sm"
               onClick={goAdd}
               disabled={!stationId}
-              className={`
-                tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4
-                tw-flex tw-items-center tw-justify-center tw-font-medium
-                ${!stationId
-                  ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                  : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white"}
-                tw-shadow-md tw-transition-all
-              `}
+              className={`tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-xl tw-px-3 sm:tw-px-4 lg:tw-px-5 tw-flex tw-items-center tw-justify-center tw-font-semibold tw-tracking-wide ${!stationId ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed" : "tw-bg-gray-900 hover:tw-bg-black tw-text-white"} tw-shadow-lg tw-transition-all`}
+              // className={`
+              //   tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4
+              //   tw-flex tw-items-center tw-justify-center tw-font-medium
+              //   ${!stationId
+              //     ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+              //     : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white"}
+              //   tw-shadow-md tw-transition-all
+              // `}
               title={stationId ? "" : t("selectStationFirst", lang)}
             >
               <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("add", lang)}</span>
@@ -966,7 +968,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       <CardFooter className="tw-p-0">
         <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth">
           <table className="tw-w-full tw-text-left tw-min-w-[700px]">
-            <thead className="tw-bg-gray-50/80 tw-sticky tw-top-0 tw-backdrop-blur-sm">
+            {/* <thead className="tw-bg-gray-50/80 tw-sticky tw-top-0 tw-backdrop-blur-sm"> */}
+            <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800 tw-sticky tw-top-0">
               {table.getHeaderGroups().map((hg) => (
                 <tr key={hg.id}>
                   {hg.headers.map((header) => {
@@ -976,17 +979,14 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                       <th
                         key={header.id}
                         onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                        className={`tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-semibold tw-whitespace-nowrap tw-border-b tw-border-blue-gray-100
-                          ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}
-                          ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-100 tw-transition-colors tw-select-none" : ""}`}
-                      >
+                        className={`tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-uppercase !tw-font-semibold tw-whitespace-nowrap tw-border-b tw-border-gray-700 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"} ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-700 tw-transition-colors tw-select-none" : ""}`}>
                         <Typography
                           color="blue-gray"
-                          className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60
-                            ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}
-                        >
+                          className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}>
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          {canSort && <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0" />}
+                          {canSort && 
+                          // <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0" />}
+                          <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0 tw-text-white/60" />}
                         </Typography>
                       </th>
                     );
@@ -1007,7 +1007,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 </tr>
               ) : table.getRowModel().rows.length ? (
                 table.getRowModel().rows.map((row, index) => (
-                  <tr key={row.id} className={`tw-transition-colors hover:tw-bg-blue-50/50 ${index % 2 === 0 ? "tw-bg-white" : "tw-bg-gray-50/30"}`}>
+                  // <tr key={row.id} className={`tw-transition-colors hover:tw-bg-blue-50/50 ${index % 2 === 0 ? "tw-bg-white" : "tw-bg-gray-50/30"}`}>
+                  <tr key={row.id} className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'}`}>
                     {row.getVisibleCells().map((cell) => {
                       const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
                       return (
@@ -1039,7 +1040,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       </CardFooter>
 
       {/* Pagination */}
-      <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-50 tw-bg-gray-50/30">
+      {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-50 tw-bg-gray-50/30"> */}
+      <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-100">
         <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-text-blue-gray-600">
           {t("page", lang)} <strong className="tw-text-blue-gray-800">{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)}{" "}
           <strong className="tw-text-blue-gray-800">{table.getPageCount() || 1}</strong>

@@ -18,6 +18,13 @@ const baseRoutes = [
         allow: ["*"], // ทุก role เห็นได้
       },
       {
+        layout: "dashboard",
+        icon: <i className="fa fa-question-circle" />,
+        name: "Help",
+        path: "/dashboard/help",
+        allow: ["*"], // ทุก role เห็นได้
+      },
+      {
         layout: "auth",
         icon: <i className="fa fa-sign-out" />,
         name: "logout",

@@ -208,25 +208,17 @@ def charger_info(
 ):
     query = {}
     if sn:
-        # ลอง query หลาย field ด้วยค่าเดียวกัน
-        query = {"$or": [
-            {"SN": sn},
-            {"chargeBoxID": sn},
-            {"station_id": sn}
-        ]}
+        query = {"SN": sn}
     elif station_id:
         query["station_id"] = station_id
     else:
         raise HTTPException(status_code=400, detail="station_id or sn required")
-    
-    print(f"[DEBUG] query={query}")
     
     doc = charger_collection.find_one(query, {"_id": 0})
     
     if not doc:
         raise HTTPException(status_code=404, detail="Charger not found")
     
-    # ดึง station_name
     station = station_collection.find_one(
         {"station_id": doc.get("station_id")},
         {"_id": 0, "station_name": 1}
