@@ -42,6 +42,8 @@ class StationState:
         self.config = config
         self.station_id = config.stationId
         self.serial_number = config.serialNumber
+        self._meter_data: Dict[str, Any] = {'meter1': 0, 'meter2': 0}
+        self._meter_initialized: bool = False
         
         self._lock = threading.RLock()
         
@@ -123,6 +125,19 @@ class StationState:
                 return self.latest[topic_key].timestamp
             return None
     
+    def set_meter_data(self, meter1: int, meter2: int):
+        """Set meter data from MQTT or recovery"""
+        self._meter_data = {'meter1': meter1, 'meter2': meter2}
+        self._meter_initialized = True
+
+    def get_meter_data(self) -> Dict[str, int]:
+        """Get current meter data"""
+        return self._meter_data.copy()
+
+    def is_meter_initialized(self) -> bool:
+        """Check if meter data has been initialized"""
+        return self._meter_initialized
+
     def check_duplicate(self, collection: str, data: Dict[str, Any]) -> bool:
         """
         Check if data is duplicate.

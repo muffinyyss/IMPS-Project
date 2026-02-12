@@ -7,7 +7,8 @@ from .aggregator_processor import (
     Module2Processor,
     ErrorProcessor,
     InsulationProcessor,
-    FanRpmProcessor
+    FanRpmProcessor,
+    MeterProcessor
 )
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     'Module2Processor',
     'ErrorProcessor',
     'InsulationProcessor',
-    'FanRpmProcessor'
+    'FanRpmProcessor',
+    'MeterProcessor'
 ]

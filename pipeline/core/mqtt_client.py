@@ -64,7 +64,7 @@ class MQTTClient:
             logger.debug(f"Registered handler for topic: {topic}")
     
     def register_station_topics(self, station_config: StationConfig, 
-                                 processor_callback: Callable):
+                                processor_callback: Callable):
         """
         Register all topics for a station.
         
@@ -88,15 +88,15 @@ class MQTTClient:
             topics.ambient: 'ambient',
             topics.bme280: 'bme280',
             topics.insulation1: 'insulation1',
-            topics.insulation2: 'insulation2',
-            topics.cbm: 'cbm',
-            topics.module2Agg: 'module2_agg',
-            topics.insulation: 'insulation_agg'
+            topics.insulation2: 'insulation2'
         }
         
-        # Add fanRpm if configured
+        # Add optional topics if configured
         if topics.fanRpm:
             topic_mapping[topics.fanRpm] = 'fan_rpm'
+        
+        if topics.meter:
+            topic_mapping[topics.meter] = 'meter'
         
         for topic, topic_key in topic_mapping.items():
             if topic:  # Only register non-empty topics
@@ -106,7 +106,7 @@ class MQTTClient:
                     return handler
                 
                 self.register_handler(topic, make_handler(station_id, topic_key))
-    
+        
     def connect(self) -> bool:
         """Connect to MQTT broker"""
         try:

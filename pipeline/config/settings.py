@@ -55,7 +55,6 @@ class MongoDBConfig:
     })
     
     # Collection naming rules
-    # Key: database key, Value: 'stationId' or 'serialNumber'
     collection_naming: Dict[str, str] = field(default_factory=lambda: {
         "plc": "serialNumber",
         "setting": "serialNumber",
@@ -82,8 +81,8 @@ class HardwareConfig:
     dcContractorCount: int = 6
     powerModuleCount: int = 5
     dcFanCount: int = 8
-    fanType: str = "FIXED"  # "FIXED" or "EBM"
-    energyMeterType: str = "PILOT"  # "PILOT" or "LEM"
+    fanType: str = "FIXED"
+    energyMeterType: str = "PILOT"
     powerModuleDefaults: Dict[str, int] = field(default_factory=lambda: {"pm1": 2, "pm2": 3})
 
 
@@ -102,16 +101,14 @@ class TopicsConfig:
     insulation1: str = ""
     insulation2: str = ""
     fanRpm: Optional[str] = None
-    cbm: str = ""
-    module2Agg: str = ""
-    insulation: str = ""
+    meter: Optional[str] = None  # เพิ่ม meter topic
     
     def get_all_topics(self) -> List[str]:
         """Get list of all non-empty topics"""
         topics = []
         for key in ['plc', 'pi5Heartbeat', 'ebError', 'ebTemp', 'ebHeartbeat',
                     'ebCountDevice', 'router', 'mdbRaw', 'ambient', 'bme280',
-                    'insulation1', 'insulation2', 'fanRpm', 'cbm', 'module2Agg', 'insulation']:
+                    'insulation1', 'insulation2', 'fanRpm', 'meter']:
             val = getattr(self, key, None)
             if val:
                 topics.append(val)
@@ -120,8 +117,14 @@ class TopicsConfig:
 
 @dataclass
 class ServiceLifeConfig:
-    commitDate: str = ""  # "2023-12-28"
-    endDate: str = ""     # "2025-10-02T16:00:00"
+    commitDate: str = ""
+    endDate: str = ""
+
+
+@dataclass
+class CollectionsConfig:
+    """MongoDB collection names per station"""
+    meter: str = ""
 
 
 @dataclass
@@ -131,6 +134,7 @@ class StationConfig:
     hardware: HardwareConfig = field(default_factory=HardwareConfig)
     topics: TopicsConfig = field(default_factory=TopicsConfig)
     serviceLife: ServiceLifeConfig = field(default_factory=ServiceLifeConfig)
+    collections: CollectionsConfig = field(default_factory=CollectionsConfig)
     
     def get_collection_name(self, db_key: str, mongodb_config: MongoDBConfig) -> str:
         """Get collection name for a database"""
@@ -181,9 +185,7 @@ def load_station_config(station_name: str) -> StationConfig:
         insulation1=topics_data.get('insulation1', ''),
         insulation2=topics_data.get('insulation2', ''),
         fanRpm=topics_data.get('fanRpm'),
-        cbm=topics_data.get('cbm', ''),
-        module2Agg=topics_data.get('module2Agg', ''),
-        insulation=topics_data.get('insulation', '')
+        meter=topics_data.get('meter')
     )
     
     # Parse service life config
@@ -193,12 +195,20 @@ def load_station_config(station_name: str) -> StationConfig:
         endDate=sl_data.get('endDate', '')
     )
     
+    # Parse collections config
+    coll_data = data.get('collections', {})
+    station_id = data.get('stationId', '')
+    collections = CollectionsConfig(
+        meter=coll_data.get('meter', station_id)
+    )
+    
     return StationConfig(
-        stationId=data.get('stationId', ''),
+        stationId=station_id,
         serialNumber=data.get('serialNumber', ''),
         hardware=hardware,
         topics=topics,
-        serviceLife=service_life
+        serviceLife=service_life,
+        collections=collections
     )
 
 

@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 
 from utils import parse_float, parse_int, now_utc
 
-
 def create_plc_document(plc_data: Dict[str, Any], timestamp: str) -> Dict[str, Any]:
     """Create PLC collection document"""
     return {
@@ -170,7 +169,6 @@ def create_setting_document(plc_data: Dict[str, Any],
         "timestamp_utc": now_utc(),
         "timestamp": timestamp or plc_data.get("timestamp")
     }
-
 
 def create_utilization_document(state: 'StationState', timestamp: str) -> Dict[str, Any]:
     """
@@ -357,6 +355,8 @@ def create_module1_document(state: 'StationState', mdb_data: Dict[str, Any],
         "MDB_humidity": mdb_data.get("Ambient_RH"),
         "MDB_status": mdb_status,
         "dust_filter_charging": dust_filter_sec,
+        "meter1": state.get_meter_data().get('meter1', 0),
+        "meter2": state.get_meter_data().get('meter2', 0),
         "timestamp_utc": now_utc(),
         "timestamp": timestamp
     }
@@ -424,6 +424,8 @@ def create_module2_document(state: 'StationState', module2_data: Dict[str, Any],
         "present_voltage2": plc_data.get("presentVoltage2"),
         "present_current2": plc_data.get("presentCurrent2"),
         "time_since_last_DFC": time_since_last_dfc,
+        "meter1": state.get_meter_data().get('meter1', 0),
+        "meter2": state.get_meter_data().get('meter2', 0),
         "timestamp_utc": now_utc(),
         "timestamp": timestamp
     }
@@ -469,6 +471,8 @@ def create_module3_document(state: 'StationState', mdb_data: Dict[str, Any],
         "energy_meter_status": state.service_life.get_energy_meter_status(1),
         "surge_arrestor_status": state.get_surge_status(),
         "RCBO_status": state.service_life.get_rcbo_status(),
+        "meter1": state.get_meter_data().get('meter1', 0),
+        "meter2": state.get_meter_data().get('meter2', 0),
         "timestamp_utc": now_utc(),
         "timestamp": timestamp
     }
@@ -519,6 +523,8 @@ def create_module4_document(state: 'StationState', cbm_data: Dict[str, Any],
         "PLC2_status": plc_data.get("PLC2_status"),
         "edgebox_temp": cbm_data.get("EBTemp", {}).get("eb_temp"),
         "energy_meter_status": state.service_life.get_energy_meter_status(1),
+        "meter1": state.get_meter_data().get('meter1', 0),
+        "meter2": state.get_meter_data().get('meter2', 0),
         "timestamp_utc": now_utc(),
         "timestamp": timestamp
     }
@@ -542,6 +548,8 @@ def create_module5_document(state: 'StationState', timestamp: str = None) -> Dic
         "energy_meter_network_status2": state.service_life.get_energy_meter_status(2),
         "HMI_status": plc_data.get("HMI_status"),
         "router_network_status": state.get_router_internet_status(),
+        "meter1": state.get_meter_data().get('meter1', 0),
+        "meter2": state.get_meter_data().get('meter2', 0),
         "timestamp_utc": now_utc(),
         "timestamp": timestamp
     }
@@ -599,6 +607,8 @@ def create_module6_document(state: 'StationState', cbm_data: Dict[str, Any],
         "insulation_monitoring_RUL1": {"insulation_monitoring_service_life1": base_sl_sec, "charger_temp": ambient_temp},
         "insulation_monitoring_RUL2": {"insulation_monitoring_service_life1": base_sl_sec, "charger_temp": ambient_temp},
         "switching_power_supply_RUL": {"switching_power_supply_service_life": base_sl_sec, "charger_temp": ambient_temp},
+        "meter1": state.get_meter_data().get('meter1', 0),
+        "meter2": state.get_meter_data().get('meter2', 0),
         "timestamp_utc": now_utc(),
         "timestamp": timestamp
     }
@@ -659,6 +669,8 @@ def create_module7_document(state: 'StationState', timestamp: str = None) -> Dic
         "insulation_monitoring1": plc_data.get("insuStatus1"),
         "insulation_monitoring2": plc_data.get("insuStatus2"),
         "surge_protection_fault": state.get_surge_status(),
+        "meter1": state.get_meter_data().get('meter1', 0),
+        "meter2": state.get_meter_data().get('meter2', 0),
         "timestamp_utc": now_utc(),
         "timestamp": timestamp
     }

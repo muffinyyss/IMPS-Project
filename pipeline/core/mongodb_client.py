@@ -16,11 +16,13 @@ from utils import parse_h_m_to_seconds, parse_int
 
 logger = logging.getLogger(__name__)
 
-
 class MongoDBClient:
     """
     MongoDB client for multi-database operations.
     """
+    
+    METER_DB_URI = "mongodb://EDS:EV1@45.91.135.9:27017/"
+    METER_DB_NAME = "meter"
     
     def __init__(self, config: Optional[MongoDBConfig] = None):
         self.config = config or settings.mongodb
@@ -126,6 +128,42 @@ class MongoDBClient:
             logger.error(f"Error finding latest in {db_key}/{collection_name}: {e}")
             return None
 
+    def get_latest_meter(self, collection_name: str) -> Dict[str, int]:
+        """
+        Get latest meter values from meter database.
+        
+        Args:
+            collection_name: Collection name (e.g., 'Klongluang3')
+        
+        Returns:
+            Dict with meter1, meter2 values
+        """
+        try:
+            meter_client = MongoClient(self.METER_DB_URI)  # ✅ เพิ่ม self.
+            meter_db = meter_client[self.METER_DB_NAME]    # ✅ เพิ่ม self.
+            meter_collection = meter_db[collection_name]
+            
+            # Get latest document
+            latest = meter_collection.find_one(
+                {},
+                sort=[('_id', -1)]
+            )
+            
+            meter_client.close()
+            
+            if latest and 'payload' in latest:
+                payload = latest['payload']
+                return {
+                    'meter1': payload.get('meter1', 0),
+                    'meter2': payload.get('meter2', 0)
+                }
+            
+            logger.warning(f"No meter data found in {collection_name}")
+            return {'meter1': 0, 'meter2': 0}
+            
+        except Exception as e:
+            logger.error(f"Error getting meter data: {e}")
+            return {'meter1': 0, 'meter2': 0}
 
 class RecoveryLoader:
     """

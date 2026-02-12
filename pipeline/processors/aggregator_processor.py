@@ -272,3 +272,24 @@ class FanRpmProcessor:
         
         state.update_latest('fan_rpm', rpm_data, timestamp)
         logger.debug(f"[{state.station_id}] Fan RPM data updated")
+
+class MeterProcessor:
+    """
+    Processes meter topic data.
+    Updates meter1, meter2 values in state.
+    """
+    
+    def __init__(self):
+        pass
+    
+    def process(self, state: StationState, meter_data: Dict[str, Any],
+                timestamp: Optional[datetime] = None):
+        """Process meter data from MQTT"""
+        if timestamp is None:
+            timestamp = now_tz()
+        
+        meter1 = meter_data.get('meter1', 0)
+        meter2 = meter_data.get('meter2', 0)
+        
+        state.set_meter_data(meter1, meter2)
+        logger.info(f"[{state.station_id}] Meter updated: meter1={meter1}, meter2={meter2}")
