@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 import json, re, asyncio
 
-from config import settingDB, _ensure_utc_iso, to_json, mqtt_client, MQTT_TOPIC, BROKER_HOST, BROKER_PORT
+from config import settingDB, _ensure_utc_iso, to_json, mqtt_client, MQTT_TOPIC, BROKER_HOST, BROKER_PORT, charger_collection
 from deps import UserClaims, get_current_user
 
 router = APIRouter()
@@ -310,3 +310,31 @@ async def setting_plc_cph2(payload: PLCH2CPCommand):
         },
         "data": msg,
     }
+
+class ChargerSettingBody(BaseModel):
+    SN: str
+    chargeBoxID: Optional[str] = None
+    ocppUrl: Optional[str] = None
+
+@router.patch("/charger/setting")
+def update_charger_setting(
+    body: ChargerSettingBody,
+    current: UserClaims = Depends(get_current_user),
+):
+    updates = {}
+    if body.chargeBoxID is not None:
+        updates["chargeBoxID"] = body.chargeBoxID
+    if body.ocppUrl is not None:
+        updates["ocppUrl"] = body.ocppUrl
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    result = charger_collection.update_one(
+        {"SN": body.SN},
+        {"$set": updates},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Charger not found")
+
+    return {"message": "ok", "modified": result.modified_count}
