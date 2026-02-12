@@ -52,6 +52,7 @@ router = APIRouter()
 async def _get_charger_by_sn(sn: str) -> dict:
     """Get charger document by SN, raise 404 if not found"""
     # FIX #1: เพิ่ม await — charger_collection เป็น Motor async collection
+    # charger = charger_collection.find_one({"SN": sn})
     charger = charger_collection.find_one({"SN": sn})
     if not charger:
         raise HTTPException(status_code=404, detail=f"Charger with SN '{sn}' not found")

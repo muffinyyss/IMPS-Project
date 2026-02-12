@@ -36,7 +36,7 @@ function parseAsDateLocal(dateStr?: string | null, tzOffsetMinutes = 7 * 60) {
 function daysBetween(fromDate?: string | null, toDate?: string | null) {
   const from = parseAsDateLocal(fromDate);
   const to = parseAsDateLocal(toDate);
-  
+
   if (!from || !to) return null;
 
   const fromTH = new Date(
@@ -154,7 +154,7 @@ export default function PMCard({ sn }: PMCardProps) {
 
   useEffect(() => {
     if (!isActive) return;
-    
+
     if (!sn) {
       setPmDate(null);
       setPmNextDate(null);
@@ -162,7 +162,7 @@ export default function PMCard({ sn }: PMCardProps) {
       setLoading(false);
       return;
     }
-    
+
     if (!token) return;
 
     let aborted = false;
@@ -172,8 +172,12 @@ export default function PMCard({ sn }: PMCardProps) {
       setLoading(true);
       setError(null);
       try {
+        // const res = await apiFetch(
+        //   `/pmreport/latest/?sn=${encodeURIComponent(sn)}`,
+        //   { signal: ctrl.signal }
+        // );
         const res = await apiFetch(
-          `/pmreport/latest/?sn=${encodeURIComponent(sn)}`,
+          `/pmreport/latest/${encodeURIComponent(sn)}`,
           { signal: ctrl.signal }
         );
 
