@@ -61,11 +61,11 @@ ROW_TITLES_TH = {
     "r10": "ตรวจสอบแรงดันไฟฟ้าที่พิน CP",
     "r11": "ตรวจสอบแผ่นกรองระบายอากาศ",
     "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
-    "r13": "ตรวจสอบคอนแทคเตอร์",
-    "r14": "ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก",
-    "r15": "ตรวจสอบลำดับเฟส",
-    "r16": "วัดแรงดันไฟฟ้าด้านเข้า",
-    "r17": "ทดสอบการอัดประจุ",
+    "r13": "ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก",
+    "r14": "ตรวจสอบลำดับเฟส",
+    "r15": "วัดแรงดันไฟฟ้าด้านเข้า",
+    "r16": "ทดสอบการอัดประจุ",
+    "r17": "ตรวจสอบคอนแทคเตอร์",
     "r18": "ทำความสะอาด",
 }
 
@@ -83,11 +83,11 @@ ROW_TITLES_EN = {
     "r10": "Check CP pin voltage",
     "r11": "Check air filter",
     "r12": "Check electrical connections",
-    "r13": "Check contactor",
-    "r14": "Check surge protection device",
-    "r15": "Check phase sequence",
-    "r16": "Measure input voltage",
-    "r17": "Charging test",
+    "r13": "Check surge protection device",
+    "r14": "Check phase sequence",
+    "r15": "Measure input voltage",
+    "r16": "Charging test",
+    "r17": "Check contactor",
     "r18": "Cleaning",
 }
 
