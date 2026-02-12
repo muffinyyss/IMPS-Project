@@ -846,6 +846,7 @@ FONT_MAIN = 13.0
 FONT_SMALL = 13.0
 LINE_H = 6.8
 ROW_MIN_H = 9
+TITLE_H = 5.5
 
 ACT_MAX_COLS = 3
 ACT_IMG_H = 30
@@ -1160,324 +1161,310 @@ def _draw_header(
 
     return y_top + h_all
 
-def _draw_cm_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float, doc: dict) -> float:
-    """
-    วาดส่วนข้อมูล CM - แก้ไขให้รองรับโครงสร้างข้อมูลจาก MongoDB
-    ไม่มี nested job object, ข้อมูลอยู่ที่ระดับเดียวกันกับ root
-    """
-    
-    pdf.set_line_width(LINE_W_INNER)
-    
-    # คำนวณความสูง
-    top_row_h = 8.5
-    col_w = w / 3.0
-    half_w = w / 2.0
+# -------------------- Drawing – job / summary blocks --------------------
+def _draw_job_info_block(
+    pdf: FPDF, 
+    base_font: str, 
+    x: float, 
+    y: float, 
+    w: float,
+    found_date: str,      # วันที่แจ้ง
+    location: str,        # สถานที่
+    reported_by: str,     # ผู้แจ้งปัญหา
+    label_found_date: str = "วันที่แจ้ง",
+    label_location: str = "สถานที่",
+    label_reported_by: str = "ผู้แจ้งปัญหา",
+) -> float:
+    row_h = 6.5
     label_w = 30
+    box_h = row_h * 3  # 3 แถว
     
-    # ✅ ดึงข้อมูลจาก doc โดยตรง (ไม่มี nested job)
-    station_name = str(doc.get("location", "-"))
-    found_date = _fmt_date_thai(doc.get("found_date", "-"))
-    cm_date = _fmt_date_thai(doc.get("cm_date", "-"))
-    device = str(doc.get("faulty_equipment", "-"))
-    reporter = str(doc.get("inspector", "-"))
-    severity = str(doc.get("severity", "-"))
-    problem_type = str(doc.get("problem_type", "-"))
-    problem_details = str(doc.get("problem_details", "-"))
-    
-    # รองรับทั้ง initial_cause และ cause
-    initial_cause = str(doc.get("initial_cause") or doc.get("cause", "-"))
-    status = str(doc.get("status", "-"))
-    
-    # แถวกลาง
-    inner_w_full = w - 2 * PADDING_X
-    val_w_left = half_w - 2 * PADDING_X - label_w
-    val_w_right = half_w - 2 * PADDING_X - label_w
-    _, dev_h = _split_lines(pdf, val_w_left, device, LINE_H)
-    _, rep_h = _split_lines(pdf, val_w_right, reporter, LINE_H)
-    middle_row_h = max(ROW_MIN_H, 2 * PADDING_Y + max(dev_h, rep_h))
-    
-    # คำนวณความสูงแถวล่าง
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    lab_sev = "ความรุนแรง : "
-    lab_type = "ประเภทปัญหา : "
-    lab_det = "รายละเอียด : "
-    lab_cause = "สาเหตุ : "
-    lab_status = "สถานะ : "
-    
-    lab_sev_w = pdf.get_string_width(lab_sev)
-    lab_type_w = pdf.get_string_width(lab_type)
-    lab_det_w = pdf.get_string_width(lab_det)
-    lab_cause_w = pdf.get_string_width(lab_cause)
-    lab_status_w = pdf.get_string_width(lab_status)
-    
-    pdf.set_font(base_font, "", FONT_MAIN)
-    _, sev_h = _split_lines(pdf, inner_w_full - lab_sev_w, severity, LINE_H)
-    _, type_h = _split_lines(pdf, inner_w_full - lab_type_w, problem_type, LINE_H)
-    _, det_h = _split_lines(pdf, inner_w_full - lab_det_w, problem_details, LINE_H)
-    _, cause_h = _split_lines(pdf, inner_w_full - lab_cause_w, initial_cause, LINE_H)
-    _, status_h = _split_lines(pdf, inner_w_full - lab_status_w, status, LINE_H)
-    
-    # ✅ Corrective Actions - รองรับ beforeImages และ afterImages
-    corrective_actions = doc.get("corrective_actions", [])
-    actions_total_h = 0.0
-    fix_text_w = inner_w_full - 20
-    
-    for idx, act in enumerate(corrective_actions, 1):
-        text = str(act.get("text", "-"))
-        _, t_h = _split_lines(pdf, fix_text_w, f"{idx}) {text}", LINE_H)
-        t_h = max(LINE_H, t_h)
-        
-        # รวม beforeImages และ afterImages
-        all_images = []
-        all_images.extend(act.get("beforeImages", []))
-        all_images.extend(act.get("afterImages", []))
-        
-        rows = math.ceil(len(all_images) / ACT_MAX_COLS) if all_images else 0
-        img_block_h = 0.0
-        if rows > 0:
-            img_block_h = 2 * PADDING_Y + rows * ACT_IMG_H + (rows - 1) * ACT_IMG_GAP
-        
-        actions_total_h += t_h + img_block_h
-    
-    # ✅ Preventive Actions
-    preventive_list = doc.get("preventive_action", [])
-    if isinstance(preventive_list, str):
-        preventive_list = [preventive_list]
-    
-    preventive_total_h = 0.0
-    for idx, text in enumerate(preventive_list, 1):
-        text = str(text).strip() or "-"
-        _, t_h = _split_lines(pdf, fix_text_w, f"{idx}) {text}", LINE_H)
-        preventive_total_h += max(LINE_H, t_h)
-    
-    if not preventive_list:
-        preventive_total_h = LINE_H
-    
-    # ✅ Repair Results
-    repair_result = str(doc.get("repair_result", "-"))
-    _, repair_h = _split_lines(pdf, inner_w_full - 35, repair_result, LINE_H)
-    
-    repaired_eq = doc.get("repaired_equipment", [])
-    repaired_text = ", ".join(repaired_eq) if repaired_eq else "-"
-    _, repaired_h = _split_lines(pdf, inner_w_full - 35, repaired_text, LINE_H)
-    
-    resolved_date = _fmt_date_thai(doc.get("resolved_date", "-"))
-    
-    remarks = str(doc.get("remarks", "-"))
-    _, remarks_h = _split_lines(pdf, inner_w_full - 25, remarks, LINE_H)
-    
-    bottom_row_h = max(
-        ROW_MIN_H,
-        2 * PADDING_Y
-        + LINE_H
-        + max(LINE_H, sev_h)
-        + max(LINE_H, type_h)
-        + max(LINE_H, det_h)
-        + max(LINE_H, cause_h)
-        + max(LINE_H, status_h)
-        + LINE_H
-        + actions_total_h
-        + LINE_H
-        + preventive_total_h
-        + LINE_H
-        + max(LINE_H, repair_h)
-        + max(LINE_H, repaired_h)
-        + LINE_H
-        + LINE_H
-        + max(LINE_H, remarks_h)
-    )
-    
-    # ยืดกรอบให้เต็มหน้า
-    page_bottom_y = pdf.h - pdf.b_margin
-    available_h = max(0.0, page_bottom_y - y)
-    box_h = max(top_row_h + middle_row_h + bottom_row_h, available_h)
-    
-    # วาดกรอบ
+    # วาดกรอบนอก
+    pdf.set_line_width(LINE_W_INNER)
     pdf.rect(x, y, w, box_h)
-    pdf.line(x, y + top_row_h, x + w, y + top_row_h)
-    pdf.line(x, y + top_row_h + middle_row_h, x + w, y + top_row_h + middle_row_h)
     
-    # แถวบน
-    def _kv(x0, y0, col_width, label, value, row_h):
+    # วาดเส้นแบ่งแถว
+    pdf.line(x, y + row_h, x + w, y + row_h)
+    pdf.line(x, y + row_h * 2, x + w, y + row_h * 2)
+
+    def _item(x0, y0, label, value):
         pdf.set_xy(x0 + 2, y0 + 1.5)
         pdf.set_font(base_font, "B", FONT_MAIN)
         pdf.cell(label_w, row_h - 3, label, border=0, align="L")
         pdf.set_font(base_font, "", FONT_MAIN)
         pdf.set_xy(x0 + 2 + label_w, y0 + 1.5)
-        pdf.cell(col_width - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
-    
-    pdf.line(x + col_w, y, x + col_w, y + top_row_h)
-    pdf.line(x + 2*col_w, y, x + 2*col_w, y + top_row_h)
-    _kv(x, y, col_w, "สถานที่", station_name, top_row_h)
-    _kv(x + col_w, y, col_w, "วันที่เกิดเหตุ", found_date, top_row_h)
-    _kv(x + 2*col_w, y, col_w, "วันที่ตรวจสอบ", cm_date, top_row_h)
-    
-    # แถวกลาง
-    ly = y + top_row_h
-    pdf.line(x + half_w, ly, x + half_w, ly + middle_row_h)
-    
-    lx = x
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(lx + PADDING_X, ly + PADDING_Y)
-    pdf.cell(label_w, LINE_H, "อุปกรณ์", border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(lx + PADDING_X + label_w, ly + PADDING_Y)
-    pdf.multi_cell(val_w_left, LINE_H, device, border=0, align="L")
-    
-    rx = x + half_w
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(rx + PADDING_X, ly + PADDING_Y)
-    pdf.cell(label_w, LINE_H, "ผู้ตรวจสอบ", border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(rx + PADDING_X + label_w, ly + PADDING_Y)
-    pdf.multi_cell(val_w_right, LINE_H, reporter, border=0, align="L")
-    
-    # แถวล่าง
-    by = y + top_row_h + middle_row_h
-    inner_x = x + PADDING_X
-    cur_y = by + PADDING_Y
-    
-    # รายละเอียดปัญหา
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(inner_x, cur_y)
-    pdf.cell(inner_w_full, LINE_H, "รายละเอียดปัญหา", border=0, align="L")
-    cur_y += LINE_H
-    
-    # ความรุนแรง
-    pdf.set_xy(inner_x, cur_y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(lab_sev_w, LINE_H, lab_sev, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_sev_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_sev_w, LINE_H, severity, border=0, align="L")
-    cur_y += max(LINE_H, sev_h)
-    
-    # ประเภทปัญหา
-    pdf.set_xy(inner_x, cur_y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(lab_type_w, LINE_H, lab_type, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_type_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_type_w, LINE_H, problem_type, border=0, align="L")
-    cur_y += max(LINE_H, type_h)
-    
-    # รายละเอียด
-    pdf.set_xy(inner_x, cur_y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(lab_det_w, LINE_H, lab_det, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_det_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_det_w, LINE_H, problem_details, border=0, align="L")
-    cur_y += max(LINE_H, det_h)
-    
-    # สาเหตุ
-    pdf.set_xy(inner_x, cur_y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(lab_cause_w, LINE_H, lab_cause, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_cause_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_cause_w, LINE_H, initial_cause, border=0, align="L")
-    cur_y += max(LINE_H, cause_h)
-    
-    # สถานะ
-    pdf.set_xy(inner_x, cur_y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(lab_status_w, LINE_H, lab_status, border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + lab_status_w, cur_y)
-    pdf.multi_cell(inner_w_full - lab_status_w, LINE_H, status, border=0, align="L")
-    cur_y += max(LINE_H, status_h)
-    
-    # การแก้ไข
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(inner_x, cur_y)
-    pdf.cell(inner_w_full, LINE_H, "การแก้ไข", border=0, align="L")
-    cur_y += LINE_H
-    
-    value_x = inner_x + 20
-    for i, act in enumerate(corrective_actions, 1):
-        pdf.set_xy(inner_x, cur_y)
-        pdf.set_font(base_font, "B", FONT_MAIN)
-        pdf.cell(20, LINE_H, "ข้อ : ", border=0, align="L")
-        
-        text = str(act.get("text", "-"))
-        pdf.set_xy(value_x, cur_y)
-        pdf.set_font(base_font, "", FONT_MAIN)
-        pdf.multi_cell(fix_text_w, LINE_H, f"{i}) {text}", border=0, align="L")
-        
-        _, t_h = _split_lines(pdf, fix_text_w, f"{i}) {text}", LINE_H)
-        cur_y += max(LINE_H, t_h)
-        
-        # รวม beforeImages และ afterImages
-        all_images = []
-        all_images.extend(act.get("beforeImages", []))
-        all_images.extend(act.get("afterImages", []))
-        
-        if all_images:
-            used_h = _draw_images_grid(pdf, value_x, cur_y, fix_text_w, all_images, doc)
-            cur_y += used_h
-    
-    # มาตรการป้องกัน
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(inner_x, cur_y)
-    pdf.cell(inner_w_full, LINE_H, "มาตรการป้องกัน", border=0, align="L")
-    cur_y += LINE_H
-    
-    for i, text in enumerate(preventive_list, 1):
-        pdf.set_xy(inner_x, cur_y)
-        pdf.set_font(base_font, "B", FONT_MAIN)
-        pdf.cell(20, LINE_H, "ข้อ : ", border=0, align="L")
-        
-        text = str(text).strip() or "-"
-        pdf.set_xy(value_x, cur_y)
-        pdf.set_font(base_font, "", FONT_MAIN)
-        pdf.multi_cell(fix_text_w, LINE_H, f"{i}) {text}", border=0, align="L")
-        
-        _, t_h = _split_lines(pdf, fix_text_w, f"{i}) {text}", LINE_H)
-        cur_y += max(LINE_H, t_h)
-    
-    # ผลการซ่อม
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(inner_x, cur_y)
-    pdf.cell(inner_w_full, LINE_H, "ผลการซ่อม", border=0, align="L")
-    cur_y += LINE_H
-    
-    # ผลการซ่อม
-    pdf.set_xy(inner_x, cur_y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(35, LINE_H, "ผลการซ่อม : ", border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + 35, cur_y)
-    pdf.multi_cell(inner_w_full - 35, LINE_H, repair_result, border=0, align="L")
-    cur_y += max(LINE_H, repair_h)
-    
-    # อุปกรณ์ที่ซ่อม
-    pdf.set_xy(inner_x, cur_y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(35, LINE_H, "อุปกรณ์ที่ซ่อม : ", border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + 35, cur_y)
-    pdf.multi_cell(inner_w_full - 35, LINE_H, repaired_text, border=0, align="L")
-    cur_y += max(LINE_H, repaired_h)
-    
-    # วันที่แก้ไขเสร็จ
-    pdf.set_xy(inner_x, cur_y)
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.cell(35, LINE_H, "วันที่แก้ไขเสร็จ : ", border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + 35, cur_y)
-    pdf.cell(inner_w_full - 35, LINE_H, resolved_date, border=0, align="L")
-    cur_y += LINE_H
-    
-    # หมายเหตุ
-    pdf.set_font(base_font, "B", FONT_MAIN)
-    pdf.set_xy(inner_x, cur_y)
-    pdf.cell(25, LINE_H, "หมายเหตุ : ", border=0, align="L")
-    pdf.set_font(base_font, "", FONT_MAIN)
-    pdf.set_xy(inner_x + 25, cur_y)
-    pdf.multi_cell(inner_w_full - 25, LINE_H, remarks, border=0, align="L")
-    
+        pdf.cell(w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
+
+    # แสดงข้อมูล 3 แถว
+    _item(x, y, label_found_date, found_date)
+    _item(x, y + row_h, label_location, location)
+    _item(x, y + row_h * 2, label_reported_by, reported_by)
+
     return y + box_h
+
+# def _draw_job_info_block(
+#     pdf: FPDF, 
+#     base_font: str, 
+#     x: float, 
+#     y: float, 
+#     w: float,
+#     found_date: str,      # วันที่แจ้ง
+#     location: str,        # สถานที่
+#     reported_by: str,     # ผู้แจ้งปัญหา
+#     label_found_date: str = "วันที่แจ้ง",
+#     label_location: str = "สถานที่",
+#     label_reported_by: str = "ผู้แจ้งปัญหา",
+# ) -> float:
+#     """
+#     วาดส่วนข้อมูลพื้นฐานแบบฟอร์ม 3 คอลัมน์
+#     มีเส้นใต้สำหรับกรอกข้อมูล
+#     """
+    
+#     pdf.set_line_width(LINE_W_INNER)
+    
+#     inner_x = x + 5
+#     inner_w = w - 10
+#     row_h = 9
+    
+#     # คำนวณความกว้าง label
+#     pdf.set_font(base_font, "", FONT_MAIN)
+#     date_label_w = pdf.get_string_width(label_found_date + " :") + 2
+#     location_label_w = pdf.get_string_width(label_location + " :") + 2
+#     reporter_label_w = pdf.get_string_width(label_reported_by + " :") + 2
+    
+#     # จัด 3 คอลัมน์
+#     col_w = inner_w / 3  # แบ่งเป็น 3 ส่วนเท่าๆ กัน
+#     col_gap = 5  # ระยะห่างระหว่างคอลัมน์
+    
+#     # ========== คอลัมน์ 1: วันที่แจ้ง ==========
+#     col1_x = inner_x
+#     pdf.set_font(base_font, "", FONT_MAIN)
+#     pdf.set_xy(col1_x, y)
+#     pdf.cell(date_label_w, row_h, f"{label_found_date} :", border=0, align="L")
+    
+#     value1_x = col1_x + date_label_w
+#     value1_w = col_w - date_label_w - col_gap
+    
+#     pdf.set_xy(value1_x, y)
+#     pdf.cell(value1_w, row_h, found_date, border=0, align="L")
+    
+#     # เส้นใต้
+#     line_y = y + row_h - 2
+#     pdf.line(value1_x, line_y, value1_x + value1_w, line_y)
+    
+#     # ========== คอลัมน์ 2: สถานที่ ==========
+#     col2_x = inner_x + col_w
+#     pdf.set_xy(col2_x, y)
+#     pdf.cell(location_label_w, row_h, f"{label_location} :", border=0, align="L")
+    
+#     value2_x = col2_x + location_label_w
+#     value2_w = col_w - location_label_w - col_gap
+    
+#     pdf.set_xy(value2_x, y)
+#     pdf.cell(value2_w, row_h, location, border=0, align="L")
+    
+#     # เส้นใต้
+#     pdf.line(value2_x, line_y, value2_x + value2_w, line_y)
+    
+#     # ========== คอลัมน์ 3: ผู้แจ้งปัญหา ==========
+#     col3_x = inner_x + 2 * col_w
+#     pdf.set_xy(col3_x, y)
+#     pdf.cell(reporter_label_w, row_h, f"{label_reported_by} :", border=0, align="L")
+    
+#     value3_x = col3_x + reporter_label_w
+#     value3_w = col_w - reporter_label_w
+    
+#     pdf.set_xy(value3_x, y)
+#     pdf.cell(value3_w, row_h, reported_by, border=0, align="L")
+    
+#     # เส้นใต้
+#     pdf.line(value3_x, line_y, value3_x + value3_w, line_y)
+    
+#     return y + row_h + 3
+
+def _draw_problem_details_block(
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
+    w: float,
+    doc: dict,
+    label_title: str = "รายละเอียดปัญหา",
+    label_equipment: str = "อุปกรณ์ที่เสียหาย :",
+    label_severity: str = "ความรุนแรง :",
+    label_problem: str = "ปัญหาที่พบ :",
+    label_photos: str = "รูปภาพประกอบ",
+) -> float:
+    """
+    วาดส่วนรายละเอียดปัญหาแบบฟอร์ม
+    มีหัวข้อขีดเส้นใต้ และช่องกรอกข้อมูลมีเส้นใต้
+    """
+    
+    pdf.set_line_width(LINE_W_INNER)
+    
+    # ดึงข้อมูล
+    equipment = str(doc.get("faulty_equipment", "-"))
+    severity = str(doc.get("severity", "-"))
+    problem = str(doc.get("problem_details", "-"))
+    
+    # ดึงรูปภาพ
+    photos_obj = doc.get("photos", {}) or doc.get("photos_problem", {})
+    cm_photos = photos_obj.get("cm_photos", [])
+    
+    start_y = y
+    inner_x = x + 5
+    inner_w = w - 10
+    
+    # ========== หัวข้อ "รายละเอียดปัญหา" ==========
+    title_h = 8
+    pdf.set_font(base_font, "B", 14)
+    pdf.set_xy(inner_x, y)
+    pdf.cell(inner_w, title_h, label_title, border=0, align="L")
+    
+    # เส้นใต้หัวข้อ
+    underline_y = y + title_h - 1
+    pdf.line(inner_x, underline_y, inner_x + inner_w, underline_y)
+    
+    y = underline_y + 5
+    
+    # ========== ข้อมูลฟอร์ม ==========
+    row_h = 9
+    
+    # คำนวณความกว้าง label
+    pdf.set_font(base_font, "", FONT_MAIN)
+    equipment_label_w = pdf.get_string_width(label_equipment) + 2
+    severity_label_w = pdf.get_string_width(label_severity) + 2
+    problem_label_w = pdf.get_string_width(label_problem) + 2
+    
+    # 1. อุปกรณ์ที่เสียหาย + ความรุนแรง (บรรทัดเดียวกัน แบ่ง 2 คอลัมน์)
+    col1_w = inner_w / 2  # ครึ่งซ้าย
+    col2_w = inner_w / 2  # ครึ่งขวา
+    
+    # อุปกรณ์ที่เสียหาย (ซ้าย)
+    pdf.set_font(base_font, "", FONT_MAIN)
+    pdf.set_xy(inner_x, y)
+    pdf.cell(equipment_label_w, row_h, label_equipment, border=0, align="L")
+    
+    value1_x = inner_x + equipment_label_w
+    value1_w = col1_w - equipment_label_w - 10
+    
+    pdf.set_xy(value1_x, y)
+    pdf.cell(value1_w, row_h, equipment, border=0, align="L")
+    
+    # เส้นใต้
+    line_y = y + row_h - 2
+    pdf.line(value1_x, line_y, value1_x + value1_w, line_y)
+    
+    # ความรุนแรง (ขวา)
+    col2_x = inner_x + col1_w + 10
+    pdf.set_xy(col2_x, y)
+    pdf.cell(severity_label_w, row_h, label_severity, border=0, align="L")
+    
+    value2_x = col2_x + severity_label_w
+    value2_w = col2_w - severity_label_w - 10
+    
+    pdf.set_xy(value2_x, y)
+    pdf.cell(value2_w, row_h, severity, border=0, align="L")
+    
+    # เส้นใต้
+    pdf.line(value2_x, line_y, value2_x + value2_w, line_y)
+    
+    y += row_h + 3
+    
+    # 2. ปัญหาที่พบ (ใช้เต็มความกว้าง)
+    pdf.set_font(base_font, "", FONT_MAIN)
+    pdf.set_xy(inner_x, y)
+    pdf.cell(problem_label_w, row_h, label_problem, border=0, align="L")
+    
+    problem_value_x = inner_x + problem_label_w
+    problem_value_w = inner_w - problem_label_w
+    
+    # คำนวณความสูงของ problem (อาจมีหลายบรรทัด)
+    _, problem_h = _split_lines(pdf, problem_value_w, problem, LINE_H)
+    problem_lines = max(1, int(problem_h / LINE_H))
+    problem_total_h = problem_lines * LINE_H + 4
+    
+    pdf.set_xy(problem_value_x, y)
+    pdf.multi_cell(problem_value_w, LINE_H, problem, border=0, align="L")
+    
+    # วาดเส้นใต้หลายบรรทัด
+    for i in range(problem_lines):
+        line_y = y + (i + 1) * LINE_H - 1
+        pdf.line(problem_value_x, line_y, problem_value_x + problem_value_w, line_y)
+    
+    y += problem_total_h
+    
+    # 3. รูปภาพประกอบ
+    if cm_photos:
+        # หัวข้อ
+        pdf.set_font(base_font, "B", FONT_MAIN + 1)
+        pdf.set_xy(inner_x, y)
+        pdf.cell(inner_w, 7, label_photos, border=0, align="L")
+        
+        # เส้นใต้หัวข้อ
+        underline_y = y + 7 - 1
+        pdf.line(inner_x, underline_y, inner_x + inner_w, underline_y)
+        
+        y = underline_y + 5
+        
+        # วาดรูปภาพ
+        photos_per_row = PHOTO_MAX_PER_ROW
+        img_h = 50
+        img_w = (inner_w - (photos_per_row - 1) * PHOTO_GAP) / photos_per_row
+        
+        for i, photo in enumerate(cm_photos):
+            row_idx = i // photos_per_row
+            col_idx = i % photos_per_row
+            
+            if col_idx == 0 and row_idx > 0:
+                y += img_h + PHOTO_GAP + 5
+            
+            img_x = inner_x + col_idx * (img_w + PHOTO_GAP)
+            img_y = y
+            
+            url = photo.get("url", "")
+            src, img_type = _load_image_source_from_urlpath(url)
+            
+            # วาดกรอบเบาๆ
+            pdf.set_draw_color(180, 180, 180)
+            pdf.rect(img_x, img_y, img_w, img_h)
+            pdf.set_draw_color(0, 0, 0)
+            
+            if src:
+                try:
+                    pdf.image(src, x=img_x, y=img_y, w=img_w, h=img_h, type=(img_type or None))
+                except Exception:
+                    pdf.set_font(base_font, "", FONT_SMALL)
+                    pdf.set_xy(img_x, img_y + (img_h - LINE_H) / 2)
+                    pdf.cell(img_w, LINE_H, "No Image", border=0, align="C")
+        
+        # คำนวณจำนวนแถวของรูป
+        num_rows = math.ceil(len(cm_photos) / photos_per_row)
+        y += img_h * num_rows + PHOTO_GAP * (num_rows - 1) + 10
+    else:
+        y += 5
+    
+    return y
+
+def _draw_page_border(pdf: FPDF) -> None:
+    """
+    วาดเส้นขอบรอบนอกของหน้า
+    """
+    # ระยะห่างจากขอบกระดาษ (margin)
+    border_margin = 5  # 5mm จากขอบกระดาษ
+    
+    # คำนวณตำแหน่งและขนาด
+    x = border_margin
+    y = border_margin
+    w = pdf.w - 2 * border_margin
+    h = pdf.h - 2 * border_margin
+    
+    # ตั้งค่าเส้นขอบ
+    pdf.set_line_width(0.2)  # ความหนาของเส้นขอบ
+    pdf.set_draw_color(0, 0, 0)  # สีดำ
+    
+    # วาดกรอบรอบหน้า
+    pdf.rect(x, y, w, h)
 
 def _draw_photos_section(pdf: FPDF, base_font: str, x: float, y: float, w: float, doc: dict) -> float:
     """
@@ -1532,6 +1519,10 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     """
     สร้าง CM Report PDF - แก้ไขให้รองรับโครงสร้างข้อมูลจาก MongoDB
     """
+
+    doc_title_cm = "Corrective Maintenance "
+    
+    
     pdf = HTML2PDF(unit="mm", format="A4")
     pdf.set_margins(left=10, top=10, right=10)
     pdf.set_auto_page_break(auto=True, margin=12)
@@ -1551,16 +1542,51 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     
     # เริ่มหน้าแรก
     pdf.add_page()
+    _draw_page_border(pdf)
+    
     y = _draw_header(pdf, base_font, issue_id, doc_name)
     
     # ชื่อเอกสาร
+    # pdf.set_xy(x0, y)
+    # pdf.set_font(base_font, "B", 16)
+    # pdf.cell(page_w, 10, "Corrective Maintenance Report", border=1, ln=1, align="C")
+    # y += 10
     pdf.set_xy(x0, y)
-    pdf.set_font(base_font, "B", 16)
-    pdf.cell(page_w, 10, "Corrective Maintenance Report", border=1, ln=1, align="C")
-    y += 10
+    pdf.set_font(base_font, "B", 13)
+    pdf.set_fill_color(255, 230, 100)
+    pdf.cell(page_w, TITLE_H, doc_title_cm, border=1, ln=1, align="C", fill=True)
+    y += TITLE_H
+    
+    y = _draw_job_info_block(
+        pdf=pdf,
+        base_font=base_font,
+        x=x0,
+        y=y,
+        w=page_w,
+        found_date=_fmt_date_thai(doc.get("found_date", "-")),
+        location=str(doc.get("location", "-")),
+        reported_by=str(doc.get("reported_by", "-")),
+        label_found_date="วันที่แจ้ง",
+        label_location="สถานที่",
+        label_reported_by="ผู้แจ้งปัญหา"
+    )
+    
+    y = _draw_problem_details_block(
+        pdf=pdf,
+        base_font=base_font,
+        x=x0,
+        y=y,
+        w=page_w,
+        doc=doc,
+        label_title="รายละเอียดปัญหา",
+        label_equipment="อุปกรณ์ที่เสียหาย :",
+        label_severity="ความรุนแรง :",
+        label_problem="ปัญหาที่พบ :",
+        label_photos="รูปภาพประกอบ :"
+    )
     
     # ✅ ส่ง doc เดียว (ไม่มี job แยก)
-    y = _draw_cm_info_block(pdf, base_font, x0, y, page_w, doc)
+    # y = _draw_cm_info_block(pdf, base_font, x0, y, page_w, doc)
     
     # ✅ รูปภาพ - รองรับ photos_problem
     photos_obj = doc.get("photos", {}) or doc.get("photos_problem", {})
