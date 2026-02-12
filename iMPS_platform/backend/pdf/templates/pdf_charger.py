@@ -60,12 +60,13 @@ ROW_TITLES_TH = {
     "r9": "ตรวจสอบป้ายบ่งชี้ปุ่มฉุกเฉิน",
     "r10": "ตรวจสอบแรงดันไฟฟ้าที่พิน CP",
     "r11": "ตรวจสอบแผ่นกรองระบายอากาศ",
-    "r12": "ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก",
-    "r13": "ตรวจสอบลำดับเฟส",
-    "r14": "วัดแรงดันไฟฟ้าด้านเข้า",
-    "r15": "ทดสอบการอัดประจุ",
-    "r16": "ตรวจสอบคอนแทคเตอร์",
-    "r17": "ทำความสะอาด",
+    "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
+    "r13": "ตรวจสอบคอนแทคเตอร์",
+    "r14": "ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก",
+    "r15": "ตรวจสอบลำดับเฟส",
+    "r16": "วัดแรงดันไฟฟ้าด้านเข้า",
+    "r17": "ทดสอบการอัดประจุ",
+    "r18": "ทำความสะอาด",
 }
 
 # English version
@@ -81,12 +82,13 @@ ROW_TITLES_EN = {
     "r9": "Check emergency button sign",
     "r10": "Check CP pin voltage",
     "r11": "Check air filter",
-    "r12": "Check surge protection device",
-    "r13": "Check phase sequence",
-    "r14": "Measure input voltage",
-    "r15": "Charging test",
-    "r16": "Check contactor",
-    "r17": "Cleaning",
+    "r12": "Check electrical connections",
+    "r13": "Check contactor",
+    "r14": "Check surge protection device",
+    "r15": "Check phase sequence",
+    "r16": "Measure input voltage",
+    "r17": "Charging test",
+    "r18": "Cleaning",
 }
 
 # Default to Thai
@@ -622,6 +624,15 @@ def _format_measures_pre_m16(measures_m16: dict) -> str:
         lines.append(", ".join(group))
 
     return "\n".join(lines)
+
+# def _format_measures_pre_cp(cp: dict) -> str:
+#     if not cp:
+#         return "-"
+
+#     val = str(cp.get("value", "")).strip()
+#     unit = str(cp.get("unit", "")).strip()
+
+#     return f"CP = {val}{unit}" if val else "CP = -"
 
 
 # -------------------- Result / Row processing --------------------
@@ -1551,7 +1562,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         for it in checks_pre:
             idx = int(it.get("idx") or 0)
             
-            if idx == 17:
+            if idx == 18:
                 continue
 
             # ========== สร้าง question text พร้อมข้อย่อยและ remark ==========
