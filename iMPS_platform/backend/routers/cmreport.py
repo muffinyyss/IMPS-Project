@@ -40,11 +40,15 @@ def make_cm_issue_prefix(station_id: str, date_iso: str) -> str:
     mm = str(d.month).zfill(2)
     return f"CM-{station_id}-{yy}{mm}-"
 
-def make_cm_doc_prefix(station_id: str, date_iso: str) -> str:
-    """สร้าง prefix สำหรับ doc_name: CM-{station_id}-{yyyy}-"""
-    d = datetime.fromisoformat(date_iso) if date_iso else datetime.now(th_tz)
-    yyyy = str(d.year)
-    return f"CM-{station_id}-{yyyy}-"
+# def make_cm_doc_prefix(station_id: str, date_iso: str) -> str:
+#     """สร้าง prefix สำหรับ doc_name: CM-{station_id}-{yyyy}-"""
+#     d = datetime.fromisoformat(date_iso) if date_iso else datetime.now(th_tz)
+#     yyyy = str(d.year)
+#     return f"CM-{station_id}-{yyyy}-"
+
+def make_cm_doc_prefix(station_id: str) -> str:
+    """สร้าง prefix สำหรับ doc_name: {station_id}_"""
+    return f"{station_id}_"
 
 async def get_next_cm_issue_id(station_id: str, found_date: str) -> str:
     """
@@ -94,52 +98,91 @@ async def get_next_cm_issue_id(station_id: str, found_date: str) -> str:
     next_num = max_num + 1
     return f"{prefix}{str(next_num).zfill(2)}"
 
+# async def get_next_cm_doc_name(station_id: str, found_date: str) -> str:
+#     """
+#     หา doc_name ถัดไปจากทั้ง cmreport และ cmurl collections
+#     Format: CM-{station_id}-{yyyy}-{xx}
+#     """
+#     prefix = make_cm_doc_prefix(station_id, found_date)
+    
+#     report_coll = get_cmreport_collection_for(station_id)
+#     url_coll = get_cmurl_coll_upload(station_id)
+    
+#     all_names = []
+    
+#     # จาก cmreport
+#     cursor1 = report_coll.find(
+#         {"doc_name": {"$regex": f"^{re.escape(prefix)}"}},
+#         {"doc_name": 1}
+#     )
+#     async for doc in cursor1:
+#         if doc.get("doc_name"):
+#             all_names.append(doc["doc_name"])
+    
+#     # จาก cmurl
+#     cursor2 = url_coll.find(
+#         {"doc_name": {"$regex": f"^{re.escape(prefix)}"}},
+#         {"doc_name": 1}
+#     )
+#     async for doc in cursor2:
+#         if doc.get("doc_name"):
+#             all_names.append(doc["doc_name"])
+    
+#     if not all_names:
+#         return f"{prefix}01"
+    
+#     # หาเลขสูงสุด
+#     max_num = 0
+#     for doc_name in all_names:
+#         if doc_name.startswith(prefix):
+#             tail = doc_name[len(prefix):]
+#             match = re.match(r"(\d+)", tail)
+#             if match:
+#                 num = int(match.group(1))
+#                 if num > max_num:
+#                     max_num = num
+    
+#     next_num = max_num + 1
+#     return f"{prefix}{str(next_num).zfill(2)}"
+
 async def get_next_cm_doc_name(station_id: str, found_date: str) -> str:
     """
-    หา doc_name ถัดไปจากทั้ง cmreport และ cmurl collections
-    Format: CM-{station_id}-{yyyy}-{xx}
+    หา doc_name ถัดไป
+    Format: {station_id}_{seq}/{year}  เช่น ST001_1/2025, ST001_2/2025
     """
-    prefix = make_cm_doc_prefix(station_id, found_date)
-    
+    d = datetime.fromisoformat(found_date) if found_date else datetime.now(th_tz)
+    year = d.year
+    prefix = make_cm_doc_prefix(station_id)  # "{station_id}_"
+
     report_coll = get_cmreport_collection_for(station_id)
     url_coll = get_cmurl_coll_upload(station_id)
-    
+
+    # regex: {station_id}_\d+/{year}
+    pattern = f"^{re.escape(prefix)}\\d+/{year}$"
+
     all_names = []
-    
-    # จาก cmreport
-    cursor1 = report_coll.find(
-        {"doc_name": {"$regex": f"^{re.escape(prefix)}"}},
-        {"doc_name": 1}
-    )
-    async for doc in cursor1:
-        if doc.get("doc_name"):
-            all_names.append(doc["doc_name"])
-    
-    # จาก cmurl
-    cursor2 = url_coll.find(
-        {"doc_name": {"$regex": f"^{re.escape(prefix)}"}},
-        {"doc_name": 1}
-    )
-    async for doc in cursor2:
-        if doc.get("doc_name"):
-            all_names.append(doc["doc_name"])
-    
+    for coll in [report_coll, url_coll]:
+        cursor = coll.find(
+            {"doc_name": {"$regex": pattern}},
+            {"doc_name": 1}
+        )
+        async for doc in cursor:
+            if doc.get("doc_name"):
+                all_names.append(doc["doc_name"])
+
     if not all_names:
-        return f"{prefix}01"
-    
-    # หาเลขสูงสุด
-    max_num = 0
-    for doc_name in all_names:
-        if doc_name.startswith(prefix):
-            tail = doc_name[len(prefix):]
-            match = re.match(r"(\d+)", tail)
-            if match:
-                num = int(match.group(1))
-                if num > max_num:
-                    max_num = num
-    
-    next_num = max_num + 1
-    return f"{prefix}{str(next_num).zfill(2)}"
+        return f"{prefix}1/{year}"
+
+    # หา seq สูงสุดจาก pattern {station_id}_{seq}/{year}
+    max_seq = 0
+    for name in all_names:
+        m = re.search(r"_(\d+)/\d{4}$", name)
+        if m:
+            num = int(m.group(1))
+            if num > max_seq:
+                max_seq = num
+
+    return f"{prefix}{max_seq + 1}/{year}"
 
 # ==================== PREVIEW ENDPOINTS ====================
 
@@ -161,41 +204,77 @@ async def cmreport_preview_docname(
         "found_date": found_date_normalized,
     }
 
+# @router.get("/cmreport/latest-docname")
+# async def cmreport_latest_docname(
+#     station_id: str = Query(...),
+#     found_date: str = Query(...),
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     """หา doc_name ล่าสุดสำหรับปีนั้น"""
+    
+#     found_date_normalized = normalize_pm_date(found_date)
+#     prefix = make_cm_doc_prefix(station_id, found_date_normalized)
+    
+#     report_coll = get_cmreport_collection_for(station_id)
+#     url_coll = get_cmurl_coll_upload(station_id)
+    
+#     # หา doc_name ล่าสุดจากทั้งสอง collections
+#     latest = None
+#     max_num = 0
+    
+#     for coll in [report_coll, url_coll]:
+#         cursor = coll.find(
+#             {"doc_name": {"$regex": f"^{re.escape(prefix)}"}},
+#             {"doc_name": 1}
+#         ).sort("doc_name", -1).limit(10)
+        
+#         async for doc in cursor:
+#             name = doc.get("doc_name", "")
+#             if name.startswith(prefix):
+#                 tail = name[len(prefix):]
+#                 match = re.match(r"(\d+)", tail)
+#                 if match:
+#                     num = int(match.group(1))
+#                     if num > max_num:
+#                         max_num = num
+#                         latest = name
+    
+#     return {"doc_name": latest}
+
+
 @router.get("/cmreport/latest-docname")
 async def cmreport_latest_docname(
     station_id: str = Query(...),
     found_date: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    """หา doc_name ล่าสุดสำหรับปีนั้น"""
-    
     found_date_normalized = normalize_pm_date(found_date)
-    prefix = make_cm_doc_prefix(station_id, found_date_normalized)
-    
+    d = datetime.fromisoformat(found_date_normalized) if found_date_normalized else datetime.now(th_tz)
+    year = d.year
+    prefix = make_cm_doc_prefix(station_id)  # ← new signature (no date)
+    pattern = f"^{re.escape(prefix)}\\d+/{year}$"
+
     report_coll = get_cmreport_collection_for(station_id)
     url_coll = get_cmurl_coll_upload(station_id)
-    
-    # หา doc_name ล่าสุดจากทั้งสอง collections
+
     latest = None
     max_num = 0
-    
+
     for coll in [report_coll, url_coll]:
         cursor = coll.find(
-            {"doc_name": {"$regex": f"^{re.escape(prefix)}"}},
+            {"doc_name": {"$regex": pattern}},
             {"doc_name": 1}
         ).sort("doc_name", -1).limit(10)
-        
+
         async for doc in cursor:
             name = doc.get("doc_name", "")
-            if name.startswith(prefix):
-                tail = name[len(prefix):]
-                match = re.match(r"(\d+)", tail)
-                if match:
-                    num = int(match.group(1))
-                    if num > max_num:
-                        max_num = num
-                        latest = name
-    
+            m = re.search(r"_(\d+)/\d{4}$", name)
+            if m:
+                num = int(m.group(1))
+                if num > max_num:
+                    max_num = num
+                    latest = name
+
     return {"doc_name": latest}
 
 # ==================== UPDATED LIST ENDPOINTS ====================
