@@ -569,15 +569,14 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
         ("วันที่แจ้ง", _fmt_date_thai(doc.get("found_date"))),
         ("สถานที่", doc.get("location", "-")),
         ("ผู้แจ้ง", doc.get("reported_by", "-")),
-        ("สถานะ", doc.get("status", "-"))
+        # ("สถานะ", doc.get("status", "-"))
     ]
     # y = _draw_info_table(pdf, base_font, x, y, w, report_data, cols=2)
     y = _draw_info_list(pdf, base_font, x, y, w, report_data)
-    y += 2
+    y += 1
     
     # ===== ส่วนที่ 2: รายละเอียดปัญหา =====
     y = _draw_section_title(pdf, base_font, x, y, w, "รายละเอียดปัญหา", "2")
-    y += 1
     
     problem_data = [
         ("ประเภทปัญหา", doc.get("problem_type", "-")),
@@ -589,12 +588,12 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     y = _draw_info_list(pdf, base_font, x, y, w, problem_data)
     y += 2
     
-    y = _draw_text_area(pdf, base_font, x, y, w, "รายละเอียดปัญหา:", 
-                        doc.get("problem_details", "-"), 25)
+    y = _draw_text_area(pdf, base_font, x, y, w, "รายละเอียดปัญหา:", doc.get("problem_details", "-"), 25)
     
     remarks_open = doc.get("remarks_open", "")
     if remarks_open and remarks_open != "-":
         y = _draw_text_area(pdf, base_font, x, y, w, "หมายเหตุ:", remarks_open, 15)
+        y -= 5
     
     photos_obj = doc.get("photos", {}) or doc.get("photos_problem", {})
     cm_photos = photos_obj.get("cm_photos", [])
@@ -614,10 +613,10 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
                 addr_line2="53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130",
                 addr_line3="Tel. 02-114-3350"
             )
-            y += 3
+            y += 1
         
-        y = _draw_photo_section(pdf, base_font, x, y, w, cm_photos[:9], 
-                               "รูปภาพประกอบปัญหา", cols=3)
+        y += 4
+        y = _draw_photo_section(pdf, base_font, x, y, w, cm_photos[:9], "รูปภาพประกอบปัญหา", cols=3)
     
     # ===== หน้าใหม่สำหรับการแก้ไข =====
     pdf.add_page()
@@ -647,7 +646,7 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     ]
     # y = _draw_info_table(pdf, base_font, x, y, w, repair_data, cols=2)
     y = _draw_info_list(pdf, base_font, x, y, w, repair_data)
-    y += 5
+    y += 2
     
     cause = doc.get("cause", "")
     if cause and cause != "-":
@@ -670,7 +669,7 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
                     addr_line2="53 Moo 2 Charansanitwong Road, Bang Kruai, Nonthaburi 11130",
                     addr_line3="Tel. 02-114-3350"
                 )
-                y += 3
+                y += 1
             
             y = _draw_action_detail(pdf, base_font, x, y, w, idx, action)
     
