@@ -61,11 +61,11 @@ ROW_TITLES_TH = {
     "r10": "ตรวจสอบแรงดันไฟฟ้าที่พิน CP",
     "r11": "ตรวจสอบแผ่นกรองระบายอากาศ",
     "r12": "ตรวจสอบจุดต่อทางไฟฟ้า",
-    "r13": "ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก",
-    "r14": "ตรวจสอบลำดับเฟส",
-    "r15": "วัดแรงดันไฟฟ้าด้านเข้า",
-    "r16": "ทดสอบการอัดประจุ",
-    "r17": "ตรวจสอบคอนแทคเตอร์",
+    "r13": "ตรวจสอบคอนแทคเตอร์",
+    "r14": "ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก",
+    "r15": "ตรวจสอบลำดับเฟส",
+    "r16": "วัดแรงดันไฟฟ้าด้านเข้า",
+    "r17": "ทดสอบการอัดประจุ",
     "r18": "ทำความสะอาด",
 }
 
@@ -83,11 +83,11 @@ ROW_TITLES_EN = {
     "r10": "Check CP pin voltage",
     "r11": "Check air filter",
     "r12": "Check electrical connections",
-    "r13": "Check surge protection device",
-    "r14": "Check phase sequence",
-    "r15": "Measure input voltage",
-    "r16": "Charging test",
-    "r17": "Check contactor",
+    "r13": "Check contactor",
+    "r14": "Check surge protection device",
+    "r15": "Check phase sequence",
+    "r16": "Measure input voltage",
+    "r17": "Charging test",
     "r18": "Cleaning",
 }
 
@@ -414,6 +414,38 @@ def _resolve_logo_path() -> Optional[Path]:
                 return p
     return None
 
+# def _load_image_source_from_urlpath(url_path: str):
+#     if not url_path:
+#         return None, None
+
+#     # 1) backend/uploads (เช็คก่อน)
+#     if not url_path.startswith("https"):
+#         backend_root = Path(__file__).resolve().parents[2]  # backend/
+#         uploads_root = backend_root / "uploads"
+        
+#         print(f"[DEBUG] Backend root: {backend_root}")
+#         print(f"[DEBUG] Uploads root: {uploads_root}")
+#         print(f"[DEBUG] Uploads exists: {uploads_root.exists()}")
+        
+#         if uploads_root.exists():
+#             clean_path = url_path.lstrip("/")
+#             if clean_path.startswith("uploads/"):
+#                 clean_path = clean_path[8:]
+            
+#             local_path = uploads_root / clean_path
+            
+#             print(f"[DEBUG] Looking for: {local_path}")
+#             print(f"[DEBUG] File exists: {local_path.exists()}")
+            
+#             if local_path.exists() and local_path.is_file():
+#                 print(f"[DEBUG] ✅ Found image: {local_path}")
+#                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
+#             else:
+#                 print(f"[DEBUG] ❌ File not found at: {local_path}")
+
+#     print(f"[DEBUG] ❌ Could not load image from: {url_path}")
+#     return None, None
+
 def _load_image_source_from_urlpath(
     url_path: str,
 ) -> Tuple[Union[str, BytesIO, None], Optional[str]]:
@@ -433,6 +465,10 @@ def _load_image_source_from_urlpath(
         backend_root = Path(__file__).resolve().parents[2]
         uploads_root = backend_root / "uploads"
         
+        # print(f"[DEBUG] Backend root: {backend_root}")
+        # print(f"[DEBUG] Uploads root: {uploads_root}")
+        # print(f"[DEBUG] Uploads exists: {uploads_root.exists()}")
+        
         if uploads_root.exists():
             clean_path = url_path.lstrip("/")
             
@@ -442,7 +478,7 @@ def _load_image_source_from_urlpath(
             local_path = uploads_root / clean_path
             
             if local_path.exists() and local_path.is_file():
-                # print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
+                print(f"[DEBUG] ✅ เจอรูปแล้ว! {local_path}")
                 return local_path.as_posix(), _guess_img_type_from_ext(local_path.as_posix())
             else:
                 print(f"[DEBUG] ❌ ไม่เจอรูปที่ {local_path}")
@@ -500,8 +536,9 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
     if url_path in _IMAGE_CACHE:
         _log(f"[IMG] cache hit: {url_path}")
         cached_buf, cached_type = _IMAGE_CACHE[url_path]
-        # สร้าง BytesIO ใหม่เพื่อ reset position
+        cached_buf.seek(0)  # 🔥 RESET position
         new_buf = BytesIO(cached_buf.getvalue())
+        new_buf.seek(0)  # 🔥 RESET ก่อนส่งออก
         return new_buf, cached_type
     
     # โหลดรูปปกติ
@@ -513,16 +550,48 @@ def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optiona
     # แปลงเป็น BytesIO และ auto-rotate ทุกกรณี
     try:
         img_buf = load_image_autorotate(src)
+        img_buf.seek(0)  # 🔥 RESET
         _IMAGE_CACHE[url_path] = (img_buf, img_type)
         _log(f"[IMG] cached: {url_path}")
         
-        # สร้าง BytesIO ใหม่เพื่อ return (เพราะ cache ใช้ต้นฉบับ)
+        # สร้าง BytesIO ใหม่เพื่อ return
         new_buf = BytesIO(img_buf.getvalue())
+        new_buf.seek(0)  # 🔥 RESET ก่อนส่งออก
         return new_buf, img_type
         
     except Exception as e:
         _log(f"[IMG] auto-rotate error: {e}")
         return None, None
+
+# def _load_image_with_cache(url_path: str) -> Tuple[Union[BytesIO, None], Optional[str]]:
+    
+#     # ตรวจสอบ cache ก่อน
+#     if url_path in _IMAGE_CACHE:
+#         _log(f"[IMG] cache hit: {url_path}")
+#         cached_buf, cached_type = _IMAGE_CACHE[url_path]
+#         # สร้าง BytesIO ใหม่เพื่อ reset position
+#         new_buf = BytesIO(cached_buf.getvalue())
+#         return new_buf, cached_type
+    
+#     # โหลดรูปปกติ
+#     src, img_type = _load_image_source_from_urlpath(url_path)
+    
+#     if src is None:
+#         return None, None
+    
+#     # แปลงเป็น BytesIO และ auto-rotate ทุกกรณี
+#     try:
+#         img_buf = load_image_autorotate(src)
+#         _IMAGE_CACHE[url_path] = (img_buf, img_type)
+#         _log(f"[IMG] cached: {url_path}")
+        
+#         # สร้าง BytesIO ใหม่เพื่อ return (เพราะ cache ใช้ต้นฉบับ)
+#         new_buf = BytesIO(img_buf.getvalue())
+#         return new_buf, img_type
+        
+#     except Exception as e:
+#         _log(f"[IMG] auto-rotate error: {e}")
+#         return None, None
 
 
 # -------------------- Photo data helpers --------------------
@@ -1219,6 +1288,7 @@ def _draw_photos_row(
             img_buf, img_type = _load_image_with_cache(url_path)
 
             if img_buf is not None:
+                img_buf.seek(0)
                 try:
                     pdf.image(img_buf, x=cx, y=cy, w=slot_w, h=PHOTO_IMG_MAX_H)
                 except Exception as e:
@@ -1621,7 +1691,7 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         for it in checks_pre:
             idx = int(it.get("idx") or 0)
             
-            if idx == 18:
+            if idx > 17:
                 continue
 
             # ========== สร้าง question text พร้อมข้อย่อยและ remark ==========
