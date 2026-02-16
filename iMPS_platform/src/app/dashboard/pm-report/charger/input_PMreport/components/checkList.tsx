@@ -15,6 +15,7 @@ import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
+
 // Station name for GPS fallback — module-level is safe here because:
 // 1) "use client" component, only runs in browser
 // 2) Only one ChargerPMForm mounts at a time
@@ -49,6 +50,124 @@ async function getCachedLocation(): Promise<string> {
     // ถ้าไม่มี cache ต้องรอ fetch
     await prefetchLocation();
     return _cachedLocation?.text || "ไม่สามารถระบุตำแหน่งได้";
+}
+
+// ==================== BACKGROUND UPLOAD QUEUE ====================
+type BgUploadTask = {
+    reportId: string;
+    sn: string;
+    group: string;
+    file: File;
+    side: "pre" | "post";
+};
+type BgUploadProgress = {
+    total: number;
+    completed: number;
+    failed: number;
+    inProgress: boolean;
+    failures: { group: string; error: string }[];
+};
+
+let _bgQueue: BgUploadTask[] = [];
+let _bgProgress: BgUploadProgress = { total: 0, completed: 0, failed: 0, inProgress: false, failures: [] };
+let _bgListeners = new Set<(p: BgUploadProgress) => void>();
+function _bgNotify() { _bgListeners.forEach(fn => fn({ ..._bgProgress, failures: [..._bgProgress.failures] })); }
+
+function subscribeBgUpload(fn: (p: BgUploadProgress) => void) {
+    _bgListeners.add(fn);
+    fn({ ..._bgProgress, failures: [..._bgProgress.failures] });
+    return () => { _bgListeners.delete(fn); };
+}
+
+function resetBgUpload() {
+    _bgProgress = { total: 0, completed: 0, failed: 0, inProgress: false, failures: [] };
+    _bgQueue = [];
+    _bgNotify();
+}
+
+async function _bgCompressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
+    if (!file.type.startsWith("image/") || file.size < 500 * 1024) return file;
+    return new Promise((resolve) => {
+        const img = document.createElement("img");
+        img.onload = () => {
+            URL.revokeObjectURL(img.src);
+            let { width, height } = img;
+            if (width > maxWidth) { height = (height * maxWidth) / width; width = maxWidth; }
+            const canvas = document.createElement("canvas");
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext("2d")!;
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((blob) => {
+                if (blob && blob.size < file.size) resolve(new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" }));
+                else resolve(file);
+            }, "image/jpeg", quality);
+        };
+        img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+async function _bgUploadSingle(reportId: string, sn: string, group: string, file: File, side: "pre" | "post") {
+    const form = new FormData();
+    form.append("sn", sn);
+    form.append("group", group);
+    form.append("side", side);
+    form.append("files", file, ensureJpgFilename(file.name));
+    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const url = side === "pre"
+        ? `${API_BASE}/pmreport/${reportId}/pre/photos`
+        : `${API_BASE}/pmreport/${reportId}/post/photos`;
+    const res = await apiFetch(url, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: form,
+        credentials: "include",
+    });
+    if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`[${res.status}] ${group}: ${errText || res.statusText}`);
+    }
+}
+
+async function _bgUploadWithRetry(reportId: string, sn: string, group: string, file: File, side: "pre" | "post", maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try { await _bgUploadSingle(reportId, sn, group, file, side); return; }
+        catch (err: any) {
+            if (attempt === maxRetries) throw err;
+            await new Promise(r => setTimeout(r, Math.min(1000 * 2 ** (attempt - 1), 8000)));
+        }
+    }
+}
+
+async function _bgProcessQueue() {
+    if (_bgProgress.inProgress) return;
+    _bgProgress.inProgress = true;
+    _bgNotify();
+    const CONCURRENCY = 3;
+    while (_bgQueue.length > 0) {
+        const batch = _bgQueue.splice(0, CONCURRENCY);
+        const results = await Promise.allSettled(
+            batch.map(async (task) => {
+                const compressed = await _bgCompressImage(task.file);
+                await _bgUploadWithRetry(task.reportId, task.sn, `g${task.group}`, compressed, task.side);
+            })
+        );
+        results.forEach((r, idx) => {
+            if (r.status === "fulfilled") _bgProgress.completed++;
+            else { _bgProgress.failed++; _bgProgress.failures.push({ group: batch[idx].group, error: r.reason?.message || "unknown" }); }
+        });
+        _bgNotify();
+    }
+    _bgProgress.inProgress = false;
+    _bgNotify();
+}
+
+function enqueueBgUploads(tasks: BgUploadTask[]) {
+    if (tasks.length === 0) return;
+    _bgProgress = { ..._bgProgress, total: _bgProgress.total + tasks.length };
+    _bgQueue.push(...tasks);
+    _bgNotify();
+    void _bgProcessQueue();
 }
 
 type TabId = "pre" | "post";
@@ -1761,6 +1880,64 @@ function PhotoRemarkSection({
     );
 }
 
+// ==================== BACKGROUND UPLOAD BANNER ====================
+function BackgroundUploadBanner({ lang }: { lang: Lang }) {
+    const [progress, setProgress] = useState<BgUploadProgress>({ total: 0, completed: 0, failed: 0, inProgress: false, failures: [] });
+    useEffect(() => subscribeBgUpload(setProgress), []);
+
+    // สำเร็จหมด → แสดง 3 วินาทีแล้วซ่อน
+    useEffect(() => {
+        if (progress.total > 0 && !progress.inProgress && progress.failed === 0 && progress.completed === progress.total) {
+            const timer = setTimeout(() => resetBgUpload(), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [progress]);
+
+    if (progress.total === 0) return null;
+
+    // สำเร็จหมด
+    if (!progress.inProgress && progress.failed === 0 && progress.completed === progress.total) {
+        return (
+            <div className="tw-fixed tw-bottom-4 tw-left-1/2 tw--translate-x-1/2 tw-z-50 tw-bg-green-600 tw-text-white tw-px-5 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-text-sm tw-flex tw-items-center tw-gap-2">
+                <svg className="tw-w-5 tw-h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                {lang === "th" ? `อัปโหลดข้อมูลสำเร็จ` : `Data uploaded successfully`}
+            </div>
+        );
+    }
+
+    // มี error
+    if (!progress.inProgress && progress.failed > 0) {
+        return (
+            <div className="tw-fixed tw-bottom-4 tw-left-1/2 tw--translate-x-1/2 tw-z-50 tw-bg-red-600 tw-text-white tw-px-5 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-text-sm tw-max-w-md">
+                <div className="tw-flex tw-items-center tw-gap-2">
+                    <span>⚠️</span>
+                    <span>{lang === "th" ? `อัปโหลดรูปไม่สำเร็จ ${progress.failed} รูป (สำเร็จ ${progress.completed}/${progress.total})` : `${progress.failed} photos failed (${progress.completed}/${progress.total} ok)`}</span>
+                </div>
+                <button onClick={resetBgUpload} className="tw-mt-2 tw-text-xs tw-underline tw-opacity-80 hover:tw-opacity-100">
+                    {lang === "th" ? "ปิด" : "Dismiss"}
+                </button>
+            </div>
+        );
+    }
+
+    // กำลัง upload
+    const pct = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
+    return (
+        <div className="tw-fixed tw-bottom-4 tw-left-1/2 tw--translate-x-1/2 tw-z-50 tw-bg-gray-800 tw-text-white tw-px-5 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-text-sm tw-min-w-[260px]">
+            <div className="tw-flex tw-items-center tw-gap-3">
+                <svg className="tw-animate-spin tw-h-4 tw-w-4 tw-flex-shrink-0" viewBox="0 0 24 24">
+                    <circle className="tw-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="tw-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span>{lang === "th" ? `กำลังอัปโหลดรูป Pre-PM...` : `Uploading Pre-PM photos...`} {progress.completed}/{progress.total}</span>
+            </div>
+            <div className="tw-mt-2 tw-h-1.5 tw-bg-gray-600 tw-rounded-full tw-overflow-hidden">
+                <div className="tw-h-full tw-bg-blue-400 tw-rounded-full tw-transition-all tw-duration-300" style={{ width: `${pct}%` }} />
+            </div>
+        </div>
+    );
+}
+
 // ==================== MAIN COMPONENT ====================
 export default function ChargerPMForm() {
     const { lang } = useLanguage();
@@ -2643,29 +2820,24 @@ export default function ChargerPMForm() {
                 saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, cp, m16: m16.state, summary, dustFilterChanged, photoRefs });
             }
 
-            // ⚡ เตรียม entries สำหรับ upload (เฉพาะกลุ่มที่มี file จริง)
-            const uploadEntries: { group: string; files: File[] }[] = [];
+            // ⚡ เตรียม tasks สำหรับ background upload
+            const bgTasks: BgUploadTask[] = [];
             Object.entries(photos).forEach(([no, list]) => {
-                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
-                if (files.length > 0) uploadEntries.push({ group: no, files });
+                (list || []).forEach(p => {
+                    if (p.file) bgTasks.push({ reportId: report_id, sn, group: no, file: p.file, side: "pre" });
+                });
             });
 
-            // ⚡ อัปโหลดทีละ batch (3 กลุ่มพร้อมกัน) + retry แต่ละกลุ่ม 3 ครั้ง
-            if (uploadEntries.length > 0) {
-                const failures = await uploadPhotosInBatches(uploadEntries, report_id, sn, "pre");
-                if (failures.length > 0) {
-                    const groupNums = failures.map(f => f.group).join(", ");
-                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
-                    console.error("[Pre-PM upload failures]", failures);
-                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${details}`);
-                    return; // ไม่ clear draft เพื่อให้ user ลองใหม่ได้
-                }
-            }
-            preReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
+            // ⚡ Enqueue background upload → ไม่ block UI
+            enqueueBgUploads(bgTasks);
+
+            // ⚡ Cleanup + navigate ทันที (ไม่ต้องรอ upload)
+            preReportIdRef.current = null;
             const allPhotos = Object.values(photos).flat();
             Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => { });
             clearDraftLocal(key);
-            router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
+            setPhotos({});
+            router.replace(`${pathname}?sn=${encodeURIComponent(sn)}&action=post&edit_id=${report_id}&pmtab=post`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
 
@@ -2757,9 +2929,21 @@ export default function ChargerPMForm() {
                         {TABS.map((tb) => {
                             const isPreDisabled = isPostMode && tb.id === "pre";
                             const isLockedAfter = tb.id === "post" && !canGoAfter;
-                            if (isPreDisabled) return <div key={tb.id} className="tw-px-4 tw-py-2 tw-font-medium tw-opacity-50 tw-cursor-not-allowed tw-select-none">{tb.label}</div>;
-                            if (isLockedAfter) return <div key={tb.id} className="tw-px-4 tw-py-2 tw-font-medium tw-opacity-50 tw-cursor-not-allowed tw-select-none" onClick={() => alert(t("alertFillPreFirst", lang))}>{tb.label}</div>;
-                            return <Tab key={tb.id} value={tb.id} onClick={() => go(tb.id)} className="tw-px-4 tw-py-2 tw-font-medium">{tb.label}</Tab>;
+                            return (
+                                <Tab
+                                    key={tb.id}
+                                    value={tb.id}
+                                    disabled={isPreDisabled}
+                                    onClick={() => {
+                                        if (isPreDisabled) return;
+                                        if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
+                                        go(tb.id);
+                                    }}
+                                    className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}
+                                >
+                                    {tb.label}
+                                </Tab>
+                            );
                         })}
                     </TabsHeader>
                 </Tabs>
@@ -2854,6 +3038,7 @@ export default function ChargerPMForm() {
                     </div>
                 </div>
             </form>
+            <BackgroundUploadBanner lang={lang} />
         </section>
     );
 }
