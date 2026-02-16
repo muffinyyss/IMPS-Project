@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 from typing import Literal, Optional
-import json, re, asyncio
+import json, re, asyncio, logging
 
 from config import settingDB, _ensure_utc_iso, to_json, mqtt_client, MQTT_TOPIC, BROKER_HOST, BROKER_PORT, charger_collection
 from deps import UserClaims, get_current_user
@@ -316,25 +316,84 @@ class ChargerSettingBody(BaseModel):
     chargeBoxID: Optional[str] = None
     ocppUrl: Optional[str] = None
 
+# @router.patch("/charger/setting")
+# def update_charger_setting(
+#     body: ChargerSettingBody,
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     updates = {}
+#     if body.chargeBoxID is not None:
+#         updates["chargeBoxID"] = body.chargeBoxID
+#     if body.ocppUrl is not None:
+#         updates["ocppUrl"] = body.ocppUrl
+
+#     if not updates:
+#         raise HTTPException(status_code=400, detail="No fields to update")
+
+#     result = charger_collection.update_one(
+#         {"SN": body.SN},
+#         {"$set": updates},
+#     )
+#     if result.matched_count == 0:
+#         raise HTTPException(status_code=404, detail="Charger not found")
+
+#     return {"message": "ok", "modified": result.modified_count}
+
 @router.patch("/charger/setting")
 def update_charger_setting(
     body: ChargerSettingBody,
     current: UserClaims = Depends(get_current_user),
 ):
+    """อัปเดต Charger Setting + ส่ง MQTT"""
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    
     updates = {}
     if body.chargeBoxID is not None:
         updates["chargeBoxID"] = body.chargeBoxID
     if body.ocppUrl is not None:
         updates["ocppUrl"] = body.ocppUrl
+        print(f"📤 [MQTT] Broker: {BROKER_HOST}:{BROKER_PORT}")
+        print(f"   Client connected? {mqtt_client.is_connected()}")
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    # ✅ Update MongoDB
     result = charger_collection.update_one(
         {"SN": body.SN},
         {"$set": updates},
     )
+    
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Charger not found")
 
-    return {"message": "ok", "modified": result.modified_count}
+    print(f"[{now_iso}] 🔄 Update Charger: {body.SN}")
+    print(f"  Updates: {updates}")
+
+    # ✅ ส่ง MQTT Notification ให้ CP.py รับรู้!
+    if body.ocppUrl is not None:
+        msg = {
+            "SN": body.SN,
+            "chargeBoxID": body.chargeBoxID,
+            "ocppUrl": body.ocppUrl,
+            "action": "ocpp_update",
+            "timestamp": now_iso,
+        }
+        payload_str = json.dumps(msg, ensure_ascii=False)
+        
+        try:
+            pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
+            pub_result.wait_for_publish(timeout=2.0)
+            published = pub_result.is_published()
+            print(f"[MQTT] OCPP URL Update sent - published={published}")
+            print(f"  Message: {payload_str}")
+        except Exception as e:
+            print(f"[MQTT] Error sending notification: {e}")
+
+    return {
+        "ok": True,
+        "message": "Charger setting updated",
+        "modified": result.modified_count,
+        "timestamp": now_iso,
+    }
