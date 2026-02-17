@@ -22,14 +22,30 @@ const API_BASE = "http://localhost:8000";
 
 // ===== Types =====
 type ChargerData = {
-  id?: string; charger_id?: string; station_id?: string;
-  chargeBoxID: string; chargerNo: number; brand: string; model: string;
-  SN: string; WO: string; power: string;
-  PLCFirmware: string; PIFirmware: string; RTFirmware: string;
-  commissioningDate: string; warrantyYears: number; numberOfCables: number;
-  is_active: boolean; location: string; description: string; ocppUrl: string;
+  id?: string;
+  charger_id?: string;
+  station_id?: string;
+  chargeBoxID: string;
+  chargerNo: number;
+  brand: string;
+  model: string;
+  SN: string;
+  WO: string;
+  power: string;
+  PLCFirmware: string;
+  PIFirmware: string;
+  RTFirmware: string;
+  commissioningDate: string;
+  warrantyYears: number;
+  numberOfCables: number;
+  is_active: boolean;
+  location: string;
+  description: string;
+  ocppUrl: string;
   chargerType: string;
-  status?: boolean; chargerImage?: string; deviceImage?: string;
+  status?: boolean;
+  chargerImages?: string[];
+  deviceImages?: string[];
 };
 
 type StationRow = {
@@ -60,6 +76,123 @@ type Owner = { user_id: string; username: string };
 type Lang = "th" | "en";
 function getTodayDate(): string { return new Date().toISOString().split("T")[0]; }
 
+/* ─────────────────────── Shared Sub-components (matching AddStation style) ─────────────────────── */
+
+/** Section icon badge */
+const SectionIcon = ({ emoji }: { emoji: string }) => (
+  <span className="tw-inline-flex tw-items-center tw-justify-center tw-h-7 tw-w-7 sm:tw-h-8 sm:tw-w-8 tw-rounded-xl tw-bg-gradient-to-br tw-shadow-lg tw-text-xs sm:tw-text-sm">
+    {emoji}
+  </span>
+);
+
+/** Thumbnail gallery with remove-on-hover */
+const ImageGallery = ({ previews, onRemove, emptyLabel }: {
+  previews: string[];
+  onRemove: (i: number) => void;
+  emptyLabel: string;
+}) => {
+  if (!previews.length) {
+    return (
+      <div className="tw-flex tw-items-center tw-justify-center tw-h-14 sm:tw-h-[68px] tw-rounded-xl tw-border-2 tw-border-dashed tw-border-blue-gray-100">
+        <span className="tw-text-[10px] sm:tw-text-[11px] tw-text-blue-gray-300 tw-select-none">{emptyLabel}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="tw-flex tw-flex-wrap tw-gap-1.5 sm:tw-gap-2">
+      {previews.map((url, i) => (
+        <div
+          key={i}
+          className="tw-group/img tw-relative tw-h-14 tw-w-14 sm:tw-h-[68px] sm:tw-w-[68px] tw-rounded-xl tw-overflow-hidden tw-ring-1 tw-ring-black/10 tw-shadow-sm hover:tw-shadow-md hover:tw-ring-blue-400/40 tw-transition-all tw-duration-200 hover:tw--translate-y-0.5"
+        >
+          <img src={url} alt="" className="tw-h-full tw-w-full tw-object-cover" />
+          <div className="tw-absolute tw-inset-0 tw-bg-black/0 group-hover/img:tw-bg-black/25 tw-transition-colors" />
+          <button
+            type="button"
+            onClick={() => onRemove(i)}
+            className="tw-absolute tw-top-0.5 tw-right-0.5 sm:tw-top-1 sm:tw-right-1 tw-h-5 tw-w-5 tw-rounded-full tw-bg-red-500 tw-text-white tw-flex tw-items-center tw-justify-center sm:tw-opacity-0 group-hover/img:tw-opacity-100 tw-shadow-lg tw-transition-all tw-duration-150 hover:tw-bg-red-600 hover:tw-scale-110 tw-text-[10px] tw-leading-none"
+          >
+            ✕
+          </button>
+          <span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-text-center tw-text-[8px] tw-font-medium tw-text-white tw-bg-gradient-to-t tw-from-black/40 tw-to-transparent tw-pt-3 tw-pb-0.5 tw-opacity-0 group-hover/img:tw-opacity-100 tw-transition-opacity">
+            {i + 1}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/** Styled upload trigger */
+const UploadBtn = ({ label, onChange }: {
+  label: string;
+  onChange: React.ChangeEventHandler<HTMLInputElement>;
+}) => (
+  <label className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-2.5 sm:tw-px-3 tw-py-[5px] tw-rounded-lg tw-bg-white tw-border tw-border-blue-gray-200 tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-blue-gray-600 tw-cursor-pointer hover:tw-border-blue-400 hover:tw-text-blue-600 hover:tw-bg-blue-50/50 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow tw-select-none">
+    <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" /></svg>
+    {label}
+    <input type="file" accept="image/*" multiple onChange={onChange} className="tw-hidden" />
+  </label>
+);
+
+/** Image upload zone (label + button + gallery) */
+const ImageZone = ({ label, previews, onUpload, onRemove, emptyLabel, uploadLabel, existingImages, apiBase, onRemoveExisting }: {
+  label: string;
+  previews: string[];
+  onUpload: React.ChangeEventHandler<HTMLInputElement>;
+  onRemove: (i: number) => void;
+  emptyLabel: string;
+  uploadLabel: string;
+  existingImages?: string[];
+  apiBase?: string;
+  onRemoveExisting?: (i: number) => void;
+}) => (
+  <div className="tw-space-y-1.5 sm:tw-space-y-2 tw-p-2.5 sm:tw-p-3 tw-rounded-xl tw-bg-blue-gray-50/40 tw-ring-1 tw-ring-blue-gray-100/60">
+    <div className="tw-flex tw-items-center tw-justify-between tw-min-h-[28px]">
+      <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-wider">{label}</span>
+      <UploadBtn label={uploadLabel} onChange={onUpload} />
+    </div>
+    {/* Existing images from server */}
+    {existingImages && existingImages.length > 0 && (
+      <div className="tw-flex tw-flex-wrap tw-gap-1.5 sm:tw-gap-2">
+        {existingImages.map((url, i) => (
+          <div
+            key={`existing-${i}`}
+            className="tw-group/img tw-relative tw-h-14 tw-w-14 sm:tw-h-[68px] sm:tw-w-[68px] tw-rounded-xl tw-overflow-hidden tw-ring-1 tw-ring-black/10 tw-shadow-sm hover:tw-shadow-md hover:tw-ring-blue-400/40 tw-transition-all tw-duration-200 hover:tw--translate-y-0.5"
+          >
+            <a href={`${apiBase}${url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="tw-block tw-h-full tw-w-full">
+              <img src={`${apiBase}${url}`} alt={`${label} ${i + 1}`} className="tw-h-full tw-w-full tw-object-cover" />
+            </a>
+            <div className="tw-absolute tw-inset-0 tw-bg-black/0 group-hover/img:tw-bg-black/25 tw-transition-colors tw-pointer-events-none" />
+            {onRemoveExisting && (
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemoveExisting(i); }}
+                className="tw-absolute tw-top-0.5 tw-right-0.5 sm:tw-top-1 sm:tw-right-1 tw-h-5 tw-w-5 tw-rounded-full tw-bg-red-500 tw-text-white tw-flex tw-items-center tw-justify-center sm:tw-opacity-0 group-hover/img:tw-opacity-100 tw-shadow-lg tw-transition-all tw-duration-150 hover:tw-bg-red-600 hover:tw-scale-110 tw-text-[10px] tw-leading-none tw-z-10"
+              >
+                ✕
+              </button>
+            )}
+            <span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-text-center tw-text-[7px] tw-font-medium tw-text-white tw-bg-gradient-to-t tw-from-black/50 tw-to-transparent tw-pt-3 tw-pb-0.5 tw-pointer-events-none">
+              Current {i + 1}
+            </span>
+          </div>
+        ))}
+      </div>
+    )}
+    {/* New previews */}
+    <ImageGallery previews={previews} onRemove={onRemove} emptyLabel={existingImages && existingImages.length > 0 ? "" : emptyLabel} />
+  </div>
+);
+
+/** Spinner */
+const Spinner = () => (
+  <svg className="tw-animate-spin tw-h-4 tw-w-4" viewBox="0 0 24 24" fill="none">
+    <circle className="tw-opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+    <path className="tw-opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+  </svg>
+);
+
 export function SearchDataTables() {
   const router = useRouter();
   const [me, setMe] = useState<{ user_id: string; username: string; role: string } | null>(null);
@@ -70,7 +203,7 @@ export function SearchDataTables() {
   const [data, setData] = useState<StationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [sorting, setSorting] = useState<any>([]);
+  const [sorting, setSorting] = useState<any>([{ id: "station_name", desc: false }]);
   const [filtering, setFiltering] = useState("");
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [openAdd, setOpenAdd] = useState(false);
@@ -78,7 +211,6 @@ export function SearchDataTables() {
   const [notice, setNotice] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [availability, setAvailability] = useState<Map<string, { total: number; available: number }>>(new Map());
   const [chargerAvailability, setChargerAvailability] = useState<Map<string, { total: number; available: number }>>(new Map());
-
 
   const [openEditStation, setOpenEditStation] = useState(false);
   const [editingStation, setEditingStation] = useState<StationRow | null>(null);
@@ -101,22 +233,29 @@ export function SearchDataTables() {
     warrantyYears: 1, numberOfCables: 1, is_active: true, location: "", description: "", ocppUrl: "", chargerType: "DC",
   });
 
-  const [addChargerImage, setAddChargerImage] = useState<File | null>(null);
-  const [addDeviceImage, setAddDeviceImage] = useState<File | null>(null);
-  const [addChargerPreview, setAddChargerPreview] = useState<string>("");
-  const [addDevicePreview, setAddDevicePreview] = useState<string>("");
+  const [addChargerImages, setAddChargerImages] = useState<File[]>([]);
+  const [addDeviceImages, setAddDeviceImages] = useState<File[]>([]);
+  const [addChargerPreviews, setAddChargerPreviews] = useState<string[]>([]);
+  const [addDevicePreviews, setAddDevicePreviews] = useState<string[]>([]);
+
   const addChargerImageInputRef = useRef<HTMLInputElement | null>(null);
   const addDeviceImageInputRef = useRef<HTMLInputElement | null>(null);
-  const [editStationImage, setEditStationImage] = useState<File | null>(null);
-  const [editStationPreview, setEditStationPreview] = useState<string>("");
+
+  const [editStationImages, setEditStationImages] = useState<File[]>([]);
+  const [editStationPreviews, setEditStationPreviews] = useState<string[]>([]);
+
   const [deleteCurrentImage, setDeleteCurrentImage] = useState(false);
   const stationImageInputRef = useRef<HTMLInputElement | null>(null);
-  const [editChargerImage, setEditChargerImage] = useState<File | null>(null);
-  const [editDeviceImage, setEditDeviceImage] = useState<File | null>(null);
-  const [editChargerPreview, setEditChargerPreview] = useState<string>("");
-  const [editDevicePreview, setEditDevicePreview] = useState<string>("");
+
+  const [editChargerImages, setEditChargerImages] = useState<File[]>([]);
+  const [editDeviceImages, setEditDeviceImages] = useState<File[]>([]);
+  const [editChargerPreviews, setEditChargerPreviews] = useState<string[]>([]);
+  const [editDevicePreviews, setEditDevicePreviews] = useState<string[]>([]);
+
   const [deleteChargerImage, setDeleteChargerImage] = useState(false);
   const [deleteDeviceImage, setDeleteDeviceImage] = useState(false);
+  const [deletedExistingChargerIdxs, setDeletedExistingChargerIdxs] = useState<Set<number>>(new Set());
+  const [deletedExistingDeviceIdxs, setDeletedExistingDeviceIdxs] = useState<Set<number>>(new Set());
   const chargerImageInputRef = useRef<HTMLInputElement | null>(null);
   const deviceImageInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -157,6 +296,9 @@ export function SearchDataTables() {
         chargerDeleted: "ลบตู้ชาร์จแล้ว", chargerCreated: "สร้างตู้ชาร์จสำเร็จ",
         chargerUpdated: "อัปเดตตู้ชาร์จสำเร็จ", stationUpdated: "อัปเดตสถานีสำเร็จ",
         available: "พร้อมใช้งาน", availableOf: "หัว",
+        stationInfo: "ข้อมูลสถานี", chargerInfo: "ข้อมูลตู้ชาร์จ",
+        upload: "เลือกรูป", noImages: "ยังไม่มีรูป",
+        stationImages: "รูปภาพสถานี", chargerImages: "รูปภาพ",
       },
       en: {
         stationManagement: "Station Management", stationManagementDesc: "Manage Stations and Chargers. Click on a row to view chargers, click on a charger card to view details.",
@@ -184,6 +326,9 @@ export function SearchDataTables() {
         chargerDeleted: "Charger deleted", chargerCreated: "Charger created successfully",
         chargerUpdated: "Charger updated successfully", stationUpdated: "Station updated successfully",
         available: "Available", availableOf: "heads",
+        stationInfo: "Station Information", chargerInfo: "Charger Information",
+        upload: "Browse", noImages: "No images yet",
+        stationImages: "Station Images", chargerImages: "Images",
       },
     };
     return translations[lang];
@@ -205,60 +350,95 @@ export function SearchDataTables() {
   const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
   const pickChargerImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    if (!f.type.startsWith("image/")) { alert("Please select an image file only"); return; }
-    if (f.size > MAX_IMAGE_BYTES) { alert("File is too large (max 3MB)"); return; }
-    if (editChargerPreview) URL.revokeObjectURL(editChargerPreview);
-    setEditChargerImage(f); setEditChargerPreview(URL.createObjectURL(f));
+    const files = Array.from(e.target.files || []);
+    const valid = files.filter(f => {
+      if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; }
+      if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; }
+      return true;
+    });
+    if (!valid.length) return;
+    setEditChargerImages(prev => [...prev, ...valid]);
+    setEditChargerPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+    e.target.value = "";
   };
+
   const pickDeviceImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    if (!f.type.startsWith("image/")) { alert("Please select an image file only"); return; }
-    if (f.size > MAX_IMAGE_BYTES) { alert("File is too large (max 3MB)"); return; }
-    if (editDevicePreview) URL.revokeObjectURL(editDevicePreview);
-    setEditDeviceImage(f); setEditDevicePreview(URL.createObjectURL(f));
+    const files = Array.from(e.target.files || []);
+    const valid = files.filter(f => {
+      if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; }
+      if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; }
+      return true;
+    });
+    if (!valid.length) return;
+    setEditDeviceImages(prev => [...prev, ...valid]);
+    setEditDevicePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+    e.target.value = "";
   };
-  const clearChargerImage = () => { if (editChargerPreview) URL.revokeObjectURL(editChargerPreview); setEditChargerImage(null); setEditChargerPreview(""); if (chargerImageInputRef.current) chargerImageInputRef.current.value = ""; };
-  const clearDeviceImage = () => { if (editDevicePreview) URL.revokeObjectURL(editDevicePreview); setEditDeviceImage(null); setEditDevicePreview(""); if (deviceImageInputRef.current) deviceImageInputRef.current.value = ""; };
-  const resetEditChargerImages = () => { if (editChargerPreview) URL.revokeObjectURL(editChargerPreview); if (editDevicePreview) URL.revokeObjectURL(editDevicePreview); setEditChargerImage(null); setEditDeviceImage(null); setEditChargerPreview(""); setEditDevicePreview(""); setDeleteChargerImage(false); setDeleteDeviceImage(false); };
+
+  const removeEditChargerImage = (idx: number) => { URL.revokeObjectURL(editChargerPreviews[idx]); setEditChargerImages(prev => prev.filter((_, i) => i !== idx)); setEditChargerPreviews(prev => prev.filter((_, i) => i !== idx)); };
+  const removeEditDeviceImage = (idx: number) => { URL.revokeObjectURL(editDevicePreviews[idx]); setEditDeviceImages(prev => prev.filter((_, i) => i !== idx)); setEditDevicePreviews(prev => prev.filter((_, i) => i !== idx)); };
+  const resetEditChargerImages = () => { editChargerPreviews.forEach(u => URL.revokeObjectURL(u)); editDevicePreviews.forEach(u => URL.revokeObjectURL(u)); setEditChargerImages([]); setEditDeviceImages([]); setEditChargerPreviews([]); setEditDevicePreviews([]); setDeleteChargerImage(false); setDeleteDeviceImage(false); setDeletedExistingChargerIdxs(new Set()); setDeletedExistingDeviceIdxs(new Set()); };
+
   const pickStationImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    if (!f.type.startsWith("image/")) { alert("Please select an image file only"); return; }
-    if (f.size > MAX_IMAGE_BYTES) { alert("File is too large (max 3MB)"); return; }
-    if (editStationPreview) URL.revokeObjectURL(editStationPreview);
-    setEditStationImage(f); setEditStationPreview(URL.createObjectURL(f));
+    const files = Array.from(e.target.files || []);
+    const valid = files.filter(f => {
+      if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; }
+      if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; }
+      return true;
+    });
+    if (!valid.length) return;
+    setEditStationImages(prev => [...prev, ...valid]);
+    setEditStationPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+    e.target.value = "";
   };
-  function clearStationImage() { if (editStationPreview) URL.revokeObjectURL(editStationPreview); setEditStationImage(null); setEditStationPreview(""); if (stationImageInputRef.current) stationImageInputRef.current.value = ""; }
-  const resetEditImages = () => { if (editStationPreview) URL.revokeObjectURL(editStationPreview); setEditStationImage(null); setEditStationPreview(""); setDeleteCurrentImage(false); };
+
+  const removeEditStationImage = (idx: number) => { URL.revokeObjectURL(editStationPreviews[idx]); setEditStationImages(prev => prev.filter((_, i) => i !== idx)); setEditStationPreviews(prev => prev.filter((_, i) => i !== idx)); };
+  const resetEditImages = () => { editStationPreviews.forEach(u => URL.revokeObjectURL(u)); setEditStationImages([]); setEditStationPreviews([]); setDeleteCurrentImage(false); };
+
   const pickAddChargerImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    if (!f.type.startsWith("image/")) { alert("Please select an image file only"); return; }
-    if (f.size > MAX_IMAGE_BYTES) { alert("File is too large (max 3MB)"); return; }
-    if (addChargerPreview) URL.revokeObjectURL(addChargerPreview);
-    setAddChargerImage(f); setAddChargerPreview(URL.createObjectURL(f));
+    const files = Array.from(e.target.files || []);
+    const valid = files.filter(f => {
+      if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; }
+      if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; }
+      return true;
+    });
+    if (!valid.length) return;
+    setAddChargerImages(prev => [...prev, ...valid]);
+    setAddChargerPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+    e.target.value = "";
   };
+
   const pickAddDeviceImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    if (!f.type.startsWith("image/")) { alert("Please select an image file only"); return; }
-    if (f.size > MAX_IMAGE_BYTES) { alert("File is too large (max 3MB)"); return; }
-    if (addDevicePreview) URL.revokeObjectURL(addDevicePreview);
-    setAddDeviceImage(f); setAddDevicePreview(URL.createObjectURL(f));
+    const files = Array.from(e.target.files || []);
+    const valid = files.filter(f => {
+      if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; }
+      if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; }
+      return true;
+    });
+    if (!valid.length) return;
+    setAddDeviceImages(prev => [...prev, ...valid]);
+    setAddDevicePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
+    e.target.value = "";
   };
-  const clearAddChargerImage = () => { if (addChargerPreview) URL.revokeObjectURL(addChargerPreview); setAddChargerImage(null); setAddChargerPreview(""); if (addChargerImageInputRef.current) addChargerImageInputRef.current.value = ""; };
-  const clearAddDeviceImage = () => { if (addDevicePreview) URL.revokeObjectURL(addDevicePreview); setAddDeviceImage(null); setAddDevicePreview(""); if (addDeviceImageInputRef.current) addDeviceImageInputRef.current.value = ""; };
-  const resetAddChargerImages = () => { if (addChargerPreview) URL.revokeObjectURL(addChargerPreview); if (addDevicePreview) URL.revokeObjectURL(addDevicePreview); setAddChargerImage(null); setAddDeviceImage(null); setAddChargerPreview(""); setAddDevicePreview(""); };
+
+  const removeAddChargerImage = (idx: number) => { URL.revokeObjectURL(addChargerPreviews[idx]); setAddChargerImages(prev => prev.filter((_, i) => i !== idx)); setAddChargerPreviews(prev => prev.filter((_, i) => i !== idx)); };
+  const removeAddDeviceImage = (idx: number) => { URL.revokeObjectURL(addDevicePreviews[idx]); setAddDeviceImages(prev => prev.filter((_, i) => i !== idx)); setAddDevicePreviews(prev => prev.filter((_, i) => i !== idx)); };
+  const resetAddChargerImages = () => { addChargerPreviews.forEach(u => URL.revokeObjectURL(u)); addDevicePreviews.forEach(u => URL.revokeObjectURL(u)); setAddChargerImages([]); setAddDeviceImages([]); setAddChargerPreviews([]); setAddDevicePreviews([]); };
 
   useEffect(() => { localStorage.removeItem("selected_sn"); localStorage.removeItem("selected_charger_no"); window.dispatchEvent(new CustomEvent("charger:deselected")); }, []);
 
-  // Auto-refresh availability ทุก 10 วินาที
   useEffect(() => {
     if (data.length === 0) return;
-
-    const interval = setInterval(() => {
-      fetchAvailability(data);
-    }, 1000);
-
-    return () => clearInterval(interval);
+    let stopped = false;
+    const poll = async () => {
+      if (stopped) return;
+      try { await fetchAvailability(data); } catch (e: any) {
+        if (e?.status === 401 || e?.message?.includes("401")) { stopped = true; return; }
+        console.error("[availability poll] error:", e);
+      }
+    };
+    const interval = setInterval(poll, 10000);
+    return () => { stopped = true; clearInterval(interval); };
   }, [data]);
 
   useEffect(() => {
@@ -308,29 +488,30 @@ export function SearchDataTables() {
         if (!res.ok) return;
         const data = await res.json();
         avMap.set(station.station_id, { total: data.total, available: data.available });
-        // เก็บข้อมูลแยกตาม SN
         if (Array.isArray(data.chargers)) {
-          data.chargers.forEach((c: any) => {
-            cMap.set(c.sn, { total: c.total, available: c.available });
-          });
+          data.chargers.forEach((c: any) => { cMap.set(c.sn, { total: c.total, available: c.available }); });
         }
-      } catch (e) {
-        console.error(`Failed availability for ${station.station_id}:`, e);
-      }
+      } catch (e) { console.error(`Failed availability for ${station.station_id}:`, e); }
     }));
     setAvailability(avMap);
     setChargerAvailability(cMap);
   };
 
-  const mapCharger = (c: any, index: number): ChargerData => ({
-    id: c.id, charger_id: c.charger_id, station_id: c.station_id,
-    chargeBoxID: c.chargeBoxID ?? "-", chargerNo: c.chargerNo ?? (index + 1),
-    brand: c.brand ?? "-", model: c.model ?? "-", SN: c.SN ?? "-", WO: c.WO ?? "-",
-    power: c.power ?? "-", PLCFirmware: c.PLCFirmware ?? "-", PIFirmware: c.PIFirmware ?? "-", RTFirmware: c.RTFirmware ?? "-",
-    commissioningDate: c.commissioningDate ?? "-", warrantyYears: c.warrantyYears ?? 1, numberOfCables: c.numberOfCables ?? 1,
-    is_active: c.is_active ?? true, location: c.location ?? "", description: c.description ?? "", ocppUrl: c.ocppUrl ?? "", chargerType: c.chargerType ?? "",
-    status: c.status, chargerImage: c.chargerImage ?? c.images?.charger ?? "", deviceImage: c.deviceImage ?? c.images?.device ?? "",
-  });
+  const mapCharger = (c: any, index: number): ChargerData => {
+    const imgs = c.images || {};
+    const norm = (v: any): string[] => Array.isArray(v) ? v : (typeof v === "string" && v ? [v] : []);
+    return {
+      id: c.id, charger_id: c.charger_id, station_id: c.station_id,
+      chargeBoxID: c.chargeBoxID ?? "-", chargerNo: c.chargerNo ?? (index + 1),
+      brand: c.brand ?? "-", model: c.model ?? "-", SN: c.SN ?? "-", WO: c.WO ?? "-",
+      power: c.power ?? "-", PLCFirmware: c.PLCFirmware ?? "-", PIFirmware: c.PIFirmware ?? "-",
+      RTFirmware: c.RTFirmware ?? "-", commissioningDate: c.commissioningDate ?? "-",
+      warrantyYears: c.warrantyYears ?? 1, numberOfCables: c.numberOfCables ?? 1,
+      is_active: c.is_active ?? true, location: c.location ?? "", description: c.description ?? "",
+      ocppUrl: c.ocppUrl ?? "", chargerType: c.chargerType ?? "", status: c.status,
+      chargerImages: norm(imgs.charger), deviceImages: norm(imgs.device),
+    };
+  };
 
   const mapStation = (s: any): StationRow => ({
     id: s.id, station_id: s.station_id ?? "-", station_name: s.station_name ?? "-",
@@ -370,13 +551,8 @@ export function SearchDataTables() {
     const sn = charger.SN && charger.SN !== "-" ? charger.SN : "";
     const station = data.find(s => s.station_id === stationId);
     const stationName = station?.station_name || stationId;
-    localStorage.removeItem("selected_sn");
-    localStorage.removeItem("selected_station_id");
-    localStorage.removeItem("selected_station_name");
-    localStorage.removeItem("selected_charger_no");
-    localStorage.removeItem("selected_chargerType");
-    if (sn) localStorage.setItem("selected_sn", sn);
-    if (stationId) localStorage.setItem("selected_station_id", stationId);
+    localStorage.removeItem("selected_sn"); localStorage.removeItem("selected_station_id"); localStorage.removeItem("selected_station_name"); localStorage.removeItem("selected_charger_no"); localStorage.removeItem("selected_chargerType");
+    if (sn) localStorage.setItem("selected_sn", sn); if (stationId) localStorage.setItem("selected_station_id", stationId);
     localStorage.setItem("selected_station_name", stationName);
     if (charger.chargerType) localStorage.setItem("selected_chargerType", charger.chargerType);
     if (charger.chargerNo) localStorage.setItem("selected_charger_no", String(charger.chargerNo));
@@ -394,8 +570,8 @@ export function SearchDataTables() {
       if (!res.ok) throw new Error(`Update failed: ${res.status}`);
       const updated = await res.json();
       if (deleteCurrentImage && editingStation.stationImage) { await apiFetch(`/stations/${editingStation.station_id}/delete-image`, { method: "DELETE" }); }
-      if (editStationImage) { const fd = new FormData(); fd.append("station", editStationImage); await apiFetch(`/stations/${editingStation.station_id}/upload-image`, { method: "POST", body: fd }); }
-      setData(prev => prev.map(s => s.id === editingStation.id ? { ...s, station_name: updated.station_name ?? editStationForm.station_name, is_active: updated.is_active ?? editStationForm.is_active, location: updated.location ?? editStationForm.location, description: updated.description ?? editStationForm.description, user_id: updated.user_id ?? s.user_id, username: updated.username ?? s.username, stationImage: editStationImage ? s.stationImage : (deleteCurrentImage ? "" : s.stationImage) } : s));
+      if (editStationImages.length) { const fd = new FormData(); editStationImages.forEach(f => fd.append("station", f)); await apiFetch(`/stations/${editingStation.station_id}/upload-image`, { method: "POST", body: fd }); }
+      setData(prev => prev.map(s => s.id === editingStation.id ? { ...s, station_name: updated.station_name ?? editStationForm.station_name, is_active: updated.is_active ?? editStationForm.is_active, location: updated.location ?? editStationForm.location, description: updated.description ?? editStationForm.description, user_id: updated.user_id ?? s.user_id, username: updated.username ?? s.username, stationImage: editStationImages.length ? s.stationImage : (deleteCurrentImage ? "" : s.stationImage) } : s));
       setOpenEditStation(false); setNotice({ type: "success", msg: t.stationUpdated }); setTimeout(() => setNotice(null), 2500);
     } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Update failed" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
   };
@@ -413,7 +589,13 @@ export function SearchDataTables() {
       };
       const res = await apiFetch(`/update_charger/${editingCharger.charger.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error(`Update failed: ${res.status}`);
-      if (editChargerImage || editDeviceImage) { const fd = new FormData(); if (editChargerImage) fd.append("charger", editChargerImage); if (editDeviceImage) fd.append("device", editDeviceImage); await apiFetch(`/chargers/${editingCharger.charger.id}/upload-images`, { method: "POST", body: fd }); }
+      // Delete existing images that were marked for removal
+      const chargerImgsToDelete = (editingCharger.charger.chargerImages || []).filter((_, i) => deletedExistingChargerIdxs.has(i));
+      const deviceImgsToDelete = (editingCharger.charger.deviceImages || []).filter((_, i) => deletedExistingDeviceIdxs.has(i));
+      if (chargerImgsToDelete.length || deviceImgsToDelete.length) {
+        await apiFetch(`/chargers/${editingCharger.charger.id}/delete-images`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ charger: chargerImgsToDelete, device: deviceImgsToDelete }) });
+      }
+      if (editChargerImages.length || editDeviceImages.length) { const fd = new FormData(); editChargerImages.forEach(f => fd.append("charger", f)); editDeviceImages.forEach(f => fd.append("device", f)); await apiFetch(`/chargers/${editingCharger.charger.id}/upload-images`, { method: "POST", body: fd }); }
       await refetchStations();
       setOpenEditCharger(false); setNotice({ type: "success", msg: t.chargerUpdated }); setTimeout(() => setNotice(null), 2500);
     } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Update failed" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
@@ -438,7 +620,7 @@ export function SearchDataTables() {
       const res = await apiFetch(`/add_charger/${addingChargerStationId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error(`Create failed: ${res.status}`);
       const created = await res.json();
-      if (created.id && (addChargerImage || addDeviceImage)) { const fd = new FormData(); if (addChargerImage) fd.append("charger", addChargerImage); if (addDeviceImage) fd.append("device", addDeviceImage); await apiFetch(`/chargers/${created.id}/upload-images`, { method: "POST", body: fd }); }
+      if (created.id && (addChargerImages.length || addDeviceImages.length)) { const fd = new FormData(); addChargerImages.forEach(f => fd.append("charger", f)); addDeviceImages.forEach(f => fd.append("device", f)); await apiFetch(`/chargers/${created.id}/upload-images`, { method: "POST", body: fd }); }
       await refetchStations();
       resetAddChargerImages(); setOpenAddCharger(false); setNotice({ type: "success", msg: t.chargerCreated }); setTimeout(() => setNotice(null), 2500);
     } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Failed to create charger" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
@@ -459,10 +641,10 @@ export function SearchDataTables() {
 
   useEffect(() => { const lock = openAdd || openEditStation || openEditCharger || openAddCharger; if (lock) { const scrollY = window.scrollY; document.body.style.position = "fixed"; document.body.style.top = `-${scrollY}px`; document.body.style.left = "0"; document.body.style.right = "0"; document.body.style.width = "100%"; document.body.style.overflow = "hidden"; } else { const top = document.body.style.top; document.body.style.position = ""; document.body.style.top = ""; document.body.style.left = ""; document.body.style.right = ""; document.body.style.width = ""; document.body.style.overflow = ""; if (top) { const y = parseInt(top || "0") * -1; window.scrollTo(0, y); } } }, [openAdd, openEditStation, openEditCharger, openAddCharger]);
 
-  const handleSubmitImages = async (stationId: string, stationImages: { station: File | null; mdb: File | null }, chargerImages: Array<{ chargerNo: number; chargerImage: File | null; deviceImage: File | null }>, createdChargers: Array<{ id: string; chargerNo: number }>) => {
+  const handleSubmitImages = async (stationId: string, stationImages: { station: File[]; mdb: File[] }, chargerImages: Array<{ chargerNo: number; chargerImages: File[]; deviceImages: File[] }>, createdChargers: Array<{ id: string; chargerNo: number }>) => {
     try {
-      if (stationImages.station) { const fd = new FormData(); fd.append("station", stationImages.station); await apiFetch(`/stations/${stationId}/upload-image`, { method: "POST", body: fd }); }
-      for (const ci of chargerImages) { const cc = createdChargers.find(c => c.chargerNo === ci.chargerNo); if (!cc?.id) continue; if (ci.chargerImage || ci.deviceImage) { const fd = new FormData(); if (ci.chargerImage) fd.append("charger", ci.chargerImage); if (ci.deviceImage) fd.append("device", ci.deviceImage); await apiFetch(`/chargers/${cc.id}/upload-images`, { method: "POST", body: fd }); } }
+      if (stationImages.station.length) { const fd = new FormData(); stationImages.station.forEach(f => fd.append("station", f)); await apiFetch(`/stations/${stationId}/upload-image`, { method: "POST", body: fd }); }
+      for (const ci of chargerImages) { const cc = createdChargers.find(c => c.chargerNo === ci.chargerNo); if (!cc?.id) continue; if (ci.chargerImages.length || ci.deviceImages.length) { const fd = new FormData(); ci.chargerImages.forEach(f => fd.append("charger", f)); ci.deviceImages.forEach(f => fd.append("device", f)); await apiFetch(`/chargers/${cc.id}/upload-images`, { method: "POST", body: fd }); } }
       await refetchStations();
     } catch (e) { console.error("[Images] Upload failed:", e); }
   };
@@ -481,7 +663,6 @@ export function SearchDataTables() {
           </div>
         )
       },
-      // { id: "charger_count", header: () => t.chargers, size: 100, cell: ({ row }: { row: Row<StationRow> }) => { const count = row.original.chargers.length; const onlineCount = row.original.chargers.filter(c => c.status).length; return (<div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-start sm:tw-items-center tw-gap-0.5 sm:tw-gap-2"><span className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-bg-gradient-to-r tw-from-amber-50 tw-to-yellow-50 tw-border tw-border-amber-200"><BoltIcon className="tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4 tw-text-amber-500" /><span className="tw-text-xs sm:tw-text-sm tw-font-semibold tw-text-amber-700">{count}</span></span>{count > 0 && (<span className="tw-text-[10px] sm:tw-text-xs tw-text-blue-gray-400 tw-whitespace-nowrap">({onlineCount} {t.online})</span>)}</div>); } },
       {
         id: "charger_count", header: () => t.chargers, size: 100,
         cell: ({ row }: { row: Row<StationRow> }) => {
@@ -505,85 +686,29 @@ export function SearchDataTables() {
         }
       },
       {
-        id: "available",
-        header: () => t.available,
-        size: 120,
+        id: "available", header: () => t.available, size: 120,
         cell: ({ row }: { row: Row<StationRow> }) => {
           const av = availability.get(row.original.station_id);
-          if (!av || av.total === 0) {
-            return <span className="tw-text-blue-gray-300 tw-text-xs">-</span>;
-          }
+          if (!av || av.total === 0) return <span className="tw-text-blue-gray-300 tw-text-xs">-</span>;
           const allAvailable = av.available === av.total;
           const noneAvailable = av.available === 0;
           return (
             <div className="tw-flex tw-flex-col tw-items-start tw-gap-0.5">
-              <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-full tw-border tw-text-xs tw-font-semibold ${allAvailable
-                ? "tw-bg-green-50 tw-border-green-200 tw-text-green-700"
-                : noneAvailable
-                  ? "tw-bg-red-50 tw-border-red-200 tw-text-red-700"
-                  : "tw-bg-amber-50 tw-border-amber-200 tw-text-amber-700"
-                }`}>
-                <span className={`tw-h-2 tw-w-2 tw-rounded-full ${allAvailable ? "tw-bg-green-500" : noneAvailable ? "tw-bg-red-500" : "tw-bg-amber-500"
-                  }`} />
+              <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-full tw-border tw-text-xs tw-font-semibold ${allAvailable ? "tw-bg-green-50 tw-border-green-200 tw-text-green-700" : noneAvailable ? "tw-bg-red-50 tw-border-red-200 tw-text-red-700" : "tw-bg-amber-50 tw-border-amber-200 tw-text-amber-700"}`}>
+                <span className={`tw-h-2 tw-w-2 tw-rounded-full ${allAvailable ? "tw-bg-green-500" : noneAvailable ? "tw-bg-red-500" : "tw-bg-amber-500"}`} />
                 {av.available}/{av.total} {t.availableOf}
               </span>
             </div>
           );
         },
       },
-      //       {
-      //   id: "available",
-      //   header: () => t.available,
-      //   size: 140,
-      //   cell: ({ row }: { row: Row<StationRow> }) => {
-      //     const av = availability.get(row.original.station_id);
-      //     if (!av || av.total === 0) return <span className="tw-text-blue-gray-300 tw-text-xs">—</span>;
-      //     const allAvail = av.available === av.total;
-      //     const noneAvail = av.available === 0;
-      //     return (
-      //       <div className="tw-flex tw-items-center tw-gap-2">
-      //         <span className={`tw-h-2.5 tw-w-2.5 tw-rounded-full tw-flex-shrink-0 ${
-      //           allAvail ? "tw-bg-green-500 tw-animate-pulse" : noneAvail ? "tw-bg-red-500" : "tw-bg-amber-500"
-      //         }`} />
-      //         <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">{av.available}</span>
-      //         <span className="tw-text-xs tw-text-blue-gray-400">/ {av.total} {t.availableOf}</span>
-      //       </div>
-      //     );
-      //   },
-      // },
-      //      {
-      //   id: "available",
-      //   header: () => t.available,
-      //   size: 140,
-      //   cell: ({ row }: { row: Row<StationRow> }) => {
-      //     const av = availability.get(row.original.station_id);
-      //     if (!av || av.total === 0) return <span className="tw-text-blue-gray-300 tw-text-xs">—</span>;
-      //     const allAvail = av.available === av.total;
-      //     const noneAvail = av.available === 0;
-      //     return (
-      //       <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1 tw-rounded-full tw-text-xs tw-font-bold ${
-      //         allAvail
-      //           ? "tw-bg-green-500 tw-text-white"
-      //           : noneAvail
-      //             ? "tw-bg-red-500 tw-text-white"
-      //             : "tw-bg-amber-500 tw-text-white"
-      //       }`}>
-      //         🔌 {av.available}/{av.total}
-      //       </span>
-      //     );
-      //   },
-      // },
       { id: "username", header: () => t.owner, accessorFn: (row: StationRow) => row.username ?? "-", cell: (info: any) => (<span className="tw-text-blue-gray-600">{info.getValue()}</span>) },
-      // { id: "is_active", header: () => t.active, size: 100, cell: ({ row }: { row: Row<StationRow> }) => { const on = !!row.original.is_active; return (<Chip size="sm" variant="ghost" value={on ? t.active : t.inactive} color={on ? "green" : "red"} className="tw-rounded-full tw-font-medium" icon={<span className={`tw-mx-auto tw-mt-1 tw-block tw-h-2 tw-w-2 tw-rounded-full tw-content-[''] ${on ? "tw-bg-green-500" : "tw-bg-red-500"}`} />} />); } },
       {
         id: "is_active", header: () => t.status, size: 100,
         cell: ({ row }: { row: Row<StationRow> }) => {
           const on = !!row.original.is_active;
           return (
-            <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-md tw-text-xs tw-font-semibold tw-transition-colors ${on
-              ? "tw-bg-green-50 tw-text-green-700 tw-ring-1 tw-ring-green-200"
-              : "tw-bg-red-50 tw-text-red-600 tw-ring-1 tw-ring-red-200"
-              }`}>
+            <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-md tw-text-xs tw-font-semibold tw-transition-colors ${on ? "tw-bg-green-50 tw-text-green-700 tw-ring-1 tw-ring-green-200" : "tw-bg-red-50 tw-text-red-600 tw-ring-1 tw-ring-red-200"}`}>
               <span className={`tw-h-1.5 tw-w-1.5 tw-rounded-full ${on ? "tw-bg-green-500 tw-animate-pulse" : "tw-bg-red-400"}`} />
               {on ? t.active : t.inactive}
             </span>
@@ -591,35 +716,23 @@ export function SearchDataTables() {
         }
       },
     ];
-    // if (me?.role !== "technician") {
-    //   baseColumns.push({ id: "actions", header: () => t.actions, size: 100, enableSorting: false, cell: ({ row }: { row: Row<StationRow> }) => { const canEdit = isAdmin || row.original.user_id === me?.user_id; return (<span className="tw-inline-flex tw-items-center tw-gap-1" onClick={(e) => e.stopPropagation()}>{canEdit && (<Tooltip content={t.editStationTooltip}><button onClick={(e) => handleEditStation(row.original, e)} className="tw-rounded-lg tw-p-2 tw-border tw-border-blue-gray-100 hover:tw-bg-blue-50 hover:tw-border-blue-200 tw-transition-all tw-duration-200"><PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600" /></button></Tooltip>)}{isAdmin && (<Tooltip content={t.deleteStationTooltip}><button onClick={(e) => handleDeleteStation(row.original, e)} className="tw-rounded-lg tw-p-2 tw-border tw-border-blue-gray-100 hover:tw-bg-red-50 hover:tw-border-red-200 tw-transition-all tw-duration-200"><TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" /></button></Tooltip>)}</span>); } } as any);
-    // }
     if (me?.role !== "technician") {
       baseColumns.push({
-        id: "actions",
-        header: () => t.actions,
-        size: 100,
-        enableSorting: false,
+        id: "actions", header: () => t.actions, size: 100, enableSorting: false,
         cell: ({ row }: { row: Row<StationRow> }) => {
           const canEdit = isAdmin || row.original.user_id === me?.user_id;
           return (
             <span className="tw-inline-flex tw-items-center tw-gap-1.5" onClick={(e) => e.stopPropagation()}>
               {canEdit && (
                 <Tooltip content={t.editStationTooltip}>
-                  <button
-                    onClick={(e) => handleEditStation(row.original, e)}
-                    className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-blue-50 tw-ring-1 tw-ring-blue-200/60 hover:tw-bg-blue-600 hover:tw-ring-blue-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"
-                  >
+                  <button onClick={(e) => handleEditStation(row.original, e)} className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-blue-50 tw-ring-1 tw-ring-blue-200/60 hover:tw-bg-blue-600 hover:tw-ring-blue-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md">
                     <PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600 group-hover/btn:tw-text-white tw-transition-colors" />
                   </button>
                 </Tooltip>
               )}
               {isAdmin && (
                 <Tooltip content={t.deleteStationTooltip}>
-                  <button
-                    onClick={(e) => handleDeleteStation(row.original, e)}
-                    className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-red-50 tw-ring-1 tw-ring-red-200/60 hover:tw-bg-red-600 hover:tw-ring-red-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"
-                  >
+                  <button onClick={(e) => handleDeleteStation(row.original, e)} className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-red-50 tw-ring-1 tw-ring-red-200/60 hover:tw-bg-red-600 hover:tw-ring-red-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md">
                     <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500 group-hover/btn:tw-text-white tw-transition-colors" />
                   </button>
                 </Tooltip>
@@ -639,116 +752,53 @@ export function SearchDataTables() {
     const isOnline = !!charger.status;
     const av = chargerAvailability.get(charger.SN);
     return (
-      <div
-        onClick={() => handleChargerCardClick(charger, stationId)}
-        className="tw-group tw-relative tw-overflow-hidden tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm hover:tw-shadow-lg tw-transition-all tw-duration-300 tw-cursor-pointer hover:tw-border-blue-300 hover:tw--translate-y-0.5"
-        style={{ animationDelay: `${index * 50}ms` }}
-      >
-        {/* Top accent bar */}
+      <div onClick={() => handleChargerCardClick(charger, stationId)} className="tw-group tw-relative tw-overflow-hidden tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm hover:tw-shadow-lg tw-transition-all tw-duration-300 tw-cursor-pointer hover:tw-border-blue-300 hover:tw--translate-y-0.5" style={{ animationDelay: `${index * 50}ms` }}>
         <div className={`tw-h-1 tw-w-full ${isOnline ? "tw-bg-gradient-to-r tw-from-green-400 tw-to-emerald-500" : "tw-bg-gradient-to-r tw-from-red-400 tw-to-rose-500"}`} />
-
         <div className="tw-p-3 sm:tw-p-4">
-          {/* Header */}
           <div className="tw-flex tw-items-start tw-justify-between tw-gap-2 tw-mb-3">
             <div className="tw-flex tw-items-center tw-gap-2 tw-min-w-0 tw-flex-1">
               <div className={`tw-p-2 tw-rounded-lg tw-flex-shrink-0 ${isOnline ? "tw-bg-green-50 tw-ring-1 tw-ring-green-200" : "tw-bg-red-50 tw-ring-1 tw-ring-red-200"}`}>
                 <BoltIcon className={`tw-h-4 tw-w-4 ${isOnline ? "tw-text-green-600" : "tw-text-red-500"}`} />
               </div>
               <div className="tw-min-w-0 tw-flex-1">
-                <h4 className="tw-font-bold tw-text-xs tw-text-blue-gray-800 tw-truncate" title={charger.chargeBoxID}>
-                  {charger.chargeBoxID || "-"}
-                </h4>
+                <h4 className="tw-font-bold tw-text-xs tw-text-blue-gray-800 tw-truncate" title={charger.chargeBoxID}>{charger.chargeBoxID || "-"}</h4>
                 <div className="tw-flex tw-items-center tw-gap-1 tw-mt-1 tw-flex-wrap">
-                  <span className="tw-px-1.5 tw-py-0.5 tw-rounded-md tw-bg-blue-gray-800 tw-text-[8px] tw-font-bold tw-text-white">
-                    #{charger.chargerNo}
-                  </span>
-                  {charger.chargerType && (
-                    <span className="tw-px-1.5 tw-py-0.5 tw-rounded-md tw-bg-purple-100 tw-text-[8px] tw-font-bold tw-text-purple-700">
-                      {charger.chargerType}
-                    </span>
-                  )}
-                  <span className={`tw-flex tw-items-center tw-gap-0.5 tw-px-1.5 tw-py-0.5 tw-rounded-md tw-text-[8px] tw-font-bold ${isOnline ? "tw-bg-green-100 tw-text-green-700" : "tw-bg-red-100 tw-text-red-600"
-                    }`}>
+                  <span className="tw-px-1.5 tw-py-0.5 tw-rounded-md tw-bg-blue-gray-800 tw-text-[8px] tw-font-bold tw-text-white">#{charger.chargerNo}</span>
+                  {charger.chargerType && (<span className="tw-px-1.5 tw-py-0.5 tw-rounded-md tw-bg-purple-100 tw-text-[8px] tw-font-bold tw-text-purple-700">{charger.chargerType}</span>)}
+                  <span className={`tw-flex tw-items-center tw-gap-0.5 tw-px-1.5 tw-py-0.5 tw-rounded-md tw-text-[8px] tw-font-bold ${isOnline ? "tw-bg-green-100 tw-text-green-700" : "tw-bg-red-100 tw-text-red-600"}`}>
                     <span className={`tw-h-1.5 tw-w-1.5 tw-rounded-full ${isOnline ? "tw-bg-green-500 tw-animate-pulse" : "tw-bg-red-400"}`} />
                     {isOnline ? t.online : t.offline}
                   </span>
                 </div>
               </div>
             </div>
-            {/* Edit/Delete */}
             <div className="tw-flex tw-items-center tw-gap-0.5 tw-opacity-0 group-hover:tw-opacity-100 tw-transition-opacity">
-              {canEdit && (
-                <button onClick={(e) => handleEditCharger(stationId, charger, e)} className="tw-p-1.5 tw-rounded-lg tw-text-blue-gray-400 hover:tw-text-blue-600 hover:tw-bg-blue-50 tw-transition-colors">
-                  <PencilSquareIcon className="tw-h-3.5 tw-w-3.5" />
-                </button>
-              )}
-              {isAdmin && (
-                <button onClick={(e) => handleDeleteCharger(stationId, charger, e)} className="tw-p-1.5 tw-rounded-lg tw-text-blue-gray-400 hover:tw-text-red-500 hover:tw-bg-red-50 tw-transition-colors">
-                  <TrashIcon className="tw-h-3.5 tw-w-3.5" />
-                </button>
-              )}
+              {canEdit && (<button onClick={(e) => handleEditCharger(stationId, charger, e)} className="tw-p-1.5 tw-rounded-lg tw-text-blue-gray-400 hover:tw-text-blue-600 hover:tw-bg-blue-50 tw-transition-colors"><PencilSquareIcon className="tw-h-3.5 tw-w-3.5" /></button>)}
+              {isAdmin && (<button onClick={(e) => handleDeleteCharger(stationId, charger, e)} className="tw-p-1.5 tw-rounded-lg tw-text-blue-gray-400 hover:tw-text-red-500 hover:tw-bg-red-50 tw-transition-colors"><TrashIcon className="tw-h-3.5 tw-w-3.5" /></button>)}
             </div>
           </div>
-
-          {/* Info Grid */}
           <div className="tw-grid tw-grid-cols-2 tw-gap-x-3 tw-gap-y-1 tw-text-[10px] tw-mb-3">
-            {[
-              [t.brand, charger.brand],
-              [t.model, charger.model],
-              [t.serialNumber, charger.SN, true],
-              [t.power, charger.power ? `${charger.power} kW` : "-"],
-              [t.cables, charger.numberOfCables || "-"],
-              [t.warranty, `${charger.warrantyYears || "-"}${t.year}`],
-            ].map(([label, value, mono], i) => (
-              <div key={i} className="tw-truncate">
-                <span className="tw-text-blue-gray-400">{label as string}: </span>
-                <span className={`tw-text-blue-gray-700 tw-font-medium ${mono ? "tw-font-mono" : ""}`}>
-                  {(value as string) || "-"}
-                </span>
-              </div>
+            {[[t.brand, charger.brand], [t.model, charger.model], [t.serialNumber, charger.SN, true], [t.power, charger.power ? `${charger.power} kW` : "-"], [t.cables, charger.numberOfCables || "-"], [t.warranty, `${charger.warrantyYears || "-"}${t.year}`]].map(([label, value, mono], i) => (
+              <div key={i} className="tw-truncate"><span className="tw-text-blue-gray-400">{label as string}: </span><span className={`tw-text-blue-gray-700 tw-font-medium ${mono ? "tw-font-mono" : ""}`}>{(value as string) || "-"}</span></div>
             ))}
           </div>
-
-          {/* Date & Availability Row */}
-          <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
-            <div className="tw-flex-1 tw-px-2 tw-py-1 tw-rounded-lg tw-bg-blue-50/80 tw-border tw-border-blue-100">
-              <span className="tw-text-[10px] tw-text-blue-700 tw-font-medium">
-                📅 {formatDate(charger.commissioningDate)}
-              </span>
+          {((charger.chargerImages?.length ?? 0) > 0 || (charger.deviceImages?.length ?? 0) > 0) && (
+            <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3 tw-overflow-x-auto">
+              {charger.chargerImages?.map((url, i) => (<a key={`c-${i}`} href={`${API_BASE}${url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="tw-flex-shrink-0"><div className="tw-relative tw-group/img"><img src={`${API_BASE}${url}`} alt={`Charger ${i + 1}`} className="tw-h-14 tw-w-14 tw-object-cover tw-rounded-lg tw-border-2 tw-border-blue-gray-100 group-hover/img:tw-border-blue-400 tw-transition-colors" /><span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-bg-black/60 tw-text-white tw-text-[7px] tw-text-center tw-py-0.5 tw-rounded-b-md">Charger {charger.chargerImages!.length > 1 ? i + 1 : ""}</span></div></a>))}
+              {charger.deviceImages?.map((url, i) => (<a key={`d-${i}`} href={`${API_BASE}${url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="tw-flex-shrink-0"><div className="tw-relative tw-group/img"><img src={`${API_BASE}${url}`} alt={`Device ${i + 1}`} className="tw-h-14 tw-w-14 tw-object-cover tw-rounded-lg tw-border-2 tw-border-blue-gray-100 group-hover/img:tw-border-blue-400 tw-transition-colors" /><span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-bg-black/60 tw-text-white tw-text-[7px] tw-text-center tw-py-0.5 tw-rounded-b-md">Device {charger.deviceImages!.length > 1 ? i + 1 : ""}</span></div></a>))}
             </div>
+          )}
+          <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
+            <div className="tw-flex-1 tw-px-2 tw-py-1 tw-rounded-lg tw-bg-blue-50/80 tw-border tw-border-blue-100"><span className="tw-text-[10px] tw-text-blue-700 tw-font-medium">📅 {formatDate(charger.commissioningDate)}</span></div>
             {av && av.total > 0 && (() => {
-              const allAvail = av.available === av.total;
-              const noneAvail = av.available === 0;
-              return (
-                <div className={`tw-px-2 tw-py-1 tw-rounded-lg tw-border tw-text-[10px] tw-font-bold tw-flex tw-items-center tw-gap-1 ${allAvail ? "tw-bg-green-50 tw-border-green-200 tw-text-green-700"
-                  : noneAvail ? "tw-bg-red-50 tw-border-red-200 tw-text-red-600"
-                    : "tw-bg-amber-50 tw-border-amber-200 tw-text-amber-700"
-                  }`}>
-                  <span className={`tw-h-1.5 tw-w-1.5 tw-rounded-full ${allAvail ? "tw-bg-green-500" : noneAvail ? "tw-bg-red-500" : "tw-bg-amber-500"
-                    }`} />
-                  🔌 {av.available}/{av.total}
-                </div>
-              );
+              const allAvail = av.available === av.total; const noneAvail = av.available === 0;
+              return (<div className={`tw-px-2 tw-py-1 tw-rounded-lg tw-border tw-text-[10px] tw-font-bold tw-flex tw-items-center tw-gap-1 ${allAvail ? "tw-bg-green-50 tw-border-green-200 tw-text-green-700" : noneAvail ? "tw-bg-red-50 tw-border-red-200 tw-text-red-600" : "tw-bg-amber-50 tw-border-amber-200 tw-text-amber-700"}`}><span className={`tw-h-1.5 tw-w-1.5 tw-rounded-full ${allAvail ? "tw-bg-green-500" : noneAvail ? "tw-bg-red-500" : "tw-bg-amber-500"}`} />🔌 {av.available}/{av.total}</div>);
             })()}
           </div>
-
-          {/* Firmware */}
           <div className="tw-rounded-lg tw-bg-gradient-to-b tw-from-gray-50 tw-to-gray-100/50 tw-p-2 tw-ring-1 tw-ring-gray-200/60">
-            <div className="tw-flex tw-items-center tw-gap-1 tw-mb-1.5">
-              <CpuChipIcon className="tw-h-3 tw-w-3 tw-text-blue-gray-400" />
-              <span className="tw-text-[8px] tw-font-bold tw-uppercase tw-text-blue-gray-500 tw-tracking-wider">{t.firmware}</span>
-            </div>
+            <div className="tw-flex tw-items-center tw-gap-1 tw-mb-1.5"><CpuChipIcon className="tw-h-3 tw-w-3 tw-text-blue-gray-400" /><span className="tw-text-[8px] tw-font-bold tw-uppercase tw-text-blue-gray-500 tw-tracking-wider">{t.firmware}</span></div>
             <div className="tw-grid tw-grid-cols-3 tw-gap-1">
-              {[
-                ["PLC", charger.PLCFirmware],
-                ["Pi", charger.PIFirmware],
-                ["RT", charger.RTFirmware],
-              ].map(([label, val]) => (
-                <div key={label} className="tw-text-center tw-rounded-md tw-px-1 tw-py-1 tw-bg-white tw-ring-1 tw-ring-gray-200/60">
-                  <div className="tw-text-[7px] tw-text-blue-gray-400 tw-font-medium">{label}</div>
-                  <div className="tw-text-[9px] tw-font-mono tw-text-blue-gray-700 tw-truncate">{val || "-"}</div>
-                </div>
-              ))}
+              {[["PLC", charger.PLCFirmware], ["Pi", charger.PIFirmware], ["RT", charger.RTFirmware]].map(([label, val]) => (<div key={label} className="tw-text-center tw-rounded-md tw-px-1 tw-py-1 tw-bg-white tw-ring-1 tw-ring-gray-200/60"><div className="tw-text-[7px] tw-text-blue-gray-400 tw-font-medium">{label}</div><div className="tw-text-[9px] tw-font-mono tw-text-blue-gray-700 tw-truncate">{val || "-"}</div></div>))}
             </div>
           </div>
         </div>
@@ -762,37 +812,100 @@ export function SearchDataTables() {
     return (
       <tr><td colSpan={columns.length} className="tw-p-0"><div className="tw-bg-gray-50/50 tw-border-t tw-border-blue-gray-100">
         <div className="tw-px-3 sm:tw-px-6 tw-py-2 sm:tw-py-3 tw-border-b tw-border-blue-gray-100 tw-bg-white"><div className="tw-flex tw-items-center tw-justify-between tw-flex-wrap tw-gap-2"><div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3 tw-flex-wrap"><span className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-bg-gradient-to-r tw-from-amber-50 tw-to-yellow-50 tw-border tw-border-amber-200"><BoltIcon className="tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4 tw-text-amber-500" /><span className="tw-text-xs sm:tw-text-sm tw-font-semibold tw-text-amber-700">{t.chargers} ({chargers.length})</span></span><span className="tw-text-xs sm:tw-text-sm tw-text-green-600">• {onlineCount} {t.online}</span>{offlineCount > 0 && (<span className="tw-text-xs sm:tw-text-sm tw-text-red-500">• {offlineCount} {t.offline}</span>)}</div>{canEdit && (<Button size="sm" onClick={() => handleOpenAddCharger(stationId)} className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-flex tw-items-center tw-gap-1 tw-shadow-sm tw-text-xs sm:tw-text-sm tw-px-2 sm:tw-px-3 tw-py-1.5 sm:tw-py-2"><BoltIcon className="tw-h-3 tw-w-3 sm:tw-h-4 sm:tw-w-4" /><span className="tw-hidden sm:tw-inline">{t.addCharger}</span><span className="tw-inline sm:tw-hidden">+ {t.add}</span></Button>)}</div></div>
-        {/* <div className="tw-p-2 sm:tw-p-4">{chargers.length > 0 ? (<div className="tw-grid tw-grid-cols-4 sm:tw-grid-cols-4 md:tw-grid-cols-3 lg:tw-grid-cols-3 xl:tw-grid-cols-4 tw-gap-2 sm:tw-gap-4 lg:tw-gap-5">{chargers.map((charger, index) => (<ChargerCard key={charger.id || charger.chargeBoxID} charger={charger} stationId={stationId} canEdit={canEdit} index={index} />))}</div>) : (<div className="tw-text-center tw-py-6 sm:tw-py-8 tw-text-blue-gray-400"><BoltIcon className="tw-h-8 tw-w-8 sm:tw-h-12 sm:tw-w-12 tw-mx-auto tw-mb-2 tw-opacity-30" /><p className="tw-text-xs sm:tw-text-sm">{t.noChargersYet}</p>{canEdit && (<Button size="sm" onClick={() => handleOpenAddCharger(stationId)} className="tw-mt-2 sm:tw-mt-3 tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs">{t.addFirstCharger}</Button>)}</div>)}</div> */}
         <div className="tw-p-2 sm:tw-p-4">{chargers.length > 0 ? (<div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 md:tw-grid-cols-2 lg:tw-grid-cols-3 xl:tw-grid-cols-4 tw-gap-2 sm:tw-gap-4 lg:tw-gap-5">{chargers.map((charger, index) => (<ChargerCard key={charger.id || charger.chargeBoxID} charger={charger} stationId={stationId} canEdit={canEdit} index={index} />))}</div>) : (<div className="tw-text-center tw-py-6 sm:tw-py-8 tw-text-blue-gray-400"><BoltIcon className="tw-h-8 tw-w-8 sm:tw-h-12 sm:tw-w-12 tw-mx-auto tw-mb-2 tw-opacity-30" /><p className="tw-text-xs sm:tw-text-sm">{t.noChargersYet}</p>{canEdit && (<Button size="sm" onClick={() => handleOpenAddCharger(stationId)} className="tw-mt-2 sm:tw-mt-3 tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs">{t.addFirstCharger}</Button>)}</div>)}</div>
       </div></td></tr>
     );
   };
 
-  // ===== Image Upload Sections (reusable) =====
-  const ImageUploadSection = ({ label, currentSrc, isDeleted, onDelete, onUndo, inputRef, onPick, preview, onClear }: { label: string; currentSrc?: string; isDeleted: boolean; onDelete: () => void; onUndo: () => void; inputRef: React.RefObject<HTMLInputElement>; onPick: React.ChangeEventHandler<HTMLInputElement>; preview: string; onClear: () => void; }) => (
-    <div className="tw-space-y-3">
-      <Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-semibold">{label}</Typography>
-      {currentSrc && !isDeleted ? (
-        <div className="tw-flex tw-flex-col tw-items-start tw-gap-2"><div className="tw-relative tw-inline-block"><a href={`${API_BASE}${currentSrc}`} target="_blank" rel="noreferrer" className="tw-block tw-border-2 tw-border-blue-gray-100 hover:tw-border-blue-400 tw-rounded-lg tw-overflow-hidden tw-w-24 tw-h-24 tw-transition-colors"><img src={`${API_BASE}${currentSrc}`} alt={label} className="tw-w-full tw-h-full tw-object-cover" /></a><button type="button" onClick={onDelete} className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-6 tw-h-6 tw-text-sm tw-shadow-md hover:tw-bg-red-600 tw-transition-colors tw-flex tw-items-center tw-justify-center">×</button></div><span className="tw-text-xs tw-text-blue-gray-400">{t.currentImage}</span></div>
-      ) : isDeleted && currentSrc ? (
-        <div className="tw-flex tw-items-center tw-gap-2 tw-p-2 tw-rounded-lg tw-bg-red-50 tw-border tw-border-red-200"><TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" /><span className="tw-text-xs tw-text-red-600">{t.willBeDeleted}</span><button type="button" onClick={onUndo} className="tw-ml-auto tw-text-xs tw-text-blue-600 hover:tw-underline">{t.undo}</button></div>
-      ) : null}
-      <div><input ref={inputRef} type="file" accept="image/*" onChange={onPick} className="tw-block tw-w-full tw-text-xs file:tw-mr-2 file:tw-px-3 file:tw-py-1.5 file:tw-rounded-lg file:tw-border-0 file:tw-bg-blue-50 file:tw-text-blue-600 file:tw-font-medium file:tw-cursor-pointer hover:file:tw-bg-blue-100" />{preview && (<div className="tw-relative tw-inline-block tw-mt-2"><img src={preview} alt="Preview" className="tw-h-20 tw-w-20 tw-object-cover tw-rounded-lg tw-border-2 tw-border-green-200" /><button type="button" onClick={onClear} className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-5 tw-h-5 tw-text-xs tw-shadow-md hover:tw-bg-red-600">×</button><span className="tw-block tw-text-xs tw-text-green-600 tw-mt-1">{t.newImage}</span></div>)}</div>
-    </div>
-  );
-
   // ===== Main Return =====
   return (
     <>
+      {/* ===== Stat Cards (ข้างบน Card ตาราง) ===== */}
+      <div className="tw-mt-8 tw-mb-4">
+        <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-4 tw-gap-2.5 sm:tw-gap-3">
+          {/* Total Stations */}
+          <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+            <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+            <div className="tw-relative tw-z-10">
+              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+                <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-blue-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-blue-400/20">
+                  <span className="tw-text-base">📍</span>
+                </div>
+                <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">
+                  {lang === "th" ? "สถานี" : "Stations"}
+                </span>
+              </div>
+              <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">
+                {data.length}
+              </div>
+            </div>
+          </div>
+
+          {/* Total Chargers */}
+          <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+            <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+            <div className="tw-relative tw-z-10">
+              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+                <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-amber-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-amber-400/20">
+                  <BoltIcon className="tw-h-4 tw-w-4 tw-text-amber-400" />
+                </div>
+                <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">
+                  {lang === "th" ? "ตู้ชาร์จ" : "Chargers"}
+                </span>
+              </div>
+              <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">
+                {data.reduce((sum, s) => sum + s.chargers.length, 0)}
+              </div>
+            </div>
+          </div>
+
+          {/* Online */}
+          <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+            <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+            <div className="tw-relative tw-z-10">
+              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+                <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.25)' }}>
+                  <span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5">
+                    <span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: '#34d399' }} />
+                    <span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: '#34d399' }} />
+                  </span>
+                </div>
+                <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {lang === "th" ? "ออนไลน์" : "Online"}
+                </span>
+              </div>
+              <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#34d399' }}>
+                {data.reduce((sum, s) => sum + s.chargers.filter(c => c.status).length, 0)}
+              </div>
+            </div>
+          </div>
+
+          {/* Offline */}
+          <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+            <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+            <div className="tw-relative tw-z-10">
+              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+                <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.25)' }}>
+                  <span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#f87171' }} />
+                </div>
+                <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  {lang === "th" ? "ออฟไลน์" : "Offline"}
+                </span>
+              </div>
+              <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#f87171' }}>
+                {data.reduce((sum, s) => sum + s.chargers.filter(c => !c.status).length, 0)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8">
         {notice && (<div className="tw-px-4 tw-pt-4"><Alert color={notice.type === "success" ? "green" : "red"} onClose={() => setNotice(null)}>{notice.msg}</Alert></div>)}
-        {/* <CardHeader floated={false} shadow={false} className="tw-!px-4 sm:tw-!px-6 tw-!py-4"> */}
         <CardHeader floated={false} shadow={false} className="tw-!px-4 sm:tw-!px-6 tw-!py-5 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30 tw-rounded-t-xl">
           <div className="tw-flex tw-items-start tw-justify-between tw-gap-3">
             <div className="tw-min-w-0 tw-flex-1"><Typography color="blue-gray" variant="h5" className="tw-text-lg sm:tw-text-xl">{t.stationManagement}</Typography><Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm">{t.stationManagementDesc}</Typography></div>
-            {/* {(isAdmin || me?.role === "owner") && (<Button onClick={() => setOpenAdd(true)} size="sm" className="tw-flex tw-items-center tw-gap-1.5 tw-px-3 sm:tw-px-4 tw-py-2 sm:tw-py-2.5 tw-rounded-xl tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white tw-font-semibold tw-text-xs sm:tw-text-sm tw-shadow-md tw-flex-shrink-0 tw-normal-case"><span className="tw-text-base tw-leading-none">+</span><span className="tw-hidden sm:tw-inline">{t.addStation}</span><span className="tw-inline sm:tw-hidden">{t.add}</span></Button>)} */}
             {(isAdmin || me?.role === "owner") && (<Button onClick={() => setOpenAdd(true)} size="sm" className="tw-flex tw-items-center tw-gap-2 tw-px-4 sm:tw-px-5 tw-py-2.5 tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-text-white tw-font-semibold tw-text-xs sm:tw-text-sm tw-shadow-lg tw-flex-shrink-0 tw-normal-case tw-tracking-wide"><span className="tw-text-base tw-leading-none">+</span><span className="tw-hidden sm:tw-inline">{t.addStation}</span><span className="tw-inline sm:tw-hidden">{t.add}</span></Button>)}
-
           </div>
         </CardHeader>
         <CardBody className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-4">
@@ -802,49 +915,27 @@ export function SearchDataTables() {
         <CardFooter className="tw-p-0">
           {loading ? (<div className="tw-p-4">{t.loading}</div>) : err ? (<div className="tw-p-4 tw-text-red-600">{err}</div>) : (
             <div className="tw-overflow-x-auto tw-w-full"><table className="tw-w-full tw-border-separate tw-border-spacing-0 tw-min-w-[900px]">
-              {/* <thead className="tw-bg-gray-50">{table.getHeaderGroups().map((hg) => (<tr key={hg.id}>{hg.headers.map((h) => (<th key={h.id} onClick={h.column.getCanSort() ? h.column.getToggleSortingHandler() : undefined} className="tw-px-3 tw-py-3 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-left tw-whitespace-nowrap"><Typography color="blue-gray" className={`tw-flex tw-items-center tw-gap-2 tw-text-xs !tw-font-bold tw-leading-none tw-opacity-40 ${h.column.getCanSort() ? "tw-cursor-pointer" : ""}`}>{flexRender(h.column.columnDef.header, h.getContext())}{h.column.getCanSort() && <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4" />}</Typography></th>))}</tr>))}</thead> */}
               <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800">{table.getHeaderGroups().map((hg) => (<tr key={hg.id}>{hg.headers.map((h) => (<th key={h.id} onClick={h.column.getCanSort() ? h.column.getToggleSortingHandler() : undefined} className="tw-px-3 tw-py-3 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-left tw-whitespace-nowrap"><Typography color="blue-gray" className={`tw-flex tw-items-center tw-gap-2 tw-text-[11px] !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${h.column.getCanSort() ? "tw-cursor-pointer" : ""}`}>{flexRender(h.column.columnDef.header, h.getContext())}{h.column.getCanSort() && <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4 tw-text-white/60" />}</Typography></th>))}</tr>))}</thead>
-
               <tbody>
                 {table.getRowModel().rows.length ? (table.getRowModel().rows.map((row) => {
                   const hasChargers = row.original.chargers.length > 0;
                   const canEdit = isAdmin || row.original.user_id === me?.user_id;
                   const canExpand = hasChargers || canEdit;
                   return (
-                    <Fragment key={row.id}><tr onClick={() =>
-                      canExpand && row.toggleExpanded()} className={`tw-transition-colors ${canExpand ? "tw-cursor-pointer" : ""} 
-                      ${row.getIsExpanded() ? "tw-bg-blue-50/60 tw-shadow-sm" : "odd:tw-bg-white even:tw-bg-blue-gray-50/30 hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3]"}
-                      `}>
-                      {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="!tw-border-y !tw-border-x-0 tw-px-3 tw-py-3">
-                          <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-600">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </Typography>
-                        </td>))
-                      }
-                    </tr>{row.getIsExpanded() && (
-                      <ChargersExpandedSection chargers={row.original.chargers} stationId={row.original.station_id} canEdit={canEdit} />)}
-                    </Fragment>);
+                    <Fragment key={row.id}><tr onClick={() => canExpand && row.toggleExpanded()} className={`tw-transition-colors ${canExpand ? "tw-cursor-pointer" : ""} ${row.getIsExpanded() ? "tw-bg-blue-50/60 tw-shadow-sm" : "odd:tw-bg-white even:tw-bg-blue-gray-50/30 hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3]"}`}>
+                      {row.getVisibleCells().map((cell) => (<td key={cell.id} className="!tw-border-y !tw-border-x-0 tw-px-3 tw-py-3"><Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-600">{flexRender(cell.column.columnDef.cell, cell.getContext())}</Typography></td>))}
+                    </tr>{row.getIsExpanded() && (<ChargersExpandedSection chargers={row.original.chargers} stationId={row.original.station_id} canEdit={canEdit} />)}</Fragment>);
                 })) : (<tr><td className="tw-px-4 tw-py-6 tw-text-center" colSpan={columns.length}>{t.noStationsFound}</td></tr>)}</tbody>
             </table></div>
           )}
         </CardFooter>
-        {/* <div className="tw-flex tw-items-center tw-justify-end tw-gap-6 tw-px-10 tw-py-6"><span className="tw-flex tw-items-center tw-gap-1"><Typography className="!tw-font-bold">{t.page}</Typography><strong>{table.getState().pagination.pageIndex + 1} {t.of} {table.getPageCount()}</strong></span><div className="tw-flex tw-items-center tw-gap-2"><Button variant="outlined" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="disabled:tw-opacity-30 tw-py-2 tw-px-2"><ChevronLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" /></Button><Button variant="outlined" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="disabled:tw-opacity-30 tw-py-2 tw-px-2"><ChevronRightIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" /></Button></div></div> */}
         <div className="tw-flex tw-items-center tw-justify-between tw-px-6 tw-py-4 tw-border-t tw-border-blue-gray-100">
-          <Typography variant="small" className="!tw-text-blue-gray-400">
-            {data.length} {t.stationName}
-          </Typography>
+          <Typography variant="small" className="!tw-text-blue-gray-400">{data.length} {t.stationName}</Typography>
           <div className="tw-flex tw-items-center tw-gap-4">
-            <span className="tw-text-sm tw-text-blue-gray-600">
-              {t.page} <strong>{table.getState().pagination.pageIndex + 1}</strong> {t.of} <strong>{table.getPageCount()}</strong>
-            </span>
+            <span className="tw-text-sm tw-text-blue-gray-600">{t.page} <strong>{table.getState().pagination.pageIndex + 1}</strong> {t.of} <strong>{table.getPageCount()}</strong></span>
             <div className="tw-flex tw-items-center tw-gap-1">
-              <Button variant="outlined" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="disabled:tw-opacity-30 tw-py-1.5 tw-px-2 tw-rounded-lg tw-border-blue-gray-200">
-                <ChevronLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-600 tw-stroke-2" />
-              </Button>
-              <Button variant="outlined" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="disabled:tw-opacity-30 tw-py-1.5 tw-px-2 tw-rounded-lg tw-border-blue-gray-200">
-                <ChevronRightIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-600 tw-stroke-2" />
-              </Button>
+              <Button variant="outlined" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="disabled:tw-opacity-30 tw-py-1.5 tw-px-2 tw-rounded-lg tw-border-blue-gray-200"><ChevronLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-600 tw-stroke-2" /></Button>
+              <Button variant="outlined" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="disabled:tw-opacity-30 tw-py-1.5 tw-px-2 tw-rounded-lg tw-border-blue-gray-200"><ChevronRightIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-600 tw-stroke-2" /></Button>
             </div>
           </div>
         </div>
@@ -852,132 +943,360 @@ export function SearchDataTables() {
 
       <AddStation open={openAdd} onClose={() => setOpenAdd(false)} onSubmit={handleCreateStation} onSubmitImages={handleSubmitImages} loading={saving} currentUser={me?.username ?? ""} isAdmin={isAdmin} allOwners={usernames} />
 
-      {/* ========== Edit Station Modal ========== */}
-      <Dialog open={openEditStation} handler={() => setOpenEditStation(false)} size="md" dismiss={{ outsidePress: !saving, escapeKey: !saving }} className="tw-flex tw-flex-col tw-max-h-[90vh] tw-overflow-hidden">
-        <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-white tw-px-6 tw-py-4 tw-border-b"><div className="tw-flex tw-items-center tw-justify-between tw-w-full"><Typography variant="h5" color="blue-gray">{t.editStation}</Typography><Button variant="text" onClick={() => setOpenEditStation(false)}>✕</Button></div></DialogHeader>
+      {/* ========== Edit Station Modal (Restyled to match AddStation) ========== */}
+      <Dialog open={openEditStation} handler={() => setOpenEditStation(false)} size="lg" dismiss={{ outsidePress: !saving, escapeKey: !saving }} className="tw-flex tw-flex-col tw-max-h-[95vh] sm:tw-max-h-[90vh] tw-overflow-hidden !tw-rounded-xl sm:!tw-rounded-2xl !tw-m-2 sm:!tw-m-4">
+        {/* Dark gradient header */}
+        <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-gradient-to-r tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-6 tw-py-3.5 sm:tw-py-5 tw-border-0 tw-shadow-xl tw-shrink-0">
+          <div className="tw-flex tw-items-center tw-justify-between tw-w-full">
+            <div className="tw-flex tw-items-center tw-gap-2.5 sm:tw-gap-3.5">
+              <Typography variant="h5" className="!tw-text-white !tw-font-bold !tw-tracking-tight !tw-leading-tight !tw-text-base sm:!tw-text-lg">
+                {t.editStation}
+              </Typography>
+            </div>
+            <button type="button" onClick={() => setOpenEditStation(false)} className="tw-p-1.5 sm:tw-p-2 tw-rounded-xl tw-bg-white/10 hover:tw-bg-white/20 tw-text-white/60 hover:tw-text-white tw-transition-all tw-duration-200">
+              <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-5 tw-w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+            </button>
+          </div>
+        </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); handleUpdateStation(); }} className="tw-flex tw-flex-col tw-min-h-0">
-          <DialogBody className="tw-flex-1 tw-overflow-y-auto tw-space-y-4 tw-px-6 tw-py-4">
-            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-              <Input label={t.location} value={editStationForm.location} onChange={(e) => setEditStationForm(s => ({ ...s, location: e.target.value }))} crossOrigin={undefined} />
-              <Input label={t.description} value={editStationForm.description} onChange={(e) => setEditStationForm(s => ({ ...s, description: e.target.value }))} crossOrigin={undefined} />
-            </div>
-            <Input label={t.stationName} required value={editStationForm.station_name} onChange={(e) => setEditStationForm(s => ({ ...s, station_name: e.target.value }))} crossOrigin={undefined} />
-            {isAdmin ? (owners.length > 0 ? (<Select label={t.owner} value={selectedOwnerId} onChange={(v) => setSelectedOwnerId(v ?? "")}>{owners.map(o => (<Option key={o.user_id} value={o.user_id}>{o.username}</Option>))}</Select>) : (<Input label={t.owner} value={t.loading} readOnly className="!tw-bg-gray-100" crossOrigin={undefined} />)) : (<Input label={t.owner} value={editingStation?.username ?? "-"} readOnly className="!tw-bg-gray-100" crossOrigin={undefined} />)}
-            <Select label={t.status} value={String(editStationForm.is_active)} onChange={(v) => setEditStationForm(s => ({ ...s, is_active: v === "true" }))}><Option value="true">{t.active}</Option><Option value="false">{t.inactive}</Option></Select>
-            {/* Station Image */}
-            <div className="tw-space-y-2">
-              <div className="tw-flex tw-items-center tw-gap-2"><PhotoIcon className="tw-h-4 tw-w-4 tw-text-blue-gray-500" /><Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-semibold">{t.stationImage}</Typography></div>
-              {editingStation?.stationImage && !deleteCurrentImage ? (<div className="tw-flex tw-flex-col tw-items-start tw-gap-2"><div className="tw-relative tw-inline-block"><a href={`${API_BASE}${editingStation.stationImage}`} target="_blank" rel="noreferrer" className="tw-block tw-border-2 tw-border-blue-gray-100 hover:tw-border-blue-400 tw-rounded-lg tw-overflow-hidden tw-w-24 tw-h-24 tw-transition-colors"><img src={`${API_BASE}${editingStation.stationImage}`} alt="Station" className="tw-w-full tw-h-full tw-object-cover" /></a><button type="button" onClick={() => setDeleteCurrentImage(true)} className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-6 tw-h-6 tw-text-sm tw-shadow-md hover:tw-bg-red-600 tw-transition-colors tw-flex tw-items-center tw-justify-center">×</button></div><span className="tw-text-xs tw-text-blue-gray-400">{t.currentImage} ({t.clickToRemove})</span></div>) : deleteCurrentImage && editingStation?.stationImage ? (<div className="tw-flex tw-items-center tw-gap-2 tw-p-3 tw-rounded-lg tw-bg-red-50 tw-border tw-border-red-200"><TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" /><span className="tw-text-sm tw-text-red-600">{t.willBeDeleted}</span><button type="button" onClick={() => setDeleteCurrentImage(false)} className="tw-ml-auto tw-text-xs tw-text-blue-600 hover:tw-underline">{t.undo}</button></div>) : (<span className="tw-text-blue-gray-300 tw-text-sm">{t.noImageUploaded}</span>)}
-              <div className="tw-mt-3"><Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-medium tw-mb-2">{editingStation?.stationImage && !deleteCurrentImage ? t.replaceImage : t.uploadImage}</Typography><input ref={stationImageInputRef} type="file" accept="image/*" onChange={pickStationImage} className="tw-block tw-w-full tw-text-sm file:tw-mr-3 file:tw-px-4 file:tw-py-2 file:tw-rounded-lg file:tw-border-0 file:tw-bg-blue-50 file:tw-text-blue-600 file:tw-font-medium file:tw-cursor-pointer hover:file:tw-bg-blue-100" />{editStationPreview && (<div className="tw-relative tw-inline-block tw-mt-3"><img src={editStationPreview} alt="Preview" className="tw-h-24 tw-w-24 tw-object-cover tw-rounded-lg tw-border-2 tw-border-green-200" /><button type="button" onClick={clearStationImage} className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-6 tw-h-6 tw-text-sm tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button><span className="tw-block tw-text-xs tw-text-green-600 tw-mt-1">{t.newImage}</span></div>)}</div>
-            </div>
+          <DialogBody className="tw-flex-1 tw-min-h-0 tw-overflow-y-auto tw-space-y-3 sm:tw-space-y-5 tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-5 tw-bg-gray-50/60">
+            {/* Station Info Card */}
+            <section className="tw-rounded-xl sm:tw-rounded-2xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/[.06] tw-overflow-hidden">
+              <div className="tw-px-3.5 sm:tw-px-5 tw-py-3 sm:tw-py-4 tw-border-b tw-border-gray-100 tw-flex tw-items-center tw-gap-2.5 sm:tw-gap-3">
+                <SectionIcon emoji="📍" />
+                <Typography variant="h6" className="!tw-text-gray-800 !tw-font-bold !tw-tracking-tight !tw-text-sm sm:!tw-text-base">{t.stationInfo}</Typography>
+              </div>
+              <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-4 sm:tw-space-y-5">
+                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
+                  <Input label={t.stationName} required value={editStationForm.station_name} onChange={(e) => setEditStationForm(s => ({ ...s, station_name: e.target.value }))} crossOrigin={undefined} />
+                  {isAdmin ? (owners.length > 0 ? (
+                    <Select label={t.owner} value={selectedOwnerId} onChange={(v) => setSelectedOwnerId(v ?? "")}>
+                      {owners.map(o => (<Option key={o.user_id} value={o.user_id}>{o.username}</Option>))}
+                    </Select>
+                  ) : (
+                    <Input label={t.owner} value={t.loading} readOnly className="!tw-bg-gray-100" crossOrigin={undefined} />
+                  )) : (
+                    <Input label={t.owner} value={editingStation?.username ?? "-"} readOnly disabled crossOrigin={undefined} />
+                  )}
+                  <Input label={t.location} value={editStationForm.location} onChange={(e) => setEditStationForm(s => ({ ...s, location: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.description} value={editStationForm.description} onChange={(e) => setEditStationForm(s => ({ ...s, description: e.target.value }))} crossOrigin={undefined} />
+                  <Select label={t.status} value={String(editStationForm.is_active)} onChange={(v) => setEditStationForm(s => ({ ...s, is_active: v === "true" }))}>
+                    <Option value="true">{t.active}</Option>
+                    <Option value="false">{t.inactive}</Option>
+                  </Select>
+                </div>
+
+                {/* Station Images */}
+                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
+                  <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.stationImages}</p>
+                  <div className="tw-grid tw-grid-cols-1 tw-gap-2.5">
+                    <ImageZone
+                      label={t.stationImage}
+                      previews={editStationPreviews}
+                      onUpload={pickStationImage}
+                      onRemove={removeEditStationImage}
+                      emptyLabel={t.noImages}
+                      uploadLabel={t.upload}
+                      existingImages={editingStation?.stationImage && !deleteCurrentImage ? [editingStation.stationImage] : undefined}
+                      apiBase={API_BASE}
+                      onRemoveExisting={() => setDeleteCurrentImage(true)}
+                    />
+                    {deleteCurrentImage && editingStation?.stationImage && (
+                      <div className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-rounded-lg tw-bg-red-50 tw-ring-1 tw-ring-red-200/60">
+                        <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" />
+                        <span className="tw-text-[11px] tw-text-red-600 tw-font-medium">{t.willBeDeleted}</span>
+                        <button type="button" onClick={() => setDeleteCurrentImage(false)} className="tw-ml-auto tw-text-[11px] tw-text-blue-600 tw-font-semibold hover:tw-underline">{t.undo}</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
           </DialogBody>
-          <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-6 tw-py-3 tw-border-t"><div className="tw-flex tw-w-full tw-justify-end tw-gap-2"><Button variant="outlined" type="button" onClick={() => setOpenEditStation(false)}>{t.cancel}</Button><Button type="submit" className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black" disabled={saving}>{saving ? t.saving : t.save}</Button></div></DialogFooter>
+
+          {/* Styled footer */}
+          <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-4 tw-border-t tw-border-gray-200/80 tw-shrink-0">
+            <div className="tw-flex tw-w-full tw-flex-col sm:tw-flex-row tw-justify-end tw-items-center tw-gap-2.5 sm:tw-gap-0">
+              <div className="tw-flex tw-gap-2 sm:tw-gap-2.5 tw-w-full sm:tw-w-auto">
+                <Button variant="outlined" type="button" onClick={() => setOpenEditStation(false)} className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-border-gray-300 tw-text-gray-600 hover:tw-bg-gray-50 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2.5 sm:tw-py-2">
+                  {t.cancel}
+                </Button>
+                <Button type="submit" disabled={saving} className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-shadow-lg tw-shadow-gray-900/20 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-tracking-wide tw-px-4 sm:tw-px-6 tw-py-2.5 sm:tw-py-2 disabled:tw-opacity-50 tw-transition-all tw-duration-200 hover:tw-shadow-xl">
+                  {saving ? <span className="tw-flex tw-items-center tw-justify-center tw-gap-2"><Spinner />{t.saving}</span> : t.save}
+                </Button>
+              </div>
+            </div>
+          </DialogFooter>
         </form>
       </Dialog>
 
-      {/* ========== Edit Charger Modal ========== */}
-      <Dialog open={openEditCharger} handler={() => setOpenEditCharger(false)} size="md" dismiss={{ outsidePress: !saving, escapeKey: !saving }} className="tw-flex tw-flex-col tw-max-h-[90vh] tw-overflow-hidden">
-        <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-white tw-px-6 tw-py-4 tw-border-b"><div className="tw-flex tw-items-center tw-justify-between tw-w-full"><div className="tw-flex tw-items-center tw-gap-3"><div className="tw-p-2 tw-rounded-lg tw-bg-amber-100"><BoltIcon className="tw-h-5 tw-w-5 tw-text-amber-600" /></div><Typography variant="h5" color="blue-gray">{t.editCharger}</Typography></div><Button variant="text" onClick={() => setOpenEditCharger(false)}>✕</Button></div></DialogHeader>
+      {/* ========== Edit Charger Modal (Restyled to match AddStation) ========== */}
+      <Dialog open={openEditCharger} handler={() => setOpenEditCharger(false)} size="lg" dismiss={{ outsidePress: !saving, escapeKey: !saving }} className="tw-flex tw-flex-col tw-max-h-[95vh] sm:tw-max-h-[90vh] tw-overflow-hidden !tw-rounded-xl sm:!tw-rounded-2xl !tw-m-2 sm:!tw-m-4">
+        {/* Dark gradient header */}
+        <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-gradient-to-r tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-6 tw-py-3.5 sm:tw-py-5 tw-border-0 tw-shadow-xl tw-shrink-0">
+          <div className="tw-flex tw-items-center tw-justify-between tw-w-full">
+            <div className="tw-flex tw-items-center tw-gap-2.5 sm:tw-gap-3.5">
+              <Typography variant="h5" className="!tw-text-white !tw-font-bold !tw-tracking-tight !tw-leading-tight !tw-text-base sm:!tw-text-lg">
+                {t.editCharger}
+              </Typography>
+            </div>
+            <button type="button" onClick={() => setOpenEditCharger(false)} className="tw-p-1.5 sm:tw-p-2 tw-rounded-xl tw-bg-white/10 hover:tw-bg-white/20 tw-text-white/60 hover:tw-text-white tw-transition-all tw-duration-200">
+              <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-5 tw-w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+            </button>
+          </div>
+        </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); handleUpdateCharger(); }} className="tw-flex tw-flex-col tw-min-h-0">
-          <DialogBody className="tw-flex-1 tw-overflow-y-auto tw-space-y-4 tw-px-6 tw-py-4">
-            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-              <Input label={`${t.chargerNo} (${t.auto})`} type="number" value={editChargerForm.chargerNo} readOnly className="!tw-bg-gray-100" crossOrigin={undefined} />
-              <Input label={t.location} value={editChargerForm.location} onChange={(e) => setEditChargerForm(s => ({ ...s, location: e.target.value }))} crossOrigin={undefined} />
-              <Input label={t.description} value={editChargerForm.description} onChange={(e) => setEditChargerForm(s => ({ ...s, description: e.target.value }))} crossOrigin={undefined} />
-              <Select label={t.chargerType} value={editChargerForm.chargerType} onChange={(v) => setEditChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}><Option value="DC">DC</Option><Option value="AC">AC</Option><Option value="DC & AC">DC & AC</Option></Select>
-              <Input label={t.brand} required value={editChargerForm.brand} onChange={(e) => setEditChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
-              <Input label={t.model} required value={editChargerForm.model} onChange={(e) => setEditChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
-              <Input label={t.serialNumber} required value={editChargerForm.SN} onChange={(e) => setEditChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
-              <Input label={`${t.power} (kW)`} required value={editChargerForm.power} onChange={(e) => setEditChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
-              {isFlexxfast(editChargerForm.brand) && (
-                <>
-                  <Input label={t.workOrder} required value={editChargerForm.WO} onChange={(e) => setEditChargerForm(s => ({ ...s, WO: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.plcFirmware} required value={editChargerForm.PLCFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, PLCFirmware: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.piFirmware} required value={editChargerForm.PIFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.routerFirmware} required value={editChargerForm.RTFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
-                </>
-              )}
-              <Input label={t.commissioningDate} type="date" value={editChargerForm.commissioningDate} onChange={(e) => setEditChargerForm(s => ({ ...s, commissioningDate: e.target.value }))} crossOrigin={undefined} />
-              <Input label={t.warrantyYears} type="number" min={1} max={10} value={editChargerForm.warrantyYears} onChange={(e) => setEditChargerForm(s => ({ ...s, warrantyYears: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
-              <Input label={t.numberOfCables} type="number" min={1} max={10} value={editChargerForm.numberOfCables} onChange={(e) => setEditChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
-              <Select label={t.status} value={String(editChargerForm.is_active)} onChange={(v) => setEditChargerForm(s => ({ ...s, is_active: v === "true" }))}><Option value="true">{t.active}</Option><Option value="false">{t.inactive}</Option></Select>
-            </div>
-            {/* OCPP Section - only for Flexxfast */}
-            {isFlexxfast(editChargerForm.brand) && (
-              <div className="tw-border-t tw-border-blue-gray-100 tw-pt-4 tw-mt-4">
-                <Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-semibold tw-mb-3">
-                  {t.ocppSection}
-                </Typography>
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                  <Input label={t.chargerBoxId} required value={editChargerForm.chargeBoxID} onChange={(e) => setEditChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.ocppUrl} value={editChargerForm.ocppUrl} onChange={(e) => setEditChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
+          <DialogBody className="tw-flex-1 tw-min-h-0 tw-overflow-y-auto tw-space-y-3 sm:tw-space-y-5 tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-5 tw-bg-gray-50/60">
+
+            {/* Charger Info Card */}
+            <section className="tw-rounded-xl sm:tw-rounded-2xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/[.06] tw-overflow-hidden">
+              {/* Charger header bar (amber like AddStation charger cards) */}
+              <div className="tw-flex tw-items-center tw-justify-between tw-px-3.5 sm:tw-px-5 tw-py-2.5 sm:tw-py-3 tw-bg-gradient-to-r tw-from-amber-50 tw-to-orange-50/80 tw-border-b tw-border-amber-100/70">
+                <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-2.5 tw-min-w-0">
+                  <span className="tw-inline-flex tw-items-center tw-justify-center tw-h-6 tw-w-6 sm:tw-h-7 sm:tw-w-7 tw-rounded-lg tw-bg-gradient-to-br tw-from-amber-400 tw-to-orange-500 tw-shadow tw-text-white tw-text-[10px] sm:tw-text-xs tw-font-bold tw-shrink-0">
+                    {editChargerForm.chargerNo}
+                  </span>
+                  <span className="tw-text-xs sm:tw-text-sm tw-font-bold tw-text-gray-700 tw-truncate">{t.chargerNo} {editChargerForm.chargerNo}</span>
+                  {editChargerForm.brand && (
+                    <span className="tw-hidden sm:tw-inline tw-px-2 tw-py-0.5 tw-rounded-md tw-bg-white/90 tw-text-[10px] tw-font-semibold tw-text-blue-gray-500 tw-ring-1 tw-ring-black/5 tw-shadow-sm tw-truncate tw-max-w-[120px]">
+                      {editChargerForm.brand}{editChargerForm.model ? ` ${editChargerForm.model}` : ""}
+                    </span>
+                  )}
                 </div>
               </div>
-            )}
-            {/* Charger Images */}
-            <div className="tw-border-t tw-border-blue-gray-100 tw-pt-4 tw-mt-4">
-              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-4"><PhotoIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-500" /><Typography variant="h6" color="blue-gray">{t.chargerImage}</Typography></div>
-              <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
-                <ImageUploadSection label={t.chargerImage} currentSrc={editingCharger?.charger.chargerImage} isDeleted={deleteChargerImage} onDelete={() => setDeleteChargerImage(true)} onUndo={() => setDeleteChargerImage(false)} inputRef={chargerImageInputRef as React.RefObject<HTMLInputElement>} onPick={pickChargerImage} preview={editChargerPreview} onClear={clearChargerImage} />
-                <ImageUploadSection label={t.deviceImage} currentSrc={editingCharger?.charger.deviceImage} isDeleted={deleteDeviceImage} onDelete={() => setDeleteDeviceImage(true)} onUndo={() => setDeleteDeviceImage(false)} inputRef={deviceImageInputRef as React.RefObject<HTMLInputElement>} onPick={pickDeviceImage} preview={editDevicePreview} onClear={clearDeviceImage} />
+
+              <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">
+                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-2.5 sm:tw-gap-3">
+                  <div className="tw-relative">
+                    <Input label={`${t.chargerNo} (${t.auto})`} type="number" value={editChargerForm.chargerNo} readOnly className="!tw-bg-gray-50" crossOrigin={undefined} />
+                    <span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span>
+                  </div>
+                  <Select label={t.chargerType} value={editChargerForm.chargerType} onChange={(v) => setEditChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}>
+                    <Option value="DC">DC</Option><Option value="AC">AC</Option><Option value="DC & AC">DC & AC</Option>
+                  </Select>
+                  <Input label={t.brand} required value={editChargerForm.brand} onChange={(e) => setEditChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.model} required value={editChargerForm.model} onChange={(e) => setEditChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.serialNumber} required value={editChargerForm.SN} onChange={(e) => setEditChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={`${t.power} (kW)`} required value={editChargerForm.power} onChange={(e) => setEditChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
+                  {isFlexxfast(editChargerForm.brand) && (<>
+                    <Input label={t.workOrder} required value={editChargerForm.WO} onChange={(e) => setEditChargerForm(s => ({ ...s, WO: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.plcFirmware} required value={editChargerForm.PLCFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, PLCFirmware: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.piFirmware} required value={editChargerForm.PIFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.routerFirmware} required value={editChargerForm.RTFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
+                  </>)}
+                  <Input label={t.location} value={editChargerForm.location} onChange={(e) => setEditChargerForm(s => ({ ...s, location: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.description} value={editChargerForm.description} onChange={(e) => setEditChargerForm(s => ({ ...s, description: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.commissioningDate} type="date" value={editChargerForm.commissioningDate} onChange={(e) => setEditChargerForm(s => ({ ...s, commissioningDate: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.warrantyYears} type="number" min={1} max={10} value={editChargerForm.warrantyYears} onChange={(e) => setEditChargerForm(s => ({ ...s, warrantyYears: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
+                  <Input label={t.numberOfCables} type="number" min={1} max={10} value={editChargerForm.numberOfCables} onChange={(e) => setEditChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
+                  <Select label={t.status} value={String(editChargerForm.is_active)} onChange={(v) => setEditChargerForm(s => ({ ...s, is_active: v === "true" }))}>
+                    <Option value="true">{t.active}</Option><Option value="false">{t.inactive}</Option>
+                  </Select>
+                </div>
+
+                {/* OCPP Section */}
+                {isFlexxfast(editChargerForm.brand) && (
+                  <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
+                    <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-purple-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">{t.ocppSection}</p>
+                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2.5 sm:tw-gap-3">
+                      <Input label={t.chargerBoxId} required value={editChargerForm.chargeBoxID} onChange={(e) => setEditChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
+                      <Input label={t.ocppUrl} value={editChargerForm.ocppUrl} onChange={(e) => setEditChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Charger Images - using ImageZone style */}
+                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
+                  <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.chargerImages}</p>
+                  <div className="tw-grid tw-grid-cols-1 tw-gap-2.5 sm:tw-grid-cols-2 sm:tw-gap-3">
+                    <div className="tw-space-y-2">
+                      <ImageZone
+                        label={t.chargerImage}
+                        previews={editChargerPreviews}
+                        onUpload={pickChargerImage}
+                        onRemove={removeEditChargerImage}
+                        emptyLabel={t.noImages}
+                        uploadLabel={t.upload}
+                        existingImages={editingCharger?.charger.chargerImages?.filter((_, i) => !deletedExistingChargerIdxs.has(i))}
+                        apiBase={API_BASE}
+                        onRemoveExisting={(filteredIdx) => {
+                          // Map filtered index back to original index
+                          const remaining = (editingCharger?.charger.chargerImages || []).map((url, i) => ({ url, i })).filter(({ i }) => !deletedExistingChargerIdxs.has(i));
+                          if (remaining[filteredIdx]) {
+                            setDeletedExistingChargerIdxs(prev => { const next = new Set(Array.from(prev)); next.add(remaining[filteredIdx].i); return next; });
+                          }
+                        }}
+                      />
+                      {deletedExistingChargerIdxs.size > 0 && (
+                        <div className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-rounded-lg tw-bg-red-50 tw-ring-1 tw-ring-red-200/60">
+                          <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" />
+                          <span className="tw-text-[11px] tw-text-red-600 tw-font-medium">{deletedExistingChargerIdxs.size} {t.willBeDeleted}</span>
+                          <button type="button" onClick={() => setDeletedExistingChargerIdxs(new Set())} className="tw-ml-auto tw-text-[11px] tw-text-blue-600 tw-font-semibold hover:tw-underline">{t.undo}</button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="tw-space-y-2">
+                      <ImageZone
+                        label={t.deviceImage}
+                        previews={editDevicePreviews}
+                        onUpload={pickDeviceImage}
+                        onRemove={removeEditDeviceImage}
+                        emptyLabel={t.noImages}
+                        uploadLabel={t.upload}
+                        existingImages={editingCharger?.charger.deviceImages?.filter((_, i) => !deletedExistingDeviceIdxs.has(i))}
+                        apiBase={API_BASE}
+                        onRemoveExisting={(filteredIdx) => {
+                          const remaining = (editingCharger?.charger.deviceImages || []).map((url, i) => ({ url, i })).filter(({ i }) => !deletedExistingDeviceIdxs.has(i));
+                          if (remaining[filteredIdx]) {
+                            setDeletedExistingDeviceIdxs(prev => { const next = new Set(Array.from(prev)); next.add(remaining[filteredIdx].i); return next; });
+                          }
+                        }}
+                      />
+                      {deletedExistingDeviceIdxs.size > 0 && (
+                        <div className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-rounded-lg tw-bg-red-50 tw-ring-1 tw-ring-red-200/60">
+                          <TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500" />
+                          <span className="tw-text-[11px] tw-text-red-600 tw-font-medium">{deletedExistingDeviceIdxs.size} {t.willBeDeleted}</span>
+                          <button type="button" onClick={() => setDeletedExistingDeviceIdxs(new Set())} className="tw-ml-auto tw-text-[11px] tw-text-blue-600 tw-font-semibold hover:tw-underline">{t.undo}</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </DialogBody>
+
+          {/* Styled footer */}
+          <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-4 tw-border-t tw-border-gray-200/80 tw-shrink-0">
+            <div className="tw-flex tw-w-full tw-flex-col sm:tw-flex-row tw-justify-end tw-items-center tw-gap-2.5 sm:tw-gap-0">
+              <div className="tw-flex tw-gap-2 sm:tw-gap-2.5 tw-w-full sm:tw-w-auto">
+                <Button variant="outlined" type="button" onClick={() => setOpenEditCharger(false)} className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-border-gray-300 tw-text-gray-600 hover:tw-bg-gray-50 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2.5 sm:tw-py-2">
+                  {t.cancel}
+                </Button>
+                <Button type="submit" disabled={saving} className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-shadow-lg tw-shadow-gray-900/20 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-tracking-wide tw-px-4 sm:tw-px-6 tw-py-2.5 sm:tw-py-2 disabled:tw-opacity-50 tw-transition-all tw-duration-200 hover:tw-shadow-xl">
+                  {saving ? <span className="tw-flex tw-items-center tw-justify-center tw-gap-2"><Spinner />{t.saving}</span> : t.save}
+                </Button>
               </div>
             </div>
-          </DialogBody>
-          <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-6 tw-py-3 tw-border-t"><div className="tw-flex tw-w-full tw-justify-end tw-gap-2"><Button variant="outlined" type="button" onClick={() => setOpenEditCharger(false)}>{t.cancel}</Button><Button type="submit" className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black" disabled={saving}>{saving ? t.saving : t.save}</Button></div></DialogFooter>
+          </DialogFooter>
         </form>
       </Dialog>
 
-      {/* ========== Add Charger Modal ========== */}
-      <Dialog open={openAddCharger} handler={() => { resetAddChargerImages(); setOpenAddCharger(false); }} size="md" dismiss={{ outsidePress: !saving, escapeKey: !saving }} className="tw-flex tw-flex-col tw-max-h-[90vh] tw-overflow-hidden">
-        <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-white tw-px-6 tw-py-4 tw-border-b"><div className="tw-flex tw-items-center tw-justify-between tw-w-full"><div className="tw-flex tw-items-center tw-gap-3"><div className="tw-p-2 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200"><BoltIcon className="tw-h-5 tw-w-5 tw-text-amber-600" /></div><div><Typography variant="h5" color="blue-gray">{t.addChargerTitle}</Typography><Typography variant="small" className="!tw-text-blue-gray-500">{t.station}: {addingChargerStationId}</Typography></div></div><Button variant="text" onClick={() => { resetAddChargerImages(); setOpenAddCharger(false); }}>✕</Button></div></DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); handleCreateCharger(); }} className="tw-flex tw-flex-col tw-min-h-0">
-          <DialogBody className="tw-flex-1 tw-overflow-y-auto tw-space-y-4 tw-px-6 tw-py-4">
-            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-              <div className="tw-relative"><Input label={`${t.chargerNo} (${t.auto})`} type="number" value={addChargerForm.chargerNo} readOnly className="!tw-bg-gray-100 !tw-cursor-not-allowed" crossOrigin={undefined} /></div>
-              <Input label={t.location} value={addChargerForm.location} onChange={(e) => setAddChargerForm(s => ({ ...s, location: e.target.value }))} crossOrigin={undefined} />
-              <Input label={t.description} value={addChargerForm.description} onChange={(e) => setAddChargerForm(s => ({ ...s, description: e.target.value }))} crossOrigin={undefined} />
-              <Select label={t.chargerType} value={addChargerForm.chargerType} onChange={(v) => setAddChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}><Option value="DC">DC</Option><Option value="AC">AC</Option></Select>
-              <Input label={t.brand} required value={addChargerForm.brand} onChange={(e) => setAddChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
-              <Input label={t.model} required value={addChargerForm.model} onChange={(e) => setAddChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
-              <Input label={t.serialNumber} required value={addChargerForm.SN} onChange={(e) => setAddChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
-              <Input label={`${t.power} (kW)`} required value={addChargerForm.power} onChange={(e) => setAddChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
-              {isFlexxfast(addChargerForm.brand) && (
-                <>
-                  <Input label={t.workOrder} required value={addChargerForm.WO} onChange={(e) => setAddChargerForm(s => ({ ...s, WO: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.plcFirmware} required value={addChargerForm.PLCFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, PLCFirmware: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.piFirmware} required value={addChargerForm.PIFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.routerFirmware} required value={addChargerForm.RTFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.chargerBoxId} required value={addChargerForm.chargeBoxID} onChange={(e) => setAddChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.ocppUrl} value={addChargerForm.ocppUrl} onChange={(e) => setAddChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
-                </>
-              )}
-              <Input label={t.commissioningDate} type="date" required value={addChargerForm.commissioningDate} onChange={(e) => setAddChargerForm(s => ({ ...s, commissioningDate: e.target.value }))} crossOrigin={undefined} />
-              <Input label={t.warrantyYears} type="number" min={1} max={10} required value={addChargerForm.warrantyYears} onChange={(e) => setAddChargerForm(s => ({ ...s, warrantyYears: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
-              <Input label={t.numberOfCables} type="number" min={1} max={10} required value={addChargerForm.numberOfCables} onChange={(e) => setAddChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
-              <Select label={t.status} value={String(addChargerForm.is_active)} onChange={(v) => setAddChargerForm(s => ({ ...s, is_active: v === "true" }))}><Option value="true">{t.active}</Option><Option value="false">{t.inactive}</Option></Select>
-            </div>
-            {/* OCPP Section - only for Flexxfast */}
-            {isFlexxfast(addChargerForm.brand) && (
-              <div className="tw-border-t tw-border-blue-gray-100 tw-pt-4 tw-mt-4">
-                <Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-semibold tw-mb-3">
-                  {t.ocppSection}
+      {/* ========== Add Charger Modal (Also restyled to match) ========== */}
+      <Dialog open={openAddCharger} handler={() => { resetAddChargerImages(); setOpenAddCharger(false); }} size="lg" dismiss={{ outsidePress: !saving, escapeKey: !saving }} className="tw-flex tw-flex-col tw-max-h-[95vh] sm:tw-max-h-[90vh] tw-overflow-hidden !tw-rounded-xl sm:!tw-rounded-2xl !tw-m-2 sm:!tw-m-4">
+        {/* Dark gradient header */}
+        <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-gradient-to-r tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-6 tw-py-3.5 sm:tw-py-5 tw-border-0 tw-shadow-xl tw-shrink-0">
+          <div className="tw-flex tw-items-center tw-justify-between tw-w-full">
+            <div className="tw-flex tw-items-center tw-gap-2.5 sm:tw-gap-3.5">
+              <div>
+                <Typography variant="h5" className="!tw-text-white !tw-font-bold !tw-tracking-tight !tw-leading-tight !tw-text-base sm:!tw-text-lg">
+                  {t.addChargerTitle}
                 </Typography>
-                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                  <Input label={t.chargerBoxId} required value={addChargerForm.chargeBoxID} onChange={(e) => setAddChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.ocppUrl} value={addChargerForm.ocppUrl} onChange={(e) => setAddChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
+                <Typography variant="small" className="!tw-text-white/50 !tw-text-xs">
+                  {t.station}: {addingChargerStationId}
+                </Typography>
+              </div>
+            </div>
+            <button type="button" onClick={() => { resetAddChargerImages(); setOpenAddCharger(false); }} className="tw-p-1.5 sm:tw-p-2 tw-rounded-xl tw-bg-white/10 hover:tw-bg-white/20 tw-text-white/60 hover:tw-text-white tw-transition-all tw-duration-200">
+              <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-5 tw-w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+            </button>
+          </div>
+        </DialogHeader>
+        <form onSubmit={(e) => { e.preventDefault(); handleCreateCharger(); }} className="tw-flex tw-flex-col tw-min-h-0">
+          <DialogBody className="tw-flex-1 tw-min-h-0 tw-overflow-y-auto tw-space-y-3 sm:tw-space-y-5 tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-5 tw-bg-gray-50/60">
+
+            {/* Charger Info Card */}
+            <section className="tw-rounded-xl sm:tw-rounded-2xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/[.06] tw-overflow-hidden">
+              <div className="tw-flex tw-items-center tw-justify-between tw-px-3.5 sm:tw-px-5 tw-py-2.5 sm:tw-py-3 tw-bg-gradient-to-r tw-from-amber-50 tw-to-orange-50/80 tw-border-b tw-border-amber-100/70">
+                <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-2.5 tw-min-w-0">
+                  <span className="tw-inline-flex tw-items-center tw-justify-center tw-h-6 tw-w-6 sm:tw-h-7 sm:tw-w-7 tw-rounded-lg tw-bg-gradient-to-br tw-from-amber-400 tw-to-orange-500 tw-shadow tw-text-white tw-text-[10px] sm:tw-text-xs tw-font-bold tw-shrink-0">
+                    {addChargerForm.chargerNo}
+                  </span>
+                  <span className="tw-text-xs sm:tw-text-sm tw-font-bold tw-text-gray-700 tw-truncate">{t.chargerNo} {addChargerForm.chargerNo}</span>
                 </div>
               </div>
-            )}
-            {/* Charger Images */}
-            <div className="tw-border-t tw-border-blue-gray-100 tw-pt-4 tw-mt-4">
-              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-4"><PhotoIcon className="tw-h-5 tw-w-5 tw-text-blue-gray-500" /><Typography variant="h6" color="blue-gray">{t.chargerImage}</Typography></div>
-              <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-6">
-                <div className="tw-space-y-3"><Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-semibold">{t.chargerImage}</Typography><div><input ref={addChargerImageInputRef} type="file" accept="image/*" onChange={pickAddChargerImage} className="tw-block tw-w-full tw-text-xs file:tw-mr-2 file:tw-px-3 file:tw-py-1.5 file:tw-rounded-lg file:tw-border-0 file:tw-bg-blue-50 file:tw-text-blue-600 file:tw-font-medium file:tw-cursor-pointer hover:file:tw-bg-blue-100" />{addChargerPreview && (<div className="tw-relative tw-inline-block tw-mt-2"><img src={addChargerPreview} alt="Preview" className="tw-h-20 tw-w-20 tw-object-cover tw-rounded-lg tw-border-2 tw-border-green-200" /><button type="button" onClick={clearAddChargerImage} className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-5 tw-h-5 tw-text-xs tw-shadow-md hover:tw-bg-red-600">×</button><span className="tw-block tw-text-xs tw-text-green-600 tw-mt-1">{t.newImage}</span></div>)}</div></div>
-                <div className="tw-space-y-3"><Typography variant="small" className="!tw-text-blue-gray-600 !tw-font-semibold">{t.deviceImage}</Typography><div><input ref={addDeviceImageInputRef} type="file" accept="image/*" onChange={pickAddDeviceImage} className="tw-block tw-w-full tw-text-xs file:tw-mr-2 file:tw-px-3 file:tw-py-1.5 file:tw-rounded-lg file:tw-border-0 file:tw-bg-blue-50 file:tw-text-blue-600 file:tw-font-medium file:tw-cursor-pointer hover:file:tw-bg-blue-100" />{addDevicePreview && (<div className="tw-relative tw-inline-block tw-mt-2"><img src={addDevicePreview} alt="Preview" className="tw-h-20 tw-w-20 tw-object-cover tw-rounded-lg tw-border-2 tw-border-green-200" /><button type="button" onClick={clearAddDeviceImage} className="tw-absolute tw--top-2 tw--right-2 tw-bg-red-500 tw-text-white tw-rounded-full tw-w-5 tw-h-5 tw-text-xs tw-shadow-md hover:tw-bg-red-600">×</button><span className="tw-block tw-text-xs tw-text-green-600 tw-mt-1">{t.newImage}</span></div>)}</div></div>
+
+              <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">
+                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-2.5 sm:tw-gap-3">
+                  <div className="tw-relative">
+                    <Input label={`${t.chargerNo} (${t.auto})`} type="number" value={addChargerForm.chargerNo} readOnly className="!tw-bg-gray-50 !tw-cursor-not-allowed" crossOrigin={undefined} />
+                    <span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span>
+                  </div>
+                  <Select label={t.chargerType} value={addChargerForm.chargerType} onChange={(v) => setAddChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}>
+                    <Option value="DC">DC</Option><Option value="AC">AC</Option>
+                  </Select>
+                  <Input label={t.brand} required value={addChargerForm.brand} onChange={(e) => setAddChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.model} required value={addChargerForm.model} onChange={(e) => setAddChargerForm(s => ({ ...s, model: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.serialNumber} required value={addChargerForm.SN} onChange={(e) => setAddChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={`${t.power} (kW)`} required value={addChargerForm.power} onChange={(e) => setAddChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
+                  {isFlexxfast(addChargerForm.brand) && (<>
+                    <Input label={t.workOrder} required value={addChargerForm.WO} onChange={(e) => setAddChargerForm(s => ({ ...s, WO: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.plcFirmware} required value={addChargerForm.PLCFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, PLCFirmware: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.piFirmware} required value={addChargerForm.PIFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.routerFirmware} required value={addChargerForm.RTFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.chargerBoxId} required value={addChargerForm.chargeBoxID} onChange={(e) => setAddChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.ocppUrl} value={addChargerForm.ocppUrl} onChange={(e) => setAddChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
+                  </>)}
+                  <Input label={t.location} value={addChargerForm.location} onChange={(e) => setAddChargerForm(s => ({ ...s, location: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.description} value={addChargerForm.description} onChange={(e) => setAddChargerForm(s => ({ ...s, description: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.commissioningDate} type="date" required value={addChargerForm.commissioningDate} onChange={(e) => setAddChargerForm(s => ({ ...s, commissioningDate: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.warrantyYears} type="number" min={1} max={10} required value={addChargerForm.warrantyYears} onChange={(e) => setAddChargerForm(s => ({ ...s, warrantyYears: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
+                  <Input label={t.numberOfCables} type="number" min={1} max={10} required value={addChargerForm.numberOfCables} onChange={(e) => setAddChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
+                  <Select label={t.status} value={String(addChargerForm.is_active)} onChange={(v) => setAddChargerForm(s => ({ ...s, is_active: v === "true" }))}>
+                    <Option value="true">{t.active}</Option><Option value="false">{t.inactive}</Option>
+                  </Select>
+                </div>
+
+                {/* OCPP Section */}
+                {isFlexxfast(addChargerForm.brand) && (
+                  <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
+                    <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-purple-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">{t.ocppSection}</p>
+                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2.5 sm:tw-gap-3">
+                      <Input label={t.chargerBoxId} required value={addChargerForm.chargeBoxID} onChange={(e) => setAddChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
+                      <Input label={t.ocppUrl} value={addChargerForm.ocppUrl} onChange={(e) => setAddChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Charger Images */}
+                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
+                  <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.chargerImages}</p>
+                  <div className="tw-grid tw-grid-cols-1 tw-gap-2.5 sm:tw-grid-cols-2 sm:tw-gap-3">
+                    <ImageZone
+                      label={t.chargerImage}
+                      previews={addChargerPreviews}
+                      onUpload={pickAddChargerImage}
+                      onRemove={removeAddChargerImage}
+                      emptyLabel={t.noImages}
+                      uploadLabel={t.upload}
+                    />
+                    <ImageZone
+                      label={t.deviceImage}
+                      previews={addDevicePreviews}
+                      onUpload={pickAddDeviceImage}
+                      onRemove={removeAddDeviceImage}
+                      emptyLabel={t.noImages}
+                      uploadLabel={t.upload}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+          </DialogBody>
+
+          {/* Styled footer */}
+          <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-4 tw-border-t tw-border-gray-200/80 tw-shrink-0">
+            <div className="tw-flex tw-w-full tw-flex-col sm:tw-flex-row tw-justify-end tw-items-center tw-gap-2.5 sm:tw-gap-0">
+              <div className="tw-flex tw-gap-2 sm:tw-gap-2.5 tw-w-full sm:tw-w-auto">
+                <Button variant="outlined" type="button" onClick={() => { resetAddChargerImages(); setOpenAddCharger(false); }} className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-border-gray-300 tw-text-gray-600 hover:tw-bg-gray-50 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2.5 sm:tw-py-2">
+                  {t.cancel}
+                </Button>
+                <Button type="submit" disabled={saving} className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-shadow-lg tw-shadow-gray-900/20 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-tracking-wide tw-px-4 sm:tw-px-6 tw-py-2.5 sm:tw-py-2 disabled:tw-opacity-50 tw-transition-all tw-duration-200 hover:tw-shadow-xl">
+                  {saving ? <span className="tw-flex tw-items-center tw-justify-center tw-gap-2"><Spinner />{t.creating}</span> : t.create}
+                </Button>
               </div>
             </div>
-          </DialogBody>
-          <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-6 tw-py-3 tw-border-t"><div className="tw-flex tw-w-full tw-justify-end tw-gap-2"><Button variant="outlined" type="button" onClick={() => { resetAddChargerImages(); setOpenAddCharger(false); }}>{t.cancel}</Button><Button type="submit" className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black" disabled={saving}>{saving ? t.creating : t.create}</Button></div></DialogFooter>
+          </DialogFooter>
         </form>
       </Dialog>
     </>
