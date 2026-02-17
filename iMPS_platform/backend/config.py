@@ -33,7 +33,7 @@ client = AsyncIOMotorClient("mongodb://imps_platform:eds_imps@203.154.130.132:27
 
 deviceDB = client["utilizationFactor"]
 settingDB = client["settingParameter"]
-errorDB = client["errorCode"]
+errorDB = client["FaultStatus"]
 
 db = client1["iMPS"]
 users_collection = db["users"]
