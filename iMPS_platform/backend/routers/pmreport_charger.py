@@ -580,6 +580,8 @@ async def pmreport_upload_pre_photos(
             raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
 
         data = await f.read()
+        if len(data) == 0:
+            raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
@@ -640,6 +642,8 @@ async def pmreport_upload_post_photos(
             raise HTTPException(status_code=400, detail=f"File type not allowed: {ext}")
 
         data = await f.read()
+        if len(data) == 0:
+            raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
@@ -799,6 +803,8 @@ async def pmurl_upload_files(
             raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
 
         data = await f.read()
+        if len(data) == 0:
+            raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
         total_size += len(data)
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(
