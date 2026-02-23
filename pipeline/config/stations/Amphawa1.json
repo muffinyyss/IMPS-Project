@@ -1,0 +1,39 @@
+{
+    "stationId": "Amphawa1",
+    "serialNumber": "F1500324002",
+    
+    "hardware": {
+        "dcContractorCount": 6,
+        "powerModuleCount": 5,
+        "dcFanCount": 7,
+        "fanType": "EBM",
+        "energyMeterType": "PILOT",
+        "powerModuleDefaults": {
+            "pm1": 2,
+            "pm2": 3
+        }
+    },
+    
+    "topics": {
+        "plc": "OCPP/Amphawa1/PLC",
+        "pi5Heartbeat": "OCPP/Amphawa1/heartbeatPI5",
+        "ebError": "OCPP/amphawa/error",
+        "ebTemp": "OCPP/amphawa/edgeboxTemp",
+        "ebHeartbeat": "OCPP/amphawa/heartbeat",
+        "ebCountDevice": "OCPP/Amphawa1/totaltime",
+        "router": "Amphawa1",
+        "mdbRaw": "MDB_Amphawa1",
+        "ambient": "ev_charging/temperature/modbus/slave5/Amphawa1",
+        "bme280": "ev_charging/temperature/bme280/Amphawa1",
+        "insulation1": "ev_charging/insulation/slave3/measurement/Amphawa1",
+        "insulation2": "ev_charging/insulation/slave4/measurement/Amphawa1",
+        "fanRpm": "Amphawa1/RPM"
+    },
+    "collections": {
+        "meter": "amphawa"
+    },
+    "serviceLife": {
+        "commitDate": "2024-04-22",
+        "endDate": "2026-02-23T16:00:00"
+    }
+}
