@@ -1,3 +1,4 @@
+#core\aggregators.py
 """
 Aggregators
 
@@ -135,7 +136,7 @@ class CBMAggregator(BaseAggregator):
     def update_eb_temp(self, eb_data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from edgebox temp topic"""
         extracted = {
-            'eb_temp': eb_data.get('eb_temp', eb_data.get('temperature'))
+            'eb_temp': eb_data.get('edgeboxTemp', eb_data.get('eb_temp', eb_data.get('temperature')))
         }
         self.update('EBTemp', extracted, ts)
     
@@ -238,7 +239,7 @@ class Module2Aggregator(BaseAggregator):
     def update_eb_temp(self, data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from edgebox temp topic"""
         extracted = {
-            'eb_temp': data.get('eb_temp', data.get('temperature'))
+            'eb_temp': data.get('edgeboxTemp', data.get('eb_temp', data.get('temperature')))
         }
         self.update('EBTemp', extracted, ts)
     
