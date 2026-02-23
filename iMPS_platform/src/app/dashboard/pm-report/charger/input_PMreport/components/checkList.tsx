@@ -108,6 +108,9 @@ async function _bgCompressImage(file: File, maxWidth = 1920, quality = 0.8): Pro
 }
 
 async function _bgUploadSingle(reportId: string, sn: string, group: string, file: File, side: "pre" | "post") {
+    if (!file || file.size === 0) {
+        throw new Error(`Empty file: ${file?.name ?? 'unknown'} (size=0)`);
+    }
     const form = new FormData();
     form.append("sn", sn);
     form.append("group", group);
@@ -2821,13 +2824,26 @@ export default function ChargerPMForm() {
             }
 
             // ⚡ เตรียม tasks สำหรับ background upload
+            // const bgTasks: BgUploadTask[] = [];
+            // Object.entries(photos).forEach(([no, list]) => {
+            //     (list || []).forEach(p => {
+            //         if (p.file) bgTasks.push({ reportId: report_id, sn, group: no, file: p.file, side: "pre" });
+            //     });
+            // });
             const bgTasks: BgUploadTask[] = [];
-            Object.entries(photos).forEach(([no, list]) => {
-                (list || []).forEach(p => {
-                    if (p.file) bgTasks.push({ reportId: report_id, sn, group: no, file: p.file, side: "pre" });
-                });
-            });
-
+            for (const [no, list] of Object.entries(photos)) {
+                for (const p of (list || [])) {
+                    if (p.file) {
+                        // ✅ clone data ออกจาก IDB reference
+                        const cloned = new File(
+                            [await p.file.arrayBuffer()],
+                            p.file.name,
+                            { type: p.file.type }
+                        );
+                        bgTasks.push({ reportId: report_id, sn, group: no, file: cloned, side: "pre" });
+                    }
+                }
+            }
             // ⚡ Enqueue background upload → ไม่ block UI
             enqueueBgUploads(bgTasks);
 
@@ -2837,6 +2853,7 @@ export default function ChargerPMForm() {
             Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => { });
             clearDraftLocal(key);
             setPhotos({});
+
             router.replace(`${pathname}?sn=${encodeURIComponent(sn)}&action=post&edit_id=${report_id}&pmtab=post`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
