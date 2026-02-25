@@ -66,6 +66,7 @@ export default function ChargeBoxId() {
   const [chargeBoxId, setChargeBoxId] = useState<string>("");
   const [ocppUrl, setOcppUrl] = useState<string>("");
   const [stationName, setStationName] = useState<string>("");
+  const [brand, setBrand] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +76,8 @@ export default function ChargeBoxId() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+
+  const isFlexxfast = brand.toLowerCase() === "flexxfast";
 
   useEffect(() => {
     const snFromUrl = searchParams.get("SN");
@@ -106,6 +109,7 @@ export default function ChargeBoxId() {
       setChargeBoxId(data?.station?.chargeBoxID ?? "");
       setOcppUrl(data?.station?.ocppUrl ?? "");
       setStationName(data?.station?.station_name ?? "");
+      setBrand(data?.station?.brand ?? "");
     } catch (e: any) {
       if (e?.name !== "AbortError") setError(e?.message || "fetch failed");
     } finally { setLoading(false); }
@@ -219,7 +223,7 @@ export default function ChargeBoxId() {
           </div>
         }
         right={
-          SN && !loading && !error ? (
+          SN && !loading && !error && isFlexxfast ? (
             <button
               onClick={openModal}
               title={t.chargerSettings}
