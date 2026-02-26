@@ -339,6 +339,65 @@ class ChargerSettingBody(BaseModel):
 
 #     return {"message": "ok", "modified": result.modified_count}
 
+# @router.patch("/charger/setting")
+# def update_charger_setting(
+#     body: ChargerSettingBody,
+#     current: UserClaims = Depends(get_current_user),
+# ):
+#     """อัปเดต Charger Setting + ส่ง MQTT"""
+    
+#     now_iso = datetime.now(timezone.utc).isoformat()
+    
+#     updates = {}
+#     if body.chargeBoxID is not None:
+#         updates["chargeBoxID"] = body.chargeBoxID
+#     if body.ocppUrl is not None:
+#         updates["ocppUrl"] = body.ocppUrl
+#         print(f"📤 [MQTT] Broker: {BROKER_HOST}:{BROKER_PORT}")
+#         print(f"   Client connected? {mqtt_client.is_connected()}")
+
+#     if not updates:
+#         raise HTTPException(status_code=400, detail="No fields to update")
+
+#     # ✅ Update MongoDB
+#     result = charger_collection.update_one(
+#         {"SN": body.SN},
+#         {"$set": updates},
+#     )
+    
+#     if result.matched_count == 0:
+#         raise HTTPException(status_code=404, detail="Charger not found")
+
+#     print(f"[{now_iso}] 🔄 Update Charger: {body.SN}")
+#     print(f"  Updates: {updates}")
+
+#     # ✅ ส่ง MQTT Notification ให้ CP.py รับรู้!
+#     if body.ocppUrl is not None:
+#         msg = {
+#             "SN": body.SN,
+#             "chargeBoxID": body.chargeBoxID,
+#             "ocppUrl": body.ocppUrl,
+#             "action": "ocpp_update",
+#             "timestamp": now_iso,
+#         }
+#         payload_str = json.dumps(msg, ensure_ascii=False)
+        
+#         try:
+#             pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
+#             pub_result.wait_for_publish(timeout=2.0)
+#             published = pub_result.is_published()
+#             print(f"[MQTT] OCPP URL Update sent - published={published}")
+#             print(f"  Message: {payload_str}")
+#         except Exception as e:
+#             print(f"[MQTT] Error sending notification: {e}")
+
+#     return {
+#         "ok": True,
+#         "message": "Charger setting updated",
+#         "modified": result.modified_count,
+#         "timestamp": now_iso,
+#     }
+
 @router.patch("/charger/setting")
 def update_charger_setting(
     body: ChargerSettingBody,
@@ -348,31 +407,66 @@ def update_charger_setting(
     
     now_iso = datetime.now(timezone.utc).isoformat()
     
+    print(f"\n{'='*60}")
+    print(f"[{now_iso}] 🔧 CHARGER SETTING UPDATE")
+    print(f"{'='*60}")
+    print(f"  SN           : {body.SN}")
+    print(f"  chargeBoxID  : {body.chargeBoxID}")
+    print(f"  ocppUrl      : {body.ocppUrl}")
+    
     updates = {}
     if body.chargeBoxID is not None:
         updates["chargeBoxID"] = body.chargeBoxID
     if body.ocppUrl is not None:
         updates["ocppUrl"] = body.ocppUrl
-        print(f"📤 [MQTT] Broker: {BROKER_HOST}:{BROKER_PORT}")
-        print(f"   Client connected? {mqtt_client.is_connected()}")
 
     if not updates:
+        print(f"  ❌ No fields to update")
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    # ✅ Update MongoDB
+    # ✅ Step 1: Update MongoDB
+    print(f"\n  📦 Step 1: MongoDB Update")
     result = charger_collection.update_one(
         {"SN": body.SN},
         {"$set": updates},
     )
+    print(f"  matched_count  : {result.matched_count}")
+    print(f"  modified_count : {result.modified_count}")
     
     if result.matched_count == 0:
+        print(f"  ❌ Charger not found in MongoDB!")
         raise HTTPException(status_code=404, detail="Charger not found")
+    
+    # ✅ ยืนยัน MongoDB อัปเดตจริง
+    verify = charger_collection.find_one({"SN": body.SN}, {"ocppUrl": 1, "chargeBoxID": 1})
+    print(f"  ✅ MongoDB verified: ocppUrl={verify.get('ocppUrl')}, chargeBoxID={verify.get('chargeBoxID')}")
 
-    print(f"[{now_iso}] 🔄 Update Charger: {body.SN}")
-    print(f"  Updates: {updates}")
-
-    # ✅ ส่ง MQTT Notification ให้ CP.py รับรู้!
+    # ✅ Step 2: ส่ง MQTT
+    mqtt_published = False
     if body.ocppUrl is not None:
+        print(f"\n  📡 Step 2: MQTT Publish")
+        print(f"  Broker     : {BROKER_HOST}:{BROKER_PORT}")
+        print(f"  Topic      : {MQTT_TOPIC}")
+        print(f"  Connected? : {mqtt_client.is_connected()}")
+        
+        # 🔥 Auto-reconnect ถ้าหลุด
+        if not mqtt_client.is_connected():
+            print(f"  ⚠️ MQTT disconnected, trying reconnect...")
+            try:
+                mqtt_client.reconnect()
+                import time
+                for i in range(10):
+                    if mqtt_client.is_connected():
+                        break
+                    time.sleep(0.5)
+                
+                if mqtt_client.is_connected():
+                    print(f"  ✅ Reconnected!")
+                else:
+                    print(f"  ❌ Reconnect timeout (5s)")
+            except Exception as e:
+                print(f"  ❌ Reconnect failed: {type(e).__name__}: {e}")
+        
         msg = {
             "SN": body.SN,
             "chargeBoxID": body.chargeBoxID,
@@ -381,19 +475,32 @@ def update_charger_setting(
             "timestamp": now_iso,
         }
         payload_str = json.dumps(msg, ensure_ascii=False)
+        print(f"  Payload    : {payload_str}")
         
         try:
             pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
-            pub_result.wait_for_publish(timeout=2.0)
-            published = pub_result.is_published()
-            print(f"[MQTT] OCPP URL Update sent - published={published}")
-            print(f"  Message: {payload_str}")
+            pub_result.wait_for_publish(timeout=5.0)
+            mqtt_published = pub_result.is_published()
+            print(f"  rc         : {pub_result.rc}")
+            print(f"  published  : {mqtt_published}")
+            print(f"  ✅ MQTT sent!" if mqtt_published else "  ❌ MQTT NOT published!")
         except Exception as e:
-            print(f"[MQTT] Error sending notification: {e}")
+            print(f"  ❌ MQTT Error: {type(e).__name__}: {e}")
+    else:
+        print(f"\n  ⏭️ Step 2: Skip MQTT (ocppUrl not changed)")
+
+    print(f"{'='*60}\n")
 
     return {
         "ok": True,
         "message": "Charger setting updated",
         "modified": result.modified_count,
         "timestamp": now_iso,
+        "debug": {
+            "mongodb_matched": result.matched_count,
+            "mongodb_modified": result.modified_count,
+            "mqtt_connected": mqtt_client.is_connected(),
+            "mqtt_published": mqtt_published,
+            "mqtt_topic": MQTT_TOPIC,
+        }
     }
