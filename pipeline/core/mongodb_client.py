@@ -1,3 +1,4 @@
+#core\mongodb_client.py
 """
 MongoDB Client
 
@@ -78,10 +79,10 @@ class MongoDBClient:
         """
         naming = self.config.collection_naming.get(db_key, 'serialNumber')
         
-        if naming == 'stationId':
-            collection_name = station_config.stationId
+        if naming == 'station_id':
+            collection_name = station_config.station_id  
         else:
-            collection_name = station_config.serialNumber
+            collection_name = station_config.serial_number  
         
         return self.get_collection(db_key, collection_name)
     
@@ -164,6 +165,18 @@ class MongoDBClient:
         except Exception as e:
             logger.error(f"Error getting meter data: {e}")
             return {'meter1': 0, 'meter2': 0}
+        
+    def get_mdb_realtime_db(self):
+        """Get __MDB_realtime__ database"""
+        if self._client:
+            return self._client[self.config.mdb_realtime_db]
+        return None
+    
+    def get_mdb_history_db(self):
+        """Get __MDB_history__ database"""
+        if self._client:
+            return self._client[self.config.mdb_history_db]
+        return None
 
 class RecoveryLoader:
     """
@@ -182,8 +195,8 @@ class RecoveryLoader:
         - module6DcChargerRulPrediction: Service lives, Power module, DC fan
         - monitorCBM: DC contractor counts (backup)
         """
-        station_id = station_config.stationId
-        serial_number = station_config.serialNumber
+        station_id = station_config.station_id  # เปลี่ยน
+        serial_number = station_config.serial_number  # เปลี่ยน
         
         result = {
             'dc_contractors': {},
@@ -277,7 +290,7 @@ class RecoveryLoader:
         """
         Load PM Report data for dust filter tracking.
         """
-        serial_number = station_config.serialNumber
+        serial_number = station_config.serial_number
         
         result = {
             'pm_date': None,
@@ -288,7 +301,7 @@ class RecoveryLoader:
         if pm_doc:
             result['pm_date'] = pm_doc.get('pm_date')
             result['dust_filter_enabled'] = pm_doc.get('dust_filter') == 'yes'
-            logger.debug(f"[{station_config.stationId}] PM Report: "
+            logger.debug(f"[{station_config.station_id}] PM Report: "
                         f"date={result['pm_date']}, dust_filter={result['dust_filter_enabled']}")
         
         return result
@@ -317,7 +330,7 @@ class RecoveryLoader:
         
         # DC Fan Timers
         dc_fan_seconds = recovery_data.get('dc_fan_seconds', 0)
-        for i in range(1, state.config.hardware.dcFanCount + 1):
+        for i in range(1, state.config.hardware.dc_fan_count  + 1):
             state.timers.set_dc_fan_seconds(i, dc_fan_seconds)
         
         # Power Modules

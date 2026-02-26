@@ -73,18 +73,18 @@ class MQTTClient:
             processor_callback: Callback function(station_id, topic_key, data, timestamp)
         """
         topics = station_config.topics
-        station_id = station_config.stationId
+        station_id = station_config.station_id
         
-        # Map topic to topic_key for routing
+        # Map topic to topic_key for routing (✅ ไม่รวม mdb_raw)
         topic_mapping = {
             topics.plc: 'plc',
-            topics.pi5Heartbeat: 'pi5_heartbeat',
-            topics.ebError: 'eb_error',
-            topics.ebTemp: 'eb_temp',
-            topics.ebHeartbeat: 'eb_heartbeat',
-            topics.ebCountDevice: 'eb_count_device',
+            topics.pi5_heartbeat: 'pi5_heartbeat',
+            topics.eb_error: 'eb_error',
+            topics.eb_temp: 'eb_temp',
+            topics.eb_heartbeat: 'eb_heartbeat',
+            topics.eb_count_device: 'eb_count_device',
             topics.router: 'router',
-            topics.mdbRaw: 'mdb',
+            # topics.mdb_raw: 'mdb',  ← ✅ ตัดออก
             topics.ambient: 'ambient',
             topics.bme280: 'bme280',
             topics.insulation1: 'insulation1',
@@ -92,8 +92,8 @@ class MQTTClient:
         }
         
         # Add optional topics if configured
-        if topics.fanRpm:
-            topic_mapping[topics.fanRpm] = 'fan_rpm'
+        if topics.fan_rpm:
+            topic_mapping[topics.fan_rpm] = 'fan_rpm'
         
         if topics.meter:
             topic_mapping[topics.meter] = 'meter'

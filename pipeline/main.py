@@ -1,4 +1,3 @@
-#main.py
 #!/usr/bin/env python3
 """
 EV Charger Pipeline - Main Entry Point
@@ -10,6 +9,9 @@ import argparse
 import time
 from typing import Dict, Optional, Any, List
 from datetime import datetime
+import asyncio
+import threading
+from core.mdb_subscriber import MDBSubscriber
 
 from config import settings, StationConfig
 from core import MQTTClient, MongoDBClient, RecoveryLoader, StateManager, StationState
@@ -23,7 +25,7 @@ from processors import (
     ErrorProcessor,
     InsulationProcessor,
     FanRpmProcessor,
-    MeterProcessor  # เพิ่ม
+    MeterProcessor
 )
 from utils import now_tz
 
@@ -37,14 +39,14 @@ logger = logging.getLogger(__name__)
 
 class Pipeline:
     
-    def __init__(self, station_names: Optional[List[str]] = None, debug: bool = False):
+    def __init__(self, station_ids: Optional[List[str]] = None, debug: bool = False):
         if debug:
             logging.getLogger().setLevel(logging.DEBUG)
         
         self.running = False
         
-        logger.info("Loading station configurations...")
-        settings.load_stations(station_names)
+        logger.info("Loading station configurations from MongoDB...")
+        settings.load_stations(station_ids)  # โหลดจาก MongoDB
         
         if not settings.stations:
             logger.error("No stations configured!")
@@ -67,10 +69,14 @@ class Pipeline:
         self.error_processor = ErrorProcessor()
         self.insulation_processor = InsulationProcessor()
         self.fan_rpm_processor = FanRpmProcessor()
-        self.meter_processor = MeterProcessor()  # เพิ่ม
+        self.meter_processor = MeterProcessor()
         
         # Aggregators per station
         self.aggregators: Dict[str, AggregatorManager] = {}
+
+        # MDB Subscriber
+        self.mdb_subscriber: Optional[MDBSubscriber] = None
+        self._mdb_reload_thread: Optional[threading.Thread] = None
     
     def setup(self) -> bool:
         # Connect to MongoDB
@@ -95,25 +101,54 @@ class Pipeline:
             if station_config.collections.meter:
                 meter_data = self.mongodb.get_latest_meter(station_config.collections.meter)
                 state.set_meter_data(meter_data['meter1'], meter_data['meter2'])
-                logger.info(f"[{station_config.stationId}] Recovered meter: {meter_data}")
+                logger.info(f"[{station_config.station_id}] Recovered meter: {meter_data}")
             
             # Create aggregators for this station
-            agg_manager = AggregatorManager(station_config.stationId, timeout_seconds=120)
-            self.aggregators[station_config.stationId] = agg_manager
+            agg_manager = AggregatorManager(station_config.station_id, timeout_seconds=120)
+            self.aggregators[station_config.station_id] = agg_manager
             
             # Set aggregator callbacks
-            self._setup_aggregator_callbacks(station_config.stationId, agg_manager)
+            self._setup_aggregator_callbacks(station_config.station_id, agg_manager)
             
             # Register MQTT topics
             self.mqtt.register_station_topics(station_config, self._process_message)
         
-        # Connect to MQTT
+        # ✅ Setup MDB Subscriber (นอก for loop)
+        self.mdb_subscriber = MDBSubscriber(self.mongodb)
+        self.mdb_subscriber.set_data_callback(self._on_mdb_data)
+        
+        # Load initial topic map (sync)
+        import asyncio
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(self.mdb_subscriber.load_topic_map())
+        loop.close()
+        
+        # Connect MDB subscriber
+        if not self.mdb_subscriber.connect():
+            logger.warning("MDB Subscriber failed to connect (continuing without MDB)")
+        
+        # ✅ Connect to MQTT (นอก for loop)
         if not self.mqtt.connect():
             logger.error("Failed to connect to MQTT broker")
             return False
         
         return True
     
+    def _on_mdb_data(self, station_id: str, data: Dict[str, Any]):
+        """Callback when MDB data arrives - update state and trigger processors"""
+        state = self.state_manager.get_station(station_id)
+        if state:
+            timestamp = now_tz()
+            state.update_latest('mdb', data, timestamp)
+            
+            # Trigger MDB processor
+            self.mdb_processor.process(state, data, timestamp)
+            
+            # Update aggregators
+            agg = self.aggregators.get(station_id)
+            if agg:
+                agg.cbm.update_mdb(data, timestamp)
+
     def _setup_aggregator_callbacks(self, station_id: str, agg_manager: AggregatorManager):
         """Setup callbacks for aggregators"""
         
@@ -204,7 +239,7 @@ class Pipeline:
             elif topic_key == 'fan_rpm':
                 self.fan_rpm_processor.process(state, data, timestamp)
             
-            elif topic_key == 'meter':  # เพิ่ม meter handler
+            elif topic_key == 'meter':
                 self.meter_processor.process(state, data, timestamp)
             
             else:
@@ -217,6 +252,17 @@ class Pipeline:
         self.running = True
         self.mqtt.start()
         
+        # Start MDB subscriber
+        if self.mdb_subscriber:
+            self.mdb_subscriber.start()
+            
+            # Start reload loop in background thread
+            self._mdb_reload_thread = threading.Thread(
+                target=self._run_mdb_reload_loop,
+                daemon=True
+            )
+            self._mdb_reload_thread.start()
+
         logger.info("="*60)
         logger.info("Pipeline is running!")
         logger.info(f"Stations: {list(settings.stations.keys())}")
@@ -230,6 +276,12 @@ class Pipeline:
         
         self.stop()
     
+    def _run_mdb_reload_loop(self):
+        """Run MDB reload loop in background"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(self.mdb_subscriber.run_reload_loop())
+
     def stop(self):
         logger.info("Stopping pipeline...")
         self.running = False
@@ -237,23 +289,26 @@ class Pipeline:
         self.mongodb.close()
         logger.info("Pipeline stopped")
 
+        if self.mdb_subscriber:
+            self.mdb_subscriber.stop()
+
 
 def main():
     parser = argparse.ArgumentParser(
         description='EV Charger Pipeline - Process charging station data'
     )
     parser.add_argument('--stations', '-s', type=str,
-                        help='Comma-separated list of station names (default: all)')
+                        help='Comma-separated list of station IDs (default: all)')
     parser.add_argument('--debug', '-d', action='store_true',
                         help='Enable debug logging')
     
     args = parser.parse_args()
     
-    station_names = None
+    station_ids = None
     if args.stations:
-        station_names = [s.strip() for s in args.stations.split(',')]
+        station_ids = [s.strip() for s in args.stations.split(',')]
     
-    pipeline = Pipeline(station_names=station_names, debug=args.debug)
+    pipeline = Pipeline(station_ids=station_ids, debug=args.debug)
     
     def handle_signal(signum, frame):
         logger.info(f"Received signal {signum}")

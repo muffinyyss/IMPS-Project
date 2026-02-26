@@ -221,8 +221,8 @@ class TimerManager:
     """
     
     def __init__(self, hardware_config: 'HardwareConfig'):
-        self.dc_fan_count = hardware_config.dcFanCount
-        self.pm_count = hardware_config.powerModuleCount
+        self.dc_fan_count = hardware_config.dc_fan_count  
+        self.pm_count = hardware_config.power_module_count 
         
         # FUSE timers (2)
         self.fuse_timers: Dict[str, FuseTimer] = {

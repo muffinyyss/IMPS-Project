@@ -40,8 +40,8 @@ class StationState:
     
     def __init__(self, config: StationConfig):
         self.config = config
-        self.station_id = config.stationId
-        self.serial_number = config.serialNumber
+        self.station_id = config.station_id  # เปลี่ยนจาก stationId
+        self.serial_number = config.serial_number  # เปลี่ยนจาก serialNumber
         self._meter_data: Dict[str, Any] = {'meter1': 0, 'meter2': 0}
         self._meter_initialized: bool = False
         
@@ -49,8 +49,8 @@ class StationState:
         
         # Calculate initial service life seconds
         initial_seconds = calculate_initial_seconds(
-            config.serviceLife.commitDate,
-            config.serviceLife.endDate
+            config.service_life.commit_date,  # เปลี่ยนจาก serviceLife.commitDate
+            config.service_life.end_date  # เปลี่ยนจาก serviceLife.endDate
         )
         logger.info(f"[{self.station_id}] Initial service life: {initial_seconds} seconds")
         
@@ -163,7 +163,7 @@ class StationState:
                 now = now_tz()
             
             # DC Contractors
-            for i in range(1, self.config.hardware.dcContractorCount + 1):
+            for i in range(1, self.config.hardware.dc_contractor_count + 1):  # เปลี่ยน
                 key = f"DCConType{i}"
                 if key in plc_data:
                     self.counters.update_dc(i, plc_data[key])
@@ -180,8 +180,8 @@ class StationState:
             icp2 = plc_data.get('icp2', 0)
             usl2 = plc_data.get('usl2', 0)
             
-            ms1_val = plc_data.get('activeMld1', self.config.hardware.powerModuleDefaults.get('pm1', 2))
-            ms2_val = plc_data.get('activeMld2', self.config.hardware.powerModuleDefaults.get('pm2', 3))
+            ms1_val = plc_data.get('activeMld1', self.config.hardware.power_module_defaults.get('pm1', 2))  # เปลี่ยน
+            ms2_val = plc_data.get('activeMld2', self.config.hardware.power_module_defaults.get('pm2', 3))  # เปลี่ยน
             
             self.counters.update_motor_starter(1, ms1_val, icp1, usl1, now)
             self.counters.update_motor_starter(2, ms2_val, icp2, usl2, now)
@@ -233,7 +233,7 @@ class StationState:
                 self.service_life.update_hmi_status(plc_data['HMI_status'], now)
             
             # Energy meter (LEM type)
-            if self.config.hardware.energyMeterType.upper() == 'LEM':
+            if self.config.hardware.energy_meter_type.upper() == 'LEM':  # เปลี่ยน
                 if 'LEM1_status' in plc_data:
                     self.service_life.update_energy_meter_lem(1, plc_data['LEM1_status'])
                 if 'LEM2_status' in plc_data:
@@ -248,13 +248,13 @@ class StationState:
                                         now: Optional[datetime] = None):
         """Update energy meter status from error topic (PILOT type)"""
         with self._lock:
-            if self.config.hardware.energyMeterType.upper() == 'PILOT':
+            if self.config.hardware.energy_meter_type.upper() == 'PILOT':  # เปลี่ยน
                 self.service_life.update_energy_meter_pilot(error_data, now)
     
     def get_fan_rpm(self, fan_num: int) -> float:
         """Get fan RPM based on fan type"""
         with self._lock:
-            if self.config.hardware.fanType.upper() == 'EBM':
+            if self.config.hardware.fan_type.upper() == 'EBM':  # เปลี่ยน
                 # Get from fan_rpm topic
                 rpm_data = self.latest['fan_rpm'].data
                 if rpm_data:
@@ -272,7 +272,7 @@ class StationState:
     def get_all_fan_rpm(self) -> Dict[str, float]:
         """Get all fan RPMs"""
         result = {}
-        for i in range(1, self.config.hardware.dcFanCount + 1):
+        for i in range(1, self.config.hardware.dc_fan_count + 1):  # เปลี่ยน
             result[f'fan{i}'] = self.get_fan_rpm(i)
         return result
     
@@ -336,8 +336,8 @@ class StateManager:
         """Add a new station"""
         with self._lock:
             state = StationState(config)
-            self.stations[config.stationId] = state
-            logger.info(f"Added station state: {config.stationId}")
+            self.stations[config.station_id] = state  # เปลี่ยน
+            logger.info(f"Added station state: {config.station_id}")  # เปลี่ยน
             return state
     
     def get_station(self, station_id: str) -> Optional[StationState]:

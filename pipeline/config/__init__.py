@@ -1,3 +1,7 @@
+# config/__init__.py
+"""
+Configuration Module
+"""
 from .settings import (
     settings,
     Settings,
@@ -7,8 +11,8 @@ from .settings import (
     HardwareConfig,
     TopicsConfig,
     ServiceLifeConfig,
-    load_station_config,
-    load_all_station_configs
+    CollectionsConfig,
+    parse_station_config
 )
 
 __all__ = [
@@ -20,6 +24,6 @@ __all__ = [
     'HardwareConfig',
     'TopicsConfig',
     'ServiceLifeConfig',
-    'load_station_config',
-    'load_all_station_configs'
+    'CollectionsConfig',
+    'parse_station_config'
 ]

@@ -234,7 +234,7 @@ class ErrorProcessor:
         state.update_latest('eb_error', error_data, timestamp)
         
         # Update energy meter status if PILOT type
-        if state.config.hardware.energyMeterType.upper() == 'PILOT':
+        if state.config.hardware.energy_meter_type.upper() == 'PILOT':
             state.update_energy_meter_from_error(error_data, timestamp)
             logger.debug(f"[{state.station_id}] Energy meter status updated from error")
 
