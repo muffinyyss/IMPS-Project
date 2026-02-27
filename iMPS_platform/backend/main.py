@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from config import mqtt_client, BROKER_HOST, BROKER_PORT, errorDB, client
+from config import errorDB, client
 import asyncio
 
+# ===== Auto CM Watcher =====
+from routers.auto_cm_watcher import start_watcher, stop_watcher
 
 # ===== Background Email Watcher =====
 email_watcher_task = None
@@ -36,7 +38,6 @@ async def email_watcher():
 
                     last_ids[sn] = latest.get("_id")
 
-                    # ★ Lookup SN → station info (ใช้ cache)
                     if sn not in sn_cache:
                         charger = await client["iMPS"]["charger"].find_one({"SN": sn})
                         if charger:
@@ -67,7 +68,6 @@ async def email_watcher():
                         "type": _determine_type_from_message(raw_message),
                     }
 
-                    # ★ เช็ค rules แล้วส่ง email
                     await _send_email_for_notification(notification, send_email_smtp)
 
                 except Exception as e:
@@ -136,8 +136,6 @@ async def _send_email_for_notification(notification: dict, send_email_smtp):
             body = f"Station: {station_name}\nSN: {sn}\n"
             if head:
                 body += f"Head: {head}\n"
-            # if chargebox_id:
-            #     body += f"ChargeBox ID: {chargebox_id}\n"
             body += f"Type: {notif_type}\nMessage: {error_msg}\nTime: {notification.get('timestamp', '-')}\n"
 
             await send_email_smtp(to=emails, subject=subject, body=body)
@@ -146,33 +144,22 @@ async def _send_email_for_notification(notification: dict, send_email_smtp):
         print(f"[email-watcher] Send error: {e}")
 
 
-# ===== Lifespan (ตัวเดียว — รวม MQTT + errorDB + email watcher) =====
+# ===== Lifespan =====
 async def lifespan(app: FastAPI):
     global email_watcher_task
 
-    # ★ set app.state ให้ notifications router ใช้ได้
     app.state.errorDB = errorDB
     app.state.mongo_client = client
 
-    # ★ MQTT
-    mqtt_client.connect_async(BROKER_HOST, BROKER_PORT, keepalive=60)
-    mqtt_client.loop_start()
-
-    # ★ Start email watcher
     email_watcher_task = asyncio.create_task(email_watcher())
+    start_watcher()
 
     try:
         yield
     finally:
-        # Stop email watcher
+        await stop_watcher()
         if email_watcher_task:
             email_watcher_task.cancel()
-            print("[shutdown] Email watcher stopped")
-        try:
-            mqtt_client.loop_stop()
-            mqtt_client.disconnect()
-        except Exception as e:
-            print(f"[MQTT] disconnect error: {e}")
 
 
 app = FastAPI(lifespan=lifespan)
