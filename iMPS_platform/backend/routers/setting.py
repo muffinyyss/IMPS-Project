@@ -183,7 +183,7 @@ async def setting_plc_cp(payload: PLCCPCommand):
     now_iso = datetime.now().isoformat()
 
     print(f"[{now_iso}] รับค่าจาก Front:")
-    print(f"  SN = {payload.SN}")
+    print(f"  SN eieieieieieiei = {payload.SN}")
     print(f"  cp_status1 = {payload.cp_status1}")
 
     msg = {
