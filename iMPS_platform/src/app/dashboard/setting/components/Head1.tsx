@@ -94,6 +94,8 @@ type PLCSetting = {
     cp_status1: "start" | "stop";           // 1 = start, 0 = stop
 };
 
+
+
 const STATE_META: Record<ChargeState, { label: string; className: string }> = {
     available: { label: "Avaliable", className: "tw-text-blue-gray-600" },
     preparing: { label: "Preparing", className: "tw-text-blue-600" },
