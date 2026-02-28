@@ -31,14 +31,20 @@ class MQTTConfig:
 # =============================================================================
 @dataclass
 class MongoDBConfig:
-    uri: str = "mongodb://imps_platform:eds_imps@203.154.130.132:27017/"
+    uri: str = "mongodb://imps_platform:eds_imps@localhost:27017/"
     
-    # MDB databases (ใหม่)
-    mdb_realtime_db: str = "MDB_realtime"
-    mdb_history_db: str = "MDB_history"
     # Database for loading charger configs
     config_database: str = "iMPS"
     config_collection: str = "charger"
+    
+    # MDB databases
+    mdb_realtime_db: str = "MDB_realtime"
+    mdb_history_db: str = "MDB_history"
+    
+    # Status databases (ใหม่)
+    edgebox_status_db: str = "edgeboxStatus"
+    pi5_status_db: str = "pi5Status"
+    router_status_db: str = "routerStatus"
     
     # Database names (14 databases)
     databases: Dict[str, str] = field(default_factory=lambda: {
@@ -99,18 +105,19 @@ class TopicsConfig:
     eb_heartbeat: str = ""
     eb_count_device: str = ""
     router: str = ""
-    ambient: str = ""
+    # ambient: str = ""  ← ตัดออก ใช้ bme280 แทน
     bme280: str = ""
     insulation1: str = ""
     insulation2: str = ""
     fan_rpm: Optional[str] = None
     meter: Optional[str] = None
+    ocpp_config: Optional[str] = None  # เพิ่มใหม่
     
     def get_all_topics(self) -> List[str]:
-        """Get list of all non-empty topics"""
+        """Get list of all non-empty subscribe topics"""
         topics = []
         for key in ['plc', 'pi5_heartbeat', 'eb_error', 'eb_temp', 'eb_heartbeat',
-                    'eb_count_device', 'router', 'ambient', 'bme280',
+                    'eb_count_device', 'router', 'bme280',
                     'insulation1', 'insulation2', 'fan_rpm', 'meter']:
             val = getattr(self, key, None)
             if val:
@@ -120,7 +127,7 @@ class TopicsConfig:
 
 @dataclass
 class ServiceLifeConfig:
-    commit_date: str = ""
+    # commit_date ตัดออก - ใช้ commissioningDate จาก parent document
     end_date: str = ""
 
 
@@ -134,6 +141,9 @@ class CollectionsConfig:
 class StationConfig:
     station_id: str = ""
     serial_number: str = ""
+    charge_box_id: str = ""  # เพิ่มใหม่
+    ocpp_url: str = ""  # เพิ่มใหม่
+    commissioning_date: str = ""  # เพิ่มใหม่ (แทน commit_date)
     hardware: HardwareConfig = field(default_factory=HardwareConfig)
     topics: TopicsConfig = field(default_factory=TopicsConfig)
     service_life: ServiceLifeConfig = field(default_factory=ServiceLifeConfig)
@@ -160,9 +170,12 @@ def parse_station_config(doc: Dict[str, Any]) -> Optional[StationConfig]:
     if not pipeline_config:
         return None
     
-    # Get station_id and SN from parent document
+    # Get values from parent document
     station_id = doc.get('station_id', '')
     serial_number = doc.get('SN', '')
+    charge_box_id = doc.get('chargeBoxID', '')  # เพิ่มใหม่
+    ocpp_url = doc.get('ocppUrl', '')  # เพิ่มใหม่
+    commissioning_date = doc.get('commissioningDate', '')  # เพิ่มใหม่
     
     if not station_id or not serial_number:
         return None
@@ -178,7 +191,7 @@ def parse_station_config(doc: Dict[str, Any]) -> Optional[StationConfig]:
         power_module_defaults=hw_data.get('power_module_defaults', {"pm1": 2, "pm2": 3})
     )
     
-    # Parse topics config (✅ ไม่รวม mdb_raw)
+    # Parse topics config (ไม่รวม ambient และ mdb_raw)
     topics_data = pipeline_config.get('topics', {})
     topics = TopicsConfig(
         plc=topics_data.get('plc', ''),
@@ -188,21 +201,17 @@ def parse_station_config(doc: Dict[str, Any]) -> Optional[StationConfig]:
         eb_heartbeat=topics_data.get('eb_heartbeat', ''),
         eb_count_device=topics_data.get('eb_count_device', ''),
         router=topics_data.get('router', ''),
-        # ✅ ตัด mdb_raw ออก - ไม่ดึงจาก topics_data
-        ambient=topics_data.get('ambient', ''),
         bme280=topics_data.get('bme280', ''),
         insulation1=topics_data.get('insulation1', ''),
         insulation2=topics_data.get('insulation2', ''),
         fan_rpm=topics_data.get('fan_rpm'),
-        meter=topics_data.get('meter')
+        meter=topics_data.get('meter'),
+        ocpp_config=topics_data.get('ocpp_config')  # เพิ่มใหม่
     )
     
-    # ... rest of function ...
-    
-    # Parse service life config
+    # Parse service life config (ใช้ commissioningDate แทน commit_date)
     sl_data = pipeline_config.get('service_life', {})
     service_life = ServiceLifeConfig(
-        commit_date=sl_data.get('commit_date', ''),
         end_date=sl_data.get('end_date', '')
     )
     
@@ -215,6 +224,9 @@ def parse_station_config(doc: Dict[str, Any]) -> Optional[StationConfig]:
     return StationConfig(
         station_id=station_id,
         serial_number=serial_number,
+        charge_box_id=charge_box_id,
+        ocpp_url=ocpp_url,
+        commissioning_date=commissioning_date,
         hardware=hardware,
         topics=topics,
         service_life=service_life,
@@ -241,9 +253,6 @@ class Settings:
         """
         Load station configs from MongoDB charger collection.
         Only loads chargers that have pipeline_config.
-        
-        Args:
-            station_ids: Optional list of station_ids to load. If None, load all.
         """
         from pymongo import MongoClient
         
@@ -282,8 +291,32 @@ class Settings:
         except Exception as e:
             logger.error(f"Failed to load stations from MongoDB: {e}")
     
+    def reload_station_config(self, station_id: str) -> Optional[StationConfig]:
+        """Reload a single station config from MongoDB"""
+        from pymongo import MongoClient
+        
+        try:
+            client = MongoClient(self.mongodb.uri)
+            db = client[self.mongodb.config_database]
+            collection = db[self.mongodb.config_collection]
+            
+            doc = collection.find_one({'station_id': station_id})
+            client.close()
+            
+            if doc:
+                config = parse_station_config(doc)
+                if config:
+                    self.stations[station_id] = config
+                    return config
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to reload station {station_id}: {e}")
+            return None
+    
     def load_stations(self, station_ids: Optional[List[str]] = None):
-        """Alias for load_stations_from_mongodb for backward compatibility"""
+        """Alias for load_stations_from_mongodb"""
         self.load_stations_from_mongodb(station_ids)
 
 

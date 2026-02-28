@@ -40,7 +40,6 @@ class MQTTClient:
         self.client.on_message = self._on_message
         
         # Topic -> Handler mapping
-        # Handler signature: (topic: str, data: Dict, timestamp: datetime)
         self._handlers: Dict[str, Callable] = {}
         
         # Topics to subscribe
@@ -51,13 +50,7 @@ class MQTTClient:
         self._lock = threading.Lock()
     
     def register_handler(self, topic: str, handler: Callable):
-        """
-        Register a handler for a topic.
-        
-        Args:
-            topic: MQTT topic
-            handler: Callback function(topic, data, timestamp)
-        """
+        """Register a handler for a topic."""
         with self._lock:
             self._handlers[topic] = handler
             self._topics.append(topic)
@@ -65,17 +58,11 @@ class MQTTClient:
     
     def register_station_topics(self, station_config: StationConfig, 
                                 processor_callback: Callable):
-        """
-        Register all topics for a station.
-        
-        Args:
-            station_config: Station configuration
-            processor_callback: Callback function(station_id, topic_key, data, timestamp)
-        """
+        """Register all topics for a station."""
         topics = station_config.topics
         station_id = station_config.station_id
         
-        # Map topic to topic_key for routing (✅ ไม่รวม mdb_raw)
+        # Map topic to topic_key for routing (ไม่รวม ambient และ mdb_raw)
         topic_mapping = {
             topics.plc: 'plc',
             topics.pi5_heartbeat: 'pi5_heartbeat',
@@ -84,8 +71,7 @@ class MQTTClient:
             topics.eb_heartbeat: 'eb_heartbeat',
             topics.eb_count_device: 'eb_count_device',
             topics.router: 'router',
-            # topics.mdb_raw: 'mdb',  ← ✅ ตัดออก
-            topics.ambient: 'ambient',
+            # topics.ambient: 'ambient',  ← ตัดออก
             topics.bme280: 'bme280',
             topics.insulation1: 'insulation1',
             topics.insulation2: 'insulation2'
@@ -106,7 +92,27 @@ class MQTTClient:
                     return handler
                 
                 self.register_handler(topic, make_handler(station_id, topic_key))
+    
+    def publish(self, topic: str, payload: Dict[str, Any], qos: int = 0):
+        """
+        Publish a message to a topic.
         
+        Args:
+            topic: MQTT topic
+            payload: Dict to publish as JSON
+            qos: Quality of Service (0, 1, or 2)
+        """
+        if not self._connected:
+            logger.warning(f"Cannot publish to {topic}: not connected")
+            return
+        
+        try:
+            message = json.dumps(payload)
+            self.client.publish(topic, message, qos=qos)
+            logger.debug(f"Published to {topic}: {message[:100]}...")
+        except Exception as e:
+            logger.error(f"Failed to publish to {topic}: {e}")
+    
     def connect(self) -> bool:
         """Connect to MQTT broker"""
         try:

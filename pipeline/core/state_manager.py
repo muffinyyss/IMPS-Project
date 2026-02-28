@@ -49,7 +49,7 @@ class StationState:
         
         # Calculate initial service life seconds
         initial_seconds = calculate_initial_seconds(
-            config.service_life.commit_date,  # เปลี่ยนจาก serviceLife.commitDate
+            config.commissioning_date,  # เปลี่ยนจาก serviceLife.commitDate
             config.service_life.end_date  # เปลี่ยนจาก serviceLife.endDate
         )
         logger.info(f"[{self.station_id}] Initial service life: {initial_seconds} seconds")
