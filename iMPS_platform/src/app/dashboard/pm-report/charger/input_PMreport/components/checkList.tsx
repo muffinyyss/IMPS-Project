@@ -15,6 +15,7 @@ import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 // Station name for GPS fallback — module-level is safe here because:
 // 1) "use client" component, only runs in browser
@@ -116,15 +117,12 @@ async function _bgUploadSingle(reportId: string, sn: string, group: string, file
     form.append("group", group);
     form.append("side", side);
     form.append("files", file, ensureJpgFilename(file.name));
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
     const url = side === "pre"
         ? `${API_BASE}/pmreport/${reportId}/pre/photos`
         : `${API_BASE}/pmreport/${reportId}/post/photos`;
     const res = await apiFetch(url, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: form,
-        credentials: "include",
     });
     if (!res.ok) {
         const errText = await res.text().catch(() => "");
@@ -514,8 +512,7 @@ async function fetchPreviewIssueId(sn: string, pmDate: string): Promise<string |
     const u = new URL(`${API_BASE}/pmreport/preview-issueid`);
     u.searchParams.set("sn", sn);
     u.searchParams.set("pm_date", pmDate);
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await apiFetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    const r = await apiFetch(u.toString());
     if (!r.ok) return null;
     const j = await r.json();
     return (j && typeof j.issue_id === "string") ? j.issue_id : null;
@@ -525,17 +522,15 @@ async function fetchPreviewDocName(sn: string, pmDate: string): Promise<string |
     const u = new URL(`${API_BASE}/pmreport/preview-docname`);
     u.searchParams.set("sn", sn);
     u.searchParams.set("pm_date", pmDate);
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-    const r = await apiFetch(u.toString(), { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+    const r = await apiFetch(u.toString());
     if (!r.ok) return null;
     const j = await r.json();
     return (j && typeof j.doc_name === "string") ? j.doc_name : null;
 }
 
 async function fetchReport(reportId: string, sn: string) {
-    const token = localStorage.getItem("access_token") ?? "";
     const url = `${API_BASE}/pmreport/get?sn=${sn}&report_id=${reportId}`;
-    const res = await apiFetch(url, { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include" });
+    const res = await apiFetch(url);
     if (!res.ok) throw new Error(await res.text());
     return await res.json();
 }
@@ -1947,7 +1942,9 @@ export default function ChargerPMForm() {
     const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
-    const [docName, setDocName] = useState<string>("");
+    const [pageLoading, setPageLoading] = useState(true);
+    const [preUploadState, setPreUploadState] = useState({ show: false, total: 0, completed: 0, failed: 0 });
+    const [docName, setDocName] = useState("");
 
     const pathname = usePathname();
     const searchParams = useSearchParams();
@@ -1991,6 +1988,7 @@ export default function ChargerPMForm() {
         }
     }, []);
 
+    
     const [inspector, setInspector] = useState<string>("");
     const [dustFilterChanged, setDustFilterChanged] = useState<Record<string, boolean>>({});
     const [postApiLoaded, setPostApiLoaded] = useState(false);
@@ -2139,6 +2137,9 @@ export default function ChargerPMForm() {
     useEffect(() => {
         if (!isPostMode || !editId || !sn) return;
         setPostApiLoaded(false);
+        // Reset Post-mode inputs เพื่อไม่ให้ค่าจาก Pre ติดมา
+        m16.setState(initMeasureState(VOLTAGE1_FIELDS, "V"));
+        setCp({});
         (async () => {
             try {
                 const data = await fetchReport(editId, sn);
@@ -2164,18 +2165,19 @@ export default function ChargerPMForm() {
                     if (q7Count > 0) initQ7Items(q7Count);
                 }
                 if (data.rows) { setRows((prev) => { const next = { ...prev }; Object.entries(data.rows).forEach(([k, v]) => { next[k] = v as { pf: PF; remark: string }; }); return next; }); }
-                else if (data.rows_pre) { setRows((prev) => { const next = { ...prev }; Object.entries(data.rows_pre).forEach(([k, v]) => { const preRow = v as { pf: PF; remark: string }; next[k] = { pf: preRow.pf, remark: "" }; }); return next; }); }
                 setPostApiLoaded(true);
             } catch (err) { console.error("load report failed:", err); setPostApiLoaded(true); }
         })();
     }, [isPostMode, editId, sn]);
 
     useEffect(() => {
-        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-        if (!token) return;
+        if (isPostMode && postApiLoaded) setPageLoading(false);
+    }, [isPostMode, postApiLoaded]);
+
+    useEffect(() => {
         (async () => {
             try {
-                const res = await apiFetch(`${API_BASE}/me`, { method: "GET", headers: { Authorization: `Bearer ${token}` }, credentials: "include" });
+                const res = await apiFetch(`${API_BASE}/me`);
                 if (!res.ok) return;
                 const data: Me = await res.json();
                 setMe(data);
@@ -2212,7 +2214,8 @@ export default function ChargerPMForm() {
         const params = new URLSearchParams(window.location.search);
         const snParam = params.get("sn") || localStorage.getItem("selected_sn");
         if (snParam) setSn(snParam);
-        if (!snParam || isPostMode) return;
+        // if (!snParam || isPostMode) return;
+        if (!snParam || isPostMode) { setPageLoading(false); return; }
         getChargerInfoBySN(snParam)
             .then((st) => {
                 setJob((prev) => ({
@@ -2222,8 +2225,10 @@ export default function ChargerPMForm() {
                     date: prev.date || new Date().toISOString().slice(0, 10),
                     chargingCables: st.chargingCables || prev.chargingCables || 1,
                 }));
+                setPageLoading(false);
             })
-            .catch((err) => console.error("load charger info failed:", err));
+            // .catch((err) => console.error("load charger info failed:", err));
+            .catch((err) => { console.error("load charger info failed:", err); setPageLoading(false); });
     }, [isPostMode]);
 
     // === LOAD DRAFT (Pre mode) ===
@@ -2730,10 +2735,9 @@ export default function ChargerPMForm() {
         form.append("group", group);
         form.append("side", side);
         form.append("files", file, ensureJpgFilename(file.name));
-        const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/pmreport/${reportId}/pre/photos` : `${API_BASE}/pmreport/${reportId}/post/photos`;
         console.log(`[upload] ${group} → 1 file | size: ${(file.size / 1024).toFixed(0)}KB | name: ${file.name}`);
-        const res = await apiFetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
+        const res = await apiFetch(url, { method: "POST", body: form });
         if (!res.ok) {
             const errText = await res.text().catch(() => "");
             const errMsg = `[${res.status}] ${group}: ${errText || res.statusText}`;
@@ -2797,7 +2801,7 @@ export default function ChargerPMForm() {
         if (submitting) return;
         setSubmitting(true);
         try {
-            const token = localStorage.getItem("access_token");
+            // const token = localStorage.getItem("access_token");
 
             // ⚡ ตรวจสอบ report_id: ref > draft > submit ใหม่
             let report_id = preReportIdRef.current;
@@ -2813,7 +2817,7 @@ export default function ChargerPMForm() {
                 const pm_date = job.date?.trim() || "";
                 const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
                 const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId };
-                const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+                const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string; doc_name?: string };
                 report_id = jsonRes.report_id;
@@ -2830,24 +2834,68 @@ export default function ChargerPMForm() {
             //         if (p.file) bgTasks.push({ reportId: report_id, sn, group: no, file: p.file, side: "pre" });
             //     });
             // });
-            const bgTasks: BgUploadTask[] = [];
+            const uploadEntries: { group: string; files: File[] }[] = [];
             for (const [no, list] of Object.entries(photos)) {
+                const files: File[] = [];
                 for (const p of (list || [])) {
                     if (p.file) {
-                        // ✅ clone data ออกจาก IDB reference
                         const cloned = new File(
                             [await p.file.arrayBuffer()],
                             p.file.name,
                             { type: p.file.type }
                         );
-                        bgTasks.push({ reportId: report_id, sn, group: no, file: cloned, side: "pre" });
+                        files.push(cloned);
                     }
                 }
+                if (files.length > 0) uploadEntries.push({ group: no, files });
             }
-            // ⚡ Enqueue background upload → ไม่ block UI
-            enqueueBgUploads(bgTasks);
 
-            // ⚡ Cleanup + navigate ทันที (ไม่ต้องรอ upload)
+            const totalPhotos = uploadEntries.reduce((sum, e) => sum + e.files.length, 0);
+
+            if (totalPhotos > 0) {
+                setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
+                let completedCount = 0;
+                let failedCount = 0;
+                const failures: { group: string; error: string }[] = [];
+
+                // Flatten all upload tasks
+                const allTasks: { group: string; file: File }[] = [];
+                for (const entry of uploadEntries) {
+                    const compressed = await Promise.all(entry.files.map(f => compressImage(f)));
+                    for (const file of compressed) {
+                        allTasks.push({ group: entry.group, file });
+                    }
+                }
+
+                // Upload with concurrency pool (3 at a time)
+                const CONCURRENCY = 3;
+                let idx = 0;
+                const runNext = async (): Promise<void> => {
+                    while (idx < allTasks.length) {
+                        const taskIdx = idx++;
+                        const task = allTasks[taskIdx];
+                        try {
+                            await uploadSinglePhotoWithRetry(report_id, sn, `g${task.group}`, task.file, "pre");
+                        } catch (err: any) {
+                            failedCount++;
+                            failures.push({ group: task.group, error: err?.message || "unknown" });
+                        }
+                        completedCount++;
+                        setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
+                    }
+                };
+                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNext()));
+
+                setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
+
+                if (failures.length > 0) {
+                    const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
+                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n${details}`);
+                    return;
+                }
+            }
+
+            // ⚡ Cleanup + navigate หลังอัปโหลดสำเร็จทั้งหมด
             preReportIdRef.current = null;
             const allPhotos = Object.values(photos).flat();
             Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => { });
@@ -2863,7 +2911,6 @@ export default function ChargerPMForm() {
         if (submitting) return;
         setSubmitting(true);
         try {
-            const token = localStorage.getItem("access_token");
 
             // ⚡ ตรวจสอบ report_id: ref > draft > submit ใหม่
             let report_id = postReportIdRef.current;
@@ -2876,7 +2923,7 @@ export default function ChargerPMForm() {
             }
             if (!report_id) {
                 const payload = { sn: sn, rows, measures: { m16: m16.state, cp }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged, side: "post" as TabId, report_id: editId };
-                const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, credentials: "include", body: JSON.stringify(payload) });
+                const submitRes = await apiFetch(`${API_BASE}/pmreport/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string };
                 report_id = jsonRes.report_id;
@@ -2894,16 +2941,51 @@ export default function ChargerPMForm() {
 
             // ⚡ อัปโหลดทีละ batch (3 กลุ่มพร้อมกัน) + retry แต่ละกลุ่ม 3 ครั้ง
             if (uploadEntries.length > 0) {
-                const failures = await uploadPhotosInBatches(uploadEntries, report_id, sn, "post");
+                const totalPhotos = uploadEntries.reduce((sum, e) => sum + e.files.length, 0);
+                setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
+                let completedCount = 0;
+                let failedCount = 0;
+                const failures: { group: string; error: string }[] = [];
+
+                // Flatten all upload tasks
+                const allTasks: { group: string; file: File }[] = [];
+                for (const entry of uploadEntries) {
+                    const compressed = await Promise.all(entry.files.map(f => compressImage(f)));
+                    for (const file of compressed) {
+                        allTasks.push({ group: entry.group, file });
+                    }
+                }
+
+                // Upload with concurrency pool (3 at a time)
+                const CONCURRENCY = 3;
+                let idx = 0;
+                const runNext = async (): Promise<void> => {
+                    while (idx < allTasks.length) {
+                        const taskIdx = idx++;
+                        const task = allTasks[taskIdx];
+                        try {
+                            await uploadSinglePhotoWithRetry(report_id, sn, `g${task.group}`, task.file, "post");
+                        } catch (err: any) {
+                            failedCount++;
+                            failures.push({ group: task.group, error: err?.message || "unknown" });
+                        }
+                        completedCount++;
+                        setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
+                    }
+                };
+                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNext()));
+
+                setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
+
                 if (failures.length > 0) {
                     const groupNums = failures.map(f => f.group).join(", ");
                     const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
                     console.error("[Post-PM upload failures]", failures);
                     alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${details}`);
-                    return; // ไม่ finalize เพื่อให้ user ลองใหม่ได้
+                    return;
                 }
             }
-            const finalizeRes = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ sn: sn }) });
+            const finalizeRes = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", body: new URLSearchParams({ sn: sn }) });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             postReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
             const allPhotos = Object.values(photos).flat();
@@ -2937,11 +3019,19 @@ export default function ChargerPMForm() {
 
     return (
         <section className="tw-pb-24">
+            <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+            {/* Pre-PM Upload Progress Overlay */}
+            <LoadingOverlay
+                show={preUploadState.show}
+                text={lang === "th"
+                    ? `กำลังอัปโหลดรูป${isPostMode ? " Post-PM" : " Pre-PM"}... ${preUploadState.completed}/${preUploadState.total} รูป`
+                    : `Uploading ${isPostMode ? "Post-PM" : "Pre-PM"} photos... ${preUploadState.completed}/${preUploadState.total}`}
+            />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
                 </Button>
-                <Tabs value={displayTab}>
+                <Tabs value={displayTab} key={displayTab}>
                     <TabsHeader className="tw-bg-blue-gray-50 tw-rounded-lg">
                         {TABS.map((tb) => {
                             const isPreDisabled = isPostMode && tb.id === "pre";
