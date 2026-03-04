@@ -72,12 +72,8 @@ class MDBProcessor:
         else:
             logger.debug(f"[{station_id}] Skipped duplicate module1")
 
-
 class RouterProcessor:
-    """
-    Processes Router topic data.
-    Updates heartbeat and stores RSSI for other processors.
-    """
+    """Processes Router topic data."""
     
     def __init__(self):
         pass
@@ -88,17 +84,13 @@ class RouterProcessor:
         if timestamp is None:
             timestamp = now_tz()
         
-        # Update latest data and heartbeat
         state.update_latest('router', router_data, timestamp)
         state.update_heartbeat('router', timestamp)
-        
         logger.debug(f"[{state.station_id}] Router heartbeat updated")
 
 
 class HeartbeatProcessor:
-    """
-    Processes heartbeat topics (Pi5, Edgebox).
-    """
+    """Processes heartbeat topics (Pi5, Edgebox)."""
     
     def __init__(self):
         pass
@@ -109,7 +101,7 @@ class HeartbeatProcessor:
         if timestamp is None:
             timestamp = now_tz()
         
-        state.update_latest('pi5_heartbeat', data, timestamp)
+        state.update_latest('pi5Heartbeat', data, timestamp)  # camelCase
         state.update_heartbeat('pi5', timestamp)
         logger.debug(f"[{state.station_id}] Pi5 heartbeat updated")
     
@@ -119,7 +111,7 @@ class HeartbeatProcessor:
         if timestamp is None:
             timestamp = now_tz()
         
-        state.update_latest('eb_heartbeat', data, timestamp)
+        state.update_latest('ebHeartbeat', data, timestamp)  # camelCase
         state.update_heartbeat('edgebox', timestamp)
         logger.debug(f"[{state.station_id}] Edgebox heartbeat updated")
 
@@ -218,9 +210,7 @@ class Module2Processor:
 
 
 class ErrorProcessor:
-    """
-    Processes error topic for PILOT energy meter status.
-    """
+    """Processes error topic for PILOT energy meter status."""
     
     def __init__(self):
         pass
@@ -231,10 +221,10 @@ class ErrorProcessor:
         if timestamp is None:
             timestamp = now_tz()
         
-        state.update_latest('eb_error', error_data, timestamp)
+        state.update_latest('ebError', error_data, timestamp)  # camelCase
         
-        # Update energy meter status if PILOT type
-        if state.config.hardware.energy_meter_type.upper() == 'PILOT':
+        # Update energy meter status if PILOT type (camelCase)
+        if state.config.hardware.energyMeterType.upper() == 'PILOT':
             state.update_energy_meter_from_error(error_data, timestamp)
             logger.debug(f"[{state.station_id}] Energy meter status updated from error")
 
@@ -253,14 +243,12 @@ class InsulationProcessor:
         if timestamp is None:
             timestamp = now_tz()
         
-        state.update_latest('insulation_agg', insulation_data, timestamp)
+        state.update_latest('insulationAgg', insulation_data, timestamp)
         logger.debug(f"[{state.station_id}] Insulation data updated")
 
 
 class FanRpmProcessor:
-    """
-    Processes Fan RPM topic data (for EBM fan type).
-    """
+    """Processes Fan RPM topic data (for EBM fan type)."""
     
     def __init__(self):
         pass
@@ -271,7 +259,7 @@ class FanRpmProcessor:
         if timestamp is None:
             timestamp = now_tz()
         
-        state.update_latest('fan_rpm', rpm_data, timestamp)
+        state.update_latest('fanRpm', rpm_data, timestamp)  # camelCase
         logger.debug(f"[{state.station_id}] Fan RPM data updated")
 
 class MeterProcessor:

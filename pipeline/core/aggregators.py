@@ -125,27 +125,28 @@ class CBMAggregator(BaseAggregator):
         }
         self.update('MDB', extracted, ts)
     
-    def update_ambient(self, ambient_data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from ambient topic (ev_charging/temperature/modbus/slave5)"""
-        extracted = {
-            'ambient_temp': ambient_data.get('temperature', ambient_data.get('temp')),
-            'humidity': ambient_data.get('humidity', ambient_data.get('rh'))
-        }
-        self.update('Ambient', extracted, ts)
     
     def update_bme280(self, bme280_data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from BME280 topic - includes ambient temp and humidity"""
-        extracted = {
-            'ambient_temp': bme280_data.get('temp_c', bme280_data.get('temperature')),
-            'humidity': bme280_data.get('rh_pct', bme280_data.get('humidity')),
-            'pressure': bme280_data.get('pressure_hpa', bme280_data.get('pressure'))
-        }
-        # Update both Ambient and BME280 keys
+        """
+        Update from bme280 topic.
+        BME280 now provides ambient_temp, humidity, AND pressure.
+        Replaces the old ambient topic.
+        """
+        # Extract all data from bme280
+        ambient_temp = bme280_data.get('temp_c', bme280_data.get('temperature'))
+        humidity = bme280_data.get('rh_pct', bme280_data.get('humidity'))
+        pressure = bme280_data.get('pressure_hpa', bme280_data.get('pressure'))
+        
+        # Update Ambient (for CBM documents)
         self.update('Ambient', {
-            'ambient_temp': extracted['ambient_temp'],
-            'humidity': extracted['humidity']
+            'ambient_temp': ambient_temp,
+            'humidity': humidity
         }, ts)
-        self.update('BME280', {'pressure': extracted['pressure']}, ts)
+        
+        # Update BME280 (for pressure)
+        self.update('BME280', {
+            'pressure': pressure
+        }, ts)
         
     def update_eb_temp(self, eb_data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from edgebox temp topic"""
@@ -237,8 +238,10 @@ class Module2Aggregator(BaseAggregator):
         self.update('Ambient', extracted, ts)
     
     def update_bme280(self, data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from BME280 topic - includes ambient and pressure"""
-        # Extract ambient data
+        """
+        Update from bme280 topic.
+        BME280 provides ambient_temp, humidity, AND pressure.
+        """
         ambient_temp = data.get('temp_c', data.get('temperature'))
         humidity = data.get('rh_pct', data.get('humidity'))
         pressure = data.get('pressure_hpa', data.get('pressure'))
@@ -247,6 +250,11 @@ class Module2Aggregator(BaseAggregator):
         self.update('Ambient', {
             'ambient_temp': ambient_temp,
             'humidity': humidity
+        }, ts)
+        
+        # Update BME280
+        self.update('BME280', {
+            'pressure': pressure
         }, ts)
         
         # Update BME280

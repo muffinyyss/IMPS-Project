@@ -1,3 +1,4 @@
+#main.py
 #!/usr/bin/env python3
 """
 EV Charger Pipeline - Main Entry Point
@@ -112,14 +113,14 @@ class Pipeline:
             if station_config.collections.meter:
                 meter_data = self.mongodb.get_latest_meter(station_config.collections.meter)
                 state.set_meter_data(meter_data['meter1'], meter_data['meter2'])
-                logger.info(f"[{station_config.station_id}] Recovered meter: {meter_data}")
+                logger.info(f"[{station_config.stationId}] Recovered meter: {meter_data}")
             
             # Create aggregators for this station
-            agg_manager = AggregatorManager(station_config.station_id, timeout_seconds=120)
-            self.aggregators[station_config.station_id] = agg_manager
+            agg_manager = AggregatorManager(station_config.stationId, timeout_seconds=120)
+            self.aggregators[station_config.stationId] = agg_manager
             
             # Set aggregator callbacks
-            self._setup_aggregator_callbacks(station_config.station_id, agg_manager)
+            self._setup_aggregator_callbacks(station_config.stationId, agg_manager)
             
             # Register MQTT topics
             self.mqtt.register_station_topics(station_config, self._process_message)
@@ -214,17 +215,17 @@ class Pipeline:
                     agg.cbm.update_router(data, timestamp)
                     agg.module2.update_router(data, timestamp)
             
-            elif topic_key == 'pi5_heartbeat':
+            elif topic_key == 'pi5Heartbeat':
                 self.heartbeat_processor.process_pi5(state, data, timestamp)
             
-            elif topic_key == 'eb_heartbeat':
+            elif topic_key == 'ebHeartbeat':
                 self.heartbeat_processor.process_edgebox(state, data, timestamp)
             
-            elif topic_key == 'eb_error':
+            elif topic_key == 'ebError':
                 self.error_processor.process(state, data, timestamp)
             
-            elif topic_key == 'eb_temp':
-                state.update_latest('eb_temp', data, timestamp)
+            elif topic_key == 'ebTemp':
+                state.update_latest('ebTemp', data, timestamp)
                 if agg:
                     agg.cbm.update_eb_temp(data, timestamp)
                     agg.module2.update_eb_temp(data, timestamp)
@@ -246,7 +247,7 @@ class Pipeline:
                 if agg:
                     agg.insulation.update_insulation2(data, timestamp)
             
-            elif topic_key == 'fan_rpm':
+            elif topic_key == 'fanRpm':
                 self.fan_rpm_processor.process(state, data, timestamp)
             
             elif topic_key == 'meter':

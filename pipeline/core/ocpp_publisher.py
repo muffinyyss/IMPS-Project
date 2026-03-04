@@ -1,3 +1,4 @@
+#core\ocpp_publisher.py
 """
 OCPP Config Publisher
 
@@ -71,7 +72,7 @@ class OCPPPublisher:
     
     def _publish_station(self, config: StationConfig, action: str):
         """Publish config for a single station"""
-        topic = config.topics.ocpp_config
+        topic = config.topics.ocppConfig
         
         # Skip if no topic configured
         if not topic:
@@ -80,18 +81,18 @@ class OCPPPublisher:
         timestamp = now_tz()
         
         payload = {
-            "SN": config.serial_number,
-            "chargeBoxID": config.charge_box_id,
-            "ocppUrl": config.ocpp_url,
+            "SN": config.serialNumber,
+            "chargeBoxID": config.chargeBoxId,
+            "ocppUrl": config.ocppUrl,
             "action": action,
             "timestamp": timestamp.isoformat()
         }
         
         try:
             self.mqtt.publish(topic, payload)
-            logger.debug(f"[{config.station_id}] Published OCPP config: {action}")
+            logger.debug(f"[{config.stationId}] Published OCPP config: {action}")
         except Exception as e:
-            logger.error(f"[{config.station_id}] Failed to publish OCPP config: {e}")
+            logger.error(f"[{config.stationId}] Failed to publish OCPP config: {e}")
     
     def check_and_publish_changes(self):
         """
@@ -100,8 +101,8 @@ class OCPPPublisher:
         """
         for station_id, config in settings.stations.items():
             current = {
-                'charge_box_id': config.charge_box_id,
-                'ocpp_url': config.ocpp_url
+                'charge_box_id': config.chargeBoxId,
+                'ocpp_url': config.ocppUrl
             }
             
             prev = self._prev_values.get(station_id)

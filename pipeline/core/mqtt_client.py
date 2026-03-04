@@ -57,32 +57,37 @@ class MQTTClient:
             logger.debug(f"Registered handler for topic: {topic}")
     
     def register_station_topics(self, station_config: StationConfig, 
-                                processor_callback: Callable):
+                            processor_callback: Callable):
         """Register all topics for a station."""
         topics = station_config.topics
-        station_id = station_config.station_id
+        station_id = station_config.stationId
         
         # Map topic to topic_key for routing (ไม่รวม ambient และ mdb_raw)
         topic_mapping = {
             topics.plc: 'plc',
-            topics.pi5_heartbeat: 'pi5_heartbeat',
-            topics.eb_error: 'eb_error',
-            topics.eb_temp: 'eb_temp',
-            topics.eb_heartbeat: 'eb_heartbeat',
-            topics.eb_count_device: 'eb_count_device',
+            topics.pi5Heartbeat: 'pi5Heartbeat',      # เปลี่ยนจาก pi5_heartbeat
+            topics.ebError: 'ebError',                 # เปลี่ยนจาก eb_error
+            topics.ebTemp: 'ebTemp',                   # เปลี่ยนจาก eb_temp
+            topics.ebHeartbeat: 'ebHeartbeat',         # เปลี่ยนจาก eb_heartbeat
+            # ebCountDevice ตัดออก
             topics.router: 'router',
-            # topics.ambient: 'ambient',  ← ตัดออก
             topics.bme280: 'bme280',
             topics.insulation1: 'insulation1',
             topics.insulation2: 'insulation2'
         }
-        
+            
         # Add optional topics if configured
-        if topics.fan_rpm:
-            topic_mapping[topics.fan_rpm] = 'fan_rpm'
+        if topics.fanRpm:
+            topic_mapping[topics.fanRpm] = 'fanRpm'    # เปลี่ยนจาก fan_rpm
         
         if topics.meter:
             topic_mapping[topics.meter] = 'meter'
+        
+        if topics.plcTemp1:
+            topic_mapping[topics.plcTemp1] = 'plcTemp1'  # เปลี่ยนจาก plc_temp1
+        
+        if topics.plcTemp2:
+            topic_mapping[topics.plcTemp2] = 'plcTemp2'  # เปลี่ยนจาก plc_temp2
         
         for topic, topic_key in topic_mapping.items():
             if topic:  # Only register non-empty topics
