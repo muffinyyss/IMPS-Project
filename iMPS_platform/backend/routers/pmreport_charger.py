@@ -47,6 +47,29 @@ from routers.pm_helpers import (
     _next_year_seq,
 )
 
+from PIL import Image
+from io import BytesIO
+
+def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) -> bytes:
+    """Resize รูปถ้าใหญ่เกิน max_width, return JPEG bytes"""
+    try:
+        img = Image.open(BytesIO(data))
+        # ข้ามไฟล์ที่ไม่ใช่รูป หรือเล็กอยู่แล้ว
+        if img.width <= max_width:
+            return data
+        ratio = max_width / img.width
+        new_size = (max_width, int(img.height * ratio))
+        img = img.resize(new_size, Image.LANCZOS)
+        # แปลง RGBA → RGB (ถ้ามี alpha channel)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        return buf.getvalue()
+    except Exception:
+        # ถ้า Pillow อ่านไม่ได้ ส่ง data เดิมกลับ
+        return data
+
 router = APIRouter()
 
 async def _get_charger_by_sn(sn: str) -> dict:
@@ -585,6 +608,8 @@ async def pmreport_upload_pre_photos(
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
+        data = resize_image_bytes(data, max_width=1920, quality=85)
+
         fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
         path = dest_dir / fname
         with open(path, "wb") as out:
@@ -646,6 +671,8 @@ async def pmreport_upload_post_photos(
             raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
+        data = resize_image_bytes(data, max_width=1920, quality=85)
 
         fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
         path = dest_dir / fname
@@ -805,6 +832,8 @@ async def pmurl_upload_files(
         data = await f.read()
         if len(data) == 0:
             raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
+        if not data[:5].startswith(b"%PDF-"):
+            raise HTTPException(status_code=400, detail=f"Invalid PDF file: {f.filename}")
         total_size += len(data)
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(
