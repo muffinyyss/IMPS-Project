@@ -1,5 +1,8 @@
 "use client";
 
+import ConfirmDialog from "@/app/dashboard/stations/components/ConfirmDialog";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -124,6 +127,16 @@ export default function SearchDataTables() {
   const [openAdd, setOpenAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    loading: boolean;
+  }>({ open: false, title: "", message: "", onConfirm: () => {}, loading: false });
+
+  const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, open: false, loading: false }));
 
   const [openEdit, setOpenEdit] = useState(false);
   const [editingRow, setEditingRow] = useState<UserRow | null>(null);
@@ -321,32 +334,69 @@ export default function SearchDataTables() {
     setTimeout(() => setNotice(null), 2500);
   }
 
-  const handleDelete = async (row: UserRow) => {
-    if (!row.id) return alert("ไม่พบ id ของผู้ใช้");
-    if (!confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) return;
+  // const handleDelete = async (row: UserRow) => {
+  //   if (!row.id) return alert("ไม่พบ id ของผู้ใช้");
+  //   if (!confirm(`ต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`)) return;
 
-    try {
-      const res = await apiFetch(`/delete_users/${row.id}`, { method: "DELETE" });
+  //   try {
+  //     const res = await apiFetch(`/delete_users/${row.id}`, { method: "DELETE" });
 
-      if (res.status === 401 || res.status === 403) {
-        const next = encodeURIComponent(window.location.pathname);
-        router.replace(`/auth/signin/basic?next=${next}`);
-        return;
-      }
-      if (res.status === 404) throw new Error("ไม่พบผู้ใช้นี้");
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Delete failed: ${res.status}`);
-      }
+  //     if (res.status === 401 || res.status === 403) {
+  //       const next = encodeURIComponent(window.location.pathname);
+  //       router.replace(`/auth/signin/basic?next=${next}`);
+  //       return;
+  //     }
+  //     if (res.status === 404) throw new Error("ไม่พบผู้ใช้นี้");
+  //     if (!res.ok) {
+  //       const text = await res.text();
+  //       throw new Error(text || `Delete failed: ${res.status}`);
+  //     }
 
-      setData((prev) => prev.filter((u) => u.id !== row.id));
-      setNotice({ type: "success", msg: "Delete success" });
-      setTimeout(() => setNotice(null), 2500);
-    } catch (e: any) {
-      console.error(e);
-      setNotice({ type: "error", msg: e.message || "ลบผู้ใช้ไม่สำเร็จ" });
-      setTimeout(() => setNotice(null), 3500);
-    }
+  //     setData((prev) => prev.filter((u) => u.id !== row.id));
+  //     setNotice({ type: "success", msg: "Delete success" });
+  //     setTimeout(() => setNotice(null), 2500);
+  //   } catch (e: any) {
+  //     console.error(e);
+  //     setNotice({ type: "error", msg: e.message || "ลบผู้ใช้ไม่สำเร็จ" });
+  //     setTimeout(() => setNotice(null), 3500);
+  //   }
+  // };
+
+  const handleDelete = (row: UserRow) => {
+    if (!row.id) return;
+    setConfirmDialog({
+      open: true,
+      title: "ลบผู้ใช้?",
+      message: `คุณต้องการลบผู้ใช้ "${row.username}" ใช่หรือไม่?`,
+      loading: false,
+      onConfirm: async () => {
+        try {
+          setConfirmDialog(prev => ({ ...prev, loading: true }));
+          const res = await apiFetch(`/delete_users/${row.id}`, { method: "DELETE" });
+
+          if (res.status === 401 || res.status === 403) {
+            const next = encodeURIComponent(window.location.pathname);
+            router.replace(`/auth/signin/basic?next=${next}`);
+            return;
+          }
+          if (res.status === 404) throw new Error("ไม่พบผู้ใช้นี้");
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || `Delete failed: ${res.status}`);
+          }
+
+          setData((prev) => prev.filter((u) => u.id !== row.id));
+          closeConfirm();
+          setNotice({ type: "success", msg: "Delete success" });
+          setTimeout(() => setNotice(null), 2500);
+        } catch (e: any) {
+          console.error(e);
+          closeConfirm();
+          setNotice({ type: "error", msg: e.message || "ลบผู้ใช้ไม่สำเร็จ" });
+          setTimeout(() => setNotice(null), 3500);
+        }
+      },
+    });
   };
 
   /* -------------------- Table -------------------- */
@@ -475,6 +525,9 @@ export default function SearchDataTables() {
   /* -------------------- JSX -------------------- */
   return (
     <>
+
+    <LoadingOverlay show={loading} text="กำลังโหลดข้อมูล..." />
+
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
         {notice && (
           <div className="tw-px-4 tw-pt-4">
@@ -814,7 +867,19 @@ export default function SearchDataTables() {
             </Button>
           </DialogFooter>
         </form>
+        
       </Dialog>
+      <ConfirmDialog              // ← ✅ อยู่ข้างนอก เป็น sibling ของ Dialog
+        open={confirmDialog.open}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel="ลบ"
+        cancelLabel="ยกเลิก"
+        variant="danger"
+        loading={confirmDialog.loading}
+      />
     </>
   );
 }
