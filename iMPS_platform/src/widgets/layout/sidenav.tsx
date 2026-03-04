@@ -50,6 +50,7 @@ type RouteItem = {
   pages?: RouteItem[];
   title?: string;
   divider?: boolean;
+  newTab?: boolean;
 };
 
 type PropTypes = { routes: RouteItem[];  brandImg?: string; brandName?: string };
@@ -147,18 +148,20 @@ export default function Sidenav({}: PropTypes) {
     active,
     external,
     title,
+    newTab,
   }: {
     href: string;
     icon: React.ReactNode;
     active?: boolean;
     external?: boolean;
     title?: string;
+    newTab?: boolean;
   }) => {
     const Wrapper: any = external ? "a" : Link;
     return (
       <Wrapper
         href={href}
-        target={external ? "_blank" : undefined}
+        target={external ? (newTab === false ? "_self" : "_blank") : undefined}
         title={title}
         className={`tw-block tw-w-[3.5rem] tw-h-11 tw-mx-auto tw-rounded-lg tw-flex tw-items-center tw-justify-center ${
           active ? `${COLORS[sidenavColor]} tw-text-white` : "hover:tw-bg-gray-200"
@@ -177,6 +180,7 @@ export default function Sidenav({}: PropTypes) {
       title={item.name}
       active={pathname === item.path}
       external={item.external}
+      newTab={item.newTab}
     />
   );
 
@@ -339,7 +343,7 @@ export default function Sidenav({}: PropTypes) {
         </div>
       ) : (
         <List className="tw-text-inherit">
-          {menu.map(({ name, icon, pages, title, divider, external, path }, key) =>
+          {menu.map(({ name, icon, pages, title, divider, external, path , newTab}, key) =>
             pages ? (
               <React.Fragment key={key}>
                 {title && (
@@ -482,7 +486,7 @@ export default function Sidenav({}: PropTypes) {
             ) : (
               <List className="!tw-p-0 tw-text-inherit" key={key}>
                 {external ? (
-                  <a href={safeHref(path)} target="_blank" rel="noreferrer">
+                  <a href={safeHref(path)} target={newTab === false ? "_self" : "_blank"} rel="noreferrer">
                     <ListItem className="tw-capitalize">
                       <ListItemPrefix>{icon}</ListItemPrefix>
                       {name}
