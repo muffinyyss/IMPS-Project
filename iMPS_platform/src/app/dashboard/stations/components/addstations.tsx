@@ -1,5 +1,5 @@
 "use client";
-
+import LoadingOverlay from "../../components/Loadingoverlay";
 import { useEffect, useState, useMemo } from "react";
 import {
     Dialog,
@@ -32,8 +32,8 @@ export type ChargerForm = {
     warrantyYears: number;
     numberOfCables: number;
     is_active: boolean;
-    location: string;
-    description: string;
+    maximo_location: string;
+    maximo_desc: string;
     chargerType: string;
     chargerImages: File[];
     deviceImages: File[];
@@ -44,8 +44,8 @@ export type StationForm = {
     station_name: string;
     owner: string;
     is_active: boolean;
-    location: string;
-    description: string;
+    maximo_location: string;
+    maximo_desc: string;
     stationImages: File[];
     mdbImages: File[];
 };
@@ -92,7 +92,7 @@ const createEmptyCharger = (chargerNo: number): ChargerForm => ({
     id: generateId(), chargerNo, brand: "", model: "", SN: "", WO: "", power: "",
     PLCFirmware: "", PIFirmware: "", RTFirmware: "", chargeBoxID: "", ocppUrl: "",
     commissioningDate: getTodayDate(), warrantyYears: 1, numberOfCables: 1, is_active: true,
-    location: "", description: "", chargerType: "DC", chargerImages: [], deviceImages: [],
+    maximo_location: "", maximo_desc: "", chargerType: "DC", chargerImages: [], deviceImages: [],
 });
 
 type StationImageKind = "station" | "mdb";
@@ -204,7 +204,7 @@ export default function AddStationModal({
                 addNewStation: "เพิ่มสถานีใหม่", subtitle: "กรอกข้อมูลสถานีและตู้ชาร์จ",
                 stationInfo: "ข้อมูลสถานี", stationName: "ชื่อสถานี", owner: "เจ้าของ",
                 status: "สถานะ", active: "เปิดใช้งาน", inactive: "ปิดใช้งาน",
-                location: "สถานที่ตั้ง", description: "รายละเอียด",
+                maximoLocation: "Maximo Location", maximoDesc: "Maximo Description",
                 stationImages: "รูปภาพสถานี", station: "สถานี", mdb: "MDB",
                 chargers: "ตู้ชาร์จ", addCharger: "เพิ่มตู้ชาร์จ", chargerNo: "ตู้ชาร์จ #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
@@ -227,7 +227,7 @@ export default function AddStationModal({
                 addNewStation: "Add New Station", subtitle: "Fill in station and charger details",
                 stationInfo: "Station Information", stationName: "Station Name", owner: "Owner",
                 status: "Status", active: "Active", inactive: "Inactive",
-                location: "Location", description: "Description",
+                maximoLocation: "Maximo Location", maximoDesc: "Maximo Description",
                 stationImages: "Station Images", station: "Station", mdb: "MDB",
                 chargers: "Chargers", addCharger: "Add Charger", chargerNo: "Charger #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
@@ -253,7 +253,7 @@ export default function AddStationModal({
     /* ── state ── */
     const [station, setStation] = useState<StationForm>({
         station_id: "", station_name: "", owner: "", is_active: true,
-        location: "", description: "", stationImages: [], mdbImages: [],
+        maximo_location: "", maximo_desc: "", stationImages: [], mdbImages: [],
     });
     const [stationPreviews, setStationPreviews] = useState<Record<StationImageKind, string[]>>({ station: [], mdb: [] });
     const [chargerPreviews, setChargerPreviews] = useState<Record<string, { charger: string[]; device: string[] }>>({});
@@ -341,7 +341,7 @@ export default function AddStationModal({
             station: {
                 station_id: station.station_id.trim(), station_name: station.station_name.trim(),
                 owner: (station.owner || currentUser).trim(), is_active: station.is_active,
-                location: station.location.trim(), description: station.description.trim(),
+               maximo_location: station.maximo_location.trim(), maximo_desc: station.maximo_desc.trim(),
             },
             chargers: chargers.map((c) => ({
                 chargerNo: c.chargerNo, brand: c.brand.trim(), model: c.model.trim(),
@@ -350,8 +350,8 @@ export default function AddStationModal({
                 RTFirmware: c.RTFirmware.trim(), chargeBoxID: c.chargeBoxID.trim(),
                 ocppUrl: c.ocppUrl.trim(), commissioningDate: c.commissioningDate,
                 warrantyYears: c.warrantyYears, numberOfCables: c.numberOfCables,
-                is_active: c.is_active, location: c.location.trim(),
-                description: c.description.trim(), chargerType: c.chargerType,
+                is_active: c.is_active, maximo_location: c.maximo_location.trim(),
+                maximo_desc: c.maximo_desc.trim(), chargerType: c.chargerType,
             })),
         };
 
@@ -372,7 +372,7 @@ export default function AddStationModal({
     const resetAndClose = () => {
         Object.values(stationPreviews).forEach((urls) => urls.forEach((u) => u && URL.revokeObjectURL(u)));
         Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
-        setStation({ station_id: "", station_name: "", owner: "", is_active: true, location: "", description: "", stationImages: [], mdbImages: [] });
+        setStation({ station_id: "", station_name: "", owner: "", is_active: true, maximo_location: "", maximo_desc: "", stationImages: [], mdbImages: [] });
         setStationPreviews({ station: [], mdb: [] });
         setChargerPreviews({});
         setChargers([createEmptyCharger(1)]);
@@ -381,147 +381,150 @@ export default function AddStationModal({
 
     /* ─────────────────────── Render ─────────────────────── */
     return (
-        <Dialog
-            open={open}
-            handler={resetAndClose}
-            size="lg"
-            dismiss={{ outsidePress: !loading, escapeKey: !loading }}
-            className="tw-flex tw-flex-col tw-max-h-[95vh] sm:tw-max-h-[90vh] tw-overflow-hidden !tw-rounded-xl sm:!tw-rounded-2xl !tw-m-2 sm:!tw-m-4"
-        >
-            {/* ══════ HEADER ══════ */}
-            <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-gradient-to-r tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-6 tw-py-3.5 sm:tw-py-5 tw-border-0 tw-shadow-xl tw-shrink-0">
-                <div className="tw-flex tw-items-center tw-justify-between tw-w-full">
-                    <div className="tw-flex tw-items-center tw-gap-2.5 sm:tw-gap-3.5">
-                        <div>
-                            <Typography variant="h5" className="!tw-text-white !tw-font-bold !tw-tracking-tight !tw-leading-tight !tw-text-base sm:!tw-text-lg">
-                                {t.addNewStation}
-                            </Typography>
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={resetAndClose}
-                        className="tw-p-1.5 sm:tw-p-2 tw-rounded-xl tw-bg-white/10 hover:tw-bg-white/20 tw-text-white/60 hover:tw-text-white tw-transition-all tw-duration-200"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-5 tw-w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                    </button>
-                </div>
-            </DialogHeader>
-
-            <form onSubmit={handleSubmit} className="tw-flex tw-flex-col tw-min-h-0">
-                <DialogBody className="tw-flex-1 tw-min-h-0 tw-overflow-y-auto tw-space-y-3 sm:tw-space-y-5 tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-5 tw-bg-gray-50/60">
-
-                    {/* ══════ STATION INFO CARD ══════ */}
-                    <section className="tw-rounded-xl sm:tw-rounded-2xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/[.06] tw-overflow-hidden">
-                        <div className="tw-px-3.5 sm:tw-px-5 tw-py-3 sm:tw-py-4 tw-border-b tw-border-gray-100 tw-flex tw-items-center tw-gap-2.5 sm:tw-gap-3">
-                            <SectionIcon emoji="📍" />
-                            <Typography variant="h6" className="!tw-text-gray-800 !tw-font-bold !tw-tracking-tight !tw-text-sm sm:!tw-text-base">{t.stationInfo}</Typography>
-                        </div>
-                        <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-4 sm:tw-space-y-5">
-                            <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
-                                <Input label={t.stationName} required value={station.station_name} onChange={(e) => onStationChange("station_name", e.target.value)} crossOrigin={undefined} />
-                                {isAdmin ? (
-                                    <Select label={t.owner} value={station.owner || ""} onChange={(v) => onStationChange("owner", v || "")}>
-                                        {(allOwners.length ? allOwners : [currentUser]).map((n) => <Option key={n} value={n}>{n}</Option>)}
-                                    </Select>
-                                ) : (
-                                    <Input label={t.owner} value={station.owner || currentUser || ""} readOnly disabled crossOrigin={undefined} />
-                                )}
-                                <Input label={t.location} value={station.location} onChange={(e) => onStationChange("location", e.target.value)} crossOrigin={undefined} />
-                                <Input label={t.description} value={station.description} onChange={(e) => onStationChange("description", e.target.value)} crossOrigin={undefined} />
-                                <Select label={t.status} value={String(station.is_active)} onChange={(v) => onStationChange("is_active", v === "true")}>
-                                    <Option value="true">{t.active}</Option>
-                                    <Option value="false">{t.inactive}</Option>
-                                </Select>
-                            </div>
-
-                            {/* images */}
-                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
-                                <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.stationImages}</p>
-                                <div className="tw-grid tw-grid-cols-1 tw-gap-2.5 sm:tw-grid-cols-2 sm:tw-gap-3">
-                                    <ImageZone label={t.station} previews={stationPreviews.station} onUpload={(e) => handleStationImage("station", e)} onRemove={(i) => removeStationImage("station", i)} emptyLabel={t.noImages} uploadLabel={t.upload} />
-                                    <ImageZone label={t.mdb} previews={stationPreviews.mdb} onUpload={(e) => handleStationImage("mdb", e)} onRemove={(i) => removeStationImage("mdb", i)} emptyLabel={t.noImages} uploadLabel={t.upload} />
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* ══════ CHARGERS ══════ */}
-                    <section className="tw-space-y-3 sm:tw-space-y-4">
-                        <div className="tw-flex tw-items-center tw-justify-between">
-                            <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3">
-                                <SectionIcon emoji="⚡" />
-                                <Typography variant="h6" className="!tw-text-gray-800 !tw-font-bold !tw-tracking-tight !tw-text-sm sm:!tw-text-base">
-                                    {t.chargers} <span className="tw-text-blue-gray-400 tw-font-normal">({chargers.length})</span>
+        <>
+            {loading && <LoadingOverlay show={loading} text={lang === "th" ? "กำลังโหลดข้อมูล..." : "Loading data..."} />}
+            <Dialog
+                open={open}
+                handler={resetAndClose}
+                size="lg"
+                dismiss={{ outsidePress: !loading, escapeKey: !loading }}
+                className="tw-flex tw-flex-col tw-max-h-[95vh] sm:tw-max-h-[90vh] tw-overflow-hidden !tw-rounded-xl sm:!tw-rounded-2xl !tw-m-2 sm:!tw-m-4"
+            >
+                {/* ══════ HEADER ══════ */}
+                <DialogHeader className="tw-sticky tw-top-0 tw-z-10 tw-bg-gradient-to-r tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-6 tw-py-3.5 sm:tw-py-5 tw-border-0 tw-shadow-xl tw-shrink-0">
+                    <div className="tw-flex tw-items-center tw-justify-between tw-w-full">
+                        <div className="tw-flex tw-items-center tw-gap-2.5 sm:tw-gap-3.5">
+                            <div>
+                                <Typography variant="h5" className="!tw-text-white !tw-font-bold !tw-tracking-tight !tw-leading-tight !tw-text-base sm:!tw-text-lg">
+                                    {t.addNewStation}
                                 </Typography>
                             </div>
-                            <button
-                                type="button"
-                                onClick={addCharger}
-                                className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-3 sm:tw-px-4 tw-py-1.5 sm:tw-py-2 tw-rounded-xl tw-bg-gray-900 tw-text-white tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-tracking-wide tw-shadow-lg tw-shadow-gray-900/20 hover:tw-bg-black tw-transition-all tw-duration-200 hover:tw-shadow-xl hover:tw--translate-y-0.5"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
-                                {t.addCharger}
-                            </button>
                         </div>
+                        <button
+                            type="button"
+                            onClick={resetAndClose}
+                            className="tw-p-1.5 sm:tw-p-2 tw-rounded-xl tw-bg-white/10 hover:tw-bg-white/20 tw-text-white/60 hover:tw-text-white tw-transition-all tw-duration-200"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-5 tw-w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                        </button>
+                    </div>
+                </DialogHeader>
 
-                        {chargers.map((charger, index) => (
-                            <div key={charger.id} className="tw-rounded-xl sm:tw-rounded-2xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/[.06] tw-overflow-hidden tw-transition-shadow tw-duration-300 hover:tw-shadow-md">
-                                {/* charger header bar */}
-                                <div className="tw-flex tw-items-center tw-justify-between tw-px-3.5 sm:tw-px-5 tw-py-2.5 sm:tw-py-3 tw-bg-gradient-to-r tw-from-amber-50 tw-to-orange-50/80 tw-border-b tw-border-amber-100/70">
-                                    <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-2.5 tw-min-w-0">
-                                        <span className="tw-inline-flex tw-items-center tw-justify-center tw-h-6 tw-w-6 sm:tw-h-7 sm:tw-w-7 tw-rounded-lg tw-bg-gradient-to-br tw-from-amber-400 tw-to-orange-500 tw-shadow tw-text-white tw-text-[10px] sm:tw-text-xs tw-font-bold tw-shrink-0">
-                                            {index + 1}
-                                        </span>
-                                        <span className="tw-text-xs sm:tw-text-sm tw-font-bold tw-text-gray-700 tw-truncate">{t.chargerNo}{index + 1}</span>
-                                        {charger.brand && (
-                                            <span className="tw-hidden sm:tw-inline tw-px-2 tw-py-0.5 tw-rounded-md tw-bg-white/90 tw-text-[10px] tw-font-semibold tw-text-blue-gray-500 tw-ring-1 tw-ring-black/5 tw-shadow-sm tw-truncate tw-max-w-[120px]">
-                                                {charger.brand}{charger.model ? ` ${charger.model}` : ""}
-                                            </span>
-                                        )}
-                                    </div>
-                                    {chargers.length > 1 && (
-                                        <Tooltip content={t.removeCharger}>
-                                            <button type="button" onClick={() => removeCharger(charger.id)} className="tw-p-1 sm:tw-p-1.5 tw-rounded-lg tw-text-red-400 hover:tw-text-red-600 hover:tw-bg-red-50 tw-transition-colors tw-shrink-0">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-4 tw-w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                                            </button>
-                                        </Tooltip>
+                <form onSubmit={handleSubmit} className="tw-flex tw-flex-col tw-min-h-0">
+                    <DialogBody className="tw-flex-1 tw-min-h-0 tw-overflow-y-auto tw-space-y-3 sm:tw-space-y-5 tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-5 tw-bg-gray-50/60">
+
+                        {/* ══════ STATION INFO CARD ══════ */}
+                        <section className="tw-rounded-xl sm:tw-rounded-2xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/[.06] tw-overflow-hidden">
+                            <div className="tw-px-3.5 sm:tw-px-5 tw-py-3 sm:tw-py-4 tw-border-b tw-border-gray-100 tw-flex tw-items-center tw-gap-2.5 sm:tw-gap-3">
+                                <SectionIcon emoji="📍" />
+                                <Typography variant="h6" className="!tw-text-gray-800 !tw-font-bold !tw-tracking-tight !tw-text-sm sm:!tw-text-base">{t.stationInfo}</Typography>
+                            </div>
+                            <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-4 sm:tw-space-y-5">
+                                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
+                                    <Input label={t.stationName} required value={station.station_name} onChange={(e) => onStationChange("station_name", e.target.value)} crossOrigin={undefined} />
+                                    {isAdmin ? (
+                                        <Select label={t.owner} value={station.owner || ""} onChange={(v) => onStationChange("owner", v || "")}>
+                                            {(allOwners.length ? allOwners : [currentUser]).map((n) => <Option key={n} value={n}>{n}</Option>)}
+                                        </Select>
+                                    ) : (
+                                        <Input label={t.owner} value={station.owner || currentUser || ""} readOnly disabled crossOrigin={undefined} />
                                     )}
+                                    <Input label={t.maximoLocation} value={station.maximo_location} onChange={(e) => onStationChange("maximo_location", e.target.value)} crossOrigin={undefined} />
+                                    <Input label={t.maximoDesc} value={station.maximo_desc} onChange={(e) => onStationChange("maximo_desc", e.target.value)} crossOrigin={undefined} />
+                                    <Select label={t.status} value={String(station.is_active)} onChange={(v) => onStationChange("is_active", v === "true")}>
+                                        <Option value="true">{t.active}</Option>
+                                        <Option value="false">{t.inactive}</Option>
+                                    </Select>
                                 </div>
 
-                                <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">
-                                    <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-2.5 sm:tw-gap-3">
-                                        <div className="tw-relative">
-                                            <Input label={t.chargerNoAuto} type="number" value={charger.chargerNo} readOnly className="!tw-bg-gray-50" crossOrigin={undefined} />
-                                            <span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span>
+                                {/* images */}
+                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
+                                    <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.stationImages}</p>
+                                    <div className="tw-grid tw-grid-cols-1 tw-gap-2.5 sm:tw-grid-cols-2 sm:tw-gap-3">
+                                        <ImageZone label={t.station} previews={stationPreviews.station} onUpload={(e) => handleStationImage("station", e)} onRemove={(i) => removeStationImage("station", i)} emptyLabel={t.noImages} uploadLabel={t.upload} />
+                                        <ImageZone label={t.mdb} previews={stationPreviews.mdb} onUpload={(e) => handleStationImage("mdb", e)} onRemove={(i) => removeStationImage("mdb", i)} emptyLabel={t.noImages} uploadLabel={t.upload} />
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        {/* ══════ CHARGERS ══════ */}
+                        <section className="tw-space-y-3 sm:tw-space-y-4">
+                            <div className="tw-flex tw-items-center tw-justify-between">
+                                <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3">
+                                    <SectionIcon emoji="⚡" />
+                                    <Typography variant="h6" className="!tw-text-gray-800 !tw-font-bold !tw-tracking-tight !tw-text-sm sm:!tw-text-base">
+                                        {t.chargers} <span className="tw-text-blue-gray-400 tw-font-normal">({chargers.length})</span>
+                                    </Typography>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={addCharger}
+                                    className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-3 sm:tw-px-4 tw-py-1.5 sm:tw-py-2 tw-rounded-xl tw-bg-gray-900 tw-text-white tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-tracking-wide tw-shadow-lg tw-shadow-gray-900/20 hover:tw-bg-black tw-transition-all tw-duration-200 hover:tw-shadow-xl hover:tw--translate-y-0.5"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
+                                    {t.addCharger}
+                                </button>
+                            </div>
+
+                            {chargers.map((charger, index) => (
+                                <div key={charger.id} className="tw-rounded-xl sm:tw-rounded-2xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/[.06] tw-overflow-hidden tw-transition-shadow tw-duration-300 hover:tw-shadow-md">
+                                    {/* charger header bar */}
+                                    <div className="tw-flex tw-items-center tw-justify-between tw-px-3.5 sm:tw-px-5 tw-py-2.5 sm:tw-py-3 tw-bg-gradient-to-r tw-from-amber-50 tw-to-orange-50/80 tw-border-b tw-border-amber-100/70">
+                                        <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-2.5 tw-min-w-0">
+                                            <span className="tw-inline-flex tw-items-center tw-justify-center tw-h-6 tw-w-6 sm:tw-h-7 sm:tw-w-7 tw-rounded-lg tw-bg-gradient-to-br tw-from-amber-400 tw-to-orange-500 tw-shadow tw-text-white tw-text-[10px] sm:tw-text-xs tw-font-bold tw-shrink-0">
+                                                {index + 1}
+                                            </span>
+                                            <span className="tw-text-xs sm:tw-text-sm tw-font-bold tw-text-gray-700 tw-truncate">{t.chargerNo}{index + 1}</span>
+                                            {charger.brand && (
+                                                <span className="tw-hidden sm:tw-inline tw-px-2 tw-py-0.5 tw-rounded-md tw-bg-white/90 tw-text-[10px] tw-font-semibold tw-text-blue-gray-500 tw-ring-1 tw-ring-black/5 tw-shadow-sm tw-truncate tw-max-w-[120px]">
+                                                    {charger.brand}{charger.model ? ` ${charger.model}` : ""}
+                                                </span>
+                                            )}
                                         </div>
-                                        <Select label={t.chargerType} value={charger.chargerType} onChange={(v) => onChargerChange(charger.id, "chargerType", v ?? "DC")}>
-                                            <Option value="DC">DC</Option>
-                                            <Option value="AC">AC</Option>
-                                        </Select>
-                                        <Input label={t.brand} required value={charger.brand} onChange={(e) => onChargerChange(charger.id, "brand", e.target.value)} crossOrigin={undefined} />
-                                        <Input label={t.model} required value={charger.model} onChange={(e) => onChargerChange(charger.id, "model", e.target.value)} crossOrigin={undefined} />
-                                        <Input label={t.serialNumber} required value={charger.SN} onChange={(e) => onChargerChange(charger.id, "SN", e.target.value)} crossOrigin={undefined} />
-                                        <Input label={t.power} required value={charger.power} onChange={(e) => onChargerChange(charger.id, "power", e.target.value)} crossOrigin={undefined} />
-                                        {isFlexxfast(charger.brand) && (<>
-                                            <Input label={t.workOrder} required value={charger.WO} onChange={(e) => onChargerChange(charger.id, "WO", e.target.value)} crossOrigin={undefined} />
-                                            <Input label={t.plcFirmware} required value={charger.PLCFirmware} onChange={(e) => onChargerChange(charger.id, "PLCFirmware", e.target.value)} crossOrigin={undefined} />
-                                            <Input label={t.piFirmware} required value={charger.PIFirmware} onChange={(e) => onChargerChange(charger.id, "PIFirmware", e.target.value)} crossOrigin={undefined} />
-                                            <Input label={t.routerFirmware} required value={charger.RTFirmware} onChange={(e) => onChargerChange(charger.id, "RTFirmware", e.target.value)} crossOrigin={undefined} />
-                                        </>)}
-                                        <Input label={t.location} value={charger.location} onChange={(e) => onChargerChange(charger.id, "location", e.target.value)} crossOrigin={undefined} />
-                                        <Input label={t.description} value={charger.description} onChange={(e) => onChargerChange(charger.id, "description", e.target.value)} crossOrigin={undefined} />
-                                        <Input label={t.commissioningDate} type="date" required value={charger.commissioningDate} onChange={(e) => onChargerChange(charger.id, "commissioningDate", e.target.value)} crossOrigin={undefined} />
-                                        <Input label={t.warrantyYears} type="number" min={1} max={10} required value={charger.warrantyYears} onChange={(e) => onChargerChange(charger.id, "warrantyYears", parseInt(e.target.value) || 1)} crossOrigin={undefined} />
-                                        <Input label={t.numberOfCables} type="number" min={1} max={10} required value={charger.numberOfCables} onChange={(e) => onChargerChange(charger.id, "numberOfCables", parseInt(e.target.value) || 1)} crossOrigin={undefined} />
-                                        <Select label={t.status} value={String(charger.is_active)} onChange={(v) => onChargerChange(charger.id, "is_active", v === "true")}>
-                                            <Option value="true">{t.active}</Option>
-                                            <Option value="false">{t.inactive}</Option>
-                                        </Select>
+                                        {chargers.length > 1 && (
+                                            <Tooltip content={t.removeCharger}>
+                                                <button type="button" onClick={() => removeCharger(charger.id)} className="tw-p-1 sm:tw-p-1.5 tw-rounded-lg tw-text-red-400 hover:tw-text-red-600 hover:tw-bg-red-50 tw-transition-colors tw-shrink-0">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-4 tw-w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                                                </button>
+                                            </Tooltip>
+                                        )}
                                     </div>
 
-                                    {/* OCPP */}
-                                    {isFlexxfast(charger.brand) && (
+                                    <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">
+                                        <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-2.5 sm:tw-gap-3">
+                                            <div className="tw-relative">
+                                                <Input label={t.chargerNoAuto} type="number" value={charger.chargerNo} readOnly className="!tw-bg-gray-50" crossOrigin={undefined} />
+                                                <span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span>
+                                            </div>
+                                            <Select label={t.chargerType} value={charger.chargerType} onChange={(v) => onChargerChange(charger.id, "chargerType", v ?? "DC")}>
+                                                <Option value="DC">DC</Option>
+                                                <Option value="AC">AC</Option>
+                                            </Select>
+                                            <Input label={t.brand} required value={charger.brand} onChange={(e) => onChargerChange(charger.id, "brand", e.target.value)} crossOrigin={undefined} />
+                                            <Input label={t.model} required value={charger.model} onChange={(e) => onChargerChange(charger.id, "model", e.target.value)} crossOrigin={undefined} />
+                                            <Input label={t.serialNumber} required value={charger.SN} onChange={(e) => onChargerChange(charger.id, "SN", e.target.value)} crossOrigin={undefined} />
+                                            <Input label={t.power} required value={charger.power} onChange={(e) => onChargerChange(charger.id, "power", e.target.value)} crossOrigin={undefined} />
+                                            {isFlexxfast(charger.brand) && (
+                                                <>
+                                                    <Input label={t.workOrder} required value={charger.WO} onChange={(e) => onChargerChange(charger.id, "WO", e.target.value)} crossOrigin={undefined} />
+                                                    <Input label={t.plcFirmware} required value={charger.PLCFirmware} onChange={(e) => onChargerChange(charger.id, "PLCFirmware", e.target.value)} crossOrigin={undefined} />
+                                                    <Input label={t.piFirmware} required value={charger.PIFirmware} onChange={(e) => onChargerChange(charger.id, "PIFirmware", e.target.value)} crossOrigin={undefined} />
+                                                    <Input label={t.routerFirmware} required value={charger.RTFirmware} onChange={(e) => onChargerChange(charger.id, "RTFirmware", e.target.value)} crossOrigin={undefined} />
+                                                </>)}
+                                            <Input label={t.maximoLocation} value={charger.maximo_location} onChange={(e) => onChargerChange(charger.id, "maximo_location", e.target.value)} crossOrigin={undefined} />
+                                            <Input label={t.maximoDesc} value={charger.maximo_desc} onChange={(e) => onChargerChange(charger.id, "maximo_desc", e.target.value)} crossOrigin={undefined} />
+                                            <Input label={t.commissioningDate} type="date" required value={charger.commissioningDate} onChange={(e) => onChargerChange(charger.id, "commissioningDate", e.target.value)} crossOrigin={undefined} />
+                                            <Input label={t.warrantyYears} type="number" min={1} max={10} required value={charger.warrantyYears} onChange={(e) => onChargerChange(charger.id, "warrantyYears", parseInt(e.target.value) || 1)} crossOrigin={undefined} />
+                                            <Input label={t.numberOfCables} type="number" min={1} max={10} required value={charger.numberOfCables} onChange={(e) => onChargerChange(charger.id, "numberOfCables", parseInt(e.target.value) || 1)} crossOrigin={undefined} />
+                                            <Select label={t.status} value={String(charger.is_active)} onChange={(v) => onChargerChange(charger.id, "is_active", v === "true")}>
+                                                <Option value="true">{t.active}</Option>
+                                                <Option value="false">{t.inactive}</Option>
+                                            </Select>
+                                        </div>
+
+                                        {/* OCPP */}
+                                        {/* {isFlexxfast(charger.brand) && ( */}
                                         <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
                                             <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-purple-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">🔌 {t.ocppSection}</p>
                                             <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2.5 sm:tw-gap-3">
@@ -529,53 +532,54 @@ export default function AddStationModal({
                                                 <Input label={t.ocppUrl} value={charger.ocppUrl} onChange={(e) => onChargerChange(charger.id, "ocppUrl", e.target.value)} crossOrigin={undefined} />
                                             </div>
                                         </div>
-                                    )}
+                                        {/* )} */}
 
-                                    {/* Charger images */}
-                                    <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
-                                        <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.images}</p>
-                                        <div className="tw-grid tw-grid-cols-1 tw-gap-2.5 sm:tw-grid-cols-2 sm:tw-gap-3">
-                                            <ImageZone label={t.charger} previews={chargerPreviews[charger.id]?.charger || []} onUpload={(e) => handleChargerImage(charger.id, "charger", e)} onRemove={(i) => removeChargerImage(charger.id, "charger", i)} emptyLabel={t.noImages} uploadLabel={t.upload} />
-                                            <ImageZone label={t.device} previews={chargerPreviews[charger.id]?.device || []} onUpload={(e) => handleChargerImage(charger.id, "device", e)} onRemove={(i) => removeChargerImage(charger.id, "device", i)} emptyLabel={t.noImages} uploadLabel={t.upload} />
+                                        {/* Charger images */}
+                                        <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
+                                            <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">📷 {t.images}</p>
+                                            <div className="tw-grid tw-grid-cols-1 tw-gap-2.5 sm:tw-grid-cols-2 sm:tw-gap-3">
+                                                <ImageZone label={t.charger} previews={chargerPreviews[charger.id]?.charger || []} onUpload={(e) => handleChargerImage(charger.id, "charger", e)} onRemove={(i) => removeChargerImage(charger.id, "charger", i)} emptyLabel={t.noImages} uploadLabel={t.upload} />
+                                                <ImageZone label={t.device} previews={chargerPreviews[charger.id]?.device || []} onUpload={(e) => handleChargerImage(charger.id, "device", e)} onRemove={(i) => removeChargerImage(charger.id, "device", i)} emptyLabel={t.noImages} uploadLabel={t.upload} />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
-                    </section>
-                </DialogBody>
+                            ))}
+                        </section>
+                    </DialogBody>
 
-                {/* ══════ FOOTER ══════ */}
-                <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-4 tw-border-t tw-border-gray-200/80 tw-shrink-0">
-                    <div className="tw-flex tw-w-full tw-flex-col sm:tw-flex-row tw-justify-between tw-items-center tw-gap-2.5 sm:tw-gap-0">
-                        <span className="tw-inline-flex tw-items-center tw-gap-2 tw-px-3 sm:tw-px-3.5 tw-py-1.5 tw-rounded-full tw-bg-amber-50 tw-ring-1 tw-ring-amber-200/70">
-                            <span className="tw-text-xs sm:tw-text-sm">⚡</span>
-                            <span className="tw-text-[11px] sm:tw-text-xs tw-font-bold tw-text-amber-700">{chargers.length}</span>
-                            <span className="tw-text-[11px] sm:tw-text-xs tw-text-amber-600/80">{t.chargerCount}</span>
-                        </span>
-                        <div className="tw-flex tw-gap-2 sm:tw-gap-2.5 tw-w-full sm:tw-w-auto">
-                            <Button
-                                variant="outlined"
-                                onClick={resetAndClose}
-                                type="button"
-                                className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-border-gray-300 tw-text-gray-600 hover:tw-bg-gray-50 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2.5 sm:tw-py-2"
-                            >
-                                {t.cancel}
-                            </Button>
-                            <Button
-                                type="submit"
-                                disabled={loading || submitting}
-                                className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-shadow-lg tw-shadow-gray-900/20 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-tracking-wide tw-px-4 sm:tw-px-6 tw-py-2.5 sm:tw-py-2 disabled:tw-opacity-50 tw-transition-all tw-duration-200 hover:tw-shadow-xl"
-                            >
-                                {loading || submitting
-                                    ? <span className="tw-flex tw-items-center tw-justify-center tw-gap-2"><Spinner />{t.saving}</span>
-                                    : t.createStation
-                                }
-                            </Button>
+                    {/* ══════ FOOTER ══════ */}
+                    <DialogFooter className="tw-sticky tw-bottom-0 tw-z-10 tw-bg-white tw-px-3 sm:tw-px-6 tw-py-3 sm:tw-py-4 tw-border-t tw-border-gray-200/80 tw-shrink-0">
+                        <div className="tw-flex tw-w-full tw-flex-col sm:tw-flex-row tw-justify-between tw-items-center tw-gap-2.5 sm:tw-gap-0">
+                            <span className="tw-inline-flex tw-items-center tw-gap-2 tw-px-3 sm:tw-px-3.5 tw-py-1.5 tw-rounded-full tw-bg-amber-50 tw-ring-1 tw-ring-amber-200/70">
+                                <span className="tw-text-xs sm:tw-text-sm">⚡</span>
+                                <span className="tw-text-[11px] sm:tw-text-xs tw-font-bold tw-text-amber-700">{chargers.length}</span>
+                                <span className="tw-text-[11px] sm:tw-text-xs tw-text-amber-600/80">{t.chargerCount}</span>
+                            </span>
+                            <div className="tw-flex tw-gap-2 sm:tw-gap-2.5 tw-w-full sm:tw-w-auto">
+                                <Button
+                                    variant="outlined"
+                                    onClick={resetAndClose}
+                                    type="button"
+                                    className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-border-gray-300 tw-text-gray-600 hover:tw-bg-gray-50 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2.5 sm:tw-py-2"
+                                >
+                                    {t.cancel}
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    disabled={loading || submitting}
+                                    className="tw-flex-1 sm:tw-flex-none tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-shadow-lg tw-shadow-gray-900/20 tw-normal-case tw-font-semibold tw-text-xs sm:tw-text-sm tw-tracking-wide tw-px-4 sm:tw-px-6 tw-py-2.5 sm:tw-py-2 disabled:tw-opacity-50 tw-transition-all tw-duration-200 hover:tw-shadow-xl"
+                                >
+                                    {loading || submitting
+                                        ? <span className="tw-flex tw-items-center tw-justify-center tw-gap-2"><Spinner />{t.saving}</span>
+                                        : t.createStation
+                                    }
+                                </Button>
+                            </div>
                         </div>
-                    </div>
-                </DialogFooter>
-            </form>
-        </Dialog>
+                    </DialogFooter>
+                </form>
+            </Dialog>
+        </>
     );
 }

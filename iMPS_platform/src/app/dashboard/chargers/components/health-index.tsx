@@ -3,8 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardBody, Typography } from "@/components/MaterialTailwind";
 import { Switch } from "@material-tailwind/react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api";
+import { apiFetch } from "@/utils/api";
 
 type Lang = "th" | "en";
 
@@ -20,6 +19,10 @@ export default function HealthIndex({
   const [on, setOn] = useState(initialOn);
   const [isLoading, setIsLoading] = useState(true);
   const [calculatedValue, setCalculatedValue] = useState(0);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [role, setRole] = useState<string>("");
+  const isAdmin = role === "admin";
+  const [accessLoading, setAccessLoading] = useState(true);
 
   // ===== Language State =====
   const [lang, setLang] = useState<Lang>("en");
@@ -39,6 +42,22 @@ export default function HealthIndex({
       window.removeEventListener("language:change", handleLangChange as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    (async () => {
+        try {
+            const res = await apiFetch("/me/ai-package");
+            if (res.ok) {
+                const data = await res.json();
+                setHasAccess(data.has_access === true);
+                setRole(data.role ?? "");
+            }
+        } catch { }
+        finally {
+            setAccessLoading(false);  // ← เพิ่ม
+        }
+    })();
+}, []);
 
   // ===== Translations =====
   const t = useMemo(() => {
@@ -83,25 +102,13 @@ export default function HealthIndex({
 
     const fetchProgress = async () => {
       try {
-        console.log(`HealthIndex: fetching progress for station: ${stationId}`);
-        const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-        const res = await fetch(`${API_BASE}/modules/progress?station_id=${encodeURIComponent(stationId)}`, {
-          method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          credentials: "include",
-        });
-
+        const res = await apiFetch(`/modules/progress?station_id=${encodeURIComponent(stationId)}`);
         if (!res.ok) {
-          console.warn("fetch /modules/progress failed:", res.status);
           setIsLoading(false);
           return;
         }
-
         const data = await res.json();
-        console.log("HealthIndex: API response data:", data);
-        // ดึงค่า overall health index จาก API
         if (data.overall !== undefined) {
-          console.log(`HealthIndex: setting calculatedValue to ${data.overall}`);
           setCalculatedValue(data.overall);
         }
       } catch (err) {
@@ -117,6 +124,8 @@ export default function HealthIndex({
   const v = Math.max(0, Math.min(100, Math.round(calculatedValue)));
   const segments = 10;
   const filled = on ? Math.floor((v / 100) * segments) : 0;
+  if (isLoading) return null; 
+  if (accessLoading || isLoading) return null;
 
   return (
     <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
@@ -139,12 +148,27 @@ export default function HealthIndex({
               </Typography>
             </div>
           </div>
-          <div className="tw-flex tw-items-center tw-gap-2">
+          {/* <div className="tw-flex tw-items-center tw-gap-2">
             <Typography className="tw-text-sm tw-text-blue-gray-600">
               {on ? t.active : t.inactive}
             </Typography>
             <Switch checked={on} onChange={() => setOn(!on)} />
-          </div>
+          </div> */}
+          {isAdmin ? (
+            <div className="tw-flex tw-items-center tw-gap-2">
+              <Typography className="tw-text-sm tw-text-blue-gray-600">
+                {on ? t.active : t.inactive}
+              </Typography>
+              <Switch checked={on} onChange={() => setOn(!on)} />
+            </div>
+          ) : (
+            <span className={`tw-px-3 tw-py-1 tw-rounded-full tw-text-xs tw-font-semibold ${hasAccess
+                ? "tw-bg-green-50 tw-text-green-700 tw-ring-1 tw-ring-green-200"
+                : "tw-bg-gray-100 tw-text-gray-500 tw-ring-1 tw-ring-gray-200"
+              }`}>
+              {hasAccess ? t.active : t.inactive}
+            </span>
+          )}
         </div>
       </CardHeader>
 

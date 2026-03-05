@@ -1,5 +1,6 @@
 "use client";
-
+import ConfirmDialog from "./ConfirmDialog";
+import LoadingOverlay from "../../components/Loadingoverlay";
 import React, { useEffect, useState, useMemo, useRef, Fragment } from "react";
 import {
   getCoreRowModel, getPaginationRowModel, getFilteredRowModel, getSortedRowModel, getExpandedRowModel,
@@ -39,8 +40,8 @@ type ChargerData = {
   warrantyYears: number;
   numberOfCables: number;
   is_active: boolean;
-  location: string;
-  description: string;
+  maximo_location: string;
+  maximo_desc: string;
   ocppUrl: string;
   chargerType: string;
   status?: boolean;
@@ -51,13 +52,13 @@ type ChargerData = {
 type StationRow = {
   id?: string; station_id: string; station_name: string; owner: string;
   user_id: string; username: string; is_active: boolean;
-  location: string; description: string;
+  maximo_location: string; maximo_desc: string;
   stationImage?: string; chargers: ChargerData[];
 };
 
 export type StationUpdatePayload = {
   station_id?: string; station_name?: string; username?: string;
-  is_active?: boolean; user_id?: string; location?: string; description?: string;
+  is_active?: boolean; user_id?: string; maximo_location?: string; maximo_desc?: string;
 };
 
 export type ChargerUpdatePayload = {
@@ -65,7 +66,7 @@ export type ChargerUpdatePayload = {
   SN?: string; WO?: string; power?: string;
   PLCFirmware?: string; PIFirmware?: string; RTFirmware?: string;
   commissioningDate?: string; warrantyYears?: number; numberOfCables?: number;
-  is_active?: boolean; location?: string; description?: string; ocppUrl?: string;
+  is_active?: boolean; maximo_location?: string; maximo_desc?: string; ocppUrl?: string;
   chargerType?: string;
 };
 
@@ -193,6 +194,45 @@ const Spinner = () => (
   </svg>
 );
 
+// const LoadingOverlay = ({ show, text = "Loading..." }: { show: boolean; text?: string }) => {
+//   if (!show) return null;
+//   return (
+//     <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/40 tw-backdrop-blur-sm">
+//       <div className="tw-flex tw-flex-col tw-items-center tw-gap-4 tw-rounded-2xl tw-bg-white tw-px-10 tw-py-8 tw-shadow-2xl tw-ring-1 tw-ring-black/5">
+//         <svg className="tw-animate-spin tw-h-10 tw-w-10 tw-text-gray-800" viewBox="0 0 24 24" fill="none">
+//           <circle className="tw-opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+//           <path className="tw-opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+//         </svg>
+//         <span className="tw-text-sm tw-font-semibold tw-text-gray-700">{text}</span>
+//       </div>
+//     </div>
+//   );
+// };
+
+const SkeletonPulse = ({ className = "" }: { className?: string }) => (
+  <div className={`tw-animate-pulse tw-rounded-lg tw-bg-white/10 ${className}`} />
+);
+
+const StatCardSkeleton = () => (
+  <div className="tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg">
+    <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
+      <SkeletonPulse className="tw-h-8 tw-w-8 !tw-rounded-xl" />
+      <SkeletonPulse className="tw-h-3 tw-w-16" />
+    </div>
+    <SkeletonPulse className="tw-h-8 tw-w-12" />
+  </div>
+);
+
+const TableRowSkeleton = ({ cols }: { cols: number }) => (
+  <tr className="tw-animate-pulse">
+    {Array.from({ length: cols }).map((_, i) => (
+      <td key={i} className="tw-px-3 tw-py-4">
+        <div className="tw-h-4 tw-rounded-md tw-bg-blue-gray-100/60" style={{ width: i === 0 ? 32 : `${50 + Math.random() * 40}%` }} />
+      </td>
+    ))}
+  </tr>
+);
+
 export function SearchDataTables() {
   const router = useRouter();
   const [me, setMe] = useState<{ user_id: string; username: string; role: string } | null>(null);
@@ -209,12 +249,21 @@ export function SearchDataTables() {
   const [openAdd, setOpenAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    loading: boolean;
+  }>({ open: false, title: "", message: "", onConfirm: () => {}, loading: false });
+
+  const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, open: false, loading: false }));
   const [availability, setAvailability] = useState<Map<string, { total: number; available: number }>>(new Map());
   const [chargerAvailability, setChargerAvailability] = useState<Map<string, { total: number; available: number }>>(new Map());
 
   const [openEditStation, setOpenEditStation] = useState(false);
   const [editingStation, setEditingStation] = useState<StationRow | null>(null);
-  const [editStationForm, setEditStationForm] = useState({ station_name: "", is_active: true, location: "", description: "" });
+  const [editStationForm, setEditStationForm] = useState({ station_name: "", is_active: true, maximo_location: "", maximo_desc: "" });
 
   const isFlexxfast = (brand: string) => brand.trim().toLowerCase() === "flexxfast";
   const [openEditCharger, setOpenEditCharger] = useState(false);
@@ -222,7 +271,7 @@ export function SearchDataTables() {
   const [editChargerForm, setEditChargerForm] = useState({
     chargeBoxID: "", chargerNo: 1, brand: "", model: "", SN: "", WO: "", power: "",
     PLCFirmware: "", PIFirmware: "", RTFirmware: "", commissioningDate: "",
-    warrantyYears: 1, numberOfCables: 1, is_active: true, location: "", description: "", ocppUrl: "", chargerType: "DC",
+    warrantyYears: 1, numberOfCables: 1, is_active: true, maximo_location: "", maximo_desc: "", ocppUrl: "", chargerType: "DC",
   });
 
   const [openAddCharger, setOpenAddCharger] = useState(false);
@@ -230,7 +279,7 @@ export function SearchDataTables() {
   const [addChargerForm, setAddChargerForm] = useState({
     chargeBoxID: "", chargerNo: 1, brand: "", model: "", SN: "", WO: "", power: "",
     PLCFirmware: "", PIFirmware: "", RTFirmware: "", commissioningDate: getTodayDate(),
-    warrantyYears: 1, numberOfCables: 1, is_active: true, location: "", description: "", ocppUrl: "", chargerType: "DC",
+    warrantyYears: 1, numberOfCables: 1, is_active: true, maximo_location: "", maximo_desc: "", ocppUrl: "", chargerType: "DC",
   });
 
   const [addChargerImages, setAddChargerImages] = useState<File[]>([]);
@@ -275,7 +324,7 @@ export function SearchDataTables() {
         addStation: "เพิ่มสถานี", add: "เพิ่ม", entriesPerPage: "รายการต่อหน้า", search: "ค้นหา", images: "รูปภาพ",
         stationName: "ชื่อสถานี", chargers: "ตู้ชาร์จ", owner: "เจ้าของ", technician: "ช่างเทคนิค",
         active: "เปิดใช้งาน", inactive: "ปิดใช้งาน", actions: "จัดการ", online: "ออนไลน์", offline: "ออฟไลน์",
-        location: "สถานที่ตั้ง", description: "รายละเอียด", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
+        maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
         chargerBoxId: "รหัสตู้ชาร์จ (Charge Box ID)",
         chargerType: "ประเภทตู้ชาร์จ",
         brand: "ยี่ห้อ", model: "รุ่น", serialNumber: "S/N", workOrder: "W/O", power: "กำลังไฟ",
@@ -305,7 +354,7 @@ export function SearchDataTables() {
         addStation: "ADD STATION", add: "ADD", entriesPerPage: "entries per page", search: "Search", images: "Images",
         stationName: "Station Name", chargers: "Chargers", owner: "Owner", technician: "Technician",
         active: "Active", inactive: "Inactive", actions: "Actions", online: "online", offline: "offline",
-        location: "Location", description: "Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
+        maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
         chargerBoxId: "Charge Box ID",
         chargerType: "Charger Type",
         brand: "Brand", model: "Model", serialNumber: "S/N", workOrder: "W/O", power: "Power",
@@ -443,7 +492,7 @@ export function SearchDataTables() {
 
   useEffect(() => {
     if (openEditStation && editingStation) {
-      setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, location: editingStation.location ?? "", description: editingStation.description ?? "" });
+      setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, maximo_location: editingStation.maximo_location ?? "", maximo_desc: editingStation.maximo_desc ?? "" });
       setSelectedOwnerId(editingStation.user_id ?? ""); resetEditImages();
     }
   }, [openEditStation, editingStation]);
@@ -456,7 +505,7 @@ export function SearchDataTables() {
         SN: c.SN ?? "", WO: c.WO ?? "", power: c.power ?? "", PLCFirmware: c.PLCFirmware ?? "",
         PIFirmware: c.PIFirmware ?? "", RTFirmware: c.RTFirmware ?? "", commissioningDate: c.commissioningDate ?? "",
         warrantyYears: c.warrantyYears ?? 1, numberOfCables: c.numberOfCables ?? 1, is_active: c.is_active ?? true,
-        location: c.location ?? "", description: c.description ?? "", ocppUrl: c.ocppUrl ?? "", chargerType: c.chargerType ?? "DC",
+        maximo_location: c.maximo_location ?? "", maximo_desc: c.maximo_desc ?? "", ocppUrl: c.ocppUrl ?? "", chargerType: c.chargerType ?? "DC",
       });
       resetEditChargerImages();
     }
@@ -507,7 +556,7 @@ export function SearchDataTables() {
       power: c.power ?? "-", PLCFirmware: c.PLCFirmware ?? "-", PIFirmware: c.PIFirmware ?? "-",
       RTFirmware: c.RTFirmware ?? "-", commissioningDate: c.commissioningDate ?? "-",
       warrantyYears: c.warrantyYears ?? 1, numberOfCables: c.numberOfCables ?? 1,
-      is_active: c.is_active ?? true, location: c.location ?? "", description: c.description ?? "",
+      is_active: c.is_active ?? true, maximo_location: c.maximo_location ?? "", maximo_desc: c.maximo_desc ?? "",
       ocppUrl: c.ocppUrl ?? "", chargerType: c.chargerType ?? "", status: c.status,
       chargerImages: norm(imgs.charger), deviceImages: norm(imgs.device),
     };
@@ -516,7 +565,7 @@ export function SearchDataTables() {
   const mapStation = (s: any): StationRow => ({
     id: s.id, station_id: s.station_id ?? "-", station_name: s.station_name ?? "-",
     owner: s.owner ?? "", user_id: s.user_id ?? "", username: s.username ?? "",
-    is_active: !!s.is_active, location: s.location ?? "", description: s.description ?? "",
+    is_active: !!s.is_active, maximo_location: s.maximo_location ?? "", maximo_desc: s.maximo_desc ?? "",
     stationImage: s.stationImage ?? s.images?.station ?? "",
     chargers: Array.isArray(s.chargers) ? s.chargers.map(mapCharger) : [],
   });
@@ -565,13 +614,13 @@ export function SearchDataTables() {
     if (!editingStation?.id) return;
     try {
       setSaving(true);
-      const payload: StationUpdatePayload = { station_name: editStationForm.station_name.trim(), is_active: editStationForm.is_active, location: editStationForm.location.trim(), description: editStationForm.description.trim(), ...(isAdmin && selectedOwnerId ? { user_id: selectedOwnerId } : {}) };
+      const payload: StationUpdatePayload = { station_name: editStationForm.station_name.trim(), is_active: editStationForm.is_active, maximo_location: editStationForm.maximo_location.trim(), maximo_desc: editStationForm.maximo_desc.trim(), ...(isAdmin && selectedOwnerId ? { user_id: selectedOwnerId } : {}) };
       const res = await apiFetch(`/update_stations/${editingStation.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error(`Update failed: ${res.status}`);
       const updated = await res.json();
       if (deleteCurrentImage && editingStation.stationImage) { await apiFetch(`/stations/${editingStation.station_id}/delete-image`, { method: "DELETE" }); }
       if (editStationImages.length) { const fd = new FormData(); editStationImages.forEach(f => fd.append("station", f)); await apiFetch(`/stations/${editingStation.station_id}/upload-image`, { method: "POST", body: fd }); }
-      setData(prev => prev.map(s => s.id === editingStation.id ? { ...s, station_name: updated.station_name ?? editStationForm.station_name, is_active: updated.is_active ?? editStationForm.is_active, location: updated.location ?? editStationForm.location, description: updated.description ?? editStationForm.description, user_id: updated.user_id ?? s.user_id, username: updated.username ?? s.username, stationImage: editStationImages.length ? s.stationImage : (deleteCurrentImage ? "" : s.stationImage) } : s));
+      setData(prev => prev.map(s => s.id === editingStation.id ? { ...s, station_name: updated.station_name ?? editStationForm.station_name, is_active: updated.is_active ?? editStationForm.is_active, maximo_location: updated.maximo_location ?? editStationForm.maximo_location, maximo_desc: updated.maximo_desc ?? editStationForm.maximo_desc, user_id: updated.user_id ?? s.user_id, username: updated.username ?? s.username, stationImage: editStationImages.length ? s.stationImage : (deleteCurrentImage ? "" : s.stationImage) } : s));
       setOpenEditStation(false); setNotice({ type: "success", msg: t.stationUpdated }); setTimeout(() => setNotice(null), 2500);
     } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Update failed" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
   };
@@ -585,7 +634,7 @@ export function SearchDataTables() {
         brand: editChargerForm.brand.trim(), model: editChargerForm.model.trim(), SN: editChargerForm.SN.trim(), WO: editChargerForm.WO.trim(),
         power: editChargerForm.power.trim(), PLCFirmware: editChargerForm.PLCFirmware.trim(), PIFirmware: editChargerForm.PIFirmware.trim(), RTFirmware: editChargerForm.RTFirmware.trim(),
         commissioningDate: editChargerForm.commissioningDate, warrantyYears: editChargerForm.warrantyYears, numberOfCables: editChargerForm.numberOfCables, is_active: editChargerForm.is_active,
-        location: editChargerForm.location.trim(), description: editChargerForm.description.trim(), ocppUrl: editChargerForm.ocppUrl.trim(), chargerType: editChargerForm.chargerType,
+        maximo_location: editChargerForm.maximo_location.trim(), maximo_desc: editChargerForm.maximo_desc.trim(), ocppUrl: editChargerForm.ocppUrl.trim(), chargerType: editChargerForm.chargerType,
       };
       const res = await apiFetch(`/update_charger/${editingCharger.charger.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error(`Update failed: ${res.status}`);
@@ -601,14 +650,75 @@ export function SearchDataTables() {
     } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Update failed" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
   };
 
-  const handleDeleteStation = async (station: StationRow, e: React.MouseEvent) => { e.stopPropagation(); if (!station.id) return alert("Station ID not found"); if (!confirm(`Are you sure you want to delete station "${station.station_name}" and all its chargers?`)) return; try { const res = await apiFetch(`/delete_stations/${station.id}`, { method: "DELETE" }); if (!res.ok) throw new Error(`Delete failed: ${res.status}`); setData(prev => prev.filter(s => s.id !== station.id)); setNotice({ type: "success", msg: t.deleteSuccess }); setTimeout(() => setNotice(null), 2500); } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e.message || "Failed to delete station" }); setTimeout(() => setNotice(null), 3500); } };
-  const handleDeleteCharger = async (stationId: string, charger: ChargerData, e: React.MouseEvent) => { e.stopPropagation(); if (!charger.id) return alert("Charger ID not found"); if (!confirm(`Are you sure you want to delete charger "${charger.chargeBoxID}"?`)) return; try { const res = await apiFetch(`/delete_charger/${charger.id}`, { method: "DELETE" }); if (!res.ok) throw new Error(`Delete failed: ${res.status}`); setData(prev => prev.map(st => { if (st.station_id !== stationId) return st; return { ...st, chargers: st.chargers.filter(c => c.id !== charger.id) }; })); setNotice({ type: "success", msg: t.chargerDeleted }); setTimeout(() => setNotice(null), 2500); } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e.message || "Failed to delete charger" }); setTimeout(() => setNotice(null), 3500); } };
+  // const handleDeleteStation = async (station: StationRow, e: React.MouseEvent) => { e.stopPropagation(); if (!station.id) return alert("Station ID not found"); if (!confirm(`Are you sure you want to delete station "${station.station_name}" and all its chargers?`)) return; try { const res = await apiFetch(`/delete_stations/${station.id}`, { method: "DELETE" }); if (!res.ok) throw new Error(`Delete failed: ${res.status}`); setData(prev => prev.filter(s => s.id !== station.id)); setNotice({ type: "success", msg: t.deleteSuccess }); setTimeout(() => setNotice(null), 2500); } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e.message || "Failed to delete station" }); setTimeout(() => setNotice(null), 3500); } };
+  const handleDeleteStation = (station: StationRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!station.id) return;
+    setConfirmDialog({
+      open: true,
+      title: lang === "th" ? "ลบสถานี?" : "Delete Station?",
+      message: lang === "th"
+        ? `คุณต้องการลบสถานี "${station.station_name}" และตู้ชาร์จทั้งหมดใช่หรือไม่?`
+        : `Are you sure you want to delete "${station.station_name}" and all its chargers?`,
+      loading: false,
+      onConfirm: async () => {
+        try {
+          setConfirmDialog(prev => ({ ...prev, loading: true }));
+          const res = await apiFetch(`/delete_stations/${station.id}`, { method: "DELETE" });
+          if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+          setData(prev => prev.filter(s => s.id !== station.id));
+          closeConfirm();
+          setNotice({ type: "success", msg: t.deleteSuccess });
+          setTimeout(() => setNotice(null), 2500);
+        } catch (e: any) {
+          console.error(e);
+          closeConfirm();
+          setNotice({ type: "error", msg: e.message || "Failed to delete station" });
+          setTimeout(() => setNotice(null), 3500);
+        }
+      },
+    });
+  };
+
+  // const handleDeleteCharger = async (stationId: string, charger: ChargerData, e: React.MouseEvent) => { e.stopPropagation(); if (!charger.id) return alert("Charger ID not found"); if (!confirm(`Are you sure you want to delete charger "${charger.chargeBoxID}"?`)) return; try { const res = await apiFetch(`/delete_charger/${charger.id}`, { method: "DELETE" }); if (!res.ok) throw new Error(`Delete failed: ${res.status}`); setData(prev => prev.map(st => { if (st.station_id !== stationId) return st; return { ...st, chargers: st.chargers.filter(c => c.id !== charger.id) }; })); setNotice({ type: "success", msg: t.chargerDeleted }); setTimeout(() => setNotice(null), 2500); } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e.message || "Failed to delete charger" }); setTimeout(() => setNotice(null), 3500); } };
+
+  const handleDeleteCharger = (stationId: string, charger: ChargerData, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!charger.id) return;
+    setConfirmDialog({
+      open: true,
+      title: lang === "th" ? "ลบตู้ชาร์จ?" : "Delete Charger?",
+      message: lang === "th"
+        ? `คุณต้องการลบตู้ชาร์จ "${charger.chargeBoxID}" ใช่หรือไม่?`
+        : `Are you sure you want to delete charger "${charger.chargeBoxID}"?`,
+      loading: false,
+      onConfirm: async () => {
+        try {
+          setConfirmDialog(prev => ({ ...prev, loading: true }));
+          const res = await apiFetch(`/delete_charger/${charger.id}`, { method: "DELETE" });
+          if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+          setData(prev => prev.map(st => {
+            if (st.station_id !== stationId) return st;
+            return { ...st, chargers: st.chargers.filter(c => c.id !== charger.id) };
+          }));
+          closeConfirm();
+          setNotice({ type: "success", msg: t.chargerDeleted });
+          setTimeout(() => setNotice(null), 2500);
+        } catch (e: any) {
+          console.error(e);
+          closeConfirm();
+          setNotice({ type: "error", msg: e.message || "Failed to delete charger" });
+          setTimeout(() => setNotice(null), 3500);
+        }
+      },
+    });
+  };
 
   const handleOpenAddCharger = (stationId: string) => {
     const station = data.find(s => s.station_id === stationId);
     const nextChargerNo = station ? station.chargers.length + 1 : 1;
     setAddingChargerStationId(stationId);
-    setAddChargerForm({ chargeBoxID: "", chargerNo: nextChargerNo, brand: "", model: "", SN: "", WO: "", power: "", PLCFirmware: "", PIFirmware: "", RTFirmware: "", commissioningDate: getTodayDate(), warrantyYears: 1, numberOfCables: 1, is_active: true, location: "", description: "", ocppUrl: "", chargerType: "DC" });
+    setAddChargerForm({ chargeBoxID: "", chargerNo: nextChargerNo, brand: "", model: "", SN: "", WO: "", power: "", PLCFirmware: "", PIFirmware: "", RTFirmware: "", commissioningDate: getTodayDate(), warrantyYears: 1, numberOfCables: 1, is_active: true, maximo_location: "", maximo_desc: "", ocppUrl: "", chargerType: "DC" });
     resetAddChargerImages(); setOpenAddCharger(true);
   };
 
@@ -616,7 +726,7 @@ export function SearchDataTables() {
     if (!addingChargerStationId) return;
     try {
       setSaving(true);
-      const payload = { chargeBoxID: addChargerForm.chargeBoxID.trim(), chargerNo: addChargerForm.chargerNo, brand: addChargerForm.brand.trim(), model: addChargerForm.model.trim(), SN: addChargerForm.SN.trim(), WO: addChargerForm.WO.trim(), power: addChargerForm.power.trim(), PLCFirmware: addChargerForm.PLCFirmware.trim(), PIFirmware: addChargerForm.PIFirmware.trim(), RTFirmware: addChargerForm.RTFirmware.trim(), commissioningDate: addChargerForm.commissioningDate, warrantyYears: addChargerForm.warrantyYears, numberOfCables: addChargerForm.numberOfCables, is_active: addChargerForm.is_active, location: addChargerForm.location.trim(), description: addChargerForm.description.trim(), ocppUrl: addChargerForm.ocppUrl.trim(), chargerType: addChargerForm.chargerType };
+      const payload = { chargeBoxID: addChargerForm.chargeBoxID.trim(), chargerNo: addChargerForm.chargerNo, brand: addChargerForm.brand.trim(), model: addChargerForm.model.trim(), SN: addChargerForm.SN.trim(), WO: addChargerForm.WO.trim(), power: addChargerForm.power.trim(), PLCFirmware: addChargerForm.PLCFirmware.trim(), PIFirmware: addChargerForm.PIFirmware.trim(), RTFirmware: addChargerForm.RTFirmware.trim(), commissioningDate: addChargerForm.commissioningDate, warrantyYears: addChargerForm.warrantyYears, numberOfCables: addChargerForm.numberOfCables, is_active: addChargerForm.is_active, maximo_location: addChargerForm.maximo_location.trim(), maximo_desc: addChargerForm.maximo_desc.trim(), ocppUrl: addChargerForm.ocppUrl.trim(), chargerType: addChargerForm.chargerType };
       const res = await apiFetch(`/add_charger/${addingChargerStationId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error(`Create failed: ${res.status}`);
       const created = await res.json();
@@ -633,7 +743,7 @@ export function SearchDataTables() {
       if (res.status === 409) throw new Error("This station_id is already in use");
       if (!res.ok) throw new Error(`Create failed: ${res.status}`);
       const created = await res.json();
-      const newStation: StationRow = { id: created.id || created.station?.id, station_id: created.station?.station_id ?? payload.station?.station_id, station_name: created.station?.station_name ?? payload.station?.station_name ?? "", owner: created.station?.owner ?? "", user_id: created.station?.user_id ?? me?.user_id ?? "", username: created.station?.username ?? me?.username ?? "", is_active: created.station?.is_active ?? true, location: created.station?.location ?? (payload.station as any)?.location ?? "", description: created.station?.description ?? (payload.station as any)?.description ?? "", stationImage: "", chargers: Array.isArray(created.chargers) ? created.chargers.map(mapCharger) : [] };
+      const newStation: StationRow = { id: created.id || created.station?.id, station_id: created.station?.station_id ?? payload.station?.station_id, station_name: created.station?.station_name ?? payload.station?.station_name ?? "", owner: created.station?.owner ?? "", user_id: created.station?.user_id ?? me?.user_id ?? "", username: created.station?.username ?? me?.username ?? "", is_active: created.station?.is_active ?? true, maximo_location: created.station?.maximo_location ?? (payload.station as any)?.maximo_location ?? "", maximo_desc: created.station?.maximo_desc ?? (payload.station as any)?.maximo_desc ?? "", stationImage: "", chargers: Array.isArray(created.chargers) ? created.chargers.map(mapCharger) : [] };
       setData(prev => [newStation, ...prev]); setOpenAdd(false); setNotice({ type: "success", msg: t.createSuccess }); setTimeout(() => setNotice(null), 3000);
       return created;
     } catch (e: any) { console.error(e); alert(e?.message || "Failed to create station"); throw e; } finally { setSaving(false); }
@@ -820,83 +930,89 @@ export function SearchDataTables() {
   // ===== Main Return =====
   return (
     <>
+      <LoadingOverlay show={loading} text={lang === "th" ? "กำลังโหลดข้อมูล..." : "Loading data..."} />
       {/* ===== Stat Cards (ข้างบน Card ตาราง) ===== */}
       <div className="tw-mt-8 tw-mb-4">
         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-4 tw-gap-2.5 sm:tw-gap-3">
-          {/* Total Stations */}
-          <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
-            <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-            <div className="tw-relative tw-z-10">
-              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
-                <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-blue-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-blue-400/20">
-                  <span className="tw-text-base">📍</span>
+          {loading ? (
+            <>{Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}</>
+          ) : (
+            <>
+              {/* Total Stations */}
+              <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+                <div className="tw-relative tw-z-10">
+                  <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+                    <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-blue-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-blue-400/20">
+                      <span className="tw-text-base">📍</span>
+                    </div>
+                    <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">
+                      {lang === "th" ? "สถานี" : "Stations"}
+                    </span>
+                  </div>
+                  <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">
+                    {data.length}
+                  </div>
                 </div>
-                <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">
-                  {lang === "th" ? "สถานี" : "Stations"}
-                </span>
               </div>
-              <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">
-                {data.length}
-              </div>
-            </div>
-          </div>
 
-          {/* Total Chargers */}
-          <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
-            <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-            <div className="tw-relative tw-z-10">
-              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
-                <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-amber-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-amber-400/20">
-                  <BoltIcon className="tw-h-4 tw-w-4 tw-text-amber-400" />
+              {/* Total Chargers */}
+              <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+                <div className="tw-relative tw-z-10">
+                  <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+                    <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-amber-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-amber-400/20">
+                      <BoltIcon className="tw-h-4 tw-w-4 tw-text-amber-400" />
+                    </div>
+                    <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">
+                      {lang === "th" ? "ตู้ชาร์จ" : "Chargers"}
+                    </span>
+                  </div>
+                  <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">
+                    {data.reduce((sum, s) => sum + s.chargers.length, 0)}
+                  </div>
                 </div>
-                <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">
-                  {lang === "th" ? "ตู้ชาร์จ" : "Chargers"}
-                </span>
               </div>
-              <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">
-                {data.reduce((sum, s) => sum + s.chargers.length, 0)}
-              </div>
-            </div>
-          </div>
 
-          {/* Online */}
-          <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
-            <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-            <div className="tw-relative tw-z-10">
-              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
-                <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.25)' }}>
-                  <span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5">
-                    <span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: '#34d399' }} />
-                    <span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: '#34d399' }} />
-                  </span>
+              {/* Online */}
+              <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+                <div className="tw-relative tw-z-10">
+                  <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+                    <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.25)' }}>
+                      <span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5">
+                        <span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: '#34d399' }} />
+                        <span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: '#34d399' }} />
+                      </span>
+                    </div>
+                    <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                      {lang === "th" ? "ออนไลน์" : "Online"}
+                    </span>
+                  </div>
+                  <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#34d399' }}>
+                    {data.reduce((sum, s) => sum + s.chargers.filter(c => c.status).length, 0)}
+                  </div>
                 </div>
-                <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                  {lang === "th" ? "ออนไลน์" : "Online"}
-                </span>
               </div>
-              <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#34d399' }}>
-                {data.reduce((sum, s) => sum + s.chargers.filter(c => c.status).length, 0)}
-              </div>
-            </div>
-          </div>
 
-          {/* Offline */}
-          <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
-            <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-            <div className="tw-relative tw-z-10">
-              <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
-                <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.25)' }}>
-                  <span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#f87171' }} />
+              {/* Offline */}
+              <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+                <div className="tw-relative tw-z-10">
+                  <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+                    <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.25)' }}>
+                      <span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#f87171' }} />
+                    </div>
+                    <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                      {lang === "th" ? "ออฟไลน์" : "Offline"}
+                    </span>
+                  </div>
+                  <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#f87171' }}>
+                    {data.reduce((sum, s) => sum + s.chargers.filter(c => !c.status).length, 0)}
+                  </div>
                 </div>
-                <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                  {lang === "th" ? "ออฟไลน์" : "Offline"}
-                </span>
               </div>
-              <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#f87171' }}>
-                {data.reduce((sum, s) => sum + s.chargers.filter(c => !c.status).length, 0)}
-              </div>
-            </div>
-          </div>
+            </>)}
         </div>
       </div>
 
@@ -913,7 +1029,24 @@ export function SearchDataTables() {
           <div className="tw-ml-auto tw-min-w-0 tw-flex-1 md:tw-flex-none md:tw-w-64"><Input variant="outlined" value={filtering} onChange={(e) => setFiltering(e.target.value)} label={t.search} crossOrigin={undefined} /></div>
         </CardBody>
         <CardFooter className="tw-p-0">
-          {loading ? (<div className="tw-p-4">{t.loading}</div>) : err ? (<div className="tw-p-4 tw-text-red-600">{err}</div>) : (
+          {loading ? (
+            <div className="tw-overflow-x-auto tw-w-full">
+              <table className="tw-w-full tw-border-separate tw-border-spacing-0 tw-min-w-[900px]">
+                <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800">
+                  <tr>
+                    {["", "Station", "Chargers", "Available", "Owner", "Status", ""].map((h, i) => (
+                      <th key={i} className="tw-px-3 tw-py-3">
+                        <div className="tw-h-3 tw-rounded tw-bg-white/20 tw-animate-pulse" style={{ width: h ? `${h.length * 8}px` : 32 }} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}
+                </tbody>
+              </table>
+            </div>
+          ) : err ? (<div className="tw-p-4 tw-text-red-600">{err}</div>) : (
             <div className="tw-overflow-x-auto tw-w-full"><table className="tw-w-full tw-border-separate tw-border-spacing-0 tw-min-w-[900px]">
               <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800">{table.getHeaderGroups().map((hg) => (<tr key={hg.id}>{hg.headers.map((h) => (<th key={h.id} onClick={h.column.getCanSort() ? h.column.getToggleSortingHandler() : undefined} className="tw-px-3 tw-py-3 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-left tw-whitespace-nowrap"><Typography color="blue-gray" className={`tw-flex tw-items-center tw-gap-2 tw-text-[11px] !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${h.column.getCanSort() ? "tw-cursor-pointer" : ""}`}>{flexRender(h.column.columnDef.header, h.getContext())}{h.column.getCanSort() && <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4 tw-text-white/60" />}</Typography></th>))}</tr>))}</thead>
               <tbody>
@@ -978,8 +1111,8 @@ export function SearchDataTables() {
                   )) : (
                     <Input label={t.owner} value={editingStation?.username ?? "-"} readOnly disabled crossOrigin={undefined} />
                   )}
-                  <Input label={t.location} value={editStationForm.location} onChange={(e) => setEditStationForm(s => ({ ...s, location: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.description} value={editStationForm.description} onChange={(e) => setEditStationForm(s => ({ ...s, description: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.maximoLocation} value={editStationForm.maximo_location} onChange={(e) => setEditStationForm(s => ({ ...s, maximo_location: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.maximoDescription} value={editStationForm.maximo_desc} onChange={(e) => setEditStationForm(s => ({ ...s, maximo_desc: e.target.value }))} crossOrigin={undefined} />
                   <Select label={t.status} value={String(editStationForm.is_active)} onChange={(v) => setEditStationForm(s => ({ ...s, is_active: v === "true" }))}>
                     <Option value="true">{t.active}</Option>
                     <Option value="false">{t.inactive}</Option>
@@ -1084,8 +1217,8 @@ export function SearchDataTables() {
                     <Input label={t.piFirmware} required value={editChargerForm.PIFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.routerFirmware} required value={editChargerForm.RTFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
                   </>)}
-                  <Input label={t.location} value={editChargerForm.location} onChange={(e) => setEditChargerForm(s => ({ ...s, location: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.description} value={editChargerForm.description} onChange={(e) => setEditChargerForm(s => ({ ...s, description: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.maximoLocation} value={editChargerForm.maximo_location} onChange={(e) => setEditChargerForm(s => ({ ...s, maximo_location: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.maximoDescription} value={editChargerForm.maximo_desc} onChange={(e) => setEditChargerForm(s => ({ ...s, maximo_desc: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.commissioningDate} type="date" value={editChargerForm.commissioningDate} onChange={(e) => setEditChargerForm(s => ({ ...s, commissioningDate: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.warrantyYears} type="number" min={1} max={10} value={editChargerForm.warrantyYears} onChange={(e) => setEditChargerForm(s => ({ ...s, warrantyYears: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
                   <Input label={t.numberOfCables} type="number" min={1} max={10} value={editChargerForm.numberOfCables} onChange={(e) => setEditChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
@@ -1237,8 +1370,8 @@ export function SearchDataTables() {
                     <Input label={t.chargerBoxId} required value={addChargerForm.chargeBoxID} onChange={(e) => setAddChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.ocppUrl} value={addChargerForm.ocppUrl} onChange={(e) => setAddChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
                   </>)}
-                  <Input label={t.location} value={addChargerForm.location} onChange={(e) => setAddChargerForm(s => ({ ...s, location: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.description} value={addChargerForm.description} onChange={(e) => setAddChargerForm(s => ({ ...s, description: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.maximoLocation} value={addChargerForm.maximo_location} onChange={(e) => setAddChargerForm(s => ({ ...s, maximo_location: e.target.value }))} crossOrigin={undefined} />
+                  <Input label={t.maximoDescription} value={addChargerForm.maximo_desc} onChange={(e) => setAddChargerForm(s => ({ ...s, maximo_desc: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.commissioningDate} type="date" required value={addChargerForm.commissioningDate} onChange={(e) => setAddChargerForm(s => ({ ...s, commissioningDate: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.warrantyYears} type="number" min={1} max={10} required value={addChargerForm.warrantyYears} onChange={(e) => setAddChargerForm(s => ({ ...s, warrantyYears: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
                   <Input label={t.numberOfCables} type="number" min={1} max={10} required value={addChargerForm.numberOfCables} onChange={(e) => setAddChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
@@ -1299,6 +1432,19 @@ export function SearchDataTables() {
           </DialogFooter>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={closeConfirm}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={lang === "th" ? "ลบ" : "Delete"}
+        cancelLabel={lang === "th" ? "ยกเลิก" : "Cancel"}
+        variant="danger"
+        loading={confirmDialog.loading}
+      />
+
     </>
   );
 }

@@ -22,6 +22,7 @@ import {
     WifiIcon,
     ArrowsRightLeftIcon,
 } from "@heroicons/react/24/solid";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 /* =========================
    1) Types & Helpers
@@ -38,27 +39,6 @@ type Device = {
     imageUrl?: string;
     metricType?: MetricType;
 };
-
-// const DEVICE_IMAGES: Record<string, string> = {
-//     "DC Power Contactor": "/images/devices/dc-contactor.png",
-//     "AC Power Contactor": "/images/devices/ac-contactor.png",
-//     "Motor Starter": "/images/devices/motor-starter.png",
-//     "FUSE": "/images/devices/fuse.png",
-//     "RCCB": "/images/devices/rccb.png",
-//     "RCBO": "/images/devices/rcbo.png",
-//     "Circuit Breaker": "/images/devices/circuit-breaker.png",
-//     "Surge Protection": "/images/devices/surge-protection.png",
-//     "Energy Meter": "/images/devices/energy-meter.png",
-//     "Charging Controller": "/images/devices/charging-controller.png",
-//     "Insulation Monitoring": "/images/devices/insulation-monitor.png",
-//     "FAN Controller": "/images/devices/fan-controller.png",
-//     "Router": "/images/devices/router.png",
-//     "OCPP Device": "/images/devices/ocpp-device.png",
-//     "Power supplies": "/images/devices/power-supply.png",
-//     "DC Converter": "/images/devices/dc-converter.png",
-//     "Disconnect Switch": "/images/devices/disconnect-switch.png",
-//     "Noise Filter": "/images/devices/noise-filter.png",
-// };
 
 const DEVICE_IMAGES: Record<string, string> = {
     // Contactors
@@ -101,37 +81,27 @@ function getDeviceImage(deviceName: string): string | undefined {
 
 // ===== Lifetime Config (กำหนดที่ Frontend) - หน่วยเป็นวัน =====
 const LIFETIME_CONFIG: Record<string, number> = {
-    // Contactors (times - ครั้ง)
     "DC Power Contactor": 300000,
     "AC Power Contactor": 50000,
-    // Motor Starters (times - ครั้ง)
     "Motor Starter": 30000,
-    // Fuses (days - วัน)
-    "FUSE": 4166, // ~11.4 years
-    // RCCB (days - วัน)
-    "RCCB": 3650, // 10 years
+    "FUSE": 4166,
+    "RCCB": 3650,
     "RCBO": 3650,
-    // Energy Meter (days - วัน)
-    "Energy Meter": 5475, // 15 years
-    // Controllers (days - วัน)
+    "Energy Meter": 5475,
     "Charging Controller": 3650,
     "Insulation Monitoring": 3650,
-    // Router & Network (days - วัน)
     "Router": 3650,
     "OCPP Device": 3650,
-    // Other components (days - วัน)
     "Circuit Breaker": 4166,
-    "FAN Controller": 2083, // ~5.7 years
+    "FAN Controller": 2083,
     "Power supplies": 3650,
     "DC Converter": 4166,
     "Surge Protection": 3650,
     "Disconnect Switch": 4166,
     "Noise Filter": 4166,
-    // Default
     "default": 2083,
 };
 
-// หา lifetime จาก config
 function getLifetime(deviceName: string): number {
     for (const [key, value] of Object.entries(LIFETIME_CONFIG)) {
         if (deviceName.includes(key)) return value;
@@ -139,23 +109,17 @@ function getLifetime(deviceName: string): number {
     return LIFETIME_CONFIG.default;
 }
 
-// คำนวณ % ที่ใช้ไป (ไม่จำกัดสูงสุดเพราะสามารถเกิน 100% ได้)
 function calcUsagePercent(current: number, lifetime: number): number {
     if (lifetime <= 0) return 0;
     return (current / lifetime) * 100;
 }
 
-// กำหนดสีตาม % ที่ใช้ (เทียบกับ lifetime)
-// เขียว: ไม่เกิน lifetime หรือเกินไม่เกิน 20% (≤ 120%)
-// เหลือง: เกิน lifetime 20-50% (> 120% ถึง 150%)
-// แดง: เกิน lifetime มากกว่า 50% (> 150%)
 function getStatusColor(usagePercent: number): "green" | "yellow" | "red" {
     if (usagePercent > 150) return "red";
     if (usagePercent > 120) return "yellow";
     return "green";
 }
 
-// คำนวณ Status จาก value และ deviceName (ใช้ lifetime)
 function getDeviceStatus(deviceName: string, value: number): Status {
     const lifetime = getLifetime(deviceName);
     const usagePercent = calcUsagePercent(value, lifetime);
@@ -189,13 +153,11 @@ const colorClasses = {
     },
 };
 
-// แปลง value เป็นตัวเลข (วัน)
 function parseValueToNumber(value?: string, metricType?: MetricType): number {
     if (!value) return 0;
     if (metricType === "day") {
-        // ข้อมูลเก็บเป็นวินาที แปลงเป็นวัน
         const seconds = Number(String(value).replace(/[^\d.-]/g, "")) || 0;
-        return Math.floor(seconds / 86400); // 86400 = 60*60*24 วินาทีต่อวัน
+        return Math.floor(seconds / 86400);
     }
     return Number(String(value).replace(/[^\d.-]/g, "")) || 0;
 }
@@ -216,7 +178,6 @@ function pickStatus(
     return "ok";
 }
 
-// ฟังก์ชันเลือก icon ตามชื่ออุปกรณ์
 function getDeviceIcon(deviceName: string) {
     if (deviceName.includes("Contactor")) return BoltIcon;
     if (deviceName.includes("Motor")) return CogIcon;
@@ -234,7 +195,7 @@ function getDeviceIcon(deviceName: string) {
     if (deviceName.includes("Disconnect")) return PowerIcon;
     if (deviceName.includes("Noise Filter")) return FunnelIcon;
     if (deviceName.includes("Circuit Breaker")) return ShieldCheckIcon;
-    return CpuChipIcon; // default
+    return CpuChipIcon;
 }
 
 /* =========================
@@ -269,17 +230,6 @@ function Style3Circular({
     return (
         <div className="tw-p-4 tw-bg-white tw-rounded-xl tw-border tw-border-gray-100 hover:tw-border-gray-200 tw-transition-colors">
             <div className="tw-flex tw-items-center tw-gap-4">
-                {/* Icon */}
-                {/* <div className={`tw-relative tw-flex-shrink-0 tw-w-14 tw-h-14 tw-rounded-xl ${bgColor} ${borderColor} tw-border-2 tw-flex tw-items-center tw-justify-center`}>
-                    <DeviceIcon className={`tw-w-7 tw-h-7 ${iconColor}`} /> */}
-                    {/* Status dot */}
-                    {/* <div 
-                        className="tw-absolute -tw-top-1 -tw-right-1 tw-w-4 tw-h-4 tw-rounded-full tw-border-2 tw-border-white"
-                        style={{ backgroundColor: strokeColor }}
-                    /> */}
-                    
-                {/* </div> */}
-
                 {/* Icon or Image */}
                 <div className={`tw-relative tw-flex-shrink-0 tw-w-20 tw-h-20 tw-rounded-xl ${bgColor} ${borderColor} tw-border-2 tw-flex tw-items-center tw-justify-center`}>
                     {imageUrl && !imageError ? (
@@ -325,42 +275,6 @@ function Style3Circular({
                 </div>
             </div>
         </div>
-    );
-}
-
-/* =========================
-   Loading Skeleton
-   ========================= */
-function LoadingSkeleton() {
-    return (
-        <div className="tw-p-4 tw-bg-white tw-rounded-xl tw-border tw-border-gray-100 tw-animate-pulse">
-            <div className="tw-flex tw-items-center tw-gap-4">
-                <div className="tw-w-14 tw-h-14 tw-bg-gray-100 tw-rounded-xl tw-flex-shrink-0" />
-                <div className="tw-flex-1 tw-space-y-2">
-                    <div className="tw-h-4 tw-bg-gray-100 tw-rounded tw-w-3/4" />
-                    <div className="tw-h-4 tw-bg-gray-100 tw-rounded tw-w-1/2" />
-                    <div className="tw-h-1.5 tw-bg-gray-100 tw-rounded-full tw-w-full" />
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function SideListSkeleton({ title }: { title: string }) {
-    return (
-        <aside className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-5 sm:tw-p-6">
-            <div className="tw-flex tw-items-center tw-justify-between tw-mb-5">
-                <div className="tw-flex tw-items-center tw-gap-2.5">
-                    <div className="tw-w-1 tw-h-5 tw-bg-gray-400 tw-rounded-full" />
-                    <p className="tw-text-sm tw-font-bold tw-text-gray-700 tw-uppercase tw-tracking-wide">{title}</p>
-                </div>
-            </div>
-            <div className="tw-space-y-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                    <LoadingSkeleton key={i} />
-                ))}
-            </div>
-        </aside>
     );
 }
 
@@ -526,7 +440,6 @@ export default function DCChargerDashboard() {
 
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
-    // ===== Get sn from URL or localStorage =====
     useEffect(() => {
         const sid = searchParams.get("sn") 
             || localStorage.getItem("selected_sn")
@@ -557,36 +470,23 @@ export default function DCChargerDashboard() {
     const t = useMemo(() => {
         const translations = {
             th: {
-                // Status
                 statusOk: "ปกติ",
                 statusWarn: "ต้องตรวจสอบ",
                 statusError: "มีปัญหา",
-                
-                // Filter buttons
                 all: "ทั้งหมด",
                 issues: "มีปัญหา",
                 monitor: "ต้องตรวจสอบ",
                 normal: "ปกติ",
                 unit: "ตัว",
-                
-                // Search
                 searchDevices: "ค้นหาอุปกรณ์",
                 searchPlaceholder: "พิมพ์ชื่ออุปกรณ์...",
-                
-                // Lists
                 deviceLeft: "อุปกรณ์ (ซ้าย)",
                 deviceCenter: "อุปกรณ์ (กลาง)",
                 deviceRight: "อุปกรณ์ (ขวา)",
-                
-                // Metric types
                 times: "ครั้ง",
                 day: "วัน",
-                
-                // Lifetime
                 lifetime: "อายุการใช้งาน",
                 used: "ใช้ไป",
-                
-                // Messages
                 noDevicesFound: "ไม่พบอุปกรณ์ตามตัวกรอง",
                 noItemsInGroup: "ไม่พบรายการในกลุ่มนี้",
                 noStationSelected: "กรุณาเลือกตู้ชาร์จก่อน",
@@ -597,36 +497,23 @@ export default function DCChargerDashboard() {
                 updated: "อัพเดตล่าสุด",
             },
             en: {
-                // Status
                 statusOk: "Normal",
                 statusWarn: "Monitor",
                 statusError: "Issue",
-                
-                // Filter buttons
                 all: "All",
                 issues: "Issues",
                 monitor: "Monitor",
                 normal: "Normal",
                 unit: "unit",
-                
-                // Search
                 searchDevices: "Search Devices",
                 searchPlaceholder: "Type device name...",
-                
-                // Lists
                 deviceLeft: "Device (Left)",
                 deviceCenter: "Device (Center)",
                 deviceRight: "Device (Right)",
-                
-                // Metric types
                 times: "Times",
                 day: "Day",
-                
-                // Lifetime
                 lifetime: "Lifetime",
                 used: "used",
-                
-                // Messages
                 noDevicesFound: "No devices found",
                 noItemsInGroup: "No items found in this group",
                 noStationSelected: "Please select a charger first",
@@ -642,14 +529,12 @@ export default function DCChargerDashboard() {
 
     // ===== SSE Connection =====
     useEffect(() => {
-        // Don't connect if no stationId
         if (!stationId) {
             setLive(null);
             setLoading(false);
             return;
         }
 
-        // Reset states when stationId changes
         setLoading(true);
         setConnectionError(false);
         setLive(null);
@@ -690,15 +575,13 @@ export default function DCChargerDashboard() {
 
         es.onerror = () => {
             setConnectionError(true);
-            // SSE will auto-reconnect, so we don't set loading to false here
         };
 
-        // Timeout to handle case where SSE connects but no data comes
         const timeout = setTimeout(() => {
             if (!live) {
                 setLoading(false);
             }
-        }, 10000); // 10 seconds timeout
+        }, 10000);
 
         return () => {
             clearTimeout(timeout);
@@ -711,7 +594,6 @@ export default function DCChargerDashboard() {
     const { LEFT_LIST, RIGHT_LIST, CENTER_LIST, DEVICES } = useMemo(() => {
         const p = live || {};
         
-        // Helper function to create device with proper status
         const createDevice = (id: string, name: string, value: string | undefined, metricType: MetricType): Device => {
             const numValue = parseValueToNumber(value, metricType);
             return {
@@ -772,7 +654,7 @@ export default function DCChargerDashboard() {
         return { LEFT_LIST: left, RIGHT_LIST: right, CENTER_LIST: center, DEVICES: all };
     }, [live]);
 
-    // ===== UI State (ค้นหา/กรอง) =====
+    // ===== UI State =====
     const [query, setQuery] = useState("");
     const [filter, setFilter] = useState<"all" | Status>("all");
 
@@ -815,7 +697,7 @@ export default function DCChargerDashboard() {
        4) Render
        ========================= */
     
-    // Show message if no stationId selected
+    // No stationId selected
     if (!stationId) {
         return (
             <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
@@ -831,51 +713,11 @@ export default function DCChargerDashboard() {
         );
     }
 
-    // Show loading state
-    if (loading) {
+    // No data after loading
+    if (!loading && (!live || Object.keys(live).length === 0)) {
         return (
             <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
-                {/* Header skeleton */}
-                <div className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-5 md:tw-p-6">
-                    <div className="tw-flex tw-items-center tw-gap-3 tw-py-2">
-                        <div className="tw-animate-spin tw-h-4 tw-w-4 tw-border-2 tw-border-gray-200 tw-border-t-gray-500 tw-rounded-full" />
-                        <span className="tw-text-sm tw-text-gray-500">
-                            {connectionError ? t.connectionFailed : t.connecting}
-                        </span>
-                    </div>
-                    <div className="tw-mt-3 tw-flex tw-flex-wrap tw-gap-2">
-                        {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="tw-h-8 tw-w-20 tw-bg-gray-100 tw-rounded-full tw-animate-pulse" />
-                        ))}
-                    </div>
-                    <div className="tw-mt-4">
-                        <div className="tw-h-3 tw-w-20 tw-bg-gray-100 tw-rounded tw-animate-pulse tw-mb-2" />
-                        <div className="tw-h-10 tw-bg-gray-100 tw-rounded-lg tw-animate-pulse" />
-                    </div>
-                </div>
-
-                {/* Content skeleton */}
-                <div
-                    className="tw-mt-6 tw-grid tw-gap-6 xl:tw-gap-8
-                        tw-grid-cols-1
-                        sm:tw-grid-cols-1
-                        md:tw-grid-cols-1
-                        lg:tw-grid-cols-2
-                        xl:tw-grid-cols-3
-                        2xl:tw-grid-cols-3"
-                >
-                    <SideListSkeleton title={t.deviceLeft} />
-                    <SideListSkeleton title={t.deviceCenter} />
-                    <SideListSkeleton title={t.deviceRight} />
-                </div>
-            </div>
-        );
-    }
-
-    // Show message if no data (after loading completed)
-    if (!live || Object.keys(live).length === 0) {
-        return (
-            <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
+                <LoadingOverlay show={false} />
                 <div className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-8 tw-text-center">
                     <div className="tw-flex tw-justify-center tw-mb-4">
                         <div className="tw-p-4 tw-rounded-full tw-bg-gray-50">
@@ -891,6 +733,8 @@ export default function DCChargerDashboard() {
 
     return (
         <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
+            {/* Loading Overlay — แสดงจนกว่าจะได้ข้อมูลแรกจาก SSE */}
+            <LoadingOverlay show={loading} text={connectionError ? t.connectionFailed : t.loading} />
 
             {/* แผงสรุป/ค้นหา */}
             <div className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-5 md:tw-p-6">
@@ -939,40 +783,6 @@ export default function DCChargerDashboard() {
                 <SideList title={t.deviceCenter} items={CENTER_LIST} filter={filter} search={query} t={t} />
                 <SideList title={t.deviceRight} items={RIGHT_LIST} filter={filter} search={query} t={t} />
             </div>
-
-            {/* รายการแบบจัดกลุ่ม (ตามสถานะ) */}
-            {/* <div className="tw-mt-8 tw-space-y-6">
-                {showError && (
-                    <Group
-                        status="error"
-                        title={t.issues}
-                        devices={DEVICES.filter((d) => d.status === "error")}
-                        defaultOpen
-                        search={query}
-                        t={t}
-                    />
-                )}
-                {showWarn && DEVICES.some((d) => d.status === "warn") && (
-                    <Group
-                        status="warn"
-                        title={t.monitor}
-                        devices={DEVICES.filter((d) => d.status === "warn")}
-                        defaultOpen
-                        search={query}
-                        t={t}
-                    />
-                )}
-                {showOk && (
-                    <Group
-                        status="ok"
-                        title={t.normal}
-                        devices={DEVICES.filter((d) => d.status === "ok")}
-                        defaultOpen={false}
-                        search={query}
-                        t={t}
-                    />
-                )}
-            </div> */}
 
             <div className="tw-h-10" />
         </div>

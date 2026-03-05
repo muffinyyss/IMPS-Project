@@ -76,7 +76,7 @@ class PLCProcessor:
         
         # --- Write to settingParameter ---
         # Get insulation data if available
-        insulation_data = state.get_latest('insulation_agg')
+        insulation_data = state.get_latest('insulationAgg')
         setting_doc = create_setting_document(plc_data, insulation_data, ts_str)
         if not state.check_duplicate('setting', setting_doc):
             self.mongodb.insert_one('setting', serial_number, setting_doc)

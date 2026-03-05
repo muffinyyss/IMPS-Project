@@ -446,7 +446,7 @@ def create_module3_document(state: 'StationState', mdb_data: Dict[str, Any],
     now = dt.now()
     
     plc_data = state.get_latest('plc') or {}
-    eb_error = state.get_latest('eb_error') or {}
+    eb_error = state.get_latest('ebError') or {}
     
     return {
         "time": now.strftime("%H:%M:%S"),
