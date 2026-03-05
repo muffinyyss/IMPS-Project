@@ -11,8 +11,10 @@ import {
     Typography,
     Select,
     Option,
+    Switch,
 } from "@material-tailwind/react";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import { apiFetch } from "@/utils/api";
 
 export type NewUserPayload = {
     username: string;
@@ -23,6 +25,7 @@ export type NewUserPayload = {
     payment: "y" | "n";
     tel: string;
     station_id?: string | string[];
+    ai_package?: { enabled: boolean };
 };
 
 type FormState = Omit<NewUserPayload, "station_id"> & {
@@ -52,6 +55,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         payment: "y",
         tel: "",
         station_id: undefined,
+        ai_package: { enabled: false },
     });
     const [stations, setStations] = useState<Station[]>([]);
     const [loadingStations, setLoadingStations] = useState(false);
@@ -69,27 +73,10 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         const fetchStations = async () => {
             try {
                 setLoadingStations(true);
-                const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
-
-                if (!token) {
-                    console.warn("No token found");
-                    return;
-                }
-
-                const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-                const res = await fetch(`${API_BASE}/my-stations/detail`, {
-                    method: "GET",
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-
-                if (!res.ok) {
-                    console.error("Failed to fetch stations:", res.status);
-                    return;
-                }
-
+                const res = await apiFetch("/my-stations/detail");
+                if (!res.ok) return;
                 const data = await res.json();
-                const stationsList = data?.stations || (Array.isArray(data) ? data : []);
-                setStations(stationsList);
+                setStations(data?.stations || (Array.isArray(data) ? data : []));
             } catch (error) {
                 console.error("Error fetching stations:", error);
             } finally {
@@ -136,6 +123,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
             company_name: "",
             payment: "y",
             station_id: undefined,
+            ai_package: { enabled: false },
         });
         setStationSearchValue("");
         setShowStationDropdown(false);
@@ -209,9 +197,28 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     <Option value="owner">Owner</Option>
                                     <Option value="admin">Admin</Option>
                                     <Option value="technician">Technician</Option>
+
                                 </Select>
+
                             </div>
                         </div>
+                        {form.role === "owner" && (
+                            <div className="tw-border tw-border-blue-gray-100 tw-rounded-xl tw-p-4 tw-space-y-3">
+                                <Typography variant="small" className="!tw-font-semibold tw-text-blue-gray-700">
+                                    AI Package
+                                </Typography>
+                                <div className="tw-flex tw-items-center tw-justify-between">
+                                    <Typography variant="small" color="blue-gray">Enable AI Modules</Typography>
+                                    <Switch
+                                        checked={form.ai_package?.enabled ?? false}
+                                        onChange={() => setForm(s => ({
+                                            ...s,
+                                            ai_package: { enabled: !(s.ai_package?.enabled ?? false) }
+                                        }))}
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         {/* แสดง Station Search เฉพาะเมื่อ role = technician */}
                         {form.role === "technician" && (

@@ -32,6 +32,19 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+class AiPackage(BaseModel):
+    enabled: bool = False
+    # expires_at: Optional[datetime] = None
+
+# class UserUpdate(BaseModel):
+#     username: str | None = None
+#     email: EmailStr | None = None
+#     tel: str | None = None
+#     company: str | None = None
+#     role: str | None = None
+#     is_active: bool | None = None
+#     password: str | None = None
+#     station_id: Optional[List[str]] = None
 
 @router.post("/login/")
 def login(body: LoginRequest, response: Response):
@@ -105,6 +118,37 @@ def login(body: LoginRequest, response: Response):
             "company": user.get("company"),
             "station_id": station_ids,
         }
+    }
+
+@router.get("/me/ai-package")
+def get_ai_package(current: UserClaims = Depends(get_current_user)):
+    if current.role == "admin":
+        return {"has_access": True, "role": "admin"}
+
+    user = users_collection.find_one(
+        {"_id": ObjectId(current.user_id)},
+        {"ai_package": 1}
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    pkg = user.get("ai_package", {})
+    enabled = pkg.get("enabled", False)
+    # expires_at = pkg.get("expires_at")
+
+    # is_expired = False
+    # if expires_at:
+    #     expiry = expires_at if isinstance(expires_at, datetime) else datetime.fromisoformat(str(expires_at))
+    #     if expiry.tzinfo is None:
+    #         expiry = expiry.replace(tzinfo=timezone.utc)
+    #     is_expired = datetime.now(timezone.utc) > expiry
+
+    has_access = enabled
+
+    return {
+        "has_access": has_access,
+        "enabled": enabled,
+        "role": current.role,
     }
 
 @router.get("/me")
@@ -497,6 +541,7 @@ class addUsers(BaseModel):
     company_name:str
     station_id:Optional[Union[str, int, List[Union[str, int]]]] = None
     role:str 
+    ai_package: Optional[AiPackage] = None
 
 class UserOut(BaseModel):
     id: str
@@ -532,6 +577,7 @@ def insert_users(body: addUsers, current: UserClaims = Depends(get_current_user)
         "station_id": station_ids,
         "refreshTokens": [],
         "createdAt": datetime.now(timezone.utc),
+        "ai_package": body.ai_package.model_dump() if body.ai_package else {"enabled": False},
     }
 
     try:
@@ -577,12 +623,13 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None # admin เท่านั้นที่แก้ได้
     password: str | None = None   # จะถูกแฮชเสมอถ้ามีค่า
     station_id: Optional[List[str]] = None  # สำหรับ technician
+    ai_package: Optional[AiPackage] = None
 
 def hash_password(raw: str) -> str:
     return bcrypt.hashpw(raw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 # ฟิลด์ที่อนุญาต
-ALLOW_FIELDS_ADMIN_USER = {"username", "email", "tel", "company", "role", "is_active", "password", "station_id"}
+ALLOW_FIELDS_ADMIN_USER = {"username","email","password","role","company","tel","is_active","station_id","ai_package"}  
 ALLOW_FIELDS_SELF_USER  = {"username", "email", "tel", "company", "password"}
 
 
@@ -614,8 +661,8 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
 
     # ── จำกัดฟิลด์ตามบทบาท
     # แนะนำให้ประกาศสองชุดนี้ไว้ด้านบนไฟล์หรือไฟล์ settings:
-    ALLOW_FIELDS_ADMIN_USER = {"username","email","password","role","company","tel","is_active","station_id"}
-    ALLOW_FIELDS_SELF_OWNER = {"username","email","password","tel"}  # ปรับตามที่อยากให้แก้เองได้
+    ALLOW_FIELDS_ADMIN_USER = {"username","email","password","role","company","tel","is_active","station_id","ai_package"}
+    ALLOW_FIELDS_SELF_OWNER = {"username", "email", "password", "tel"}   # ปรับตามที่อยากให้แก้เองได้
     if current.role == "admin":
         allowed = ALLOW_FIELDS_ADMIN_USER
     else:  # owner
@@ -623,6 +670,7 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
 
     payload = {k: v for k, v in incoming.items() if k in allowed}
     if not payload:
+        # raise HTTPException(status_code=400, detailฟแ="no permitted fields to update")
         raise HTTPException(status_code=400, detail="no permitted fields to update")
 
     # ── แฮชรหัสผ่านถ้ามี
@@ -645,6 +693,9 @@ def update_user(id: str, body: UserUpdate, current: UserClaims = Depends(get_cur
         raise HTTPException(status_code=400, detail="is_active must be boolean")
 
     now = datetime.now(timezone.utc)
+
+    if "ai_package" in payload and hasattr(payload["ai_package"], "model_dump"):
+        payload["ai_package"] = payload["ai_package"].model_dump()
     payload["updatedAt"] = now
 
     try:

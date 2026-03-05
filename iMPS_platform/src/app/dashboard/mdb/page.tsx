@@ -25,6 +25,11 @@ import { buildChartsFromHistory } from "@/data/statistics-charts-data";
 import { useSearchParams } from "next/navigation";
 import { timeStamp } from "console";
 
+// เพิ่มใต้ import อื่นๆ
+import { Button } from "@/components/MaterialTailwind";
+import { PlusIcon } from "@heroicons/react/24/solid";
+import AddEquipmentDialog from "./components/add-equipment-dialog";
+
 type HistoryRow = {
     timestamp: string; // ISO time
     VL1N?: number; VL2N?: number; VL3N?: number;
@@ -45,9 +50,9 @@ function fmt(d: Date) {
 // ✅ แก้ฟังก์ชันนี้ - บังคับแปลงเป็นเวลาไทยเสมอ
 function formatThaiDateTime(iso?: string | null) {
     if (!iso) return "-";
-    
+
     let d: Date;
-    
+
     // ถ้าเป็นรูปแบบ "YYYY-MM-DD HH:mm:ss.ffffff" (ไม่มี Z หรือ timezone)
     if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(iso)) {
         // บังคับให้เป็น UTC โดยเติม Z ท้าย
@@ -57,7 +62,7 @@ function formatThaiDateTime(iso?: string | null) {
         // กรณีอื่นๆ
         d = new Date(iso);
     }
-    
+
     // ถ้า parse ไม่ได้
     if (isNaN(d.getTime())) return String(iso);
 
@@ -101,27 +106,27 @@ const num0 = (v: any) => {
 };
 
 const digit1 = (v: any): number => {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
 
-  // ปัดเป็นทศนิยม 2 ตำแหน่ง
-  return Math.round((n + Number.EPSILON) * 10) / 10;
+    // ปัดเป็นทศนิยม 2 ตำแหน่ง
+    return Math.round((n + Number.EPSILON) * 10) / 10;
 };
 
 const digit2 = (v: any): number => {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
 
-  // ปัดเป็นทศนิยม 2 ตำแหน่ง
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+    // ปัดเป็นทศนิยม 2 ตำแหน่ง
+    return Math.round((n + Number.EPSILON) * 100) / 100;
 };
 
 const digit3 = (v: any): number => {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
 
-  // ปัดเป็นทศนิยม 3 ตำแหน่ง
-  return Math.round((n + Number.EPSILON) * 1000) / 1000;
+    // ปัดเป็นทศนิยม 3 ตำแหน่ง
+    return Math.round((n + Number.EPSILON) * 1000) / 1000;
 };
 
 const intDiv = (v: any, d: number) => {
@@ -141,7 +146,7 @@ async function login(email: string, password: string) {
 
     // เก็บ token ไว้ใช้กับ fetch อื่น (non-SSE) ได้ตามต้องการ
     localStorage.setItem("accessToken", data.access_token);
-    
+
     localStorage.setItem("user", JSON.stringify(data.user));
 }
 
@@ -157,6 +162,11 @@ export default function MDBPage() {
     const [err, setErr] = useState<string | null>(null);
     const [err2, setErr2] = useState<string | null>(null);
     const [peakPower, setPeakPower] = useState<{ PL1N_peak?: number, PL2N_peak?: number, PL3N_peak?: number } | null>(null);
+
+    const [openAddEquip, setOpenAddEquip] = useState(false);
+    const hasPermission = userLogin?.role === "admin" || userLogin?.role === "owner";
+    const hasMdbData = !!mdb && !loading;
+    const canAddEquipment = hasPermission && !hasMdbData;
 
     // default: ล่าสุด 30 วัน
     const today = useMemo(() => new Date(), []);
@@ -259,25 +269,25 @@ export default function MDBPage() {
             setHistory(prev => {
                 const next: HistoryRow = {
                     timestamp: ts,
-                    VL1N: Number(doc.VL1N ?? 0),
-                    VL2N: Number(doc.VL2N ?? 0),
-                    VL3N: Number(doc.VL3N ?? 0),
-                    I1: Number(doc.I1 ?? 0),
-                    I2: Number(doc.I2 ?? 0),
-                    I3: Number(doc.I3 ?? 0),
-                    PL1N: Number(doc.PL1N ?? 0),
-                    PL2N: Number(doc.PL2N ?? 0),
-                    PL3N: Number(doc.PL3N ?? 0),
+                    VL1N: Number(doc.VL1N ?? doc.V_L1N ?? 0),
+                    VL2N: Number(doc.VL2N ?? doc.V_L2N ?? 0),
+                    VL3N: Number(doc.VL3N ?? doc.V_L3N ?? 0),
+                    I1: Number(doc.I1 ?? doc.I_L1 ?? 0),
+                    I2: Number(doc.I2 ?? doc.I_L2 ?? 0),
+                    I3: Number(doc.I3 ?? doc.I_L3 ?? 0),
+                    PL1N: Number(doc.PL1N ?? doc.P_Active_L1 ?? 0),
+                    PL2N: Number(doc.PL2N ?? doc.P_Active_L2 ?? 0),
+                    PL3N: Number(doc.PL3N ?? doc.P_Active_L3 ?? 0),
                 };
 
                 const merged = [...prev, next];
                 const pruned = merged
                     .filter(r => {
-                        const tt = new Date(r.timestamp).getTime(); // ✅ แก้จาก r.Datetime
+                        const tt = new Date(r.timestamp).getTime();
                         return tt >= from && tt <= to;
                     })
                     .slice(-5000)
-                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); // ✅ แก้
+                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
                 return pruned;
             });
@@ -291,21 +301,13 @@ export default function MDBPage() {
         setLoading(true);
         setErr(null);
 
-        // const url = `${API_BASE}/MDB?station_id=${encodeURIComponent(stationId)}`;
-        // const es = new EventSource(url) ;
-        // const es = new EventSource(
-        //     `${API_BASE}/MDB?station_id=${encodeURIComponent(stationId)}`,
-        //     { withCredentials: true }                  // ★ สำคัญ
-        // );
         const es = new EventSource(
             `${API_BASE}/MDB/${encodeURIComponent(stationId)}`,
             { withCredentials: true }
         );
+
         es.onopen = () => setErr(null);
         const onInit = (e: MessageEvent) => { setMdb(JSON.parse(e.data)); setLoading(false); setErr(null); };
-        // const onMsg = (e: MessageEvent) => setMdb(JSON.parse(e.data));
-        // const onErr = () => { setErr("SSE disconnected (auto-retry)"); setLoading(false); };
-
         es.addEventListener("init", onInit);
         es.onmessage = (e) => { setMdb(JSON.parse(e.data)); setErr(null); }; // ✅ ล้างทุกครั้งที่มีข้อมูล
         es.onerror = () => { setErr("SSE disconnected (auto-retry)"); setLoading(false); };
@@ -336,9 +338,16 @@ export default function MDBPage() {
         const num = (v: any) => (v == null ? undefined : Number(v));
         return {
             timestamp: ts,
-            VL1N: num(d.VL1N), VL2N: num(d.VL2N), VL3N: num(d.VL3N),
-            I1: num(d.I1), I2: num(d.I2), I3: num(d.I3),
-            PL1N: num(d.PL1N), PL2N: num(d.PL2N), PL3N: num(d.PL3N),
+            // รองรับทั้ง format เดิม (VL1N) และ format ใหม่ (V_L1N)
+            VL1N: num(d.VL1N ?? d.V_L1N),
+            VL2N: num(d.VL2N ?? d.V_L2N),
+            VL3N: num(d.VL3N ?? d.V_L3N),
+            I1: num(d.I1 ?? d.I_L1),
+            I2: num(d.I2 ?? d.I_L2),
+            I3: num(d.I3 ?? d.I_L3),
+            PL1N: num(d.PL1N ?? d.P_Active_L1),
+            PL2N: num(d.PL2N ?? d.P_Active_L2),
+            PL3N: num(d.PL3N ?? d.P_Active_L3),
         };
     };
 
@@ -360,8 +369,8 @@ export default function MDBPage() {
             const t = new Date(r.timestamp).getTime();
             const bucket = Math.floor(t / ms);
             if (!seen.has(bucket)) {
-            seen.add(bucket);
-            out.push(r);
+                seen.add(bucket);
+                out.push(r);
             }
         }
         return out;
@@ -386,7 +395,7 @@ export default function MDBPage() {
             return nowTH.getFullYear() === ddTH.getFullYear() &&
                 nowTH.getMonth() === ddTH.getMonth() &&
                 nowTH.getDate() === ddTH.getDate();
-            };
+        };
         if (isTodayTH(endDate)) endISO = new Date().toISOString();
 
         // const url = `${API_BASE}/MDB/history?station_id=${encodeURIComponent(stationId)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
@@ -446,7 +455,7 @@ export default function MDBPage() {
             try {
                 const url = `${API_BASE}/MDB/${encodeURIComponent(stationId)}/peak-power`;
                 const response = await fetch(url, { credentials: 'include' });
-                
+
                 if (response.ok) {
                     const data = await response.json();
                     setPeakPower(data);
@@ -463,77 +472,90 @@ export default function MDBPage() {
 
     // ✅ CHANGED: คำนวณค่าด้วย helper กัน NaN และ preserve ค่า pf/frequency เป็นทศนิยม
     const MDB = {
-        tempc: int0(station?.tempc),
-        humidity: int0(station?.humidity),
+        tempc: int0(station?.tempc ?? station?.Ambient_Temp ?? station?.MCU_Temp),
+        humidity: int0(station?.humidity ?? station?.Ambient_RH),
         fanOn: true,
         rssiDb: int0(station?.RSSI),
 
-        main_breaker: station?.breaker_main,
-        breaker_charger: station?.breaker_charger,
+        main_breaker: station?.breaker_main ?? station?.Breaker_Main,
+        breaker_charger: station?.breaker_charger ?? station?.Breaker_Charger,
 
-        I1: digit2(station?.I1),
-        I2: digit2(station?.I2),
-        I3: digit2(station?.I3),
-        totalCurrentA: digit2(station?.I1 + station?.I2 + station?.I3),
+        I1: digit2(station?.I1 ?? station?.I_L1),
+        I2: digit2(station?.I2 ?? station?.I_L2),
+        I3: digit2(station?.I3 ?? station?.I_L3),
+        // ✅ แก้: ใช้ I_Total ถ้ามี
+        totalCurrentA: digit2(
+            station?.I_Total ??
+            (Number(station?.I1 ?? station?.I_L1 ?? 0) +
+                Number(station?.I2 ?? station?.I_L2 ?? 0) +
+                Number(station?.I3 ?? station?.I_L3 ?? 0))
+        ),
 
-        // ✅ PL123N = PL1N + PL2N + PL3N (ถ้าไม่มีใน database)
-        // powerKW: intDiv((station?.PL123N ?? (Number(station?.PL1N || 0) + Number(station?.PL2N || 0) + Number(station?.PL3N || 0))), 1000),
-        powerKW: intDiv((station?.PL123N ), 1000),
+        powerKW: intDiv(
+            station?.PL123N ?? station?.P_Active_Total ??
+            (Number(station?.PL1N ?? station?.P_Active_L1 ?? 0) +
+                Number(station?.PL2N ?? station?.P_Active_L2 ?? 0) +
+                Number(station?.PL3N ?? station?.P_Active_L3 ?? 0)),
+            1000
+        ),
 
-        totalEnergyKWh: intDiv(station?.EL123, 1000),
+        totalEnergyKWh: intDiv(station?.EL123 ?? station?.E_Active_Total, 1000),
+        frequencyHz: num0(station?.frequency ?? station?.Freq),
 
-        frequencyHz: num0(station?.frequency),
-        pfL1: digit3(station?.pfL1),
-        pfL2: digit3(station?.pfL2),
-        pfL3: digit3(station?.pfL3),
+        pfL1: digit3(station?.pfL1 ?? station?.PF_L1),
+        pfL2: digit3(station?.pfL2 ?? station?.PF_L2),
+        pfL3: digit3(station?.pfL3 ?? station?.PF_L3),
 
-        PL1N: intDiv(station?.PL1N, 1000),
-        PL2N: intDiv(station?.PL2N, 1000),
-        PL3N: intDiv(station?.PL3N, 1000),
-        // ✅ PL123N = PL1N + PL2N + PL3N (ถ้าไม่มีใน database)
-        PL123N: intDiv((station?.PL123N ?? (Number(station?.PL1N || 0) + Number(station?.PL2N || 0) + Number(station?.PL3N || 0))), 1000),
+        PL1N: intDiv(station?.PL1N ?? station?.P_Active_L1, 1000),
+        PL2N: intDiv(station?.PL2N ?? station?.P_Active_L2, 1000),
+        PL3N: intDiv(station?.PL3N ?? station?.P_Active_L3, 1000),
+        PL123N: intDiv(
+            station?.PL123N ?? station?.P_Active_Total ??
+            (Number(station?.PL1N ?? station?.P_Active_L1 ?? 0) +
+                Number(station?.PL2N ?? station?.P_Active_L2 ?? 0) +
+                Number(station?.PL3N ?? station?.P_Active_L3 ?? 0)),
+            1000
+        ),
 
-        EL1: intDiv(station?.EL1, 1000),
-        EL2: intDiv(station?.EL2, 1000),
-        EL3: intDiv(station?.EL3, 1000),
-        EL123: intDiv(station?.EL123, 1000),
+        EL1: intDiv(station?.EL1 ?? station?.E_Active_L1, 1000),
+        EL2: intDiv(station?.EL2 ?? station?.E_Active_L2, 1000),
+        EL3: intDiv(station?.EL3 ?? station?.E_Active_L3, 1000),
+        EL123: intDiv(station?.EL123 ?? station?.E_Active_Total, 1000),
 
-        VL1N: digit1(station?.VL1N),
-        VL2N: digit1(station?.VL2N),
-        VL3N: digit1(station?.VL3N),
+        // ✅ แก้: Voltage phase-to-neutral
+        VL1N: digit1(station?.VL1N ?? station?.V_L1N),
+        VL2N: digit1(station?.VL2N ?? station?.V_L2N),
+        VL3N: digit1(station?.VL3N ?? station?.V_L3N),
 
-        VL1L2: digit1(station?.VL1L2),
-        VL2L3: digit1(station?.VL2L3),
-        VL1L3: digit1(station?.VL1L3),
+        // ✅ แก้: Voltage line-to-line (V_L3L1 → VL1L3)
+        VL1L2: digit1(station?.VL1L2 ?? station?.V_L1L2),
+        VL2L3: digit1(station?.VL2L3 ?? station?.V_L2L3),
+        VL1L3: digit1(station?.VL1L3 ?? station?.V_L3L1),
 
-        thdvL1: num0(station?.THDU_L1N),
-        thdvL2: num0(station?.THDU_L2N),
-        thdvL3: num0(station?.THDU_L3N),
+        // ✅ แก้: THD Voltage (THD_U_L1N)
+        thdvL1: num0(station?.THDU_L1N ?? station?.THD_U_L1N),
+        thdvL2: num0(station?.THDU_L2N ?? station?.THD_U_L2N),
+        thdvL3: num0(station?.THDU_L3N ?? station?.THD_U_L3N),
 
-        // I1 : num0(station?.I1),
-        // I2 : num0(station?.I2),
-        // I3 : num0(station?.I3),
+        // ✅ แก้: THD Current (THD_I_L1)
+        thdiL1: digit3(station?.THDI_L1 ?? station?.THD_I_L1),
+        thdiL2: digit3(station?.THDI_L2 ?? station?.THD_I_L2),
+        thdiL3: digit3(station?.THDI_L3 ?? station?.THD_I_L3),
 
-        thdiL1: digit3(station?.THDI_L1),
-        thdiL2: digit3(station?.THDI_L2),
-        thdiL3: digit3(station?.THDI_L3),
+        timeStamp: (station?.timestamp),
 
-        timeStamp : (station?.timestamp),
+        mainBreakerStatus: Boolean(station?.mainBreakerStatus) || station?.Breaker_Main === "On",
+        breakChargerStatus: Boolean(station?.breakChargerStatus) || station?.Breaker_Charger === "On",
 
-        mainBreakerStatus: Boolean(station?.mainBreakerStatus),
-        breakChargerStatus: Boolean(station?.breakChargerStatus),
-        // mainBreakerStatus: false,
-        // breakChargerStatus: true,
-        
-        // ✅ NEW: Add peak power values
+        // peak power เหมือนเดิม...
         PL1N_peak: peakPower?.PL1N_peak != null ? intDiv(peakPower.PL1N_peak, 1000) : undefined,
         PL2N_peak: peakPower?.PL2N_peak != null ? intDiv(peakPower.PL2N_peak, 1000) : undefined,
         PL3N_peak: peakPower?.PL3N_peak != null ? intDiv(peakPower.PL3N_peak, 1000) : undefined,
-        // ✅ PL123N_peak = PL1N_peak + PL2N_peak + PL3N_peak
-        PL123N_peak: (peakPower?.PL1N_peak != null && peakPower?.PL2N_peak != null && peakPower?.PL3N_peak != null) 
+        PL123N_peak: (peakPower?.PL1N_peak != null && peakPower?.PL2N_peak != null && peakPower?.PL3N_peak != null)
             ? intDiv((peakPower.PL1N_peak + peakPower.PL2N_peak + peakPower.PL3N_peak), 1000)
             : undefined,
     };
+
     const applyRange = () => {
         setHistory([]);
         setStartDate(draftStart);
@@ -548,47 +570,142 @@ export default function MDBPage() {
 
     return (
         <div className="tw-mt-8 tw-mb-4">
-            {/* โหลด/เออเรอร์ (ออปชัน) */}
-            {loading && (
-                <p className="tw-text-gray-500 tw-mb-2">กำลังเชื่อมต่อข้อมูลเรียลไทม์…</p>
+
+            {/* ══════ Page Header ══════ */}
+            <div className="tw-relative tw-overflow-hidden tw-rounded-2xl tw-mb-4 tw-px-5 sm:tw-px-8 tw-py-5 sm:tw-py-6"
+                style={{ background: 'linear-gradient(135deg, #1a1a1a, #2d2d2d, #1a1a1a)' }}>
+                <div className="tw-absolute tw-inset-0 tw-opacity-[0.04]"
+                    style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '22px 22px' }} />
+                <div className="tw-absolute tw-top-0 tw-right-0 tw-w-64 tw-h-64 tw-rounded-full tw-opacity-[0.07]"
+                    style={{ background: 'radial-gradient(circle, #3b82f6, transparent 70%)', transform: 'translate(30%, -50%)' }} />
+
+                <div className="tw-relative tw-z-10 tw-flex tw-items-center tw-justify-between tw-gap-4">
+                    <div className="tw-flex tw-items-center tw-gap-3 sm:tw-gap-4">
+                        <div className="tw-h-11 tw-w-11 sm:tw-h-12 sm:tw-w-12 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-shadow-lg"
+                            style={{ background: 'linear-gradient(135deg, #3b82f6, #6366f1)' }}>
+                            <span className="tw-text-xl sm:tw-text-2xl">⚡</span>
+                        </div>
+                        <div>
+                            <h2 className="tw-text-white tw-font-bold tw-text-base sm:tw-text-lg tw-tracking-tight">
+                                MDB Monitoring
+                            </h2>
+                            {hasMdbData ? (
+                                <p className="tw-text-white/40 tw-text-[11px] sm:tw-text-xs tw-mt-0.5 tw-font-medium">
+                                    Timestamp: {formatThaiDateTime(MDB?.timeStamp as string)}
+                                </p>
+                            ) : (
+                                <p className="tw-text-white/30 tw-text-[11px] sm:tw-text-xs tw-mt-0.5">
+                                    {typeof window !== "undefined" ? localStorage.getItem("selected_station_name") || stationId || "" : ""}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3">
+                        {hasMdbData && (
+                            <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-1.5 tw-rounded-full"
+                                style={{ background: 'rgba(16,185,129,0.15)' }}>
+                                <span className="tw-relative tw-flex tw-h-2 tw-w-2">
+                                    <span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75"
+                                        style={{ background: '#34d399' }} />
+                                    <span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2 tw-w-2"
+                                        style={{ background: '#34d399' }} />
+                                </span>
+                                <span className="tw-text-[11px] tw-font-semibold" style={{ color: '#34d399' }}>LIVE</span>
+                            </div>
+                        )}
+                        {err && hasMdbData && (
+                            <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-full"
+                                style={{ background: 'rgba(239,68,68,0.15)' }}>
+                                <span className="tw-h-2 tw-w-2 tw-rounded-full" style={{ background: '#f87171' }} />
+                                <span className="tw-text-[11px] tw-font-semibold" style={{ color: '#f87171' }}>Reconnecting</span>
+                            </div>
+                        )}
+                        {canAddEquipment && (
+                            <button onClick={() => setOpenAddEquip(true)}
+                                className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2 tw-px-3 sm:tw-px-4 tw-py-2 sm:tw-py-2.5 tw-rounded-xl tw-text-xs sm:tw-text-sm tw-font-semibold tw-shadow-lg tw-transition-all tw-duration-200 hover:tw-scale-[1.03]"
+                                style={{ background: 'linear-gradient(135deg, #ffffff, #f1f5f9)', color: '#1e293b' }}>
+                                <PlusIcon className="tw-h-4 tw-w-4" />
+                                <span className="tw-hidden sm:tw-inline">เพิ่มอุปกรณ์ MDB</span>
+                                <span className="tw-inline sm:tw-hidden">+ เพิ่ม</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* ══════ Content ══════ */}
+            {hasMdbData ? (
+                <>
+                    <StatisticsCards {...MDB} />
+
+                    {/* MDB Info — ใส่ border สีเทาอ่อนให้เข้ากับธีม */}
+                    <Card className="tw-mb-6 tw-border tw-border-gray-200 tw-shadow-sm tw-rounded-2xl">
+                        <CardBody className="tw-p-4 md:tw-p-6">
+                            <MDBInfo {...MDB} />
+                        </CardBody>
+                    </Card>
+
+                    <DateRangePicker
+                        startDate={draftStart}
+                        endDate={draftEnd}
+                        onStartChange={setDraftStart}
+                        onEndChange={setDraftEnd}
+                        onApply={applyRange}
+                        maxEndDate={getTodayDate()}
+                    />
+
+                    <StatisticChart
+                        startDate={startDate}
+                        endDate={endDate}
+                        charts={charts}
+                    />
+                </>
+            ) : !loading && (
+                <div className="tw-relative tw-overflow-hidden tw-rounded-2xl tw-border tw-border-gray-200 tw-shadow-sm"
+                    style={{ background: 'linear-gradient(180deg, #ffffff, #f8fafc)' }}>
+                    <div className="tw-absolute tw-top-0 tw-left-1/2 tw-w-[500px] tw-h-[500px] tw-rounded-full tw-opacity-[0.03]"
+                        style={{ background: 'radial-gradient(circle, #3b82f6, transparent 70%)', transform: 'translate(-50%, -60%)' }} />
+                    <div className="tw-relative tw-z-10 tw-flex tw-flex-col tw-items-center tw-justify-center tw-py-20 sm:tw-py-28 tw-px-6">
+                        <div className="tw-relative tw-mb-6">
+                            <div className="tw-h-20 tw-w-20 sm:tw-h-24 sm:tw-w-24 tw-rounded-3xl tw-flex tw-items-center tw-justify-center tw-shadow-xl"
+                                style={{ background: 'linear-gradient(135deg, #1e293b, #334155)' }}>
+                                <span className="tw-text-4xl sm:tw-text-5xl">⚡</span>
+                            </div>
+                            <div className="tw-absolute tw-inset-0 tw-rounded-3xl tw-animate-ping tw-opacity-[0.08]"
+                                style={{ background: '#3b82f6' }} />
+                        </div>
+                        <h3 className="tw-text-gray-800 tw-font-bold tw-text-lg sm:tw-text-xl tw-tracking-tight tw-mb-2 tw-text-center">
+                            ยังไม่มีข้อมูลอุปกรณ์ MDB
+                        </h3>
+                        <p className="tw-text-gray-400 tw-text-sm tw-mb-8 tw-max-w-md tw-text-center tw-leading-relaxed">
+                            สถานีนี้ยังไม่มีการติดตั้งอุปกรณ์ MDB<br className="tw-hidden sm:tw-inline" />
+                            กดปุ่มด้านล่างเพื่อเพิ่มข้อมูลการติดตั้ง
+                        </p>
+                        {hasPermission && (
+                            <button onClick={() => setOpenAddEquip(true)}
+                                className="tw-group tw-flex tw-items-center tw-gap-2.5 tw-px-6 tw-py-3 tw-rounded-xl tw-text-sm tw-font-semibold tw-text-white tw-shadow-lg tw-transition-all tw-duration-300 hover:tw-shadow-xl hover:tw-scale-[1.03]"
+                                style={{ background: 'linear-gradient(135deg, #1e293b, #334155)' }}>
+                                <PlusIcon className="tw-h-5 tw-w-5 tw-transition-transform tw-duration-300 group-hover:tw-rotate-90" />
+                                เพิ่มอุปกรณ์ MDB
+                            </button>
+                        )}
+                        {!hasPermission && (
+                            <div className="tw-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2.5 tw-rounded-xl"
+                                style={{ background: 'rgba(59,130,246,0.08)' }}>
+                                <span className="tw-text-sm">🔒</span>
+                                <span className="tw-text-xs tw-text-blue-600 tw-font-medium">ติดต่อ Admin หรือ Owner เพื่อเพิ่มข้อมูล</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
             )}
-            {err && <p className="tw-text-red-600 tw-mb-2">{err}</p>}
-            
-            Timestamp : {formatThaiDateTime(MDB?.timeStamp as string)}
-            
 
-            <StatisticsCards {...MDB} />
-
-            {/* Panel ข้อมูล MDB เต็มกว้าง */}
-            <Card className="tw-mb-6 tw-border tw-border-blue-gray-100 tw-shadow-sm">
-                <CardBody className="tw-p-4 md:tw-p-6">
-                    <MDBInfo
-                        {...MDB}
-                    />
-                </CardBody>
-            </Card>
-            {/* Panel ข้อมูล MDB เต็มกว้าง */}
-            {/* <div className="tw-mb-6">
-                <MDBInfo
-                        {...MDB}
-                    />
-            </div> */}
-              
-
-            <DateRangePicker
-                startDate={draftStart}  // ใช้ draftStart แทน startDate
-                endDate={draftEnd}      // ใช้ draftEnd แทน endDate
-                onStartChange={setDraftStart}  // อัพเดต draftStart
-                onEndChange={setDraftEnd}      // อัพเดต draftEnd
-                onApply={applyRange}    // เมื่อกด Apply จะอัพเดต startDate และ endDate
-                maxEndDate={getTodayDate()}  // ตั้งค่า maxEndDate เป็นวันที่ปัจจุบัน
-            />
-
-            {/* ส่งค่าช่วงวันที่ไปยัง StatisticChart */}
-            <StatisticChart
-                startDate={startDate}
-                endDate={endDate}
-                charts={charts} // สมมติว่า charts เป็นข้อมูลกราฟที่คุณต้องการแสดง
+            <AddEquipmentDialog
+                open={openAddEquip}
+                onClose={() => setOpenAddEquip(false)}
+                stationId={stationId}
+                stationName={typeof window !== "undefined" ? localStorage.getItem("selected_station_name") || undefined : undefined}
             />
         </div>
     );

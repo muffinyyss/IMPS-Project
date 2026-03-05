@@ -73,6 +73,8 @@ function getLang(): "th" | "en" {
   }
 }
 
+
+
 /** แสดง Toast แจ้งเตือนบนหน้าจอ */
 export function showSessionToast(
   problem: SessionProblem,
@@ -155,6 +157,13 @@ export function showSessionToast(
  * แสดง toast แจ้งเตือน network error (ไม่เด้ง login)
  * ใช้ตอน fetch ล้มเหลวเพราะ network
  */
+let _networkToastActive = false;
+
 export function showNetworkError() {
-  showSessionToast("network_error", { duration: 4000 });
+  if (_networkToastActive) return;
+  _networkToastActive = true;
+  showSessionToast("network_error", {
+    duration: 4000,
+    onDone: () => { _networkToastActive = false; },
+  });
 }

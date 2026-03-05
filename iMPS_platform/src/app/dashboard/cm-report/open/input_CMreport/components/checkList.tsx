@@ -57,6 +57,11 @@ const T = {
     notAttached: { th: "ยังไม่ได้แนบ", en: "Not attached" },
     draftSaved: { th: "บันทึกร่างแล้ว", en: "Draft saved" },
     clearDraft: { th: "ล้างร่าง", en: "Clear draft" },
+    // ═══ Maximo ═══
+    maximoSrCreated: { th: "สร้าง Maximo SR สำเร็จ", en: "Maximo SR Created" },
+    maximoSrFailed: { th: "ไม่สามารถสร้าง Maximo SR (บันทึก CM สำเร็จแล้ว)", en: "Maximo SR not created (CM saved)" },
+    savedSuccess: { th: "บันทึกสำเร็จ", en: "Saved successfully" },
+    redirecting: { th: "กำลังกลับหน้ารายการ...", en: "Redirecting to list..." },
 };
 
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
@@ -150,6 +155,60 @@ function CMValidationCard({ validations, lang }: { validations: ValidationItem[]
     );
 }
 
+// ==================== SUCCESS BANNER ====================
+function SuccessBanner({
+    lang,
+    docName,
+    issueId,
+    maximoTicketId,
+}: {
+    lang: Lang;
+    docName: string;
+    issueId: string;
+    maximoTicketId: string | null;
+}) {
+    return (
+        <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-animate-in tw-fade-in tw-duration-300">
+            <div className="tw-rounded-xl tw-border tw-border-green-300 tw-bg-green-50 tw-shadow-lg tw-shadow-green-500/10 tw-p-5">
+                <div className="tw-flex tw-items-start tw-gap-4">
+                    <div className="tw-w-12 tw-h-12 tw-rounded-full tw-bg-green-500 tw-flex tw-items-center tw-justify-center tw-shadow-md tw-shrink-0">
+                        <CheckCircleIcon className="tw-w-7 tw-h-7 tw-text-white" />
+                    </div>
+                    <div className="tw-flex-1">
+                        <p className="tw-font-bold tw-text-green-800 tw-text-lg">
+                            {t("savedSuccess", lang)}
+                        </p>
+                        <div className="tw-mt-2 tw-space-y-1">
+                            {issueId && (
+                                <p className="tw-text-sm tw-text-green-700">
+                                    Issue ID: <span className="tw-font-mono tw-font-semibold">{issueId}</span>
+                                </p>
+                            )}
+                            {docName && (
+                                <p className="tw-text-sm tw-text-green-700">
+                                    Doc: <span className="tw-font-semibold">{docName}</span>
+                                </p>
+                            )}
+                            {maximoTicketId ? (
+                                <p className="tw-text-sm tw-text-green-700 tw-flex tw-items-center tw-gap-1.5">
+                                    🎫 Maximo SR: <span className="tw-font-mono tw-font-bold tw-text-green-900 tw-bg-green-200 tw-px-2 tw-py-0.5 tw-rounded">{maximoTicketId}</span>
+                                </p>
+                            ) : (
+                                <p className="tw-text-xs tw-text-amber-600 tw-mt-1">
+                                    {t("maximoSrFailed", lang)}
+                                </p>
+                            )}
+                        </div>
+                        <p className="tw-text-xs tw-text-green-500 tw-mt-3">
+                            {t("redirecting", lang)}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ==================== PHOTO UPLOAD ====================
 function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: { photos_open: PhotoItem[]; onAdd: (files: FileList) => void; onRemove: (id: string) => void; max: number; disabled: boolean; lang: Lang; id?: string; }) {
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -158,7 +217,7 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
     return (
         <div id={id} className="tw-space-y-3">
             <input ref={fileInputRef} type="file" accept="image/*" multiple className="tw-hidden" onChange={e => { if (e.target.files) { onAdd(e.target.files); e.target.value = ""; } }} />
-            
+
             {/* Attach button - always on left */}
             {canAddMore && (
                 <div className="tw-flex tw-items-center tw-gap-3">
@@ -168,10 +227,10 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
                     <span className="tw-text-sm tw-text-blue-gray-500">Max {max} photos</span>
                 </div>
             )}
-            
+
             {/* Photo grid */}
             {photos_open.length > 0 ? (
-                <div className="tw-grid tw-grid-cols-3 sm:tw-grid-cols-4 md:tw-grid-cols-5 tw-gap-3">
+                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
                     {photos_open.map(photo => (
                         <div key={photo.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-200 tw-bg-blue-gray-50 tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
                             <img src={photo.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
@@ -212,7 +271,7 @@ export default function CMOpenForm() {
     const pathname = usePathname();
 
     const [stationId, setStationId] = useState<string | null>(null);
-    
+
     // Individual form fields (no longer using job object)
     const [issueId, setIssueId] = useState("");
     const [docName, setDocName] = useState("");
@@ -223,7 +282,7 @@ export default function CMOpenForm() {
     const [status, setStatus] = useState<Status>("");
     const [remarks_open, setRemarksOpen] = useState("");
     const [faultyEquipment, setFaultyEquipment] = useState("");
-    
+
     const [summary, setSummary] = useState("");
     const [reported_by, setReportedBy] = useState("");
     const [saving, setSaving] = useState(false);
@@ -232,6 +291,10 @@ export default function CMOpenForm() {
     const [photos_open, setPhotosOpen] = useState<PhotoItem[]>([]);
     const [draftStatus, setDraftStatus] = useState<"idle" | "saving" | "saved">("idle");
     const [draftLoaded, setDraftLoaded] = useState(false);
+
+    // ═══ Maximo state ═══
+    const [maximoTicketId, setMaximoTicketId] = useState<string | null>(null);
+    const [showSuccessBanner, setShowSuccessBanner] = useState(false);
 
     const editId = searchParams.get("edit_id") ?? "";
     const isEdit = !!editId;
@@ -255,18 +318,18 @@ export default function CMOpenForm() {
     const localTodayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
     const displayToISO = (s: string) => { if (!s) return localTodayISO(); const p = s.split("/"); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : localTodayISO(); };
     const isoToDisplay = (s: string) => { if (!s) return localTodayFormatted(); const p = s.slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : localTodayFormatted(); };
-    
+
     // หา current tab จาก URL
     const currentTab = searchParams.get("tab") ?? "open";
-    
-    const buildListUrl = (targetTab?: string) => { 
-        const p = new URLSearchParams(); 
-        if (stationId) p.set("station_id", stationId); 
+
+    const buildListUrl = (targetTab?: string) => {
+        const p = new URLSearchParams();
+        if (stationId) p.set("station_id", stationId);
         p.set("tab", targetTab ?? currentTab);
         // ไม่ใส่ view และ edit_id เพื่อกลับไปหน้า list
-        return `${LIST_ROUTE}?${p.toString()}`; 
+        return `${LIST_ROUTE}?${p.toString()}`;
     };
-    
+
     // ฟังก์ชันสำหรับกลับไปหน้า list
     const goBackToList = () => {
         router.push(buildListUrl(currentTab));
@@ -320,7 +383,7 @@ export default function CMOpenForm() {
     const handleAddPhotos = useCallback(async (files: FileList) => {
         const remain = MAX_PHOTOS - photos_open.length;
         const filesToAdd = Array.from(files).slice(0, remain);
-        
+
         const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
         const cachedLoc = gpsCache.current.fetched ? gpsCache.current.location : undefined;
 
@@ -360,8 +423,8 @@ export default function CMOpenForm() {
         if (isEdit || !stationId || !draftLoaded) return;
         const timer = setTimeout(() => {
             setDraftStatus("saving");
-            saveDraftLocal(draftKey, { 
-                issueId, docName, foundDate, location, problemDetails, 
+            saveDraftLocal(draftKey, {
+                issueId, docName, foundDate, location, problemDetails,
                 severity, status, remarks_open, faultyEquipment,
                 reported_by,
             });
@@ -369,7 +432,7 @@ export default function CMOpenForm() {
             setTimeout(() => setDraftStatus("idle"), 2000);
         }, 1500);
         return () => clearTimeout(timer);
-    }, [issueId, docName, foundDate, location, problemDetails, severity, status, remarks_open, faultyEquipment, reported_by,  draftKey, isEdit, stationId, draftLoaded]);
+    }, [issueId, docName, foundDate, location, problemDetails, severity, status, remarks_open, faultyEquipment, reported_by, draftKey, isEdit, stationId, draftLoaded]);
 
     // ==================== DRAFT: LOAD ====================
     useEffect(() => {
@@ -406,7 +469,7 @@ export default function CMOpenForm() {
     useEffect(() => {
         if (!stationId || isEdit) return; // skip ถ้าเป็น edit mode
         let alive = true;
-        (async () => { try { const res = await apiFetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store" }); if (res.ok) { const data: { station: StationPublic } = await res.json(); if (alive && !location) setLocation(data.station.station_name || ""); } } catch {} })();
+        (async () => { try { const res = await apiFetch(`${API_BASE}/station/info/public?station_id=${encodeURIComponent(stationId)}`, { cache: "no-store" }); if (res.ok) { const data: { station: StationPublic } = await res.json(); if (alive && !location) setLocation(data.station.station_name || ""); } } catch { } })();
         return () => { alive = false; };
     }, [stationId, isEdit]);
 
@@ -416,11 +479,11 @@ export default function CMOpenForm() {
         return () => { alive = false; };
     }, [stationId]);
 
-    useEffect(() => { 
+    useEffect(() => {
         if (isEdit) return; // skip ถ้าเป็น edit mode
-        let alive = true; 
-        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive && !reported_by) setReportedBy(data.username || ""); } } catch {} })(); 
-        return () => { alive = false; }; 
+        let alive = true;
+        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive && !reported_by) setReportedBy(data.username || ""); } } catch { } })();
+        return () => { alive = false; };
     }, [isEdit]);
 
     useEffect(() => {
@@ -432,17 +495,17 @@ export default function CMOpenForm() {
     useEffect(() => {
         if (!editId || !stationId) return;
         console.log("[Edit] Loading report:", editId, "station:", stationId);
-        (async () => { 
-            try { 
-                const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`, { credentials: "include" }); 
+        (async () => {
+            try {
+                const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}?station_id=${encodeURIComponent(stationId)}`, { credentials: "include" });
                 if (!res.ok) {
                     console.log("[Edit] Response not OK:", res.status);
                     return;
                 }
-                const data = await res.json(); 
+                const data = await res.json();
                 console.log("[Edit] Data received:", data);
-                const rawDate = data.found_date ?? ""; 
-                
+                const rawDate = data.found_date ?? "";
+
                 setDocName(data.doc_name ?? "");
                 setIssueId(data.issue_id ?? "");
                 setFoundDate(rawDate ? isoToDisplay(rawDate) : localTodayFormatted());
@@ -452,9 +515,14 @@ export default function CMOpenForm() {
                 setStatus((data.status ?? "Open") as Status);
                 setRemarksOpen(data.remarks_open ?? "");
                 setFaultyEquipment(data.faulty_equipment ?? "");
-                setSummary(data.summary ?? ""); 
+                setSummary(data.summary ?? "");
                 setReportedBy(data.reported_by ?? "");
-                
+
+                // ═══ แสดง Maximo ticket ถ้ามี (edit mode) ═══
+                if (data.maximo_ticket_id) {
+                    setMaximoTicketId(data.maximo_ticket_id);
+                }
+
                 if (data.photos_problem) {
                     const serverPhotos: PhotoItem[] = [];
                     for (const [group, photoList] of Object.entries(data.photos_problem)) {
@@ -467,7 +535,9 @@ export default function CMOpenForm() {
                                     preview: fullUrl,
                                     isServer: true,
                                     serverUrl: p.url,
-                                    createdAt: p.uploadedAt ? new Date(p.uploadedAt).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : undefined,
+                                    createdAt: p.uploadedAt
+                                        ? new Date(p.uploadedAt).toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" })
+                                        : undefined,
                                     location: (p as any).location || undefined,
                                 });
                             });
@@ -479,7 +549,7 @@ export default function CMOpenForm() {
                 }
             } catch (err) {
                 console.error("[Edit] Error loading:", err);
-            } 
+            }
         })();
     }, [editId, stationId]);
 
@@ -488,15 +558,16 @@ export default function CMOpenForm() {
         if (!stationId) return;
         const newPhotos = photos_open.filter(p => !p.isServer);
         if (newPhotos.length === 0) return;
-        
-        const fd = new FormData(); 
-        fd.append("station_id", stationId); 
+
+        const fd = new FormData();
+        fd.append("station_id", stationId);
         fd.append("group", "cm_photos");
         fd.append("phase", "problem");
         newPhotos.forEach(p => fd.append("files", p.file, p.file.name));
         // ส่ง location ของรูปแรกที่มี (รูปทั้งหมดถ่ายจากที่เดียวกัน)
         const photoLocation = newPhotos.find(p => p.location)?.location || "";
         if (photoLocation) fd.append("location", photoLocation);
+        fd.append("created_at", new Date().toISOString());
         const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`, { method: "POST", body: fd, credentials: "include" });
         if (!res.ok) throw new Error(`Upload failed`);
     }
@@ -508,53 +579,68 @@ export default function CMOpenForm() {
         try {
             if (isEdit && editId) {
                 // Edit mode - ส่งแค่ status เท่านั้น
-                const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, { 
-                    method: "PATCH", 
-                    headers: { "Content-Type": "application/json" }, 
-                    credentials: "include", 
-                    body: JSON.stringify({ 
-                        station_id: stationId, 
-                        status: "In Progress" 
-                    }) 
+                const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        station_id: stationId,
+                        status: "In Progress"
+                    })
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
             } else {
-                // Create mode - ส่ง flat fields
-                const res = await apiFetch(`${API_BASE}/cmreport/submit`, { 
-                    method: "POST", 
-                    headers: { "Content-Type": "application/json" }, 
-                    credentials: "include", 
-                    body: JSON.stringify({ 
-                        station_id: stationId, 
-                        found_date: displayToISO(foundDate), 
+                // ═══ Create mode — submit + Maximo SR ═══
+                const res = await apiFetch(`${API_BASE}/cmreport/submit`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({
+                        station_id: stationId,
+                        found_date: displayToISO(foundDate),
                         faulty_equipment: faultyEquipment,
                         severity,
                         problem_details: problemDetails,
                         remarks_open,
                         location,
                         reported_by: reported_by,
-                    }) 
+                    })
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
-                const { report_id, doc_name: newDocName, issue_id: newIssueId } = await res.json();
+
+                const {
+                    report_id,
+                    doc_name: newDocName,
+                    issue_id: newIssueId,
+                    maximo_ticket_id,                // ← รับ Maximo ticket จาก response
+                } = await res.json();
+
                 setDocName(newDocName);
                 setIssueId(newIssueId);
+                setMaximoTicketId(maximo_ticket_id || null);
+
                 await uploadPhotosForReport(report_id);
                 clearDraftLocal(draftKey);
                 await delPhotosByDraftKey(draftKey);
+
+                // ═══ แสดง Success Banner ก่อน redirect ═══
+                setShowSuccessBanner(true);
+                setSaving(false);
+                // รอ 3 วินาทีให้ user เห็น Maximo ticket ID แล้วค่อย redirect
+                setTimeout(() => {
+                    router.push(buildListUrl("open"));
+                }, 3000);
+                return; // ← หยุดไม่ให้ไปถึง finally redirect
             }
-            // กลับไปหน้า list หรือไปหน้า form ถัดไป
+
+            // กด In Progress → ไปหน้า form In Progress
             if (isEdit) {
-                // กด In Progress → ไปหน้า form In Progress
                 const p = new URLSearchParams();
                 if (stationId) p.set("station_id", stationId);
                 p.set("tab", "in-progress");
                 p.set("view", "form");
                 p.set("edit_id", editId);
                 router.push(`${LIST_ROUTE}?${p.toString()}`);
-            } else {
-                // กด Save → กลับไปหน้า list tab open
-                router.push(buildListUrl("open"));
             }
         } catch (e: any) { alert(`${t("alertSaveFailed", lang)} ${e.message || e}`); }
         finally { setSaving(false); }
@@ -564,7 +650,7 @@ export default function CMOpenForm() {
         clearDraftLocal(draftKey);
         await delPhotosByDraftKey(draftKey);
         photos_open.forEach(p => { if (p.preview) URL.revokeObjectURL(p.preview); });
-        
+
         setIssueId("");
         setDocName("");
         setFoundDate(localTodayFormatted());
@@ -581,6 +667,16 @@ export default function CMOpenForm() {
     // ==================== RENDER ====================
     return (
         <section className="tw-pb-24">
+            {/* ═══ Success Banner (แสดงหลัง submit สำเร็จ) ═══ */}
+            {showSuccessBanner && (
+                <SuccessBanner
+                    lang={lang}
+                    docName={docName}
+                    issueId={issueId}
+                    maximoTicketId={maximoTicketId}
+                />
+            )}
+
             <div className="tw-mx-auto tw-max-w-6xl tw-mb-6 tw-flex tw-items-center tw-justify-between">
                 <Button variant="outlined" size="sm" onClick={goBackToList} title={t("backToList", lang)} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
                     <ArrowLeftIcon className="tw-w-4 tw-h-4" />
@@ -589,7 +685,7 @@ export default function CMOpenForm() {
 
             <form noValidate onSubmit={e => e.preventDefault()} onKeyDown={e => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-md tw-shadow-blue-gray-500/5 tw-p-6 md:tw-p-8">
-                    
+
                     {/* Header */}
                     <div className="tw-flex tw-items-start tw-justify-between tw-gap-6 tw-mb-6">
                         <div className="tw-flex tw-items-start tw-gap-4">
@@ -612,6 +708,14 @@ export default function CMOpenForm() {
                     </div>
 
                     <hr className="tw-my-6 tw-border-blue-gray-100" />
+
+                    {/* ═══ Maximo Ticket Badge (แสดงใน edit mode ถ้ามี ticket) ═══ */}
+                    {isEdit && maximoTicketId && (
+                        <div className="tw-mb-4 tw-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2.5 tw-rounded-lg tw-bg-blue-50 tw-border tw-border-blue-200">
+                            <span className="tw-text-sm tw-text-blue-700">🎫 Maximo SR:</span>
+                            <span className="tw-font-mono tw-font-bold tw-text-blue-900 tw-bg-blue-100 tw-px-2 tw-py-0.5 tw-rounded">{maximoTicketId}</span>
+                        </div>
+                    )}
 
                     {/* Meta Info - Readonly Inputs */}
                     <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4 tw-mb-6">
@@ -640,7 +744,7 @@ export default function CMOpenForm() {
                             <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-gray-700 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">1</div>
                             <span className="tw-font-semibold tw-text-base">{t("problemDetails", lang)}</span>
                         </div>
-                        
+
                         {/* Section Content */}
                         <div className="tw-p-4 tw-space-y-4">
                             {/* Problem Location & Severity - Same Row */}
@@ -668,16 +772,15 @@ export default function CMOpenForm() {
                                     <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("severity", lang)} <span className="tw-text-red-500">*</span></label>
                                     <div className="tw-relative">
                                         {severity && (
-                                            <span className={`tw-absolute tw-left-3 tw-top-1/2 tw--translate-y-1/2 tw-w-1.5 tw-h-1.5 tw-rounded-full tw-pointer-events-none ${
-                                                severity === "Critical" ? "tw-bg-red-400" :
+                                            <span className={`tw-absolute tw-left-3 tw-top-1/2 tw--translate-y-1/2 tw-w-1.5 tw-h-1.5 tw-rounded-full tw-pointer-events-none ${severity === "Critical" ? "tw-bg-red-400" :
                                                 severity === "High" ? "tw-bg-orange-400" :
-                                                severity === "Medium" ? "tw-bg-yellow-500" :
-                                                "tw-bg-green-400"
-                                            }`} />
+                                                    severity === "Medium" ? "tw-bg-yellow-500" :
+                                                        "tw-bg-green-400"
+                                                }`} />
                                         )}
-                                        <select 
-                                            value={severity} 
-                                            disabled={isEdit} 
+                                        <select
+                                            value={severity}
+                                            disabled={isEdit}
                                             onChange={e => setSeverity(e.target.value as Severity)}
                                             style={isEdit ? { backgroundColor: '#f3f4f6', color: '#455a64' } : {}}
                                             className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-pr-4 tw-text-sm tw-font-medium tw-transition-all tw-duration-200 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${severity ? "tw-pl-6" : "tw-pl-4"} ${isEdit ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}
@@ -691,7 +794,7 @@ export default function CMOpenForm() {
                                     </div>
                                 </div>
                             </div>
-                            
+
                             {/* Problem Found (ปัญหาที่พบ) */}
                             <div id="cm-problem-found">
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("problemFound", lang)} <span className="tw-text-red-500">*</span></label>
@@ -716,10 +819,10 @@ export default function CMOpenForm() {
 
                     {/* RemarksOpen Section - ซ่อนเมื่อ edit และไม่มีหมายเหตุ */}
                     {(!isEdit || (remarks_open.trim() && remarks_open.trim() !== "-")) && (
-                    <div className="tw-mb-6">
-                        <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks_open", lang)}</label>
-                        <Textarea value={remarks_open} onChange={e => setRemarksOpen(e.target.value)} readOnly={isEdit} rows={1} className={`!tw-w-full !tw-border-blue-gray-200 ${isEdit ? "!tw-bg-gray-100 !tw-text-blue-gray-700" : "!tw-bg-white"}`} containerProps={{ className: "!tw-min-w-0" }} />
-                    </div>
+                        <div className="tw-mb-6">
+                            <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks_open", lang)}</label>
+                            <Textarea value={remarks_open} onChange={e => setRemarksOpen(e.target.value)} readOnly={isEdit} rows={1} className={`!tw-w-full !tw-border-blue-gray-200 ${isEdit ? "!tw-bg-gray-100 !tw-text-blue-gray-700" : "!tw-bg-white"}`} containerProps={{ className: "!tw-min-w-0" }} />
+                        </div>
                     )}
 
                     {/* Validation Card */}
@@ -732,7 +835,7 @@ export default function CMOpenForm() {
                             <Button variant="outlined" onClick={goBackToList} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
                                 Cancel
                             </Button>
-                            <Button onClick={onFinalSave} disabled={saving || (!isEdit && !canSave)} className={`tw-text-white hover:tw-shadow-lg disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none ${isEdit ? "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30" : "tw-bg-gray-800 hover:tw-bg-gray-900 hover:tw-shadow-gray-500/30"}`}>
+                            <Button onClick={onFinalSave} disabled={saving || showSuccessBanner || (!isEdit && !canSave)} className={`tw-text-white hover:tw-shadow-lg disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none ${isEdit ? "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30" : "tw-bg-gray-800 hover:tw-bg-gray-900 hover:tw-shadow-gray-500/30"}`}>
                                 {saving ? t("saving", lang) : isEdit ? t("inProgress", lang) : t("save", lang)}
                             </Button>
                         </div>

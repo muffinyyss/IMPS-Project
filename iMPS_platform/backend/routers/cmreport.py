@@ -13,6 +13,8 @@ from config import (
     CMReportDB, CMUrlDB, DCTestReportDB, DCUrlDB,
     station_collection, _validate_station_id, th_tz,
 )
+from services.maximo import create_sr as maximo_create_sr          # ← A) เพิ่ม
+import inspect                                                     # ← รองรับทั้ง sync/async
 
 ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "pdf", "heic", "heif"}
 MAX_FILE_MB = 20
@@ -39,12 +41,6 @@ def make_cm_issue_prefix(station_id: str, date_iso: str) -> str:
     yy = str(d.year)[2:]  # 2 หลักท้าย
     mm = str(d.month).zfill(2)
     return f"CM-{station_id}-{yy}{mm}-"
-
-# def make_cm_doc_prefix(station_id: str, date_iso: str) -> str:
-#     """สร้าง prefix สำหรับ doc_name: CM-{station_id}-{yyyy}-"""
-#     d = datetime.fromisoformat(date_iso) if date_iso else datetime.now(th_tz)
-#     yyyy = str(d.year)
-#     return f"CM-{station_id}-{yyyy}-"
 
 def make_cm_doc_prefix(station_id: str) -> str:
     """สร้าง prefix สำหรับ doc_name: {station_id}_"""
@@ -97,53 +93,6 @@ async def get_next_cm_issue_id(station_id: str, found_date: str) -> str:
     
     next_num = max_num + 1
     return f"{prefix}{str(next_num).zfill(2)}"
-
-# async def get_next_cm_doc_name(station_id: str, found_date: str) -> str:
-#     """
-#     หา doc_name ถัดไปจากทั้ง cmreport และ cmurl collections
-#     Format: CM-{station_id}-{yyyy}-{xx}
-#     """
-#     prefix = make_cm_doc_prefix(station_id, found_date)
-    
-#     report_coll = get_cmreport_collection_for(station_id)
-#     url_coll = get_cmurl_coll_upload(station_id)
-    
-#     all_names = []
-    
-#     # จาก cmreport
-#     cursor1 = report_coll.find(
-#         {"doc_name": {"$regex": f"^{re.escape(prefix)}"}},
-#         {"doc_name": 1}
-#     )
-#     async for doc in cursor1:
-#         if doc.get("doc_name"):
-#             all_names.append(doc["doc_name"])
-    
-#     # จาก cmurl
-#     cursor2 = url_coll.find(
-#         {"doc_name": {"$regex": f"^{re.escape(prefix)}"}},
-#         {"doc_name": 1}
-#     )
-#     async for doc in cursor2:
-#         if doc.get("doc_name"):
-#             all_names.append(doc["doc_name"])
-    
-#     if not all_names:
-#         return f"{prefix}01"
-    
-#     # หาเลขสูงสุด
-#     max_num = 0
-#     for doc_name in all_names:
-#         if doc_name.startswith(prefix):
-#             tail = doc_name[len(prefix):]
-#             match = re.match(r"(\d+)", tail)
-#             if match:
-#                 num = int(match.group(1))
-#                 if num > max_num:
-#                     max_num = num
-    
-#     next_num = max_num + 1
-#     return f"{prefix}{str(next_num).zfill(2)}"
 
 async def get_next_cm_doc_name(station_id: str, found_date: str) -> str:
     """
@@ -203,44 +152,6 @@ async def cmreport_preview_docname(
         "issue_id": issue_id,
         "found_date": found_date_normalized,
     }
-
-# @router.get("/cmreport/latest-docname")
-# async def cmreport_latest_docname(
-#     station_id: str = Query(...),
-#     found_date: str = Query(...),
-#     current: UserClaims = Depends(get_current_user),
-# ):
-#     """หา doc_name ล่าสุดสำหรับปีนั้น"""
-    
-#     found_date_normalized = normalize_pm_date(found_date)
-#     prefix = make_cm_doc_prefix(station_id, found_date_normalized)
-    
-#     report_coll = get_cmreport_collection_for(station_id)
-#     url_coll = get_cmurl_coll_upload(station_id)
-    
-#     # หา doc_name ล่าสุดจากทั้งสอง collections
-#     latest = None
-#     max_num = 0
-    
-#     for coll in [report_coll, url_coll]:
-#         cursor = coll.find(
-#             {"doc_name": {"$regex": f"^{re.escape(prefix)}"}},
-#             {"doc_name": 1}
-#         ).sort("doc_name", -1).limit(10)
-        
-#         async for doc in cursor:
-#             name = doc.get("doc_name", "")
-#             if name.startswith(prefix):
-#                 tail = name[len(prefix):]
-#                 match = re.match(r"(\d+)", tail)
-#                 if match:
-#                     num = int(match.group(1))
-#                     if num > max_num:
-#                         max_num = num
-#                         latest = name
-    
-#     return {"doc_name": latest}
-
 
 @router.get("/cmreport/latest-docname")
 async def cmreport_latest_docname(
@@ -305,14 +216,14 @@ async def cmreport_list(
         "cm_date": 1, 
         "status": 1, 
         "reported_by": 1,
-        "faulty_equipment": 1,  # เพิ่ม flat fields
+        "faulty_equipment": 1,
         "severity": 1,
         "problem_details": 1,
         "location": 1,
         "job": 1,
         "repair_result": 1,
         "repair_result_remark": 1,
-        
+        "maximo_ticket_id": 1,                                     # ← C) เพิ่ม
         "createdAt": 1
     }).sort(
         [("createdAt", -1), ("_id", -1)]
@@ -351,6 +262,7 @@ async def cmreport_list(
             "location": it.get("location") or job.get("location") or "",
             "repair_result": it.get("repair_result") or job.get("repair_result") or "",
             "repair_result_remark": it.get("repair_result_remark") or "",
+            "maximo_ticket_id": it.get("maximo_ticket_id") or "",  # ← C) เพิ่ม
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "file_url": url_by_day.get(it.get("cm_date") or "", ""),
         })
@@ -367,12 +279,7 @@ async def cmreport_list(
 UPLOADS_ROOT = os.getenv("UPLOADS_ROOT", "./uploads")
 os.makedirs(UPLOADS_ROOT, exist_ok=True)
 
-# เสิร์ฟไฟล์คืนให้ Frontend ผ่าน /uploads/...
-# NOTE: move to main.py → app.mount("/uploads", StaticFiles(directory=UPLOADS_ROOT, html=False), name="uploads")
-
-
 def _safe_name(name: str) -> str:
-    # กัน path traversal และอักขระแปลก ๆ
     base = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
     return base[:120] or secrets.token_hex(4)
 
@@ -387,7 +294,8 @@ async def cmreport_upload_photos(
     phase: str = Form("problem"),
     files: list[UploadFile] = File(...),
     remark: str | None = Form(None),
-    location: str | None = Form(None),        # ✅ เพิ่มใหม่
+    location: str | None = Form(None),     
+    created_at: str | None = Form(None),
     current: UserClaims = Depends(get_current_user),
 ):
     
@@ -438,8 +346,8 @@ async def cmreport_upload_photos(
             "size": len(data),
             "url": url_path,
             "remark": remark or "",
-            "location": location or "",         # ✅ เพิ่มใหม่
-            "uploadedAt": uploaded_at,
+            "location": location or "",  
+            "uploadedAt": created_at or uploaded_at.isoformat(),
         })
 
     await coll.update_one(
@@ -447,7 +355,6 @@ async def cmreport_upload_photos(
         {"$push": {f"{photo_field}.{group}": {"$each": saved}}}
     )
 
-    # ✅ return uploadedAt as ISO string + location
     return {
         "ok": True, 
         "count": len(saved), 
@@ -484,24 +391,18 @@ async def cmreport_finalize(
 @router.post("/cmurl/upload-files", status_code=201)
 async def cmurl_upload_files(
     station_id: str = Form(...),
-    reportDate: str = Form(...),                 # "YYYY-MM-DD" หรือ ISO
+    reportDate: str = Form(...),
     files: list[UploadFile] = File(...),
     status: str = Form(...),  
     current: UserClaims = Depends(get_current_user),
 ):
-    # auth
-
-    # ตรวจ/เตรียมคอลเลกชัน
     coll = get_cmurl_coll_upload(station_id)
 
-    # parse วันที่เป็น UTC datetime (มีฟังก์ชันอยู่แล้ว)
     cm_date = normalize_pm_date(reportDate)
 
-    # สร้าง issue_id และ doc_name อัตโนมัติ
     issue_id = await get_next_cm_issue_id(station_id, cm_date)
     doc_name = await get_next_cm_doc_name(station_id, cm_date)
 
-    # โฟลเดอร์ปลายทาง: /uploads/cmurl/<station_id>/<YYYY-MM-DD>/
     subdir = cm_date
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "cmurl" / station_id / subdir
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -533,8 +434,8 @@ async def cmurl_upload_files(
 
     doc = {
         "station": station_id,
-        "doc_name": doc_name,           # เพิ่ม
-        "issue_id": issue_id,           # เพิ่ม
+        "doc_name": doc_name,
+        "issue_id": issue_id,
         "cm_date": cm_date,
         "status": (status or "").strip(), 
         "urls": urls,
@@ -564,7 +465,6 @@ async def cmurl_list(
     coll = get_cmurl_coll_upload(station_id)
     skip = (page - 1) * pageSize
 
-    # สร้าง filter ตามสถานะ
     mongo_filter: dict = {}
     if status:
         want = (status or "").strip()
@@ -575,15 +475,15 @@ async def cmurl_list(
 
     projection = {
         "_id": 1, 
-        "doc_name": 1,      # เพิ่ม
-        "issue_id": 1,      # เพิ่ม
+        "doc_name": 1,
+        "issue_id": 1,
         "cm_date": 1, 
         "reportDate": 1,
         "urls": 1, 
         "createdAt": 1,
         "status": 1, 
         "job": 1,
-        "inspector": 1,     # เพิ่ม
+        "inspector": 1,
     }
 
     cursor = (
@@ -647,7 +547,7 @@ class CMSubmitIn(BaseModel):
     faulty_equipment: str = ""
     severity: str = ""
     problem_details: str = ""
-    remarks_open: str = ""          # เปลี่ยนจาก remarks เป็น remarks_open
+    remarks_open: str = ""
     location: str = ""
     reported_by: Optional[str] = None
 
@@ -688,7 +588,7 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "faulty_equipment": body.faulty_equipment,
         "severity": body.severity,
         "problem_details": body.problem_details,
-        "remarks_open": body.remarks_open,      # เปลี่ยนจาก remarks เป็น remarks_open
+        "remarks_open": body.remarks_open,
         "status": "Open",
         "photos_problem": {},
         "createdAt": datetime.now(timezone.utc),
@@ -697,11 +597,82 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
     }
 
     res = await coll.insert_one(doc)
+
+    # ══════════════════════════════════════════════════════════════
+    # B) ยิง Maximo SR (ถ้ามี maximo_location)
+    #    lookup: charger-level ก่อน → fallback station-level
+    #    (เหมือน auto_cm_watcher._lookup_station)
+    # ══════════════════════════════════════════════════════════════
+    maximo_ticket_id = None
+    try:
+        # 1) Station info
+        st_doc = station_collection.find_one(
+            {"station_id": station_id},
+            {"maximo_location": 1, "station_name": 1}
+        )
+        station_name = (st_doc or {}).get("station_name", station_id)
+        station_maximo = (st_doc or {}).get("maximo_location", "")
+
+        # 2) Charger-level maximo_location (ถ้า faulty_equipment ระบุ charger)
+        charger_maximo = ""
+        if body.faulty_equipment and body.faulty_equipment.startswith("charger_"):
+            from config import client as mongo_client
+            charger_col = mongo_client["iMPS"]["charger"]
+            # ดึง charger_no จาก faulty_equipment เช่น "charger_1" → "1"
+            charger_no_str = body.faulty_equipment.replace("charger_", "")
+            charger_query = {"station_id": station_id}
+            # รองรับทั้ง int และ string
+            if charger_no_str.isdigit():
+                charger_query["$or"] = [
+                    {"chargerNo": int(charger_no_str)},
+                    {"charger_no": charger_no_str},
+                    {"charger_id": charger_no_str},
+                ]
+            else:
+                charger_query["$or"] = [
+                    {"charger_no": charger_no_str},
+                    {"charger_id": charger_no_str},
+                ]
+            charger_doc = await charger_col.find_one(charger_query)
+            if charger_doc:
+                charger_maximo = charger_doc.get("maximo_location", "")
+
+        # 3) ใช้ charger > station (เหมือน auto watcher)
+        maximo_loc = charger_maximo or station_maximo
+
+        print(f"[DEBUG-PATCH-V2] maximo_loc={maximo_loc}")
+
+        if maximo_loc:
+            print(f"[DEBUG-V3] calling maximo_create_sr, type={type(maximo_create_sr)}, is_coroutine={inspect.iscoroutinefunction(maximo_create_sr)}")
+            desc = f"[iMPS CM] {station_name} / {body.faulty_equipment} / {body.problem_details}"
+            result = maximo_create_sr(
+                description=desc[:250],
+                location=maximo_loc,
+                severity=body.severity or "Medium",
+            )
+            # รองรับทั้ง sync และ async (บาง environment อาจ wrap เป็น sync)
+            # sr = await result if inspect.isawaitable(result) else result
+            if inspect.isawaitable(result):
+                sr = await result
+            else:
+                sr = result
+
+            if sr:
+                maximo_ticket_id = sr.get("ticketid")
+                await coll.update_one(
+                    {"_id": res.inserted_id},
+                    {"$set": {"maximo_ticket_id": maximo_ticket_id}}
+                )
+    except Exception as e:
+        import logging
+        logging.getLogger("cmreport").warning(f"Maximo SR failed: {e}")
+
     return {
         "ok": True, 
         "report_id": str(res.inserted_id),
         "doc_name": doc_name,
         "issue_id": issue_id,
+        "maximo_ticket_id": maximo_ticket_id,                      # ← B) เพิ่ม
     }
 
 @router.get("/cmreport/{report_id}")
@@ -729,6 +700,7 @@ async def cmreport_detail_path(
         "cm_date": doc.get("cm_date") or doc.get("found_date") or "",
         "reported_by": doc.get("reported_by") or "",
         "status": doc.get("status") or "",
+        "maximo_ticket_id": doc.get("maximo_ticket_id") or "",     # ← D) เพิ่ม
         
         # flat fields จาก Open
         "faulty_equipment": doc.get("faulty_equipment") or "",
@@ -795,12 +767,10 @@ async def cmreport_update_status(
         "status": body.status,
     }
 
-    # ✅ เพิ่ม: บันทึก inspector
     if body.inspector:
         updates["inspector"] = body.inspector
 
     if body.job is not None:
-        # ✅ แก้ไข: เพิ่ม "cause"
         allowed_job_keys = {
             "issue_id", "found_date", "location", "wo", "sn",
             "equipment_list", "problem_details", "problem_type", "severity",
@@ -810,7 +780,7 @@ async def cmreport_update_status(
             "faulty_equipment",
             "repaired_equipment",
             "inprogress_remarks",
-            "cause", "problem_type_other","repair_result_remark","start_repair_date", # ✅ เพิ่มใหม่
+            "cause", "problem_type_other","repair_result_remark","start_repair_date",
         }
         
         if "status" in body.job:
@@ -821,12 +791,11 @@ async def cmreport_update_status(
 
         for k, v in body.job.items():
             if k in allowed_job_keys:
-                updates[k] = v  # บันทึกเป็น flat field แทน job.xxx
+                updates[k] = v
 
         if "start_repair_date" in updates:
             existing = await coll.find_one({"_id": oid}, {"start_repair_date": 1})
             if existing and existing.get("start_repair_date"):
-                # มีอยู่แล้ว → ไม่ overwrite
                 del updates["start_repair_date"]
 
         if "found_date" in body.job and body.job.get("found_date"):
@@ -842,4 +811,3 @@ async def cmreport_update_status(
         raise HTTPException(status_code=404, detail="Report not found")
 
     return {"ok": True, "status": updates["status"]}
-

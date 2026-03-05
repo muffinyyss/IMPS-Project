@@ -9,6 +9,17 @@ from jose import jwt
 import json, os, re
 import paho.mqtt.client as mqtt
 
+BROKER_HOST = os.getenv("MQTT_BROKER", "203.154.130.132")
+BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_TOPIC = os.getenv("MQTT_TOPIC", "imps/setting")
+
+mqtt_client = mqtt.Client()
+try:
+    mqtt_client.connect(BROKER_HOST, BROKER_PORT, 60)
+    mqtt_client.loop_start()
+except Exception:
+    pass
+
 # ─── JWT / Auth ──────────────────────────────────────────────
 SECRET_KEY = "supersecret"
 ALGORITHM = "HS256"
@@ -44,8 +55,11 @@ station_collection.create_index("station_id", unique=True)
 charger_collection.create_index("station_id")
 charger_collection.create_index("chargeBoxID")
 
-charger_onoff = client["stationsOnOff"]
+charger_onoff = client["edgeboxStatus"]
+charger_onoff_sync = client1["edgeboxStatus"]
 MDB_DB = client["MDB"]
+MDB_realtime_DB = client["MDB_realtime"]
+MDB_history_DB = client["MDB_history"]
 CBM_DB = client["monitorCBM"]
 
 PMReportDB = client["PMReport"]
@@ -100,21 +114,6 @@ users_coll_async = imps_db_async["users"]
 email_log_coll = imps_db_async["errorEmailLog"]
 
 MDB_collection = MDB_DB["Klongluang3"]
-
-# ─── MQTT ────────────────────────────────────────────────────
-BROKER_HOST = "212.80.215.42"
-BROKER_PORT = 1883
-MQTT_TOPIC  = "iMPS/Test/settingPLC"
-MQTT_CLIENT_ID = "imps-backend-setting-plc"
-mqtt_client = mqtt.Client(client_id=MQTT_CLIENT_ID, clean_session=True)
-
-def _on_connect(client, userdata, flags, rc):
-    pass
-def _on_disconnect(client, userdata, rc):
-    pass
-
-mqtt_client.on_connect = _on_connect
-mqtt_client.on_disconnect = _on_disconnect
 
 # ─── Shared Helpers ──────────────────────────────────────────
 def _validate_station_id(station_id: str):

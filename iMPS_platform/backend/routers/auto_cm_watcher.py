@@ -10,6 +10,8 @@ Triggers:
   *) เพิ่ม fault trigger ใหม่ได้ง่ายใน FAULT_TRIGGERS list
 """
 
+import inspect
+# from importlib.metadata.diagnose import inspect
 import os
 import asyncio
 import logging
@@ -184,28 +186,32 @@ async def _create_auto_cm(
     }
 
     try:
-        result = await coll.insert_one(cm_doc)
+        insert_result = await coll.insert_one(cm_doc)
 
         cm_doc["maximo_ticket_id"] = None
         
         maximo_loc = info.get("maximo_location", "")
         if maximo_loc:
             desc = f"[iMPS Auto CM] {location} / {info.get('charger_name', 'Unknown')} (SN: {sn}) / {trigger_key}"
-            sr = await maximo_create_sr(
+            sr_result = maximo_create_sr(
                 description=desc[:250],
                 location=maximo_loc,
                 severity=severity,
             )
+            if inspect.isawaitable(sr_result):
+                sr = await sr_result
+            else:
+                sr = sr_result
             if sr:
                 ticket_id = sr.get("ticketid")
                 await coll.update_one(
-                    {"_id": result.inserted_id},
+                    {"_id": insert_result.inserted_id},
                     {"$set": {"maximo_ticket_id": ticket_id}}
                 )
                 log.info(f"🎫 Maximo SR linked: {ticket_id}")
 
         log.info(
-            f"  ✅ CM created → id: {result.inserted_id}, "
+            f"  ✅ CM created → id: {insert_result.inserted_id}, "
             f"issue_id: {issue_id}, doc_name: {doc_name}"
         )
         return True

@@ -11,6 +11,7 @@ import AICard from "./components/AICard";
 import PMCard from "./components/PMCard";
 import CBMCard from "./components/condition-Based";
 import Lightbox from "./components/Lightbox";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/utils/api";
 
@@ -23,6 +24,7 @@ export default function ChargersPage() {
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
   const [sn, setSn] = useState<string | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
 
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
@@ -118,7 +120,12 @@ export default function ChargersPage() {
   useEffect(() => {
     const ctrl = new AbortController();
     (async () => {
-      if (!stationId && !sn) return;
+      if (!stationId && !sn) {
+        setPageLoading(false);
+        return;
+      }
+
+      setPageLoading(true);
 
       try {
         const params = new URLSearchParams();
@@ -160,7 +167,7 @@ export default function ChargersPage() {
 
         // 2. ดึง station_name และรูป Station
         let stationName = "-";
-        const stationImages: GalleryImage[] = [];  // ✅ เก็บรูป Station แยก
+        const stationImages: GalleryImage[] = [];
         const currentStationId = chargerInfo?.station_id || stationId;
 
         if (currentStationId) {
@@ -174,7 +181,6 @@ export default function ChargersPage() {
               const stationData = await stationRes.json();
               stationName = stationData?.station_name ?? "-";
 
-              // รวบรวมรูป Station
               const stationImgs = stationData?.images ?? {};
               Object.entries(stationImgs).forEach(([key, url]) => {
                 if (typeof url === "string" && url) {
@@ -192,8 +198,8 @@ export default function ChargersPage() {
 
         // ✅ 3. รวมรูป: Station ก่อน → แล้ว Charger/Device ตามหลัง
         const allImages: GalleryImage[] = [
-          ...stationImages,   // รูป Station ขึ้นก่อน
-          ...chargerImages,   // รูป Charger + Device ตามหลัง
+          ...stationImages,
+          ...chargerImages,
         ];
 
         console.log("[Images] Total images:", allImages.length, allImages);
@@ -222,7 +228,11 @@ export default function ChargersPage() {
         }));
 
       } catch (e) {
-        console.error("fetch error", e);
+        if ((e as any)?.name !== "AbortError") {
+          console.error("fetch error", e);
+        }
+      } finally {
+        setPageLoading(false);
       }
     })();
 
@@ -256,6 +266,9 @@ export default function ChargersPage() {
 
   return (
     <div className="tw-mt-8 tw-mb-4 tw-mx-auto tw-px-4 sm:tw-px-6">
+      {/* Loading Overlay — แสดงตอนโหลดข้อมูลหน้า */}
+      <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+
       <div className="tw-mt-8 tw-mb-4">
         <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 lg:tw-gap-6 tw-gap-y-6">
 
@@ -318,6 +331,8 @@ export default function ChargersPage() {
                   PLCFirmware={stationDetail?.PLCFirmware}
                   PIFirmware={stationDetail?.PIFirmware}
                   RTFirmware={stationDetail?.RTFirmware}
+                  chargerSN={sn}
+                  apiBaseUrl={API_BASE}
                 />
               </CardBody>
             </Card>
@@ -328,7 +343,6 @@ export default function ChargersPage() {
         <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 tw-gap-6">
           <HealthIndex />
           <AICard />
-          {/* <PMCard stationId={stationId!} /> */}
           <PMCard sn={sn ?? ""} />
         </div>
       </div>
