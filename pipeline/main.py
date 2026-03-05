@@ -171,7 +171,7 @@ class Pipeline:
         def insulation_callback(aggregated_data: Dict[str, Any]):
             state = self.state_manager.get_station(station_id)
             if state:
-                state.update_latest('insulation_agg', aggregated_data, now_tz())
+                state.update_latest('insulationAgg', aggregated_data, now_tz())
                 logger.debug(f"[{station_id}] Insulation aggregator triggered")
         
         agg_manager.set_cbm_callback(cbm_callback)

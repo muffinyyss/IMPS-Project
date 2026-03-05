@@ -37,7 +37,7 @@ class HeartbeatProcessor:
             timestamp = now_tz()
         
         # Store latest data
-        state.update_latest('pi5_heartbeat', data, timestamp)
+        state.update_latest('pi5Heartbeat', data, timestamp)
         
         # Update heartbeat (this also accumulates service life)
         elapsed = state.service_life.update_heartbeat('pi5', timestamp)
@@ -60,7 +60,7 @@ class HeartbeatProcessor:
             timestamp = now_tz()
         
         # Store latest data
-        state.update_latest('eb_heartbeat', data, timestamp)
+        state.update_latest('ebHeartbeat', data, timestamp)
         
         # Update heartbeat (this also accumulates service life)
         elapsed = state.service_life.update_heartbeat('edgebox', timestamp)
