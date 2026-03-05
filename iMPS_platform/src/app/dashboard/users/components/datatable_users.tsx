@@ -29,6 +29,7 @@ import {
   DialogFooter,
   Select,
   Option,
+  Switch,
 } from "@material-tailwind/react";
 import {
   ChevronLeftIcon,
@@ -51,6 +52,7 @@ type UserRow = {
   company?: string;
   tel?: string;
   station_id?: string[];
+  ai_package?: { enabled: boolean; expires_at?: string };
 };
 
 export type UserUpdatePayload = {
@@ -134,7 +136,7 @@ export default function SearchDataTables() {
     message: string;
     onConfirm: () => void;
     loading: boolean;
-  }>({ open: false, title: "", message: "", onConfirm: () => {}, loading: false });
+  }>({ open: false, title: "", message: "", onConfirm: () => { }, loading: false });
 
   const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, open: false, loading: false }));
 
@@ -146,6 +148,10 @@ export default function SearchDataTables() {
   const [stationSearchValue, setStationSearchValue] = useState("");
   const [showStationDropdown, setShowStationDropdown] = useState(false);
   const [selectedStations, setSelectedStations] = useState<any[]>([]);
+  const [aiPackage, setAiPackage] = useState<{ enabled: boolean; expires_at: string }>({
+    enabled: false,
+    expires_at: "",
+  });
 
   // ดึงข้อมูลผู้ใช้หลัง auth ผ่านเท่านั้น
   useEffect(() => {
@@ -173,6 +179,7 @@ export default function SearchDataTables() {
           company: u.company ?? "-",
           station_id: u.station_id ?? [],
           tel: u.tel ?? "-",
+          ai_package: u.ai_package ?? undefined,
         }));
         setData(rows);
       } catch {
@@ -196,9 +203,16 @@ export default function SearchDataTables() {
             station_name: id, // จะถูก update เมื่อโหลด stations
           }))
         );
+
       } else {
         setSelectedStations([]);
       }
+
+      const pkg = (editingRow as any)?.ai_package;
+      setAiPackage({
+        enabled: pkg?.enabled ?? false,
+        expires_at: pkg?.expires_at ? pkg.expires_at.split("T")[0] : "",
+      });
     }
   }, [openEdit, editingRow]);
 
@@ -294,6 +308,7 @@ export default function SearchDataTables() {
     if (payload.tel !== undefined) body.tel = payload.tel?.trim();
     if ((payload as any).station_id !== undefined) body.station_id = (payload as any).station_id;
     if ((payload as any).password) body.password = String((payload as any).password);
+    if ((payload as any).ai_package !== undefined) body.ai_package = (payload as any).ai_package;
 
     const res = await apiFetch(`/user_update/${id}`, {
       method: "PATCH",
@@ -311,20 +326,20 @@ export default function SearchDataTables() {
     if (!res.ok) throw new Error(raw || `Update failed: ${res.status}`);
 
     let updated: any = {};
-    try { updated = raw ? JSON.parse(raw) : {}; } catch {}
+    try { updated = raw ? JSON.parse(raw) : {}; } catch { }
 
     setData(prev =>
       prev.map(u =>
         u.id === id
           ? {
-              ...u,
-              username: updated.username ?? u.username,
-              email: updated.email ?? u.email,
-              company: updated.company ?? u.company,
-              role: updated.role ?? u.role,
-              tel: updated.tel ?? u.tel,
-              station_id: updated.station_id ?? u.station_id,
-            }
+            ...u,
+            username: updated.username ?? u.username,
+            email: updated.email ?? u.email,
+            company: updated.company ?? u.company,
+            role: updated.role ?? u.role,
+            tel: updated.tel ?? u.tel,
+            station_id: updated.station_id ?? u.station_id,
+          }
           : u
       )
     );
@@ -423,8 +438,8 @@ export default function SearchDataTables() {
       },
     },
     { accessorFn: (r: UserRow) => r.username ?? "-", id: "username", header: () => "username", cell: (i: any) => i.getValue() },
-    { accessorFn: (r: UserRow) => r.email ?? "-",    id: "email",    header: () => "email",    cell: (i: any) => i.getValue() },
-    { accessorFn: (r: UserRow) => r.tel ?? "-",    id: "tel",    header: () => "tel",    cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.email ?? "-", id: "email", header: () => "email", cell: (i: any) => i.getValue() },
+    { accessorFn: (r: UserRow) => r.tel ?? "-", id: "tel", header: () => "tel", cell: (i: any) => i.getValue() },
     // { accessorFn: (r: UserRow) => r.company ?? "-",  id: "company",  header: () => "company",  cell: (i: any) => i.getValue() },
     {
       accessorFn: (r: UserRow) => r.company ?? "-",
@@ -526,7 +541,7 @@ export default function SearchDataTables() {
   return (
     <>
 
-    <LoadingOverlay show={loading} text="กำลังโหลดข้อมูล..." />
+      <LoadingOverlay show={loading} text="กำลังโหลดข้อมูล..." />
 
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8 tw-scroll-mt-4">
         {notice && (
@@ -578,6 +593,8 @@ export default function SearchDataTables() {
                 </option>
               ))}
             </select>
+
+
             <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-hidden sm:tw-inline">
               entries per page
             </Typography>
@@ -721,6 +738,14 @@ export default function SearchDataTables() {
             if (newPw) payload.password = newPw;
 
             try {
+              if (isAdmin && roleValue === "owner") {
+                payload.ai_package = {
+                  enabled: aiPackage.enabled,
+                  // expires_at: aiPackage.expires_at
+                  //   ? new Date(aiPackage.expires_at).toISOString()
+                  //   : null,
+                };
+              }
               await handleUpdateUser(editingRow.id!, payload);
             } catch (err: any) {
               setNotice({ type: "error", msg: err?.message || "อัปเดตไม่สำเร็จ" });
@@ -748,7 +773,33 @@ export default function SearchDataTables() {
                   <Option value="owner">owner</Option>
                   <Option value="technician">Technician</Option>
                 </Select>
+
+
+
               )}
+
+              {isAdmin && roleValue === "owner" && (
+                <div className="tw-border tw-border-blue-gray-100 tw-rounded-xl tw-p-4 tw-space-y-3">
+                  <Typography variant="small" className="!tw-font-semibold tw-text-blue-gray-700">
+                    AI Package
+                  </Typography>
+                  <div className="tw-flex tw-items-center tw-justify-between">
+                    <Typography variant="small" color="blue-gray">Enable AI Modules</Typography>
+                    <Switch
+                      checked={aiPackage.enabled}
+                      onChange={() => setAiPackage(p => ({ ...p, enabled: !p.enabled }))}
+                    />
+                  </div>
+                  {/* <Input
+                    label="Expires At"
+                    type="date"
+                    value={aiPackage.expires_at}
+                    onChange={(e) => setAiPackage(p => ({ ...p, expires_at: e.target.value }))}
+                    crossOrigin={undefined}
+                  /> */}
+                </div>
+              )}
+
 
               {roleValue === "technician" && (
                 <div className="tw-relative">
@@ -764,7 +815,7 @@ export default function SearchDataTables() {
                     disabled={loadingStations || availableStations.length === 0}
                     crossOrigin={undefined}
                   />
-                  
+
                   {/* Dropdown suggestions */}
                   {showStationDropdown && (
                     <div className="tw-absolute tw-top-full tw-left-0 tw-right-0 tw-z-10 tw-mt-1 tw-max-h-48 tw-overflow-y-auto tw-bg-white tw-border tw-border-gray-300 tw-rounded-lg tw-shadow-lg">
@@ -774,9 +825,9 @@ export default function SearchDataTables() {
                           (station.station_name
                             .toLowerCase()
                             .includes(stationSearchValue.toLowerCase()) ||
-                          station.station_id
-                            .toLowerCase()
-                            .includes(stationSearchValue.toLowerCase()))
+                            station.station_id
+                              .toLowerCase()
+                              .includes(stationSearchValue.toLowerCase()))
                         )
                         .map((station) => (
                           <div
@@ -796,23 +847,23 @@ export default function SearchDataTables() {
                             </Typography>
                           </div>
                         ))}
-                      
+
                       {stationSearchValue && availableStations.filter((station) =>
                         !selectedStations.find(s => s.station_id === station.station_id) &&
                         (station.station_name
                           .toLowerCase()
                           .includes(stationSearchValue.toLowerCase()) ||
-                        station.station_id
-                          .toLowerCase()
-                          .includes(stationSearchValue.toLowerCase()))
+                          station.station_id
+                            .toLowerCase()
+                            .includes(stationSearchValue.toLowerCase()))
                       ).length === 0 && (
-                        <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
-                          No stations found
-                        </div>
-                      )}
+                          <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
+                            No stations found
+                          </div>
+                        )}
                     </div>
                   )}
-                  
+
                   {loadingStations && (
                     <Typography variant="small" color="gray" className="tw-mt-1">
                       Loading stations...
@@ -823,7 +874,7 @@ export default function SearchDataTables() {
                       No stations available
                     </Typography>
                   )}
-                  
+
                   {/* Selected Stations Tags */}
                   {selectedStations.length > 0 && (
                     <div className="tw-mt-3">
@@ -867,7 +918,7 @@ export default function SearchDataTables() {
             </Button>
           </DialogFooter>
         </form>
-        
+
       </Dialog>
       <ConfirmDialog              // ← ✅ อยู่ข้างนอก เป็น sibling ของ Dialog
         open={confirmDialog.open}

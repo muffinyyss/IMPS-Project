@@ -277,7 +277,8 @@ export function buildChartsFromHistory(
         ...baseOptions.tooltip,
         shared: true,
         intersect: false,
-        y: { formatter: (v: number) => `${v.toFixed(2)} A` }
+        // y: { formatter: (v: number) => `${v.toFixed(2)} A` }
+        y: { formatter: (v: number) => `${(v ?? 0).toFixed(2)} W` }
       },
     },
   };
@@ -301,7 +302,8 @@ export function buildChartsFromHistory(
         ...baseOptions.tooltip,
         shared: true,
         intersect: false,
-        y: { formatter: (v: number) => `${v.toFixed(2)} W` }
+        // y: { formatter: (v: number) => `${v.toFixed(2)} W` }
+        y: { formatter: (v: number) => `${(v ?? 0).toFixed(2)} W` }
       },
     },
   };

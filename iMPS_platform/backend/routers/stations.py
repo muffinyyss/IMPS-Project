@@ -13,7 +13,8 @@ import json, re, uuid, pathlib, secrets
 
 from config import (
     users_collection, station_collection, charger_collection,
-    charger_onoff, _validate_station_id, th_tz, settingDB,
+    charger_onoff,charger_onoff_sync, _validate_station_id, th_tz, settingDB,
+    CBM_DB,                                                     # ← เพิ่มใหม่
 )
 from deps import UserClaims, get_current_user
 from routers.pm_helpers import (
@@ -81,15 +82,13 @@ async def get_owners():
 
 async def latest_onoff(sn: str) -> Dict[str, Any]:
     try:
-        coll = charger_onoff.get_collection(sn)
-        cursor = coll.find().sort([("payload.timestamp", -1), ("_id", -1)]).limit(1)
-        docs = await cursor.to_list(length=1)
+        coll = charger_onoff[sn]
+        docs = await coll.find().sort([("timestamp", -1), ("_id", -1)]).limit(1).to_list(length=1)
         doc = docs[0] if docs else None
         if not doc:
             return {"status": None, "statusAt": None}
-        payload = doc.get("payload", {})
-        val = payload.get("value", None)
-        ts = payload.get("timestamp", None)
+        val = doc.get("status", None)               # ← แก้ field
+        ts = doc.get("timestamp", None)             # ← แก้ field
         if isinstance(val, (int, bool)):
             status = bool(val)
         else:
@@ -145,8 +144,8 @@ class ChargerCreate(BaseModel):
     warrantyYears: Optional[int] = 1
     numberOfCables: Optional[int] = 1
     is_active: Optional[bool] = True
-    location: Optional[str] = ""
-    description: Optional[str] = ""
+    maximo_location: Optional[str] = ""
+    maximo_desc: Optional[str] = ""
     ocppUrl: Optional[str] = ""
     chargerType: Optional[str] = "DC"
 
@@ -165,8 +164,8 @@ class ChargerUpdate(BaseModel):
     warrantyYears: Optional[int] = None
     numberOfCables: Optional[int] = None
     is_active: Optional[bool] = None
-    location: Optional[str] = None
-    description: Optional[str] = None
+    maximo_location: Optional[str] = None
+    maximo_desc: Optional[str] = None
     ocppUrl: Optional[str] = None
     chargerType: Optional[str] = None
 
@@ -187,8 +186,8 @@ class ChargerOut(BaseModel):
     warrantyYears: Optional[int] = 1
     numberOfCables: Optional[int] = 1
     is_active: Optional[bool] = True
-    location: Optional[str] = ""
-    description: Optional[str] = ""
+    maximo_location: Optional[str] = ""
+    maximo_desc: Optional[str] = ""
     ocppUrl: Optional[str] = ""
     chargerType: Optional[str] = ""
     status: Optional[bool] = None
@@ -204,15 +203,15 @@ class StationCreate(BaseModel):
     user_id: Optional[str] = None
     owner: Optional[str] = None
     is_active: Optional[bool] = True
-    location: Optional[str] = ""
-    description: Optional[str] = ""
+    maximo_location: Optional[str] = ""
+    maximo_desc: Optional[str] = ""
 
 class StationUpdate(BaseModel):
     station_name: Optional[str] = None
     is_active: Optional[bool] = None
     user_id: Optional[str] = None
-    location: Optional[str] = None
-    description: Optional[str] = None
+    maximo_location: Optional[str] = None
+    maximo_desc: Optional[str] = None
 
 class StationOut(BaseModel):
     id: str
@@ -221,11 +220,11 @@ class StationOut(BaseModel):
     user_id: str
     username: Optional[str] = None
     is_active: bool
-    location: Optional[str] = ""
-    description: Optional[str] = ""
+    maximo_location: Optional[str] = ""
+    maximo_desc: Optional[str] = ""
     status: Optional[bool] = None
-    stationImage: Optional[str] = None       # backward compat — รูปแรก
-    stationImages: Optional[list] = []       # ← ใหม่: list ทั้งหมด
+    stationImage: Optional[str] = None
+    stationImages: Optional[list] = []
     chargers: List[ChargerOut] = []
     createdAt: Optional[datetime] = None
     createdBy: Optional[str] = None
@@ -247,15 +246,34 @@ class StationWithChargersOut(BaseModel):
 
 
 # ============================================================
+# ← เพิ่มใหม่: Monitor Value Models
+# ============================================================
+
+class MonitorFieldConfig(BaseModel):
+    """กำหนด field ที่จะแสดง — key ต้องตรงกับ field name ใน CBM document"""
+    key: str            # e.g. "voltage_a"
+    label: str          # e.g. "Voltage Phase A"
+    unit: Optional[str] = None  # e.g. "V", "A", "kW", "°C"
+
+class MonitorConfigUpdate(BaseModel):
+    fields: List[MonitorFieldConfig]
+
+class MonitorValueItem(BaseModel):
+    key: str
+    label: str
+    value: Any = None
+    unit: Optional[str] = None
+
+class MonitorDataOut(BaseModel):
+    values: List[MonitorValueItem]
+    lastUpdated: Optional[str] = None
+
+
+# ============================================================
 # Normalize images — backward compat (string → list)
 # ============================================================
 
 def _normalize_images(images: Any) -> dict:
-    """
-    แปลง images ให้เป็น format ใหม่ (list) เสมอ
-    เก่า: {"charger": "/uploads/x.jpg"}
-    ใหม่: {"charger": ["/uploads/x.jpg", ...]}
-    """
     if not isinstance(images, dict):
         return {}
     result = {}
@@ -291,27 +309,42 @@ def get_actor_id(current: UserClaims) -> str:
 
 def get_charger_status(station_id: str, chargeBoxID: str) -> bool:
     try:
-        coll = charger_onoff.get_collection(str(station_id))
+        coll = charger_onoff_sync[str(station_id)]  # sync client
         doc = coll.find_one(
-            {"payload.chargeBoxID": chargeBoxID},
-            sort=[("payload.timestamp", -1), ("_id", -1)]
+            {"chargeBoxID": chargeBoxID},           # ไม่มี payload wrapper
+            sort=[("timestamp", -1), ("_id", -1)]   # field ตรงๆ
         )
         if not doc:
             return False
-        val = doc.get("payload", {}).get("value", 0)
+        val = doc.get("status", 0)                  # อ่าน status โดยตรง
         return bool(int(val)) if not isinstance(val, bool) else val
-    except Exception:
+    except Exception as e:
+        print(f"[get_charger_status] {station_id}/{chargeBoxID}: {e}")
         return False
+
+# def get_station_status(station_id: str) -> bool:
+#     try:
+#         coll = charger_onoff.get_collection(str(station_id))
+#         doc = coll.find_one(sort=[("payload.timestamp", -1), ("_id", -1)])
+#         if not doc:
+#             return False
+#         val = doc.get("payload", {}).get("value", 0)
+#         return bool(int(val)) if not isinstance(val, bool) else val
+#     except Exception:
+#         return False
 
 def get_station_status(station_id: str) -> bool:
     try:
-        coll = charger_onoff.get_collection(str(station_id))
-        doc = coll.find_one(sort=[("payload.timestamp", -1), ("_id", -1)])
+        coll = charger_onoff_sync[str(station_id)]  # sync client
+        doc = coll.find_one(
+            sort=[("timestamp", -1), ("_id", -1)]   # field ตรงๆ
+        )
         if not doc:
             return False
-        val = doc.get("payload", {}).get("value", 0)
+        val = doc.get("status", 0)                  # อ่าน status โดยตรง
         return bool(int(val)) if not isinstance(val, bool) else val
-    except Exception:
+    except Exception as e:
+        print(f"[get_station_status] {station_id}: {e}")
         return False
 
 
@@ -351,8 +384,8 @@ def format_charger(doc: dict, include_status: bool = True) -> ChargerOut:
         warrantyYears=doc.get("warrantyYears", 1),
         numberOfCables=doc.get("numberOfCables", 1),
         is_active=doc.get("is_active", True),
-        location=doc.get("location", ""),
-        description=doc.get("description", ""),
+        maximo_location=doc.get("maximo_location", ""),
+        maximo_desc=doc.get("maximo_desc", ""),
         ocppUrl=doc.get("ocppUrl", ""),
         chargerType=doc.get("chargerType", ""),
         status=status,
@@ -385,8 +418,8 @@ def format_station_with_chargers(station_doc: dict, charger_docs: List[dict]) ->
         user_id=user_id_str,
         username=username,
         is_active=bool(station_doc.get("is_active", False)),
-        location=station_doc.get("location", ""),
-        description=station_doc.get("description", ""),
+        maximo_location=station_doc.get("maximo_location", ""),
+        maximo_desc=station_doc.get("maximo_desc", ""),
         status=status,
         stationImage=station_image_list[0] if station_image_list else None,
         stationImages=station_image_list,
@@ -403,8 +436,8 @@ def format_station_with_chargers(station_doc: dict, charger_docs: List[dict]) ->
 # ============================================================
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
-MAX_IMAGE_BYTES = 3 * 1024 * 1024   # 3 MB per file
-MAX_IMAGES_PER_KIND = 5              # สูงสุด 5 รูปต่อประเภท
+MAX_IMAGE_BYTES = 3 * 1024 * 1024
+MAX_IMAGES_PER_KIND = 5
 
 
 def _ensure_dir(p: pathlib.Path):
@@ -438,7 +471,6 @@ async def save_image(folder: str, item_id: str, kind: str, upload: UploadFile) -
 
 
 async def save_multiple_images(folder: str, item_id: str, kind: str, uploads: List[UploadFile]) -> List[str]:
-    """Save multiple images, return list of URLs"""
     urls = []
     for upload in uploads:
         if upload.filename:
@@ -531,8 +563,8 @@ def create_station_with_chargers(
         "station_name": station_data.station_name.strip(),
         "user_id": owner_oid,
         "is_active": station_data.is_active if station_data.is_active is not None else True,
-        "location": station_data.location.strip() if station_data.location else "",
-        "description": station_data.description.strip() if station_data.description else "",
+        "maximo_location": station_data.maximo_location.strip() if station_data.maximo_location else "",
+        "maximo_desc": station_data.maximo_desc.strip() if station_data.maximo_desc else "",
         "images": {},
         "createdAt": now,
         "createdBy": actor,
@@ -562,8 +594,8 @@ def create_station_with_chargers(
             "warrantyYears": charger.warrantyYears if charger.warrantyYears else 1,
             "numberOfCables": charger.numberOfCables if charger.numberOfCables else 1,
             "is_active": charger.is_active if charger.is_active is not None else True,
-            "location": charger.location.strip() if charger.location else "",
-            "description": charger.description.strip() if charger.description else "",
+            "maximo_location": charger.maximo_location.strip() if charger.maximo_location else "",
+            "maximo_desc": charger.maximo_desc.strip() if charger.maximo_desc else "",
             "ocppUrl": charger.ocppUrl.strip() if charger.ocppUrl else "",
             "chargerType": charger.chargerType if charger.chargerType else "DC",
             "images": {},
@@ -603,10 +635,10 @@ def update_station(
         update_data["station_name"] = body.station_name.strip()
     if body.is_active is not None:
         update_data["is_active"] = body.is_active
-    if body.location is not None:
-        update_data["location"] = body.location.strip()
-    if body.description is not None:
-        update_data["description"] = body.description.strip()
+    if body.maximo_location is not None:
+        update_data["maximo_location"] = body.maximo_location.strip()
+    if body.maximo_desc is not None:
+        update_data["maximo_desc"] = body.maximo_desc.strip()
     
     if body.user_id is not None:
         new_user_oid = to_object_id(body.user_id)
@@ -684,8 +716,8 @@ def add_charger_to_station(
         "warrantyYears": body.warrantyYears if body.warrantyYears else 1,
         "numberOfCables": body.numberOfCables if body.numberOfCables else 1,
         "is_active": body.is_active if body.is_active is not None else True,
-        "location": body.location.strip() if body.location else "",
-        "description": body.description.strip() if body.description else "",
+        "maximo_location": body.maximo_location.strip() if body.maximo_location else "",
+        "maximo_desc": body.maximo_desc.strip() if body.maximo_desc else "",
         "ocppUrl": body.ocppUrl.strip() if body.ocppUrl else "",
         "chargerType": body.chargerType if body.chargerType else "DC",
         "images": {},
@@ -713,7 +745,7 @@ def update_charger(
         raise HTTPException(status_code=404, detail="Charger not found")
     
     update_data = {}
-    for field in ["chargeBoxID", "brand", "model", "SN", "WO", "power", "PLCFirmware", "PIFirmware", "RTFirmware", "commissioningDate", "location", "description", "ocppUrl", "chargerType"]:
+    for field in ["chargeBoxID", "brand", "model", "SN", "WO", "power", "PLCFirmware", "PIFirmware", "RTFirmware", "commissioningDate", "maximo_location", "maximo_desc", "ocppUrl", "chargerType"]:
         value = getattr(body, field, None)
         if value is not None:
             update_data[field] = value.strip() if isinstance(value, str) else value
@@ -758,22 +790,16 @@ def delete_charger(
 # Image Upload — Multi-image support
 # ============================================================
 
-# ---------------------------------------------------------
-# POST /stations/{station_id}/upload-image  — รับหลายรูป (append)
-# ---------------------------------------------------------
 @router.post("/stations/{station_id}/upload-image")
 async def upload_station_image(
     station_id: str,
     station: List[UploadFile] = File([]),
     current: UserClaims = Depends(get_current_user),
 ):
-    """Upload image(s) for Station — append ต่อท้าย list เดิม"""
-    
     doc = station_collection.find_one({"station_id": station_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Station not found")
     
-    # กรอง empty
     valid = [f for f in station if f.filename]
     if not valid:
         return {"updated": False, "images": _normalize_images(doc.get("images", {}))}
@@ -803,9 +829,6 @@ async def upload_station_image(
     return {"updated": True, "images": images}
 
 
-# ---------------------------------------------------------
-# POST /chargers/{charger_id}/upload-images  — รับหลายรูปต่อประเภท (append)
-# ---------------------------------------------------------
 @router.post("/chargers/{charger_id}/upload-images")
 async def upload_charger_images(
     charger_id: str,
@@ -814,8 +837,6 @@ async def upload_charger_images(
     device: List[UploadFile] = File([]),
     current: UserClaims = Depends(get_current_user),
 ):
-    """Upload image(s) for Charger — append ต่อท้าย list เดิม"""
-    
     oid = to_object_id(charger_id)
     doc = charger_collection.find_one({"_id": oid})
     if not doc:
@@ -856,12 +877,9 @@ async def upload_charger_images(
     return {"updated": True, "images": images}
 
 
-# ---------------------------------------------------------
-# DELETE — ลบรูปทีละรูป
-# ---------------------------------------------------------
 class DeleteImageRequest(BaseModel):
-    kind: str       # "charger" | "device" | "mdb" | "station"
-    url: str        # URL ของรูปที่ต้องการลบ
+    kind: str
+    url: str
 
 
 @router.delete("/stations/{station_id}/delete-image")
@@ -870,7 +888,6 @@ def delete_station_image(
     body: DeleteImageRequest,
     current: UserClaims = Depends(get_current_user),
 ):
-    """ลบรูปทีละรูปจาก station"""
     doc = station_collection.find_one({"station_id": station_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Station not found")
@@ -893,7 +910,6 @@ def delete_station_image(
         }}
     )
     
-    # ลบไฟล์จริง (ไม่ error ถ้าไม่เจอ)
     try:
         file_path = pathlib.Path(UPLOADS_ROOT).parent / body.url.lstrip("/")
         if file_path.exists():
@@ -910,7 +926,6 @@ def delete_charger_image(
     body: DeleteImageRequest,
     current: UserClaims = Depends(get_current_user),
 ):
-    """ลบรูปทีละรูปจาก charger"""
     oid = to_object_id(charger_id)
     doc = charger_collection.find_one({"_id": oid})
     if not doc:
@@ -1018,3 +1033,253 @@ async def get_station_availability(station_id: str):
         "available": available,
         "chargers": per_charger,
     }
+
+
+# ============================================================
+# ← เพิ่มใหม่: Monitor Value Endpoints
+#    - ดึงค่าจาก CBM_DB[SN] (monitorCBM) — async motor
+#    - เก็บ field config ใน charger doc (field: monitorConfig)
+#    - fallback: station doc → auto-detect
+#    - ไม่สร้าง collection ใหม่
+# ============================================================
+
+# keys ที่ไม่ใช่ค่า monitor — กรองออกตอน auto-detect
+_CBM_SKIP_KEYS = {"_id", "timestamp", "ts", "sn", "SN", "station_id", "createdAt", "updatedAt"}
+
+
+def _safe_value(v: Any) -> Any:
+    """แปลง Decimal128 และ type พิเศษของ MongoDB ให้เป็น JSON-safe"""
+    if v is None:
+        return None
+    if hasattr(v, "to_decimal"):        # Decimal128
+        return float(v.to_decimal())
+    if isinstance(v, ObjectId):
+        return str(v)
+    if isinstance(v, datetime):
+        return v.astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
+    return v
+
+
+# ---------------------------------------------------------
+# GET /charger/{charger_id}/monitor — ดึงค่า monitor ล่าสุด
+# ---------------------------------------------------------
+@router.get("/charger/{charger_id}/monitor")
+async def get_monitor_values(
+    charger_id: str,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดึง monitor values ล่าสุดจาก CBM_DB[SN] (monitorCBM)
+    - ถ้ามี monitorConfig ใน charger/station doc → แสดงเฉพาะ fields ที่กำหนด
+    - ถ้าไม่มี config → auto-detect แสดงทุก field ใน document
+    """
+    oid = to_object_id(charger_id)
+    charger = charger_collection.find_one({"_id": oid})
+    if not charger:
+        raise HTTPException(status_code=404, detail="Charger not found")
+
+    sn = charger.get("SN", "")
+    if not sn or sn == "-":
+        return MonitorDataOut(values=[], lastUpdated=None).dict()
+
+    # ดึง document ล่าสุดจาก CBM_DB[SN] (async motor — เหมือน settingDB[sn])
+    try:
+        coll = CBM_DB[sn]
+        doc = await coll.find_one({}, sort=[("_id", -1)])
+    except Exception as e:
+        print(f"[monitor] Error reading CBM_DB[{sn}]: {e}")
+        return MonitorDataOut(values=[], lastUpdated=None).dict()
+
+    if not doc:
+        return MonitorDataOut(values=[], lastUpdated=None).dict()
+
+    # --- หา field config ---
+    # priority: charger.monitorConfig → station.monitorConfig → auto-detect
+    monitor_config = charger.get("monitorConfig")
+
+    if not monitor_config:
+        station_doc = station_collection.find_one(
+            {"station_id": charger.get("station_id", "")},
+            {"monitorConfig": 1},
+        )
+        if station_doc:
+            monitor_config = station_doc.get("monitorConfig")
+
+    if monitor_config and isinstance(monitor_config, list) and len(monitor_config) > 0:
+        # ---- ใช้ config ที่กำหนดไว้ ----
+        values = []
+        for f in monitor_config:
+            values.append(MonitorValueItem(
+                key=f["key"],
+                label=f["label"],
+                value=_safe_value(doc.get(f["key"])),
+                unit=f.get("unit"),
+            ))
+    else:
+        # ---- auto-detect: แสดงทุก field (ยกเว้น metadata) ----
+        values = []
+        for k, v in doc.items():
+            if k in _CBM_SKIP_KEYS:
+                continue
+            values.append(MonitorValueItem(
+                key=k,
+                label=k,
+                value=_safe_value(v),
+                unit=None,
+            ))
+
+    # --- timestamp ---
+    last_updated = None
+    ts = doc.get("timestamp") or doc.get("ts")
+    if isinstance(ts, datetime):
+        last_updated = ts.astimezone(ZoneInfo("Asia/Bangkok")).isoformat()
+    elif isinstance(ts, str):
+        last_updated = ts
+    elif doc.get("_id") and isinstance(doc["_id"], ObjectId):
+        last_updated = doc["_id"].generation_time.astimezone(
+            ZoneInfo("Asia/Bangkok")
+        ).isoformat()
+
+    return MonitorDataOut(values=values, lastUpdated=last_updated).dict()
+
+
+# ---------------------------------------------------------
+# GET /charger/{charger_id}/monitor/available-fields
+# ดึง field จริงจาก CBM_DB[SN] ให้ frontend เอาไปแสดงใน modal
+# ---------------------------------------------------------
+@router.get("/charger/{charger_id}/monitor/available-fields")
+async def get_available_monitor_fields(
+    charger_id: str,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    อ่าน document ล่าสุดจาก CBM_DB[SN] แล้ว return field names ทั้งหมด
+    ที่ไม่ใช่ metadata — ให้ frontend เอาไปใช้เป็นตัวเลือกใน modal
+    """
+    oid = to_object_id(charger_id)
+    charger = charger_collection.find_one({"_id": oid})
+    if not charger:
+        raise HTTPException(status_code=404, detail="Charger not found")
+
+    sn = charger.get("SN", "")
+    if not sn or sn == "-":
+        return {"charger_id": charger_id, "sn": sn, "fields": []}
+
+    try:
+        coll = CBM_DB[sn]
+        doc = await coll.find_one({}, sort=[("_id", -1)])
+    except Exception as e:
+        print(f"[available-fields] Error reading CBM_DB[{sn}]: {e}")
+        return {"charger_id": charger_id, "sn": sn, "fields": []}
+
+    if not doc:
+        return {"charger_id": charger_id, "sn": sn, "fields": []}
+
+    fields = []
+    for k, v in doc.items():
+        if k in _CBM_SKIP_KEYS:
+            continue
+        fields.append({
+            "key": k,
+            "label": k,
+            "sample_value": _safe_value(v),
+        })
+
+    return {"charger_id": charger_id, "sn": sn, "fields": fields}
+
+
+# ---------------------------------------------------------
+# GET /charger/{charger_id}/monitor/config — ดู field config
+# ---------------------------------------------------------
+@router.get("/charger/{charger_id}/monitor/config")
+def get_monitor_config(
+    charger_id: str,
+    current: UserClaims = Depends(get_current_user),
+):
+    oid = to_object_id(charger_id)
+    charger = charger_collection.find_one({"_id": oid})
+    if not charger:
+        raise HTTPException(status_code=404, detail="Charger not found")
+
+    config = charger.get("monitorConfig")
+    source = "charger"
+
+    if not config:
+        station_doc = station_collection.find_one(
+            {"station_id": charger.get("station_id", "")},
+            {"monitorConfig": 1},
+        )
+        config = station_doc.get("monitorConfig") if station_doc else None
+        source = "station" if config else None
+
+    return {
+        "charger_id": charger_id,
+        "fields": config or [],
+        "source": source,
+    }
+
+
+# ---------------------------------------------------------
+# PUT /charger/{charger_id}/monitor/config — ตั้งค่า per charger
+# ---------------------------------------------------------
+@router.put("/charger/{charger_id}/monitor/config")
+def set_monitor_config(
+    charger_id: str,
+    body: MonitorConfigUpdate,
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    เก็บ monitorConfig ใน charger document เลย ไม่สร้าง collection ใหม่
+    body example:
+    {
+      "fields": [
+        {"key": "voltage_a", "label": "Voltage Phase A", "unit": "V"},
+        {"key": "pe_cut",    "label": "PE CUT"}
+      ]
+    }
+    """
+    oid = to_object_id(charger_id)
+    charger = charger_collection.find_one({"_id": oid})
+    if not charger:
+        raise HTTPException(status_code=404, detail="Charger not found")
+
+    fields_data = [f.dict() for f in body.fields]
+
+    charger_collection.update_one(
+        {"_id": oid},
+        {"$set": {
+            "monitorConfig": fields_data,
+            "updatedAt": datetime.now(timezone.utc),
+            "updatedBy": get_actor_id(current),
+        }},
+    )
+
+    return {"charger_id": charger_id, "fields": fields_data, "updated": True}
+
+
+# ---------------------------------------------------------
+# PUT /station/{station_id}/monitor/config — default config ระดับ station
+# ---------------------------------------------------------
+@router.put("/station/{station_id}/monitor/config")
+def set_station_monitor_config(
+    station_id: str,
+    body: MonitorConfigUpdate,
+    current: UserClaims = Depends(get_current_user),
+):
+    """เก็บ monitorConfig ใน station document — ใช้เป็น default สำหรับทุก charger"""
+    station = station_collection.find_one({"station_id": station_id})
+    if not station:
+        raise HTTPException(status_code=404, detail="Station not found")
+
+    fields_data = [f.dict() for f in body.fields]
+
+    station_collection.update_one(
+        {"station_id": station_id},
+        {"$set": {
+            "monitorConfig": fields_data,
+            "updatedAt": datetime.now(timezone.utc),
+            "updatedBy": get_actor_id(current),
+        }},
+    )
+
+    return {"station_id": station_id, "fields": fields_data, "updated": True}

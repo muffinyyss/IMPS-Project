@@ -143,7 +143,7 @@ function formatPhotoDate(dateStr: string | undefined): string | undefined {
     if (!dateStr) return undefined;
     const d = new Date(dateStr);
     if (!isNaN(d.getTime()) && d.getFullYear() > 1970) {
-        return d.toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        return d.toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
     }
     // ถ้า parse ไม่ได้ = string ที่ format แล้ว → ใช้ตรงๆ
     return dateStr;
@@ -1042,6 +1042,7 @@ export default function CMInProgressForm() {
                             formData.append("phase", "repair");
                             formData.append("files", img.file);
                             if (img.location) formData.append("location", img.location);
+                            formData.append("created_at", new Date().toISOString());
 
                             const uploadRes = await fetch(
                                 `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
@@ -1071,6 +1072,7 @@ export default function CMInProgressForm() {
                                 formData.append("phase", "repair");
                                 formData.append("files", file);
                                 if (img.location) formData.append("location", img.location);
+                                formData.append("created_at", new Date().toISOString());
 
                                 const uploadRes = await fetch(
                                     `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
@@ -1110,6 +1112,7 @@ export default function CMInProgressForm() {
                             formData.append("phase", "repair");
                             formData.append("files", img.file);
                             if (img.location) formData.append("location", img.location);
+                            formData.append("created_at", new Date().toISOString());
 
                             const uploadRes = await fetch(
                                 `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
@@ -1138,6 +1141,7 @@ export default function CMInProgressForm() {
                                 formData.append("phase", "repair");
                                 formData.append("files", file);
                                 if (img.location) formData.append("location", img.location);
+                                formData.append("created_at", new Date().toISOString());
 
                                 const uploadRes = await fetch(
                                     `${API_BASE}/cmreport/${encodeURIComponent(editId)}/photos`,
