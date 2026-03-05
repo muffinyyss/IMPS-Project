@@ -262,3 +262,8 @@ def _fmt(s: dict) -> dict:
         "chargingTime": s.get("chargingTime", 0),
         "totalPrice": s.get("totalPrice", 0),
     }
+    
+            
+            
+
+
