@@ -12,6 +12,7 @@ import {
     Select,
     Option,
 } from "@material-tailwind/react";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 export type NewUserPayload = {
     username: string;
@@ -62,8 +63,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
         setForm((s) => ({ ...s, [k]: v }));
 
     // โหลด stations เมื่อ modal เปิด
-    // ถ้า role เป็น admin → ดึง stations ทั้งหมด
-    // ถ้า role เป็น owner → ดึง stations ที่เป็นเจ้าของ
     useEffect(() => {
         if (!open) return;
 
@@ -89,7 +88,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                 }
 
                 const data = await res.json();
-                // API returns { stations: [...] }
                 const stationsList = data?.stations || (Array.isArray(data) ? data : []);
                 setStations(stationsList);
             } catch (error) {
@@ -105,7 +103,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Validation: if technician, must select at least one station
         if (form.role === "technician" && selectedStations.length === 0) {
             alert("Please select at least one station for technician role");
             return;
@@ -147,10 +144,13 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
     };
 
     return (
-        <Dialog open={open} handler={resetAndClose} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
+        <Dialog open={open} handler={resetAndClose} size="md" className="tw-relative tw-space-y-5 tw-px-8 tw-py-4">
+            {/* Loading Overlay — ครอบทับ modal ตอน saving */}
+            <LoadingOverlay show={!!loading} text="กำลังบันทึก..." />
+
             <DialogHeader className="tw-flex tw-items-center tw-justify-between">
                 <Typography variant="h5" color="blue-gray">Add New User</Typography>
-                <Button variant="text" onClick={resetAndClose}>✕</Button>
+                <Button variant="text" onClick={resetAndClose} disabled={loading}>✕</Button>
             </DialogHeader>
 
             <form onSubmit={handleSubmit}>
@@ -200,7 +200,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     value={form.role}
                                     onChange={(v) => {
                                         onChange("role", String(v ?? form.role) as "owner" | "technician" | "admin");
-                                        // รีเซ็ต station_id เมื่อเปลี่ยน role
                                         if (v !== "technician") {
                                             setForm((s) => ({ ...s, station_id: undefined }));
                                         }
@@ -211,7 +210,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     <Option value="admin">Admin</Option>
                                     <Option value="technician">Technician</Option>
                                 </Select>
-                                {/* <span className="tw-text-red-500 tw-mt-4">*</span> */}
                             </div>
                         </div>
 
@@ -220,7 +218,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                             <div className="tw-relative">
                                 <div className="tw-flex tw-items-center tw-gap-1">
                                     <Input
-                                        label={<span>Select Station <span className="tw-text-red-500">*</span></span>}
+                                        label="Select Station *"
                                         placeholder="Type to search..."
                                         value={stationSearchValue}
                                         onChange={(e) => {
@@ -232,7 +230,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                         crossOrigin={undefined}
                                     />
                                 </div>
-                                
 
                                 {/* Dropdown suggestions */}
                                 {showStationDropdown && (
@@ -328,7 +325,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                 </DialogBody>
 
                 <DialogFooter className="tw-gap-2">
-                    <Button variant="outlined" onClick={resetAndClose} type="button">Cancel</Button>
+                    <Button variant="outlined" onClick={resetAndClose} type="button" disabled={loading}>Cancel</Button>
                     <Button type="submit" className="tw-bg-blue-600" disabled={loading || (form.role === "technician" && selectedStations.length === 0)}>
                         {loading ? "Saving..." : "Create User"}
                     </Button>

@@ -43,7 +43,7 @@ const baseRoutes = [
   { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician"], showMode: "after" },
   { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician"], showMode: "after" },
   { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician"], showMode: "after" },
-  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner"], showMode: "after" },
+  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "http://203.154.130.132:8001/dashboard", allow: ["admin", "owner"], showMode: "after", external: true, newTab: false },
 ];
 
 /** 2) อ่าน user/role จาก localStorage (ตาม payload ที่ backend ส่งมาใน /login) */
@@ -133,24 +133,40 @@ export function getRoutes(roles, hasChargerSelected = false) {
 /** 7) React Hook - ตรวจสอบ URL params หรือ localStorage และคำนวณเมนู */
 export function useRoutes(rolesFromApp) {
   const [hasChargerSelected, setHasChargerSelected] = useState(false);
+  const [cbmActive, setCbmActive] = useState(false);
+
+  useEffect(() => {
+    // อ่านค่าเดิมจาก localStorage
+    const saved = localStorage.getItem("cbm_active");
+    setCbmActive(saved === "true");
+
+    const handleCbmToggle = (e) => {
+      setCbmActive(e.detail.active);
+    };
+
+    window.addEventListener("cbm:toggle", handleCbmToggle);
+    return () => {
+      window.removeEventListener("cbm:toggle", handleCbmToggle);
+    };
+  }, []);
 
   // Check URL params OR localStorage for sn and station_id
   useEffect(() => {
     const checkChargerSelection = () => {
       if (typeof window === "undefined") return;
-      
+
       // Check URL params first
       const params = new URLSearchParams(window.location.search);
       const snFromUrl = params.get("sn");
       const stationIdFromUrl = params.get("station_id");
-      
+
       // Also check localStorage - only need selected_sn to indicate charger is selected
       const snFromStorage = localStorage.getItem("selected_sn");
-      
+
       // Has charger if URL has both OR localStorage has sn
       const hasFromUrl = !!snFromUrl && !!stationIdFromUrl;
       const hasFromStorage = !!snFromStorage;
-      
+
       setHasChargerSelected(hasFromUrl || hasFromStorage);
     };
 
@@ -159,11 +175,11 @@ export function useRoutes(rolesFromApp) {
 
     // Listen for URL changes
     window.addEventListener("popstate", checkChargerSelection);
-    
+
     // Custom event for programmatic navigation
     window.addEventListener("charger:selected", checkChargerSelection);
     window.addEventListener("charger:deselected", checkChargerSelection);
-    
+
     // Listen for storage changes
     window.addEventListener("storage", checkChargerSelection);
 
@@ -179,10 +195,18 @@ export function useRoutes(rolesFromApp) {
     };
   }, []);
 
-  const routes = React.useMemo(
-    () => getRoutes(rolesFromApp, hasChargerSelected),
-    [rolesFromApp, hasChargerSelected]
-  );
+  const routes = React.useMemo(() => {
+        let result = getRoutes(rolesFromApp, hasChargerSelected);
+
+        // ถ้า CBM inactive → ซ่อนเมนู Condition-base
+        if (!cbmActive) {
+            result = result.filter(
+                (r) => r.path !== "/dashboard/cbm"
+            );
+        }
+
+        return result;
+    }, [rolesFromApp, hasChargerSelected, cbmActive]); // ← เพิ่ม cbmActive
 
   return routes;
 }

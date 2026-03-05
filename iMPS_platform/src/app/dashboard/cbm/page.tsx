@@ -12,6 +12,7 @@ import InsuContactorStatusCard from "@/app/dashboard/cbm/components/InsuContacto
 import EnergyPowerCard from "@/app/dashboard/cbm/components/EnergyPowerCard";
 import DCContactorsTimesCard from "@/app/dashboard/cbm/components/DCContactorsCard";
 import ACMagneticContactorsCard from "@/app/dashboard/cbm/components/ACMagneticContactorsCard";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -74,29 +75,32 @@ type CBMDoc = {
 export default function SalesPage() {
   const searchParams = useSearchParams();
   const [data, setData] = useState<CBMDoc | null>(null);
-  const [stationId, setStationId] = useState<string | null>(null);
+  const [SN, setSN] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const sidFromUrl = searchParams.get("station_id");
-    if (sidFromUrl) {
-      setStationId(sidFromUrl);
-      localStorage.setItem("selected_station_id", sidFromUrl);
+    const snFromUrl = searchParams.get("SN");
+    if (snFromUrl) {
+      setSN(snFromUrl);
+      localStorage.setItem("selected_sn", snFromUrl);
       return;
     }
-    const sidLocal = localStorage.getItem("selected_station_id");
-    setStationId(sidLocal);
+    const snLocal = localStorage.getItem("selected_sn");
+    setSN(snLocal);
   }, [searchParams]);
 
   useEffect(() => {
-    if (!stationId) return;
+    if (!SN) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setErr(null);
 
     const es = new EventSource(
-      `${API_BASE}/CBM?station_id=${encodeURIComponent(stationId)}`,
-      { withCredentials: true } // สำคัญสำหรับ cookie-auth
+      `${API_BASE}/CBM?SN=${encodeURIComponent(SN)}`,
+      { withCredentials: true }
     );
 
     const onInit = (e: MessageEvent) => {
@@ -110,12 +114,9 @@ export default function SalesPage() {
       }
     };
 
-    // es.addEventListener("init", onInit);
     es.addEventListener("init", (e: MessageEvent) => {
-      // console.log("INIT raw:", e.data);
       try {
         const obj = JSON.parse(e.data);
-        // console.log("INIT parsed:", obj);
         setData(obj);
         setLoading(false);
       } catch { }
@@ -123,20 +124,9 @@ export default function SalesPage() {
 
     es.onopen = () => setErr(null);
 
-    // es.onmessage = (e) => {
-    //     try {
-    //         setData(JSON.parse(e.data));
-    //         setErr(null);
-    //     } catch {
-    //         setErr("ผิดรูปแบบข้อมูล message");
-    //     }
-    // };
-
     es.onmessage = (e) => {
-      // console.log("MSG raw:", e.data);
       try {
         const obj = JSON.parse(e.data);
-        // console.log("MSG parsed:", obj);
         setData(obj);
       } catch { }
     };
@@ -144,14 +134,13 @@ export default function SalesPage() {
     es.onerror = () => {
       setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
       setLoading(false);
-      // ไม่ปิด es เพื่อให้ browser retry ตาม retry: 3000 ที่ server ส่งมา
     };
 
     return () => {
       es.removeEventListener("init", onInit);
       es.close();
     };
-  }, [stationId]);
+  }, [SN]);
 
   const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : undefined;
 
@@ -164,6 +153,9 @@ export default function SalesPage() {
 
   return (
     <div className="tw-mt-8 tw-mb-4">
+      {/* Loading Overlay — แสดงจนกว่าจะได้ข้อมูลแรกจาก SSE */}
+      <LoadingOverlay show={loading} text="กำลังโหลดข้อมูล..." />
+
       {lastUpdated && (
         <span className="tw-text-xs !tw-text-blue-gray-500">
           อัปเดตล่าสุด: {lastUpdated}
@@ -228,12 +220,12 @@ export default function SalesPage() {
               {
                 id: "insu1",
                 name: "Insulation monitoring No.1 (Active/Inactive)",
-                value: toDec(data?.insulation_monitoring_status1), // หรือ true / "Closed" ก็ได้
+                value: toDec(data?.insulation_monitoring_status1),
               },
               {
                 id: "insu2",
                 name: "Insulation monitoring No.2 (Active/Inactive)",
-                value: toDec(data?.insulation_monitoring_status2), // หรือ false / "Open"
+                value: toDec(data?.insulation_monitoring_status2),
               },
             ]}
           />
@@ -244,8 +236,8 @@ export default function SalesPage() {
           <ACMagneticContactorsCard
             updatedAt={lastUpdated}
             items={[
-              { id: "ac1", name: "AC Magnetic Contactor Head 1 Status", value: toDec(data?.AC_magnetic_contactor_status1) },  // หรือ true
-              { id: "ac2", name: "AC Magnetic Contactor Head 2 Status", value: toDec(data?.AC_magnetic_contactor_status2) },     // หรือ false
+              { id: "ac1", name: "AC Magnetic Contactor Head 1 Status", value: toDec(data?.AC_magnetic_contactor_status1) },
+              { id: "ac2", name: "AC Magnetic Contactor Head 2 Status", value: toDec(data?.AC_magnetic_contactor_status2) },
             ]}
           />
         </div>
@@ -254,10 +246,10 @@ export default function SalesPage() {
           <DCContactorsTimesCard
             title="DC Contactor"
             updatedAt={lastUpdated}
-            unit="Times"      // หรือ "ครั้ง"
+            unit="Times"
             decimals={0}
             items={[
-              { id: "dc1", name: "DC Contactor No.1", times: data?.DC_power_contractor1, mode: data?.dcContNo1Mode }, // mode: "NC"|"NO"
+              { id: "dc1", name: "DC Contactor No.1", times: data?.DC_power_contractor1, mode: data?.dcContNo1Mode },
               { id: "dc2", name: "DC Contactor No.2", times: data?.DC_power_contractor2, mode: data?.dcContNo2Mode },
               { id: "dc3", name: "DC Contactor No.3", times: data?.DC_power_contractor3, mode: data?.dcContNo3Mode },
               { id: "dc4", name: "DC Contactor No.4", times: data?.DC_power_contractor4, mode: data?.dcContNo4Mode },
@@ -271,11 +263,10 @@ export default function SalesPage() {
           <EnergyPowerCard
             title="Energy Power (kWh)"
             updatedAt={lastUpdated}
-            /* mapping ตามที่กำหนด: dikW -> No.1, diKW -> No.2 */
             energy1={data?.energy_power_kWh1}
             energy2={data?.energy_power_kWh2}
             unit="kWh"
-            decimals={0} // เป็น int ถ้าจะโชว์ทศนิยมเปลี่ยนเป็น 1/2 ได้
+            decimals={0}
           />
         </div>
 

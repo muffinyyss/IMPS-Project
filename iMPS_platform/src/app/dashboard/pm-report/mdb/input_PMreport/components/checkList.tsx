@@ -19,6 +19,7 @@ import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhoto, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 type TabId = "pre" | "post";
 
@@ -589,19 +590,19 @@ function PMValidationCard({
             const elementTop = rect.top + window.scrollY;
             const elementHeight = rect.height;
             const viewportHeight = window.innerHeight;
-            
+
             // คำนวณตำแหน่งที่ต้องการ scroll ให้ element อยู่กลางจอ
             let targetScrollY = elementTop - (viewportHeight / 2) + (elementHeight / 2);
-            
+
             // ไม่ให้ scroll ติดลบ (เกินบนสุด)
             targetScrollY = Math.max(0, targetScrollY);
-            
+
             // ไม่ให้ scroll เกินล่างสุด
             const maxScrollY = document.documentElement.scrollHeight - viewportHeight;
             targetScrollY = Math.min(targetScrollY, maxScrollY);
-            
+
             window.scrollTo({ top: targetScrollY, behavior: "smooth" });
-            
+
             // Highlight element
             element.classList.add("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
             setTimeout(() => {
@@ -946,6 +947,7 @@ export default function MDBPMForm() {
     const [me, setMe] = useState<Me | null>(null);
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
+    const [pageLoading, setPageLoading] = useState(true);
     const [docName, setDocName] = useState<string>("");
 
     const pathname = usePathname();
@@ -1125,6 +1127,10 @@ export default function MDBPMForm() {
     }, [isPostMode, editId, stationId, lang]);
 
     useEffect(() => {
+        if (isPostMode && postApiLoaded) setPageLoading(false);
+    }, [isPostMode, postApiLoaded]);
+
+    useEffect(() => {
         const token = typeof window !== "undefined" ? localStorage.getItem("access_token") ?? "" : "";
         if (!token) return;
         (async () => {
@@ -1168,10 +1174,13 @@ export default function MDBPMForm() {
         const params = new URLSearchParams(window.location.search);
         const sid = params.get("station_id") || localStorage.getItem("selected_station_id");
         if (sid) setStationId(sid);
-        if (!sid || isPostMode) return;
+        if (!sid || isPostMode) { setPageLoading(false); return; }  // ← เพิ่ม setPageLoading(false)
         const defaultDate = new Date().toISOString().slice(0, 10);
         setJob((prev) => { if (prev.date) return prev; return { ...prev, date: defaultDate }; });
-        getStationInfoPublic(sid).then((stationInfo) => { setJob((prev) => ({ ...prev, station_name: stationInfo.station_name ?? prev.station_name })); }).catch((err) => console.error("load public station info failed:", err));
+        getStationInfoPublic(sid)
+            .then((stationInfo) => { setJob((prev) => ({ ...prev, station_name: stationInfo.station_name ?? prev.station_name })); })
+            .catch((err) => console.error("load public station info failed:", err))
+            .finally(() => setPageLoading(false));  // ← เพิ่ม .finally()
         getChargerCountByStation(sid).then((count) => { setChargerCount(count); }).catch((err) => console.error("load charger count failed:", err));
     }, [isPostMode]);
 
@@ -1526,7 +1535,7 @@ export default function MDBPMForm() {
         const m = MEASURE_BY_NO[no];
         if (!cfg || !m) return null;
         return (
-            
+
             <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-5 tw-gap-3">
 
                 {cfg.keys.map((k) => (
@@ -2294,6 +2303,7 @@ export default function MDBPMForm() {
 
     return (
         <section className="tw-pb-24">
+            <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={() => router.back()} title={lang === "th" ? "กลับไปหน้า List" : "Back to list"}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />

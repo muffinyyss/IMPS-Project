@@ -32,6 +32,7 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwi
 import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -69,7 +70,7 @@ const T = {
   noFile: { th: "ไม่มีไฟล์", en: "No file" },
 
   // Dialog
-  dialogTitle: { th: "เลือกวันที่รายงาน", en: "Select Report Date" },
+  dialogTitle: { th: "อัปโหลดไฟล์ PM", en: "Upload PM File" },
   docNameLabel: { th: "ชื่อเอกสาร", en: "Document Name" },
   issueIdLabel: { th: "Issue ID", en: "Issue ID" },
   inspectorLabel: { th: "ผู้ตรวจสอบ", en: "Inspector" },
@@ -260,6 +261,7 @@ type Me = {
 export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
@@ -269,6 +271,12 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [docName, setDocName] = useState<string>("");
   const [me, setMe] = useState<Me | null>(null);
   const [inspector, setInspector] = useState<string>("");
+  const [toast, setToast] = useState<{ show: boolean; type: "success" | "error" | "warning" | "info"; message: string }>({ show: false, type: "info", message: "" });
+
+  const showToast = (type: "success" | "error" | "warning" | "info", message: string, duration = 4000) => {
+    setToast({ show: true, type, message });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), duration);
+  };
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -544,6 +552,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       setData([]);
     } finally {
       setLoading(false);
+      setPageLoading(false);
     }
   };
 
@@ -766,7 +775,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
-  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdfChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.currentTarget.value = "";
     if (!files.length) return;
@@ -775,26 +784,39 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
     );
     if (!pdfs.length) {
-      alert(t("alertPdfOnly", lang));
+      showToast("error", t("alertPdfOnly", lang));
       return;
     }
-    setPendingFiles(pdfs);
+
+    const validPdfs: File[] = [];
+    for (const f of pdfs) {
+      const header = await f.slice(0, 5).text();
+      if (header.startsWith("%PDF-")) {
+        validPdfs.push(f);
+      }
+    }
+    if (validPdfs.length === 0) {
+      showToast("error", lang === "th"
+        ? "ไฟล์ที่เลือกไม่ใช่ PDF จริง กรุณาเลือกไฟล์ PDF ที่ถูกต้อง"
+        : "Selected files are not valid PDFs");
+      return;
+    }
+    if (validPdfs.length < pdfs.length) {
+      showToast("warning", lang === "th"
+        ? `มี ${pdfs.length - validPdfs.length} ไฟล์ไม่ใช่ PDF จริง — อัปโหลดเฉพาะ ${validPdfs.length} ไฟล์ที่ถูกต้อง`
+        : `${pdfs.length - validPdfs.length} invalid file(s) skipped — uploading ${validPdfs.length} valid file(s)`);
+    }
+
+    setPendingFiles(validPdfs);
     setDateOpen(true);
   };
 
   async function uploadPdfs() {
     try {
-      if (!sn) {
-        alert(t("alertSelectCharger", lang));
-        return;
-      }
-      if (!pendingFiles.length) {
-        setDateOpen(false);
-        return;
-      }
+      if (!sn) { showToast("warning", t("alertSelectCharger", lang)); return; }
+      if (!pendingFiles.length) { setDateOpen(false); return; }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
-        alert(t("alertInvalidDate", lang));
-        return;
+        showToast("error", t("alertInvalidDate", lang)); return;
       }
 
       const fd = new FormData();
@@ -806,25 +828,23 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await apiFetch(`${apiBase}/pmurl/upload-files?_ts=${Date.now()}`, {
-        method: "POST",
-        body: fd,
-        credentials: "include",
+        method: "POST", body: fd, credentials: "include",
       });
 
       if (!res.ok) {
         const txt = await res.text();
-        alert(`${t("alertUploadFailed", lang)} ${txt}`);
+        showToast("error", `${t("alertUploadFailed", lang)} ${txt}`);
         return;
       }
 
       await res.json();
-      alert(t("alertUploadSuccess", lang));
+      showToast("success", t("alertUploadSuccess", lang));
       setPendingFiles([]);
       setDateOpen(false);
       await fetchRows();
     } catch (err) {
       console.error(err);
-      alert(t("alertUploadError", lang));
+      showToast("error", t("alertUploadError", lang));
     }
   }
 
@@ -902,6 +922,37 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   return (
     <>
+      <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="tw-fixed tw-top-4 tw-left-1/2 tw--translate-x-1/2 tw-z-[9999] tw-animate-[slideDown_0.3s_ease-out] tw-max-w-md tw-w-[calc(100%-2rem)]">
+          <div className={`tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-border ${toast.type === "success" ? "tw-bg-green-50 tw-border-green-200" :
+            toast.type === "error" ? "tw-bg-red-50 tw-border-red-200" :
+              toast.type === "warning" ? "tw-bg-amber-50 tw-border-amber-200" :
+                "tw-bg-blue-50 tw-border-blue-200"
+            }`}>
+            <div className={`tw-flex-shrink-0 tw-w-8 tw-h-8 tw-rounded-full tw-flex tw-items-center tw-justify-center ${toast.type === "success" ? "tw-bg-green-500" :
+              toast.type === "error" ? "tw-bg-red-500" :
+                toast.type === "warning" ? "tw-bg-amber-500" :
+                  "tw-bg-blue-500"
+              }`}>
+              {toast.type === "success" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
+              {toast.type === "error" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>}
+              {toast.type === "warning" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01" /></svg>}
+              {toast.type === "info" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01" /></svg>}
+            </div>
+            <p className={`tw-text-sm tw-font-medium tw-flex-1 tw-pt-1 ${toast.type === "success" ? "tw-text-green-800" :
+              toast.type === "error" ? "tw-text-red-800" :
+                toast.type === "warning" ? "tw-text-amber-800" :
+                  "tw-text-blue-800"
+              }`}>{toast.message}</p>
+            <button onClick={() => setToast(prev => ({ ...prev, show: false }))}
+              className="tw-flex-shrink-0 tw-p-1 tw-rounded-full tw-text-gray-400 hover:tw-text-gray-600 hover:tw-bg-gray-100 tw-transition-colors">
+              <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        </div>
+      )}
       {/* Main Card */}
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
 
@@ -1043,7 +1094,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                             <Typography
                               color="blue-gray"
                               // className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60
-                                className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white
+                              className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white
                                 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
                             >
                               {flexRender(header.column.columnDef.header, header.getContext())}
