@@ -80,9 +80,9 @@ class MongoDBClient:
         naming = self.config.collection_naming.get(db_key, 'serialNumber')
         
         if naming == 'station_id':
-            collection_name = station_config.station_id  
+            collection_name = station_config.stationId  
         else:
-            collection_name = station_config.serial_number  
+            collection_name = station_config.serialNumber  
         
         return self.get_collection(db_key, collection_name)
     
@@ -195,8 +195,8 @@ class RecoveryLoader:
         - module6DcChargerRulPrediction: Service lives, Power module, DC fan
         - monitorCBM: DC contractor counts (backup)
         """
-        station_id = station_config.station_id  # เปลี่ยน
-        serial_number = station_config.serial_number  # เปลี่ยน
+        station_id = station_config.stationId  # เปลี่ยน
+        serial_number = station_config.serialNumber  # เปลี่ยน
         
         result = {
             'dc_contractors': {},
@@ -290,7 +290,7 @@ class RecoveryLoader:
         """
         Load PM Report data for dust filter tracking.
         """
-        serial_number = station_config.serial_number
+        serial_number = station_config.serialNumber
         
         result = {
             'pm_date': None,
@@ -301,7 +301,7 @@ class RecoveryLoader:
         if pm_doc:
             result['pm_date'] = pm_doc.get('pm_date')
             result['dust_filter_enabled'] = pm_doc.get('dust_filter') == 'yes'
-            logger.debug(f"[{station_config.station_id}] PM Report: "
+            logger.debug(f"[{station_config.stationId}] PM Report: "
                         f"date={result['pm_date']}, dust_filter={result['dust_filter_enabled']}")
         
         return result
@@ -330,7 +330,7 @@ class RecoveryLoader:
         
         # DC Fan Timers
         dc_fan_seconds = recovery_data.get('dc_fan_seconds', 0)
-        for i in range(1, state.config.hardware.dc_fan_count  + 1):
+        for i in range(1, state.config.hardware.dcFanCount  + 1):
             state.timers.set_dc_fan_seconds(i, dc_fan_seconds)
         
         # Power Modules

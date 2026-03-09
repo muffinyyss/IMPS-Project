@@ -161,8 +161,8 @@ class CounterManager:
     """
     
     def __init__(self, hardware_config: 'HardwareConfig'):
-        self.dc_contractor_count = hardware_config.dc_contractor_count 
-        self.ms_defaults = hardware_config.power_module_defaults  
+        self.dc_contractor_count = hardware_config.dcContractorCount
+        self.ms_defaults = hardware_config.powerModuleDefaults
         
         # DC Contractor counters (1-6)
         self.dc_counters: Dict[str, EdgeCounter] = {}
