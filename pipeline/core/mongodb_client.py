@@ -166,17 +166,17 @@ class MongoDBClient:
             logger.error(f"Error getting meter data: {e}")
             return {'meter1': 0, 'meter2': 0}
         
-    def get_mdb_realtime_db(self):
-        """Get __MDB_realtime__ database"""
-        if self._client:
-            return self._client[self.config.mdb_realtime_db]
-        return None
+    # def get_mdb_realtime_db(self):
+    #     """Get __MDB_realtime__ database"""
+    #     if self._client:
+    #         return self._client[self.config.mdb_realtime_db]
+    #     return None
     
-    def get_mdb_history_db(self):
-        """Get __MDB_history__ database"""
-        if self._client:
-            return self._client[self.config.mdb_history_db]
-        return None
+    # def get_mdb_history_db(self):
+    #     """Get __MDB_history__ database"""
+    #     if self._client:
+    #         return self._client[self.config.mdb_history_db]
+    #     return None
 
 class RecoveryLoader:
     """
