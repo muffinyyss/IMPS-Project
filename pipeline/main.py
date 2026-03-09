@@ -138,10 +138,10 @@ class Pipeline:
         # if not self.mdb_subscriber.connect():
         #     logger.warning("MDB Subscriber failed to connect (continuing without MDB)")
         
-        # # Connect to MQTT
-        # if not self.mqtt.connect():
-        #     logger.error("Failed to connect to MQTT broker")
-        #     return False
+        # Connect to MQTT
+        if not self.mqtt.connect():
+            logger.error("Failed to connect to MQTT broker")
+            return False
         
         # Initialize OCPP Publisher
         self.ocpp_publisher = OCPPPublisher(self.mqtt)
