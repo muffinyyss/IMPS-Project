@@ -1191,3 +1191,4 @@ async def add_equipment(
         upsert=True,
     )
     return {"message": "created", "station_id": body.station_id}
+    
