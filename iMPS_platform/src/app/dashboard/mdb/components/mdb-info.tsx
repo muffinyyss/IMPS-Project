@@ -204,9 +204,9 @@ export default function MDBInfo(props: MDBType) {
                 </DataCard>
 
                 <DataCard title="THDI">
-                    <Row label="L1" value={formatComma(thdiL1)} unit="%" />
-                    <Row label="L2" value={formatComma(thdiL2)} unit="%" />
-                    <Row label="L3" value={formatComma(thdiL3)} unit="%" />
+                    <Row label="L1" value={formatComma(thdiL1/100)} unit="%" />
+                    <Row label="L2" value={formatComma(thdiL2/100)} unit="%" />
+                    <Row label="L3" value={formatComma(thdiL3/100)} unit="%" />
                 </DataCard>
 
                 <DataCard title="Power Factor">
