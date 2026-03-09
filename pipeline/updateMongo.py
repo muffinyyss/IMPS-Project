@@ -45,7 +45,6 @@ stations_data = [
 
 def update_by_serial(data_list):
     # เชื่อมต่อ MongoDB
-    client = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
     db = client["iMPS"]
     collection = db["charger"]
 

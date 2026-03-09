@@ -16,7 +16,7 @@ from datetime import datetime
 from config import settings, StationConfig
 from core import MQTTClient, MongoDBClient, RecoveryLoader, StateManager, StationState
 from core.aggregators import AggregatorManager
-from core.mdb_subscriber import MDBSubscriber
+# from core.mdb_subscriber import MDBSubscriber
 from core.status_tracker import StatusTracker
 from core.ocpp_publisher import OCPPPublisher
 from processors import (
@@ -77,9 +77,9 @@ class Pipeline:
         # Aggregators per station
         self.aggregators: Dict[str, AggregatorManager] = {}
         
-        # MDB Subscriber
-        self.mdb_subscriber: Optional[MDBSubscriber] = None
-        self._mdb_reload_thread: Optional[threading.Thread] = None
+        # # MDB Subscriber
+        # self.mdb_subscriber: Optional[MDBSubscriber] = None 
+        # self._mdb_reload_thread: Optional[threading.Thread] = None
         
         # Status Tracker (ใหม่)
         self.status_tracker: Optional[StatusTracker] = None
@@ -125,18 +125,18 @@ class Pipeline:
             # Register MQTT topics
             self.mqtt.register_station_topics(station_config, self._process_message)
         
-        # Setup MDB Subscriber
-        self.mdb_subscriber = MDBSubscriber(self.mongodb)
-        self.mdb_subscriber.set_data_callback(self._on_mdb_data)
+        # # Setup MDB Subscriber
+        # self.mdb_subscriber = MDBSubscriber(self.mongodb)
+        # self.mdb_subscriber.set_data_callback(self._on_mdb_data)
         
-        # Load initial topic map
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(self.mdb_subscriber.load_topic_map())
-        loop.close()
+        # # Load initial topic map
+        # loop = asyncio.new_event_loop()
+        # loop.run_until_complete(self.mdb_subscriber.load_topic_map())
+        # loop.close()
         
-        # Connect MDB subscriber
-        if not self.mdb_subscriber.connect():
-            logger.warning("MDB Subscriber failed to connect (continuing without MDB)")
+        # # Connect MDB subscriber
+        # if not self.mdb_subscriber.connect():
+        #     logger.warning("MDB Subscriber failed to connect (continuing without MDB)")
         
         # Connect to MQTT
         if not self.mqtt.connect():
@@ -269,14 +269,14 @@ class Pipeline:
         self.running = True
         self.mqtt.start()
         
-        # Start MDB subscriber
-        if self.mdb_subscriber:
-            self.mdb_subscriber.start()
-            self._mdb_reload_thread = threading.Thread(
-                target=self._run_mdb_reload_loop,
-                daemon=True
-            )
-            self._mdb_reload_thread.start()
+        # # Start MDB subscriber
+        #if self.mdb_subscriber:
+        #    self.mdb_subscriber.start()
+        #    self._mdb_reload_thread = threading.Thread(
+        #        target=self._run_mdb_reload_loop,
+        #        daemon=True
+        #    )
+        #    self._mdb_reload_thread.start()
         
         # Start OCPP Publisher
         if self.ocpp_publisher:
@@ -300,8 +300,8 @@ class Pipeline:
         self.running = False
         self.mqtt.stop()
         
-        if self.mdb_subscriber:
-            self.mdb_subscriber.stop()
+        #if self.mdb_subscriber:
+        #    self.mdb_subscriber.stop()
         
         if self.ocpp_publisher:
             self.ocpp_publisher.stop()

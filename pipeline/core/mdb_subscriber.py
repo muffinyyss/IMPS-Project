@@ -20,10 +20,9 @@ logger = logging.getLogger(__name__)
 
 # Fields to save in history
 HISTORY_FIELDS = [
-    "VL1N", "VL2N", "VL3N",
-    "I1", "I2", "I3",
-    "PL1N", "PL2N", "PL3N", "PL123N",
-    "timestamp",
+    "V_L1N", "V_L2N", "V_L3N",
+    "I_L1", "I_L2", "I_L3",
+    "P_Active_L1", "P_Active_L2", "P_Active_L3", "P_Active_Total",
 ]
 
 
@@ -169,7 +168,7 @@ class MDBSubscriber:
         try:
             # Write to realtime (upsert latest)
             realtime_db = self.mongodb.get_mdb_realtime_db()
-            if realtime_db is not None:  # ✅ แก้จาก `if realtime_db:`
+            if realtime_db is not None:
                 realtime_db[station_id].update_one(
                     {"_id": "latest"},
                     {"$set": data},
@@ -178,10 +177,17 @@ class MDBSubscriber:
             
             # Write to history (insert selected fields)
             history_db = self.mongodb.get_mdb_history_db()
-            if history_db is not None:  # ✅ แก้จาก `if history_db:`
+            if history_db is not None:
+                # สร้าง history document
                 history_doc = {k: data[k] for k in HISTORY_FIELDS if k in data}
-                if history_doc.get("timestamp"):
+                
+                # เพิ่ม timestamp เอง (MQTT data ไม่มี)
+                if history_doc:  # ถ้ามีข้อมูลอย่างน้อย 1 field
+                    history_doc["timestamp"] = now_tz().isoformat()
                     history_db[station_id].insert_one(history_doc)
+                    logger.debug(f"[MDB-Subscriber] [{station_id}] History saved")
+                else:
+                    logger.warning(f"[MDB-Subscriber] [{station_id}] No matching fields for history")
             
         except Exception as e:
             logger.error(f"[MDB-Subscriber] DB write error for {station_id}: {e}")

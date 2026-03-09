@@ -50,13 +50,7 @@ class StatusTracker:
                         timestamp: Optional[datetime] = None):
         """
         Check if status changed and write to MongoDB if so.
-        
-        Args:
-            station_id: Station ID
-            serial_number: Serial number (used as collection name)
-            device: Device type ('edgebox', 'pi5', 'router')
-            current_status: Current status string ('Active' or 'Inactive')
-            timestamp: Timestamp
+        Skip first time (just store value, don't write to DB)
         """
         if timestamp is None:
             timestamp = now_tz()
@@ -71,16 +65,21 @@ class StatusTracker:
         # Get previous status
         prev_status = self._prev_status[station_id].get(device)
         
-        # Check if changed (or first time)
-        if prev_status is None or prev_status != status_int:
+        # First time - just store, don't write to DB
+        if prev_status is None:
+            self._prev_status[station_id][device] = status_int
+            logger.debug(f"[{station_id}] {device} initial status: {status_int} (not writing to DB)")
+            return  # ← ไม่เขียน DB ครั้งแรก
+        
+        # Check if actually changed
+        if prev_status != status_int:
             # Status changed - write to MongoDB
             self._write_status(serial_number, station_id, device, status_int, timestamp)
             
             # Update tracking
             self._prev_status[station_id][device] = status_int
             
-            change_type = "initial" if prev_status is None else f"{prev_status} → {status_int}"
-            logger.info(f"[{station_id}] {device} status changed: {change_type}")
+            logger.info(f"[{station_id}] {device} status changed: {prev_status} → {status_int}")
     
     def _write_status(self, serial_number: str, station_id: str,
                       device: str, status: int, timestamp: datetime):

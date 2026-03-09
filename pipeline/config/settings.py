@@ -29,14 +29,15 @@ class MQTTConfig:
 # =============================================================================
 # MongoDB Configuration  
 # =============================================================================
+
 @dataclass
 class MongoDBConfig:
     uri: str = "mongodb://imps_platform:eds_imps@localhost:27017/"
     
     config_database: str = "iMPS"
     config_collection: str = "charger"
-    mdb_realtime_db: str = "MDB_realtime"
-    mdb_history_db: str = "MDB_history"
+    # mdb_realtime_db: str = "MDB_realtime"
+    # mdb_history_db: str = "MDB_history"
     edgebox_status_db: str = "edgeboxStatus"
     pi5_status_db: str = "pi5Status"
     router_status_db: str = "routerStatus"

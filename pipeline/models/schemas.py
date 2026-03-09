@@ -294,8 +294,8 @@ def create_cbm_document(state: 'StationState', cbm_data: Dict[str, Any],
         "charger_gun_temp_plus2": parse_int(plc_data.get("temp1Head2")),
         "charger_gan_temp_minus1": parse_int(plc_data.get("temp2Head1")),
         "charger_gan_temp_minus2": parse_int(plc_data.get("temp2Head2")),
-        "router_temp": parse_float(cbm_data.get("Luang3", {}).get("rt_temp", 0)) / 10 if cbm_data.get("Luang3", {}).get("rt_temp") else 0,
-        "RSSI_router": cbm_data.get("Luang3", {}).get("rssi"),
+        "router_temp": parse_float(cbm_data.get("Router", {}).get("rt_temp", 0)) / 10 if cbm_data.get("Router", {}).get("rt_temp") else 0,
+        "RSSI_router": cbm_data.get("Router", {}).get("rssi"),
         "MDB_temp": cbm_data.get("MDB", {}).get("ambient_temp"),
         "edgebox_temp": cbm_data.get("EBTemp", {}).get("eb_temp"),
         "pi5_temp": plc_data.get("pi5_temp"),
@@ -317,7 +317,7 @@ def create_cbm_document(state: 'StationState', cbm_data: Dict[str, Any],
     }
     
     # Add fan RPMs and status
-    for i in range(1, state.config.hardware.dc_fan_count + 1):
+    for i in range(1, state.config.hardware.dcFanCount + 1):
         doc[f"fan_RPM{i}"] = fan_rpms.get(f"fan{i}", 0)
         doc[f"fan_status{i}"] = parse_int(fan_status)
     
@@ -408,7 +408,7 @@ def create_module2_document(state: 'StationState', module2_data: Dict[str, Any],
         "mouth_of_year": now.month,
         "ambient_temp": ambient.get('ambient_temp'),
         "edgebox_temp": eb_temp_data.get('eb_temp'),
-        "router_temp": router.get('rt_temp'),
+        "router_temp": parse_float(router.get('rt_temp', 0)) / 10 if router.get('rt_temp') else 0,
         "power_module_temp1": parse_int(plc_data.get("tempPowerModule1", 0)),
         "power_module_temp2": parse_int(plc_data.get("tempPowerModule1", 0)),
         "power_module_temp3": parse_int(plc_data.get("tempPowerModule2", 0)),
@@ -462,7 +462,7 @@ def create_module3_document(state: 'StationState', mdb_data: Dict[str, Any],
         "pi5_temp": plc_data.get("pi5_temp"),
         "charger_temp": cbm_data.get("MDB", {}).get("ambient_temp"),
         "router_internet_status": state.get_router_internet_status(),
-        "RSSI": cbm_data.get("Luang3", {}).get("rssi"),
+        "RSSI": cbm_data.get("Router", {}).get("rssi"),
         "edgebox_error_code": eb_error.get("error"),
         "edgebox_status": state.service_life.get_heartbeat_status('edgebox'),
         "MDB_status": state.service_life.get_heartbeat_status('mdb'),
@@ -577,7 +577,7 @@ def create_module6_document(state: 'StationState', cbm_data: Dict[str, Any],
         "DC_power_contractor_RUL6": {"DC_power_contractor_frequency": dc_counts.get("dc6", 0)},
         "router_RUL": {
             "router_service_life": base_sl_sec,
-            "router_temp": cbm_data.get("Luang3", {}).get("rt_temp", 0),
+            "router_temp": parse_float(cbm_data.get("Router", {}).get("rt_temp", 0)) / 10 if cbm_data.get("Router", {}).get("rt_temp") else 0,
             "charger_temp": ambient_temp
         },
         "AC_ppower_contractor_RUL1": {"AC_power_contractor_frequency": ac_counts.get("ac1", 0)},
@@ -615,7 +615,7 @@ def create_module6_document(state: 'StationState', cbm_data: Dict[str, Any],
     }
     
     # Add power module RULs - SECONDS
-    for i in range(1, state.config.hardware.power_module_count  + 1):
+    for i in range(1, state.config.hardware.powerModuleCount  + 1):
         pm_sl_sec = pm_seconds.get(f"pm{i}", 0)  # Already in seconds
         pm_temp = parse_int(plc_data.get(f"tempPowerModule{min(i, 2)}"))
         doc[f"power_module_RUL{i}"] = {
@@ -628,7 +628,7 @@ def create_module6_document(state: 'StationState', cbm_data: Dict[str, Any],
     
     # Add DC fan RULs - SECONDS
     dc_fan_sl_sec = dc_fan_seconds  # Already in seconds
-    for i in range(1, state.config.hardware.dc_fan_count  + 1):
+    for i in range(1, state.config.hardware.dcFanCount  + 1):
         doc[f"DC_fan_RUL{i}"] = {
             "DC_fan_service_life": dc_fan_sl_sec,
             "charger_temp": ambient_temp

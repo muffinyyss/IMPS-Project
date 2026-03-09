@@ -157,9 +157,11 @@ class CBMAggregator(BaseAggregator):
     
     def update_router(self, router_data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from router topic"""
+        # ดึงจาก Status object
+        status = router_data.get('Status', {})
         extracted = {
-            'rt_temp': router_data.get('rt_temp', router_data.get('temperature', 0)),
-            'rssi': router_data.get('RSSI', router_data.get('rssi', 0))
+            'rt_temp': status.get('temp', 0),   # temp อยู่ใน Status
+            'rssi': status.get('rssi', 0)       # rssi อยู่ใน Status
         }
         self.update('Router', extracted, ts)
     
@@ -170,7 +172,7 @@ class CBMAggregator(BaseAggregator):
                 'MDB': self._data.get('MDB') or {},
                 'Ambient': self._data.get('Ambient') or {},
                 'EBTemp': self._data.get('EBTemp') or {},
-                'Luang3': self._data.get('Router') or {}
+                'Router': self._data.get('Router') or {}   # ✅
             }
 
 
@@ -264,10 +266,13 @@ class Module2Aggregator(BaseAggregator):
     
     def update_router(self, data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from router topic"""
+        # ดึงจาก Status object
+        status = data.get('Status', {})
         extracted = {
-            'rt_temp': data.get('rt_temp', data.get('temperature', 0))
+            'rt_temp': status.get('temp', 0)    # temp อยู่ใน Status
         }
         self.update('Router', extracted, ts)
+
     
     def update_eb_temp(self, data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from edgebox temp topic"""
