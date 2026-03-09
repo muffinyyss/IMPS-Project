@@ -635,7 +635,6 @@
 #         upsert=True,
 #     )
 #     return {"message": "created", "station_id": body.station_id}
-
 """MDB (Main Distribution Board) data: SSE stream, history, peak-power, error codes"""
 from typing_extensions import Literal
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
@@ -654,8 +653,8 @@ import json, re, asyncio
 import aiosmtplib
 
 from config import (
-    get_mdb_collection_for, to_json, _ensure_utc_iso, _to_utc_dt, to_float,
-    floor_bin, MDB_DB, errorDB, th_tz,                          # <<< ใช้ MDB_DB แทน MDB_realtime_DB / MDB_history_DB
+    get_mdb_collection_for, to_json, _to_utc_dt, to_float,
+    floor_bin, MDB_DB, errorDB, th_tz,
     stations_coll_async, users_coll_async, email_log_coll,
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SENDER_EMAIL,
 )
@@ -663,29 +662,48 @@ from deps import UserClaims, get_current_user
 
 router = APIRouter()
 
+TH_TZ = ZoneInfo("Asia/Bangkok")
+
+# =====================================================================
+#  Helper: แปลง timestamp ใดก็ได้ → ISO string +07:00
+# =====================================================================
+def _to_thai_iso(val: Any) -> str | None:
+    """แปลง datetime / ISO string → "YYYY-MM-DDTHH:MM:SS+07:00" เสมอ"""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        dt = val if val.tzinfo else val.replace(tzinfo=timezone.utc)
+        return dt.astimezone(TH_TZ).isoformat(timespec="seconds")
+    if isinstance(val, str):
+        s = val.strip().replace(" ", "T")
+        s = re.sub(r'(\.\d{3})\d+', r'\1', s)      # ตัด microseconds → milliseconds
+        s = s.replace("Z", "+00:00")
+        if not re.search(r'[+\-]\d{2}:\d{2}$', s):
+            s += "+00:00"                           # ไม่มี tz → ถือเป็น UTC
+        try:
+            dt = datetime.fromisoformat(s)
+            return dt.astimezone(TH_TZ).isoformat(timespec="seconds")
+        except Exception:
+            return val
+    return None
+
 # =====================================================================
 #  SSE real-time (query-param style)
 # =====================================================================
 async def mdb_query(request: Request, station_id: str = Query(...), current: UserClaims = Depends(get_current_user)):
-    """
-    SSE via query param:
-    - sends latest snapshot immediately (event: init)
-    - then polls for new data
-    """
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     }
-    coll = MDB_DB[station_id]                                   # <<< เปลี่ยนจาก MDB_realtime_DB
+    coll = MDB_DB[station_id]
 
     async def event_generator():
         last_ts = None
-        # ดึง doc ล่าสุดจาก timestamp_utc แทน _id: "latest"
         latest = await coll.find_one({}, sort=[("timestamp_utc", -1)])
         if latest:
-            latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp_utc"))
+            latest["timestamp"] = _to_thai_iso(latest.get("timestamp_utc"))
             last_ts = latest.get("timestamp_utc")
             yield "retry: 3000\n"
             yield "event: init\n"
@@ -696,10 +714,9 @@ async def mdb_query(request: Request, station_id: str = Query(...), current: Use
         while True:
             if await request.is_disconnected():
                 break
-
             doc = await coll.find_one({}, sort=[("timestamp_utc", -1)])
             if doc:
-                doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp_utc"))
+                doc["timestamp"] = _to_thai_iso(doc.get("timestamp_utc"))
                 ts = doc.get("timestamp_utc")
                 if ts and ts != last_ts:
                     last_ts = ts
@@ -708,7 +725,6 @@ async def mdb_query(request: Request, station_id: str = Query(...), current: Use
                     yield ": keep-alive\n\n"
             else:
                 yield ": keep-alive\n\n"
-
             await asyncio.sleep(3)
 
     return StreamingResponse(event_generator(), headers=headers)
@@ -717,12 +733,11 @@ async def mdb_query(request: Request, station_id: str = Query(...), current: Use
 #  Date-range helpers
 # =====================================================================
 def _coerce_date_range(start: str, end: str) -> tuple[str, str]:
-    def _norm(s: str, is_end: bool=False) -> str:
+    def _norm(s: str, is_end: bool = False) -> str:
         if "T" not in s:
             hhmmss = "23:59:59.999" if is_end else "00:00:00.000"
             dt = datetime.fromisoformat(f"{s}T{hhmmss}+07:00")
-            iso_th = dt.astimezone(th_tz).isoformat()
-            return iso_th
+            return dt.astimezone(th_tz).isoformat()
         has_tz = bool(re.search(r'(Z|[+\-]\d{2}:\d{2})$', s))
         if not has_tz:
             dt = datetime.fromisoformat(s + "+07:00")
@@ -751,38 +766,19 @@ async def stream_history(
     if start > end:
         start, end = end, start
 
-    tz_th = ZoneInfo("Asia/Bangkok")
-    now_th = datetime.now(tz_th)
+    now_th = datetime.now(TH_TZ)
 
     def coerce_day_bound_th(datestr: str, bound: Literal["start", "end"], now_th: datetime) -> datetime:
-        tz_th = ZoneInfo("Asia/Bangkok")
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}$", datestr):
             if bound == "start":
-                dt_th = datetime.fromisoformat(f"{datestr}T00:00:00").replace(tzinfo=tz_th)
-                return dt_th.astimezone(timezone.utc)
+                return datetime.fromisoformat(f"{datestr}T00:00:00").replace(tzinfo=TH_TZ).astimezone(timezone.utc)
             else:
                 if datestr == now_th.strftime("%Y-%m-%d"):
                     return now_th.astimezone(timezone.utc)
-                dt_th = datetime.fromisoformat(f"{datestr}T23:59:59.999").replace(tzinfo=tz_th)
-                return dt_th.astimezone(timezone.utc)
+                return datetime.fromisoformat(f"{datestr}T23:59:59.999").replace(tzinfo=TH_TZ).astimezone(timezone.utc)
         if re.search(r"(Z|[+\-]\d{2}:\d{2})$", datestr):
             return datetime.fromisoformat(datestr.replace("Z", "+00:00")).astimezone(timezone.utc)
-        return datetime.fromisoformat(datestr).replace(tzinfo=tz_th).astimezone(timezone.utc)
-
-    def _ensure_iso_with_tz(val: Any, tz: ZoneInfo) -> str | None:
-        if val is None:
-            return None
-        if isinstance(val, str):
-            try:
-                dt = datetime.fromisoformat(val.replace("Z", "+00:00")) if re.search(r"(Z|[+\-]\d{2}:\d{2})$", val) \
-                    else datetime.fromisoformat(val).replace(tzinfo=timezone.utc)
-            except Exception:
-                return val
-        elif isinstance(val, datetime):
-            dt = val if val.tzinfo else val.replace(tzinfo=timezone.utc)
-        else:
-            return None
-        return dt.astimezone(tz).isoformat(timespec="milliseconds")
+        return datetime.fromisoformat(datestr).replace(tzinfo=TH_TZ).astimezone(timezone.utc)
 
     UNIT_MAP = {"s": "second", "m": "minute", "h": "hour"}
 
@@ -796,20 +792,11 @@ async def stream_history(
     start_utc = coerce_day_bound_th(start, "start", now_th)
     end_utc   = coerce_day_bound_th(end,   "end",   now_th)
 
-    coll = MDB_DB[station_id]                                   # <<< เปลี่ยนจาก MDB_history_DB
-
+    coll = MDB_DB[station_id]
     unit, bin_size = parse_every(every)
 
-    # timestamp_utc เป็น Date จริงอยู่แล้ว → ไม่ต้อง $addFields/$let แปลง string อีก
     prefix = [
-        {
-            "$match": {
-                "timestamp_utc": {
-                    "$gte": start_utc,
-                    "$lte": end_utc,
-                }
-            }
-        }
+        {"$match": {"timestamp_utc": {"$gte": start_utc, "$lte": end_utc}}}
     ]
 
     group_stage = {
@@ -817,23 +804,23 @@ async def stream_history(
             "_id": {
                 "bucket": {
                     "$dateTrunc": {
-                        "date": "$timestamp_utc",               # <<< ใช้ timestamp_utc โดยตรง
+                        "date": "$timestamp_utc",
                         "unit": unit,
                         "binSize": bin_size,
                         "timezone": "+07:00"
                     }
                 }
             },
-            "VL1N":  {"$avg": {"$convert": {"input": "$VL1N",  "to": "double", "onError": None, "onNull": None}}},
-            "VL2N":  {"$avg": {"$convert": {"input": "$VL2N",  "to": "double", "onError": None, "onNull": None}}},
-            "VL3N":  {"$avg": {"$convert": {"input": "$VL3N",  "to": "double", "onError": None, "onNull": None}}},
-            "I1":    {"$avg": {"$convert": {"input": "$I1",    "to": "double", "onError": None, "onNull": None}}},
-            "I2":    {"$avg": {"$convert": {"input": "$I2",    "to": "double", "onError": None, "onNull": None}}},
-            "I3":    {"$avg": {"$convert": {"input": "$I3",    "to": "double", "onError": None, "onNull": None}}},
-            "PL1N":  {"$avg": {"$convert": {"input": "$PL1N",  "to": "double", "onError": None, "onNull": None}}},
-            "PL2N":  {"$avg": {"$convert": {"input": "$PL2N",  "to": "double", "onError": None, "onNull": None}}},
-            "PL3N":  {"$avg": {"$convert": {"input": "$PL3N",  "to": "double", "onError": None, "onNull": None}}},
-            "PL123N":{"$avg": {"$convert": {"input": "$PL123N","to": "double", "onError": None, "onNull": None}}},
+            "VL1N":   {"$avg": {"$convert": {"input": "$VL1N",   "to": "double", "onError": None, "onNull": None}}},
+            "VL2N":   {"$avg": {"$convert": {"input": "$VL2N",   "to": "double", "onError": None, "onNull": None}}},
+            "VL3N":   {"$avg": {"$convert": {"input": "$VL3N",   "to": "double", "onError": None, "onNull": None}}},
+            "I1":     {"$avg": {"$convert": {"input": "$I1",     "to": "double", "onError": None, "onNull": None}}},
+            "I2":     {"$avg": {"$convert": {"input": "$I2",     "to": "double", "onError": None, "onNull": None}}},
+            "I3":     {"$avg": {"$convert": {"input": "$I3",     "to": "double", "onError": None, "onNull": None}}},
+            "PL1N":   {"$avg": {"$convert": {"input": "$PL1N",   "to": "double", "onError": None, "onNull": None}}},
+            "PL2N":   {"$avg": {"$convert": {"input": "$PL2N",   "to": "double", "onError": None, "onNull": None}}},
+            "PL3N":   {"$avg": {"$convert": {"input": "$PL3N",   "to": "double", "onError": None, "onNull": None}}},
+            "PL123N": {"$avg": {"$convert": {"input": "$PL123N", "to": "double", "onError": None, "onNull": None}}},
         }
     }
     sort_stage = {"$sort": {"_id.bucket": 1}}
@@ -869,11 +856,9 @@ async def stream_history(
             async for doc in cursor:
                 if await request.is_disconnected():
                     break
-
                 ts_val = doc.get("timestamp")
                 if ts_val is not None:
-                    doc["timestamp"] = _ensure_iso_with_tz(ts_val, ZoneInfo("Asia/Bangkok"))
-
+                    doc["timestamp"] = _to_thai_iso(ts_val)    # <<< +07:00
                 yield f"data: {json.dumps(doc, ensure_ascii=False)}\n\n"
                 sent += 1
                 await asyncio.sleep(0.001)
@@ -890,11 +875,10 @@ async def stream_history(
 @router.get("/MDB/history/debug")
 async def mdb_history_debug(station_id: str, start: str, end: str):
     start_iso, end_iso = _coerce_date_range(start, end)
-    coll = MDB_DB[station_id]                                   # <<< เปลี่ยนจาก MDB_history_DB
-    tz_th = ZoneInfo("Asia/Bangkok")
+    coll = MDB_DB[station_id]
     start_dt = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
     end_dt   = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
-    q = {"timestamp_utc": {"$gte": start_dt, "$lte": end_dt}}  # <<< query บน Date field
+    q = {"timestamp_utc": {"$gte": start_dt, "$lte": end_dt}}
     docs = await coll.find(q, {"_id": 0, "timestamp_utc": 1}).sort("timestamp_utc", 1).limit(5).to_list(length=5)
     n = await coll.count_documents(q)
     return {"matched": n, "start": start_iso, "end": end_iso, "sample": docs}
@@ -918,38 +902,31 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
         "X-Accel-Buffering": "no",
     }
 
-    coll = MDB_DB[station_id]                                   # <<< เปลี่ยนจาก MDB_realtime_DB
+    coll = MDB_DB[station_id]
 
     async def event_generator():
         last_ts = None
 
-        # -- init: ดึง doc ล่าสุดจาก timestamp_utc --
         latest = await coll.find_one({}, sort=[("timestamp_utc", -1)])
         if latest:
-            latest["timestamp"] = _ensure_utc_iso(latest.get("timestamp_utc"))
+            latest["timestamp"] = _to_thai_iso(latest.get("timestamp_utc"))
             last_ts = latest.get("timestamp_utc")
             yield f"event: init\ndata: {to_json(latest)}\n\n"
         else:
             yield ": keep-alive\n\n"
 
-        # -- real-time via Change Stream (insert เท่านั้น เพราะเป็น append-only) --
-        pipeline = [
-            {"$match": {"operationType": {"$in": ["insert"]}}}  # <<< insert-only สำหรับ append collection
-        ]
+        pipeline = [{"$match": {"operationType": {"$in": ["insert"]}}}]
 
         try:
             async with coll.watch(pipeline, full_document="whenAvailable") as stream:
                 async for change in stream:
                     if await request.is_disconnected():
                         break
-
                     doc = change.get("fullDocument")
                     if not doc:
                         continue
-
-                    doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp_utc"))
+                    doc["timestamp"] = _to_thai_iso(doc.get("timestamp_utc"))
                     ts = doc.get("timestamp_utc")
-
                     if ts and ts != last_ts:
                         last_ts = ts
                         yield f"data: {to_json(doc)}\n\n"
@@ -957,16 +934,13 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
         except Exception as e:
             print(f"Change stream error: {e}, falling back to polling")
 
-            # -- fallback: polling โดย sort timestamp_utc desc --
             while True:
                 if await request.is_disconnected():
                     break
-
                 doc = await coll.find_one({}, sort=[("timestamp_utc", -1)])
                 if doc:
-                    doc["timestamp"] = _ensure_utc_iso(doc.get("timestamp_utc"))
+                    doc["timestamp"] = _to_thai_iso(doc.get("timestamp_utc"))
                     ts = doc.get("timestamp_utc")
-
                     if ts and ts != last_ts:
                         last_ts = ts
                         yield f"data: {to_json(doc)}\n\n"
@@ -974,7 +948,6 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
                         yield ": keep-alive\n\n"
                 else:
                     yield ": keep-alive\n\n"
-
                 await asyncio.sleep(3)
 
     return StreamingResponse(event_generator(), headers=headers)
@@ -984,12 +957,7 @@ async def mdb(request: Request, station_id: str, current: UserClaims = Depends(g
 # =====================================================================
 @router.get("/MDB/{station_id}/peak-power")
 async def mdb_peak_power(station_id: str, current_user: UserClaims = Depends(get_current_user)):
-    """
-    Peak PL1N, PL2N, PL3N, PL123N from all data.
-    Filters out values > 150000.
-    """
-    coll = MDB_DB[station_id]                                   # <<< เปลี่ยนจาก MDB_history_DB
-
+    coll = MDB_DB[station_id]
     pipeline = [
         {
             "$match": {
@@ -1020,7 +988,6 @@ async def mdb_peak_power(station_id: str, current_user: UserClaims = Depends(get
             }
         }
     ]
-
     result = await coll.aggregate(pipeline).to_list(length=1)
     if result:
         return result[0]
@@ -1032,10 +999,7 @@ async def mdb_peak_power(station_id: str, current_user: UserClaims = Depends(get
 async def _resolve_user_id_by_chargebox(chargebox_id: Optional[str]) -> Optional[str]:
     if not chargebox_id:
         return None
-    doc = await stations_coll_async.find_one(
-        {"chargeBoxID": chargebox_id},
-        projection={"user_id": 1}
-    )
+    doc = await stations_coll_async.find_one({"chargeBoxID": chargebox_id}, projection={"user_id": 1})
     if not doc:
         return None
     return str(doc.get("user_id")) if doc.get("user_id") is not None else None
@@ -1060,13 +1024,8 @@ async def _send_email_async(to_email: str, subject: str, body: str) -> None:
     msg["Subject"] = subject
     msg.set_content(body)
     await aiosmtplib.send(
-        msg,
-        hostname=SMTP_HOST,
-        port=SMTP_PORT,
-        start_tls=True,
-        username=SMTP_USER,
-        password=SMTP_PASS,
-        timeout=30,
+        msg, hostname=SMTP_HOST, port=SMTP_PORT,
+        start_tls=True, username=SMTP_USER, password=SMTP_PASS, timeout=30,
     )
 
 async def send_error_email_once(to_email: str | None, chargebox_id: str | None, error_text: str | None, doc_id) -> bool:
@@ -1076,11 +1035,8 @@ async def send_error_email_once(to_email: str | None, chargebox_id: str | None, 
     now_th = datetime.now(th_tz)
     try:
         await email_log_coll.insert_one({
-            "_id": key,
-            "status": "pending",
-            "to": to_email,
-            "chargeBoxID": chargebox_id,
-            "createdAt": now_th,
+            "_id": key, "status": "pending",
+            "to": to_email, "chargeBoxID": chargebox_id, "createdAt": now_th,
         })
     except DuplicateKeyError:
         return False
@@ -1127,13 +1083,7 @@ async def error_stream(request: Request, station_id: str, current: UserClaims = 
                 await send_error_email_once(email, chargebox_id, latest.get("error"), last_id)
             except Exception as e:
                 print(f"[email] init send failed for {last_id}: {e}")
-            payload = {
-                "Chargebox_ID": chargebox_id,
-                "user_id": user_id,
-                "email": email,
-                "error": latest.get("error"),
-            }
-            yield f"event: init\ndata: {json.dumps(payload)}\n\n"
+            yield f"event: init\ndata: {json.dumps({'Chargebox_ID': chargebox_id, 'user_id': user_id, 'email': email, 'error': latest.get('error')})}\n\n"
         else:
             yield ": keep-alive\n\n"
 
@@ -1150,13 +1100,7 @@ async def error_stream(request: Request, station_id: str, current: UserClaims = 
                     await send_error_email_once(email, chargebox_id, doc.get("error"), last_id)
                 except Exception as e:
                     print(f"[email] update send failed for {last_id}: {e}")
-                payload = {
-                    "Chargebox_ID": chargebox_id,
-                    "user_id": user_id,
-                    "email": email,
-                    "error": doc.get("error"),
-                }
-                yield f"data: {json.dumps(payload)}\n\n"
+                yield f"data: {json.dumps({'Chargebox_ID': chargebox_id, 'user_id': user_id, 'email': email, 'error': doc.get('error')})}\n\n"
             else:
                 yield ": keep-alive\n\n"
             await asyncio.sleep(60)
@@ -1172,15 +1116,10 @@ class EquipmentCreate(BaseModel):
     broker: str
 
 @router.post("/MDB/equipment")
-async def add_equipment(
-    body: EquipmentCreate,
-    current: UserClaims = Depends(get_current_user),
-):
+async def add_equipment(body: EquipmentCreate, current: UserClaims = Depends(get_current_user)):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", body.station_id):
         raise HTTPException(400, "Bad station_id")
-
-    # เก็บ config แยกใน collection เดียวกัน หรือจะใช้ collection พิเศษก็ได้
-    await MDB_DB[body.station_id].update_one(    # <<< เปลี่ยนจาก MDB_realtime_DB
+    await MDB_DB[body.station_id].update_one(
         {"_id": "config"},
         {"$set": {
             "topic": body.topic,
@@ -1191,4 +1130,3 @@ async def add_equipment(
         upsert=True,
     )
     return {"message": "created", "station_id": body.station_id}
-    

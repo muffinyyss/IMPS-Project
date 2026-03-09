@@ -48,37 +48,59 @@ function fmt(d: Date) {
 
 // ✅ helper แปลง ISO timestamp -> เวลาไทย
 // ✅ แก้ฟังก์ชันนี้ - บังคับแปลงเป็นเวลาไทยเสมอ
+// function formatThaiDateTime(iso?: string | null) {
+//     if (!iso) return "-";
+
+//     let d: Date;
+
+//     // ถ้าเป็นรูปแบบ "YYYY-MM-DD HH:mm:ss.ffffff" (ไม่มี Z หรือ timezone)
+//     if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(iso)) {
+//         // บังคับให้เป็น UTC โดยเติม Z ท้าย
+//         const utcString = iso.replace(' ', 'T') + 'Z';
+//         d = new Date(utcString);
+//     } else {
+//         // กรณีอื่นๆ
+//         d = new Date(iso);
+//     }
+
+//     // ถ้า parse ไม่ได้
+//     if (isNaN(d.getTime())) return String(iso);
+
+//     // แสดงผลเป็นเวลาไทย (บวก 7 ชม.อัตโนมัติ)
+//     return d.toLocaleString("th-TH", {
+//         timeZone: "Asia/Bangkok",
+//         year: "numeric",
+//         month: "2-digit",
+//         day: "2-digit",
+//         hour: "2-digit",
+//         minute: "2-digit",
+//         second: "2-digit",
+//         hour12: false,
+//     });
+// }
+
 function formatThaiDateTime(iso?: string | null) {
     if (!iso) return "-";
 
-    let d: Date;
+    let s = String(iso).trim().replace(/(\.\d{3})\d+/, "$1");
 
-    // ถ้าเป็นรูปแบบ "YYYY-MM-DD HH:mm:ss.ffffff" (ไม่มี Z หรือ timezone)
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(iso)) {
-        // บังคับให้เป็น UTC โดยเติม Z ท้าย
-        const utcString = iso.replace(' ', 'T') + 'Z';
-        d = new Date(utcString);
-    } else {
-        // กรณีอื่นๆ
-        d = new Date(iso);
-    }
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s))
+        s = s.replace(" ", "T");
 
-    // ถ้า parse ไม่ได้
+    // ไม่มี timezone → ถือเป็น UTC แล้วให้ toLocaleString แปลงเป็น +7 เอง
+    if (!/(Z|[+\-]\d{2}:\d{2})$/.test(s))
+        s += "Z";  // <<< เปลี่ยนจาก "+07:00" เป็น "Z"
+
+    const d = new Date(s);
     if (isNaN(d.getTime())) return String(iso);
 
-    // แสดงผลเป็นเวลาไทย (บวก 7 ชม.อัตโนมัติ)
     return d.toLocaleString("th-TH", {
         timeZone: "Asia/Bangkok",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
         hour12: false,
     });
 }
-
 type Me = {
     username: string;
     role?: string;
