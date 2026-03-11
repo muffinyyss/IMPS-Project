@@ -7,13 +7,9 @@ import { Typography } from "@material-tailwind/react";
 export type EnergyPowerCardProps = {
     title?: string;
     updatedAt?: string;
-    /** ค่า Energy Power No.1 (เช่นจาก data.dikW) */
     energy1: number | string | null | undefined;
-    /** ค่า Energy Power No.2 (เช่นจาก data.diKW) */
-    energy2: number | string | null | undefined;
-    /** ปรับหน่วยได้ (ดีฟอลต์ kWh) */
+    energy2?: number | string | null | undefined;
     unit?: string;
-    /** ปรับจำนวนทศนิยมได้ (int แนะนำ 0) */
     decimals?: number;
 };
 
@@ -60,9 +56,9 @@ const EnergyPowerCard: React.FC<EnergyPowerCardProps> = ({
     energy1,
     energy2,
     unit = "kWh",
-    decimals = 0, // ค่าเป็น int ตามสเปค
+    decimals = 0,
 }) => {
-    return null;
+    // ✅ ลบ return null ออก
     return (
         <section className="tw-h-full tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-space-y-4">
             <div className="tw-flex tw-items-baseline tw-justify-between">
@@ -81,12 +77,15 @@ const EnergyPowerCard: React.FC<EnergyPowerCardProps> = ({
                     unit={unit}
                     decimals={decimals}
                 />
-                <EnergyRow
-                    label="Energy Power No.2"
-                    value={energy2}
-                    unit={unit}
-                    decimals={decimals}
-                />
+                {/* แสดง row ที่ 2 เฉพาะเมื่อมี energy2 */}
+                {energy2 !== undefined && (
+                    <EnergyRow
+                        label="Energy Power No.2"
+                        value={energy2}
+                        unit={unit}
+                        decimals={decimals}
+                    />
+                )}
             </div>
         </section>
     );
