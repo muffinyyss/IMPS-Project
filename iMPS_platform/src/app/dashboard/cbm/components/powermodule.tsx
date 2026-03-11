@@ -6,8 +6,8 @@ import { Typography } from "@material-tailwind/react";
 /* ---------- types ---------- */
 type Item = {
   id: string;
-  name: string;   // e.g. "Power module 1 Temperature"
-  temp: number;   // °C
+  name: string;
+  temp: number;
   target?: number;
 };
 
@@ -50,7 +50,7 @@ function calcPct(temp: number, target: number) {
   return clampPct((temp / target) * 100);
 }
 
-/* ---------- tile (no hover/hold effects) ---------- */
+/* ---------- tile ---------- */
 function TempTile({ name, temp, target = 60 }: { name: string; temp: number; target?: number }) {
   const tone = statusColor(temp);
   const pct = calcPct(temp, target);
@@ -63,14 +63,12 @@ function TempTile({ name, temp, target = 60 }: { name: string; temp: number; tar
       "
       data-testid="power-temp-tile"
     >
-      {/* ชื่อ */}
       <div className="tw-flex tw-items-start tw-justify-between tw-w-full">
         <span className="tw-text-xs tw-font-semibold tw-text-blue-gray-800 tw-truncate" title={name}>
           {name}
         </span>
       </div>
 
-      {/* ค่า + เป้าหมาย + สถานะ */}
       <div className="tw-mt-1">
         <div className="tw-text-[26px] tw-leading-none tw-font-semibold tw-text-blue-gray-900">
           {temp}
@@ -81,7 +79,6 @@ function TempTile({ name, temp, target = 60 }: { name: string; temp: number; tar
         </div>
       </div>
 
-      {/* แถบความคืบหน้าแนวนอน */}
       <div className="tw-mt-2">
         <div
           className="tw-h-2.5 tw-w-full tw-rounded-full tw-bg-blue-gray-50 tw-overflow-hidden"
@@ -112,23 +109,40 @@ function TempTile({ name, temp, target = 60 }: { name: string; temp: number; tar
   );
 }
 
-/* ---------- Card (3 columns, no hover effects) ---------- */
+/* ---------- dynamic grid cols ---------- */
+function getGridCols(count: number): string {
+  switch (count) {
+    case 1: return "tw-grid-cols-1";
+    case 2: return "tw-grid-cols-2";
+    case 3: return "tw-grid-cols-3";
+    case 4: return "tw-grid-cols-2";  // 2x2
+    case 5: return "tw-grid-cols-3";  // 3+2
+    case 6: return "tw-grid-cols-3";  // 3x2
+    default: return "tw-grid-cols-3";
+  }
+}
+
+/* ---------- Card ---------- */
 export default function PowerModulesCard({
   title = "Power Modules Temperature",
   updatedAt,
   items,
 }: Props) {
+  const gridCols = getGridCols(items.length);
+
   return (
-    <section className="tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4">
+    <section className="tw-rounded-2xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-4 tw-h-full">
       <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
         <Typography variant="h6" color="blue-gray" className="tw-leading-tight">
           {title}
         </Typography>
-        {updatedAt && <span className="tw-text-xs tw-text-blue-gray-500">Updated {updatedAt}</span>}
+        {updatedAt && (
+          <span className="tw-text-xs tw-text-blue-gray-500">Updated {updatedAt}</span>
+        )}
       </div>
 
-      {/* 3 คอลัมน์ตลอด */}
-      <div className="tw-grid tw-gap-3 tw-grid-cols-3 [&>div]:tw-h-full">
+      {/* grid ยืดหยุ่นตามจำนวน items */}
+      <div className={`tw-grid tw-gap-3 ${gridCols} [&>div]:tw-h-full`}>
         {items.length === 0 ? (
           <div className="tw-col-span-full tw-text-center tw-text-sm tw-text-blue-gray-400 tw-py-6">
             No power module data

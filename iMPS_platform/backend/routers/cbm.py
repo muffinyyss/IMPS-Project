@@ -4,13 +4,12 @@ from fastapi.responses import StreamingResponse
 import json, re, asyncio
 from typing import Optional
 
-from config import CBM_DB, to_json
+from config import CBM_DB, charger_coll_async, to_json
 from deps import UserClaims, get_current_user
 
 router = APIRouter()
 
 
-# --------------------------------------------------------------------- CBM Page
 def get_cbm_collection_for(SN: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(SN)):
         raise HTTPException(status_code=400, detail="Bad SN")
@@ -21,22 +20,9 @@ def get_cbm_collection_for(SN: str):
 async def cbm_query(
     request: Request,
     SN: str = Query(...),
-    fields: Optional[str] = Query(
-        None,
-        description="Comma-separated field names, e.g. 'voltage,current,temp'. "
-                    "ถ้าไม่ส่ง → return ทุก field",
-    ),
+    fields: Optional[str] = Query(None),
     current: UserClaims = Depends(get_current_user),
 ):
-    """
-    SSE แบบ query param:
-    - ส่ง snapshot ล่าสุดทันที (event: init)
-    - จากนั้น polling ของใหม่เป็นช่วง ๆ
-
-    fields param:
-    - ไม่ส่ง → return ทุก field (ใช้ตอนเปิด modal เลือก field)
-    - ส่ง    → return เฉพาะ field ที่ระบุ + timestamp
-    """
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -45,7 +31,32 @@ async def cbm_query(
     }
     coll = get_cbm_collection_for(SN)
 
-    # ─── Build MongoDB projection ───
+    async def find_charger_meta(SN: str):
+        doc = await charger_coll_async.find_one(
+            {"SN": SN},
+            projection={"_id": 0, "pipeline_config.hardware": 1},  # ✅ path ที่ถูกต้อง
+        )
+        return doc
+
+    charger_meta = await find_charger_meta(SN)
+
+    def extract_hardware(meta: dict | None) -> dict:
+        if not meta:
+            return {}
+        # ✅ hardware อยู่ใน pipeline_config.hardware
+        hw = (meta.get("pipeline_config") or {}).get("hardware") or {}
+        return {
+            "powerModuleCount": hw.get("powerModuleCount"),
+            "dcContractorCount": hw.get("dcContractorCount"),
+            "dcFanCount": hw.get("dcFanCount"),
+            "fanType": hw.get("fanType"),
+            "energyMeterType": hw.get("energyMeterType"),
+        }
+
+    hardware_info = extract_hardware(charger_meta)
+    print(f"[CBM] hardware_info = {hardware_info}")
+
+    # ─── Build MongoDB projection ────────────────────────────────────────
     projection = None
     if fields:
         field_list = [f.strip() for f in fields.split(",") if f.strip()]
@@ -57,16 +68,23 @@ async def cbm_query(
 
     async def find_latest():
         if projection:
-            return await coll.find_one(
-                {}, sort=[("_id", -1)], projection=projection
-            )
-        return await coll.find_one({}, sort=[("_id", -1)])
+            doc = await coll.find_one({}, sort=[("_id", -1)], projection=projection)
+        else:
+            doc = await coll.find_one({}, sort=[("_id", -1)])
+
+        if not doc:
+            return None
+
+        # ✅ Inject hardware เข้าไปใน SSE document ทุกครั้ง
+        if hardware_info:
+            doc["hardware"] = hardware_info
+
+        return doc
 
     async def event_generator():
         last_id = None
         latest = await find_latest()
         if latest:
-            latest["timestamp"] = latest.get("timestamp")
             last_id = latest.get("_id")
             yield "retry: 3000\n"
             yield "event: init\n"
@@ -80,7 +98,6 @@ async def cbm_query(
 
             doc = await find_latest()
             if doc and doc.get("_id") != last_id:
-                doc["timestamp"] = doc.get("timestamp")
                 last_id = doc.get("_id")
                 yield f"data: {to_json(doc)}\n\n"
             else:
