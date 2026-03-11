@@ -222,6 +222,9 @@ export default function AddStationModal({
                 selectImageOnly: "กรุณาเลือกไฟล์รูปภาพเท่านั้น",
                 fileTooLarge: "ไฟล์ใหญ่เกินไป (สูงสุด 3MB)",
                 upload: "เลือกรูป", noImages: "ยังไม่มีรูป", removeCharger: "ลบตู้ชาร์จนี้",
+                duplicateSN: "SN ซ้ำกัน กรุณาตรวจสอบ",
+                duplicateWO: "WO ซ้ำกัน กรุณาตรวจสอบ",
+                duplicateChargeBoxID: "Charge Box ID ซ้ำกัน กรุณาตรวจสอบ",
             },
             en: {
                 addNewStation: "Add New Station", subtitle: "Fill in station and charger details",
@@ -245,6 +248,9 @@ export default function AddStationModal({
                 selectImageOnly: "Please select image files only",
                 fileTooLarge: "File too large (max 3 MB)",
                 upload: "Browse", noImages: "No images yet", removeCharger: "Remove this charger",
+                duplicateSN: "Duplicate SN found, please check",
+                duplicateWO: "Duplicate WO found, please check",
+                duplicateChargeBoxID: "Duplicate Charge Box ID found, please check",
             },
         };
         return tr[lang];
@@ -341,7 +347,7 @@ export default function AddStationModal({
             station: {
                 station_id: station.station_id.trim(), station_name: station.station_name.trim(),
                 owner: (station.owner || currentUser).trim(), is_active: station.is_active,
-               maximo_location: station.maximo_location.trim(), maximo_desc: station.maximo_desc.trim(),
+                maximo_location: station.maximo_location.trim(), maximo_desc: station.maximo_desc.trim(),
             },
             chargers: chargers.map((c) => ({
                 chargerNo: c.chargerNo, brand: c.brand.trim(), model: c.model.trim(),
@@ -354,6 +360,27 @@ export default function AddStationModal({
                 maximo_desc: c.maximo_desc.trim(), chargerType: c.chargerType,
             })),
         };
+
+        // ── ตรวจ duplicate SN ──
+        const sns = chargers.map((c) => c.SN.trim()).filter(Boolean);
+        if (new Set(sns).size !== sns.length) {
+            alert(t.duplicateSN);
+            setSubmitting(false);
+            return;
+        }
+
+        // ── ตรวจ duplicate WO (เฉพาะที่กรอก) ──
+        const wos = chargers.map((c) => c.WO.trim()).filter(Boolean);
+        if (new Set(wos).size !== wos.length) {
+            alert(t.duplicateWO);
+            setSubmitting(false);
+            return;
+        }
+
+        const cbids = chargers.map((c) => c.chargeBoxID.trim()).filter(Boolean);
+        if (new Set(cbids).size !== cbids.length) {
+            alert(t.duplicateChargeBoxID); setSubmitting(false); return;
+        }
 
         try {
             const created = await onSubmit(payload);
@@ -507,7 +534,7 @@ export default function AddStationModal({
                                             <Input label={t.power} required value={charger.power} onChange={(e) => onChargerChange(charger.id, "power", e.target.value)} crossOrigin={undefined} />
                                             {isFlexxfast(charger.brand) && (
                                                 <>
-                                                    <Input label={t.workOrder} required value={charger.WO} onChange={(e) => onChargerChange(charger.id, "WO", e.target.value)} crossOrigin={undefined} />
+                                                    <Input label={t.workOrder} value={charger.WO} onChange={(e) => onChargerChange(charger.id, "WO", e.target.value)} crossOrigin={undefined} />
                                                     <Input label={t.plcFirmware} required value={charger.PLCFirmware} onChange={(e) => onChargerChange(charger.id, "PLCFirmware", e.target.value)} crossOrigin={undefined} />
                                                     <Input label={t.piFirmware} required value={charger.PIFirmware} onChange={(e) => onChargerChange(charger.id, "PIFirmware", e.target.value)} crossOrigin={undefined} />
                                                     <Input label={t.routerFirmware} required value={charger.RTFirmware} onChange={(e) => onChargerChange(charger.id, "RTFirmware", e.target.value)} crossOrigin={undefined} />

@@ -244,7 +244,19 @@ class StationWithChargersOut(BaseModel):
     station: StationOut
     chargers: List[ChargerOut]
 
+def _assert_sn_wo_unique(sn: str, wo: str, charge_box_id: str = "", exclude_id: ObjectId = None):
+    sn = (sn or "").strip()
+    wo = (wo or "").strip()
+    charge_box_id = (charge_box_id or "").strip()
+    extra = {"_id": {"$ne": exclude_id}} if exclude_id else {}
 
+    if sn and charger_collection.find_one({"SN": sn, **extra}):
+        raise HTTPException(status_code=409, detail=f"SN '{sn}' already exists")
+    if wo and charger_collection.find_one({"WO": wo, **extra}):
+        raise HTTPException(status_code=409, detail=f"WO '{wo}' already exists")
+    if charge_box_id and charger_collection.find_one({"chargeBoxID": charge_box_id, **extra}):
+        raise HTTPException(status_code=409, detail=f"Charge Box ID '{charge_box_id}' already exists")
+    
 # ============================================================
 # ← เพิ่มใหม่: Monitor Value Models
 # ============================================================
@@ -538,7 +550,21 @@ def create_station_with_chargers(
 ):
     station_data = body.station
     chargers_data = body.chargers
-    
+
+    # ตรวจ duplicate ภายใน payload
+    sns = [c.SN.strip() for c in chargers_data if c.SN and c.SN.strip()]
+    wos = [c.WO.strip() for c in chargers_data if c.WO and c.WO.strip()]
+    cbids = [c.chargeBoxID.strip() for c in chargers_data if c.chargeBoxID and c.chargeBoxID.strip()]
+    if len(sns) != len(set(sns)):
+        raise HTTPException(status_code=409, detail="Duplicate SN within submitted chargers")
+    if len(wos) != len(set(wos)):
+        raise HTTPException(status_code=409, detail="Duplicate WO within submitted chargers")
+    if len(cbids) != len(set(cbids)):
+        raise HTTPException(status_code=409, detail="Duplicate Charge Box ID within submitted chargers")
+
+    for c in chargers_data:
+        _assert_sn_wo_unique(c.SN, c.WO or "", c.chargeBoxID or "")
+
     station_id = station_data.station_id.strip()
     if not station_id:
         raise HTTPException(status_code=400, detail="station_id is required")
@@ -700,6 +726,8 @@ def add_charger_to_station(
     now = datetime.now(timezone.utc)
     actor = get_actor_id(current)
     
+    _assert_sn_wo_unique(body.SN, body.WO or "", body.chargeBoxID or "")
+
     charger_doc = {
         "station_id": station_id,
         "chargeBoxID": body.chargeBoxID.strip() if body.chargeBoxID else "",
@@ -741,9 +769,17 @@ def update_charger(
 ):
     oid = to_object_id(id)
     charger = charger_collection.find_one({"_id": oid})
+    
     if not charger:
         raise HTTPException(status_code=404, detail="Charger not found")
     
+    _assert_sn_wo_unique(
+        body.SN or charger.get("SN", ""),
+        body.WO or charger.get("WO", ""),
+        body.chargeBoxID or charger.get("chargeBoxID", ""),
+        exclude_id=oid,
+    )
+
     update_data = {}
     for field in ["chargeBoxID", "brand", "model", "SN", "WO", "power", "PLCFirmware", "PIFirmware", "RTFirmware", "commissioningDate", "maximo_location", "maximo_desc", "ocppUrl", "chargerType"]:
         value = getattr(body, field, None)
