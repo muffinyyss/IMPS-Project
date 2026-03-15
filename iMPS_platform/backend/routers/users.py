@@ -9,6 +9,7 @@ from pymongo.errors import DuplicateKeyError
 from jose import jwt, ExpiredSignatureError, JWTError
 from typing import List, Optional, Union
 import bcrypt, uuid, json
+from typing import Literal
 
 from config import (
     SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME,
@@ -485,11 +486,11 @@ async def users():
     
 class register(BaseModel):
     username: str
-    email: str
+    email: EmailStr
     password: str
     tel: str
     company: str
-    role: str
+    role: Literal["admin", "owner"]
 
 @router.post("/insert_users/")
 async def create_users(users: register):
@@ -502,9 +503,6 @@ async def create_users(users: register):
     
     now = datetime.now(timezone.utc)
 
-    allowed_roles = ["admin", "owner"]
-    role = users.role if users.role in allowed_roles else "owner"
-
     users_collection.insert_one(
     {
         "username" : users.username,
@@ -512,7 +510,7 @@ async def create_users(users: register):
         "password":hashed_pw,
         "tel":users.tel,
         "refreshTokens": [],
-        "role": role,
+        "role": users.role,
         "company":users.company,
         "createdAt": now,
         "updatedAt": now,

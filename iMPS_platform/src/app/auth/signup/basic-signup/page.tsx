@@ -29,35 +29,43 @@ export default function BasicSignupPage() {
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
   
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    try {
-      const res = await fetch(`${API_BASE}/insert_users/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username, email, password, tel, company,
-          role: role || "owner",
-        }),
-      });
+  if (!role) {
+    alert("กรุณาเลือก Role");
+    return;
+  }
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Failed to insert user");
-      }
+  try {
+    const res = await fetch(`${API_BASE}/insert_users/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username,
+        email,
+        password,
+        tel,
+        company,
+        role,
+      }),
+    });
 
-      const data = await res.json();
-      console.log(data);
-      alert("Register success ✅");
-      router.push("/auth/signin/basic");
-
-    } catch (error: any) {
-      console.error(error);
-      alert(error.message || "Error creating user");  // ✅ แจ้งเตือนชัดเจน
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to insert user");
     }
-  };
+
+    const data = await res.json();
+    console.log(data);
+    alert("Register success ✅");
+    router.push("/auth/signin/basic");
+  } catch (error: any) {
+    console.error(error);
+    alert(error.message || "Error creating user");
+  }
+};
 
   const router = useRouter();
 
@@ -150,7 +158,7 @@ export default function BasicSignupPage() {
               >
                 Your username
               </Typography>
-              <Input size="lg" label="Your username" type="text" value={username} onChange={(e) => setUsername(e.target.value)} />
+              <Input required size="lg" label="Your username" type="text" value={username} onChange={(e) => setUsername(e.target.value)} />
             </div>
 
             <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-6">
@@ -161,7 +169,7 @@ export default function BasicSignupPage() {
               >
                 Email
               </Typography>
-              <Input size="lg" label="Your email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input required size="lg" label="Your email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
 
             <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-6">
@@ -172,7 +180,7 @@ export default function BasicSignupPage() {
               >
                 Phone number
               </Typography>
-              <Input size="lg" label="Your phone number" type="text" value={tel} onChange={(e) => setTel(e.target.value)} />
+              <Input required size="lg" label="Your phone number" type="text" value={tel} onChange={(e) => setTel(e.target.value)} />
             </div>
 
             <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-6">
@@ -183,7 +191,7 @@ export default function BasicSignupPage() {
               >
                 Password
               </Typography>
-              <Input size="lg" label="Your password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}/>
+              <Input required size="lg" label="Your password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}/>
             </div>
 
             <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-6">
@@ -194,7 +202,7 @@ export default function BasicSignupPage() {
               >
                 Company Name
               </Typography>
-              <Input size="lg" label="Company name" type="text" value={company} onChange={(e) => setCompany(e.target.value)} />
+              <Input required size="lg" label="Company name" type="text" value={company} onChange={(e) => setCompany(e.target.value)} />
             </div>
 
             <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-6">

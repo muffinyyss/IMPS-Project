@@ -109,6 +109,7 @@ INPUT_DBS = {
 }
 
 imps_db_async = client["iMPS"]
+charger_coll_async = imps_db_async["charger"]
 stations_coll_async = imps_db_async["stations"]
 users_coll_async = imps_db_async["users"]
 email_log_coll = imps_db_async["errorEmailLog"]

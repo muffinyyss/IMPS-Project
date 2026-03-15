@@ -9,7 +9,6 @@ import FansCard from "@/app/dashboard/cbm/components/fan";
 import PLCCard from "@/app/dashboard/cbm/components/plc";
 import ChargingGunsCard from "@/app/dashboard/cbm/components/chargingGuns";
 import InsuContactorStatusCard from "@/app/dashboard/cbm/components/InsuContactorStatusCard";
-import EnergyPowerCard from "@/app/dashboard/cbm/components/EnergyPowerCard";
 import DCContactorsTimesCard from "@/app/dashboard/cbm/components/DCContactorsCard";
 import ACMagneticContactorsCard from "@/app/dashboard/cbm/components/ACMagneticContactorsCard";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -19,59 +18,79 @@ import { useSearchParams } from "next/navigation";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
-const SalesByAge = dynamic(() => import("@/app/dashboard/cbm/components/sales-by-age"), { ssr: false });
-const RevenueChart = dynamic(() => import("@/app/dashboard/cbm/components/revenue-chart"), { ssr: false });
+/** shape ของ hardware config ที่ดึงจาก charger document */
+type HardwareConfig = {
+  powerModuleCount?: number;
+  dcContractorCount?: number;
+  dcFanCount?: number;
+  fanType?: string;
+  energyMeterType?: string;
+};
 
 type CBMDoc = {
   _id: string;
-  DC_charger_temp?: number
-  charger_relative_humidity?: number
-  MDB_temp?: number
-  MDB_relative_humidity?: number
-  edgebox_temp?: number
-  pi5_temp?: number
-  router_temp?: number
-  PLC_temp1?: number | undefined
-  PLC_temp2?: number | undefined
-  charger_gun_temp_plus1?: number
-  charger_gan_temp_minus1?: number
-  charger_gun_temp_plus2: number
-  charger_gan_temp_minus2?: number
-  insulation_monitoring_status1?: number
-  insulation_monitoring_status2?: number
-  AC_magnetic_contactor_status1?: number
-  AC_magnetic_contactor_status2?: number
-  DC_power_contractor1?: number
-  DC_power_contractor2?: number
-  DC_power_contractor3?: number
-  DC_power_contractor4?: number
-  DC_power_contractor5?: number
-  energy_power_kWh1?: number
-  energy_power_kWh2?: number
-  power_module_temp1?: number
-  power_module_temp2?: number
-  power_module_temp3?: number
-  power_module_temp4?: number
-  power_module_temp5?: number
-  fan_RPM1?: number
-  fan_RPM2?: number
-  fan_RPM3?: number
-  fan_RPM4?: number
-  fan_RPM5?: number
-  fan_RPM6?: number
-  fan_RPM7?: number
-  fan_RPM8?: number
-  fan_status1?: number
-  fan_status2?: number
-  fan_status3?: number
-  fan_status4?: number
-  fan_status5?: number
-  fan_status6?: number
-  fan_status7?: number
-  fan_status8?: number
+
+  // top-level fallbacks (legacy)
+  powerModuleCount?: number;
+  dcContractorCount?: number;
+
+  // nested hardware (preferred)
+  hardware?: HardwareConfig;
+
+  DC_charger_temp?: number;
+  charger_relative_humidity?: number;
+  MDB_temp?: number;
+  MDB_relative_humidity?: number;
+  edgebox_temp?: number;
+  pi5_temp?: number;
+  router_temp?: number;
+  PLC_temp1?: number;
+  PLC_temp2?: number;
+  charger_gun_temp_plus1?: number;
+  charger_gan_temp_minus1?: number;
+  charger_gun_temp_plus2?: number;
+  charger_gan_temp_minus2?: number;
+  insulation_monitoring_status1?: number;
+  insulation_monitoring_status2?: number;
+  AC_magnetic_contactor_status1?: number;
+  AC_magnetic_contactor_status2?: number;
+
+  DC_power_contractor1?: number;
+  DC_power_contractor2?: number;
+  DC_power_contractor3?: number;
+  DC_power_contractor4?: number;
+  DC_power_contractor5?: number;
+  DC_power_contractor6?: number;
+
+  power_module_temp1?: number;
+  power_module_temp2?: number;
+  power_module_temp3?: number;
+  power_module_temp4?: number;
+  power_module_temp5?: number;
+  power_module_temp6?: number;
+
+  fan_RPM1?: number;
+  fan_RPM2?: number;
+  fan_RPM3?: number;
+  fan_RPM4?: number;
+  fan_RPM5?: number;
+  fan_RPM6?: number;
+  fan_RPM7?: number;
+  fan_RPM8?: number;
+
+  fan_status1?: number;
+  fan_status2?: number;
+  fan_status3?: number;
+  fan_status4?: number;
+  fan_status5?: number;
+  fan_status6?: number;
+  fan_status7?: number;
+  fan_status8?: number;
+
   timestamp?: string;
   [key: string]: any;
 };
+
 export default function SalesPage() {
   const searchParams = useSearchParams();
   const [data, setData] = useState<CBMDoc | null>(null);
@@ -79,6 +98,10 @@ export default function SalesPage() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // hardware config ที่ดึงตรงจาก charger document (แยกจาก SSE)
+  const [hwConfig, setHwConfig] = useState<HardwareConfig | null>(null);
+
+  // ── 1. อ่าน SN จาก URL หรือ localStorage ──────────────────────────────
   useEffect(() => {
     const snFromUrl = searchParams.get("SN");
     if (snFromUrl) {
@@ -90,6 +113,29 @@ export default function SalesPage() {
     setSN(snLocal);
   }, [searchParams]);
 
+  // ── 2. ดึง hardware config จาก charger document ────────────────────────
+  //    endpoint นี้ควร return { hardware: { powerModuleCount, dcContractorCount, dcFanCount, ... } }
+  //    ปรับ path ให้ตรงกับ backend จริงของคุณ
+  useEffect(() => {
+    if (!SN) return;
+
+    fetch(`${API_BASE}/chargers?SN=${encodeURIComponent(SN)}`, {
+      credentials: "include",
+    })
+      .then((r) => r.json())
+      .then((doc) => {
+        // รองรับทั้ง array และ object
+        const charger = Array.isArray(doc) ? doc[0] : doc;
+        if (charger?.hardware) {
+          setHwConfig(charger.hardware as HardwareConfig);
+        }
+      })
+      .catch((e) => {
+        console.warn("ไม่สามารถดึง hardware config:", e);
+      });
+  }, [SN]);
+
+  // ── 3. SSE สำหรับข้อมูล real-time ────────────────────────────────────
   useEffect(() => {
     if (!SN) {
       setLoading(false);
@@ -105,7 +151,8 @@ export default function SalesPage() {
 
     const onInit = (e: MessageEvent) => {
       try {
-        setData(JSON.parse(e.data));
+        const obj = JSON.parse(e.data);
+        setData(obj);
         setLoading(false);
         setErr(null);
       } catch {
@@ -114,13 +161,7 @@ export default function SalesPage() {
       }
     };
 
-    es.addEventListener("init", (e: MessageEvent) => {
-      try {
-        const obj = JSON.parse(e.data);
-        setData(obj);
-        setLoading(false);
-      } catch { }
-    });
+    es.addEventListener("init", onInit);
 
     es.onopen = () => setErr(null);
 
@@ -142,7 +183,34 @@ export default function SalesPage() {
     };
   }, [SN]);
 
-  const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : undefined;
+  // ── 4. รวม hardware config: SSE > charger API > top-level fallback ────
+  //    priority: data.hardware (จาก SSE) → hwConfig (จาก charger API) → top-level fields
+  const resolvedHardware = useMemo<HardwareConfig>(() => {
+    return {
+      powerModuleCount:
+        data?.hardware?.powerModuleCount ??
+        hwConfig?.powerModuleCount ??
+        data?.powerModuleCount ??
+        0,
+      dcContractorCount:
+        data?.hardware?.dcContractorCount ??
+        hwConfig?.dcContractorCount ??
+        data?.dcContractorCount ??
+        0,
+      dcFanCount:
+        data?.hardware?.dcFanCount ??
+        hwConfig?.dcFanCount ??
+        0,
+      fanType:                              // ← เพิ่มตรงนี้
+        data?.hardware?.fanType ??
+        hwConfig?.fanType ??
+        "FIXED",
+    };
+  }, [data, hwConfig]);
+
+  const lastUpdated = data?.timestamp
+    ? new Date(data.timestamp).toLocaleString("th-TH")
+    : undefined;
 
   const toDec = (v: unknown, fallback = 0, digits = 1): number => {
     const n = Number(v);
@@ -151,9 +219,53 @@ export default function SalesPage() {
     return Math.round(n * p) / p;
   };
 
+  // ── 5. สร้าง items จาก resolvedHardware ──────────────────────────────
+  const powerModuleItems = useMemo(() => {
+    const count = Number(resolvedHardware.powerModuleCount ?? 0);
+    if (count <= 0) return [];
+    return Array.from({ length: count }, (_, i) => ({
+      id: `pm${i + 1}`,
+      name: `Power module ${i + 1} Temperature`,
+      temp: toDec(data?.[`power_module_temp${i + 1}`]),
+      target: 60,
+    }));
+  }, [data, resolvedHardware]);
+
+  const dcContactorItems = useMemo(() => {
+    const count = Number(resolvedHardware.dcContractorCount ?? 0);
+    if (count <= 0) return [];
+    return Array.from({ length: count }, (_, i) => ({
+      id: `dc${i + 1}`,
+      name: `DC Contactor No.${i + 1}`,
+      times: data?.[`DC_power_contractor${i + 1}`],
+      mode: data?.[`dcContNo${i + 1}Mode`],
+    }));
+  }, [data, resolvedHardware]);
+
+  const fanItems = useMemo(() => {
+    const maxRpm = resolvedHardware.fanType === "EBM" ? 6800 : 3500;  // ← ตรงนี้
+
+    return Array.from({ length: 8 }, (_, i) => ({
+      id: `fan${i + 1}`,
+      name: `FAN${i + 1}`,
+      rpm: toDec(data?.[`fan_RPM${i + 1}`]),
+      active: !!data?.[`fan_status${i + 1}`],
+      maxRpm,                              // ← ใช้ค่าที่คำนวณแล้ว
+    }));
+  }, [data, resolvedHardware]);
+
+  // debug
+  console.log("resolvedHardware =", resolvedHardware);
+  console.log("powerModuleItems =", powerModuleItems);
+  console.log("dcContactorItems =", dcContactorItems);
+  console.log("fanItems =", fanItems);
+
   return (
     <div className="tw-mt-8 tw-mb-4">
-      {/* Loading Overlay — แสดงจนกว่าจะได้ข้อมูลแรกจาก SSE */}
+      {err && (
+        <div className="tw-mt-2 tw-text-sm tw-text-red-500">{err}</div>
+      )}
+
       <LoadingOverlay show={loading} text="กำลังโหลดข้อมูล..." />
 
       {lastUpdated && (
@@ -162,10 +274,9 @@ export default function SalesPage() {
         </span>
       )}
 
-      {/* กริด 12 คอลัมน์ */}
       <div className="tw-mt-2 tw-grid tw-grid-cols-1 lg:tw-grid-cols-12 tw-gap-4">
 
-        {/* แถวบน (3 + 3 + 6 = 12) */}
+        {/* แถวบน */}
         <div className="lg:tw-col-span-3 tw-col-span-12">
           <ChargerEnv
             temp={Math.trunc(data?.DC_charger_temp ?? 0)}
@@ -195,8 +306,8 @@ export default function SalesPage() {
           <ChargingGunsCard
             updatedAt={lastUpdated}
             items={[
-              { id: "gun1", name: "Charging Gun 1 Temperature +", temp: toDec(data?.charger_gun_temp_plus1), target: 60 },
-              { id: "gun1", name: "Charging Gun 1 Temperature -", temp: toDec(data?.charger_gan_temp_minus1), target: 60 },
+              { id: "gun1_plus", name: "Charging Gun 1 Temperature +", temp: toDec(data?.charger_gun_temp_plus1), target: 60 },
+              { id: "gun1_minus", name: "Charging Gun 1 Temperature -", temp: toDec(data?.charger_gan_temp_minus1), target: 60 },
             ]}
           />
         </div>
@@ -205,33 +316,23 @@ export default function SalesPage() {
           <ChargingGunsCard
             updatedAt={lastUpdated}
             items={[
-              { id: "gun2", name: "Charging Gun 2 Temperature +", temp: toDec(data?.charger_gun_temp_plus2), target: 60 },
-              { id: "gun2", name: "Charging Gun 2 Temperature -", temp: toDec(data?.charger_gan_temp_minus2), target: 60 },
+              { id: "gun2_plus", name: "Charging Gun 2 Temperature +", temp: toDec(data?.charger_gun_temp_plus2), target: 60 },
+              { id: "gun2_minus", name: "Charging Gun 2 Temperature -", temp: toDec(data?.charger_gan_temp_minus2), target: 60 },
             ]}
           />
         </div>
 
-        {/* แถวถัดไป: สถานะไฟฟ้า + Power Modules แบ่ง 6/6 */}
         <div className="lg:tw-col-span-6 tw-col-span-12">
           <InsuContactorStatusCard
             title="Insulation Status"
             updatedAt={lastUpdated}
             items={[
-              {
-                id: "insu1",
-                name: "Insulation monitoring No.1 (Active/Inactive)",
-                value: toDec(data?.insulation_monitoring_status1),
-              },
-              {
-                id: "insu2",
-                name: "Insulation monitoring No.2 (Active/Inactive)",
-                value: toDec(data?.insulation_monitoring_status2),
-              },
+              { id: "insu1", name: "Insulation monitoring No.1 (Active/Inactive)", value: toDec(data?.insulation_monitoring_status1) },
+              { id: "insu2", name: "Insulation monitoring No.2 (Active/Inactive)", value: toDec(data?.insulation_monitoring_status2) },
             ]}
           />
         </div>
 
-        {/* การ์ด AC Magnetic Contactor ใหม่ */}
         <div className="lg:tw-col-span-6 tw-col-span-12">
           <ACMagneticContactorsCard
             updatedAt={lastUpdated}
@@ -242,61 +343,56 @@ export default function SalesPage() {
           />
         </div>
 
-        <div className="lg:tw-col-span-6 tw-col-span-12">
+        {/* ─── หัว 1 ─── */}
+        <div className="lg:tw-col-span-6 tw-col-span-12 tw-flex tw-flex-col tw-gap-4">
+          {/* Power Module หัว 1: floor(count/2) ตัวแรก */}
+          <PowerModulesCard
+            updatedAt={lastUpdated}
+            items={powerModuleItems.slice(0, Math.floor(powerModuleItems.length / 2))}
+          />
+          {/* DC Contactor หัว 1: ตัวที่ 1-3 */}
           <DCContactorsTimesCard
-            title="DC Contactor"
+            title="DC Contactor Head 1"
             updatedAt={lastUpdated}
             unit="Times"
             decimals={0}
-            items={[
-              { id: "dc1", name: "DC Contactor No.1", times: data?.DC_power_contractor1, mode: data?.dcContNo1Mode },
-              { id: "dc2", name: "DC Contactor No.2", times: data?.DC_power_contractor2, mode: data?.dcContNo2Mode },
-              { id: "dc3", name: "DC Contactor No.3", times: data?.DC_power_contractor3, mode: data?.dcContNo3Mode },
-              { id: "dc4", name: "DC Contactor No.4", times: data?.DC_power_contractor4, mode: data?.dcContNo4Mode },
-              { id: "dc5", name: "DC Contactor No.5", times: data?.DC_power_contractor5, mode: data?.dcContNo5Mode },
-              { id: "dc6", name: "DC Contactor No.6", times: data?.DC_power_contractor6, mode: data?.dcContNo6Mode },
-            ]}
+            items={dcContactorItems.slice(0, 3)}
           />
+
         </div>
 
-        <div className="lg:tw-col-span-6 tw-col-span-12">
-          <EnergyPowerCard
-            title="Energy Power (kWh)"
+        {/* ─── หัว 2 ─── */}
+        <div className="lg:tw-col-span-6 tw-col-span-12 tw-flex tw-flex-col tw-gap-4">
+          {/* Power Module หัว 2: ที่เหลือทั้งหมด */}
+          <PowerModulesCard
             updatedAt={lastUpdated}
-            energy1={data?.energy_power_kWh1}
-            energy2={data?.energy_power_kWh2}
-            unit="kWh"
-            decimals={0}
+            items={powerModuleItems.slice(Math.floor(powerModuleItems.length / 2))}
           />
+          {/* DC Contactor หัว 2: ตัวที่ 4-6 */}
+          <DCContactorsTimesCard
+            title="DC Contactor Head 2"
+            updatedAt={lastUpdated}
+            unit="Times"
+            decimals={0}
+            items={dcContactorItems.slice(3)}
+          />
+
         </div>
 
         <div className="lg:tw-col-span-12 tw-col-span-12">
-          <PowerModulesCard
+          <PLCCard
             updatedAt={lastUpdated}
             items={[
-              { id: "pm1", name: "Power module 1 Temperature", temp: toDec(data?.power_module_temp1), target: 60 },
-              { id: "pm2", name: "Power module 2 Temperature", temp: toDec(data?.power_module_temp2), target: 60 },
-              { id: "pm3", name: "Power module 3 Temperature", temp: toDec(data?.power_module_temp3), target: 60 },
-              { id: "pm4", name: "Power module 4 Temperature", temp: toDec(data?.power_module_temp4), target: 60 },
-              { id: "pm5", name: "Power module 5 Temperature", temp: toDec(data?.power_module_temp5), target: 60 },
+              { id: "plc1", name: "PLC Temperature 1", temp: Math.trunc(data?.PLC_temp1 ?? 0), target: 60 },
+              { id: "plc2", name: "PLC Temperature 2", temp: Math.trunc(data?.PLC_temp2 ?? 0), target: 60 },
             ]}
           />
         </div>
 
-        {/* แถวล่าง: พัดลมเต็มแถว ให้ภาพรวมการระบายความร้อน */}
         <div className="lg:tw-col-span-12 tw-col-span-12">
           <FansCard
             updatedAt={lastUpdated}
-            fans={[
-              { id: "fan1", name: "FAN1", rpm: toDec(data?.fan_RPM1), active: !!data?.fan_status1, maxRpm: 3500 },
-              { id: "fan2", name: "FAN2", rpm: toDec(data?.fan_RPM2), active: !!data?.fan_status2, maxRpm: 3500 },
-              { id: "fan3", name: "FAN3", rpm: toDec(data?.fan_RPM3), active: !!data?.fan_status3, maxRpm: 3500 },
-              { id: "fan4", name: "FAN4", rpm: toDec(data?.fan_RPM4), active: !!data?.fan_status4, maxRpm: 3500 },
-              { id: "fan5", name: "FAN5", rpm: toDec(data?.fan_RPM5), active: !!data?.fan_status5, maxRpm: 3500 },
-              { id: "fan6", name: "FAN6", rpm: toDec(data?.fan_RPM6), active: !!data?.fan_status6, maxRpm: 3500 },
-              { id: "fan7", name: "FAN7", rpm: toDec(data?.fan_RPM7), active: !!data?.fan_status7, maxRpm: 3500 },
-              { id: "fan8", name: "FAN8", rpm: toDec(data?.fan_RPM8), active: !!data?.fan_status8, maxRpm: 3500 },
-            ]}
+            fans={fanItems}
           />
         </div>
       </div>

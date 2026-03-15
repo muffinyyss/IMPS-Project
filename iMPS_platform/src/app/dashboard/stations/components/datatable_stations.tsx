@@ -255,7 +255,7 @@ export function SearchDataTables() {
     message: string;
     onConfirm: () => void;
     loading: boolean;
-  }>({ open: false, title: "", message: "", onConfirm: () => {}, loading: false });
+  }>({ open: false, title: "", message: "", onConfirm: () => { }, loading: false });
 
   const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, open: false, loading: false }));
   const [availability, setAvailability] = useState<Map<string, { total: number; available: number }>>(new Map());
@@ -307,6 +307,7 @@ export function SearchDataTables() {
   const [deletedExistingDeviceIdxs, setDeletedExistingDeviceIdxs] = useState<Set<number>>(new Set());
   const chargerImageInputRef = useRef<HTMLInputElement | null>(null);
   const deviceImageInputRef = useRef<HTMLInputElement | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
 
   const [lang, setLang] = useState<Lang>("en");
   useEffect(() => {
@@ -348,6 +349,7 @@ export function SearchDataTables() {
         stationInfo: "ข้อมูลสถานี", chargerInfo: "ข้อมูลตู้ชาร์จ",
         upload: "เลือกรูป", noImages: "ยังไม่มีรูป",
         stationImages: "รูปภาพสถานี", chargerImages: "รูปภาพ",
+        duplicateChargeBoxID: "Charge Box ID ซ้ำกัน กรุณาตรวจสอบ",
       },
       en: {
         stationManagement: "Station Management", stationManagementDesc: "Manage Stations and Chargers. Click on a row to view chargers, click on a charger card to view details.",
@@ -378,6 +380,7 @@ export function SearchDataTables() {
         stationInfo: "Station Information", chargerInfo: "Charger Information",
         upload: "Browse", noImages: "No images yet",
         stationImages: "Station Images", chargerImages: "Images",
+        duplicateChargeBoxID: "Duplicate Charge Box ID found, please check",
       },
     };
     return translations[lang];
@@ -592,6 +595,18 @@ export function SearchDataTables() {
   }, []);
 
   const isAdmin = me?.role === "admin";
+  const filteredDataByStatus = useMemo(() => {
+    if (statusFilter === "all") return data;
+
+    return data.filter((station) => {
+      const onlineCount = station.chargers.filter((c) => c.status).length;
+      const offlineCount = station.chargers.filter((c) => !c.status).length;
+
+      if (statusFilter === "online") return onlineCount > 0;
+      if (statusFilter === "offline") return offlineCount > 0;
+      return true;
+    });
+  }, [data, statusFilter]);
 
   const handleEditStation = (station: StationRow, e: React.MouseEvent) => { e.stopPropagation(); if (!isAdmin && station.user_id !== me?.user_id) { alert("You don't have permission to edit this station"); return; } setEditingStation(station); setOpenEditStation(true); };
   const handleEditCharger = (stationId: string, charger: ChargerData, e: React.MouseEvent) => { e.stopPropagation(); setEditingCharger({ stationId, charger }); setOpenEditCharger(true); };
@@ -616,7 +631,10 @@ export function SearchDataTables() {
       setSaving(true);
       const payload: StationUpdatePayload = { station_name: editStationForm.station_name.trim(), is_active: editStationForm.is_active, maximo_location: editStationForm.maximo_location.trim(), maximo_desc: editStationForm.maximo_desc.trim(), ...(isAdmin && selectedOwnerId ? { user_id: selectedOwnerId } : {}) };
       const res = await apiFetch(`/update_stations/${editingStation.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.detail || `Update failed: ${res.status}`);
+      }
       const updated = await res.json();
       if (deleteCurrentImage && editingStation.stationImage) { await apiFetch(`/stations/${editingStation.station_id}/delete-image`, { method: "DELETE" }); }
       if (editStationImages.length) { const fd = new FormData(); editStationImages.forEach(f => fd.append("station", f)); await apiFetch(`/stations/${editingStation.station_id}/upload-image`, { method: "POST", body: fd }); }
@@ -637,7 +655,10 @@ export function SearchDataTables() {
         maximo_location: editChargerForm.maximo_location.trim(), maximo_desc: editChargerForm.maximo_desc.trim(), ocppUrl: editChargerForm.ocppUrl.trim(), chargerType: editChargerForm.chargerType,
       };
       const res = await apiFetch(`/update_charger/${editingCharger.charger.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.detail || `Update failed: ${res.status}`);
+      }
       // Delete existing images that were marked for removal
       const chargerImgsToDelete = (editingCharger.charger.chargerImages || []).filter((_, i) => deletedExistingChargerIdxs.has(i));
       const deviceImgsToDelete = (editingCharger.charger.deviceImages || []).filter((_, i) => deletedExistingDeviceIdxs.has(i));
@@ -728,7 +749,10 @@ export function SearchDataTables() {
       setSaving(true);
       const payload = { chargeBoxID: addChargerForm.chargeBoxID.trim(), chargerNo: addChargerForm.chargerNo, brand: addChargerForm.brand.trim(), model: addChargerForm.model.trim(), SN: addChargerForm.SN.trim(), WO: addChargerForm.WO.trim(), power: addChargerForm.power.trim(), PLCFirmware: addChargerForm.PLCFirmware.trim(), PIFirmware: addChargerForm.PIFirmware.trim(), RTFirmware: addChargerForm.RTFirmware.trim(), commissioningDate: addChargerForm.commissioningDate, warrantyYears: addChargerForm.warrantyYears, numberOfCables: addChargerForm.numberOfCables, is_active: addChargerForm.is_active, maximo_location: addChargerForm.maximo_location.trim(), maximo_desc: addChargerForm.maximo_desc.trim(), ocppUrl: addChargerForm.ocppUrl.trim(), chargerType: addChargerForm.chargerType };
       const res = await apiFetch(`/add_charger/${addingChargerStationId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error(`Create failed: ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.detail || `Create failed: ${res.status}`);
+      }
       const created = await res.json();
       if (created.id && (addChargerImages.length || addDeviceImages.length)) { const fd = new FormData(); addChargerImages.forEach(f => fd.append("charger", f)); addDeviceImages.forEach(f => fd.append("device", f)); await apiFetch(`/chargers/${created.id}/upload-images`, { method: "POST", body: fd }); }
       await refetchStations();
@@ -740,8 +764,10 @@ export function SearchDataTables() {
     try {
       setSaving(true);
       const res = await apiFetch(`/add_stations/`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (res.status === 409) throw new Error("This station_id is already in use");
-      if (!res.ok) throw new Error(`Create failed: ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.detail || `Create failed: ${res.status}`);
+      }
       const created = await res.json();
       const newStation: StationRow = { id: created.id || created.station?.id, station_id: created.station?.station_id ?? payload.station?.station_id, station_name: created.station?.station_name ?? payload.station?.station_name ?? "", owner: created.station?.owner ?? "", user_id: created.station?.user_id ?? me?.user_id ?? "", username: created.station?.username ?? me?.username ?? "", is_active: created.station?.is_active ?? true, maximo_location: created.station?.maximo_location ?? (payload.station as any)?.maximo_location ?? "", maximo_desc: created.station?.maximo_desc ?? (payload.station as any)?.maximo_desc ?? "", stationImage: "", chargers: Array.isArray(created.chargers) ? created.chargers.map(mapCharger) : [] };
       setData(prev => [newStation, ...prev]); setOpenAdd(false); setNotice({ type: "success", msg: t.createSuccess }); setTimeout(() => setNotice(null), 3000);
@@ -855,8 +881,27 @@ export function SearchDataTables() {
     return baseColumns;
   }, [me, technicians, isAdmin, t, availability]);
 
-  const table = useReactTable({ data, columns, state: { globalFilter: filtering, sorting, expanded }, onSortingChange: setSorting, onGlobalFilterChange: setFiltering, onExpandedChange: setExpanded, getRowCanExpand: (row) => row.original.chargers.length > 0 || isAdmin || row.original.user_id === me?.user_id, getSortedRowModel: getSortedRowModel(), getFilteredRowModel: getFilteredRowModel(), getCoreRowModel: getCoreRowModel(), getPaginationRowModel: getPaginationRowModel(), getExpandedRowModel: getExpandedRowModel() });
-
+  // const table = useReactTable({ data, columns, state: { globalFilter: filtering, sorting, expanded }, onSortingChange: setSorting, onGlobalFilterChange: setFiltering, onExpandedChange: setExpanded, getRowCanExpand: (row) => row.original.chargers.length > 0 || isAdmin || row.original.user_id === me?.user_id, getSortedRowModel: getSortedRowModel(), getFilteredRowModel: getFilteredRowModel(), getCoreRowModel: getCoreRowModel(), getPaginationRowModel: getPaginationRowModel(), getExpandedRowModel: getExpandedRowModel() });
+  const table = useReactTable({
+    data: filteredDataByStatus,
+    columns,
+    state: { globalFilter: filtering, sorting, expanded },
+    onSortingChange: setSorting,
+    onGlobalFilterChange: setFiltering,
+    onExpandedChange: setExpanded,
+    getRowCanExpand: (row) =>
+      row.original.chargers.length > 0 || isAdmin || row.original.user_id === me?.user_id,
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
+  });
+  const formatPower = (power: string | number | undefined | null) => {
+    if (!power) return "-";
+    const text = String(power).trim();
+    return /\bkw\b/i.test(text) ? text : `${text} kW`;
+  };
   // ===== ChargerCard =====
   const ChargerCard = ({ charger, stationId, canEdit, index }: { charger: ChargerData; stationId: string; canEdit: boolean; index: number }) => {
     const isOnline = !!charger.status;
@@ -888,7 +933,8 @@ export function SearchDataTables() {
             </div>
           </div>
           <div className="tw-grid tw-grid-cols-2 tw-gap-x-3 tw-gap-y-1 tw-text-[10px] tw-mb-3">
-            {[[t.brand, charger.brand], [t.model, charger.model], [t.serialNumber, charger.SN, true], [t.power, charger.power ? `${charger.power} kW` : "-"], [t.cables, charger.numberOfCables || "-"], [t.warranty, `${charger.warrantyYears || "-"}${t.year}`]].map(([label, value, mono], i) => (
+            {[[t.brand, charger.brand], [t.model, charger.model], [t.serialNumber, charger.SN, true],
+            [t.power, formatPower(charger.power)], [t.cables, charger.numberOfCables || "-"], [t.warranty, `${charger.warrantyYears || "-"}${t.year}`]].map(([label, value, mono], i) => (
               <div key={i} className="tw-truncate"><span className="tw-text-blue-gray-400">{label as string}: </span><span className={`tw-text-blue-gray-700 tw-font-medium ${mono ? "tw-font-mono" : ""}`}>{(value as string) || "-"}</span></div>
             ))}
           </div>
@@ -933,6 +979,22 @@ export function SearchDataTables() {
       <LoadingOverlay show={loading} text={lang === "th" ? "กำลังโหลดข้อมูล..." : "Loading data..."} />
       {/* ===== Stat Cards (ข้างบน Card ตาราง) ===== */}
       <div className="tw-mt-8 tw-mb-4">
+        {statusFilter !== "all" && (
+          <div className="tw-mb-3 tw-flex tw-items-center tw-gap-2">
+            <span className="tw-text-sm tw-text-blue-gray-600">
+              {lang === "th"
+                ? `ตัวกรอง: ${statusFilter === "online" ? "ออนไลน์" : "ออฟไลน์"}`
+                : `Filter: ${statusFilter === "online" ? "Online" : "Offline"}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => setStatusFilter("all")}
+              className="tw-text-sm tw-text-blue-600 hover:tw-underline"
+            >
+              {lang === "th" ? "ล้างตัวกรอง" : "Clear"}
+            </button>
+          </div>
+        )}
         <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-4 tw-gap-2.5 sm:tw-gap-3">
           {loading ? (
             <>{Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}</>
@@ -975,8 +1037,13 @@ export function SearchDataTables() {
               </div>
 
               {/* Online */}
-              <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
-                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+              {/* <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5"> */}
+
+              <div
+                onClick={() => setStatusFilter((prev) => (prev === "online" ? "all" : "online"))}
+                className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "online" ? "tw-ring-green-400 tw-scale-[1.02]" : "tw-ring-white/10"
+                  }`}
+              >   <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
                 <div className="tw-relative tw-z-10">
                   <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
                     <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.25)' }}>
@@ -996,7 +1063,12 @@ export function SearchDataTables() {
               </div>
 
               {/* Offline */}
-              <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
+              {/* <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5"> */}
+              <div
+                onClick={() => setStatusFilter((prev) => (prev === "offline" ? "all" : "offline"))}
+                className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "offline" ? "tw-ring-red-400 tw-scale-[1.02]" : "tw-ring-white/10"
+                  }`}
+              >
                 <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
                 <div className="tw-relative tw-z-10">
                   <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
@@ -1063,7 +1135,10 @@ export function SearchDataTables() {
           )}
         </CardFooter>
         <div className="tw-flex tw-items-center tw-justify-between tw-px-6 tw-py-4 tw-border-t tw-border-blue-gray-100">
-          <Typography variant="small" className="!tw-text-blue-gray-400">{data.length} {t.stationName}</Typography>
+          {/* <Typography variant="small" className="!tw-text-blue-gray-400">{data.length} {t.stationName}</Typography> */}
+          <Typography variant="small" className="!tw-text-blue-gray-400">
+            {filteredDataByStatus.length} {t.stationName}
+          </Typography>
           <div className="tw-flex tw-items-center tw-gap-4">
             <span className="tw-text-sm tw-text-blue-gray-600">{t.page} <strong>{table.getState().pagination.pageIndex + 1}</strong> {t.of} <strong>{table.getPageCount()}</strong></span>
             <div className="tw-flex tw-items-center tw-gap-1">
@@ -1212,7 +1287,7 @@ export function SearchDataTables() {
                   <Input label={t.serialNumber} required value={editChargerForm.SN} onChange={(e) => setEditChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
                   <Input label={`${t.power} (kW)`} required value={editChargerForm.power} onChange={(e) => setEditChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
                   {isFlexxfast(editChargerForm.brand) && (<>
-                    <Input label={t.workOrder} required value={editChargerForm.WO} onChange={(e) => setEditChargerForm(s => ({ ...s, WO: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.workOrder} value={editChargerForm.WO} onChange={(e) => setEditChargerForm(s => ({ ...s, WO: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.plcFirmware} required value={editChargerForm.PLCFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, PLCFirmware: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.piFirmware} required value={editChargerForm.PIFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.routerFirmware} required value={editChargerForm.RTFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
@@ -1363,7 +1438,7 @@ export function SearchDataTables() {
                   <Input label={t.serialNumber} required value={addChargerForm.SN} onChange={(e) => setAddChargerForm(s => ({ ...s, SN: e.target.value }))} crossOrigin={undefined} />
                   <Input label={`${t.power} (kW)`} required value={addChargerForm.power} onChange={(e) => setAddChargerForm(s => ({ ...s, power: e.target.value }))} crossOrigin={undefined} />
                   {isFlexxfast(addChargerForm.brand) && (<>
-                    <Input label={t.workOrder} required value={addChargerForm.WO} onChange={(e) => setAddChargerForm(s => ({ ...s, WO: e.target.value }))} crossOrigin={undefined} />
+                    <Input label={t.workOrder} value={addChargerForm.WO} onChange={(e) => setAddChargerForm(s => ({ ...s, WO: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.plcFirmware} required value={addChargerForm.PLCFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, PLCFirmware: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.piFirmware} required value={addChargerForm.PIFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.routerFirmware} required value={addChargerForm.RTFirmware} onChange={(e) => setAddChargerForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
