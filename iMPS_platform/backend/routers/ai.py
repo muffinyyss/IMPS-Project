@@ -10,11 +10,32 @@ import re
 from config import (
     outputModule1, outputModule2, outputModule3, outputModule4,
     outputModule5, outputModule6, outputModule7,
-    INPUT_DBS, OUTPUT_DBS, MODULES, station_collection,
+    INPUT_DBS, OUTPUT_DBS, MODULES, station_collection,get_eds_health_collection, 
 )
 from deps import UserClaims, get_current_user
 
 router = APIRouter()
+
+# ─── EDS System Health ───────────────────────────────────────
+from config import get_eds_health_collection
+
+@router.get("/eds-system-health/latest")
+async def get_latest_health(
+    sn: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    coll = get_eds_health_collection(sn)
+    doc = await coll.find_one({}, sort=[("timestamp", -1)])
+    if not doc:
+        raise HTTPException(status_code=404, detail="No health data found")
+
+    return {
+        "sn": sn,
+        "score": doc.get("score", 0),
+        "timestamp": doc.get("timestamp"),
+        "modules": doc.get("modules", {}),
+    }
+
 
 # -------------------------------------------------------------- AI
 def get_outputModule6_collection_for(station_id: str):

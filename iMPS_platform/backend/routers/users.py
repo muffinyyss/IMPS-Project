@@ -51,7 +51,7 @@ class AiPackage(BaseModel):
 def login(body: LoginRequest, response: Response):
     user = users_collection.find_one(
         {"email": body.email},
-        {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1},
+        {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1, "ai_package": 1},
     )
     if not user or not bcrypt.checkpw(body.password.encode("utf-8"), user["password"].encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -118,6 +118,7 @@ def login(body: LoginRequest, response: Response):
             "role": user.get("role", "user"),
             "company": user.get("company"),
             "station_id": station_ids,
+            "ai_package": user.get("ai_package", {"enabled": False}),
         }
     }
 

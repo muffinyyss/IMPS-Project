@@ -1,25 +1,39 @@
 "use client";
 import React, { useState, useEffect, useMemo } from "react";
-import {
-    Card,
-    CardHeader,
-    CardBody,
-    Typography,
-    Switch,
-} from "@material-tailwind/react";
+import { Card, CardHeader, CardBody, Typography, Switch } from "@material-tailwind/react";
 
 import {
     AdjustmentsHorizontalIcon,
     ChatBubbleLeftEllipsisIcon,
 } from "@heroicons/react/24/solid";
 
+import { apiFetch } from "@/utils/api";
 
 type Lang = "th" | "en";
 
 const CBMCard = () => {
     // ===== Language State =====
     const [lang, setLang] = useState<Lang>("en");
+    const [hasAccess, setHasAccess] = useState(false);
+    const [role, setRole] = useState<string>("");
+    const [accessLoading, setAccessLoading] = useState(true);
+    const isAdmin = role === "admin";
 
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await apiFetch("/me/ai-package");
+                if (res.ok) {
+                    const data = await res.json();
+                    setHasAccess(data.has_access === true);
+                    setRole(data.role ?? "");
+                }
+            } catch { }
+            finally {
+                setAccessLoading(false);
+            }
+        })();
+    }, []);
     useEffect(() => {
         const savedLang = localStorage.getItem("app_language") as Lang | null;
         if (savedLang === "th" || savedLang === "en") {
@@ -45,8 +59,8 @@ const CBMCard = () => {
                 conditionBaseDesc: "ตรวจสอบและบำรุงรักษาตามสภาพการใช้งานจริง",
                 askExpert: "ถามผู้เชี่ยวชาญ",
                 askExpertDesc: "สอบถามผู้เชี่ยวชาญเกี่ยวกับปัญหาการบำรุงรักษา",
-                active: "เปิด",
-                inactive: "ปิด",
+                enabled: "เปิดใช้งาน",
+                disabled: "ปิดใช้งาน",
             },
             en: {
                 conditionBasedMaintenance: "Condition-Based Maintenance",
@@ -54,8 +68,8 @@ const CBMCard = () => {
                 conditionBaseDesc: "Monitor and maintain based on actual operating conditions",
                 askExpert: "Ask expert",
                 askExpertDesc: "Consult experts about maintenance issues",
-                active: "Active",
-                inactive: "Inactive",
+                enabled: "Enabled",
+                disabled: "Disabled",
             },
         };
         return translations[lang];
@@ -148,7 +162,8 @@ const CBMCard = () => {
             askExpert: false,
         }));
     };
-
+    if (accessLoading) return null;
+    // if (!isAdmin && !hasAccess) return null;
     return (
         <> {/* ← เปลี่ยนจาก <div> เป็น fragment เพื่อวาง ChatWidget ข้างนอก */}
             <div className="tw-col-span-1 tw-my-5">
@@ -181,16 +196,27 @@ const CBMCard = () => {
                                             </Typography>
                                         </div>
 
-                                        {/* Status + Switch - always on the right */}
-                                        <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
-                                            <Typography variant="small" className="tw-text-xs sm:tw-text-sm tw-text-blue-gray-600 tw-whitespace-nowrap">
-                                                {activeStates[titleKey] ? t.active : t.inactive}
-                                            </Typography>
-                                            <Switch
-                                                checked={activeStates[titleKey]}
-                                                onChange={() => handleToggle(titleKey)}
-                                            />
-                                        </div>
+                                        {titleKey === "askExpert" ? (
+                                            // Ask expert: Switch เหมือนเดิม
+                                            <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
+                                                <Typography variant="small" className="tw-text-xs sm:tw-text-sm tw-text-blue-gray-600 tw-whitespace-nowrap">
+                                                    {activeStates[titleKey] ? t.enabled : t.disabled}
+                                                </Typography>
+                                                <Switch
+                                                    checked={activeStates[titleKey]}
+                                                    onChange={() => handleToggle(titleKey)}
+                                                />
+                                            </div>
+                                        ) : (
+                                            // Condition-Base: badge อย่างเดียว
+                                            <span className={`tw-px-3 tw-py-1 tw-rounded-full tw-text-xs tw-font-semibold ${hasAccess || isAdmin
+                                                ? "tw-bg-green-50 tw-text-green-700 tw-ring-1 tw-ring-green-200"
+                                                : "tw-bg-gray-100 tw-text-gray-500 tw-ring-1 tw-ring-gray-200"
+                                                }`}>
+                                                {hasAccess || isAdmin ? t.enabled : t.disabled}
+                                            </span>
+                                        )}
+
                                     </div>
 
                                     {/* Row 2: Description (below icon) */}

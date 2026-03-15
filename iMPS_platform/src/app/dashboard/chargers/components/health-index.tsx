@@ -2,27 +2,22 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardHeader, CardBody, Typography } from "@/components/MaterialTailwind";
-import { Switch } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
 
 type Lang = "th" | "en";
 
-type Props = {
-  initialOn?: boolean;
-};
 
-export default function HealthIndex({
-  initialOn = true,
-}: Props) {
+
+export default function HealthIndex() {
   const searchParams = useSearchParams();
-  const [stationId, setStationId] = useState("");
-  const [on, setOn] = useState(initialOn);
   const [isLoading, setIsLoading] = useState(true);
   const [calculatedValue, setCalculatedValue] = useState(0);
   const [hasAccess, setHasAccess] = useState(false);
   const [role, setRole] = useState<string>("");
   const isAdmin = role === "admin";
   const [accessLoading, setAccessLoading] = useState(true);
+  const [sn, setSn] = useState("");
+  const [modulesProcessed, setModulesProcessed] = useState<number | null>(null);
 
   // ===== Language State =====
   const [lang, setLang] = useState<Lang>("en");
@@ -45,19 +40,19 @@ export default function HealthIndex({
 
   useEffect(() => {
     (async () => {
-        try {
-            const res = await apiFetch("/me/ai-package");
-            if (res.ok) {
-                const data = await res.json();
-                setHasAccess(data.has_access === true);
-                setRole(data.role ?? "");
-            }
-        } catch { }
-        finally {
-            setAccessLoading(false);  // ← เพิ่ม
+      try {
+        const res = await apiFetch("/me/ai-package");
+        if (res.ok) {
+          const data = await res.json();
+          setHasAccess(data.has_access === true);
+          setRole(data.role ?? "");
         }
+      } catch { }
+      finally {
+        setAccessLoading(false);  // ← เพิ่ม
+      }
     })();
-}, []);
+  }, []);
 
   // ===== Translations =====
   const t = useMemo(() => {
@@ -84,48 +79,43 @@ export default function HealthIndex({
 
   // ดึง stationId จาก URL search params หรือ localStorage
   useEffect(() => {
-    const sid = searchParams.get("station_id") || localStorage.getItem("selected_station_id");
-    if (sid) {
-      setStationId(sid);
+    const snFromUrl = searchParams.get("sn");
+    const snFromStorage = localStorage.getItem("selected_sn");
+    const resolved = snFromUrl || snFromStorage || "";
+    if (resolved) {
+      setSn(resolved);
     } else {
       setIsLoading(false);
     }
   }, [searchParams]);
 
   useEffect(() => {
-    // ถ้าไม่มี stationId ให้หยุด
-    if (!stationId) {
-      console.log("HealthIndex: stationId not provided");
-      setIsLoading(false);
-      return;
-    }
+    if (!sn) { setIsLoading(false); return; }
 
-    const fetchProgress = async () => {
+    const fetchHealth = async () => {
       try {
-        const res = await apiFetch(`/modules/progress?station_id=${encodeURIComponent(stationId)}`);
-        if (!res.ok) {
-          setIsLoading(false);
-          return;
-        }
+        const res = await apiFetch(`/eds-system-health/latest?sn=${encodeURIComponent(sn)}`);
+        if (!res.ok) { setIsLoading(false); return; }
         const data = await res.json();
-        if (data.overall !== undefined) {
-          setCalculatedValue(data.overall);
-        }
+        if (data.score !== undefined) setCalculatedValue(data.score);           // overall → score
+        if (data.modules?.modules_processed !== undefined)
+          setModulesProcessed(data.modules.modules_processed);
       } catch (err) {
-        console.error("fetch /modules/progress error:", err);
+        console.error("fetch /eds-system-health/latest error:", err);
       } finally {
         setIsLoading(false);
       }
     };
+    fetchHealth();
+  }, [sn]);
 
-    fetchProgress();
-  }, [stationId]);
+
 
   const v = Math.max(0, Math.min(100, Math.round(calculatedValue)));
   const segments = 10;
-  const filled = on ? Math.floor((v / 100) * segments) : 0;
-  if (isLoading) return null; 
+  const filled = (hasAccess || isAdmin) ? Math.floor((v / 100) * segments) : 0;
   if (accessLoading || isLoading) return null;
+  // if (!isAdmin && !hasAccess) return null;
 
   return (
     <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
@@ -144,40 +134,25 @@ export default function HealthIndex({
                 {t.healthIndex}
               </Typography>
               <Typography className="!tw-text-xs !tw-font-normal tw-transition-colors !tw-text-blue-gray-500">
-                {on ? t.enabled : t.disabled}
+                {hasAccess || isAdmin ? t.enabled : t.disabled}
               </Typography>
             </div>
           </div>
-          {/* <div className="tw-flex tw-items-center tw-gap-2">
-            <Typography className="tw-text-sm tw-text-blue-gray-600">
-              {on ? t.active : t.inactive}
-            </Typography>
-            <Switch checked={on} onChange={() => setOn(!on)} />
-          </div> */}
-          {isAdmin ? (
-            <div className="tw-flex tw-items-center tw-gap-2">
-              <Typography className="tw-text-sm tw-text-blue-gray-600">
-                {on ? t.active : t.inactive}
-              </Typography>
-              <Switch checked={on} onChange={() => setOn(!on)} />
-            </div>
-          ) : (
-            <span className={`tw-px-3 tw-py-1 tw-rounded-full tw-text-xs tw-font-semibold ${hasAccess
-                ? "tw-bg-green-50 tw-text-green-700 tw-ring-1 tw-ring-green-200"
-                : "tw-bg-gray-100 tw-text-gray-500 tw-ring-1 tw-ring-gray-200"
-              }`}>
-              {hasAccess ? t.active : t.inactive}
-            </span>
-          )}
+          <span className={`tw-px-3 tw-py-1 tw-rounded-full tw-text-xs tw-font-semibold ${hasAccess || isAdmin
+              ? "tw-bg-green-50 tw-text-green-700 tw-ring-1 tw-ring-green-200"
+              : "tw-bg-gray-100 tw-text-gray-500 tw-ring-1 tw-ring-gray-200"
+            }`}>
+            {hasAccess || isAdmin ? t.enabled : t.disabled}
+          </span>
         </div>
       </CardHeader>
 
       <CardBody className="tw-space-y-4 tw-pt-0 tw-px-4 tw-pb-4">
         <div className="tw-p-6">
           <Typography className="tw-text-3xl tw-font-semibold">
-            {isLoading ? t.loading : (on ? `${v}%` : "--")}
+            {hasAccess || isAdmin ? `${v}%` : "--"}
           </Typography>
-          <div className={`tw-flex tw-items-center tw-gap-1 ${on ? "" : "tw-opacity-40"}`}>
+          <div className={`tw-flex tw-items-center tw-gap-1 ${hasAccess || isAdmin ? "" : "tw-opacity-40"}`}>
             <div className="tw-flex tw-items-center tw-gap-1 tw-border tw-border-blue-gray-200 tw-rounded tw-p-1 tw-flex-1">
               {Array.from({ length: segments }).map((_, i) => (
                 <div
