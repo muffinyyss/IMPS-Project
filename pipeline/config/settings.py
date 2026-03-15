@@ -109,6 +109,7 @@ class TopicsConfig:
     ocppConfig: Optional[str] = None
     plcTemp1: Optional[str] = None
     plcTemp2: Optional[str] = None
+    mdb: Optional[str] = None 
     
     def get_all_topics(self) -> List[str]:
         """Get list of all non-empty subscribe topics"""
@@ -117,7 +118,7 @@ class TopicsConfig:
         for key in ['plc', 'pi5Heartbeat', 'ebError', 'ebTemp', 'ebHeartbeat',
                     'router', 'bme280',
                     'insulation1', 'insulation2', 'fanRpm', 'meter',
-                    'plcTemp1', 'plcTemp2']:
+                    'plcTemp1', 'plcTemp2', 'mdb']:
             val = getattr(self, key, None)
             if val:
                 topics.append(val)
@@ -200,7 +201,8 @@ def parse_station_config(doc: Dict[str, Any]) -> Optional[StationConfig]:
         meter=topics_data.get('meter'),
         ocppConfig=topics_data.get('ocppConfig'),
         plcTemp1=topics_data.get('plcTemp1'),
-        plcTemp2=topics_data.get('plcTemp2')
+        plcTemp2=topics_data.get('plcTemp2'),
+        mdb=topics_data.get('mdbRaw') or topics_data.get('mdb'), 
     )
     
     # Parse service life config

@@ -65,16 +65,23 @@ class MQTTClient:
         # Map topic to topic_key for routing (ไม่รวม ambient และ mdb_raw)
         topic_mapping = {
             topics.plc: 'plc',
-            topics.pi5Heartbeat: 'pi5Heartbeat',      # เปลี่ยนจาก pi5_heartbeat
-            topics.ebError: 'ebError',                 # เปลี่ยนจาก eb_error
-            topics.ebTemp: 'ebTemp',                   # เปลี่ยนจาก eb_temp
-            topics.ebHeartbeat: 'ebHeartbeat',         # เปลี่ยนจาก eb_heartbeat
-            # ebCountDevice ตัดออก
+            topics.pi5Heartbeat: 'pi5Heartbeat',
+            topics.ebError: 'ebError',
+            topics.ebTemp: 'ebTemp',
+            topics.ebHeartbeat: 'ebHeartbeat',
             topics.router: 'router',
             topics.bme280: 'bme280',
             topics.insulation1: 'insulation1',
-            topics.insulation2: 'insulation2'
+            topics.insulation2: 'insulation2',
+            topics.fanRpm: 'fanRpm',
+            topics.meter: 'meter',
+            topics.plcTemp1: 'plcTemp1',
+            topics.plcTemp2: 'plcTemp2',
+            topics.mdb: 'mdb',
         }
+
+        # Filter out None keys (optional topics that aren't configured)
+        topic_mapping = {k: v for k, v in topic_mapping.items() if k}
             
         # Add optional topics if configured
         if topics.fanRpm:
