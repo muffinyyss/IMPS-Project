@@ -191,18 +191,24 @@ class InsulationAggregator(BaseAggregator):
         self.station_id = station_id
     
     def update_insulation1(self, data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from insulation slave3"""
+        """Update from insulation1 topic"""
+        values = data.get('data', {}).get('values', {})
+        alarm = data.get('data', {}).get('alarm', {})
+        
         extracted = {
-            'RF_kohm': data.get('RF_kohm', data.get('resistance')),
-            'is_alarm': data.get('is_alarm', data.get('alarm', 0))
+            'RF_kohm': values.get('RF_kohm'),
+            'is_alarm': alarm.get('is_alarm', False)
         }
         self.update('insulation1', extracted, ts)
-    
+
     def update_insulation2(self, data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from insulation slave4"""
+        """Update from insulation2 topic"""
+        values = data.get('data', {}).get('values', {})
+        alarm = data.get('data', {}).get('alarm', {})
+        
         extracted = {
-            'RF_kohm': data.get('RF_kohm', data.get('resistance')),
-            'is_alarm': data.get('is_alarm', data.get('alarm', 0))
+            'RF_kohm': values.get('RF_kohm'),
+            'is_alarm': alarm.get('is_alarm', False)
         }
         self.update('insulation2', extracted, ts)
     

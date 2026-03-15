@@ -207,11 +207,11 @@ def create_utilization_document(state: 'StationState', timestamp: str) -> Dict[s
         "AC_power_contractor1": ac_counts.get("ac1", 0),
         "AC_power_contractor2": ac_counts.get("ac2", 0),
         # motor_starter1-5 (not motor_starter1_count)
-        "motor_starter1": ms_counts.get("ms1", 0),
-        "motor_starter2": ms_counts.get("ms2", 0),
-        "motor_starter3": ms_counts.get("ms3", 0),
-        "motor_starter4": ms_counts.get("ms4", 0),
-        "motor_starter5": ms_counts.get("ms5", 0),
+        "motor_starter1": 0,  # TODO: Fix motor starter counting logic
+        "motor_starter2": 0,
+        "motor_starter3": 0,
+        "motor_starter4": 0,
+        "motor_starter5": 0,
         "energyMeter1": base_sl_sec,
         "energyMeter2": base_sl_sec,
         "OCPPDevice": base_sl_sec,
