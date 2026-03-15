@@ -128,16 +128,25 @@ export function getRoutes(roles, hasChargerSelected = false) {
   const r = roles && roles.length ? roles : getRolesFromStorage();
   let filtered = prune(baseRoutes, r, hasChargerSelected);
 
-  // ถ้า role = owner และ ai_package.enabled != true → ซ่อน Ai Module
   const { role, ai_package } = readAuthFromStorage();
+  
+  // ถ้า role = owner และ ai_package.enabled != true → ซ่อน Ai Module
   if (role === "owner" && !ai_package?.enabled) {
     filtered = filtered.filter(
       (item) => item.path !== "http://203.154.130.132:8001/dashboard"
     );
   }
 
+  // ถ้า role = owner และ ai_package.enabled != true → ซ่อน Condition-base ด้วย ← เพิ่ม
+  if (role === "owner" && !ai_package?.enabled) {
+    filtered = filtered.filter(
+      (item) => item.path !== "/dashboard/cbm"
+    );
+  }
+
   return personalize(filtered);
 }
+
 
 /** 7) React Hook - ตรวจสอบ URL params หรือ localStorage และคำนวณเมนู */
 export function useRoutes(rolesFromApp) {
@@ -155,6 +164,17 @@ export function useRoutes(rolesFromApp) {
     window.addEventListener("storage", syncAi);
     return () => window.removeEventListener("storage", syncAi);
   }, []);
+
+   useEffect(() => {
+      const saved = localStorage.getItem("cbm_active");
+      setCbmActive(saved === "true");
+
+      const handleCbmToggle = (e) => {
+        setCbmActive(e.detail.active);
+      };
+      window.addEventListener("cbm:toggle", handleCbmToggle);
+      return () => window.removeEventListener("cbm:toggle", handleCbmToggle);
+    }, []);
 
   // Check URL params OR localStorage for sn and station_id
   useEffect(() => {
@@ -175,6 +195,8 @@ export function useRoutes(rolesFromApp) {
 
       setHasChargerSelected(hasFromUrl || hasFromStorage);
     };
+
+   
 
     // Check on mount
     checkChargerSelection();

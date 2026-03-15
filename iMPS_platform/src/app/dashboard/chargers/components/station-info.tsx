@@ -640,13 +640,6 @@ export default function StationInfo({
                   {showSettingsMenu && (
                     <div ref={menuRef} className="tw-absolute tw-right-0 tw-top-full tw-mt-1 tw-z-50 tw-w-72 tw-bg-white tw-rounded-xl tw-shadow-lg tw-border tw-border-blue-gray-100 tw-overflow-hidden">
                       <div className="tw-p-1.5">
-                        <button onClick={() => { setShowSettingsMenu(false); onAddSetting?.(); }}
-                          className="tw-w-full tw-flex tw-items-start tw-gap-3 tw-px-3 tw-py-2.5 tw-rounded-lg tw-text-left hover:tw-bg-blue-50 tw-transition-colors tw-group">
-                          <span className="tw-mt-0.5 tw-text-blue-500"><SettingIcon /></span>
-                          <div><div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">{t.addSettingValue}</div>
-                            <div className="tw-text-xs tw-text-blue-gray-400 tw-mt-0.5">{t.addSettingDesc}</div></div>
-                        </button>
-                        <div className="tw-mx-3 tw-border-t tw-border-blue-gray-100" />
                         <button onClick={openCBMModal}
                           className="tw-w-full tw-flex tw-items-start tw-gap-3 tw-px-3 tw-py-2.5 tw-rounded-lg tw-text-left hover:tw-bg-green-50 tw-transition-colors tw-group">
                           <span className="tw-mt-0.5 tw-text-green-500"><MonitoringIcon /></span>

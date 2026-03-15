@@ -39,8 +39,14 @@ SMTP_PASS = os.getenv("SMTP_PASS", "depllvpufjwtpysc")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
 # ─── MongoDB ─────────────────────────────────────────────────
-client1 = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
-client = AsyncIOMotorClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
+client1 = MongoClient(
+    "mongodb://imps_platform:eds_imps@203.154.130.132:27017/",
+    directConnection=True  # ← เพิ่มตรงนี้
+)
+client = AsyncIOMotorClient(
+    "mongodb://imps_platform:eds_imps@203.154.130.132:27017/",
+    directConnection=True  # ← เพิ่มตรงนี้
+)
 
 deviceDB = client["utilizationFactor"]
 settingDB = client["settingParameter"]
@@ -116,6 +122,14 @@ email_log_coll = imps_db_async["errorEmailLog"]
 
 MDB_collection = MDB_DB["Klongluang3"]
 
+# ─── EDS System Health ───────────────────────────────────────
+eds_health_DB = client["eds_system_health"]
+
+def get_eds_health_collection(sn: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(sn)):
+        raise HTTPException(status_code=400, detail="Bad sn")
+    return eds_health_DB.get_collection(str(sn))
+    
 # ─── Shared Helpers ──────────────────────────────────────────
 def _validate_station_id(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
