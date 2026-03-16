@@ -43,14 +43,7 @@ class PLCProcessor:
     
     def process(self, state: StationState, plc_data: Dict[str, Any], 
                 timestamp: Optional[datetime] = None):
-        """
-        Process PLC data.
-        
-        Args:
-            state: Station state
-            plc_data: Data from PLC topic
-            timestamp: Message timestamp
-        """
+        """Process PLC data"""
         if timestamp is None:
             timestamp = now_tz()
         
@@ -65,6 +58,10 @@ class PLCProcessor:
         state.update_counters_from_plc(plc_data, timestamp)
         state.update_timers_from_plc(plc_data, timestamp)
         state.update_service_life_from_plc(plc_data, timestamp)
+        
+        # === เพิ่ม: Update PLC ambient data to aggregators (PRIMARY source) ===
+        state.aggregators.cbm.update_plc_ambient(plc_data, timestamp)
+        state.aggregators.module2.update_plc_ambient(plc_data, timestamp)
         
         # --- Write to PLC collection ---
         plc_doc = create_plc_document(plc_data, ts_str)
