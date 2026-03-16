@@ -822,22 +822,20 @@ export function SearchDataTables() {
         }
       },
       {
-        id: "available", header: () => t.available, size: 120,
-        cell: ({ row }: { row: Row<StationRow> }) => {
-          const av = availability.get(row.original.station_id);
-          if (!av || av.total === 0) return <span className="tw-text-blue-gray-300 tw-text-xs">-</span>;
-          const allAvailable = av.available === av.total;
-          const noneAvailable = av.available === 0;
-          return (
-            <div className="tw-flex tw-flex-col tw-items-start tw-gap-0.5">
-              <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-full tw-border tw-text-xs tw-font-semibold ${allAvailable ? "tw-bg-green-50 tw-border-green-200 tw-text-green-700" : noneAvailable ? "tw-bg-red-50 tw-border-red-200 tw-text-red-700" : "tw-bg-amber-50 tw-border-amber-200 tw-text-amber-700"}`}>
-                <span className={`tw-h-2 tw-w-2 tw-rounded-full ${allAvailable ? "tw-bg-green-500" : noneAvailable ? "tw-bg-red-500" : "tw-bg-amber-500"}`} />
-                {av.available}/{av.total} {t.availableOf}
-              </span>
-            </div>
-          );
-        },
+      id: "available", header: () => t.available, size: 120,
+      cell: ({ row }: { row: Row<StationRow> }) => {
+        const av = availability.get(row.original.station_id);
+        if (!av || av.total === 0) return <span className="tw-text-blue-gray-300 tw-text-xs">-</span>;
+        return (
+          <div className="tw-flex tw-flex-col tw-items-start tw-gap-0.5">
+            <span className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-full tw-border tw-text-xs tw-font-semibold tw-bg-green-50 tw-border-green-200 tw-text-green-700">
+              <span className="tw-h-2 tw-w-2 tw-rounded-full tw-bg-green-500" />
+              {av.available}/{av.total} {t.availableOf}
+            </span>
+          </div>
+        );
       },
+    },
       { id: "username", header: () => t.owner, accessorFn: (row: StationRow) => row.username ?? "-", cell: (info: any) => (<span className="tw-text-blue-gray-600">{info.getValue()}</span>) },
       {
         id: "is_active", header: () => t.status, size: 100,
@@ -946,10 +944,12 @@ export function SearchDataTables() {
           )}
           <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
             <div className="tw-flex-1 tw-px-2 tw-py-1 tw-rounded-lg tw-bg-blue-50/80 tw-border tw-border-blue-100"><span className="tw-text-[10px] tw-text-blue-700 tw-font-medium">📅 {formatDate(charger.commissioningDate)}</span></div>
-            {av && av.total > 0 && (() => {
-              const allAvail = av.available === av.total; const noneAvail = av.available === 0;
-              return (<div className={`tw-px-2 tw-py-1 tw-rounded-lg tw-border tw-text-[10px] tw-font-bold tw-flex tw-items-center tw-gap-1 ${allAvail ? "tw-bg-green-50 tw-border-green-200 tw-text-green-700" : noneAvail ? "tw-bg-red-50 tw-border-red-200 tw-text-red-600" : "tw-bg-amber-50 tw-border-amber-200 tw-text-amber-700"}`}><span className={`tw-h-1.5 tw-w-1.5 tw-rounded-full ${allAvail ? "tw-bg-green-500" : noneAvail ? "tw-bg-red-500" : "tw-bg-amber-500"}`} />🔌 {av.available}/{av.total}</div>);
-            })()}
+            {av && av.total > 0 && (
+              <div className="tw-px-2 tw-py-1 tw-rounded-lg tw-border tw-text-[10px] tw-font-bold tw-flex tw-items-center tw-gap-1 tw-bg-green-50 tw-border-green-200 tw-text-green-700">
+                <span className="tw-h-1.5 tw-w-1.5 tw-rounded-full tw-bg-green-500" />
+                🔌 {av.available}/{av.total}
+              </div>
+            )}
           </div>
           <div className="tw-rounded-lg tw-bg-gradient-to-b tw-from-gray-50 tw-to-gray-100/50 tw-p-2 tw-ring-1 tw-ring-gray-200/60">
             <div className="tw-flex tw-items-center tw-gap-1 tw-mb-1.5"><CpuChipIcon className="tw-h-3 tw-w-3 tw-text-blue-gray-400" /><span className="tw-text-[8px] tw-font-bold tw-uppercase tw-text-blue-gray-500 tw-tracking-wider">{t.firmware}</span></div>
