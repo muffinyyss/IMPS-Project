@@ -115,17 +115,28 @@ class Pipeline:
                 state.set_meter_data(meter_data['meter1'], meter_data['meter2'])
                 logger.info(f"[{station_config.stationId}] Recovered meter: {meter_data}")
             
-            # Set timeout for aggregators (use state.aggregators, not new instance)
-            state.aggregators.set_timeout(120)
+            # Create aggregators for this station
+            agg_manager = AggregatorManager(station_config.stationId, timeout_seconds=120)
+            self.aggregators[station_config.stationId] = agg_manager
             
-            # Store reference for quick access
-            self.aggregators[station_config.stationId] = state.aggregators
-            
-            # Set aggregator callbacks - ใช้ state.aggregators!
-            self._setup_aggregator_callbacks(station_config.stationId, state.aggregators)
+            # Set aggregator callbacks
+            self._setup_aggregator_callbacks(station_config.stationId, agg_manager)
             
             # Register MQTT topics
             self.mqtt.register_station_topics(station_config, self._process_message)
+        
+        # # Setup MDB Subscriber
+        # self.mdb_subscriber = MDBSubscriber(self.mongodb)
+        # self.mdb_subscriber.set_data_callback(self._on_mdb_data)
+        
+        # # Load initial topic map
+        # loop = asyncio.new_event_loop()
+        # loop.run_until_complete(self.mdb_subscriber.load_topic_map())
+        # loop.close()
+        
+        # # Connect MDB subscriber
+        # if not self.mdb_subscriber.connect():
+        #     logger.warning("MDB Subscriber failed to connect (continuing without MDB)")
         
         # Connect to MQTT
         if not self.mqtt.connect():

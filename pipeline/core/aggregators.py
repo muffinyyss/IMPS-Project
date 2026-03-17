@@ -376,13 +376,6 @@ class AggregatorManager:
         self.insulation = InsulationAggregator(station_id, timeout_seconds)
         self.module2 = Module2Aggregator(station_id, timeout_seconds)
     
-    def set_timeout(self, timeout_seconds: int):
-        """Set timeout for all aggregators"""
-        self.timeout_seconds = timeout_seconds
-        self.cbm.timeout_seconds = timeout_seconds
-        self.module2.timeout_seconds = timeout_seconds
-        self.insulation.timeout_seconds = timeout_seconds
-        
     def set_cbm_callback(self, callback: Callable):
         """Set CBM aggregator callback"""
         self.cbm.set_callback(callback)

@@ -9,8 +9,12 @@ from jose import jwt
 import json, os, re
 import paho.mqtt.client as mqtt
 
+<<<<<<< HEAD
+BROKER_HOST = os.getenv("MQTT_BROKER", "192.168.100.14")
+=======
 
 BROKER_HOST = os.getenv("MQTT_BROKER", "203.154.130.132")
+>>>>>>> e181f59f18696bf428dadd522a59336ed1b41804
 BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "imps/setting")
 
@@ -41,12 +45,10 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
 # ─── MongoDB ─────────────────────────────────────────────────
 client1 = MongoClient(
-    "mongodb://imps_platform:eds_imps@203.154.130.132:27017/",
-    directConnection=True  # ← เพิ่มตรงนี้
+    "mongodb://imps_platform:eds_imps@localhost:27017/?authSource=admin&directConnection=true"
 )
 client = AsyncIOMotorClient(
-    "mongodb://imps_platform:eds_imps@203.154.130.132:27017/",
-    directConnection=True  # ← เพิ่มตรงนี้
+    "mongodb://imps_platform:eds_imps@localhost:27017/?authSource=admin&directConnection=true"
 )
 
 deviceDB = client["utilizationFactor"]
@@ -116,21 +118,12 @@ INPUT_DBS = {
 }
 
 imps_db_async = client["iMPS"]
-charger_coll_async = imps_db_async["charger"]
 stations_coll_async = imps_db_async["stations"]
 users_coll_async = imps_db_async["users"]
 email_log_coll = imps_db_async["errorEmailLog"]
 
 MDB_collection = MDB_DB["Klongluang3"]
 
-# ─── EDS System Health ───────────────────────────────────────
-eds_health_DB = client["eds_system_health"]
-
-def get_eds_health_collection(sn: str):
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(sn)):
-        raise HTTPException(status_code=400, detail="Bad sn")
-    return eds_health_DB.get_collection(str(sn))
-    
 # ─── Shared Helpers ──────────────────────────────────────────
 def _validate_station_id(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
