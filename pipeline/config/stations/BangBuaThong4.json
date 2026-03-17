@@ -1,0 +1,39 @@
+{
+    "stationId": "BangBuaThong4",
+    "serialNumber": "F1500724003",
+    
+    "hardware": {
+        "dcContractorCount": 6,
+        "powerModuleCount": 5,
+        "dcFanCount": 8,
+        "fanType": "FIXED",
+        "energyMeterType": "PILOT",
+        "powerModuleDefaults": {
+            "pm1": 2,
+            "pm2": 3
+        }
+    },
+    
+    "topics": {
+        "plc": "OCPP/BangBuaThong4/PLC",
+        "pi5Heartbeat": "OCPP/BangBuaThong4/heartbeatPI5",
+        "ebError": "OCPP/EleX_PT100_BangBuaThong4_1/error",
+        "ebTemp": "OCPP/EleX_PT100_BangBuaThong4_1/edgeboxTemp",
+        "ebHeartbeat": "OCPP/EleX_PT100_BangBuaThong4_1/heartbeat",
+        "ebCountDevice": "OCPP/BangBuaThong4/totaltime",
+        "router": "BangBuaThong4",
+        "mdbRaw": "MDB_BangBuaThong4",
+        "ambient": "ev_charging/temperature/modbus/slave5/BangBuaThong4",
+        "bme280": "ev_charging/temperature/bme280/BangBuaThong4",
+        "insulation1": "ev_charging/insulation/slave3/measurement/BangBuaThong4",
+        "insulation2": "ev_charging/insulation/slave4/measurement/BangBuaThong4",
+        "fanRpm": "BangBuaThong4/RPM"
+    },
+    "collections": {
+        "meter": "BangBuaThong4"
+    },
+    "serviceLife": {
+        "commitDate": "2024-07-16", 
+        "endDate": "2026-02-23T16:00:00"
+    }
+}

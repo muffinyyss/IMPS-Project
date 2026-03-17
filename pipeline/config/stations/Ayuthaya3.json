@@ -1,0 +1,39 @@
+{
+    "stationId": "Ayuthaya3",
+    "serialNumber": "F1500624013",
+    
+    "hardware": {
+        "dcContractorCount": 6,
+        "powerModuleCount": 5,
+        "dcFanCount": 8,
+        "fanType": "FIXED",
+        "energyMeterType": "PILOT",
+        "powerModuleDefaults": {
+            "pm1": 2,
+            "pm2": 3
+        }
+    },
+    
+    "topics": {
+        "plc": "OCPP/Ayuthaya3/PLC",
+        "pi5Heartbeat": "OCPP/Ayuthaya3/heartbeatPI5",
+        "ebError": "OCPP/PT100_Ayuthaya3/error",
+        "ebTemp": "OCPP/PT100_Ayuthaya3/edgeboxTemp",
+        "ebHeartbeat": "OCPP/PT100_Ayuthaya3/heartbeat",
+        "ebCountDevice": "OCPP/Ayuthaya3/totaltime",
+        "router": "Thaya3",
+        "mdbRaw": "MDB_Ayuthaya3",
+        "ambient": "ev_charging/temperature/modbus/slave5/Ayuthaya3",
+        "bme280": "ev_charging/temperature/bme280/Ayuthaya3",
+        "insulation1": "ev_charging/insulation/slave3/measurement/Ayuthaya3",
+        "insulation2": "ev_charging/insulation/slave4/measurement/Ayuthaya3",
+        "fanRpm": null
+    },
+    "collections": {
+        "meter": "Ayuthaya3"
+    },
+    "serviceLife": {
+        "commitDate": "2024-06-18", 
+        "endDate": "2026-02-23T16:00:00"
+    }
+}

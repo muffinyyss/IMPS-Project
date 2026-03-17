@@ -1,0 +1,39 @@
+{
+    "stationId": "Banbueng9",
+    "serialNumber": "F1500624035",
+    
+    "hardware": {
+        "dcContractorCount": 6,
+        "powerModuleCount": 5,
+        "dcFanCount": 8,
+        "fanType": "EBM",
+        "energyMeterType": "PILOT",
+        "powerModuleDefaults": {
+            "pm1": 2,
+            "pm2": 3
+        }
+    },
+    
+    "topics": {
+        "plc": "OCPP/Banbueng9/PLC",
+        "pi5Heartbeat": "OCPP/Banbueng9/heartbeatPI5",
+        "ebError": "OCPP/Banbueng9_DC_1/error",
+        "ebTemp": "OCPP/Banbueng9_DC_1/edgeboxTemp",
+        "ebHeartbeat": "OCPP/Banbueng9_DC_1/heartbeat",
+        "ebCountDevice": "OCPP/Banbueng9/totaltime",
+        "router": "Banbueng9",
+        "mdbRaw": "MDB_Banbueng9",
+        "ambient": "ev_charging/temperature/modbus/slave5/Banbueng9",
+        "bme280": "ev_charging/temperature/bme280/Banbueng9",
+        "insulation1": "ev_charging/insulation/slave3/measurement/Banbueng9",
+        "insulation2": "ev_charging/insulation/slave4/measurement/Banbueng9",
+        "fanRpm": "Banbueng9/RPM"
+    },
+    "collections": {
+        "meter": "Banbueng9"
+    },
+    "serviceLife": {
+        "commitDate": "2024-06-25", 
+        "endDate": "2026-02-23T16:00:00"
+    }
+}

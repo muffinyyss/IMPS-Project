@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"D:/eds_cream/github/IMPS-Project\" diff --stat iMPS_platform/backend/pdf/templates/pdf_station.py)"
+    ]
+  }
+}

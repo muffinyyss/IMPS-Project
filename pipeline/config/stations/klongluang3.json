@@ -1,0 +1,39 @@
+{
+    "stationId": "Klongluang3",
+    "serialNumber": "F1500624011",
+    
+    "hardware": {
+        "dcContractorCount": 6,
+        "powerModuleCount": 5,
+        "dcFanCount": 8,
+        "fanType": "FIXED",
+        "energyMeterType": "PILOT",
+        "powerModuleDefaults": {
+            "pm1": 2,
+            "pm2": 3
+        }
+    },
+    
+    "topics": {
+        "plc": "OCPP/Klongluang3/PLC",
+        "pi5Heartbeat": "OCPP/Klongluang3/heartbeatPI5",
+        "ebError": "OCPP/PT100_Klongluang3/error",
+        "ebTemp": "OCPP/PT100_Klongluang3/edgeboxTemp",
+        "ebHeartbeat": "OCPP/PT100_Klongluang3/heartbeat",
+        "ebCountDevice": "OCPP/Klongluang3/totaltime",
+        "router": "Luang3",
+        "mdbRaw": "MDB_khlongluang3",
+        "ambient": "ev_charging/temperature/modbus/slave5",
+        "bme280": "ev_charging/temperature/bme280",
+        "insulation1": "ev_charging/insulation/slave3/measurement",
+        "insulation2": "ev_charging/insulation/slave4/measurement",
+        "fanRpm": null
+    },
+    "collections": {
+        "meter": "Klongluang3"
+    },
+    "serviceLife": {
+        "commitDate": "2023-12-28",
+        "endDate": "2025-10-02T16:00:00"
+    }
+}
