@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from config import StationConfig
 from calculations import CounterManager, TimerManager, ServiceLifeManager
 from utils import calculate_initial_seconds, stable_hash, now_tz
+from core.aggregators import AggregatorManager
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class StationState:
             hardware_config=config.hardware
         )
         
+        self.aggregators = AggregatorManager(self.station_id)
         # Latest data from each topic
         self.latest: Dict[str, LatestData] = {
             'plc': LatestData(),
