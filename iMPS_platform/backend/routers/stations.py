@@ -956,26 +956,35 @@ def delete_station_image(
     return {"deleted": True, "images": images}
 
 
-@router.delete("/chargers/{charger_id}/delete-image")
-def delete_charger_image(
+class DeleteImagesRequest(BaseModel):
+    charger: List[str] = []
+    device: List[str] = []
+
+@router.delete("/chargers/{charger_id}/delete-images")  # plural
+def delete_charger_images_batch(
     charger_id: str,
-    body: DeleteImageRequest,
+    body: DeleteImagesRequest,
     current: UserClaims = Depends(get_current_user),
 ):
     oid = to_object_id(charger_id)
     doc = charger_collection.find_one({"_id": oid})
     if not doc:
         raise HTTPException(status_code=404, detail="Charger not found")
-    
+
     images = _normalize_images(doc.get("images", {}))
-    kind_list = images.get(body.kind, [])
-    
-    if body.url not in kind_list:
-        raise HTTPException(status_code=404, detail="Image not found")
-    
-    kind_list.remove(body.url)
-    images[body.kind] = kind_list
-    
+
+    for kind, urls_to_delete in {"charger": body.charger, "device": body.device}.items():
+        if not urls_to_delete:
+            continue
+        images[kind] = [u for u in images.get(kind, []) if u not in urls_to_delete]
+        for url in urls_to_delete:
+            try:
+                file_path = pathlib.Path(UPLOADS_ROOT).parent / url.lstrip("/")
+                if file_path.exists():
+                    file_path.unlink()
+            except Exception:
+                pass
+
     charger_collection.update_one(
         {"_id": oid},
         {"$set": {
@@ -984,14 +993,6 @@ def delete_charger_image(
             "updatedBy": get_actor_id(current),
         }}
     )
-    
-    try:
-        file_path = pathlib.Path(UPLOADS_ROOT).parent / body.url.lstrip("/")
-        if file_path.exists():
-            file_path.unlink()
-    except Exception:
-        pass
-    
     return {"deleted": True, "images": images}
 
 
