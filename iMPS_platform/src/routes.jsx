@@ -129,18 +129,12 @@ export function getRoutes(roles, hasChargerSelected = false) {
   let filtered = prune(baseRoutes, r, hasChargerSelected);
 
   const { role, ai_package } = readAuthFromStorage();
-  
+
   // ถ้า role = owner และ ai_package.enabled != true → ซ่อน Ai Module
   if (role === "owner" && !ai_package?.enabled) {
     filtered = filtered.filter(
-      (item) => item.path !== "http://203.154.130.132:8001/dashboard"
-    );
-  }
-
-  // ถ้า role = owner และ ai_package.enabled != true → ซ่อน Condition-base ด้วย ← เพิ่ม
-  if (role === "owner" && !ai_package?.enabled) {
-    filtered = filtered.filter(
-      (item) => item.path !== "/dashboard/cbm"
+      item => item.path !== "http://203.154.130.132:8001/dashboard"
+        && item.path !== "/dashboard/cbm"
     );
   }
 
@@ -151,7 +145,6 @@ export function getRoutes(roles, hasChargerSelected = false) {
 /** 7) React Hook - ตรวจสอบ URL params หรือ localStorage และคำนวณเมนู */
 export function useRoutes(rolesFromApp) {
   const [hasChargerSelected, setHasChargerSelected] = useState(false);
-  const [cbmActive, setCbmActive] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false); // ← เพิ่ม
 
   useEffect(() => {
@@ -164,17 +157,6 @@ export function useRoutes(rolesFromApp) {
     window.addEventListener("storage", syncAi);
     return () => window.removeEventListener("storage", syncAi);
   }, []);
-
-   useEffect(() => {
-      const saved = localStorage.getItem("cbm_active");
-      setCbmActive(saved === "true");
-
-      const handleCbmToggle = (e) => {
-        setCbmActive(e.detail.active);
-      };
-      window.addEventListener("cbm:toggle", handleCbmToggle);
-      return () => window.removeEventListener("cbm:toggle", handleCbmToggle);
-    }, []);
 
   // Check URL params OR localStorage for sn and station_id
   useEffect(() => {
@@ -196,7 +178,7 @@ export function useRoutes(rolesFromApp) {
       setHasChargerSelected(hasFromUrl || hasFromStorage);
     };
 
-   
+
 
     // Check on mount
     checkChargerSelection();
@@ -226,15 +208,8 @@ export function useRoutes(rolesFromApp) {
   const routes = React.useMemo(() => {
     let result = getRoutes(rolesFromApp, hasChargerSelected);
 
-    // ถ้า CBM inactive → ซ่อนเมนู Condition-base
-    if (!cbmActive) {
-      result = result.filter(
-        (r) => r.path !== "/dashboard/cbm"
-      );
-    }
-
     return result;
-  }, [rolesFromApp, hasChargerSelected, cbmActive, aiEnabled]); // ← เพิ่ม cbmActive
+  }, [rolesFromApp, hasChargerSelected, aiEnabled]);
 
   return routes;
 }
