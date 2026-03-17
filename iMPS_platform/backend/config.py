@@ -9,6 +9,7 @@ from jose import jwt
 import json, os, re
 import paho.mqtt.client as mqtt
 
+
 BROKER_HOST = os.getenv("MQTT_BROKER", "203.154.130.132")
 BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "imps/setting")
