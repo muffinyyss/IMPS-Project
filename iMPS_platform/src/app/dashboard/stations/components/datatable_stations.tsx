@@ -647,6 +647,7 @@ export function SearchDataTables() {
     if (!editingCharger?.charger.id) return;
     try {
       setSaving(true);
+      const currentExpanded = table.getState().expanded;
       const payload: ChargerUpdatePayload = {
         chargeBoxID: editChargerForm.chargeBoxID.trim(), chargerNo: editChargerForm.chargerNo,
         brand: editChargerForm.brand.trim(), model: editChargerForm.model.trim(), SN: editChargerForm.SN.trim(), WO: editChargerForm.WO.trim(),
@@ -667,6 +668,7 @@ export function SearchDataTables() {
       }
       if (editChargerImages.length || editDeviceImages.length) { const fd = new FormData(); editChargerImages.forEach(f => fd.append("charger", f)); editDeviceImages.forEach(f => fd.append("device", f)); await apiFetch(`/chargers/${editingCharger.charger.id}/upload-images`, { method: "POST", body: fd }); }
       await refetchStations();
+      setExpanded(currentExpanded);
       setOpenEditCharger(false); setNotice({ type: "success", msg: t.chargerUpdated }); setTimeout(() => setNotice(null), 2500);
     } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Update failed" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
   };
@@ -755,7 +757,9 @@ export function SearchDataTables() {
       }
       const created = await res.json();
       if (created.id && (addChargerImages.length || addDeviceImages.length)) { const fd = new FormData(); addChargerImages.forEach(f => fd.append("charger", f)); addDeviceImages.forEach(f => fd.append("device", f)); await apiFetch(`/chargers/${created.id}/upload-images`, { method: "POST", body: fd }); }
+      const currentExpanded = table.getState().expanded;
       await refetchStations();
+      setExpanded(currentExpanded);
       resetAddChargerImages(); setOpenAddCharger(false); setNotice({ type: "success", msg: t.chargerCreated }); setTimeout(() => setNotice(null), 2500);
     } catch (e: any) { console.error(e); setNotice({ type: "error", msg: e?.message || "Failed to create charger" }); setTimeout(() => setNotice(null), 3500); } finally { setSaving(false); }
   };
@@ -883,6 +887,7 @@ export function SearchDataTables() {
   const table = useReactTable({
     data: filteredDataByStatus,
     columns,
+    getRowId: (row) => row.station_id,
     state: { globalFilter: filtering, sorting, expanded },
     onSortingChange: setSorting,
     onGlobalFilterChange: setFiltering,

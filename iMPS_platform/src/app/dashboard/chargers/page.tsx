@@ -17,7 +17,6 @@ import { apiFetch } from "@/utils/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
-type StationDoc = { images?: Record<string, string> };
 type GalleryImage = { src: string; alt?: string };
 
 export default function ChargersPage() {
@@ -25,27 +24,6 @@ export default function ChargersPage() {
   const [stationId, setStationId] = useState<string | null>(null);
   const [sn, setSn] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
-
-  useEffect(() => {
-    const sidFromUrl = searchParams.get("station_id");
-    const snFromUrl = searchParams.get("sn");
-
-    if (sidFromUrl) {
-      setStationId(sidFromUrl);
-      localStorage.setItem("selected_station_id", sidFromUrl);
-    } else {
-      const sidLocal = localStorage.getItem("selected_station_id");
-      setStationId(sidLocal);
-    }
-
-    if (snFromUrl) {
-      setSn(snFromUrl);
-      localStorage.setItem("selected_sn", snFromUrl);
-    } else {
-      const snLocal = localStorage.getItem("selected_sn");
-      setSn(snLocal);
-    }
-  }, [searchParams]);
 
   const [stationDetail, setStationDetail] = useState({
     station_id: "-",
@@ -91,6 +69,7 @@ export default function ChargersPage() {
     [images]
   );
 
+  // ===== Lock body scroll เมื่อ lightbox เปิด =====
   useEffect(() => {
     if (lightboxOpen) {
       document.documentElement.style.overflow = "hidden";
@@ -105,6 +84,7 @@ export default function ChargersPage() {
     };
   }, [lightboxOpen]);
 
+  // ===== Keyboard navigation สำหรับ lightbox =====
   useEffect(() => {
     if (!lightboxOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -116,23 +96,35 @@ export default function ChargersPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [lightboxOpen, close, prev, next]);
 
-  // ✅ รวม useEffect: ดึงข้อมูล Charger + Station + รูปทั้งหมด
+  // ===== Main fetch: อ่าน URL params โดยตรง ไม่ผ่าน state =====
   useEffect(() => {
     const ctrl = new AbortController();
+
+    // อ่านจาก URL params ก่อน ถ้าไม่มีค่อย fallback ไป localStorage
+    const sidFromUrl = searchParams.get("station_id") || localStorage.getItem("selected_station_id");
+    const snFromUrl  = searchParams.get("sn")         || localStorage.getItem("selected_sn");
+
+    // sync กลับ localStorage
+    if (sidFromUrl) localStorage.setItem("selected_station_id", sidFromUrl);
+    if (snFromUrl)  localStorage.setItem("selected_sn", snFromUrl);
+
+    // set state เพื่อให้ component อื่น (PMCard, status poll) ใช้ได้
+    setStationId(sidFromUrl);
+    setSn(snFromUrl);
+
+    if (!sidFromUrl && !snFromUrl) {
+      setPageLoading(false);
+      return;
+    }
+
     (async () => {
-      if (!stationId && !sn) {
-        setPageLoading(false);
-        return;
-      }
-
       setPageLoading(true);
-
       try {
+        // 1. ดึงข้อมูล Charger — ใช้ snFromUrl/sidFromUrl โดยตรง
         const params = new URLSearchParams();
-        if (sn) params.append("sn", sn);
-        if (stationId) params.append("station_id", stationId);
+        if (snFromUrl)  params.append("sn", snFromUrl);
+        if (sidFromUrl) params.append("station_id", sidFromUrl);
 
-        // 1. ดึงข้อมูล Charger
         const res = await apiFetch(
           `/charger/info?${params.toString()}`,
           { signal: ctrl.signal }
@@ -146,29 +138,31 @@ export default function ChargersPage() {
         const data = await res.json();
         const chargerInfo = data.station ?? data;
 
-        // ✅ เก็บรูป Charger ไว้ก่อน (ยังไม่ใส่ array หลัก)
+        // helper แปลง string | string[] → string[]
+        const toArr = (v: any): string[] =>
+          Array.isArray(v) ? v : (typeof v === "string" && v ? [v] : []);
+
+        // 2. รูป Charger + Device
         const chargerImages: GalleryImage[] = [];
+        const chargerImgs = chargerInfo?.images ?? {};
 
-        if (chargerInfo?.images?.charger) {
-          const url = chargerInfo.images.charger;
+        toArr(chargerImgs.charger).forEach((url, i) =>
           chargerImages.push({
             src: url.startsWith("http") ? url : `${API_BASE}${url}`,
-            alt: "Charger Image"
-          });
-        }
-
-        if (chargerInfo?.images?.device) {
-          const url = chargerInfo.images.device;
+            alt: `Charger Image${toArr(chargerImgs.charger).length > 1 ? ` ${i + 1}` : ""}`,
+          })
+        );
+        toArr(chargerImgs.device).forEach((url, i) =>
           chargerImages.push({
             src: url.startsWith("http") ? url : `${API_BASE}${url}`,
-            alt: "Device Image"
-          });
-        }
+            alt: `Device Image${toArr(chargerImgs.device).length > 1 ? ` ${i + 1}` : ""}`,
+          })
+        );
 
-        // 2. ดึง station_name และรูป Station
-        let stationName = "-";
+        // 3. ดึง station_name + รูป Station — ใช้ sidFromUrl โดยตรง
         const stationImages: GalleryImage[] = [];
-        const currentStationId = chargerInfo?.station_id || stationId;
+        let stationName = "-";
+        const currentStationId = chargerInfo?.station_id || sidFromUrl;
 
         if (currentStationId) {
           try {
@@ -182,13 +176,13 @@ export default function ChargersPage() {
               stationName = stationData?.station_name ?? "-";
 
               const stationImgs = stationData?.images ?? {};
-              Object.entries(stationImgs).forEach(([key, url]) => {
-                if (typeof url === "string" && url) {
-                  stationImages.push({
+              Object.entries(stationImgs).forEach(([key, val]) => {
+                toArr(val).forEach((url, i) => {
+                  if (url) stationImages.push({
                     src: url.startsWith("http") ? url : `${API_BASE}${url}`,
-                    alt: `Station - ${key}`
+                    alt: `Station - ${key}${toArr(val).length > 1 ? ` ${i + 1}` : ""}`,
                   });
-                }
+                });
               });
             }
           } catch (e) {
@@ -196,34 +190,34 @@ export default function ChargersPage() {
           }
         }
 
-        // ✅ 3. รวมรูป: Station ก่อน → แล้ว Charger/Device ตามหลัง
+        // 4. รวมรูป: Station ก่อน → Charger/Device ตามหลัง
         const allImages: GalleryImage[] = [
           ...stationImages,
           ...chargerImages,
         ];
 
-        console.log("[Images] Total images:", allImages.length, allImages);
+        console.log("[Images] Total:", allImages.length, allImages);
         setImages(allImages);
 
-        // 4. Set station detail
+        // 5. Set station detail
         setStationDetail(prev => ({
           ...prev,
-          station_id: chargerInfo?.station_id ?? "-",
-          station_name: stationName,
-          model: chargerInfo?.model ?? "-",
+          station_id:        chargerInfo?.station_id     ?? "-",
+          station_name:      stationName,
+          model:             chargerInfo?.model           ?? "-",
           commissioningDate: chargerInfo?.commissioningDate ?? null,
-          warrantyYears: chargerInfo?.warrantyYears != null
-            ? String(chargerInfo.warrantyYears)
-            : null,
-          SN: chargerInfo?.SN ?? "-",
-          WO: chargerInfo?.WO ?? "-",
-          power: chargerInfo?.power ?? "-",
-          brand: chargerInfo?.brand ?? "-",
-          PLCFirmware: chargerInfo?.PLCFirmware ?? "-",
-          PIFirmware: chargerInfo?.PIFirmware ?? "-",
-          RTFirmware: chargerInfo?.RTFirmware ?? "-",
-          chargeBoxID: chargerInfo?.chargeBoxID ?? "-",
-          chargerNo: chargerInfo?.chargerNo ?? null,
+          warrantyYears:     chargerInfo?.warrantyYears != null
+                               ? String(chargerInfo.warrantyYears)
+                               : null,
+          SN:          chargerInfo?.SN            ?? "-",
+          WO:          chargerInfo?.WO            ?? "-",
+          power:       chargerInfo?.power         ?? "-",
+          brand:       chargerInfo?.brand         ?? "-",
+          PLCFirmware: chargerInfo?.PLCFirmware   ?? "-",
+          PIFirmware:  chargerInfo?.PIFirmware    ?? "-",
+          RTFirmware:  chargerInfo?.RTFirmware    ?? "-",
+          chargeBoxID: chargerInfo?.chargeBoxID   ?? "-",
+          chargerNo:   chargerInfo?.chargerNo     ?? null,
           numberOfCables: chargerInfo?.numberOfCables ?? null,
         }));
 
@@ -237,9 +231,9 @@ export default function ChargersPage() {
     })();
 
     return () => ctrl.abort();
-  }, [stationId, sn]);
+  }, [searchParams]); // depends แค่ searchParams — ไม่มี race condition
 
-  // on/off status (แยก useEffect เพราะ poll ทุก 5 วินาที)
+  // ===== Poll online/offline status ทุก 5 วินาที =====
   useEffect(() => {
     if (!sn) return;
 
@@ -264,9 +258,9 @@ export default function ChargersPage() {
     return () => { clearInterval(id); ctrl.abort(); };
   }, [sn]);
 
+  // ===== Render =====
   return (
     <div className="tw-mt-8 tw-mb-4 tw-mx-auto tw-px-4 sm:tw-px-6">
-      {/* Loading Overlay — แสดงตอนโหลดข้อมูลหน้า */}
       <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
 
       <div className="tw-mt-8 tw-mb-4">
@@ -277,24 +271,22 @@ export default function ChargersPage() {
             <Carousel
               key={carouselKey}
               className="tw-w-full tw-rounded-2xl tw-overflow-hidden tw-shadow-2xl
-                       tw-h-[400px] sm:tw-h-[450px] md:tw-h-[500px] lg:tw-h-[550px] xl:tw-h-[600px]"
+                         tw-h-[400px] sm:tw-h-[450px] md:tw-h-[500px] lg:tw-h-[550px] xl:tw-h-[600px]"
             >
-              {(images?.length ? images : []).map((img, i) => (
+              {images.length > 0 ? images.map((img, i) => (
                 <div key={(img?.src ?? "img") + i} className="tw-relative tw-h-full tw-w-full">
                   <img
-                    src={img?.src}
-                    alt={img?.alt ?? `image-${i + 1}`}
+                    src={img.src}
+                    alt={img.alt ?? `image-${i + 1}`}
                     loading="lazy"
                     onClick={() => openAt(i)}
                     className="tw-h-full tw-w-full tw-object-cover tw-object-center tw-cursor-zoom-in"
                   />
-                  {/* ✅ แสดง label บอกประเภทรูป */}
                   <div className="tw-absolute tw-bottom-4 tw-left-4 tw-bg-black/60 tw-text-white tw-px-3 tw-py-1 tw-rounded-full tw-text-sm">
-                    {img?.alt || `Image ${i + 1}`}
+                    {img.alt || `Image ${i + 1}`}
                   </div>
                 </div>
-              ))}
-              {!images?.length && (
+              )) : (
                 <div className="tw-flex tw-items-center tw-justify-center tw-w-full tw-h-full tw-bg-blue-gray-50">
                   <Typography variant="small" color="blue-gray">
                     No images to display
@@ -314,23 +306,23 @@ export default function ChargersPage() {
 
           {/* RIGHT: Station Information */}
           <div>
-            <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm 
-                          tw-h-[400px] sm:tw-h-[450px] md:tw-h-[500px] lg:tw-h-[550px] xl:tw-h-[600px]
-                          tw-flex tw-flex-col">
+            <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm
+                             tw-h-[400px] sm:tw-h-[450px] md:tw-h-[500px] lg:tw-h-[550px] xl:tw-h-[600px]
+                             tw-flex tw-flex-col">
               <CardBody className="tw-flex-1 tw-overflow-y-auto !tw-p-0">
                 <StationInfo
-                  station_name={stationDetail?.station_name ?? "-"}
-                  model={stationDetail?.model}
-                  SN={stationDetail?.SN}
-                  WO={stationDetail?.WO}
-                  brand={stationDetail?.brand}
-                  power={stationDetail?.power}
-                  status={stationDetail?.status}
-                  commissioningDate={stationDetail?.commissioningDate}
-                  warrantyYears={stationDetail?.warrantyYears}
-                  PLCFirmware={stationDetail?.PLCFirmware}
-                  PIFirmware={stationDetail?.PIFirmware}
-                  RTFirmware={stationDetail?.RTFirmware}
+                  station_name={stationDetail.station_name}
+                  model={stationDetail.model}
+                  SN={stationDetail.SN}
+                  WO={stationDetail.WO}
+                  brand={stationDetail.brand}
+                  power={stationDetail.power}
+                  status={stationDetail.status}
+                  commissioningDate={stationDetail.commissioningDate}
+                  warrantyYears={stationDetail.warrantyYears}
+                  PLCFirmware={stationDetail.PLCFirmware}
+                  PIFirmware={stationDetail.PIFirmware}
+                  RTFirmware={stationDetail.RTFirmware}
                   chargerSN={sn}
                   apiBaseUrl={API_BASE}
                 />
