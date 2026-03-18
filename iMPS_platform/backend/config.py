@@ -9,7 +9,12 @@ from jose import jwt
 import json, os, re
 import paho.mqtt.client as mqtt
 
+<<<<<<< HEAD
+BROKER_HOST = os.getenv("MQTT_BROKER", "192.168.100.14")
+=======
+
 BROKER_HOST = os.getenv("MQTT_BROKER", "203.154.130.132")
+>>>>>>> e181f59f18696bf428dadd522a59336ed1b41804
 BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "imps/setting")
 
@@ -39,8 +44,12 @@ SMTP_PASS = os.getenv("SMTP_PASS", "depllvpufjwtpysc")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
 # ─── MongoDB ─────────────────────────────────────────────────
-client1 = MongoClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
-client = AsyncIOMotorClient("mongodb://imps_platform:eds_imps@203.154.130.132:27017/")
+client1 = MongoClient(
+    "mongodb://imps_platform:eds_imps@localhost:27017/?authSource=admin&directConnection=true"
+)
+client = AsyncIOMotorClient(
+    "mongodb://imps_platform:eds_imps@localhost:27017/?authSource=admin&directConnection=true"
+)
 
 deviceDB = client["utilizationFactor"]
 settingDB = client["settingParameter"]
@@ -109,7 +118,6 @@ INPUT_DBS = {
 }
 
 imps_db_async = client["iMPS"]
-charger_coll_async = imps_db_async["charger"]
 stations_coll_async = imps_db_async["stations"]
 users_coll_async = imps_db_async["users"]
 email_log_coll = imps_db_async["errorEmailLog"]

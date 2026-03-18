@@ -169,7 +169,7 @@ export default function SalesPage() {
       try {
         const obj = JSON.parse(e.data);
         setData(obj);
-      } catch {}
+      } catch { }
     };
 
     es.onerror = () => {
@@ -201,6 +201,10 @@ export default function SalesPage() {
         data?.hardware?.dcFanCount ??
         hwConfig?.dcFanCount ??
         0,
+      fanType:                              // ← เพิ่มตรงนี้
+        data?.hardware?.fanType ??
+        hwConfig?.fanType ??
+        "FIXED",
     };
   }, [data, hwConfig]);
 
@@ -239,14 +243,16 @@ export default function SalesPage() {
   }, [data, resolvedHardware]);
 
   const fanItems = useMemo(() => {
+    const maxRpm = resolvedHardware.fanType === "EBM" ? 6800 : 3500;  // ← ตรงนี้
+
     return Array.from({ length: 8 }, (_, i) => ({
       id: `fan${i + 1}`,
       name: `FAN${i + 1}`,
       rpm: toDec(data?.[`fan_RPM${i + 1}`]),
       active: !!data?.[`fan_status${i + 1}`],
-      maxRpm: 3500,
+      maxRpm,                              // ← ใช้ค่าที่คำนวณแล้ว
     }));
-  }, [data]);
+  }, [data, resolvedHardware]);
 
   // debug
   console.log("resolvedHardware =", resolvedHardware);

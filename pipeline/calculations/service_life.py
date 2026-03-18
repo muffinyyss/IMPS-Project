@@ -1,3 +1,4 @@
+#calculations\service_life.py
 """
 Service Life Calculations
 
@@ -368,3 +369,25 @@ class ServiceLifeManager:
         if plc1_active and plc2_active and em_active:
             return "Active"
         return "Inactive"
+
+    def set_recovered_seconds(self, seconds: int):
+        """
+        Set recovered seconds from database.
+        Replaces initial_seconds with actual accumulated value.
+        Used during recovery to restore service life from DB.
+        """
+        if seconds <= 0:
+            return
+            
+        self.initial_seconds = seconds
+        
+        # Update all tracked devices
+        for device, tracker in self.tracked.items():
+            tracker.total_seconds = float(seconds)
+            tracker.last_update = None
+            tracker.is_running = False
+        
+        # Update all base devices
+        for device, tracker in self.base.items():
+            tracker.initial_seconds = seconds
+            tracker.start_time = None

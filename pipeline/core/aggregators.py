@@ -105,17 +105,18 @@ class CBMAggregator(BaseAggregator):
     """
     CBM Aggregator - combines:
     - MDB (mdbRaw topic) → MDB: {ambient_temp, ambient_rt}
-    - Ambient (ambient topic) → Ambient: {ambient_temp, humidity}
+    - PLC (plc topic) → PLCAmbient: {ambient_temp, humidity, pressure} [PRIMARY]
+    - BME280 (bme280 topic) → BME280Ambient: {ambient_temp, humidity, pressure} [FALLBACK]
     - EBTemp (ebTemp topic) → EBTemp: {eb_temp}
-    - Router (router topic) → Luang3: {rt_temp, rssi}
+    - Router (router topic) → Router: {rt_temp, rssi}
     
     Triggers every 120 seconds using latest available data.
-    Output: monitorCBM, module3, module6
     """
     
     def __init__(self, station_id: str, timeout_seconds: int = DEFAULT_TIMEOUT):
         super().__init__(f"CBM_{station_id}", timeout_seconds)
         self.station_id = station_id
+        self._has_plc_ambient = False  # Flag to track if PLC has ambient keys
     
     def update_mdb(self, mdb_data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from MDB topic"""
@@ -125,29 +126,50 @@ class CBMAggregator(BaseAggregator):
         }
         self.update('MDB', extracted, ts)
     
+    def update_plc_ambient(self, plc_data: Dict[str, Any], ts: Optional[datetime] = None):
+        """
+        Update ambient data from PLC topic (PRIMARY source).
+        Only updates if PLC has ambient keys.
+        """
+        # Check if PLC has ambient keys (not checking value, just key existence)
+        has_ambient = 'ambientTemp' in plc_data
+        
+        if has_ambient:
+            self._has_plc_ambient = True
+            self.update('Ambient', {
+                'ambient_temp': plc_data.get('ambientTemp'),
+                'humidity': plc_data.get('ambientHum')
+            }, ts)
+            self.update('BME280', {
+                'pressure': plc_data.get('ambientPressure')
+            }, ts)
+            
+            # Also store PLC temps
+            self.update('PLCTemp', {
+                'plcTemp1': plc_data.get('plcTemp1'),
+                'plcTemp2': plc_data.get('plcTemp2'),
+                'plcHum1': plc_data.get('plcHum1'),
+                'plcHum2': plc_data.get('plcHum2')
+            }, ts)
+        else:
+            self._has_plc_ambient = False
     
     def update_bme280(self, bme280_data: Dict[str, Any], ts: Optional[datetime] = None):
         """
-        Update from bme280 topic.
-        BME280 now provides ambient_temp, humidity, AND pressure.
-        Replaces the old ambient topic.
+        Update from bme280 topic (FALLBACK source).
+        Only used if PLC doesn't have ambient keys.
         """
-        # Extract all data from bme280
         ambient_temp = bme280_data.get('temp_c', bme280_data.get('temperature'))
         humidity = bme280_data.get('rh_pct', bme280_data.get('humidity'))
         pressure = bme280_data.get('pressure_hpa', bme280_data.get('pressure'))
         
-        # Update Ambient (for CBM documents)
-        self.update('Ambient', {
+        # Store as BME280 source (will be used in fallback)
+        self.update('BME280Fallback', {
             'ambient_temp': ambient_temp,
-            'humidity': humidity
-        }, ts)
-        
-        # Update BME280 (for pressure)
-        self.update('BME280', {
+            'humidity': humidity,
             'pressure': pressure
         }, ts)
-        
+    
     def update_eb_temp(self, eb_data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from edgebox temp topic"""
         extracted = {
@@ -157,22 +179,44 @@ class CBMAggregator(BaseAggregator):
     
     def update_router(self, router_data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from router topic"""
-        # ดึงจาก Status object
         status = router_data.get('Status', {})
         extracted = {
-            'rt_temp': status.get('temp', 0),   # temp อยู่ใน Status
-            'rssi': status.get('rssi', 0)       # rssi อยู่ใน Status
+            'rt_temp': status.get('temp', 0),
+            'rssi': status.get('rssi', 0)
         }
         self.update('Router', extracted, ts)
     
     def get_aggregated_data(self) -> Dict[str, Any]:
-        """Get CBM aggregated data - uses latest values or empty dict"""
+        """
+        Get CBM aggregated data.
+        Priority: PLC ambient > BME280 ambient
+        """
         with self._lock:
+            # Get primary data (from PLC)
+            ambient = self._data.get('Ambient') or {}
+            bme280 = self._data.get('BME280') or {}
+            
+            # Get fallback data (from BME280 topic)
+            bme280_fallback = self._data.get('BME280Fallback') or {}
+            
+            # Fallback logic: if PLC doesn't have ambient, use BME280
+            if not self._has_plc_ambient and bme280_fallback:
+                ambient = {
+                    'ambient_temp': bme280_fallback.get('ambient_temp'),
+                    'humidity': bme280_fallback.get('humidity')
+                }
+                bme280 = {
+                    'pressure': bme280_fallback.get('pressure')
+                }
+                logger.debug(f"[{self.name}] Using BME280 topic data (fallback)")
+            
             return {
                 'MDB': self._data.get('MDB') or {},
-                'Ambient': self._data.get('Ambient') or {},
+                'Ambient': ambient,
+                'BME280': bme280,
                 'EBTemp': self._data.get('EBTemp') or {},
-                'Router': self._data.get('Router') or {}   # ✅
+                'Router': self._data.get('Router') or {},
+                'PLCTemp': self._data.get('PLCTemp') or {}
             }
 
 
@@ -191,18 +235,24 @@ class InsulationAggregator(BaseAggregator):
         self.station_id = station_id
     
     def update_insulation1(self, data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from insulation slave3"""
+        """Update from insulation1 topic"""
+        values = data.get('data', {}).get('values', {})
+        alarm = data.get('data', {}).get('alarm', {})
+        
         extracted = {
-            'RF_kohm': data.get('RF_kohm', data.get('resistance')),
-            'is_alarm': data.get('is_alarm', data.get('alarm', 0))
+            'RF_kohm': values.get('RF_kohm'),
+            'is_alarm': alarm.get('is_alarm', False)
         }
         self.update('insulation1', extracted, ts)
-    
+
     def update_insulation2(self, data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from insulation slave4"""
+        """Update from insulation2 topic"""
+        values = data.get('data', {}).get('values', {})
+        alarm = data.get('data', {}).get('alarm', {})
+        
         extracted = {
-            'RF_kohm': data.get('RF_kohm', data.get('resistance')),
-            'is_alarm': data.get('is_alarm', data.get('alarm', 0))
+            'RF_kohm': values.get('RF_kohm'),
+            'is_alarm': alarm.get('is_alarm', False)
         }
         self.update('insulation2', extracted, ts)
     
@@ -214,65 +264,65 @@ class InsulationAggregator(BaseAggregator):
                 'insulation2': self._data.get('insulation2') or {}
             }
 
-
 class Module2Aggregator(BaseAggregator):
     """
     Module2 Aggregator - combines:
-    - Ambient (slave5) → {ambient_temp, humidity}
-    - BME280 → {pressure}
+    - PLC (plc topic) → Ambient + BME280 [PRIMARY]
+    - BME280 (bme280 topic) → BME280Fallback [FALLBACK]
     - Router → {rt_temp}
     - EBTemp → {eb_temp}
     
     Triggers every 120 seconds using latest available data.
-    Output: module2ChargerDustPrediction
     """
     
     def __init__(self, station_id: str, timeout_seconds: int = DEFAULT_TIMEOUT):
         super().__init__(f"Module2_{station_id}", timeout_seconds)
         self.station_id = station_id
+        self._has_plc_ambient = False
+    
+    def update_plc_ambient(self, plc_data: Dict[str, Any], ts: Optional[datetime] = None):
+        """
+        Update ambient data from PLC topic (PRIMARY source).
+        """
+        has_ambient = 'ambientTemp' in plc_data
+        
+        if has_ambient:
+            self._has_plc_ambient = True
+            self.update('Ambient', {
+                'ambient_temp': plc_data.get('ambientTemp'),
+                'humidity': plc_data.get('ambientHum')
+            }, ts)
+            self.update('BME280', {
+                'pressure': plc_data.get('ambientPressure')
+            }, ts)
+        else:
+            self._has_plc_ambient = False
+    
+    def update_bme280(self, bme280_data: Dict[str, Any], ts: Optional[datetime] = None):
+        """
+        Update from bme280 topic (FALLBACK source).
+        """
+        ambient_temp = bme280_data.get('temp_c', bme280_data.get('temperature'))
+        humidity = bme280_data.get('rh_pct', bme280_data.get('humidity'))
+        pressure = bme280_data.get('pressure_hpa', bme280_data.get('pressure'))
+        
+        self.update('BME280Fallback', {
+            'ambient_temp': ambient_temp,
+            'humidity': humidity,
+            'pressure': pressure
+        }, ts)
     
     def update_ambient(self, data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from ambient topic"""
-        extracted = {
-            'ambient_temp': data.get('temperature', data.get('temp')),
-            'humidity': data.get('humidity', data.get('rh'))
-        }
-        self.update('Ambient', extracted, ts)
-    
-    def update_bme280(self, data: Dict[str, Any], ts: Optional[datetime] = None):
-        """
-        Update from bme280 topic.
-        BME280 provides ambient_temp, humidity, AND pressure.
-        """
-        ambient_temp = data.get('temp_c', data.get('temperature'))
-        humidity = data.get('rh_pct', data.get('humidity'))
-        pressure = data.get('pressure_hpa', data.get('pressure'))
-        
-        # Update Ambient
-        self.update('Ambient', {
-            'ambient_temp': ambient_temp,
-            'humidity': humidity
-        }, ts)
-        
-        # Update BME280
-        self.update('BME280', {
-            'pressure': pressure
-        }, ts)
-        
-        # Update BME280
-        self.update('BME280', {
-            'pressure': pressure
-        }, ts)
+        """Legacy method - redirects to bme280 fallback"""
+        self.update_bme280(data, ts)
     
     def update_router(self, data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from router topic"""
-        # ดึงจาก Status object
         status = data.get('Status', {})
         extracted = {
-            'rt_temp': status.get('temp', 0)    # temp อยู่ใน Status
+            'rt_temp': status.get('temp', 0)
         }
         self.update('Router', extracted, ts)
-
     
     def update_eb_temp(self, data: Dict[str, Any], ts: Optional[datetime] = None):
         """Update from edgebox temp topic"""
@@ -282,11 +332,32 @@ class Module2Aggregator(BaseAggregator):
         self.update('EBTemp', extracted, ts)
     
     def get_aggregated_data(self) -> Dict[str, Any]:
-        """Get module2 aggregated data - uses latest values or empty dict"""
+        """
+        Get module2 aggregated data.
+        Priority: PLC ambient > BME280 ambient
+        """
         with self._lock:
+            # Get primary data (from PLC)
+            ambient = self._data.get('Ambient') or {}
+            bme280 = self._data.get('BME280') or {}
+            
+            # Get fallback data (from BME280 topic)
+            bme280_fallback = self._data.get('BME280Fallback') or {}
+            
+            # Fallback logic
+            if not self._has_plc_ambient and bme280_fallback:
+                ambient = {
+                    'ambient_temp': bme280_fallback.get('ambient_temp'),
+                    'humidity': bme280_fallback.get('humidity')
+                }
+                bme280 = {
+                    'pressure': bme280_fallback.get('pressure')
+                }
+                logger.debug(f"[{self.name}] Using BME280 topic data (fallback)")
+            
             return {
-                'Ambient': self._data.get('Ambient') or {},
-                'BME280': self._data.get('BME280') or {},
+                'Ambient': ambient,
+                'BME280': bme280,
                 'Router': self._data.get('Router') or {},
                 'EBTemp': self._data.get('EBTemp') or {}
             }

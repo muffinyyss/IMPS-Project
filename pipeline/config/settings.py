@@ -32,6 +32,7 @@ class MQTTConfig:
 
 @dataclass
 class MongoDBConfig:
+    #uri: str = "mongodb://imps_platform:eds_imps@203.154.130.132:27017/?authSource=admin&directConnection=true"
     uri: str = "mongodb://imps_platform:eds_imps@localhost:27017/"
     
     config_database: str = "iMPS"

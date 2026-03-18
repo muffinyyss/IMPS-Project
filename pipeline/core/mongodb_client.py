@@ -191,12 +191,12 @@ class RecoveryLoader:
         Recover state from MongoDB for a station.
         
         Sources:
-        - utilizationFactor: Counters, FUSE timers
+        - utilizationFactor: Counters, FUSE timers, Router (service life)
         - module6DcChargerRulPrediction: Service lives, Power module, DC fan
         - monitorCBM: DC contractor counts (backup)
         """
-        station_id = station_config.stationId  # เปลี่ยน
-        serial_number = station_config.serialNumber  # เปลี่ยน
+        station_id = station_config.stationId
+        serial_number = station_config.serialNumber
         
         result = {
             'dc_contractors': {},
@@ -204,7 +204,8 @@ class RecoveryLoader:
             'motor_starters': {},
             'fuse_timers': {},
             'dc_fan_seconds': 0,
-            'power_modules': {}
+            'power_modules': {},
+            'router_seconds': 0  # เพิ่ม
         }
         
         logger.info(f"[{station_id}] Recovering state from MongoDB...")
@@ -244,6 +245,13 @@ class RecoveryLoader:
                         result['fuse_timers'][i] = parse_h_m_to_seconds(text)
                     else:
                         result['fuse_timers'][i] = parse_int(text, 0)
+            
+            # === เพิ่ม: Recover Router (service life) ===
+            router_val = util_doc.get('Router', 0)
+            if isinstance(router_val, str):
+                result['router_seconds'] = parse_h_m_to_seconds(router_val)
+            else:
+                result['router_seconds'] = parse_int(router_val, 0)
         
         # 2. Load from module6DcChargerRulPrediction
         module6_doc = self.mongodb.find_latest('module6', serial_number)
@@ -282,7 +290,8 @@ class RecoveryLoader:
         logger.info(f"[{station_id}] Recovery complete: "
                    f"DC={result['dc_contractors']}, "
                    f"AC={result['ac_contractors']}, "
-                   f"MS={result['motor_starters']}")
+                   f"MS={result['motor_starters']}, "
+                   f"Router={result['router_seconds']}s")
         
         return result
     
@@ -330,11 +339,17 @@ class RecoveryLoader:
         
         # DC Fan Timers
         dc_fan_seconds = recovery_data.get('dc_fan_seconds', 0)
-        for i in range(1, state.config.hardware.dcFanCount  + 1):
+        for i in range(1, state.config.hardware.dcFanCount + 1):
             state.timers.set_dc_fan_seconds(i, dc_fan_seconds)
         
         # Power Modules
         for i, seconds in recovery_data.get('power_modules', {}).items():
             state.timers.set_pm_seconds(i, seconds)
+        
+        # === เพิ่ม: Apply Router service life ===
+        router_seconds = recovery_data.get('router_seconds', 0)
+        if router_seconds > 0:
+            state.service_life.set_recovered_seconds(router_seconds)
+            logger.info(f"[{state.station_id}] Applied Router service life: {router_seconds} seconds")
         
         logger.info(f"[{state.station_id}] State recovery applied")

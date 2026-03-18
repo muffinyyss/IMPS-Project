@@ -207,11 +207,11 @@ def create_utilization_document(state: 'StationState', timestamp: str) -> Dict[s
         "AC_power_contractor1": ac_counts.get("ac1", 0),
         "AC_power_contractor2": ac_counts.get("ac2", 0),
         # motor_starter1-5 (not motor_starter1_count)
-        "motor_starter1": ms_counts.get("ms1", 0),
-        "motor_starter2": ms_counts.get("ms2", 0),
-        "motor_starter3": ms_counts.get("ms3", 0),
-        "motor_starter4": ms_counts.get("ms4", 0),
-        "motor_starter5": ms_counts.get("ms5", 0),
+        "motor_starter1": 0,  # TODO: Fix motor starter counting logic
+        "motor_starter2": 0,
+        "motor_starter3": 0,
+        "motor_starter4": 0,
+        "motor_starter5": 0,
         "energyMeter1": base_sl_sec,
         "energyMeter2": base_sl_sec,
         "OCPPDevice": base_sl_sec,
@@ -284,6 +284,9 @@ def create_cbm_document(state: 'StationState', cbm_data: Dict[str, Any],
     fan_rpms = state.get_all_fan_rpm()
     fan_status = str(plc_data.get('fan_status1_8', '0'))
     
+    # Get PLCTemp from cbm_data (aggregated)
+    plc_temp_data = cbm_data.get('PLCTemp', {}) or {}
+    
     doc = {
         "power_module_temp1": parse_int(plc_data.get("tempPowerModule1")),
         "power_module_temp2": parse_int(plc_data.get("tempPowerModule1")),
@@ -301,6 +304,7 @@ def create_cbm_document(state: 'StationState', cbm_data: Dict[str, Any],
         "pi5_temp": plc_data.get("pi5_temp"),
         "charger_relative_humidity": cbm_data.get("Ambient", {}).get("humidity"),
         "DC_charger_temp": cbm_data.get("Ambient", {}).get("ambient_temp"),
+        "charger_pressure": cbm_data.get("BME280", {}).get("pressure"),  # เพิ่ม pressure
         "DC_power_contractor1": dc_counts.get("dc1", 0),
         "DC_power_contractor2": dc_counts.get("dc2", 0),
         "DC_power_contractor3": dc_counts.get("dc3", 0),
@@ -312,6 +316,11 @@ def create_cbm_document(state: 'StationState', cbm_data: Dict[str, Any],
         "AC_magnetic_contactor_status1": parse_int(plc_data.get("ACMagStatus1")),
         "AC_magnetic_contactor_status2": parse_int(plc_data.get("ACMagStatus2")),
         "MDB_relative_humidity": cbm_data.get("MDB", {}).get("ambient_rt"),
+        # === เพิ่ม PLC Temp fields ===
+        "PLC_temp1": parse_float(plc_temp_data.get("plcTemp1")),
+        "PLC_temp2": parse_float(plc_temp_data.get("plcTemp2")),
+        "PLC_humidity1": parse_float(plc_temp_data.get("plcHum1")),
+        "PLC_humidity2": parse_float(plc_temp_data.get("plcHum2")),
         "timestamp_utc": now_utc(),
         "timestamp": timestamp
     }

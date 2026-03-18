@@ -7,3 +7,4 @@ __pycache__/
 venv/
 .venv/
 IMPS_platform/backend/venv/
+iMPS_platform/backend/uploads/

@@ -52,12 +52,12 @@ function readAuthFromStorage() {
     const raw = localStorage.getItem("user") || localStorage.getItem("auth") || "";
     if (!raw) return {};
     const obj = JSON.parse(raw);
-    // รองรับทั้งโครงสร้าง { user: {...} } หรือแบนราบ
     const user = obj?.user ?? obj ?? {};
     return {
       username: user.username || "",
       email: user.email || "",
       role: user.role || "",
+      ai_package: user.ai_package ?? null, // ← เพิ่ม
     };
   } catch {
     return {};
@@ -126,28 +126,36 @@ function personalize(items) {
 /** 6) คำนวณเมนูตาม role + showMode + ใส่ชื่อผู้ใช้ */
 export function getRoutes(roles, hasChargerSelected = false) {
   const r = roles && roles.length ? roles : getRolesFromStorage();
-  const filtered = prune(baseRoutes, r, hasChargerSelected);
+  let filtered = prune(baseRoutes, r, hasChargerSelected);
+
+  const { role, ai_package } = readAuthFromStorage();
+
+  // ถ้า role = owner และ ai_package.enabled != true → ซ่อน Ai Module
+  if (role === "owner" && !ai_package?.enabled) {
+    filtered = filtered.filter(
+      item => item.path !== "http://203.154.130.132:8001/dashboard"
+        && item.path !== "/dashboard/cbm"
+    );
+  }
+
   return personalize(filtered);
 }
+
 
 /** 7) React Hook - ตรวจสอบ URL params หรือ localStorage และคำนวณเมนู */
 export function useRoutes(rolesFromApp) {
   const [hasChargerSelected, setHasChargerSelected] = useState(false);
-  const [cbmActive, setCbmActive] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false); // ← เพิ่ม
 
   useEffect(() => {
-    // อ่านค่าเดิมจาก localStorage
-    const saved = localStorage.getItem("cbm_active");
-    setCbmActive(saved === "true");
-
-    const handleCbmToggle = (e) => {
-      setCbmActive(e.detail.active);
+    // อ่าน ai_package จาก storage ทุกครั้งที่ storage เปลี่ยน
+    const syncAi = () => {
+      const { ai_package } = readAuthFromStorage();
+      setAiEnabled(!!ai_package?.enabled);
     };
-
-    window.addEventListener("cbm:toggle", handleCbmToggle);
-    return () => {
-      window.removeEventListener("cbm:toggle", handleCbmToggle);
-    };
+    syncAi();
+    window.addEventListener("storage", syncAi);
+    return () => window.removeEventListener("storage", syncAi);
   }, []);
 
   // Check URL params OR localStorage for sn and station_id
@@ -169,6 +177,9 @@ export function useRoutes(rolesFromApp) {
 
       setHasChargerSelected(hasFromUrl || hasFromStorage);
     };
+
+
+    
 
     // Check on mount
     checkChargerSelection();
@@ -196,17 +207,10 @@ export function useRoutes(rolesFromApp) {
   }, []);
 
   const routes = React.useMemo(() => {
-        let result = getRoutes(rolesFromApp, hasChargerSelected);
+    let result = getRoutes(rolesFromApp, hasChargerSelected);
 
-        // ถ้า CBM inactive → ซ่อนเมนู Condition-base
-        if (!cbmActive) {
-            result = result.filter(
-                (r) => r.path !== "/dashboard/cbm"
-            );
-        }
-
-        return result;
-    }, [rolesFromApp, hasChargerSelected, cbmActive]); // ← เพิ่ม cbmActive
+    return result;
+  }, [rolesFromApp, hasChargerSelected, aiEnabled]);
 
   return routes;
 }
