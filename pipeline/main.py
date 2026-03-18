@@ -115,12 +115,14 @@ class Pipeline:
                 state.set_meter_data(meter_data['meter1'], meter_data['meter2'])
                 logger.info(f"[{station_config.stationId}] Recovered meter: {meter_data}")
             
-            # Create aggregators for this station
-            agg_manager = AggregatorManager(station_config.stationId, timeout_seconds=120)
-            self.aggregators[station_config.stationId] = agg_manager
-            
+            # Use state.aggregators (not create new instance)
+            state.aggregators.set_timeout(120)
+
+            # Store reference for quick access
+            self.aggregators[station_config.stationId] = state.aggregators
+
             # Set aggregator callbacks
-            self._setup_aggregator_callbacks(station_config.stationId, agg_manager)
+            self._setup_aggregator_callbacks(station_config.stationId, state.aggregators)
             
             # Register MQTT topics
             self.mqtt.register_station_topics(station_config, self._process_message)

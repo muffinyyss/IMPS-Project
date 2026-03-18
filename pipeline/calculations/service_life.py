@@ -113,7 +113,15 @@ class EnergyMeterStatus:
         # Check if error contains "No communication"
         error_msg = ""
         if error_data:
-            error_msg = error_data.get("error", "") or ""
+            raw_error = error_data.get("error", "")
+            # Ensure error_msg is always a string
+            if isinstance(raw_error, str):
+                error_msg = raw_error
+            elif isinstance(raw_error, dict):
+                # If error is a dict, try to get message field
+                error_msg = str(raw_error.get("message", raw_error.get("msg", "")))
+            elif raw_error is not None:
+                error_msg = str(raw_error)
         
         is_nc = bool(self.NC_PATTERN.search(error_msg))
         
