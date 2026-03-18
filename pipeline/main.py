@@ -257,6 +257,9 @@ class Pipeline:
 
             elif topic_key == 'mdb':
                 self.mdb_processor.process(state, data, timestamp)
+                # Update CBM aggregator with MDB data
+                if agg:
+                    agg.cbm.update_mdb(data, timestamp)
             
             else:
                 logger.debug(f"[{station_id}] Unhandled topic key: {topic_key}")
