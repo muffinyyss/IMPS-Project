@@ -40,10 +40,10 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
 # ─── MongoDB ─────────────────────────────────────────────────
 client1 = MongoClient(
-    "mongodb://imps_platform:eds_imps@localhost:27017/?authSource=admin&directConnection=true"
+    "mongodb://imps_platform:eds_imps@203.154.130.132:27017/?authSource=admin&directConnection=true"
 )
 client = AsyncIOMotorClient(
-    "mongodb://imps_platform:eds_imps@localhost:27017/?authSource=admin&directConnection=true"
+    "mongodb://imps_platform:eds_imps@203.154.130.132:27017/?authSource=admin&directConnection=true"
 )
 
 deviceDB = client["utilizationFactor"]
@@ -201,5 +201,5 @@ def floor_bin(dt: datetime, step_sec: int) -> datetime:
 def get_eds_health_collection(sn: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(sn)):
         raise HTTPException(status_code=400, detail="Bad sn")
-    eds_db = client["edsHealth"]
+    eds_db = client["eds_system_health"]  # ✅ แก้ตรงนี้
     return eds_db.get_collection(str(sn))
