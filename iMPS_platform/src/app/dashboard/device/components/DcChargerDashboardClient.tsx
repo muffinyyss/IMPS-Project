@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
     ExclamationTriangleIcon,
@@ -23,6 +23,12 @@ import {
     ArrowsRightLeftIcon,
 } from "@heroicons/react/24/solid";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import { apiFetch } from "@/utils/api"; // ← ปรับ path ให้ตรงกับโปรเจกต์
+
+/* =========================
+   Constants
+   ========================= */
+const POLL_INTERVAL_MS = 30_000; // polling ทุก 30 วินาที
 
 /* =========================
    1) Types & Helpers
@@ -41,31 +47,20 @@ type Device = {
 };
 
 const DEVICE_IMAGES: Record<string, string> = {
-    // Contactors
     "DC Power Contactor": "/img/charger_device/dc_contractor_new.png",
     "AC Power Contactor": "/img/charger_device/AC Power Contactor (magnetic).jpg",
-    
-    // Motor Starters
     "Motor Starter": "/img/charger_device/Motor Starter.png",
-    
-    // Fuses & Protection
     "FUSE": "/img/charger_device/fuse.png",
     "RCCB": "/img/charger_device/rccb.png",
     "RCBO": "/img/charger_device/rcbo.jpg",
     "Circuit Breaker": "/img/charger_device/circuit_breaker_fan.png",
     "Surge Protection": "/img/charger_device/Surge Protection.png",
-    
-    // Meters & Controllers
     "Energy Meter": "/img/charger_device/Energy Meter H1.png",
     "Charging Controller": "/img/charger_device/PLC.jpg",
     "Insulation Monitoring": "/img/charger_device/Insulation Monitoring H1.png",
     "FAN Controller": "/img/charger_device/FAN Controller.jpg",
-    
-    // Network & Communication
     "Router": "/img/charger_device/router.png",
     "OCPP Device": "/img/charger_device/router.png",
-    
-    // Power Components
     "Power supplies": "/img/charger_device/Power Supplies.jpg",
     "DC Converter": "/img/charger_device/DC Converter.webp",
     "Disconnect Switch": "/img/charger_device/Breaker (มอเตอร์ starter) (new).jpg",
@@ -79,7 +74,6 @@ function getDeviceImage(deviceName: string): string | undefined {
     return undefined;
 }
 
-// ===== Lifetime Config (กำหนดที่ Frontend) - หน่วยเป็นวัน =====
 const LIFETIME_CONFIG: Record<string, number> = {
     "DC Power Contactor": 300000,
     "AC Power Contactor": 50000,
@@ -129,30 +123,6 @@ function getDeviceStatus(deviceName: string, value: number): Status {
     return "ok";
 }
 
-const colorClasses = {
-    green: {
-        bg: "tw-bg-green-500",
-        bgLight: "tw-bg-green-100",
-        text: "tw-text-green-700",
-        border: "tw-border-green-300",
-        ring: "tw-ring-green-500",
-    },
-    yellow: {
-        bg: "tw-bg-amber-500",
-        bgLight: "tw-bg-amber-100",
-        text: "tw-text-amber-700",
-        border: "tw-border-amber-300",
-        ring: "tw-ring-amber-500",
-    },
-    red: {
-        bg: "tw-bg-red-500",
-        bgLight: "tw-bg-red-100",
-        text: "tw-text-red-700",
-        border: "tw-border-red-300",
-        ring: "tw-ring-red-500",
-    },
-};
-
 function parseValueToNumber(value?: string, metricType?: MetricType): number {
     if (!value) return 0;
     if (metricType === "day") {
@@ -160,22 +130,6 @@ function parseValueToNumber(value?: string, metricType?: MetricType): number {
         return Math.floor(seconds / 86400);
     }
     return Number(String(value).replace(/[^\d.-]/g, "")) || 0;
-}
-
-function pickStatus(
-    value: number | string | undefined,
-    warnAt?: number,
-    errorAt?: number
-): Status {
-    if (value == null) return "warn";
-    const n =
-        typeof value === "number"
-            ? value
-            : Number(String(value).replace(/[^\d.-]/g, ""));
-    if (isNaN(n)) return "ok";
-    if (errorAt != null && n >= errorAt) return "error";
-    if (warnAt != null && n >= warnAt) return "warn";
-    return "ok";
 }
 
 function getDeviceIcon(deviceName: string) {
@@ -199,41 +153,38 @@ function getDeviceIcon(deviceName: string) {
 }
 
 /* =========================
-   2) Device Card with Icon
+   2) Device Card
    ========================= */
-function Style3Circular({ 
-    name, 
-    value, 
+function Style3Circular({
+    name,
+    value,
     unit,
-    t,
-    imageUrl
-}: { 
+    imageUrl,
+}: {
     name: string;
     value: number;
     unit: string;
-    t: any;
     imageUrl?: string;
 }) {
     const lifetime = getLifetime(name);
     const usagePercent = calcUsagePercent(value, lifetime);
     const color = getStatusColor(usagePercent);
+    const [imageError, setImageError] = useState(false);
 
     const strokeColor = color === "green" ? "#22c55e" : color === "yellow" ? "#f59e0b" : "#ef4444";
     const bgColor = color === "green" ? "tw-bg-green-50" : color === "yellow" ? "tw-bg-amber-50" : "tw-bg-red-50";
     const borderColor = color === "green" ? "tw-border-green-200" : color === "yellow" ? "tw-border-amber-200" : "tw-border-red-200";
     const iconColor = color === "green" ? "tw-text-green-500" : color === "yellow" ? "tw-text-amber-500" : "tw-text-red-500";
     const textColor = color === "green" ? "tw-text-green-600" : color === "yellow" ? "tw-text-amber-600" : "tw-text-red-600";
-    const [imageError, setImageError] = useState(false);
 
     const DeviceIcon = getDeviceIcon(name);
 
     return (
         <div className="tw-p-4 tw-bg-white tw-rounded-xl tw-border tw-border-gray-100 hover:tw-border-gray-200 tw-transition-colors">
             <div className="tw-flex tw-items-center tw-gap-4">
-                {/* Icon or Image */}
                 <div className={`tw-relative tw-flex-shrink-0 tw-w-20 tw-h-20 tw-rounded-xl ${bgColor} ${borderColor} tw-border-2 tw-flex tw-items-center tw-justify-center`}>
                     {imageUrl && !imageError ? (
-                        <img 
+                        <img
                             src={imageUrl}
                             alt={name}
                             className="tw-w-full tw-h-full tw-object-cover tw-rounded-lg"
@@ -242,29 +193,25 @@ function Style3Circular({
                     ) : (
                         <DeviceIcon className={`tw-w-9 tw-h-9 ${iconColor}`} />
                     )}
-                    
-                    {/* Status dot */}
-                    <div 
+                    <div
                         className="tw-absolute -tw-top-0.5 -tw-right-1.5 tw-w-3 tw-h-3 tw-rounded-full tw-shadow-md tw-z-10"
                         style={{ backgroundColor: strokeColor }}
                     />
                 </div>
-                
-                {/* Info */}
+
                 <div className="tw-flex-1 tw-min-w-0">
                     <p className="tw-font-medium tw-text-gray-800 tw-truncate tw-text-sm">{name}</p>
                     <div className="tw-mt-0.5 tw-flex tw-items-baseline tw-gap-1">
                         <span className="tw-text-base tw-font-bold tw-text-gray-900">{value.toLocaleString()}</span>
                         <span className="tw-text-xs tw-text-gray-400">/ {lifetime.toLocaleString()} {unit}</span>
                     </div>
-                    {/* Progress bar */}
                     <div className="tw-mt-2 tw-flex tw-items-center tw-gap-2">
                         <div className="tw-flex-1 tw-h-1.5 tw-bg-gray-100 tw-rounded-full tw-overflow-hidden">
-                            <div 
+                            <div
                                 className="tw-h-full tw-rounded-full tw-transition-all tw-duration-500"
-                                style={{ 
+                                style={{
                                     width: `${Math.min(usagePercent, 100)}%`,
-                                    backgroundColor: strokeColor
+                                    backgroundColor: strokeColor,
                                 }}
                             />
                         </div>
@@ -317,19 +264,16 @@ function SideList({
                 {filtered.map((d) => {
                     const numericValue = parseValueToNumber(d.value, d.metricType);
                     const unit = d.metricType === "day" ? t.day : t.times;
-
                     return (
-                        <Style3Circular 
+                        <Style3Circular
                             key={d.id}
                             name={d.name}
                             value={numericValue}
                             unit={unit}
                             imageUrl={d.imageUrl}
-                            t={t}
                         />
                     );
                 })}
-
                 {filtered.length === 0 && (
                     <div className="tw-text-center tw-text-sm tw-text-gray-400 tw-py-4">
                         {t.noDevicesFound}
@@ -340,94 +284,8 @@ function SideList({
     );
 }
 
-/* กลุ่มพับได้ + ค้นหา */
-function Group({
-    status,
-    title,
-    devices,
-    defaultOpen,
-    search,
-    t,
-}: {
-    status: Status;
-    title: string;
-    devices: Device[];
-    defaultOpen?: boolean;
-    search: string;
-    t: any;
-}) {
-    const [open, setOpen] = useState(!!defaultOpen);
-    
-    const filtered = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        return devices.filter((d) => d.name.toLowerCase().includes(q));
-    }, [devices, search]);
-
-    const headColor = status === "error" 
-        ? "tw-from-red-50 tw-to-transparent tw-border-red-200" 
-        : status === "warn" 
-            ? "tw-from-amber-50 tw-to-transparent tw-border-amber-200"
-            : "tw-from-green-50 tw-to-transparent tw-border-green-200";
-
-    const IconByStatus = status === "ok" 
-        ? CheckCircleIcon 
-        : status === "warn" 
-            ? ExclamationTriangleIcon 
-            : ExclamationCircleIcon;
-
-    return (
-        <section className="tw-rounded-3xl tw-overflow-hidden tw-ring-1 tw-ring-black/5 tw-bg-white">
-            <button
-                onClick={() => setOpen((v) => !v)}
-                className={`tw-w-full tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-5 tw-py-3 tw-border-b tw-bg-gradient-to-r ${headColor}`}
-                aria-expanded={open}
-            >
-                <div className="tw-flex tw-items-center tw-gap-2">
-                    <IconByStatus className="tw-h-4 tw-w-4" />
-                    <span className="tw-font-semibold">{title}</span>
-                    <span className="tw-text-xs tw-text-gray-500">({devices.length})</span>
-                </div>
-                <ChevronDownIcon className={`tw-h-4 tw-w-4 tw-transition-transform ${open ? "tw-rotate-180" : ""}`} />
-            </button>
-
-            {open && (
-                <div className="tw-p-4">
-                    <div
-                        className="tw-grid tw-gap-4
-                            sm:tw-grid-cols-1
-                            md:tw-grid-cols-1
-                            lg:tw-grid-cols-2
-                            xl:tw-grid-cols-3
-                            2xl:tw-grid-cols-3"
-                    >
-                        {filtered.map((d) => {
-                            const numericValue = parseValueToNumber(d.value, d.metricType);
-                            const unit = d.metricType === "day" ? t.day : t.times;
-
-                            return (
-                                <Style3Circular 
-                                    key={d.id}
-                                    name={d.name}
-                                    value={numericValue}
-                                    unit={unit}
-                                    t={t}
-                                />
-                            );
-                        })}
-                        {filtered.length === 0 && (
-                            <div className="tw-col-span-full tw-text-center tw-text-sm tw-text-gray-500 tw-py-6">
-                                {t.noItemsInGroup}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-        </section>
-    );
-}
-
 /* =========================
-   3) Page (SSE + Mapping)
+   3) Page
    ========================= */
 export default function DCChargerDashboard() {
     const searchParams = useSearchParams();
@@ -435,35 +293,30 @@ export default function DCChargerDashboard() {
     const [loading, setLoading] = useState(true);
     const [connectionError, setConnectionError] = useState(false);
     const [timestamp, setTimestamp] = useState<string>("");
-    const esRef = useRef<EventSource | null>(null);
     const [stationId, setStationId] = useState<string>("");
+    const abortRef = useRef<AbortController | null>(null);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
     useEffect(() => {
-        const sid = searchParams.get("sn") 
-            || localStorage.getItem("selected_sn")
-            || "";
+        const sid =
+            searchParams.get("sn") ||
+            localStorage.getItem("selected_sn") ||
+            "";
         setStationId(sid);
     }, [searchParams]);
 
-    // ===== Language State =====
+    // ===== Language =====
     const [lang, setLang] = useState<Lang>("en");
 
     useEffect(() => {
         const savedLang = localStorage.getItem("app_language") as Lang | null;
-        if (savedLang === "th" || savedLang === "en") {
-            setLang(savedLang);
-        }
+        if (savedLang === "th" || savedLang === "en") setLang(savedLang);
 
-        const handleLangChange = (e: CustomEvent<{ lang: Lang }>) => {
-            setLang(e.detail.lang);
-        };
-
+        const handleLangChange = (e: CustomEvent<{ lang: Lang }>) => setLang(e.detail.lang);
         window.addEventListener("language:change", handleLangChange as EventListener);
-        return () => {
-            window.removeEventListener("language:change", handleLangChange as EventListener);
-        };
+        return () => window.removeEventListener("language:change", handleLangChange as EventListener);
     }, []);
 
     // ===== Translations =====
@@ -527,7 +380,39 @@ export default function DCChargerDashboard() {
         return translations[lang];
     }, [lang]);
 
-    // ===== SSE Connection =====
+    // ===== apiFetch polling =====
+    const fetchData = useCallback(
+        async (signal: AbortSignal) => {
+            if (!stationId) return;
+            try {
+                setConnectionError(false);
+                const res = await apiFetch(
+                    `/utilization/latest?sn=${encodeURIComponent(stationId)}`,
+                    { signal }
+                );
+
+                if (!res.ok) {
+                    console.warn("[DCCharger] fetch failed:", res.status);
+                    setConnectionError(true);
+                    return;
+                }
+
+                const data = await res.json();
+                setLive(data);
+                if (data?.timestamp) {
+                    setTimestamp(new Date(data.timestamp).toLocaleString());
+                }
+            } catch (err: any) {
+                if (err?.name === "AbortError") return; // unmount — ไม่ต้องทำอะไร
+                console.error("[DCCharger] fetch error:", err);
+                setConnectionError(true);
+            } finally {
+                setLoading(false);
+            }
+        },
+        [stationId]
+    );
+
     useEffect(() => {
         if (!stationId) {
             setLive(null);
@@ -535,66 +420,44 @@ export default function DCChargerDashboard() {
             return;
         }
 
+        // reset state ทุกครั้งที่ stationId เปลี่ยน
         setLoading(true);
         setConnectionError(false);
         setLive(null);
         setTimestamp("");
 
-        const ts = new Date().getTime();
-        const url = `${API_BASE}/utilization/stream?sn=${encodeURIComponent(stationId)}&timestamp=${ts}`;
-        const es = new EventSource(url, { withCredentials: true });
-        esRef.current = es;
+        // ยกเลิก request เก่าก่อน
+        abortRef.current?.abort();
+        if (pollRef.current) clearInterval(pollRef.current);
 
-        es.addEventListener("init", (ev) => {
-            try {
-                const data = JSON.parse((ev as MessageEvent).data);
-                setLive(data);
-                if (data.timestamp) {
-                    setTimestamp(new Date(data.timestamp).toLocaleString());
-                }
-                setLoading(false);
-                setConnectionError(false);
-            } catch { }
-        });
+        // fetch ครั้งแรกทันที
+        const ctrl = new AbortController();
+        abortRef.current = ctrl;
+        fetchData(ctrl.signal);
 
-        es.onmessage = (ev) => {
-            try {
-                const data = JSON.parse(ev.data);
-                setLive(data);
-                if (data.timestamp) {
-                    setTimestamp(new Date(data.timestamp).toLocaleString());
-                }
-                setLoading(false);
-                setConnectionError(false);
-            } catch { }
-        };
-
-        es.onopen = () => {
-            setConnectionError(false);
-        };
-
-        es.onerror = () => {
-            setConnectionError(true);
-        };
-
-        const timeout = setTimeout(() => {
-            if (!live) {
-                setLoading(false);
-            }
-        }, 10000);
+        // polling
+        pollRef.current = setInterval(() => {
+            const c = new AbortController();
+            abortRef.current = c;
+            fetchData(c.signal);
+        }, POLL_INTERVAL_MS);
 
         return () => {
-            clearTimeout(timeout);
-            es.close();
-            esRef.current = null;
+            abortRef.current?.abort();
+            if (pollRef.current) clearInterval(pollRef.current);
         };
-    }, [stationId, API_BASE]);
+    }, [stationId, fetchData]);
 
     // ===== Mapping payload -> UI lists =====
     const { LEFT_LIST, RIGHT_LIST, CENTER_LIST, DEVICES } = useMemo(() => {
         const p = live || {};
-        
-        const createDevice = (id: string, name: string, value: string | undefined, metricType: MetricType): Device => {
+
+        const createDevice = (
+            id: string,
+            name: string,
+            value: string | undefined,
+            metricType: MetricType
+        ): Device => {
             const numValue = parseValueToNumber(value, metricType);
             return {
                 id,
@@ -602,7 +465,7 @@ export default function DCChargerDashboard() {
                 value: value ?? "",
                 status: getDeviceStatus(name, numValue),
                 metricType,
-                imageUrl: getDeviceImage(name)
+                imageUrl: getDeviceImage(name),
             };
         };
 
@@ -650,7 +513,6 @@ export default function DCChargerDashboard() {
         ];
 
         const all: Device[] = [...left, ...right, ...center];
-
         return { LEFT_LIST: left, RIGHT_LIST: right, CENTER_LIST: center, DEVICES: all };
     }, [live]);
 
@@ -659,8 +521,8 @@ export default function DCChargerDashboard() {
     const [filter, setFilter] = useState<"all" | Status>("all");
 
     const errorList = DEVICES.filter((d) => d.status === "error");
-    const warnList = DEVICES.filter((d) => d.status === "warn");
-    const okList = DEVICES.filter((d) => d.status === "ok");
+    const warnList  = DEVICES.filter((d) => d.status === "warn");
+    const okList    = DEVICES.filter((d) => d.status === "ok");
 
     const FilterBtn = ({
         id,
@@ -675,29 +537,24 @@ export default function DCChargerDashboard() {
     }) => (
         <button
             onClick={() => setFilter(id)}
-            className={`tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-px-4 tw-py-2 tw-text-sm tw-font-medium tw-transition-all tw-duration-200 tw-border ${filter === id 
-                ? "tw-bg-gray-900 tw-text-white tw-border-gray-900" 
-                : "tw-bg-white tw-text-gray-600 tw-border-gray-200 hover:tw-border-gray-300 hover:tw-bg-gray-50"
+            className={`tw-inline-flex tw-items-center tw-gap-2 tw-rounded-full tw-px-4 tw-py-2 tw-text-sm tw-font-medium tw-transition-all tw-duration-200 tw-border ${
+                filter === id
+                    ? "tw-bg-gray-900 tw-text-white tw-border-gray-900"
+                    : "tw-bg-white tw-text-gray-600 tw-border-gray-200 hover:tw-border-gray-300 hover:tw-bg-gray-50"
             }`}
             aria-pressed={filter === id}
         >
             {dot && <span className={`tw-h-2 tw-w-2 tw-rounded-full ${dot}`} />}
             <span>{label}</span>
             {value !== undefined && (
-                <span className={`tw-font-semibold tw-text-xs ${filter === id ? "tw-text-gray-400" : "tw-text-gray-400"}`}>{value}</span>
+                <span className="tw-font-semibold tw-text-xs tw-text-gray-400">{value}</span>
             )}
         </button>
     );
 
-    const showError = filter === "all" || filter === "error";
-    const showWarn = filter === "all" || filter === "warn";
-    const showOk = filter === "all" || filter === "ok";
-
     /* =========================
        4) Render
        ========================= */
-    
-    // No stationId selected
     if (!stationId) {
         return (
             <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
@@ -713,7 +570,6 @@ export default function DCChargerDashboard() {
         );
     }
 
-    // No data after loading
     if (!loading && (!live || Object.keys(live).length === 0)) {
         return (
             <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
@@ -733,12 +589,10 @@ export default function DCChargerDashboard() {
 
     return (
         <div className="tw-w-full tw-max-w-none tw-mx-auto tw-pt-6 md:tw-pt-8 tw-px-4 md:tw-px-1">
-            {/* Loading Overlay — แสดงจนกว่าจะได้ข้อมูลแรกจาก SSE */}
             <LoadingOverlay show={loading} text={connectionError ? t.connectionFailed : t.loading} />
 
-            {/* แผงสรุป/ค้นหา */}
+            {/* Summary / Search panel */}
             <div className="tw-rounded-2xl tw-bg-white tw-shadow-sm tw-border tw-border-gray-100 tw-p-5 md:tw-p-6">
-                {/* Timestamp display */}
                 {timestamp && (
                     <div className="tw-mb-5 tw-inline-flex tw-items-center tw-gap-2 tw-px-3 tw-py-1.5 tw-bg-gray-50 tw-rounded-full">
                         <div className="tw-w-2 tw-h-2 tw-bg-green-500 tw-rounded-full tw-animate-pulse" />
@@ -746,23 +600,25 @@ export default function DCChargerDashboard() {
                         <span className="tw-text-sm tw-font-medium tw-text-gray-700">{timestamp}</span>
                     </div>
                 )}
-                
+
                 <div className="tw-flex tw-flex-wrap tw-gap-2">
-                    <FilterBtn id="all" label={t.all} value={errorList.length + warnList.length + okList.length} />
-                    <FilterBtn id="error" label={t.issues} dot="tw-bg-red-500" value={errorList.length} />
-                    <FilterBtn id="warn" label={t.monitor} dot="tw-bg-amber-500" value={warnList.length} />
-                    <FilterBtn id="ok" label={t.normal} dot="tw-bg-green-500" value={okList.length} />
+                    <FilterBtn id="all"   label={t.all}     value={errorList.length + warnList.length + okList.length} />
+                    <FilterBtn id="error" label={t.issues}  dot="tw-bg-red-500"   value={errorList.length} />
+                    <FilterBtn id="warn"  label={t.monitor} dot="tw-bg-amber-500" value={warnList.length}  />
+                    <FilterBtn id="ok"    label={t.normal}  dot="tw-bg-green-500" value={okList.length}    />
                 </div>
 
                 <div className="tw-mt-5">
-                    <label className="tw-text-xs tw-font-medium tw-text-gray-500 tw-uppercase tw-tracking-wide">{t.searchDevices}</label>
+                    <label className="tw-text-xs tw-font-medium tw-text-gray-500 tw-uppercase tw-tracking-wide">
+                        {t.searchDevices}
+                    </label>
                     <div className="tw-relative tw-mt-2">
                         <MagnifyingGlassIcon className="tw-absolute tw-left-3 tw-top-2.5 tw-h-5 tw-w-5 tw-text-gray-400" />
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder={t.searchPlaceholder}
-                            className="tw-w-full tw-pl-10 tw-pr-4 tw-py-2.5 tw-text-sm tw-bg-gray-50 tw-text-gray-700 tw-rounded-lg tw-border tw-border-gray-200  
+                            className="tw-w-full tw-pl-10 tw-pr-4 tw-py-2.5 tw-text-sm tw-bg-gray-50 tw-text-gray-700 tw-rounded-lg tw-border tw-border-gray-200
                                        placeholder:tw-text-gray-400
                                        focus:tw-outline-none focus:tw-border-gray-300 focus:tw-bg-white tw-transition-all"
                         />
@@ -772,16 +628,16 @@ export default function DCChargerDashboard() {
 
             <div
                 className="tw-mt-6 tw-grid tw-gap-6 xl:tw-gap-8
-             tw-grid-cols-1
-             sm:tw-grid-cols-1
-             md:tw-grid-cols-1
-             lg:tw-grid-cols-2
-             xl:tw-grid-cols-3
-             2xl:tw-grid-cols-3"
+                    tw-grid-cols-1
+                    sm:tw-grid-cols-1
+                    md:tw-grid-cols-1
+                    lg:tw-grid-cols-2
+                    xl:tw-grid-cols-3
+                    2xl:tw-grid-cols-3"
             >
-                <SideList title={t.deviceLeft} items={LEFT_LIST} filter={filter} search={query} t={t} />
+                <SideList title={t.deviceLeft}   items={LEFT_LIST}   filter={filter} search={query} t={t} />
                 <SideList title={t.deviceCenter} items={CENTER_LIST} filter={filter} search={query} t={t} />
-                <SideList title={t.deviceRight} items={RIGHT_LIST} filter={filter} search={query} t={t} />
+                <SideList title={t.deviceRight}  items={RIGHT_LIST}  filter={filter} search={query} t={t} />
             </div>
 
             <div className="tw-h-10" />
