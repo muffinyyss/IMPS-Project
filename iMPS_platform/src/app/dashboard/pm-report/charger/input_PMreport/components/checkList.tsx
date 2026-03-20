@@ -500,12 +500,12 @@ function getFixedItemsQ18(lang: Lang): { key: string; label: string }[] {
 
 // ==================== API FUNCTIONS ====================
 async function getChargerInfoBySN(sn: string): Promise<StationPublic> {
-    const url = `${API_BASE}/station/info/public?sn=${encodeURIComponent(sn)}`;
+    const url = `${API_BASE}/charger/info?sn=${encodeURIComponent(sn)}`;
     const res = await apiFetch(url, { cache: "no-store" });
     if (res.status === 404) throw new Error("Charger not found");
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
     const json = await res.json();
-    return json.station ?? json;
+    return json.station ?? json;  // ← ใช้ได้เลยเพราะ format เหมือนกัน
 }
 
 async function fetchPreviewIssueId(sn: string, pmDate: string): Promise<string | null> {
@@ -1410,13 +1410,31 @@ function PhotoMultiInput({
     const isMobile = useMemo(() => isMobileDevice(), []);
     const [landscapeWarning, setLandscapeWarning] = useState(false);
 
-    const processFile = async (file: File): Promise<PhotoItem> => {
-        const locationText = await getCachedLocation();
-        const fileWithTimestamp = await addTimestampToImage(file, locationText);
-        const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
-        const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
-        const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-        return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref, createdAt: now, location: locationText };
+    const processFile = async (file: File): Promise<PhotoItem | null> => {
+        try {
+            const locationText = await getCachedLocation();
+            const fileWithTimestamp = await addTimestampToImage(file, locationText);
+            const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
+            const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
+
+            // ✅ เช็คว่า ref ได้จริงไหม
+            if (!ref) {
+                console.error("putPhoto failed — storing without ref");
+                return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "" };
+            }
+
+            const now = new Date().toLocaleString("th-TH", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+            });
+            return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref, createdAt: now, location: locationText };
+        } catch (err) {
+            console.error("processFile error:", err);
+            return null;
+        }
     };
 
     const handleFiles = async (list: FileList | null, fromCamera: boolean) => {
@@ -1424,31 +1442,32 @@ function PhotoMultiInput({
         const remain = Math.max(0, max - photos.length);
         const files = Array.from(list).slice(0, remain);
 
-        const accepted: PhotoItem[] = [];
         let hasLandscape = false;
+        const validFiles: File[] = [];
 
+        // ขั้นที่ 1 — กรองรูปแนวนอน (เฉพาะกล้อง)
         for (const f of files) {
-            // ถ้าถ่ายจากกล้อง ตรวจสอบแนวรูป
             if (fromCamera) {
                 try {
                     const dim = await getImageDimensions(f);
                     if (dim.width > dim.height) {
                         hasLandscape = true;
-                        continue; // ข้ามรูปแนวนอน
+                        continue;
                     }
-                } catch { /* ถ้าอ่านไม่ได้ให้ผ่าน */ }
+                } catch { }
             }
-            const item = await processFile(f);
-            accepted.push(item);
+            validFiles.push(f);
         }
+
+        // ขั้นที่ 2 — processFile ครั้งเดียว
+        const results = await Promise.all(validFiles.map(f => processFile(f)));
+        const accepted = results.filter(Boolean) as PhotoItem[];
 
         if (accepted.length > 0) {
             setPhotos((prev) => [...prev, ...accepted]);
         }
 
-        if (hasLandscape) {
-            setLandscapeWarning(true);
-        }
+        if (hasLandscape) setLandscapeWarning(true);
 
         if (cameraRef.current) cameraRef.current.value = "";
         if (fileRef.current) fileRef.current.value = "";
@@ -1988,7 +2007,7 @@ export default function ChargerPMForm() {
         }
     }, []);
 
-    
+
     const [inspector, setInspector] = useState<string>("");
     const [dustFilterChanged, setDustFilterChanged] = useState<Record<string, boolean>>({});
     const [postApiLoaded, setPostApiLoaded] = useState(false);
@@ -2283,6 +2302,10 @@ export default function ChargerPMForm() {
                             items.push({ id: `na-${photoKey}`, isNA: true });
                         } else if ('dbKey' in ref) {
                             const file = await getPhotoByDbKey(ref.dbKey);
+                            if (!file) {
+                                console.warn("Photo not found in IndexedDB:", ref.dbKey);
+                                continue;
+                            }
                             if (file && !canceled) {
                                 items.push({
                                     id: ref.id,
@@ -2730,19 +2753,37 @@ export default function ChargerPMForm() {
 
     // ⚡ FIX 413: ส่งทีละรูป (sequential) แทนรวมทั้งกลุ่ม → ไม่เกิน nginx body limit
     async function uploadSinglePhoto(reportId: string, sn: string, group: string, file: File, side: TabId) {
+        if (!file || file.size === 0) {
+            throw new Error(`Empty file: ${file?.name ?? 'unknown'} (size=0)`);
+        }
         const form = new FormData();
         form.append("sn", sn);
         form.append("group", group);
         form.append("side", side);
         form.append("files", file, ensureJpgFilename(file.name));
-        const url = side === "pre" ? `${API_BASE}/pmreport/${reportId}/pre/photos` : `${API_BASE}/pmreport/${reportId}/post/photos`;
+
+        const url = side === "pre"
+            ? `${API_BASE}/pmreport/${reportId}/pre/photos`
+            : `${API_BASE}/pmreport/${reportId}/post/photos`;
+
         console.log(`[upload] ${group} → 1 file | size: ${(file.size / 1024).toFixed(0)}KB | name: ${file.name}`);
-        const res = await apiFetch(url, { method: "POST", body: form });
+
+        const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
+            body: form,
+        });
+
         if (!res.ok) {
             const errText = await res.text().catch(() => "");
-            const errMsg = `[${res.status}] ${group}: ${errText || res.statusText}`;
-            console.error(`[upload FAIL] ${errMsg}`);
-            throw new Error(errMsg);
+            throw new Error(`[${res.status}] ${group}: ${errText || res.statusText}`);
+        }
+
+        // ✅ เพิ่ม: เช็ค response body ว่า backend เซฟรูปจริง
+        const resJson = await res.json().catch(() => null);
+        if (!resJson || resJson.count === 0) {
+            throw new Error(`[upload empty] group ${group}: backend saved 0 files`);
         }
     }
 
@@ -2801,12 +2842,8 @@ export default function ChargerPMForm() {
         if (submitting) return;
         setSubmitting(true);
         try {
-            // const token = localStorage.getItem("access_token");
-
-            // ⚡ ตรวจสอบ report_id: ref > draft > submit ใหม่
             let report_id = preReportIdRef.current;
             if (!report_id) {
-                // ลองโหลดจาก draft (กรณี refresh หลัง submit สำเร็จแต่รูป fail)
                 const draft = loadDraftLocal(key);
                 if (draft?.pendingReportId) {
                     report_id = draft.pendingReportId;
@@ -2823,34 +2860,23 @@ export default function ChargerPMForm() {
                 report_id = jsonRes.report_id;
                 if (jsonRes.doc_name) setDocName(jsonRes.doc_name);
                 preReportIdRef.current = report_id;
-                // ⚡ บันทึก report_id ลง draft เผื่อ user refresh หน้า
                 saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, cp, m16: m16.state, summary, dustFilterChanged, photoRefs });
             }
 
-            // ⚡ เตรียม tasks สำหรับ background upload
-            // const bgTasks: BgUploadTask[] = [];
-            // Object.entries(photos).forEach(([no, list]) => {
-            //     (list || []).forEach(p => {
-            //         if (p.file) bgTasks.push({ reportId: report_id, sn, group: no, file: p.file, side: "pre" });
-            //     });
-            // });
+            // ✅ FIX: ไม่ clone ด้วย arrayBuffer() — ใช้ file ตรงๆ เหมือน onFinalSave
             const uploadEntries: { group: string; files: File[] }[] = [];
             for (const [no, list] of Object.entries(photos)) {
-                const files: File[] = [];
-                for (const p of (list || [])) {
-                    if (p.file) {
-                        const cloned = new File(
-                            [await p.file.arrayBuffer()],
-                            p.file.name,
-                            { type: p.file.type }
-                        );
-                        files.push(cloned);
-                    }
-                }
+                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
                 if (files.length > 0) uploadEntries.push({ group: no, files });
             }
 
             const totalPhotos = uploadEntries.reduce((sum, e) => sum + e.files.length, 0);
+
+            // ✅ FIX: Guard — ถ้าไม่มีรูป ให้ block ไว้ก่อน (ไม่ควรถึงได้ถ้า validation ผ่าน)
+            if (totalPhotos === 0 && allPhotosAttachedPre) {
+                // photos อยู่ใน state แต่ไม่มี file → draft load ไม่สมบูรณ์
+                throw new Error(lang === "th" ? "ไม่พบไฟล์รูปภาพ กรุณาแนบรูปใหม่อีกครั้ง" : "Photo files not found. Please re-attach photos.");
+            }
 
             if (totalPhotos > 0) {
                 setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
@@ -2858,24 +2884,28 @@ export default function ChargerPMForm() {
                 let failedCount = 0;
                 const failures: { group: string; error: string }[] = [];
 
-                // Flatten all upload tasks
                 const allTasks: { group: string; file: File }[] = [];
                 for (const entry of uploadEntries) {
+                    // ✅ FIX: compress ตรงๆ ไม่ต้อง clone ก่อน
                     const compressed = await Promise.all(entry.files.map(f => compressImage(f)));
                     for (const file of compressed) {
                         allTasks.push({ group: entry.group, file });
                     }
                 }
 
-                // Upload with concurrency pool (3 at a time)
                 const CONCURRENCY = 3;
                 let idx = 0;
+
+                // ✅ FIX: capture report_id เป็น local const เพื่อ type safety ใน closure
+                const finalReportId = report_id;
+
                 const runNext = async (): Promise<void> => {
                     while (idx < allTasks.length) {
                         const taskIdx = idx++;
                         const task = allTasks[taskIdx];
                         try {
-                            await uploadSinglePhotoWithRetry(report_id, sn, `g${task.group}`, task.file, "pre");
+                            // ✅ FIX: ใช้ finalReportId (guaranteed non-null) แทน report_id
+                            await uploadSinglePhotoWithRetry(finalReportId, sn, `g${task.group}`, task.file, "pre");
                         } catch (err: any) {
                             failedCount++;
                             failures.push({ group: task.group, error: err?.message || "unknown" });
@@ -2895,7 +2925,7 @@ export default function ChargerPMForm() {
                 }
             }
 
-            // ⚡ Cleanup + navigate หลังอัปโหลดสำเร็จทั้งหมด
+            // Cleanup + navigate หลังอัปโหลดสำเร็จทั้งหมด
             preReportIdRef.current = null;
             const allPhotos = Object.values(photos).flat();
             Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => { });
@@ -2959,12 +2989,13 @@ export default function ChargerPMForm() {
                 // Upload with concurrency pool (3 at a time)
                 const CONCURRENCY = 3;
                 let idx = 0;
+                const finalReportId = report_id; 
                 const runNext = async (): Promise<void> => {
                     while (idx < allTasks.length) {
                         const taskIdx = idx++;
                         const task = allTasks[taskIdx];
                         try {
-                            await uploadSinglePhotoWithRetry(report_id, sn, `g${task.group}`, task.file, "post");
+                            await uploadSinglePhotoWithRetry(finalReportId, sn, `g${task.group}`, task.file, "post");
                         } catch (err: any) {
                             failedCount++;
                             failures.push({ group: task.group, error: err?.message || "unknown" });
