@@ -987,6 +987,85 @@ def get_station(station_id: str):
     chargers = list(charger_collection.find({"station_id": station_id}).sort("chargerNo", 1))
     return format_station_with_chargers(station, chargers).dict()
 
+# ---------------------------------------------------------
+# GET /charger/info?sn=...&station_id=...
+# ---------------------------------------------------------
+@router.get("/charger/info")
+def get_charger_info(
+    sn: Optional[str] = Query(None),
+    station_id: Optional[str] = Query(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    if not sn and not station_id:
+        raise HTTPException(status_code=400, detail="sn or station_id required")
+
+    query = {}
+    if sn:
+        query["SN"] = sn
+    elif station_id:
+        query["station_id"] = station_id
+
+    doc = charger_collection.find_one(query)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Charger not found")
+
+    # ดึง station_name
+    station_name = "-"
+    sid = doc.get("station_id", "")
+    if sid:
+        station_doc = station_collection.find_one({"station_id": sid})
+        if station_doc:
+            station_name = station_doc.get("station_name", "-")
+
+    normalized = _normalize_images(doc.get("images", {}))
+
+    return {
+        "station": {
+            "station_id":        doc.get("station_id", "-"),
+            "station_name":      station_name,
+            "SN":                doc.get("SN", "-"),
+            "WO":                doc.get("WO", "-"),
+            "brand":             doc.get("brand", "-"),
+            "model":             doc.get("model", "-"),
+            "power":             doc.get("power", "-"),
+            "chargeBoxID":       doc.get("chargeBoxID", "-"),
+            "ocppUrl":           doc.get("ocppUrl", ""),
+            "PLCFirmware":       doc.get("PLCFirmware", "-"),
+            "PIFirmware":        doc.get("PIFirmware", "-"),
+            "RTFirmware":        doc.get("RTFirmware", "-"),
+            "chargerNo":         doc.get("chargerNo"),
+            "numberOfCables":    doc.get("numberOfCables"),
+            "commissioningDate": doc.get("commissioningDate"),
+            "warrantyYears":     doc.get("warrantyYears"),
+            "images":            normalized,
+        }
+    }
+
+# ---------------------------------------------------------
+# GET /chargers?SN=...  ← เพิ่มตรงนี้
+# ---------------------------------------------------------
+@router.get("/chargers")
+def get_charger_by_sn(
+    SN: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    doc = charger_collection.find_one({"SN": SN})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Charger not found")
+
+    hw = (doc.get("pipeline_config") or {}).get("hardware") or doc.get("hardware") or {}
+
+    return {
+        "SN": SN,
+        "hardware": {
+            "powerModuleCount": hw.get("powerModuleCount", 0),
+            "dcContractorCount": hw.get("dcContractorCount", 0),
+            "dcFanCount": hw.get("dcFanCount", 0),
+            "fanType": hw.get("fanType", "FIXED"),
+            "energyMeterType": hw.get("energyMeterType", ""),
+        }
+    }
+
 
 # ---------------------------------------------------------
 # GET /chargers/{station_id}

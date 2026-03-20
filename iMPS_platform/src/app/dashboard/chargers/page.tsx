@@ -25,23 +25,40 @@ export default function ChargersPage() {
   const [sn, setSn] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
 
-  const [stationDetail, setStationDetail] = useState({
-    station_id: "-",
-    station_name: "-",
-    model: "-",
-    SN: "-",
-    WO: "-",
-    power: "-",
-    brand: "-",
-    status: null as boolean | null,
-    commissioningDate: null as string | null,
-    warrantyYears: null as string | null,
-    PLCFirmware: "-",
-    PIFirmware: "-",
-    RTFirmware: "-",
-    chargeBoxID: "-",
-    chargerNo: null as number | null,
-    numberOfCables: null as any,
+  const [stationDetail, setStationDetail] = useState<{
+    station_id: string | null;
+    station_name: string | null;
+    model: string | null;
+    SN: string | null;
+    WO: string | null;
+    power: string | null;
+    brand: string | null;
+    status: boolean | null;
+    commissioningDate: string | null;
+    warrantyYears: string | null;
+    PLCFirmware: string | null;
+    PIFirmware: string | null;
+    RTFirmware: string | null;
+    chargeBoxID: string | null;
+    chargerNo: number | null;
+    numberOfCables: any;
+  }>({
+    station_id: null,
+    station_name: null,
+    model: null,
+    SN: null,
+    WO: null,
+    power: null,
+    brand: null,
+    status: null,
+    commissioningDate: null,
+    warrantyYears: null,
+    PLCFirmware: null,
+    PIFirmware: null,
+    RTFirmware: null,
+    chargeBoxID: null,
+    chargerNo: null,
+    numberOfCables: null,
   });
 
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -102,11 +119,11 @@ export default function ChargersPage() {
 
     // อ่านจาก URL params ก่อน ถ้าไม่มีค่อย fallback ไป localStorage
     const sidFromUrl = searchParams.get("station_id") || localStorage.getItem("selected_station_id");
-    const snFromUrl  = searchParams.get("sn")         || localStorage.getItem("selected_sn");
+    const snFromUrl = searchParams.get("sn") || localStorage.getItem("selected_sn");
 
     // sync กลับ localStorage
     if (sidFromUrl) localStorage.setItem("selected_station_id", sidFromUrl);
-    if (snFromUrl)  localStorage.setItem("selected_sn", snFromUrl);
+    if (snFromUrl) localStorage.setItem("selected_sn", snFromUrl);
 
     // set state เพื่อให้ component อื่น (PMCard, status poll) ใช้ได้
     setStationId(sidFromUrl);
@@ -122,7 +139,7 @@ export default function ChargersPage() {
       try {
         // 1. ดึงข้อมูล Charger — ใช้ snFromUrl/sidFromUrl โดยตรง
         const params = new URLSearchParams();
-        if (snFromUrl)  params.append("sn", snFromUrl);
+        if (snFromUrl) params.append("sn", snFromUrl);
         if (sidFromUrl) params.append("station_id", sidFromUrl);
 
         const res = await apiFetch(
@@ -202,22 +219,22 @@ export default function ChargersPage() {
         // 5. Set station detail
         setStationDetail(prev => ({
           ...prev,
-          station_id:        chargerInfo?.station_id     ?? "-",
-          station_name:      stationName,
-          model:             chargerInfo?.model           ?? "-",
+          station_id: chargerInfo?.station_id ?? null,
+          station_name: stationName,
+          model: chargerInfo?.model ?? null,
+          SN: chargerInfo?.SN ?? null,  // ← null แทน "-"
+          WO: chargerInfo?.WO ?? null,
+          power: chargerInfo?.power ?? null,
+          brand: chargerInfo?.brand ?? null,
+          PLCFirmware: chargerInfo?.PLCFirmware ?? null,
+          PIFirmware: chargerInfo?.PIFirmware ?? null,
+          RTFirmware: chargerInfo?.RTFirmware ?? null,
+          chargeBoxID: chargerInfo?.chargeBoxID ?? null,
           commissioningDate: chargerInfo?.commissioningDate ?? null,
-          warrantyYears:     chargerInfo?.warrantyYears != null
-                               ? String(chargerInfo.warrantyYears)
-                               : null,
-          SN:          chargerInfo?.SN            ?? "-",
-          WO:          chargerInfo?.WO            ?? "-",
-          power:       chargerInfo?.power         ?? "-",
-          brand:       chargerInfo?.brand         ?? "-",
-          PLCFirmware: chargerInfo?.PLCFirmware   ?? "-",
-          PIFirmware:  chargerInfo?.PIFirmware    ?? "-",
-          RTFirmware:  chargerInfo?.RTFirmware    ?? "-",
-          chargeBoxID: chargerInfo?.chargeBoxID   ?? "-",
-          chargerNo:   chargerInfo?.chargerNo     ?? null,
+          warrantyYears: chargerInfo?.warrantyYears != null
+            ? String(chargerInfo.warrantyYears)
+            : null,
+          chargerNo: chargerInfo?.chargerNo ?? null,
           numberOfCables: chargerInfo?.numberOfCables ?? null,
         }));
 

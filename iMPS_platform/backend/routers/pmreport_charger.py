@@ -627,6 +627,8 @@ async def pmreport_upload_pre_photos(
         {"_id": oid},
         {"$push": {f"photos_pre.{group}": {"$each": saved}}}
     )
+    if not saved:
+        raise HTTPException(status_code=400, detail="No files were saved")
 
     return {"ok": True, "count": len(saved), "group": group, "files": saved}
 
@@ -692,6 +694,9 @@ async def pmreport_upload_post_photos(
         {"_id": oid},
         {"$push": {f"photos.{group}": {"$each": saved}}}
     )
+    
+    if not saved:
+        raise HTTPException(status_code=400, detail="No files were saved")
 
     return {"ok": True, "count": len(saved), "group": group, "files": saved}
 

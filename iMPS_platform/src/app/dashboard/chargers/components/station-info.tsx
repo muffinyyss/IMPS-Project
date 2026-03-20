@@ -19,8 +19,8 @@ export type CBMDisplayItem = {
 };
 
 export type StationInfoProps = {
-  station_name?: string;
-  model?: string;
+  station_name?: string | null;
+  model?: string | null;
   SN?: string | null;
   WO?: string | null;
   brand?: string | null;

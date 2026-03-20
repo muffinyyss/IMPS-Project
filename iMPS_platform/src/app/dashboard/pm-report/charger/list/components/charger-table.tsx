@@ -556,13 +556,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
   };
 
-
-  useEffect(() => {
-    let alive = true;
-    (async () => { await fetchRows(); })();
-    return () => { alive = false; };
-  }, [apiBase, sn]);
-
   function appendParam(u: string, key: string, val: string) {
     const url = new URL(u, apiBase);
     if (!url.searchParams.has(key)) url.searchParams.set(key, val);

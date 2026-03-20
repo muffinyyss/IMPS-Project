@@ -117,7 +117,7 @@ export default function SalesPage() {
   //    endpoint นี้ควร return { hardware: { powerModuleCount, dcContractorCount, dcFanCount, ... } }
   //    ปรับ path ให้ตรงกับ backend จริงของคุณ
   useEffect(() => {
-    if (!SN) return;
+    if (!SN || SN === "-") return;  // ✅ เพิ่ม SN === "-"
 
     fetch(`${API_BASE}/chargers?SN=${encodeURIComponent(SN)}`, {
       credentials: "include",
@@ -137,7 +137,7 @@ export default function SalesPage() {
 
   // ── 3. SSE สำหรับข้อมูล real-time ────────────────────────────────────
   useEffect(() => {
-    if (!SN) {
+    if (!SN || SN === "-") {  // ✅ เพิ่ม SN === "-"
       setLoading(false);
       return;
     }

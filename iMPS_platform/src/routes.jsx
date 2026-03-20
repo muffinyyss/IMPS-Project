@@ -178,9 +178,6 @@ export function useRoutes(rolesFromApp) {
       setHasChargerSelected(hasFromUrl || hasFromStorage);
     };
 
-
-    
-
     // Check on mount
     checkChargerSelection();
 
