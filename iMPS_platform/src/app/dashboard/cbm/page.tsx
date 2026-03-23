@@ -254,11 +254,31 @@ export default function SalesPage() {
     }));
   }, [data, resolvedHardware]);
 
-  // debug
-  console.log("resolvedHardware =", resolvedHardware);
-  console.log("powerModuleItems =", powerModuleItems);
-  console.log("dcContactorItems =", dcContactorItems);
-  console.log("fanItems =", fanItems);
+  // ── helper: ค่า "ว่าง" คือ null / undefined / 0
+  const hasValue = (v: unknown) => v != null && Number(v) !== 0;
+
+  // ── wrapper: ถ้า disabled → เทา + pointer-events ปิด
+  function DisabledWrapper({
+    disabled,
+    label = "ไม่มีข้อมูล",
+    children,
+  }: {
+    disabled: boolean;
+    label?: string;
+    children: React.ReactNode;
+  }) {
+    if (!disabled) return <>{children}</>;
+    return (
+      <div className="tw-relative tw-grayscale tw-opacity-50 tw-pointer-events-none tw-select-none">
+        {children}
+        <div className="tw-absolute tw-inset-0 tw-rounded-xl tw-bg-gray-200/40 tw-flex tw-items-center tw-justify-center">
+          <span className="tw-text-gray-400 tw-text-xs tw-font-medium tw-bg-white/80 tw-px-2 tw-py-0.5 tw-rounded-full">
+            {label}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="tw-mt-8 tw-mb-4">
@@ -276,19 +296,24 @@ export default function SalesPage() {
 
       <div className="tw-mt-2 tw-grid tw-grid-cols-1 lg:tw-grid-cols-12 tw-gap-4">
 
-        {/* แถวบน */}
+        {/* ChargerEnv */}
         <div className="lg:tw-col-span-3 tw-col-span-12">
-          <ChargerEnv
-            temp={Math.trunc(data?.DC_charger_temp ?? 0)}
-            humidity={Math.trunc(data?.charger_relative_humidity ?? 0)}
-          />
+          <DisabledWrapper disabled={!hasValue(data?.DC_charger_temp)}>
+            <ChargerEnv
+              temp={Math.trunc(data?.DC_charger_temp ?? 0)}
+              humidity={Math.trunc(data?.charger_relative_humidity ?? 0)}
+            />
+          </DisabledWrapper>
         </div>
 
+        {/* MDBEnv */}
         <div className="lg:tw-col-span-3 tw-col-span-12">
-          <MDBEnv
-            temp={Math.trunc(data?.MDB_temp ?? 0)}
-            humidity={Math.trunc(data?.MDB_relative_humidity ?? 0)}
-          />
+          <DisabledWrapper disabled={!hasValue(data?.MDB_temp)}>
+            <MDBEnv
+              temp={Math.trunc(data?.MDB_temp ?? 0)}
+              humidity={Math.trunc(data?.MDB_relative_humidity ?? 0)}
+            />
+          </DisabledWrapper>
         </div>
 
         <div className="lg:tw-col-span-6 tw-col-span-12">
@@ -379,14 +404,19 @@ export default function SalesPage() {
 
         </div>
 
+        {/* PLCCard — disabled เมื่อทั้ง 2 ค่าว่าง */}
         <div className="lg:tw-col-span-12 tw-col-span-12">
-          <PLCCard
-            updatedAt={lastUpdated}
-            items={[
-              { id: "plc1", name: "PLC Temperature 1", temp: Math.trunc(data?.PLC_temp1 ?? 0), target: 60 },
-              { id: "plc2", name: "PLC Temperature 2", temp: Math.trunc(data?.PLC_temp2 ?? 0), target: 60 },
-            ]}
-          />
+          <DisabledWrapper
+            disabled={!hasValue(data?.PLC_temp1) && !hasValue(data?.PLC_temp2)}
+          >
+            <PLCCard
+              updatedAt={lastUpdated}
+              items={[
+                { id: "plc1", name: "PLC Temperature 1", temp: Math.trunc(data?.PLC_temp1 ?? 0), target: 60 },
+                { id: "plc2", name: "PLC Temperature 2", temp: Math.trunc(data?.PLC_temp2 ?? 0), target: 60 },
+              ]}
+            />
+          </DisabledWrapper>
         </div>
 
         <div className="lg:tw-col-span-12 tw-col-span-12">
