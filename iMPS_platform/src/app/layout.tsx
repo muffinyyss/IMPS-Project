@@ -8,7 +8,7 @@ import ThemeProvider from "@/components/ThemeProvider";
 import theme from "@/theme";
 import { MaterialTailwindControllerProvider } from "@/context";
 import InnerContent from "./content";
-import { Prompt } from "next/font/google";
+import { Plus_Jakarta_Sans, Prompt, JetBrains_Mono } from "next/font/google";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import "react-calendar/dist/Calendar.css";
 import "./globals.css";
@@ -32,6 +32,20 @@ const prompt = Prompt({
   variable: "--font-prompt", // ตั้งชื่อเป็นตัวแปร CSS
 });
 
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["300","400","500","600","700","800"],
+  variable: "--font-jakarta",
+  display: "swap",
+});
+
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400","500","600","700","800"],
+  variable: "--font-mono",
+  display: "swap",
+});
+
 // const [{ sidenavType, openSidenav }] = useMaterialTailwindController();
 // const isSidenavMini = sidenavType === "mini"; // <- ใช้ค่านี้สลับ ml 80/60
 
@@ -41,7 +55,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="th" className={`${prompt.variable}`}>
+    <html lang="th" className={`${prompt.variable} ${jakarta.variable} ${jetbrains.variable}`}>
       <head>
         <Script
           defer

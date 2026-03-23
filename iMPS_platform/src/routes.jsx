@@ -43,7 +43,7 @@ const baseRoutes = [
   { name: "PM report", icon: <i className="fa fa-file-alt" />, path: "/dashboard/pm-report", allow: ["admin", "owner", "technician"], showMode: "after" },
   { name: "CM report", icon: <i className="far fa-file" />, path: "/dashboard/cm-report", allow: ["admin", "owner", "technician"], showMode: "after" },
   { name: "Test report", icon: <i className="fa fa-check-square" />, path: "/dashboard/test-report", allow: ["admin", "owner", "technician"], showMode: "after" },
-  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "http://203.154.130.132:8001/dashboard", allow: ["admin", "owner"], showMode: "after", external: true, newTab: false },
+  { name: "Ai Module", icon: <i className="fa fa-robot" />, path: "/dashboard/ai", allow: ["admin", "owner"], showMode: "after" },
 ];
 
 /** 2) อ่าน user/role จาก localStorage (ตาม payload ที่ backend ส่งมาใน /login) */
