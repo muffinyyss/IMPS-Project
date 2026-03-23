@@ -18,6 +18,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 
 export default function ChargeBoxId() {
   const [lang, setLang] = useState<"th" | "en">("en");
+  const [cbidError, setCbidError] = useState<string | null>(null);
   useEffect(() => {
     const savedLang = localStorage.getItem("app_language") as "th" | "en" | null;
     if (savedLang === "th" || savedLang === "en") setLang(savedLang);
@@ -41,6 +42,7 @@ export default function ChargeBoxId() {
         saving: "กำลังบันทึก...",
         save: "บันทึก",
         edit: "แก้ไข",
+        duplicateChargeBoxId: "Charge Box ID นี้มีอยู่แล้ว",
       },
       en: {
         noStationSelected: "No station selected",
@@ -55,6 +57,7 @@ export default function ChargeBoxId() {
         saving: "Saving...",
         save: "Save",
         edit: "Edit",
+        duplicateChargeBoxId: "Charge Box ID already exists",
       },
     };
     return translations[lang];
@@ -104,7 +107,7 @@ export default function ChargeBoxId() {
       if (res.status === 401) { if (typeof window !== "undefined") localStorage.removeItem("access_token"); throw new Error("Unauthorized"); }
       if (res.status === 403) throw new Error("Forbidden");
       if (res.status === 404) throw new Error("Charger not found");
-      if (!res.ok) { let msg = `HTTP ${res.status}`; try { const j = await res.json(); msg = j.detail || j.message || msg; } catch {} throw new Error(msg); }
+      if (!res.ok) { let msg = `HTTP ${res.status}`; try { const j = await res.json(); msg = j.detail || j.message || msg; } catch { } throw new Error(msg); }
       const data: ChargerInfoResponse = await res.json();
       setChargeBoxId(data?.station?.chargeBoxID ?? "");
       setOcppUrl(data?.station?.ocppUrl ?? "");
@@ -132,10 +135,17 @@ export default function ChargeBoxId() {
     return () => { document.removeEventListener("mousedown", handleClick); document.removeEventListener("keydown", handleKey); document.body.style.overflow = ""; };
   }, [showModal]);
 
-  const openModal = () => { setEditChargeBoxId(chargeBoxId); setEditOcppUrl(ocppUrl); setSaveMsg(null); setShowModal(true); };
+  const openModal = () => {
+    setEditChargeBoxId(chargeBoxId);
+    setEditOcppUrl(ocppUrl);
+    setSaveMsg(null);
+    setCbidError(null);   // ✅ reset
+    setShowModal(true);
+  };
 
   const handleSave = async () => {
     if (!SN) return;
+    setCbidError(null);
     setSaving(true);
     setSaveMsg(null);
     try {
@@ -146,7 +156,16 @@ export default function ChargeBoxId() {
         credentials: token ? "omit" : "include",
         body: JSON.stringify({ SN, chargeBoxID: editChargeBoxId.trim(), ocppUrl: editOcppUrl.trim() }),
       });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.detail || `HTTP ${res.status}`); }
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        const msg = j.detail || `HTTP ${res.status}`;
+        // ✅ 409 = duplicate → แสดงใต้ input แทน
+        if (res.status === 409) {
+          setCbidError(msg);
+          return;
+        }
+        throw new Error(msg);
+      }
       setSaveMsg({ type: "ok", text: t.savedSuccess });
       setChargeBoxId(editChargeBoxId.trim());
       setOcppUrl(editOcppUrl.trim());
@@ -319,15 +338,28 @@ export default function ChargeBoxId() {
                 <input
                   type="text"
                   value={editChargeBoxId}
-                  onChange={(e) => setEditChargeBoxId(e.target.value)}
-                  className="tw-w-full tw-px-4 tw-py-2.5
-                             tw-bg-gray-50 tw-border tw-border-gray-200
-                             tw-rounded-xl tw-text-sm tw-text-gray-900 tw-font-mono
-                             tw-placeholder-gray-400
-                             focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30 focus:tw-border-blue-400
-                             focus:tw-bg-white tw-transition-all tw-duration-200"
+                  onChange={(e) => {
+                    setEditChargeBoxId(e.target.value);
+                    if (cbidError) setCbidError(null); // ✅ clear error เมื่อพิมพ์ใหม่
+                  }}
+                  className={`tw-w-full tw-px-4 tw-py-2.5
+               tw-bg-gray-50 tw-border
+               tw-rounded-xl tw-text-sm tw-text-gray-900 tw-font-mono
+               tw-placeholder-gray-400
+               focus:tw-outline-none focus:tw-ring-2 focus:tw-bg-white tw-transition-all tw-duration-200
+               ${cbidError
+                      ? "tw-border-red-400 focus:tw-ring-red-500/30 focus:tw-border-red-400"
+                      : "tw-border-gray-200 focus:tw-ring-blue-500/30 focus:tw-border-blue-400"
+                    }`}
                   placeholder={t.placeholderChargeBoxId}
                 />
+                {/* ✅ Error message */}
+                {cbidError && (
+                  <div className="tw-flex tw-items-center tw-gap-1.5 tw-mt-1.5 tw-text-xs tw-font-medium tw-text-red-600">
+                    <WarnIcon />
+                    {cbidError}
+                  </div>
+                )}
               </div>
 
               {/* OCPP URL */}

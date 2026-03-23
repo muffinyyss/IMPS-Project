@@ -248,12 +248,24 @@ def update_charger_setting(
     body: ChargerSettingBody,
     current: UserClaims = Depends(get_current_user),
 ):
-    """อัปเดต Charger Setting + ส่ง MQTT"""
     now_iso = datetime.now(timezone.utc).isoformat()
 
     updates = {}
     if body.chargeBoxID is not None:
-        updates["chargeBoxID"] = body.chargeBoxID
+        cbid = body.chargeBoxID.strip()
+        # ✅ ตรวจ duplicate เฉพาะเมื่อไม่ใช่ "-" หรือว่าง
+        if cbid and cbid != "-":
+            existing = charger_collection.find_one({
+                "chargeBoxID": cbid,
+                "SN": {"$ne": body.SN},
+            })
+            if existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Charge Box ID '{cbid}' already exists",
+                )
+        updates["chargeBoxID"] = cbid
+
     if body.ocppUrl is not None:
         updates["ocppUrl"] = body.ocppUrl
 
