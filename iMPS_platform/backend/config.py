@@ -9,12 +9,7 @@ from jose import jwt
 import json, os, re
 import paho.mqtt.client as mqtt
 
-<<<<<<< HEAD
 BROKER_HOST = os.getenv("MQTT_BROKER", "192.168.100.14")
-=======
-
-BROKER_HOST = os.getenv("MQTT_BROKER", "203.154.130.132")
->>>>>>> e181f59f18696bf428dadd522a59336ed1b41804
 BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "imps/setting")
 
@@ -45,10 +40,10 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
 # ─── MongoDB ─────────────────────────────────────────────────
 client1 = MongoClient(
-    "mongodb://imps_platform:eds_imps@localhost:27017/?authSource=admin&directConnection=true"
+    "mongodb://imps_platform:eds_imps@203.154.130.132:27017/?authSource=admin&directConnection=true"
 )
 client = AsyncIOMotorClient(
-    "mongodb://imps_platform:eds_imps@localhost:27017/?authSource=admin&directConnection=true"
+    "mongodb://imps_platform:eds_imps@203.154.130.132:27017/?authSource=admin&directConnection=true"
 )
 
 deviceDB = client["utilizationFactor"]
@@ -121,6 +116,7 @@ imps_db_async = client["iMPS"]
 stations_coll_async = imps_db_async["stations"]
 users_coll_async = imps_db_async["users"]
 email_log_coll = imps_db_async["errorEmailLog"]
+charger_coll_async = imps_db_async["charger"]
 
 MDB_collection = MDB_DB["Klongluang3"]
 
@@ -201,3 +197,9 @@ def floor_bin(dt: datetime, step_sec: int) -> datetime:
     epoch_ms = int(dt.timestamp() * 1000)
     bin_ms = epoch_ms - (epoch_ms % (step_sec * 1000))
     return datetime.fromtimestamp(bin_ms / 1000, tz=timezone.utc)
+
+def get_eds_health_collection(sn: str):
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(sn)):
+        raise HTTPException(status_code=400, detail="Bad sn")
+    eds_db = client["eds_system_health"]  # ✅ แก้ตรงนี้
+    return eds_db.get_collection(str(sn))

@@ -30,7 +30,7 @@ export function setAccessToken(token?: string) {
       localStorage.setItem(ACCESS_KEY, token);
       localStorage.setItem(ACCESS_KEY2, token);
     }
-  } catch {}
+  } catch { }
 }
 
 export function getRefreshToken() {
@@ -42,7 +42,7 @@ export function setRefreshToken(token?: string) {
   try {
     if (!token) localStorage.removeItem(REFRESH_KEY);
     else localStorage.setItem(REFRESH_KEY, token);
-  } catch {}
+  } catch { }
 }
 
 // ✅ กัน redirect ซ้ำหลายครั้ง
@@ -92,7 +92,7 @@ async function doRefresh(): Promise<boolean> {
       try {
         const body = await r.json();
         detail = body?.detail || "";
-      } catch {}
+      } catch { }
       console.warn("[apiFetch] refresh failed:", detail || r.status);
       return false;
     }
@@ -103,7 +103,7 @@ async function doRefresh(): Promise<boolean> {
       const body = await r.clone().json();
       acc = body?.access_token || "";
       ref = body?.refresh_token || "";
-    } catch {}
+    } catch { }
 
     if (acc) setAccessToken(acc);
     if (ref) setRefreshToken(ref);
@@ -152,13 +152,15 @@ export async function apiFetch(input: string | URL, init: RequestInit = {}) {
     try {
       res = await fetch(url, baseInit);
       break;
-    } catch (e) {
+    } catch (e: any) {
+      // ✅ ถ้าเป็น AbortError ให้ throw ออกไปทันที ไม่ retry ไม่ toast
+      if (e?.name === "AbortError") throw e;
+
       if (attempt === MAX_RETRIES) {
         console.error("[apiFetch] network error after retries:", e);
         notifyNetworkError();
         throw e;
       }
-      // backoff: 1s, 2s
       await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
     }
   }
@@ -170,7 +172,7 @@ export async function apiFetch(input: string | URL, init: RequestInit = {}) {
   try {
     const data = await res.clone().json().catch(() => ({} as any));
     detail = data?.detail || "";
-  } catch {}
+  } catch { }
 
   console.warn("[apiFetch] 401 →", detail);
 

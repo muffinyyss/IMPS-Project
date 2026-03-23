@@ -10,7 +10,8 @@ from zoneinfo import ZoneInfo
 from pymongo.errors import DuplicateKeyError
 from typing import List, Dict, Any, Optional
 import json, re, uuid, pathlib, secrets
-
+from PIL import Image
+import io
 from config import (
     users_collection, station_collection, charger_collection,
     charger_onoff, charger_onoff_sync, _validate_station_id, th_tz, settingDB,
@@ -252,7 +253,7 @@ def _assert_sn_wo_unique(sn: str, wo: str, charge_box_id: str = "", exclude_id: 
         raise HTTPException(status_code=409, detail=f"SN '{sn}' already exists")
     if wo and charger_collection.find_one({"WO": wo, **extra}):
         raise HTTPException(status_code=409, detail=f"WO '{wo}' already exists")
-    if charge_box_id and charger_collection.find_one({"chargeBoxID": charge_box_id, **extra}):
+    if charge_box_id and charge_box_id != "-" and charger_collection.find_one({"chargeBoxID": charge_box_id, **extra}):
         raise HTTPException(status_code=409, detail=f"Charge Box ID '{charge_box_id}' already exists")
 
 
@@ -438,6 +439,10 @@ def _ensure_dir(p: pathlib.Path):
     p.mkdir(parents=True, exist_ok=True)
 
 
+MAX_WIDTH = 1280
+MAX_HEIGHT = 1280
+JPEG_QUALITY = 85
+
 async def save_image(folder: str, item_id: str, kind: str, upload: UploadFile) -> str:
     if upload.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=415, detail=f"Unsupported file type: {upload.content_type}")
@@ -446,14 +451,35 @@ async def save_image(folder: str, item_id: str, kind: str, upload: UploadFile) -
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="File too large (> 3MB)")
 
+    try:
+        img = Image.open(io.BytesIO(data))
+
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        img.thumbnail((MAX_WIDTH, MAX_HEIGHT), Image.LANCZOS)
+
+        if upload.content_type == "image/png":
+            save_format, ext = "PNG", ".png"
+            save_kwargs = {"optimize": True}
+        elif upload.content_type == "image/webp":
+            save_format, ext = "WEBP", ".webp"
+            save_kwargs = {"quality": JPEG_QUALITY}
+        else:
+            save_format, ext = "JPEG", ".jpg"
+            save_kwargs = {"quality": JPEG_QUALITY, "optimize": True}
+
+        buf = io.BytesIO()
+        img.save(buf, format=save_format, **save_kwargs)
+        data = buf.getvalue()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image: {e}")
+
     subdir = pathlib.Path(UPLOADS_ROOT) / folder / item_id
     _ensure_dir(subdir)
-
-    ext = {
-        "image/jpeg": ".jpg",
-        "image/png": ".png",
-        "image/webp": ".webp",
-    }.get(upload.content_type, "")
 
     fname = f"{kind}-{uuid.uuid4().hex}{ext}"
     dest = subdir / fname
@@ -530,7 +556,7 @@ def create_station_with_chargers(
 
     sns = [c.SN.strip() for c in chargers_data if c.SN and c.SN.strip()]
     wos = [c.WO.strip() for c in chargers_data if c.WO and c.WO.strip()]
-    cbids = [c.chargeBoxID.strip() for c in chargers_data if c.chargeBoxID and c.chargeBoxID.strip()]
+    cbids = [c.chargeBoxID.strip() for c in chargers_data if c.chargeBoxID and c.chargeBoxID.strip() and c.chargeBoxID.strip() != "-"]
     if len(sns) != len(set(sns)):
         raise HTTPException(status_code=409, detail="Duplicate SN within submitted chargers")
     if len(wos) != len(set(wos)):
@@ -986,6 +1012,85 @@ def get_station(station_id: str):
         raise HTTPException(status_code=404, detail="Station not found")
     chargers = list(charger_collection.find({"station_id": station_id}).sort("chargerNo", 1))
     return format_station_with_chargers(station, chargers).dict()
+
+# ---------------------------------------------------------
+# GET /charger/info?sn=...&station_id=...
+# ---------------------------------------------------------
+@router.get("/charger/info")
+def get_charger_info(
+    sn: Optional[str] = Query(None),
+    station_id: Optional[str] = Query(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    if not sn and not station_id:
+        raise HTTPException(status_code=400, detail="sn or station_id required")
+
+    query = {}
+    if sn:
+        query["SN"] = sn
+    elif station_id:
+        query["station_id"] = station_id
+
+    doc = charger_collection.find_one(query)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Charger not found")
+
+    # ดึง station_name
+    station_name = "-"
+    sid = doc.get("station_id", "")
+    if sid:
+        station_doc = station_collection.find_one({"station_id": sid})
+        if station_doc:
+            station_name = station_doc.get("station_name", "-")
+
+    normalized = _normalize_images(doc.get("images", {}))
+
+    return {
+        "station": {
+            "station_id":        doc.get("station_id", "-"),
+            "station_name":      station_name,
+            "SN":                doc.get("SN", "-"),
+            "WO":                doc.get("WO", "-"),
+            "brand":             doc.get("brand", "-"),
+            "model":             doc.get("model", "-"),
+            "power":             doc.get("power", "-"),
+            "chargeBoxID":       doc.get("chargeBoxID", "-"),
+            "ocppUrl":           doc.get("ocppUrl", ""),
+            "PLCFirmware":       doc.get("PLCFirmware", "-"),
+            "PIFirmware":        doc.get("PIFirmware", "-"),
+            "RTFirmware":        doc.get("RTFirmware", "-"),
+            "chargerNo":         doc.get("chargerNo"),
+            "numberOfCables":    doc.get("numberOfCables"),
+            "commissioningDate": doc.get("commissioningDate"),
+            "warrantyYears":     doc.get("warrantyYears"),
+            "images":            normalized,
+        }
+    }
+
+# ---------------------------------------------------------
+# GET /chargers?SN=...  ← เพิ่มตรงนี้
+# ---------------------------------------------------------
+@router.get("/chargers")
+def get_charger_by_sn(
+    SN: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    doc = charger_collection.find_one({"SN": SN})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Charger not found")
+
+    hw = (doc.get("pipeline_config") or {}).get("hardware") or doc.get("hardware") or {}
+
+    return {
+        "SN": SN,
+        "hardware": {
+            "powerModuleCount": hw.get("powerModuleCount", 0),
+            "dcContractorCount": hw.get("dcContractorCount", 0),
+            "dcFanCount": hw.get("dcFanCount", 0),
+            "fanType": hw.get("fanType", "FIXED"),
+            "energyMeterType": hw.get("energyMeterType", ""),
+        }
+    }
 
 
 # ---------------------------------------------------------
