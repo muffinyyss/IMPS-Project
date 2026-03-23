@@ -223,7 +223,9 @@ export default function Head1() {
     const lastUpdated = data?.timestamp ? new Date(data.timestamp).toLocaleString("th-TH") : null;
 
     return (
-        <Card title={<div className="tw-flex tw-items-center tw-justify-between tw-gap-3"><span>Head1</span>{lastUpdated && <span className="tw-text-xs !tw-text-blue-gray-500">อัปเดตล่าสุด: {lastUpdated}</span>}</div>}>
+        <Card 
+        // title={<div className="tw-flex tw-items-center tw-justify-between tw-gap-3"><span>Head1</span>{lastUpdated && <span className="tw-text-xs !tw-text-blue-gray-500">อัปเดตล่าสุด: {lastUpdated}</span>}</div>}
+        >
             {(loading || err) && (<div className="tw-px-3 tw-py-2">{loading && <div className="tw-text-sm tw-text-blue-gray-600">กำลังโหลด...</div>}{err && <div className="tw-text-sm tw-text-red-600">{err}</div>}</div>)}
             <div className="tw-space-y-8">
                 <div className="tw-space-y-6">

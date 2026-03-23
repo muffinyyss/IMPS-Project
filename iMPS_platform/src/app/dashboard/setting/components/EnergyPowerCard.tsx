@@ -54,9 +54,9 @@ const EnergyPowerCard: React.FC<EnergyPowerProps> = ({
     head,
 }) => {
     //  ดึง timestamp จาก data มาจัดรูปแบบ
-    const updatedAt = data?.timestamp 
-        ? new Date(data.timestamp).toLocaleString("th-TH") 
-        : null;
+    // const updatedAt = data?.timestamp 
+    //     ? new Date(data.timestamp).toLocaleString("th-TH") 
+    //     : null;
 
     //  ปรับให้ดึงค่าจาก data ก้อนใหญ่ตามฝั่ง (head)
     const rows = useMemo(() => {
@@ -71,16 +71,16 @@ const EnergyPowerCard: React.FC<EnergyPowerProps> = ({
 
     return (
         <Card
-            title={
-                <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
-                    <span>{title} Head {head}</span>
-                    {updatedAt && (
-                        <span className="tw-text-[10px] !tw-text-blue-gray-400 tw-font-normal">
-                            อัปเดตล่าสุด {updatedAt}
-                        </span>
-                    )}
-                </div>
-            }
+            // title={
+            //     <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+            //         <span>{title} Head {head}</span>
+            //         {updatedAt && (
+            //             <span className="tw-text-[10px] !tw-text-blue-gray-400 tw-font-normal">
+            //                 อัปเดตล่าสุด {updatedAt}
+            //             </span>
+            //         )}
+            //     </div>
+            // }
         >
             <div className="tw-space-y-4">
                 {/* แสดง Loading */}
