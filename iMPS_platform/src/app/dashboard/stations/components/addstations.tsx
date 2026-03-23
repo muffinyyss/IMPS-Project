@@ -377,7 +377,7 @@ export default function AddStationModal({
             return;
         }
 
-        const cbids = chargers.map((c) => c.chargeBoxID.trim()).filter(Boolean);
+        const cbids = chargers.map((c) => c.chargeBoxID.trim()).filter((v) => Boolean(v) && v !== "-");
         if (new Set(cbids).size !== cbids.length) {
             alert(t.duplicateChargeBoxID); setSubmitting(false); return;
         }
