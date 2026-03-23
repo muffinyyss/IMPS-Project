@@ -108,16 +108,16 @@ export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
     return (
         <Card
             //  ใส่ timestamp ชิดขวาใน title บรรทัดเดียวกับ "PowerModule"
-            title={
-                <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
-                    <span>PowerModule Head {head}</span>
-                    {lastUpdated && (
-                        <span className="tw-ml-auto tw-text-xs !tw-text-blue-gray-500 tw-whitespace-nowrap">
-                            อัปเดตล่าสุด: {lastUpdated}
-                        </span>
-                    )}
-                </div>
-            }
+            // title={
+            //     <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+            //         <span>PowerModule Head {head}</span>
+            //         {lastUpdated && (
+            //             <span className="tw-ml-auto tw-text-xs !tw-text-blue-gray-500 tw-whitespace-nowrap">
+            //                 อัปเดตล่าสุด: {lastUpdated}
+            //             </span>
+            //         )}
+            //     </div>
+            // }
         >
           
             {/* แถบสถานะ */}
@@ -128,11 +128,11 @@ export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
             )}
 
             {/* timestamp ล่าสุด (ถ้ามี) — คงโค้ดเดิมไว้ได้ ถ้าไม่อยากแสดงซ้ำให้ซ่อนด้วย tw-hidden */}
-            {data?.timestamp && (
+            {/* {data?.timestamp && (
                 <div className="tw-px-3 tw-py-2 tw-text-xs tw-text-blue-gray-500 tw-hidden">
                     อัปเดตล่าสุด: {new Date(data.timestamp).toLocaleString("th-TH")}
                 </div>
-            )}
+            )} */}
 
             <div className="tw-rounded-lg tw-overflow-hidden">
                 {rows.map((r, i) => (
