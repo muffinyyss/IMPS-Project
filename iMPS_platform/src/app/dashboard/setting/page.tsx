@@ -110,7 +110,7 @@ export default function SettingPage() {
               </svg>
               <span className="tw-text-[11px] tw-font-medium tw-text-blue-gray-500">อัปเดตล่าสุด</span>
               <span className="tw-text-[11px] tw-font-bold tw-text-blue-gray-700 tw-tabular-nums">
-                {new Date(data.timestamp).toLocaleString("th-TH")}
+                {new Date(data.timestamp).toLocaleString("th-TH", { timeZone: "UTC" })}
               </span>
             </span>
           </div>
