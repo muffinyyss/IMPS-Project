@@ -224,6 +224,7 @@ class StationOut(BaseModel):
     status: Optional[bool] = None
     stationImage: Optional[str] = None
     stationImages: Optional[list] = []
+    images: Optional[dict] = {} 
     chargers: List[ChargerOut] = []
     createdAt: Optional[datetime] = None
     createdBy: Optional[str] = None
@@ -418,6 +419,7 @@ def format_station_with_chargers(station_doc: dict, charger_docs: List[dict]) ->
         status=status,
         stationImage=station_image_list[0] if station_image_list else None,
         stationImages=station_image_list,
+        images=normalized,
         chargers=chargers,
         createdAt=station_doc.get("createdAt"),
         createdBy=station_doc.get("createdBy"),

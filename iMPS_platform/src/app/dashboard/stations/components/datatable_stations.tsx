@@ -139,8 +139,8 @@ const ImageZone = ({ label, previews, onUpload, onRemove, emptyLabel, uploadLabe
       <div className="tw-flex tw-flex-wrap tw-gap-1.5 sm:tw-gap-2">
         {existingImages.map((url, i) => (
           <div key={`existing-${i}`} className="tw-group/img tw-relative tw-h-14 tw-w-14 sm:tw-h-[68px] sm:tw-w-[68px] tw-rounded-xl tw-overflow-hidden tw-ring-1 tw-ring-black/10 tw-shadow-sm hover:tw-shadow-md hover:tw-ring-blue-400/40 tw-transition-all tw-duration-200 hover:tw--translate-y-0.5">
-            <a href={`${apiBase}${url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="tw-block tw-h-full tw-w-full">
-              <img src={`${apiBase}${url}`} alt={`${label} ${i + 1}`} className="tw-h-full tw-w-full tw-object-cover" />
+            <a href={url.startsWith("http") ? url : `${apiBase}${url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="tw-block tw-h-full tw-w-full">
+              <img src={url.startsWith("http") ? url : `${apiBase}${url}`} alt={`${label} ${i + 1}`} className="tw-h-full tw-w-full tw-object-cover" />
             </a>
             <div className="tw-absolute tw-inset-0 tw-bg-black/0 group-hover/img:tw-bg-black/25 tw-transition-colors tw-pointer-events-none" />
             {onRemoveExisting && (
@@ -203,7 +203,7 @@ export function SearchDataTables() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void; loading: boolean; }>({ open: false, title: "", message: "", onConfirm: () => { }, loading: false });
-
+  const [deletedExistingMdbIdxs, setDeletedExistingMdbIdxs] = useState<Set<number>>(new Set());
   const closeConfirm = () => setConfirmDialog(prev => ({ ...prev, open: false, loading: false }));
   const [availability, setAvailability] = useState<Map<string, { total: number; available: number }>>(new Map());
   const [chargerAvailability, setChargerAvailability] = useState<Map<string, { total: number; available: number }>>(new Map());
@@ -399,6 +399,7 @@ export function SearchDataTables() {
     editMdbPreviews.forEach(u => URL.revokeObjectURL(u));
     setEditStationImages([]); setEditStationPreviews([]);
     setEditMdbImages([]); setEditMdbPreviews([]);
+    setDeletedExistingMdbIdxs(new Set());
     setDeleteCurrentImage(false);
   };
 
@@ -485,7 +486,7 @@ export function SearchDataTables() {
 
   const mapCharger = (c: any, index: number): ChargerData => {
     const imgs = c.images || {};
-    
+
     const norm = (v: any): string[] => Array.isArray(v) ? v : (typeof v === "string" && v ? [v] : []);
     console.log("API_BASE:", process.env.NEXT_PUBLIC_API_BASE);
 
@@ -580,7 +581,17 @@ export function SearchDataTables() {
       if (deleteCurrentImage && editingStation.stationImage) {
         await apiFetch(`/stations/${editingStation.station_id}/delete-image`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "station", url: editingStation.stationImage }) });
       }
+      // ลบรูป MDB เดิมที่ถูก mark
+      const mdbImgsToDelete = (editingStation?.mdbImages || [])
+        .filter((_, i) => deletedExistingMdbIdxs.has(i));
 
+      for (const url of mdbImgsToDelete) {
+        await apiFetch(`/stations/${editingStation.station_id}/delete-image`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "mdb", url }),
+        });
+      }
       // อัปโหลดรูปใหม่ (station + mdb รวมกันใน 1 request)
       if (editStationImages.length || editMdbImages.length) {
         const fd = new FormData();
@@ -954,8 +965,20 @@ export function SearchDataTables() {
                       onRemove={removeEditMdbImage}
                       emptyLabel={t.noImages}
                       uploadLabel={t.upload}
-                      existingImages={editingStation?.mdbImages && editingStation.mdbImages.length > 0 ? editingStation.mdbImages : undefined}
+                      existingImages={editingStation?.mdbImages?.filter((_, i) => !deletedExistingMdbIdxs.has(i))}
                       apiBase={API_BASE}
+                      onRemoveExisting={(filteredIdx) => {        // ← เพิ่ม
+                        const remaining = (editingStation?.mdbImages || [])
+                          .map((url, i) => ({ url, i }))
+                          .filter(({ i }) => !deletedExistingMdbIdxs.has(i));
+                        if (remaining[filteredIdx]) {
+                          setDeletedExistingMdbIdxs(prev => {
+                            const next = new Set(Array.from(prev));
+                            next.add(remaining[filteredIdx].i);
+                            return next;
+                          });
+                        }
+                      }}
                     />
                   </div>
                 </div>
