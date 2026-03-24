@@ -143,16 +143,16 @@ export default function EvPanel({ head, data }: { head: 1 | 2; data: any }) {
     return (
         <Card
             // ✅ แก้เฉพาะ title ให้เป็นแถวเดียว: ซ้าย "EV" ขวา timestamp
-            title={
-                <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
-                    <span>EV Head {head}</span> 
-                    {lastUpdated && (
-                        <span className="tw-text-xs !tw-text-blue-gray-500">
-                            อัปเดตล่าสุด: {lastUpdated}
-                        </span>
-                    )}
-                </div>
-            }
+            // title={
+            //     <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+            //         <span>EV Head {head}</span> 
+            //         {lastUpdated && (
+            //             <span className="tw-text-xs !tw-text-blue-gray-500">
+            //                 อัปเดตล่าสุด: {lastUpdated}
+            //             </span>
+            //         )}
+            //     </div>
+            // }
                 
         >
              {/* แถบสถานะ*/}

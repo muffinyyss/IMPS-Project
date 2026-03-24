@@ -1,779 +1,600 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
-import {
-  useRouter,
-  useSearchParams,
-  useParams,
-} from "next/navigation";
-import {
-  Typography,
-  Card,
-  CardHeader,
-  CardBody,
-  Button,
-} from "@/components/MaterialTailwind";
-import { ArrowLeftIcon } from "@heroicons/react/24/outline";
+import React, { useEffect, useState, useCallback } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { aiApi, ModuleResult } from "../lib/api";
+import { MODULES, ModuleConfig, getHealthColor, getHealthLabel } from "../lib/constants";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+// ── Tab imports ───────────────────────────────────────────────────────────
+import M1FilterHealthTab from "./tabs/M1FilterHealthTab";   // ← เพิ่ม
+import DetectionTab from "./tabs/DetectionTab";
+import HistoryTab from "./tabs/HistoryTab";
+import AlgorithmTab from "./tabs/AlgorithmTab";
+import DetectionOutputTab from "./tabs/DetectionOutputTab";
+import M4LiveMonitorTab from "./tabs/M4LiveMonitorTab";
+import M6RulDashboardTab from "./tabs/M6RulDashboardTab";
+import M6ComponentDetailTab from "./tabs/M6ComponentDetailTab";
+import M7StateMonitorTab from "./tabs/M7StateMonitorTab";
+import M7TimelineTab from "./tabs/M7TimelineTab";
+import M7FailurePredictionTab from "./tabs/M7FailurePredictionTab";
+import M4RuleBasedTab from "./tabs/M4RuleBasedTab";
+import M4StandardsTab from "./tabs/M4StandardsTab";
 
-type ModuleConfig = {
-  id: string;
-  title: string;
-  description: string;
+import { M2DetectionTab, M3DetectionTab } from "./tabs/M2M3DetectionTree";
+
+import { useStation } from "../hooks/useStation";
+import "../ai-theme.css";
+import M4AiDetectionTab from "./tabs/M4AiDetectionTab";
+import M5NetworkTreeTab from "./tabs/M5NetworkTreeTab";
+
+// ── Tab config per module ─────────────────────────────────────────────────
+interface TabDef { key: string; label: string; }
+
+const MODULE_TABS: Record<number, TabDef[]> = {
+  1: [
+    { key: "filter-health", label: "🌀 Filter Health" },
+    { key: "ai-prediction", label: "🧪 AI Prediction" },
+    { key: "history", label: "📈 Historical Graph" },
+    { key: "algorithms", label: "📖 Algorithms" },
+  ],
+  2: [
+    { key: "detection", label: "🔄 AI Detection & Health Tree" },
+    { key: "history", label: "📈 Historical Graph" },
+    { key: "algorithms", label: "📖 Algorithm Description" },
+    { key: "output", label: "📊 Detection Output" },
+  ],
+  3: [
+    { key: "detection", label: "📡 AI Detection & Health Tree" },
+    { key: "history", label: "📈 Historical Graph" },
+    { key: "algorithms", label: "📖 Algorithm Description" },
+    { key: "output", label: "📊 Detection Output" },
+  ],
+  4: [
+    { key: "live-monitor", label: "⚡ Live Monitor" },
+    { key: "ai-detection", label: "🤖 AI-Module Detection" },
+    { key: "rule-based", label: "🛰 Rule Based Algorithm" },
+    { key: "standards", label: "📚 Standards Reference" },
+    { key: "algorithms", label: "📜 Rule-Based Description" },
+    { key: "history", label: "📈 Historical Graph" },
+    { key: "output", label: "📊 Detection Output" },
+  ],
+  5: [
+    { key: "detection", label: "🌐 AI Detection & Network Tree" },
+    { key: "history", label: "📈 Historical Graph" },
+    { key: "algorithms", label: "📖 Algorithm Description" },
+    { key: "output", label: "📊 Detection Output" },
+  ],
+  6: [
+    { key: "rul-dashboard", label: "⏳ RUL Dashboard" },
+    { key: "component", label: "🔍 Component Detail" },
+    { key: "algorithms", label: "📖 Algorithm Description" },
+    { key: "output", label: "📊 Prediction Output" },
+  ],
+  7: [
+    { key: "state-monitor", label: "🔍 State Monitor" },
+    { key: "timeline", label: "📅 Timeline" },
+    { key: "failure", label: "⚠️ Failure Prediction" },
+    { key: "algorithms", label: "📖 Algorithm Description" },
+  ],
 };
 
-const MODULE_CONFIG: Record<string, ModuleConfig> = {
-  module1: {
-    id: "module1",
-    title: "MDB Dust Filters Prediction",
-    description:
-      "ใช้ข้อมูลสภาพแวดล้อมและอายุการใช้งานของไส้กรอง MDB เพื่อคำนวณ Health Index ของระบบกรองฝุ่น",
-  },
-  module2: {
-    id: "module2",
-    title: "Charger Dust Filters Prediction",
-    description:
-      "วิเคราะห์สภาพไส้กรองฝุ่นของ Charger และแปลงออกมาเป็น Health Index (เปอร์เซ็นต์)",
-  },
-  module3: {
-    id: "module3",
-    title: "Online / Offline Prediction",
-    description:
-      "วิเคราะห์ปัญหาการออนไลน์/ออฟไลน์ของ Edgebox/อุปกรณ์ และคำนวณ Health Index ของสถานะเครือข่าย",
-  },
-  module4: {
-    id: "module4",
-    title: "AB Normal Power Supply Prediction",
-    description:
-      "ตรวจจับความผิดปกติฝั่ง Power Supply เช่น Voltage/Current mismatch และคำนวณ Health Index",
-  },
-  module5: {
-    id: "module5",
-    title: "Network Prediction",
-    description:
-      "ตรวจสอบสถานะอุปกรณ์เครือข่ายทั้งหมด แล้วรวมเป็น Health Index ของระบบ Network",
-  },
-  module6: {
-    id: "module6",
-    title: "The Remaining Useful Life (RUL) Prediction",
-    description:
-      "ใช้ RUL ของอุปกรณ์หลัก ๆ ในตู้ชาร์จมาคำนวณเป็น Average Health Index ของทั้งระบบ",
-  },
-  module7: {
-    id: "module7",
-    title: "Root Cause Analysis Prediction",
-    description:
-      "ใช้ผลการทำนาย Root Cause (เช่น Error DC contractor) แล้วแปลงเป็น Health Index รวม",
-  },
-};
+// ── Shared UI components ──────────────────────────────────────────────────
+function HealthGauge({ value }: { value: number | null }) {
+  const ARC = 157;
+  const pct = value != null ? Math.max(0, Math.min(100, value)) / 100 : 0;
+  const color = getHealthColor(value);
+  return (
+    <div className="tw-flex tw-flex-col tw-items-center">
+      <svg viewBox="0 0 120 70" className="tw-w-32 tw-h-20">
+        <path d="M 10 62 A 50 50 0 0 1 110 62" stroke="#e2e8f0" strokeWidth="10" fill="none" strokeLinecap="round" />
+        <path d="M 10 62 A 50 50 0 0 1 110 62" stroke={color} strokeWidth="10" fill="none"
+          strokeLinecap="round" strokeDasharray={`${ARC} ${ARC}`}
+          strokeDashoffset={(1 - pct) * ARC} />
+      </svg>
+      <div className="tw-text-3xl tw-font-bold tw--mt-4" style={{ color }}>
+        {value != null ? `${value}%` : "—"}
+      </div>
+      <div className="tw-text-sm tw-text-gray-500 tw-mt-1">{getHealthLabel(value)}</div>
+    </div>
+  );
+}
 
-type HealthInfo = {
-  value: number | null;
-  label?: string | null;
-  sourcePath?: string | null;
-};
+function StatusBadge({ status }: { status?: string }) {
+  if (!status) return null;
+  const s = status.toLowerCase();
+  const cls =
+    ["active", "normal", "ok", "good"].includes(s) ? "tw-bg-green-100 tw-text-green-700" :
+      ["warn", "warning"].includes(s) ? "tw-bg-amber-100 tw-text-amber-700" :
+        ["inactive", "offline", "error", "crit", "critical", "fault"].includes(s) ? "tw-bg-red-100 tw-text-red-700" :
+          "tw-bg-gray-100 tw-text-gray-600";
+  return <span className={`tw-px-2.5 tw-py-0.5 tw-rounded-full tw-text-xs tw-font-semibold ${cls}`}>{status}</span>;
+}
 
-function getHealthInfo(moduleId: string, output: any | null): HealthInfo {
-  if (!output) return { value: null, label: null, sourcePath: null };
+function MetricCard({ label, value, unit, color }: {
+  label: string; value?: string | number | null; unit?: string; color?: string;
+}) {
+  return (
+    <div className="tw-bg-gray-50 tw-rounded-xl tw-p-3 tw-border tw-border-gray-100">
+      <div className="tw-text-xs tw-text-gray-400 tw-mb-1">{label}</div>
+      <div className="tw-text-base tw-font-semibold tw-text-gray-800" style={color ? { color } : {}}>
+        {value ?? "—"}
+        {unit && value != null ? <span className="tw-text-xs tw-font-normal tw-text-gray-400 tw-ml-1">{unit}</span> : ""}
+      </div>
+    </div>
+  );
+}
 
-  let raw: number | null = null;
-  let label: string | null = null;
-  let sourcePath: string | null = null;
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="tw-bg-white tw-rounded-2xl tw-border tw-border-gray-100 tw-shadow-sm tw-p-5">
+      <div className="tw-text-xs tw-font-semibold tw-text-gray-400 tw-uppercase tw-tracking-wide tw-mb-4">{title}</div>
+      {children}
+    </div>
+  );
+}
 
-  switch (moduleId) {
-    case "module1":
-      raw = typeof output?.health?.health_index === "number"
-        ? output.health.health_index
-        : null;
-      label = output?.health?.health_status ?? null;
-      sourcePath = "health.health_index";
-      break;
+// ── Default detail views (filter-health / detection / ai-detection tabs) ──
+function DefaultDetailView({ data, modNum }: { data: ModuleResult; modNum: number }) {
+  if (data.error) return (
+    <div className="tw-text-center tw-text-gray-400 tw-py-12 tw-text-sm">ไม่มีข้อมูล Module {modNum}</div>
+  );
+  const d = (data as any).data ?? {};
+  const t = (data as any).telemetry ?? {};
 
-    case "module2":
-      raw = typeof output?.health_index_percent === "number"
-        ? output.health_index_percent
-        : null;
-      label = output?.filter_status ?? null;
-      sourcePath = "health_index_percent";
-      break;
+  switch (modNum) {
+    case 1:
+      return (
+        <div className="tw-flex tw-flex-col tw-gap-4">
+          <Section title="MDB Sensor Telemetry">
+            <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
+              <MetricCard label="Ambient Temp" value={t.MDB_ambient_temp} unit="°C" />
+              <MetricCard label="Humidity" value={t.MDB_humidity} unit="%" />
+              <MetricCard label="Pressure" value={t.MDB_pressure} unit="hPa" />
+              <MetricCard label="Pi5 Temp" value={t.pi5_temp} unit="°C" />
+              <MetricCard label="Dust Filter Days" value={t.dust_filter_charging} unit="days" />
+              <MetricCard label="MDB Status" value={t.MDB_status} />
+            </div>
+          </Section>
+          <Section title="AI Model Results">
+            <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
+              <MetricCard label="Ensemble Risk" value={(data as any).ensemble_risk != null ? `${((data as any).ensemble_risk * 100).toFixed(1)}` : null} unit="%" />
+              <MetricCard label="Risk Score" value={(data as any).risk_score != null ? `${((data as any).risk_score * 100).toFixed(1)}` : null} unit="%" />
+              <MetricCard label="Confidence" value={(data as any).confidence != null ? `${((data as any).confidence * 100).toFixed(1)}` : null} unit="%" />
+              <MetricCard label="Method" value={(data as any).method} />
+            </div>
+          </Section>
+        </div>
+      );
+    case 2:
+      return (
+        <Section title="Charger Filter Sensors">
+          <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
+            {[1, 2, 3, 4, 5].map((i) => <MetricCard key={i} label={`PM Temp ${i}`} value={d[`power_module_temp${i}`]} unit="°C" />)}
+            <MetricCard label="Charger Temp" value={d.charger_temp} unit="°C" />
+            <MetricCard label="Humidity" value={d.humidity} unit="%" />
+            <MetricCard label="Voltage" value={d.present_voltage1} unit="V" />
+            <MetricCard label="Current" value={d.present_current1} unit="A" />
+            <MetricCard label="SOC" value={d.SOC} unit="%" />
+          </div>
+        </Section>
+      );
+    case 3: case 5: {
+      const statusKeys = Object.keys(d).filter((k) => k.includes("_status") || k.includes("_network"));
+      return (
+        <Section title={modNum === 3 ? "Device Status" : "Network Device Status"}>
+          <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
+            {statusKeys.map((k) => (
+              <div key={k} className="tw-bg-gray-50 tw-rounded-xl tw-p-3 tw-border tw-border-gray-100 tw-flex tw-items-center tw-justify-between">
+                <span className="tw-text-xs tw-text-gray-600 tw-truncate">{k.replace(/_status|_network/g, "").replace(/_/g, " ")}</span>
+                <StatusBadge status={String(d[k])} />
+              </div>
+            ))}
+          </div>
+        </Section>
+      );
+    }
+    case 4:
+      return (
+        <Section title="Power Telemetry">
+          <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3">
+            <MetricCard label="Voltage 1" value={d.present_voltage1} unit="V" />
+            <MetricCard label="Voltage 2" value={d.present_voltage2} unit="V" />
+            <MetricCard label="Current 1" value={d.present_current1} unit="A" />
+            <MetricCard label="Current 2" value={d.present_current2} unit="A" />
+            <MetricCard label="Anomaly Flags" value={(data as any).anomaly_flags}
+              color={(data as any).anomaly_flags > 0 ? "#dc2626" : "#059669"} />
+            <MetricCard label="SOC" value={d.SOC} unit="%" />
+          </div>
+        </Section>
+      );
+    default: return null;
+  }
+}
 
-    case "module3":
-      raw = typeof output?.health_index === "number"
-        ? output.health_index
-        : null;
-      label = output?.health_status ?? null;
-      sourcePath = "health_index";
-      break;
+// ── Tab content dispatcher ────────────────────────────────────────────────
+function TabContent({ tab, modNum, mod, data, countdown, isPaused, onTogglePause }: {
+  tab: string;
+  modNum: number;
+  mod: ModuleConfig;
+  data: ModuleResult | null;
+  countdown: number;          // ← เพิ่ม
+  isPaused: boolean;          // ← เพิ่ม
+  onTogglePause: () => void;  // ← เพิ่ม
+}) {
+  switch (tab) {
+    case "history":
+      return <HistoryTab modNum={modNum} modKey={mod.key} modColor={mod.color} modLabel={mod.label} />;
+    case "algorithms":
+      return <AlgorithmTab modNum={modNum} modLabel={mod.label} modColor={mod.color} />;
+    case "output":
+      return <DetectionOutputTab data={data} modNum={modNum} modColor={mod.color} />;
+    case "ai-prediction":
+      return <DetectionOutputTab data={data} modNum={modNum} modColor={mod.color} />;
 
-    case "module4":
-      raw = typeof output?.health_index === "number"
-        ? output.health_index
-        : null;
-      label = output?.prediction_status ?? null;
-      sourcePath = "health_index";
-      break;
+    // M1, M2, M3, M5 — main detail view
+    case "filter-health":
+      return <M1FilterHealthTab data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} />;
+    case "detection":
+      if (modNum === 2) return <M2DetectionTab data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} />;
+      if (modNum === 3) return <M3DetectionTab data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} />;
+      if (modNum === 5) return <M5NetworkTreeTab data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} />;
+      return null;
 
-    case "module5":
-      raw = typeof output?.health?.health_index === "number"
-        ? output.health.health_index
-        : null;
-      label = output?.health?.health_level ?? null;
-      sourcePath = "health.health_index";
-      break;
+    // M4
+    case "live-monitor": return <M4LiveMonitorTab data={data} />;
+    case "ai-detection": return <M4AiDetectionTab data={data} countdown={countdown} isPaused={isPaused} onTogglePause={onTogglePause} />;
+    case "rule-based": return <M4RuleBasedTab data={data} />;
+    case "standards": return <M4StandardsTab />;
 
-    case "module6":
-      raw = typeof output?.overall_health?.average_health_index === "number"
-        ? output.overall_health.average_health_index
-        : null;
-      label = output?.overall_health?.overall_status ?? null;
-      sourcePath = "overall_health.average_health_index";
-      break;
+    // M6
+    case "rul-dashboard": return <M6RulDashboardTab data={data} />;
+    case "component": return <M6ComponentDetailTab data={data} />;
 
-    case "module7":
-      raw = typeof output?.health_index === "number"
-        ? output.health_index
-        : null;
-      label = null;
-      sourcePath = "health_index";
-      break;
+    // M7
+    case "state-monitor": return <M7StateMonitorTab data={data} />;
+    case "timeline": return <M7TimelineTab data={data} />;
+    case "failure": return <M7FailurePredictionTab data={data} />;
 
     default:
-      raw = null;
+      return data ? <DefaultDetailView data={data} modNum={modNum} /> : null;
   }
-
-  return {
-    value: raw,
-    label,
-    sourcePath,
-  };
 }
 
-function getHealthColorClasses(value: number | null) {
-  if (value === null || Number.isNaN(value)) {
-    return {
-      ring: "tw-border-blue-gray-200",
-      text: "tw-text-blue-gray-500",
-      badge: "tw-bg-blue-gray-50 tw-text-blue-gray-600",
-      gradient: "tw-from-blue-gray-400 tw-to-blue-gray-500",
-      glow: "tw-shadow-blue-gray-500/20",
-    };
-  }
-
-  if (value < 40) {
-    return {
-      ring: "tw-border-red-500",
-      text: "tw-text-red-600",
-      badge: "tw-bg-red-50 tw-text-red-700",
-      gradient: "tw-from-red-500 tw-to-red-600",
-      glow: "tw-shadow-red-500/30",
-    };
-  }
-  if (value < 70) {
-    return {
-      ring: "tw-border-amber-500",
-      text: "tw-text-amber-700",
-      badge: "tw-bg-amber-50 tw-text-amber-700",
-      gradient: "tw-from-amber-500 tw-to-amber-600",
-      glow: "tw-shadow-amber-500/30",
-    };
-  }
-  return {
-    ring: "tw-border-green-500",
-    text: "tw-text-green-600",
-    badge: "tw-bg-green-50 tw-text-green-700",
-    gradient: "tw-from-green-500 tw-to-green-600",
-    glow: "tw-shadow-green-500/30",
-  };
+// ── Nav tabs (top navigation) ─────────────────────────────────────────────
+function NavTabs({ activeModNum }: { activeModNum: number }) {
+  const router = useRouter();
+  const mainTabs = [
+    { label: "📊 Dashboard", href: "/dashboard/ai" },
+    { label: "📡 Station Monitor", href: "/dashboard/ai/monitor" },
+    { label: "📈 Health History", href: "/dashboard/ai/history" },
+    { label: "🎯 Heatmap", href: "/dashboard/ai/heatmap" },
+  ];
+  return (
+    <div className="tw-bg-white tw-border-b tw-border-gray-100 tw-px-6">
+      <nav className="tw-flex tw-gap-1 tw-overflow-x-auto">
+        {mainTabs.map((t) => (
+          <button key={t.href} onClick={() => router.push(t.href)}
+            className="tw-px-4 tw-py-2.5 tw-text-sm tw-border-b-2 tw-font-medium tw-transition-colors
+                       tw-border-transparent tw-text-gray-500 hover:tw-text-gray-700 tw-whitespace-nowrap">
+            {t.label}
+          </button>
+        ))}
+        <div className="tw-w-px tw-bg-gray-100 tw-mx-1 tw-my-2" />
+        {MODULES.map((m) => (
+          <button key={m.key} onClick={() => router.push(`/dashboard/ai/${m.num}`)}
+            className={`tw-px-3 tw-py-2.5 tw-text-sm tw-border-b-2 tw-font-medium tw-transition-colors tw-whitespace-nowrap
+              ${m.num === activeModNum
+                ? "tw-border-blue-500 tw-text-blue-600"
+                : "tw-border-transparent tw-text-gray-500 hover:tw-text-gray-700"}`}>
+            {m.icon} M{m.num}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
 }
 
-type FeatureItem = { key: string; value: string };
-
-function extractFeaturesFromInput(
-  inputData: any | null,
-  maxItems = 20
-): FeatureItem[] {
-  if (!inputData || typeof inputData !== "object") return [];
-
-  const result: FeatureItem[] = [];
-
-  const walk = (obj: any, prefix = "", depth = 0) => {
-    if (!obj || typeof obj !== "object" || depth > 2) return;
-
-    for (const [k, v] of Object.entries(obj)) {
-      if (result.length >= maxItems) return;
-
-      if (k === "_id") continue;
-
-      const path = prefix ? `${prefix}.${k}` : k;
-
-      if (
-        v === null ||
-        typeof v === "string" ||
-        typeof v === "number" ||
-        typeof v === "boolean"
-      ) {
-        result.push({
-          key: path,
-          value: String(v),
-        });
-      } else if (Array.isArray(v)) {
-        result.push({
-          key: path,
-          value: `[${v.length} items]`,
-        });
-      } else if (typeof v === "object") {
-        walk(v, path, depth + 1);
-      }
-    }
-  };
-
-  walk(inputData, "", 0);
-  return result;
+// ── Sub-tab bar ───────────────────────────────────────────────────────────
+function SubTabs({ tabs, activeTab, modNum, onTabChange }: {
+  tabs: TabDef[]; activeTab: string; modNum: number; onTabChange: (key: string) => void;
+}) {
+  return (
+    <div className="tw-bg-white tw-border-b tw-border-gray-100 tw-px-6 tw-flex tw-gap-1 tw-overflow-x-auto">
+      {tabs.map((t) => (
+        <button key={t.key} onClick={() => onTabChange(t.key)}
+          className={`tw-px-4 tw-py-2.5 tw-text-sm tw-border-b-2 tw-font-medium tw-transition-colors tw-whitespace-nowrap
+            ${t.key === activeTab
+              ? "tw-border-purple-500 tw-text-purple-600"
+              : "tw-border-transparent tw-text-gray-500 hover:tw-text-gray-700"}`}>
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
-type ModuleTimestamps = {
-  inputRaw?: string | null;
-  outputRaw?: string | null;
-  inputDisplay?: string | null;
-  outputDisplay?: string | null;
-};
+// ── Missing tab components (inline simple ones) ───────────────────────────
+// These are referenced in imports but defined in separate files.
+// If files don't exist yet, they'll be created below.
 
-function normalizeIsoLike(str: string): string {
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+$/.test(str)) {
-    const [head, frac] = str.split(".");
-    if (frac.length > 3) {
-      return `${head}.${frac.slice(0, 3)}`;
-    }
-  }
-  return str;
-}
-
-function formatTimestamp(
-  ts: any,
-  opts?: { add7Hours?: boolean }
-): string | null {
-  if (!ts) return null;
-  let s = typeof ts === "string" ? ts : String(ts);
-  s = normalizeIsoLike(s);
-
-  const d0 = new Date(s);
-  if (Number.isNaN(d0.getTime())) {
-    return s;
-  }
-
-  let d = d0;
-  if (opts?.add7Hours) {
-    d = new Date(d0.getTime() + 7 * 60 * 60 * 1000);
-  }
-
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  const yyyy = d.getFullYear();
-  const mm = pad(d.getMonth() + 1);
-  const dd = pad(d.getDate());
-  const hh = pad(d.getHours());
-  const mi = pad(d.getMinutes());
-  const ss = pad(d.getSeconds());
-
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
-}
-
-function getModuleTimestamps(
-  moduleId: string,
-  inputData: any | null,
-  outputData: any | null
-): ModuleTimestamps {
-  let inputRaw: string | null | undefined = null;
-  let outputRaw: string | null | undefined = null;
-  let outputAdd7 = false;
-
-  if (inputData && typeof inputData === "object") {
-    inputRaw = inputData.timestamp ?? null;
-  }
-
-  switch (moduleId) {
-    case "module1":
-      outputRaw = outputData?.original_timestamp ?? null;
-      break;
-    case "module2":
-      outputRaw = outputData?.timestamp ?? null;
-      break;
-    case "module3":
-      outputRaw = outputData?.source_timestamp ?? null;
-      break;
-    case "module4":
-      outputRaw = outputData?.timestamp ?? null;
-      break;
-    case "module5":
-      outputRaw = outputData?.metadata?.prediction_time ?? null;
-      break;
-    case "module6":
-      outputRaw = outputData?.timestamp ?? null;
-      outputAdd7 = true;
-      break;
-    case "module7":
-      outputRaw = outputData?.timestamp ?? null;
-      break;
-    default:
-      break;
-  }
-
-  const inputDisplay = formatTimestamp(inputRaw);
-  const outputDisplay = formatTimestamp(outputRaw, {
-    add7Hours: outputAdd7,
-  });
-
-  return {
-    inputRaw,
-    outputRaw,
-    inputDisplay,
-    outputDisplay,
-  };
-}
-
-export default function ModuleDetailPage() {
+// ── Main Page ─────────────────────────────────────────────────────────────
+export default function ModulePage() {
+  const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const params = useParams<{ moduleId: string }>();
 
-  const moduleId = params?.moduleId ?? "module1";
-  const stationId = searchParams.get("station_id") ?? "Klongluang3";
+  const modNum = parseInt(String(params?.moduleId ?? "1"), 10);
+  const mod = MODULES.find((m) => m.num === modNum);
+  const tabs = MODULE_TABS[modNum] ?? [];
 
-  const config: ModuleConfig =
-    MODULE_CONFIG[moduleId] ??
-    ({
-      id: moduleId,
-      title: moduleId,
-      description: "",
-    } as ModuleConfig);
+  const defaultTab = tabs[0]?.key ?? "";
+  const [activeTab, setActiveTab] = useState(searchParams?.get("tab") ?? defaultTab);
 
-  const [inputData, setInputData] = useState<any | null>(null);
-  const [outputData, setOutputData] = useState<any | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [data, setData] = useState<ModuleResult | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState("");
 
-  const goList = () => {
-    const query = stationId
-      ? `?station_id=${encodeURIComponent(stationId)}`
-      : "";
-    router.push(`/dashboard/ai${query}`, { scroll: false });
+  const { tick, countdown, isPaused, pause, resume, refresh } = useAutoRefresh(120);
+  const { activeSn, activeName, stations, switchStation } = useStation();
+  const [stationOpen, setStationOpen] = useState(false);
+  const [stationSearch, setStationSearch] = useState("");
+
+  const filteredStations = (Array.isArray(stations) ? stations : [])
+    .filter((s) =>
+      s.sn.toLowerCase().includes(stationSearch.toLowerCase()) ||
+      s.name.toLowerCase().includes(stationSearch.toLowerCase())
+    );
+
+  // Reset tab when module changes
+  useEffect(() => {
+    setActiveTab(searchParams?.get("tab") ?? tabs[0]?.key ?? "");
+  }, [modNum]);
+
+  const handleTabChange = (key: string) => {
+    setActiveTab(key);
+    router.push(`/dashboard/ai/${modNum}?tab=${key}`, { scroll: false });
   };
 
-  useEffect(() => {
-    if (!moduleId || !stationId) return;
+  const loadData = useCallback(async () => {
+    if (!mod) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await aiApi.moduleLatest(mod.num);
+      setData(res);
+      setLastUpdate(new Date().toLocaleTimeString("th-TH"));
+    } catch {
+      setError(`ไม่สามารถโหลดข้อมูล Module ${mod.num} ได้`);
+    } finally {
+      setLoading(false);
+    }
+  }, [mod?.num]);
 
-    let cancelled = false;
+  useEffect(() => { loadData(); }, [tick, loadData]);
 
-    const fetchDetail = async () => {
-      setLoading(true);
-      setError(null);
+  if (!mod) { router.push("/dashboard/ai"); return null; }
 
-      try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("access_token") || ""
-            : "";
-
-        const url = `${API_BASE}/modules/detail?module_id=${encodeURIComponent(
-          String(moduleId)
-        )}&station_id=${encodeURIComponent(stationId)}`;
-
-        const res = await fetch(url, {
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            "Cache-Control": "no-cache",
-            Pragma: "no-cache",
-          },
-          credentials: token ? "omit" : "include",
-        });
-
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const json = await res.json();
-
-        if (!cancelled) {
-          setInputData(json.input ?? null);
-          setOutputData(json.output ?? null);
-        }
-      } catch (e: any) {
-        if (!cancelled) {
-          setError(
-            e?.message || "Failed to fetch module detail"
-          );
-          setInputData(null);
-          setOutputData(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchDetail();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [moduleId, stationId]);
-
-  const features = useMemo(
-    () => extractFeaturesFromInput(inputData, 24),
-    [inputData]
-  );
-
-  const healthInfo = useMemo(
-    () => getHealthInfo(moduleId, outputData),
-    [moduleId, outputData]
-  );
-
-  const healthClasses = getHealthColorClasses(healthInfo.value);
-  const healthDisplay =
-    healthInfo.value !== null && !Number.isNaN(healthInfo.value)
-      ? healthInfo.value.toFixed(1)
-      : "--";
-
-  const timestamps = useMemo(
-    () => getModuleTimestamps(moduleId, inputData, outputData),
-    [moduleId, inputData, outputData]
-  );
+  const health = data?.health ?? null;
 
   return (
-    <div className="tw-mt-8 tw-space-y-4">
-      <style jsx>{`
-        @keyframes pulse-glow {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.5;
-          }
-        }
-        
-        @keyframes rotate {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
-        }
+    <div className="ai-root tw-min-h-screen" style={{ background: "var(--ai-bg)" }}>
 
-        @keyframes scale-in {
-          from {
-            transform: scale(0.9);
-            opacity: 0;
-          }
-          to {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-
-        @keyframes slide-in-left {
-          from {
-            transform: translateX(-20px);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-
-        @keyframes slide-in-right {
-          from {
-            transform: translateX(20px);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-
-        .animate-pulse-glow {
-          animation: pulse-glow 2s ease-in-out infinite;
-        }
-
-        .animate-rotate {
-          animation: rotate 20s linear infinite;
-        }
-
-        .animate-scale-in {
-          animation: scale-in 0.5s ease-out;
-        }
-
-        .animate-slide-in-left {
-          animation: slide-in-left 0.6s ease-out;
-        }
-
-        .animate-slide-in-right {
-          animation: slide-in-right 0.6s ease-out;
-        }
-        
-        .feature-card {
-          transition: all 0.3s ease;
-        }
-        
-        .feature-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .timestamp-badge {
-          backdrop-filter: blur(8px);
-        }
-      `}</style>
-
-      {/* Header + Back */}
-      <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
-        <Button
-          variant="outlined"
-          size="sm"
-          onClick={goList}
-          className="tw-py-2 tw-px-2"
-          title="กลับไปหน้า AI Modules"
+      {/* Top bar */}
+      <div style={{
+        background: "#fff",
+        borderBottom: "1px solid var(--ai-bdr)",
+        padding: "0 24px", height: 56,
+        display: "flex", alignItems: "center", gap: 12,
+      }}>
+        {/* ← กลับ */}
+        <button
+          onClick={() => router.push("/dashboard/ai")}
+          style={{ fontSize: ".8em", color: "var(--ai-dim)", background: "none", border: "none", cursor: "pointer", flexShrink: 0 }}
         >
-          <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-blue-gray-900 tw-stroke-2" />
-        </Button>
+          ← กลับ
+        </button>
 
-        <div>
-          <Typography variant="h5" className="tw-font-semibold">
-            {config.title}
-          </Typography>
-          <div className="tw-flex tw-flex-wrap tw-gap-2 tw-mt-1">
-            <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-blue-gray-50 tw-px-3 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-blue-gray-700">
-              Module ID:
-              <span className="tw-ml-1 tw-font-mono">{config.id}</span>
-            </span>
-            {stationId && (
-              <span className="tw-inline-flex tw-items-center tw-rounded-full tw-bg-green-50 tw-px-3 tw-py-0.5 tw-text-[11px] tw-font-medium tw-text-green-700">
-                Station:
-                <span className="tw-ml-1 tw-font-mono">{stationId}</span>
-              </span>
-            )}
+        <div style={{ width: 1, height: 20, background: "var(--ai-bdr)", flexShrink: 0 }} />
+
+        {/* Module badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: `${mod.color}18`, fontSize: "1em",
+          }}>
+            {mod.icon}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: ".82em", color: "var(--ai-tx)" }}>
+              Module {mod.num} — {mod.label}
+            </div>
+            <div style={{ fontSize: ".6em", color: "var(--ai-dim)" }}>{mod.labelTh}</div>
           </div>
         </div>
-      </div>
 
-      {config.description && (
-        <Typography className="tw-text-sm tw-text-blue-gray-700 tw-mb-2">
-          {config.description}
-        </Typography>
-      )}
+        <div style={{ width: 1, height: 20, background: "var(--ai-bdr)", flexShrink: 0 }} />
 
-      {error && (
-        <Typography className="tw-text-sm tw-text-red-600 tw-mb-2">
-          {error}
-        </Typography>
-      )}
-
-      {/* Enhanced DIAGRAM with Timestamps */}
-      <Card className="tw-border tw-border-blue-gray-50 tw-bg-gradient-to-br tw-from-white tw-to-blue-gray-50/30 tw-shadow-lg">
-        <CardBody className="tw-p-6">
-          {loading ? (
-            <div className="tw-flex tw-flex-col tw-items-center tw-justify-center tw-py-12">
-              <div className="tw-w-12 tw-h-12 tw-border-4 tw-border-blue-gray-200 tw-border-t-blue-500 tw-rounded-full animate-rotate"></div>
-              <Typography className="tw-text-sm tw-text-blue-gray-500 tw-mt-4">
-                กำลังโหลดข้อมูล...
-              </Typography>
+        {/* Station selector */}
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <button
+            onClick={() => setStationOpen((v) => !v)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "5px 10px", borderRadius: 8,
+              background: "var(--ai-bg)",
+              border: "1px solid var(--ai-bdr2)",
+              cursor: "pointer", fontSize: ".78em",
+            }}
+          >
+            <span>⚡</span>
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontWeight: 700 }}>{activeSn || "เลือกสถานี"}</div>
+              {activeName && (
+                <div style={{ fontSize: ".75em", color: "var(--ai-dim)" }}>{activeName}</div>
+              )}
             </div>
-          ) : (
-            <div className="tw-flex tw-flex-col lg:tw-flex-row tw-gap-8 tw-items-stretch tw-justify-between">
-              {/* LEFT: Input features */}
-              <div className="tw-flex-1 animate-slide-in-left">
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
-                  <div className="tw-w-1 tw-h-6 tw-bg-gradient-to-b tw-from-blue-500 tw-to-blue-600 tw-rounded-full"></div>
-                  <Typography className="tw-text-base tw-font-bold tw-text-blue-gray-900">
-                    Input Features
-                  </Typography>
-                </div>
-                
-                <div className="tw-bg-gradient-to-r tw-from-blue-50 tw-to-indigo-50/50 tw-rounded-xl tw-p-4 tw-mb-4 tw-border tw-border-blue-100 tw-shadow-sm">
-                  <Typography className="tw-text-xs tw-text-blue-gray-700 tw-leading-relaxed tw-mb-2">
-                    ข้อมูลจาก document ล่าสุดของสถานี{" "}
-                    <span className="tw-font-mono tw-font-semibold tw-text-blue-600">{stationId}</span>
-                  </Typography>
-                  
-                  {timestamps.inputDisplay && (
-                    <div className="tw-flex tw-items-center tw-gap-2 tw-mt-2">
-                      <svg className="tw-w-3.5 tw-h-3.5 tw-text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="tw-text-[11px] tw-font-mono tw-text-blue-700 tw-font-semibold">
-                        {timestamps.inputDisplay}
-                      </span>
-                    </div>
-                  )}
-                </div>
+            <span style={{ fontSize: ".65em", color: "var(--ai-dim)" }}>▼</span>
+          </button>
 
-                {features.length === 0 ? (
-                  <div className="tw-text-center tw-py-8 tw-px-4 tw-bg-blue-gray-50/50 tw-rounded-lg tw-border tw-border-dashed tw-border-blue-gray-200">
-                    <Typography className="tw-text-sm tw-text-blue-gray-400 tw-italic">
-                      ไม่พบข้อมูล input หรือยังไม่ได้เก็บข้อมูลใน MongoDB
-                    </Typography>
+          {stationOpen && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 4px)", left: 0,
+              width: 260, background: "#fff",
+              border: "1px solid var(--ai-bdr2)",
+              borderRadius: 10, boxShadow: "0 8px 30px rgba(0,0,0,.12)",
+              zIndex: 50, overflow: "hidden",
+            }}>
+              <div style={{ padding: 8, borderBottom: "1px solid var(--ai-bdr)" }}>
+                <input
+                  style={{
+                    width: "100%", padding: "6px 10px", borderRadius: 7,
+                    border: "1px solid var(--ai-bdr2)",
+                    background: "var(--ai-bg)",
+                    fontSize: ".78em", outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                  placeholder="🔍 ค้นหาสถานี..."
+                  value={stationSearch}
+                  onChange={(e) => setStationSearch(e.target.value)}
+                />
+              </div>
+              <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                {filteredStations.length === 0 ? (
+                  <div style={{ padding: "16px", textAlign: "center", fontSize: ".72em", color: "var(--ai-dim)" }}>
+                    ไม่พบสถานี
                   </div>
                 ) : (
-                  <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-3">
-                    {features.map((f, idx) => (
-                      <div
-                        key={f.key}
-                        className="feature-card tw-rounded-lg tw-border tw-border-blue-gray-100 tw-bg-white tw-px-3 tw-py-2.5 tw-shadow-sm"
-                        style={{ animationDelay: `${idx * 0.05}s` }}
-                      >
-                        <div className="tw-flex tw-items-start tw-gap-2">
-                          <div className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500 tw-mt-1.5 tw-flex-shrink-0"></div>
-                          <div className="tw-flex-1 tw-min-w-0">
-                            <div className="tw-text-[11px] tw-font-mono tw-text-blue-gray-500 tw-truncate tw-mb-0.5">
-                              {f.key}
-                            </div>
-                            <div className="tw-text-xs tw-font-semibold tw-text-blue-gray-900 tw-break-all">
-                              {f.value}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* MIDDLE: Enhanced Flow Animation */}
-              <div className="tw-hidden lg:tw-flex tw-flex-col tw-items-center tw-justify-center tw-min-w-[120px] tw-relative">
-                <div className="tw-relative tw-flex tw-flex-col tw-items-center">
-                  {/* Top Section */}
-                  <div className="tw-w-0.5 tw-h-16 tw-bg-gradient-to-b tw-from-blue-500 tw-to-blue-400 tw-rounded-full"></div>
-                  
-                  {/* Animated Dots */}
-                  <div className="tw-my-1 tw-flex tw-flex-col tw-gap-1">
-                    <div className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500 animate-pulse-glow" style={{ animationDelay: '0s' }}></div>
-                    <div className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500 animate-pulse-glow" style={{ animationDelay: '0.3s' }}></div>
-                    <div className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500 animate-pulse-glow" style={{ animationDelay: '0.6s' }}></div>
-                  </div>
-
-                  {/* AI Processing Icon */}
-                  <div className="tw-my-3 tw-relative">
-                    <div className={`tw-absolute tw-inset-0 tw-rounded-2xl tw-bg-gradient-to-br ${healthClasses.gradient} tw-opacity-20 tw-blur-xl animate-pulse-glow`}></div>
-                    <div className="tw-relative tw-flex tw-items-center tw-justify-center tw-rounded-2xl tw-border-2 tw-border-blue-500 tw-bg-white tw-w-16 tw-h-16 tw-shadow-lg">
-                      <svg className="tw-w-8 tw-h-8 tw-text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                    </div>
-                    <div className="tw-absolute -tw-bottom-6 tw-left-1/2 tw--translate-x-1/2 tw-whitespace-nowrap tw-text-[10px] tw-font-semibold tw-text-blue-600">
-                      AI Model
-                    </div>
-                  </div>
-
-                  {/* Animated Dots */}
-                  <div className="tw-my-1 tw-flex tw-flex-col tw-gap-1 tw-mt-6">
-                    <div className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500 animate-pulse-glow" style={{ animationDelay: '0.9s' }}></div>
-                    <div className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500 animate-pulse-glow" style={{ animationDelay: '1.2s' }}></div>
-                    <div className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500 animate-pulse-glow" style={{ animationDelay: '1.5s' }}></div>
-                  </div>
-
-                  {/* Bottom Section */}
-                  <div className="tw-w-0.5 tw-h-16 tw-bg-gradient-to-b tw-from-blue-400 tw-to-blue-500 tw-rounded-full"></div>
-                </div>
-              </div>
-
-              {/* RIGHT: Enhanced Health Index Display */}
-              <div className="tw-flex-1 tw-flex tw-flex-col tw-items-center tw-justify-center animate-slide-in-right">
-                <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
-                  <Typography className="tw-text-base tw-font-bold tw-text-blue-gray-900">
-                    Health Index Output
-                  </Typography>
-                  <div className="tw-w-1 tw-h-6 tw-bg-gradient-to-b tw-from-green-500 tw-to-green-600 tw-rounded-full"></div>
-                </div>
-
-                {/* Timestamp Badge */}
-                {timestamps.outputDisplay && (
-                  <div className="timestamp-badge tw-mb-4 tw-flex tw-items-center tw-gap-2 tw-px-4 tw-py-2 tw-rounded-full tw-bg-gradient-to-r tw-from-purple-50 tw-to-pink-50 tw-border tw-border-purple-100 tw-shadow-sm">
-                    <svg className="tw-w-3.5 tw-h-3.5 tw-text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="tw-text-[11px] tw-font-mono tw-text-purple-700 tw-font-semibold">
-                      {timestamps.outputDisplay}
-                    </span>
-                  </div>
-                )}
-
-                <div className="tw-relative tw-mb-6">
-                  {/* Outer Glow Ring */}
-                  <div className={`tw-absolute tw-inset-0 tw-rounded-full tw-bg-gradient-to-br ${healthClasses.gradient} tw-opacity-20 tw-blur-2xl ${healthClasses.glow} tw-shadow-2xl animate-pulse-glow`}></div>
-                  
-                  {/* Main Circle */}
-                  <div className="tw-relative">
-                    <div
-                      className={`tw-w-48 tw-h-48 tw-rounded-full tw-border-[8px] ${healthClasses.ring} tw-flex tw-items-center tw-justify-center tw-bg-white tw-shadow-xl tw-relative tw-overflow-hidden`}
+                  filteredStations.map((s) => (
+                    <button
+                      key={s.sn}
+                      onClick={() => {
+                        switchStation(s.sn);
+                        setStationOpen(false);
+                        setStationSearch("");
+                        loadData();
+                      }}
+                      style={{
+                        width: "100%", display: "flex", alignItems: "center", gap: 10,
+                        padding: "8px 12px", textAlign: "left", cursor: "pointer",
+                        background: activeSn === s.sn ? "rgba(14,165,233,.08)" : "transparent",
+                        border: "none", borderBottom: "1px solid var(--ai-bg)",
+                        color: activeSn === s.sn ? "#0ea5e9" : "var(--ai-tx)",
+                        fontSize: ".78em",
+                      }}
                     >
-                      {/* Inner Gradient Background */}
-                      <div className={`tw-absolute tw-inset-0 tw-bg-gradient-to-br ${healthClasses.gradient} tw-opacity-5`}></div>
-                      
-                      {/* Content */}
-                      <div className="tw-text-center tw-relative tw-z-10">
-                        <div className={`tw-text-5xl tw-font-bold ${healthClasses.text} tw-mb-1`}>
-                          {healthDisplay}
-                        </div>
-                        <div className="tw-text-xs tw-font-semibold tw-text-blue-gray-500 tw-uppercase tw-tracking-wider">
-                          Health Index
-                        </div>
-                        <div className="tw-text-[10px] tw-text-blue-gray-400 tw-mt-0.5">
-                          Percentage (%)
+                      <span style={{
+                        width: 6, height: 6, borderRadius: "50%",
+                        background: activeSn === s.sn ? "#0ea5e9" : "var(--ai-mut)",
+                        flexShrink: 0,
+                      }} />
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{s.name}</div>
+                        <div style={{ fontSize: ".8em", color: "var(--ai-dim)", fontFamily: "var(--ai-font-mono)" }}>
+                          {s.sn}
                         </div>
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Status Badge and Info */}
-                <div className="tw-mt-2 tw-flex tw-flex-col tw-items-center tw-gap-3 tw-w-full tw-max-w-xs">
-                  {healthInfo.label && (
-                    <span
-                      className={`tw-inline-flex tw-items-center tw-rounded-full tw-px-4 tw-py-2 tw-text-xs tw-font-bold tw-uppercase tw-tracking-wide ${healthClasses.badge} tw-shadow-sm`}
-                    >
-                      <span className={`tw-w-2 tw-h-2 tw-rounded-full tw-bg-current tw-mr-2 animate-pulse-glow`}></span>
-                      {healthInfo.label}
-                    </span>
-                  )}
-                  
-                  {healthInfo.sourcePath && (
-                    <div className="tw-bg-gradient-to-r tw-from-blue-gray-50 tw-to-slate-50 tw-rounded-lg tw-px-4 tw-py-2.5 tw-w-full tw-border tw-border-blue-gray-100 tw-shadow-sm">
-                      <div className="tw-flex tw-items-center tw-gap-1.5 tw-mb-1">
-                        <svg className="tw-w-3 tw-h-3 tw-text-blue-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <div className="tw-text-[10px] tw-text-blue-gray-500 tw-font-semibold tw-uppercase tw-tracking-wide">
-                          Source Field
-                        </div>
-                      </div>
-                      <div className="tw-text-xs tw-font-mono tw-font-semibold tw-text-blue-gray-700 tw-break-all">
-                        {healthInfo.sourcePath}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {!outputData && !loading && (
-                  <div className="tw-mt-6 tw-text-center tw-py-4 tw-px-6 tw-bg-gradient-to-r tw-from-amber-50 tw-to-orange-50 tw-rounded-lg tw-border tw-border-amber-200 tw-shadow-sm">
-                    <div className="tw-flex tw-items-center tw-justify-center tw-gap-2">
-                      <svg className="tw-w-4 tw-h-4 tw-text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      <Typography className="tw-text-xs tw-text-amber-700 tw-font-medium">
-                        ยังไม่พบผลลัพธ์ output ของโมดูลนี้
-                      </Typography>
-                    </div>
-                  </div>
+                      {activeSn === s.sn && (
+                        <span style={{ marginLeft: "auto", fontSize: ".7em", color: "#0ea5e9" }}>✓</span>
+                      )}
+                    </button>
+                  ))
                 )}
               </div>
             </div>
           )}
-        </CardBody>
-      </Card>
+        </div>
+
+        {/* Right: refresh */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          {lastUpdate && (
+            <span style={{ fontSize: ".65em", color: "var(--ai-dim)" }}>อัปเดต {lastUpdate}</span>
+          )}
+          <button
+            onClick={refresh}
+            style={{
+              display: "flex", alignItems: "center", gap: 4,
+              padding: "5px 12px", borderRadius: 8, fontSize: ".75em", fontWeight: 600,
+              border: "1px solid var(--ai-bdr2)", background: "#fff", cursor: "pointer",
+              color: "var(--ai-tx)",
+            }}
+          >
+            ↻ <span style={{ color: "var(--ai-dim)", fontFamily: "var(--ai-font-mono)" }}>{countdown}s</span>
+          </button>
+        </div>
+      </div>
+
+      <NavTabs activeModNum={modNum} />
+
+      {/* Module summary header */}
+      <div className="tw-bg-white tw-border-b tw-border-gray-100 tw-px-6 tw-py-4">
+        <div className="tw-flex tw-items-center tw-gap-6 tw-flex-wrap">
+          <HealthGauge value={health} />
+          <div className="tw-flex-1 tw-min-w-0">
+            <div className="tw-flex tw-items-center tw-gap-3 tw-mb-2">
+              <span className={`tw-px-2.5 tw-py-0.5 tw-rounded-full tw-text-xs tw-font-semibold
+                ${health == null ? "tw-bg-gray-100 tw-text-gray-500"
+                  : health >= 75 ? "tw-bg-green-100 tw-text-green-700"
+                    : health >= 50 ? "tw-bg-amber-100 tw-text-amber-700"
+                      : "tw-bg-red-100 tw-text-red-700"}`}>
+                {health == null ? "N/A" : health >= 75 ? "NORMAL" : health >= 50 ? "WARNING" : "CRITICAL"}
+              </span>
+              {data?._result_ts && (
+                <span className="tw-text-xs tw-text-gray-400">
+                  {new Date(data._result_ts).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
+                </span>
+              )}
+            </div>
+            <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+              <div className="tw-text-xs tw-text-gray-400 tw-w-14">Weight</div>
+              <div className="tw-w-24 tw-h-1.5 tw-bg-gray-100 tw-rounded-full tw-overflow-hidden">
+                <div className="tw-h-full tw-rounded-full"
+                  style={{ width: `${mod.weight * 100}%`, background: mod.color }} />
+              </div>
+              <div className="tw-text-xs tw-font-medium tw-text-gray-600">{(mod.weight * 100).toFixed(0)}%</div>
+            </div>
+            <div className="tw-flex tw-flex-wrap tw-gap-1.5">
+              {mod.aiModels.length > 0
+                ? mod.aiModels.map((m) => (
+                  <span key={m} className="tw-px-2 tw-py-0.5 tw-bg-gray-100 tw-text-gray-600 tw-rounded-md tw-text-xs">
+                    {m}
+                  </span>
+                ))
+                : <span className="tw-text-xs tw-text-gray-400">Rule-based</span>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div className="tw-mx-6 tw-mt-4 tw-p-4 tw-bg-red-50 tw-border tw-border-red-200
+                        tw-rounded-xl tw-text-red-700 tw-text-sm">⚠ {error}</div>
+      )}
+
+      {/* Sub-tab navigation */}
+      <SubTabs tabs={tabs} activeTab={activeTab} modNum={modNum} onTabChange={handleTabChange} />
+
+      {/* Tab content */}
+      <div className="tw-p-6">
+        {loading && activeTab !== "history" && activeTab !== "algorithms" ? (
+          <div className="tw-flex tw-items-center tw-justify-center tw-h-40 tw-gap-3">
+            <div className="tw-w-6 tw-h-6 tw-rounded-full tw-border-2 tw-border-gray-200
+                            tw-border-t-blue-500 tw-animate-spin" />
+            <span className="tw-text-sm tw-text-gray-400">กำลังโหลด...</span>
+          </div>
+        ) : (
+          <TabContent
+            tab={activeTab} modNum={modNum} mod={mod} data={data}
+            countdown={countdown}
+            isPaused={isPaused}
+            onTogglePause={() => isPaused ? resume() : pause()}
+          />
+        )}
+      </div>
     </div>
   );
 }

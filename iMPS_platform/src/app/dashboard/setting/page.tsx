@@ -94,44 +94,76 @@ export default function SettingPage() {
 
   return (
     <div className="tw-space-y-6 tw-mt-8">
-      {/* Charge Box ID */}
       <ChargeBoxId />
 
-      {/* Connector labels */}
-      <Row>
+      {/* Timestamp */}
+      {data?.timestamp && (
+        <div className="tw-sticky tw-top-0 tw-z-10 -tw-mx-4 tw-px-4 tw-py-2 tw-bg-white/80 tw-backdrop-blur-sm tw-border-b tw-border-blue-gray-100 lg:tw-static lg:tw-mx-0 lg:tw-px-0 lg:tw-py-0 lg:tw-bg-transparent lg:tw-backdrop-blur-none lg:tw-border-0">
+          <div className="tw-flex tw-items-center tw-gap-2 tw-justify-end">
+            <span className="tw-inline-flex tw-items-center tw-gap-2 tw-px-3 tw-py-1.5 tw-rounded-full tw-bg-blue-gray-50 tw-border tw-border-blue-gray-100 tw-shadow-sm">
+              <span className="tw-relative tw-flex tw-h-2 tw-w-2">
+                <span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-bg-green-400 tw-opacity-75" />
+                <span className="tw-relative tw-inline-flex tw-h-2 tw-w-2 tw-rounded-full tw-bg-green-500" />
+              </span>
+              <svg className="tw-w-3.5 tw-h-3.5 tw-text-blue-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+              </svg>
+              <span className="tw-text-[11px] tw-font-medium tw-text-blue-gray-500">อัปเดตล่าสุด</span>
+              <span className="tw-text-[11px] tw-font-bold tw-text-blue-gray-700 tw-tabular-nums">
+                {new Date(data.timestamp).toLocaleString("th-TH", { timeZone: "UTC" })}
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ════ MOBILE layout (< lg) ════ */}
+      <div className="tw-space-y-4 lg:tw-hidden">
+        {/* Connector 1 */}
         <ConnectorLabel no={1} color="blue" />
-        <ConnectorLabel no={2} color="blue" />
-      </Row>
-
-      {/* Head */}
-      <Row>
         <Head1 />
-        <Head2 />
-      </Row>
-
-      {/* Energy / Power */}
-      <Row>
         <EnergyPowerCard head={1} data={data} />
-        <EnergyPowerCard head={2} data={data} />
-      </Row>
-
-      {/* EV Panel */}
-      <Row>
         <EvPanel head={1} data={data} />
-        <EvPanel head={2} data={data} />
-      </Row>
-
-      {/* Power Module */}
-      <Row>
         <PowerModule head={1} data={data} />
-        <PowerModule head={2} data={data} />
-      </Row>
-
-      {/* Info Panel */}
-      <Row>
         <InfoPanel head={1} data={data} />
+
+        {/* Connector 2 */}
+        <ConnectorLabel no={2} color="green" />
+        <Head2 />
+        <EnergyPowerCard head={2} data={data} />
+        <EvPanel head={2} data={data} />
+        <PowerModule head={2} data={data} />
         <InfoPanel head={2} data={data} />
-      </Row>
+      </div>
+
+      {/* ════ DESKTOP layout (>= lg) — เหมือนเดิมทุกอย่าง ════ */}
+      <div className="tw-hidden lg:tw-block tw-space-y-6">
+        <Row>
+          <ConnectorLabel no={1} color="blue" />
+          <ConnectorLabel no={2} color="blue" />
+        </Row>
+        <Row>
+          <Head1 />
+          <Head2 />
+        </Row>
+        <Row>
+          <EnergyPowerCard head={1} data={data} />
+          <EnergyPowerCard head={2} data={data} />
+        </Row>
+        <Row>
+          <EvPanel head={1} data={data} />
+          <EvPanel head={2} data={data} />
+        </Row>
+        <Row>
+          <PowerModule head={1} data={data} />
+          <PowerModule head={2} data={data} />
+        </Row>
+        <Row>
+          <InfoPanel head={1} data={data} />
+          <InfoPanel head={2} data={data} />
+        </Row>
+      </div>
+
     </div>
   );
 }
