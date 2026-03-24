@@ -88,6 +88,11 @@ export function DashboardNavbar() {
 
   const isStationsPage = pathname.startsWith("/dashboard/stations");
 
+  // ซ่อนปุ่มเลือกสถานีเมื่ออยู่หน้า Solar Plant หรือ Power Plant
+  const isEnergyPage =
+    pathname.startsWith("/dashboard/solar-plant") ||
+    pathname.startsWith("/dashboard/power-plant");
+
   const HIDE_TOPBAR = ["/pages", "/mainpages"];
   const hideTopbar = HIDE_TOPBAR.some((p) => pathname === p || pathname.startsWith(p + "/"));
   const isAuthPage = pathname.startsWith("/auth");
@@ -125,6 +130,8 @@ export function DashboardNavbar() {
   else if (segs[1] === "cm-report") title = "CM Report";
   else if (segs[1] === "cbm") title = "Condition-base";
   else if (segs[1] === "stations") title = "Stations";
+  else if (segs[1] === "solar-plant") title = "Solar Plant";
+  else if (segs[1] === "power-plant") title = "Power Plant";
 
   // ===== Language State =====
   const [lang, setLang] = useState<Lang>("th");
@@ -306,7 +313,7 @@ export function DashboardNavbar() {
           <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3 tw-flex-shrink-0">
 
             {/* ===== Station & Charger Pills ===== */}
-            {!isStationsPage && (
+            {!isStationsPage && !isEnergyPage && (
               <>
                 {hasChargerSelected ? (
                   <>
@@ -433,12 +440,12 @@ export function DashboardNavbar() {
             )}
 
             {/* Divider - Only show when has selection */}
-            {!isStationsPage && hasChargerSelected && (
+            {!isStationsPage && !isEnergyPage && hasChargerSelected && (
               <div className="tw-hidden sm:tw-block tw-w-px tw-h-6 tw-bg-gray-200" />
             )}
 
             {/* Notification Bell - Consistent Style */}
-            {userRole !== "technician" && (
+            {userRole !== "technician" && !isEnergyPage && (
               <NavIconButton
                 onClick={() => router.push("/dashboard/notifications")}
                 title={t.notifications}

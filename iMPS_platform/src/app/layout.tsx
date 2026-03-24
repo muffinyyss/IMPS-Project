@@ -3,51 +3,35 @@
 /* eslint-disable @next/next/next-script-for-ga */
 import React from "react";
 import Script from "next/script";
-import { Roboto } from "next/font/google";
 import ThemeProvider from "@/components/ThemeProvider";
 import theme from "@/theme";
 import { MaterialTailwindControllerProvider } from "@/context";
 import InnerContent from "./content";
-import { Plus_Jakarta_Sans, Prompt, JetBrains_Mono } from "next/font/google";
+import { Kanit, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import "react-calendar/dist/Calendar.css";
 import "./globals.css";
-import { useMaterialTailwindController } from "@/context";
 
-<link
-  rel="stylesheet"
-  href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-/>
-
-const roboto = Roboto({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "700", "900"],
+const kanit = Kanit({
+  subsets: ["thai", "latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-kanit",
   display: "swap",
-});
-
-// โหลดฟอนต์ Prompt
-const prompt = Prompt({
-  subsets: ["latin", "thai"], // เลือก subset ภาษาไทยด้วย
-  weight: ["300", "400", "500", "600", "700"], // เลือกน้ำหนักตามต้องการ
-  variable: "--font-prompt", // ตั้งชื่อเป็นตัวแปร CSS
 });
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  weight: ["300","400","500","600","700","800"],
+  weight: ["300", "400", "500", "600", "700", "800"],
   variable: "--font-jakarta",
   display: "swap",
 });
 
 const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
-  weight: ["400","500","600","700","800"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-mono",
   display: "swap",
 });
-
-// const [{ sidenavType, openSidenav }] = useMaterialTailwindController();
-// const isSidenavMini = sidenavType === "mini"; // <- ใช้ค่านี้สลับ ml 80/60
 
 export default function RootLayout({
   children,
@@ -55,7 +39,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="th" className={`${prompt.variable} ${jakarta.variable} ${jetbrains.variable}`}>
+    <html lang="th" className={`${kanit.variable} ${jakarta.variable} ${jetbrains.variable}`}>
       <head>
         <Script
           defer
@@ -63,11 +47,9 @@ export default function RootLayout({
           src="https://api.nepcha.com/js/nepcha-analytics.js"
         />
         <link rel="icon" type="image/svg+xml" href="/img/favicon.png" />
-        <title>
-          iMPS
-        </title>
+        <title>iMPS</title>
       </head>
-      <body className={roboto.className}>
+      <body className={kanit.className}>
         <ThemeProvider value={theme}>
           <MaterialTailwindControllerProvider>
             <InnerContent>{children}</InnerContent>
