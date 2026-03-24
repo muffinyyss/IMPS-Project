@@ -195,6 +195,14 @@ class Pipeline:
             if agg:
                 agg.cbm.update_mdb(data, timestamp)
     
+    def _check_heartbeat_timeouts(self):
+        """Check heartbeat timeouts for all stations"""
+        now = now_tz()
+        
+        for station_id, state in self.state_manager.get_all_stations().items():
+            if self.status_tracker:
+                self.status_tracker.update_all(state, now)
+
     def _process_message(self, station_id: str, topic_key: str, 
                          data: Dict[str, Any], timestamp: datetime):
         state = self.state_manager.get_station(station_id)
@@ -295,9 +303,18 @@ class Pipeline:
         logger.info(f"Stations: {list(settings.stations.keys())}")
         logger.info("="*60)
         
+        last_heartbeat_check = time.time()
+        HEARTBEAT_CHECK_INTERVAL = 30  # Check every 30 seconds
+        
         try:
             while self.running:
                 time.sleep(1)
+                
+                # Periodic heartbeat timeout check
+                if time.time() - last_heartbeat_check >= HEARTBEAT_CHECK_INTERVAL:
+                    self._check_heartbeat_timeouts()
+                    last_heartbeat_check = time.time()
+        
         except KeyboardInterrupt:
             pass
         
@@ -316,6 +333,7 @@ class Pipeline:
         
         self.mongodb.close()
         logger.info("Pipeline stopped")
+
 
 
 def main():

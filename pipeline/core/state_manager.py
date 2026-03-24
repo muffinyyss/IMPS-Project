@@ -334,6 +334,9 @@ class StateManager:
     """
     Manages states for all stations.
     """
+    def get_all_stations(self) -> Dict[str, StationState]:
+        """Get all station states"""
+        return self._stations 
     
     def __init__(self):
         self.stations: Dict[str, StationState] = {}
