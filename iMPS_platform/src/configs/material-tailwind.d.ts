@@ -274,4 +274,25 @@ declare module "@material-tailwind/react" {
     onResize?: unknown;
     onResizeCapture?: unknown;
   }
+  interface CarouselProps {
+    placeholder?: unknown;
+    onPointerEnterCapture?: unknown;
+    onPointerLeaveCapture?: unknown;
+    onResize?: unknown;
+    onResizeCapture?: unknown;
+  }
+  interface NavbarProps {
+    placeholder?: unknown;
+    onPointerEnterCapture?: unknown;
+    onPointerLeaveCapture?: unknown;
+    onResize?: unknown;
+    onResizeCapture?: unknown;
+  }
+  interface IconButtonProps {
+    placeholder?: unknown;
+    onPointerEnterCapture?: unknown;
+    onPointerLeaveCapture?: unknown;
+    onResize?: unknown;
+    onResizeCapture?: unknown;
+  }
 }
