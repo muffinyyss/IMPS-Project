@@ -19,7 +19,7 @@ function NavTabs() {
     const router = useRouter();
     const tabs = [
         { label: "📊 Dashboard", href: "/dashboard/ai" },
-        { label: "📡 Station Monitor", href: "/dashboard/ai/monitor" },
+        { label: "📡 Station Monitor", href: "/dashboard/ai/monitor" }, 
         { label: "📈 Health History", href: "/dashboard/ai/history" },
         { label: "🎯 Heatmap", href: "/dashboard/ai/heatmap" },
     ];
