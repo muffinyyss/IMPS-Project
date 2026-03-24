@@ -266,15 +266,21 @@ export function DashboardNavbar() {
 
       <div
         className="
-          tw-fixed tw-top-2 tw-right-4
+          tw-fixed tw-top-4 tw-right-4
           tw-z-40
           tw-transition-all tw-duration-300
           tw-backdrop-blur-xl tw-bg-white/80
           tw-shadow-md tw-shadow-gray-200/50
           tw-border tw-border-gray-100
           tw-rounded-2xl
+          
         "
-        style={{ left: "var(--content-ml, 1rem)" }}
+        // style={{ left: "var(--content-ml, 1rem)" }}
+        style={{
+          left: "auto",
+          right: "1rem",
+          width: "calc(100% - var(--content-ml, 1rem) - 2rem)",
+        }}
       >
         <div className="tw-px-4 sm:tw-px-6 tw-py-2">
         {/* ===== Single Row Layout ===== */}
@@ -310,7 +316,7 @@ export function DashboardNavbar() {
           </div>
 
           {/* Right: Station/Charger Info + Language + Menu */}
-          <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3 tw-flex-shrink-0">
+          <div className="tw-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-flex-shrink-0">
 
             {/* ===== Station & Charger Pills ===== */}
             {!isStationsPage && !isEnergyPage && (
