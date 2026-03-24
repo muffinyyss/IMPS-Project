@@ -12,6 +12,7 @@ export default function InnerContent({ children }: { children: React.ReactNode }
 
   // ✅ ย้าย hooks ทั้งหมดขึ้นมาก่อน early return
   const [controller] = useMaterialTailwindController();
+  const pathname = usePathname();  
 
   useEffect(() => {
     setIsMounted(true);
@@ -20,8 +21,7 @@ export default function InnerContent({ children }: { children: React.ReactNode }
 
   if (!isMounted) return null;
 
-  const { openSidenav } = controller;
-  const pathname = usePathname();    // ← usePathname ใช้ได้หลัง mount
+  const { openSidenav } = controller; // ← usePathname ใช้ได้หลัง mount
 
   const HIDE_SIDENAV = ["/pages/*", "/mainpages/*", "/auth/*"];
   const SIMPLE_PAGES = ["/pages/*", "/mainpages/*", "/auth/*"];
