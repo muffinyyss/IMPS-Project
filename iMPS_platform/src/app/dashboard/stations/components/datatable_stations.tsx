@@ -19,7 +19,8 @@ import { useRouter } from "next/navigation";
 import AddStation, { type NewStationPayload } from "@/app/dashboard/stations/components/addstations";
 import { apiFetch } from "@/utils/api";
 
-const API_BASE = "http://localhost:8000";
+// const API_BASE = "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 // ===== Types =====
 type ChargerData = {
@@ -481,7 +482,10 @@ export function SearchDataTables() {
 
   const mapCharger = (c: any, index: number): ChargerData => {
     const imgs = c.images || {};
+    
     const norm = (v: any): string[] => Array.isArray(v) ? v : (typeof v === "string" && v ? [v] : []);
+    console.log("API_BASE:", process.env.NEXT_PUBLIC_API_BASE);
+
     return {
       id: c.id, charger_id: c.charger_id, station_id: c.station_id,
       chargeBoxID: c.chargeBoxID ?? "-", chargerNo: c.chargerNo ?? (index + 1),
