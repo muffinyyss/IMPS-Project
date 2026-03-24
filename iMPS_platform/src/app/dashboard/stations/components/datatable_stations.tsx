@@ -22,6 +22,9 @@ import { apiFetch } from "@/utils/api";
 // const API_BASE = "http://localhost:8000";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
+const imgUrl = (url: string) =>
+  url.startsWith("http") ? url : `${API_BASE}${url}`;
+
 // ===== Types =====
 type ChargerData = {
   id?: string;
@@ -778,8 +781,8 @@ export function SearchDataTables() {
           </div>
           {((charger.chargerImages?.length ?? 0) > 0 || (charger.deviceImages?.length ?? 0) > 0) && (
             <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3 tw-overflow-x-auto">
-              {charger.chargerImages?.map((url, i) => (<a key={`c-${i}`} href={`${API_BASE}${url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="tw-flex-shrink-0"><div className="tw-relative tw-group/img"><img src={`${API_BASE}${url}`} alt={`Charger ${i + 1}`} className="tw-h-14 tw-w-14 tw-object-cover tw-rounded-lg tw-border-2 tw-border-blue-gray-100 group-hover/img:tw-border-blue-400 tw-transition-colors" /><span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-bg-black/60 tw-text-white tw-text-[7px] tw-text-center tw-py-0.5 tw-rounded-b-md">Charger {charger.chargerImages!.length > 1 ? i + 1 : ""}</span></div></a>))}
-              {charger.deviceImages?.map((url, i) => (<a key={`d-${i}`} href={`${API_BASE}${url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="tw-flex-shrink-0"><div className="tw-relative tw-group/img"><img src={`${API_BASE}${url}`} alt={`Device ${i + 1}`} className="tw-h-14 tw-w-14 tw-object-cover tw-rounded-lg tw-border-2 tw-border-blue-gray-100 group-hover/img:tw-border-blue-400 tw-transition-colors" /><span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-bg-black/60 tw-text-white tw-text-[7px] tw-text-center tw-py-0.5 tw-rounded-b-md">Device {charger.deviceImages!.length > 1 ? i + 1 : ""}</span></div></a>))}
+              {charger.chargerImages?.map((url, i) => (<a key={`c-${i}`} href={imgUrl(url)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="tw-flex-shrink-0"><div className="tw-relative tw-group/img"><img src={imgUrl(url)} alt={`Charger ${i + 1}`} className="tw-h-14 tw-w-14 tw-object-cover tw-rounded-lg tw-border-2 tw-border-blue-gray-100 group-hover/img:tw-border-blue-400 tw-transition-colors" /><span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-bg-black/60 tw-text-white tw-text-[7px] tw-text-center tw-py-0.5 tw-rounded-b-md">Charger {charger.chargerImages!.length > 1 ? i + 1 : ""}</span></div></a>))}
+              {charger.deviceImages?.map((url, i) => (<a key={`d-${i}`} href={imgUrl(url)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="tw-flex-shrink-0"><div className="tw-relative tw-group/img"><img src={imgUrl(url)} alt={`Device ${i + 1}`} className="tw-h-14 tw-w-14 tw-object-cover tw-rounded-lg tw-border-2 tw-border-blue-gray-100 group-hover/img:tw-border-blue-400 tw-transition-colors" /><span className="tw-absolute tw-bottom-0 tw-inset-x-0 tw-bg-black/60 tw-text-white tw-text-[7px] tw-text-center tw-py-0.5 tw-rounded-b-md">Device {charger.deviceImages!.length > 1 ? i + 1 : ""}</span></div></a>))}
             </div>
           )}
           <div className="tw-flex tw-items-center tw-gap-2 tw-mb-3">
