@@ -174,7 +174,7 @@ export default function BasicInfo() {
   //   </Card>
   // );
   return (
-    <Card className="tw-mb-6 tw-scroll-mt-4 tw-border tw-border-blue-gray-100 tw-shadow-sm tw-rounded-xl tw-overflow-hidden" id="Profile">
+    <Card className="tw-scroll-mt-4 tw-border tw-border-blue-gray-100 tw-shadow-sm tw-rounded-xl tw-overflow-hidden" id="Profile">
       <CardHeader shadow={false} floated={false}>
         <Typography variant="h5" color="blue-gray">Profile</Typography>
         <Typography variant="small" className="!tw-text-blue-gray-500">ข้อมูลโปรไฟล์ของคุณ</Typography>
