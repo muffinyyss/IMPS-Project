@@ -591,7 +591,7 @@ export default function MDBPage() {
     const charts = useMemo(() => buildChartsFromHistory(MDB, history, startDate, endDate), [MDB, history, startDate, endDate]);
 
     return (
-        <div className="tw-mt-8 tw-mb-4">
+        <div className="tw-mt-4 tw-mb-4">
 
             {/* ══════ Page Header ══════ */}
             <div className="tw-relative tw-overflow-hidden tw-rounded-2xl tw-mb-4 tw-px-5 sm:tw-px-8 tw-py-5 sm:tw-py-6"

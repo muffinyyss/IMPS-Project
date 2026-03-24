@@ -826,7 +826,7 @@ export function SearchDataTables() {
   return (
     <>
       <LoadingOverlay show={loading} text={lang === "th" ? "กำลังโหลดข้อมูล..." : "Loading data..."} />
-      <div className="tw-mt-8 tw-mb-4">
+      <div className="tw-mt-4 tw-mb-4">
         {statusFilter !== "all" && (
           <div className="tw-mb-3 tw-flex tw-items-center tw-gap-2">
             <span className="tw-text-sm tw-text-blue-gray-600">{lang === "th" ? `ตัวกรอง: ${statusFilter === "online" ? "ออนไลน์" : "ออฟไลน์"}` : `Filter: ${statusFilter === "online" ? "Online" : "Offline"}`}</span>
@@ -857,7 +857,7 @@ export function SearchDataTables() {
         </div>
       </div>
 
-      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-8">
+      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4">
         {notice && (<div className="tw-px-4 tw-pt-4"><Alert color={notice.type === "success" ? "green" : "red"} onClose={() => setNotice(null)}>{notice.msg}</Alert></div>)}
         <CardHeader floated={false} shadow={false} className="tw-!px-4 sm:tw-!px-6 tw-!py-5 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30 tw-rounded-t-xl">
           <div className="tw-flex tw-items-start tw-justify-between tw-gap-3">
