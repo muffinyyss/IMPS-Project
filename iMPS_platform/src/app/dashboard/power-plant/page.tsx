@@ -97,4 +97,4 @@ export default function PowerPlantPage() {
       </div>
     </div>
   );
-}
+} 
