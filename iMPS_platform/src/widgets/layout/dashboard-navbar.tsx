@@ -263,237 +263,233 @@ export function DashboardNavbar() {
     <>
       {/* Spacer to prevent content from hiding behind fixed navbar */}
       <div className="tw-h-[60px] tw-w-full tw-shrink-0" />
-      <div
-        className="
-          tw-fixed tw-top-4 tw-right-4
-          tw-z-40
-          tw-transition-all tw-duration-300
-          tw-backdrop-blur-xl tw-bg-white/80
-          tw-shadow-md tw-shadow-gray-200/50
-          tw-border tw-border-gray-100
-          tw-rounded-2xl
-          
-        "
-        // style={{ left: "var(--content-ml, 1rem)" }}
-        style={{
-          left: "auto",
-          right: "1rem",
-          width: "calc(100% - var(--content-ml, 1rem) - 2rem)",
-        }}
-      >
-        <div className="tw-px-4 sm:tw-px-6 tw-py-2">
-        {/* ===== Single Row Layout ===== */}
-        <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
+        <div
+          className="
+            tw-fixed tw-top-4 tw-right-4
+            tw-z-40
+            tw-transition-all tw-duration-300
+            tw-backdrop-blur-xl tw-bg-white/80
+            tw-shadow-md tw-shadow-gray-200/50
+            tw-border tw-border-gray-100
+            tw-rounded-2xl
+            tw-w-[calc(100%-2rem)]
+            xl:tw-w-[calc(100%-var(--content-ml,1rem)-2rem)]
+          "
+          style={{ left: "auto", right: "1rem" }}
+        >
+          <div className="tw-px-4 sm:tw-px-6 tw-py-2">
+          {/* ===== Single Row Layout ===== */}
+          <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
 
-          {/* Left: Title & Breadcrumbs */}
-          <div className="tw-min-w-0 tw-flex-shrink-0">
-            {!hideTopbar && (
-              <>
-                {/* Breadcrumbs - Hidden on mobile */}
-                <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-1 tw-text-xs tw-text-gray-400 tw-mb-1">
-                  <Link href="/" className="hover:tw-text-gray-600 tw-transition-colors">
-                    <HomeIcon className="tw-h-3.5 tw-w-3.5" />
-                  </Link>
-                  {segs.slice(0, -1).map((seg, i) => (
-                    <React.Fragment key={i}>
-                      <ChevronRightIcon className="tw-h-3 tw-w-3 tw-text-gray-300" />
-                      <span className="tw-hidden lg:tw-inline hover:tw-text-gray-600 tw-transition-colors tw-cursor-default">
-                        {seg.replace(/-/g, " ")}
-                      </span>
-                    </React.Fragment>
-                  ))}
-                  <ChevronRightIcon className="tw-h-3 tw-w-3 tw-text-gray-300" />
-                  <span className="tw-text-gray-500 tw-truncate">{title}</span>
-                </div>
-
-                {/* Title */}
-                <h1 className="tw-text-base sm:tw-text-lg lg:tw-text-xl tw-font-bold tw-text-gray-900 tw-tracking-tight tw-truncate tw-capitalize">
-                  {title}
-                </h1>
-              </>
-            )}
-          </div>
-
-          {/* Right: Station/Charger Info + Language + Menu */}
-          <div className="tw-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-flex-shrink-0">
-
-            {/* ===== Station & Charger Pills ===== */}
-            {!isStationsPage && !isEnergyPage && (
-              <>
-                {hasChargerSelected ? (
-                  <>
-                    {/* Desktop: Full Pills */}
-                    <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-2">
-                      {/* Station Pill */}
-                      <div className="
-                        tw-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1
-                        tw-bg-gray-900
-                        tw-rounded-full
-                        tw-shadow-sm
-                      ">
-                        <MapPinIcon className="tw-h-3.5 tw-w-3.5 tw-text-white" />
-                        <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[100px] lg:tw-max-w-[150px] tw-truncate">
-                          {selectedStationName || selectedStationId}
+            {/* Left: Title & Breadcrumbs */}
+            <div className="tw-min-w-0 tw-flex-shrink-0">
+              {!hideTopbar && (
+                <>
+                  {/* Breadcrumbs - Hidden on mobile */}
+                  <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-1 tw-text-xs tw-text-gray-400 tw-mb-1">
+                    <Link href="/" className="hover:tw-text-gray-600 tw-transition-colors">
+                      <HomeIcon className="tw-h-3.5 tw-w-3.5" />
+                    </Link>
+                    {segs.slice(0, -1).map((seg, i) => (
+                      <React.Fragment key={i}>
+                        <ChevronRightIcon className="tw-h-3 tw-w-3 tw-text-gray-300" />
+                        <span className="tw-hidden lg:tw-inline hover:tw-text-gray-600 tw-transition-colors tw-cursor-default">
+                          {seg.replace(/-/g, " ")}
                         </span>
-                      </div>
+                      </React.Fragment>
+                    ))}
+                    <ChevronRightIcon className="tw-h-3 tw-w-3 tw-text-gray-300" />
+                    <span className="tw-text-gray-500 tw-truncate">{title}</span>
+                  </div>
 
-                      {/* Charger Pill */}
-                      <div className="
-                        tw-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1
-                        tw-bg-gray-900
-                        tw-rounded-full
-                        tw-shadow-sm
-                      ">
-                        <ChargerBoxIcon className="tw-h-3.5 tw-w-3.5 tw-text-white" />
-                        <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[80px] lg:tw-max-w-[120px] tw-truncate">
-                          {selectedChargerNo ? `#${selectedChargerNo}` : ""} {selectedSN}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Mobile: Consistent Icon Buttons with Tap Tooltip */}
-                    <div className="tw-relative tw-flex sm:tw-hidden tw-items-center tw-gap-2">
-                      <NavIconButton
-                        onClick={(e) => {
-                          e?.stopPropagation();
-                          setShowStationTooltip(!showStationTooltip);
-                        }}
-                        title={t.currentStation}
-                      >
-                        <MapPinIcon className="tw-h-4 tw-w-4 tw-text-white" />
-                      </NavIconButton>
-
-                      <NavIconButton
-                        onClick={(e) => {
-                          e?.stopPropagation();
-                          setShowStationTooltip(!showStationTooltip);
-                        }}
-                        title={t.currentCharger}
-                      >
-                        <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
-                      </NavIconButton>
-
-                      {/* Tooltip Popup */}
-                      {showStationTooltip && (
-                        <div
-                          className="
-                            tw-absolute tw-top-full tw-right-0 tw-mt-2 tw-z-50
-                            tw-bg-white tw-rounded-xl tw-shadow-xl tw-shadow-gray-200/50
-                            tw-border tw-border-gray-100
-                            tw-p-3 tw-min-w-[200px]
-                            tw-animate-in tw-fade-in tw-slide-in-from-top-2 tw-duration-200
-                          "
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {/* Arrow */}
-                          <div className="tw-absolute tw--top-2 tw-right-6 tw-w-4 tw-h-4 tw-bg-white tw-border-l tw-border-t tw-border-gray-100 tw-rotate-45" />
-
-                          {/* Station Info */}
-                          <div className="tw-flex tw-items-center tw-gap-3 tw-mb-3 tw-pb-3 tw-border-b tw-border-gray-100">
-                            <div className="tw-p-2 tw-bg-gray-900 tw-rounded-lg">
-                              <MapPinIcon className="tw-h-4 tw-w-4 tw-text-white" />
-                            </div>
-                            <div className="tw-min-w-0 tw-flex-1">
-                              <p className="tw-text-[10px] tw-font-medium tw-text-gray-400 tw-uppercase tw-tracking-wider">
-                                {t.currentStation}
-                              </p>
-                              <p className="tw-font-medium tw-text-gray-800 tw-text-sm tw-truncate">
-                                {selectedStationName || selectedStationId}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Charger Info */}
-                          <div className="tw-flex tw-items-center tw-gap-3">
-                            <div className="tw-p-2 tw-bg-gray-900 tw-rounded-lg">
-                              <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
-                            </div>
-                            <div className="tw-min-w-0 tw-flex-1">
-                              <p className="tw-text-[10px] tw-font-medium tw-text-gray-400 tw-uppercase tw-tracking-wider">
-                                {t.currentCharger}
-                              </p>
-                              <p className="tw-font-medium tw-text-gray-800 tw-text-sm tw-truncate">
-                                {selectedChargerNo ? `${lang === "th" ? "ตู้" : "Box"} ${selectedChargerNo} • ` : ""}
-                                {selectedSN}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  /* No charger selected */
-                  <button
-                    onClick={() => router.push("/dashboard/stations")}
-                    className="
-                      tw-flex tw-items-center tw-gap-2
-                      tw-px-2.5 tw-py-1 tw-rounded-full
-                      tw-bg-gray-900
-                      hover:tw-bg-gray-800
-                      tw-transition-all tw-duration-200
-                      active:tw-scale-95
-                    "
-                  >
-                    <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
-                    <span className="tw-text-xs tw-font-medium tw-text-white tw-hidden sm:tw-inline">
-                      {t.goToStations}
-                    </span>
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* Divider - Only show when has selection */}
-            {!isStationsPage && !isEnergyPage && hasChargerSelected && (
-              <div className="tw-hidden sm:tw-block tw-w-px tw-h-6 tw-bg-gray-200" />
-            )}
-
-            {/* Notification Bell - Consistent Style */}
-            {userRole !== "technician" && !isEnergyPage && (
-              <NavIconButton
-                onClick={() => router.push("/dashboard/notifications")}
-                title={t.notifications}
-                badge={notificationCount}
-              >
-                <BellIcon className="tw-h-4 tw-w-4 tw-text-white" />
-              </NavIconButton>
-            )}
-
-            {/* Language Toggle - Consistent Style */}
-            <NavIconButton
-              onClick={toggleLanguage}
-              title={lang === "th" ? "Switch to English" : "เปลี่ยนเป็นภาษาไทย"}
-            >
-              <span className="tw-text-xs tw-font-bold tw-text-white">
-                {lang === "th" ? "TH" : "EN"}
-              </span>
-            </NavIconButton>
-
-            {/* Menu Toggle */}
-            <button
-              onClick={() => setOpenSidenav(dispatch, !openSidenav)}
-              className="
-                xl:tw-hidden
-                tw-p-1.5 tw-rounded-full
-                tw-bg-white hover:tw-bg-gray-50
-                tw-border tw-border-gray-200
-                tw-text-gray-600
-                tw-shadow-sm
-                tw-transition-all tw-duration-200
-                active:tw-scale-95
-              "
-            >
-              {openSidenav ? (
-                <Bars3Icon className="tw-h-5 tw-w-5" />
-              ) : (
-                <Bars3CenterLeftIcon className="tw-h-5 tw-w-5" />
+                  {/* Title */}
+                  <h1 className="tw-text-base sm:tw-text-lg lg:tw-text-xl tw-font-bold tw-text-gray-900 tw-tracking-tight tw-truncate tw-capitalize">
+                    {title}
+                  </h1>
+                </>
               )}
-            </button>
+            </div>
+
+            {/* Right: Station/Charger Info + Language + Menu */}
+            <div className="tw-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-flex-shrink-0">
+
+              {/* ===== Station & Charger Pills ===== */}
+              {!isStationsPage && !isEnergyPage && (
+                <>
+                  {hasChargerSelected ? (
+                    <>
+                      {/* Desktop: Full Pills */}
+                      <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-2">
+                        {/* Station Pill */}
+                        <div className="
+                          tw-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1
+                          tw-bg-gray-900
+                          tw-rounded-full
+                          tw-shadow-sm
+                        ">
+                          <MapPinIcon className="tw-h-3.5 tw-w-3.5 tw-text-white" />
+                          <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[100px] lg:tw-max-w-[150px] tw-truncate">
+                            {selectedStationName || selectedStationId}
+                          </span>
+                        </div>
+
+                        {/* Charger Pill */}
+                        <div className="
+                          tw-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1
+                          tw-bg-gray-900
+                          tw-rounded-full
+                          tw-shadow-sm
+                        ">
+                          <ChargerBoxIcon className="tw-h-3.5 tw-w-3.5 tw-text-white" />
+                          <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[80px] lg:tw-max-w-[120px] tw-truncate">
+                            {selectedChargerNo ? `#${selectedChargerNo}` : ""} {selectedSN}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Mobile: Consistent Icon Buttons with Tap Tooltip */}
+                      <div className="tw-relative tw-flex sm:tw-hidden tw-items-center tw-gap-2">
+                        <NavIconButton
+                          onClick={(e) => {
+                            e?.stopPropagation();
+                            setShowStationTooltip(!showStationTooltip);
+                          }}
+                          title={t.currentStation}
+                        >
+                          <MapPinIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                        </NavIconButton>
+
+                        <NavIconButton
+                          onClick={(e) => {
+                            e?.stopPropagation();
+                            setShowStationTooltip(!showStationTooltip);
+                          }}
+                          title={t.currentCharger}
+                        >
+                          <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                        </NavIconButton>
+
+                        {/* Tooltip Popup */}
+                        {showStationTooltip && (
+                          <div
+                            className="
+                              tw-absolute tw-top-full tw-right-0 tw-mt-2 tw-z-50
+                              tw-bg-white tw-rounded-xl tw-shadow-xl tw-shadow-gray-200/50
+                              tw-border tw-border-gray-100
+                              tw-p-3 tw-min-w-[200px]
+                              tw-animate-in tw-fade-in tw-slide-in-from-top-2 tw-duration-200
+                            "
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {/* Arrow */}
+                            <div className="tw-absolute tw--top-2 tw-right-6 tw-w-4 tw-h-4 tw-bg-white tw-border-l tw-border-t tw-border-gray-100 tw-rotate-45" />
+
+                            {/* Station Info */}
+                            <div className="tw-flex tw-items-center tw-gap-3 tw-mb-3 tw-pb-3 tw-border-b tw-border-gray-100">
+                              <div className="tw-p-2 tw-bg-gray-900 tw-rounded-lg">
+                                <MapPinIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                              </div>
+                              <div className="tw-min-w-0 tw-flex-1">
+                                <p className="tw-text-[10px] tw-font-medium tw-text-gray-400 tw-uppercase tw-tracking-wider">
+                                  {t.currentStation}
+                                </p>
+                                <p className="tw-font-medium tw-text-gray-800 tw-text-sm tw-truncate">
+                                  {selectedStationName || selectedStationId}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Charger Info */}
+                            <div className="tw-flex tw-items-center tw-gap-3">
+                              <div className="tw-p-2 tw-bg-gray-900 tw-rounded-lg">
+                                <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                              </div>
+                              <div className="tw-min-w-0 tw-flex-1">
+                                <p className="tw-text-[10px] tw-font-medium tw-text-gray-400 tw-uppercase tw-tracking-wider">
+                                  {t.currentCharger}
+                                </p>
+                                <p className="tw-font-medium tw-text-gray-800 tw-text-sm tw-truncate">
+                                  {selectedChargerNo ? `${lang === "th" ? "ตู้" : "Box"} ${selectedChargerNo} • ` : ""}
+                                  {selectedSN}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    /* No charger selected */
+                    <button
+                      onClick={() => router.push("/dashboard/stations")}
+                      className="
+                        tw-flex tw-items-center tw-gap-2
+                        tw-px-2.5 tw-py-1 tw-rounded-full
+                        tw-bg-gray-900
+                        hover:tw-bg-gray-800
+                        tw-transition-all tw-duration-200
+                        active:tw-scale-95
+                      "
+                    >
+                      <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                      <span className="tw-text-xs tw-font-medium tw-text-white tw-hidden sm:tw-inline">
+                        {t.goToStations}
+                      </span>
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Divider - Only show when has selection */}
+              {!isStationsPage && !isEnergyPage && hasChargerSelected && (
+                <div className="tw-hidden sm:tw-block tw-w-px tw-h-6 tw-bg-gray-200" />
+              )}
+
+              {/* Notification Bell - Consistent Style */}
+              {userRole !== "technician" && !isEnergyPage && (
+                <NavIconButton
+                  onClick={() => router.push("/dashboard/notifications")}
+                  title={t.notifications}
+                  badge={notificationCount}
+                >
+                  <BellIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                </NavIconButton>
+              )}
+
+              {/* Language Toggle - Consistent Style */}
+              <NavIconButton
+                onClick={toggleLanguage}
+                title={lang === "th" ? "Switch to English" : "เปลี่ยนเป็นภาษาไทย"}
+              >
+                <span className="tw-text-xs tw-font-bold tw-text-white">
+                  {lang === "th" ? "TH" : "EN"}
+                </span>
+              </NavIconButton>
+
+              {/* Menu Toggle */}
+              <button
+                onClick={() => setOpenSidenav(dispatch, !openSidenav)}
+                className="
+                  xl:tw-hidden
+                  tw-p-1.5 tw-rounded-full
+                  tw-bg-white hover:tw-bg-gray-50
+                  tw-border tw-border-gray-200
+                  tw-text-gray-600
+                  tw-shadow-sm
+                  tw-transition-all tw-duration-200
+                  active:tw-scale-95
+                "
+              >
+                {openSidenav ? (
+                  <Bars3Icon className="tw-h-5 tw-w-5" />
+                ) : (
+                  <Bars3CenterLeftIcon className="tw-h-5 tw-w-5" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-      </div>
+        </div>
     </>
   );
 }
