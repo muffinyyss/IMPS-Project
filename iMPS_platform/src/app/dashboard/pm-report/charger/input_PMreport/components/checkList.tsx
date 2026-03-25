@@ -323,7 +323,7 @@ type StationPublic = {
     power?: string;
     status?: boolean;
     chargerNo?: string;
-    chargingCables?: number;
+    numberOfCables?: number;
 };
 
 type Me = {
@@ -2163,7 +2163,7 @@ export default function ChargerPMForm() {
             try {
                 const data = await fetchReport(editId, sn);
                 if (data.job) {
-                    setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.chargingCables || prev.chargingCables || 1 }));
+                    setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.numberOfCables  || prev.chargingCables || 1 }));
                 }
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data?.measures_pre?.cp) {
@@ -2242,7 +2242,7 @@ export default function ChargerPMForm() {
                     model: st.model ?? prev.model, brand: st.brand ?? prev.brand,
                     power: st.power ?? prev.power, station_name: st.station_name ?? prev.station_name,
                     date: prev.date || new Date().toISOString().slice(0, 10),
-                    chargingCables: st.chargingCables || prev.chargingCables || 1,
+                    chargingCables: st.numberOfCables || prev.chargingCables || 1,
                 }));
                 setPageLoading(false);
             })
