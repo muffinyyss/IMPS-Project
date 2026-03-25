@@ -192,6 +192,8 @@ export function SearchDataTables() {
   const [usernames, setUsernames] = useState<string[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>("");
+  const [isOtherOwnerEdit, setIsOtherOwnerEdit] = useState(false);
+  const [otherOwnerNameEdit, setOtherOwnerNameEdit] = useState("");
   const [technicians, setTechnicians] = useState<Map<string, string[]>>(new Map());
   const [data, setData] = useState<StationRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -440,6 +442,8 @@ export function SearchDataTables() {
       setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, maximo_location: editingStation.maximo_location ?? "", maximo_desc: editingStation.maximo_desc ?? "" });
       setSelectedOwnerId(editingStation.user_id ?? "");
       resetEditImages();
+      setIsOtherOwnerEdit(false);
+      setOtherOwnerNameEdit("");
     }
   }, [openEditStation, editingStation]);
 
@@ -572,7 +576,13 @@ export function SearchDataTables() {
     if (!editingStation?.id) return;
     try {
       setSaving(true);
-      const payload: StationUpdatePayload = { station_name: editStationForm.station_name.trim(), is_active: editStationForm.is_active, maximo_location: editStationForm.maximo_location.trim(), maximo_desc: editStationForm.maximo_desc.trim(), ...(isAdmin && selectedOwnerId ? { user_id: selectedOwnerId } : {}) };
+      const payload: StationUpdatePayload = {
+        station_name: editStationForm.station_name.trim(), is_active: editStationForm.is_active, maximo_location: editStationForm.maximo_location.trim(), maximo_desc: editStationForm.maximo_desc.trim(), ...(isAdmin && isOtherOwnerEdit && otherOwnerNameEdit.trim()
+          ? { username: otherOwnerNameEdit.trim() }
+          : isAdmin && selectedOwnerId
+            ? { user_id: selectedOwnerId }
+            : {})
+      };
       const res = await apiFetch(`/update_stations/${editingStation.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) { const errBody = await res.json().catch(() => ({})); throw new Error(errBody?.detail || `Update failed: ${res.status}`); }
       const updated = await res.json();
@@ -918,12 +928,55 @@ export function SearchDataTables() {
               <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-4 sm:tw-space-y-5">
                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
                   <Input label={t.stationName} required value={editStationForm.station_name} onChange={(e) => setEditStationForm(s => ({ ...s, station_name: e.target.value }))} crossOrigin={undefined} />
-                  {isAdmin ? (owners.length > 0 ? (
-                    <Select label={t.owner} value={selectedOwnerId} onChange={(v) => setSelectedOwnerId(v ?? "")}>
-                      {owners.map(o => (<Option key={o.user_id} value={o.user_id}>{o.username}</Option>))}
-                    </Select>
-                  ) : (<Input label={t.owner} value={t.loading} readOnly className="!tw-bg-gray-100" crossOrigin={undefined} />)
-                  ) : (<Input label={t.owner} value={editingStation?.username ?? "-"} readOnly disabled crossOrigin={undefined} />)}
+                  {isAdmin ? (
+                    <div className="tw-flex tw-gap-2">
+                      <div className="tw-relative tw-w-full tw-min-w-[200px] tw-h-10">
+                        <select
+                          value={isOtherOwnerEdit ? "__other__" : selectedOwnerId}
+                          onChange={(e) => {
+                            if (e.target.value === "__other__") {
+                              setIsOtherOwnerEdit(true);
+                              setSelectedOwnerId("");
+                              setOtherOwnerNameEdit("");
+                            } else {
+                              setIsOtherOwnerEdit(false);
+                              setSelectedOwnerId(e.target.value);
+                            }
+                          }}
+                          className="tw-peer tw-w-full tw-h-full tw-bg-transparent tw-text-blue-gray-700 tw-font-sans tw-font-normal tw-outline-none tw-border tw-border-blue-gray-200 focus:tw-border-2 focus:tw-border-gray-900 tw-rounded-[7px] tw-px-3 tw-py-2.5 tw-text-sm tw-appearance-none tw-cursor-pointer"
+                        >
+                          <option value="" disabled hidden />
+                          {owners.length > 0
+                            ? owners.map(o => <option key={o.user_id} value={o.user_id}>{o.username}</option>)
+                            : <option value="" disabled>{t.loading}</option>
+                          }
+                          <option value="__other__">{lang === "th" ? "อื่นๆ" : "Other"}</option>
+                        </select>
+                        <div className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-right-3 tw-flex tw-items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-4 tw-w-4 tw-text-blue-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-text-[11px] tw-text-blue-gray-400 tw-bg-white tw-px-1 tw-font-normal">
+                          {t.owner}
+                        </label>
+                      </div>
+                      {isOtherOwnerEdit && (
+                        <div className="tw-w-full">
+                          <Input
+                            label={lang === "th" ? "ระบุชื่อเจ้าของ" : "Enter owner name"}
+                            required
+                            autoFocus
+                            value={otherOwnerNameEdit}
+                            onChange={(e) => setOtherOwnerNameEdit(e.target.value)}
+                            crossOrigin={undefined}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <Input label={t.owner} value={editingStation?.username ?? "-"} readOnly disabled crossOrigin={undefined} />
+                  )}
                   <Input label={t.maximoLocation} value={editStationForm.maximo_location} onChange={(e) => setEditStationForm(s => ({ ...s, maximo_location: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.maximoDescription} value={editStationForm.maximo_desc} onChange={(e) => setEditStationForm(s => ({ ...s, maximo_desc: e.target.value }))} crossOrigin={undefined} />
                   <Select label={t.status} value={String(editStationForm.is_active)} onChange={(v) => setEditStationForm(s => ({ ...s, is_active: v === "true" }))}>
