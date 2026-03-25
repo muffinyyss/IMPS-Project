@@ -1990,6 +1990,7 @@ export default function ChargerPMForm() {
     const [cpPre, setCpPre] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
     const [cp, setCp] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
     const [summary, setSummary] = useState<string>("");
+    const [summaryPre, setSummaryPre] = useState<string>("");
     const [sn, setSn] = useState<string | null>(null);
     const [summaryCheck, setSummaryCheck] = useState<PF>("");
 
@@ -2163,7 +2164,7 @@ export default function ChargerPMForm() {
             try {
                 const data = await fetchReport(editId, sn);
                 if (data.job) {
-                    setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.numberOfCables  || prev.chargingCables || 1 }));
+                    setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.numberOfCables || prev.chargingCables || 1 }));
                 }
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data?.measures_pre?.cp) {
@@ -2278,7 +2279,7 @@ export default function ChargerPMForm() {
 
         // โหลด summary
         if (draft.summary) {
-            setSummary(draft.summary);
+            setSummaryPre(draft.summary);
         }
 
         // โหลด dustFilterChanged
@@ -2723,8 +2724,8 @@ export default function ChargerPMForm() {
 
     useDebouncedEffect(() => {
         if (!sn || isPostMode) return;
-        saveDraftLocal(key, { rows, cp, m16: m16.state, summary, dustFilterChanged, photoRefs });
-    }, [key, sn, rows, cp, m16.state, summary, dustFilterChanged, photoRefs, isPostMode]);
+        saveDraftLocal(key, { rows, cp, m16: m16.state, summary: summaryPre, dustFilterChanged, photoRefs });
+    }, [key, sn, rows, cp, m16.state, summaryPre, dustFilterChanged, photoRefs, isPostMode]);
 
     useDebouncedEffect(() => {
         if (!sn || !isPostMode || !editId) return;
@@ -2853,7 +2854,7 @@ export default function ChargerPMForm() {
             if (!report_id) {
                 const pm_date = job.date?.trim() || "";
                 const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-                const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, side: "pre" as TabId };
+                const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName,summary_pre: summaryPre, side: "pre" as TabId };
                 const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string; doc_name?: string };
@@ -2989,7 +2990,7 @@ export default function ChargerPMForm() {
                 // Upload with concurrency pool (3 at a time)
                 const CONCURRENCY = 3;
                 let idx = 0;
-                const finalReportId = report_id; 
+                const finalReportId = report_id;
                 const runNext = async (): Promise<void> => {
                     while (idx < allTasks.length) {
                         const taskIdx = idx++;
@@ -3132,11 +3133,41 @@ export default function ChargerPMForm() {
 
                     <div id="pm-summary-section" className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
                         <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
-                        <Textarea label={t("comment", lang)} value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-text-sm resize-none" />
-                        {displayTab === "post" && (
-                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={(v) => setSummaryCheck(v)} labels={{ PASS: t("summaryPass", lang), FAIL: t("summaryFail", lang), NA: t("summaryNA", lang) }} lang={lang} />
-                            </div>
+
+                        {displayTab === "pre" ? (
+                            // Pre-PM: ใช้ summaryPre แยกต่างหาก
+                            <Textarea
+                                label={t("comment", lang)}
+                                value={summaryPre}
+                                onChange={(e) => setSummaryPre(e.target.value)}
+                                rows={3}
+                                autoComplete="off"
+                                containerProps={{ className: "!tw-min-w-0" }}
+                                className="!tw-w-full !tw-text-sm resize-none"
+                            />
+                        ) : (
+                            // Post-PM: ใช้ summary เดิม
+                            <>
+                                <Textarea
+                                    label={t("comment", lang)}
+                                    value={summary}
+                                    onChange={(e) => setSummary(e.target.value)}
+                                    rows={3}
+                                    required={isPostMode}
+                                    autoComplete="off"
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full !tw-text-sm resize-none"
+                                />
+                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                    <PassFailRow
+                                        label={t("summaryResult", lang)}
+                                        value={summaryCheck}
+                                        onChange={(v) => setSummaryCheck(v)}
+                                        labels={{ PASS: t("summaryPass", lang), FAIL: t("summaryFail", lang), NA: t("summaryNA", lang) }}
+                                        lang={lang}
+                                    />
+                                </div>
+                            </>
                         )}
                     </div>
 

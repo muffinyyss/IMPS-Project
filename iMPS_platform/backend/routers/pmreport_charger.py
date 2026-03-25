@@ -276,6 +276,7 @@ class PMSubmitIn(BaseModel):
     issue_id: Optional[str] = None
     doc_name: Optional[str] = None 
     inspector: Optional[str] = None 
+    summary_pre: Optional[str] = None
 
 @router.get("/pmreport/preview-issueid")
 async def pmreport_preview_issueid(
@@ -435,6 +436,7 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
                 "rows_pre": body.rows_pre or {},
                 "measures_pre": body.measures_pre,
                 "inspector": body.inspector,
+                "summary_pre": body.summary_pre or "",
                 "timestamp": datetime.now(timezone.utc),
             }},
         )
@@ -457,6 +459,7 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
         "measures_pre": body.measures_pre,
         "pm_date": body.pm_date,
         "inspector": body.inspector,
+        "summary_pre": body.summary_pre or "",
         "photos_pre": {},
         "status": "draft",
         "side": body.side,
