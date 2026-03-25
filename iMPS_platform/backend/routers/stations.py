@@ -209,6 +209,7 @@ class StationUpdate(BaseModel):
     station_name: Optional[str] = None
     is_active: Optional[bool] = None
     user_id: Optional[str] = None
+    username: Optional[str] = None
     maximo_location: Optional[str] = None
     maximo_desc: Optional[str] = None
 
@@ -397,10 +398,12 @@ def format_station_with_chargers(station_doc: dict, charger_docs: List[dict]) ->
     user_id = station_doc.get("user_id")
     user_id_str = str(user_id) if user_id else ""
 
-    username = None
+    username = station_doc.get("username")  # fallback ก่อน
     if user_id:
-        username = get_username_by_user_id(user_id if isinstance(user_id, ObjectId) else to_object_id(user_id))
-
+        db_username = get_username_by_user_id(user_id if isinstance(user_id, ObjectId) else to_object_id(user_id))
+        if db_username:
+            username = db_username  
+            
     status = get_station_status(station_id)
     chargers = [format_charger(c) for c in charger_docs]
 
@@ -678,6 +681,19 @@ def update_station(
             update_data["username"] = user.get("username", "")
         else:
             raise HTTPException(status_code=400, detail="User not found")
+    elif body.username is not None:
+        username_stripped = body.username.strip()
+        user = users_collection.find_one(
+            {"username": username_stripped},
+            {"_id": 1, "username": 1}
+        )
+        if user:
+            # พบ user ในระบบ → ผูก user_id ด้วย
+            update_data["user_id"] = user["_id"]
+            update_data["username"] = user.get("username", username_stripped)
+        else:
+            # ไม่พบ user → บันทึกชื่อไว้ตรงๆ โดยไม่ผูก user_id
+            update_data["username"] = username_stripped
 
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")

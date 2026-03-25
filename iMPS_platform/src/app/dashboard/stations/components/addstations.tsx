@@ -225,6 +225,8 @@ export default function AddStationModal({
                 duplicateSN: "SN ซ้ำกัน กรุณาตรวจสอบ",
                 duplicateWO: "WO ซ้ำกัน กรุณาตรวจสอบ",
                 duplicateChargeBoxID: "Charge Box ID ซ้ำกัน กรุณาตรวจสอบ",
+                other: "อื่นๆ",
+                enterOwner: "ระบุชื่อเจ้าของ",
             },
             en: {
                 addNewStation: "Add New Station", subtitle: "Fill in station and charger details",
@@ -251,6 +253,8 @@ export default function AddStationModal({
                 duplicateSN: "Duplicate SN found, please check",
                 duplicateWO: "Duplicate WO found, please check",
                 duplicateChargeBoxID: "Duplicate Charge Box ID found, please check",
+                other: "Other",
+                enterOwner: "Enter owner name",
             },
         };
         return tr[lang];
@@ -265,6 +269,7 @@ export default function AddStationModal({
     const [chargerPreviews, setChargerPreviews] = useState<Record<string, { charger: string[]; device: string[] }>>({});
     const [chargers, setChargers] = useState<ChargerForm[]>([createEmptyCharger(1)]);
     const [submitting, setSubmitting] = useState(false);
+    const [isOtherOwner, setIsOtherOwner] = useState(false);
 
     const isFlexxfast = (brand: string) => brand.trim().toLowerCase() === "flexxfast";
 
@@ -403,6 +408,7 @@ export default function AddStationModal({
         setStationPreviews({ station: [], mdb: [] });
         setChargerPreviews({});
         setChargers([createEmptyCharger(1)]);
+        setIsOtherOwner(false);
         onClose();
     };
 
@@ -450,9 +456,49 @@ export default function AddStationModal({
                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
                                     <Input label={t.stationName} required value={station.station_name} onChange={(e) => onStationChange("station_name", e.target.value)} crossOrigin={undefined} />
                                     {isAdmin ? (
-                                        <Select label={t.owner} value={station.owner || ""} onChange={(v) => onStationChange("owner", v || "")}>
-                                            {(allOwners.length ? allOwners : [currentUser]).map((n) => <Option key={n} value={n}>{n}</Option>)}
-                                        </Select>
+                                        <div className="tw-flex tw-gap-2">
+                                            <div className="tw-relative tw-w-full tw-min-w-[200px] tw-h-10">
+                                                <select
+                                                    value={isOtherOwner ? "__other__" : (station.owner || "")}
+                                                    onChange={(e) => {
+                                                        if (e.target.value === "__other__") {
+                                                            setIsOtherOwner(true);
+                                                            onStationChange("owner", "");
+                                                        } else {
+                                                            setIsOtherOwner(false);
+                                                            onStationChange("owner", e.target.value);
+                                                        }
+                                                    }}
+                                                    className="tw-peer tw-w-full tw-h-full tw-bg-transparent tw-text-blue-gray-700 tw-font-sans tw-font-normal tw-outline-none tw-border tw-border-blue-gray-200 focus:tw-border-2 focus:tw-border-gray-900 tw-rounded-[7px] tw-px-3 tw-py-2.5 tw-text-sm tw-appearance-none tw-cursor-pointer"
+                                                >
+                                                    <option value="" disabled hidden />
+                                                    {(allOwners.length ? allOwners : [currentUser]).map((n) => (
+                                                        <option key={n} value={n}>{n}</option>
+                                                    ))}
+                                                    <option value="__other__">{t.other}</option>
+                                                </select>
+                                                <div className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-right-3 tw-flex tw-items-center">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-4 tw-w-4 tw-text-blue-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                    </svg>
+                                                </div>
+                                                <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-text-[11px] tw-text-blue-gray-400 tw-bg-white tw-px-1 tw-font-normal">
+                                                    {t.owner}
+                                                </label>
+                                            </div>
+                                            {isOtherOwner && (
+                                                <div className="tw-w-full">
+                                                    <Input
+                                                        label={t.enterOwner}
+                                                        required
+                                                        autoFocus
+                                                        value={station.owner}
+                                                        onChange={(e) => onStationChange("owner", e.target.value)}
+                                                        crossOrigin={undefined}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : (
                                         <Input label={t.owner} value={station.owner || currentUser || ""} readOnly disabled crossOrigin={undefined} />
                                     )}
