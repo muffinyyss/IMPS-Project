@@ -186,7 +186,8 @@ app.add_middleware(
 import os
 from starlette.staticfiles import StaticFiles
 
-UPLOADS_ROOT = os.getenv("UPLOADS_ROOT", "./uploads")
+# UPLOADS_ROOT = os.getenv("UPLOADS_ROOT", "./uploads")
+from routers.pm_helpers import UPLOADS_ROOT
 os.makedirs(UPLOADS_ROOT, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOADS_ROOT, html=False), name="uploads")
 
