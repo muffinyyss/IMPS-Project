@@ -263,7 +263,6 @@ export function DashboardNavbar() {
     <>
       {/* Spacer to prevent content from hiding behind fixed navbar */}
       <div className="tw-h-[60px] tw-w-full tw-shrink-0" />
-
       <div
         className="
           tw-fixed tw-top-2 tw-right-4

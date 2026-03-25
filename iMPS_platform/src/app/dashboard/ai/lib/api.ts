@@ -22,9 +22,9 @@ export interface ModuleResult {
 }
 
 export interface DashboardAllResponse {
-  station: string;
-  modules: Record<string, ModuleResult>;
-  elapsed_ms: number;
+    modules: Record<string, ModuleResult>;
+    system_health?: number;   // ← เพิ่ม
+    elapsed_ms?: number;
 }
 
 export interface Station {

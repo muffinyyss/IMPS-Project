@@ -12,7 +12,7 @@ export default function InnerContent({ children }: { children: React.ReactNode }
 
   // ✅ ย้าย hooks ทั้งหมดขึ้นมาก่อน early return
   const [controller] = useMaterialTailwindController();
-  const pathname = usePathname();  
+  const pathname = usePathname();
 
   useEffect(() => {
     setIsMounted(true);
@@ -25,8 +25,6 @@ export default function InnerContent({ children }: { children: React.ReactNode }
 
   const HIDE_SIDENAV = ["/pages/*", "/mainpages/*", "/auth/*"];
   const SIMPLE_PAGES = ["/pages/*", "/mainpages/*", "/auth/*"];
-
-  const isAiPage = pathname === "/dashboard/ai" || pathname.startsWith("/dashboard/ai/");
 
   function match(path: string, pattern: string) {
     if (pattern.endsWith("/*")) return path.startsWith(pattern.slice(0, -2));
@@ -42,13 +40,11 @@ export default function InnerContent({ children }: { children: React.ReactNode }
       <div
         className={
           showSidenav
-            ? isAiPage
-              ? "xl:tw-ml-[var(--content-ml)] tw-min-h-screen tw-overflow-y-auto"
-              : "tw-p-4 xl:tw-ml-[var(--content-ml)]"
+            ? "tw-p-4 xl:tw-ml-[var(--content-ml)]"   // ← ลบ isAiPage condition ออก
             : "m-0"
         }
       >
-        {!isSimpleLayout && !isAiPage && (
+        {!isSimpleLayout && (
           <>
             <DashboardNavbar />
             <Configurator />
