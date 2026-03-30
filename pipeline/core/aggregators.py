@@ -223,8 +223,9 @@ class CBMAggregator(BaseAggregator):
 class InsulationAggregator(BaseAggregator):
     """
     Insulation Aggregator - combines:
-    - insulation1 (slave3) → {RF_kohm, is_alarm}
-    - insulation2 (slave4) → {RF_kohm, is_alarm}
+    - PLC (plc topic) → insulation1, insulation2 [PRIMARY]
+    - insulation1 topic → insulation1 [FALLBACK]
+    - insulation2 topic → insulation2 [FALLBACK]
     
     Triggers every 120 seconds using latest available data.
     Used for: settingParameter insulation fields
@@ -233,9 +234,38 @@ class InsulationAggregator(BaseAggregator):
     def __init__(self, station_id: str, timeout_seconds: int = DEFAULT_TIMEOUT):
         super().__init__(f"Insulation_{station_id}", timeout_seconds)
         self.station_id = station_id
+        self._has_plc_insulation = False  # Flag to track if PLC has insulation keys
+    
+    def update_plc_insulation(self, plc_data: Dict[str, Any], ts: Optional[datetime] = None):
+        """
+        Update insulation data from PLC topic (PRIMARY source).
+        """
+        # Check if PLC has insulation keys
+        has_insu1 = 'insu1_RF_kohm' in plc_data
+        has_insu2 = 'insu2_RF_kohm' in plc_data
+        
+        if has_insu1 or has_insu2:
+            self._has_plc_insulation = True
+        
+        if has_insu1:
+            is_alarm1 = plc_data.get('insu1_alarm', 'NORMAL') != 'NORMAL'
+            self.update('insulation1', {
+                'RF_kohm': plc_data.get('insu1_RF_kohm'),
+                'is_alarm': is_alarm1
+            }, ts)
+        
+        if has_insu2:
+            is_alarm2 = plc_data.get('insu2_alarm', 'NORMAL') != 'NORMAL'
+            self.update('insulation2', {
+                'RF_kohm': plc_data.get('insu2_RF_kohm'),
+                'is_alarm': is_alarm2
+            }, ts)
     
     def update_insulation1(self, data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from insulation1 topic"""
+        """Update from insulation1 topic (FALLBACK - only if PLC doesn't have data)"""
+        if self._has_plc_insulation:
+            return  # Skip if PLC provides insulation data
+        
         values = data.get('data', {}).get('values', {})
         alarm = data.get('data', {}).get('alarm', {})
         
@@ -246,7 +276,10 @@ class InsulationAggregator(BaseAggregator):
         self.update('insulation1', extracted, ts)
 
     def update_insulation2(self, data: Dict[str, Any], ts: Optional[datetime] = None):
-        """Update from insulation2 topic"""
+        """Update from insulation2 topic (FALLBACK - only if PLC doesn't have data)"""
+        if self._has_plc_insulation:
+            return  # Skip if PLC provides insulation data
+        
         values = data.get('data', {}).get('values', {})
         alarm = data.get('data', {}).get('alarm', {})
         
