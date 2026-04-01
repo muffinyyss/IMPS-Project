@@ -49,6 +49,7 @@ const MESSAGES: Record<SessionProblem, { th: string; en: string; icon: string }>
 /** แปลง detail จาก backend เป็น SessionProblem */
 export function detailToProblem(detail: string): SessionProblem {
   switch (detail) {
+    case "expired":
     case "token_expired":
     case "invalid_token":
       return "token_expired";
