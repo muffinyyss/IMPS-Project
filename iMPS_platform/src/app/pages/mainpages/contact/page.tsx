@@ -2,6 +2,7 @@
 
 import React from "react";
 import { PhoneIcon, EnvelopeIcon } from "@heroicons/react/24/outline";
+import { apiFetch } from "@/utils/api";
 
 export default function ContactPage() {
     const [form, setForm] = React.useState({
@@ -11,16 +12,43 @@ export default function ContactPage() {
         phone: "",
         message: "",
     });
+    const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [submitStatus, setSubmitStatus] = React.useState<"idle" | "success" | "error">("idle");
 
     const onChange: React.ChangeEventHandler<HTMLInputElement | HTMLTextAreaElement> = (e) => {
         const { name, value } = e.target;
         setForm((p) => ({ ...p, [name]: value }));
     };
 
-    const onSubmit: React.FormEventHandler<HTMLFormElement> = (e) => {
+    const onSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
         e.preventDefault();
-        console.log("Contact form:", form);
-        alert("ขอบคุณที่ติดต่อเรา!");
+        setIsSubmitting(true);
+        setSubmitStatus("idle");
+
+        try {
+            const res = await apiFetch("/contact", {   // ← เปลี่ยน endpoint ให้ตรง API จริง
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    first_name: form.firstName,
+                    last_name: form.lastName,
+                    email: form.email,
+                    phone: form.phone,
+                    message: form.message,
+                }),
+            });
+
+            if (!res.ok) throw new Error("submit failed");
+
+            setSubmitStatus("success");
+            setForm({ firstName: "", lastName: "", email: "", phone: "", message: "" });
+        } catch {
+            // ถ้า 401 → apiFetch เด้ง login ให้แล้ว
+            // ถ้า network error → apiFetch แสดง toast ให้แล้ว
+            setSubmitStatus("error");
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const inputCls =
@@ -29,7 +57,6 @@ export default function ContactPage() {
 
     return (
         <div className="tw-min-h-screen tw-flex tw-flex-col tw-bg-white">
-
             <main className="tw-flex-1">
                 <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-min-h-[70vh]">
                     {/* LEFT: Info */}
@@ -58,6 +85,18 @@ export default function ContactPage() {
                     <section className="tw-bg-white">
                         <div className="tw-px-6 md:tw-px-10 tw-py-14 md:tw-py-20">
                             <h2 className="tw-text-2xl tw-font-semibold">Send us a message</h2>
+
+                            {/* Status messages */}
+                            {submitStatus === "success" && (
+                                <div className="tw-mt-4 tw-rounded-md tw-bg-green-50 tw-border tw-border-green-200 tw-px-4 tw-py-3 tw-text-green-800 tw-text-sm">
+                                    ขอบคุณที่ติดต่อเรา! เราจะติดต่อกลับโดยเร็วที่สุด
+                                </div>
+                            )}
+                            {submitStatus === "error" && (
+                                <div className="tw-mt-4 tw-rounded-md tw-bg-red-50 tw-border tw-border-red-200 tw-px-4 tw-py-3 tw-text-red-800 tw-text-sm">
+                                    เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง
+                                </div>
+                            )}
 
                             <form onSubmit={onSubmit} className="tw-mt-8 tw-space-y-6">
                                 {/* First & Last name */}
@@ -127,9 +166,10 @@ export default function ContactPage() {
                                 <div className="tw-pt-2">
                                     <button
                                         type="submit"
-                                        className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-bg-black tw-text-white tw-px-6 tw-py-3 tw-font-medium hover:tw-opacity-90"
+                                        disabled={isSubmitting}
+                                        className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-bg-black tw-text-white tw-px-6 tw-py-3 tw-font-medium hover:tw-opacity-90 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
                                     >
-                                        Send
+                                        {isSubmitting ? "Sending..." : "Send"}
                                     </button>
                                 </div>
                             </form>
@@ -137,7 +177,6 @@ export default function ContactPage() {
                     </section>
                 </div>
             </main>
-
         </div>
     );
 }

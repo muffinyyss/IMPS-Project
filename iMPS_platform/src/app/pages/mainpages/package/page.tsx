@@ -1,72 +1,66 @@
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
-// @material-tailwind/react
 import {
   Card,
   Tab,
   TabsHeader,
   Tabs,
   CardBody,
-} from "@/components/MaterialTailwind";   // ✅ ใช้ path เดียวกับหน้าอื่น
+} from "@/components/MaterialTailwind";
 
 import { PricingCard } from "@/widgets/cards";
+import { apiFetch, getAccessToken } from "@/utils/api";
+
+// ปรับ type ตาม response จริงของ API
+type PricingPlan = {
+  title: string;
+  price_monthly: number;
+  price_annual: number;
+  color: string;
+  actionColor: string;
+  actionLabel: string;
+  actionRoute: string;
+  options: { included: boolean; name: string }[];
+};
 
 export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false);
+  const [plans, setPlans] = useState<PricingPlan[]>([]);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  const PRICING_CARD_DATA = [
-    {
-      title: "starter",
-      price: isAnnual ? 119 : 59,
-      color: "white",
-      actionColor: "gray",
-      actionLabel: "join",
-      actionRoute: "/auth/signup/basic",   // ✅ ชี้ไปหน้า signup
-      options: [
-        { included: true, name: "2 team members" },
-        { included: true, name: "20GB Cloud storage" },
-        { included: false, name: "Integration help" },
-        { included: false, name: "Sketch Files" },
-        { included: false, name: "API Access" },
-        { included: false, name: "Complete documentation" },
-      ],
-    },
-    {
-      title: "premium",
-      price: isAnnual ? 159 : 89,
-      color: "gray",
-      actionColor: "white",
-      actionLabel: "try premium",
-      actionRoute: "/auth/signup/basic",   // ✅ ชี้ไปหน้า signup
-      options: [
-        { included: true, name: "10 team members" },
-        { included: true, name: "40GB Cloud storage" },
-        { included: true, name: "Integration help" },
-        { included: true, name: "Sketch Files" },
-        { included: false, name: "API Access" },
-        { included: false, name: "Complete documentation" },
-      ],
-    },
-    {
-      title: "enterprise",
-      price: isAnnual ? 399 : 99,
-      color: "white",
-      actionColor: "gray",
-      actionLabel: "join",
-      actionRoute: "/auth/signup/basic",   // ✅ ชี้ไปหน้า signup
-      options: [
-        { included: true, name: "Unlimited team members" },
-        { included: true, name: "100GB Cloud storage" },
-        { included: true, name: "Integration help" },
-        { included: true, name: "Sketch Files" },
-        { included: true, name: "API Access" },
-        { included: true, name: "Complete documentation" },
-      ],
-    },
-  ];
+  useEffect(() => {
+    setIsLoggedIn(!!getAccessToken());
+  }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setPlans([]);
+      return;
+    }
+
+    (async () => {
+      try {
+        const res = await apiFetch("/pricing");  // ← เปลี่ยน endpoint ให้ตรง API จริง
+        const data = await res.json();
+        setPlans(Array.isArray(data) ? data : []);
+      } catch {
+        setPlans([]);
+      }
+    })();
+  }, [isLoggedIn]);
+
+  // map plan → props ที่ PricingCard ต้องการ
+  const pricingCards = plans.map((plan) => ({
+    title: plan.title,
+    price: isAnnual ? plan.price_annual : plan.price_monthly,
+    color: plan.color,
+    actionColor: plan.actionColor,
+    actionLabel: plan.actionLabel,
+    actionRoute: plan.actionRoute,
+    options: plan.options,
+  }));
 
   return (
     <div className="tw-mx-auto tw-mt-8 tw-w-full tw-px-12">
@@ -87,7 +81,7 @@ export default function PricingPage() {
             </div>
 
             <div className="tw-grid tw-place-items-center tw-gap-6 md:tw-grid-cols-1 lg:tw-grid-cols-3">
-              {PRICING_CARD_DATA.map((props) => (
+              {pricingCards.map((props) => (
                 <PricingCard key={props.title} {...props} />
               ))}
             </div>

@@ -51,15 +51,30 @@ let isRedirecting = false;
 function redirectToLogin(reason = "expired") {
   if (typeof window === "undefined" || isRedirecting) return;
   isRedirecting = true;
+
   const next = encodeURIComponent(
     window.location.pathname + window.location.search
   );
   const problem = detailToProblem(reason);
+  const loginUrl = `/auth/signin/basic?reason=${reason}&next=${next}`;
+
+  // ✅ Fix #2: redirect เป็น fallback ที่ guaranteed — ไม่พึ่ง onDone เพียงอย่างเดียว
+  const fallbackTimer = setTimeout(() => {
+    window.location.replace(loginUrl);
+  }, 3500); // safety net ถ้า onDone ไม่ถูกเรียก
+
   showSessionToast(problem, {
     duration: 3000,
     onDone: () => {
-      window.location.replace(`/auth/signin/basic?reason=${reason}&next=${next}`);
+      clearTimeout(fallbackTimer);
+      window.location.replace(loginUrl);
     },
+  });
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pageshow", () => {
+    isRedirecting = false;
   });
 }
 
