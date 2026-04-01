@@ -95,10 +95,8 @@ export default function AiDashboardPage() {
     const [error, setError] = useState<string | null>(null);
     const [lastUpdate, setLastUpdate] = useState("");
     const { tick, countdown, refresh } = useAutoRefresh(120);
-    const { activeSn, activeName, stations, switchStation } = useStation();
-    const [stationOpen, setStationOpen] = useState(false);
-    const [stationSearch, setStationSearch] = useState("");
-    const [switching, setSwitching] = useState(false);
+    const { activeSn, activeName } = useStation();
+
 
     const loadData = useCallback(async () => {
         setLoading(true); setError(null);
@@ -137,9 +135,6 @@ export default function AiDashboardPage() {
         return { ok, warn, crit };
     }, [data]);
 
-    const filteredStations = (Array.isArray(stations) ? stations : [])
-        .filter((s) => s.sn.toLowerCase().includes(stationSearch.toLowerCase()) || s.name.toLowerCase().includes(stationSearch.toLowerCase()));
-
     return (
         <div className="ai-root tw-min-h-screen">
             <style>{`
@@ -147,55 +142,18 @@ export default function AiDashboardPage() {
                 @keyframes ping { 75%,100% { transform: scale(2); opacity: 0; } }
             `}</style>
 
-            {/* ── Station selector bar ── */}
+            {/* ── Station bar — display only ── */}
             <div className="tw-bg-white tw-border-b tw-border-gray-100 tw-px-4 sm:tw-px-6 tw-py-2.5 tw-flex tw-items-center tw-justify-between tw-gap-3 tw-flex-wrap">
                 <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-4 tw-flex-wrap">
-                    {/* Station selector */}
-                    <div style={{ position: "relative" }}>
-                        <button onClick={() => setStationOpen((v) => !v)}
-                            className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-gray-50 tw-border tw-border-gray-200 tw-cursor-pointer tw-text-sm">
-                            {switching
-                                ? <div className="tw-w-4 tw-h-4 tw-rounded-full tw-border-2 tw-border-gray-300 tw-border-t-gray-900 tw-animate-spin" />
-                                : <span>⚡</span>
-                            }
+                    {activeSn && (
+                        <div className="tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-gray-50 tw-border tw-border-gray-200 tw-text-sm">
+                            <span>⚡</span>
                             <div className="tw-text-left">
-                                <div className="tw-font-bold tw-text-gray-900 tw-text-xs sm:tw-text-sm">
-                                    {switching ? "กำลังเปลี่ยน..." : (activeSn || "เลือกสถานี")}
-                                </div>
-                                {activeName && !switching && <div className="tw-text-[10px] tw-text-gray-400 tw-hidden sm:tw-block">{activeName}</div>}
+                                <div className="tw-font-bold tw-text-gray-900 tw-text-xs sm:tw-text-sm">{activeSn}</div>
+                                {activeName && <div className="tw-text-[10px] tw-text-gray-400 tw-hidden sm:tw-block">{activeName}</div>}
                             </div>
-                            <span className="tw-text-gray-400 tw-text-xs">▼</span>
-                        </button>
-                        {stationOpen && (
-                            <div className="tw-absolute tw-top-full tw-mt-1 tw-left-0 tw-w-72 tw-bg-white tw-border tw-border-gray-200 tw-rounded-xl tw-shadow-xl tw-z-50 tw-overflow-hidden">
-                                <div className="tw-p-2 tw-border-b tw-border-gray-100">
-                                    <input className="tw-w-full tw-px-3 tw-py-1.5 tw-text-sm tw-border tw-border-gray-200 tw-rounded-lg tw-outline-none tw-bg-gray-50"
-                                        placeholder="🔍 Search station..."
-                                        value={stationSearch} onChange={(e) => setStationSearch(e.target.value)} />
-                                </div>
-                                <div className="tw-max-h-48 tw-overflow-y-auto">
-                                    {filteredStations.map((s) => (
-                                        <button key={s.sn}
-                                            onClick={async () => {
-                                                setSwitching(true);
-                                                setStationOpen(false);
-                                                await switchStation(s.sn);
-                                                await loadData();
-                                                setSwitching(false);
-                                            }}
-                                            className="tw-w-full tw-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-text-left tw-text-sm tw-border-none hover:tw-bg-gray-50"
-                                            style={{ background: activeSn === s.sn ? "rgba(17,24,39,.04)" : "transparent", color: activeSn === s.sn ? "#111827" : "#374151", fontWeight: activeSn === s.sn ? 700 : 400 }}>
-                                            <span>⚡</span>
-                                            <div>
-                                                <div className="tw-font-semibold tw-text-xs">{s.name}</div>
-                                                <div className="tw-text-[10px] tw-text-gray-400 tw-font-mono">{s.sn}</div>
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
                     {systemHealth != null && (
                         <div className="tw-flex tw-items-center tw-gap-1.5">
                             <div style={{ width: 8, height: 8, borderRadius: "50%", background: getHealthColor(systemHealth), flexShrink: 0 }} />

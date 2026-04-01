@@ -62,6 +62,9 @@ class PLCProcessor:
         # === เพิ่ม: Update PLC ambient data to aggregators (PRIMARY source) ===
         state.aggregators.cbm.update_plc_ambient(plc_data, timestamp)
         state.aggregators.module2.update_plc_ambient(plc_data, timestamp)
+
+        # Update insulation data from PLC (PRIMARY source)
+        state.aggregators.insulation.update_plc_insulation(plc_data, timestamp)
         
         # --- Write to PLC collection ---
         plc_doc = create_plc_document(plc_data, ts_str)
