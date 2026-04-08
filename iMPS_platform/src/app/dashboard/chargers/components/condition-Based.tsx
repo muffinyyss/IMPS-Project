@@ -169,7 +169,7 @@ const CBMCard = () => {
             <div className="tw-col-span-1 tw-my-5">
                 <Card className="tw-border tw-border-blue-gray-100 tw-shadow-lg">
                     <CardHeader floated={false} shadow={false} color="transparent">
-                        <Typography className="!tw-font-bold tw-text-lg tw-my-4" color="blue-gray">
+                        <Typography className="!tw-font-bold tw-text-lg tw-my-2" color="blue-gray">
                             {t.conditionBasedMaintenance}
                         </Typography>
                     </CardHeader>
