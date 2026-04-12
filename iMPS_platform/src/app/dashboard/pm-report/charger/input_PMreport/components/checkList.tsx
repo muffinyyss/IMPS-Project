@@ -38,7 +38,9 @@ async function prefetchLocation(): Promise<void> {
             _cachedLocation = { text, timestamp: Date.now() };
         }
     } catch { /* silent */ }
-    _locationFetching = false;
+    finally {
+        _locationFetching = false; // ✅ reset ทุกกรณี
+    }
 }
 
 async function getCachedLocation(): Promise<string> {
@@ -386,7 +388,7 @@ const QUESTIONS: Question[] = [
     { no: 1, key: "r1", label: { th: "1) ตรวจสอบสภาพทั่วไป", en: "1) Check general condition" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความสมบูรณ์ของตู้, การยึดแน่นของน็อตยึดฐาน, รอยแตกร้าวและร่องรอยการกระแทก", en: "Check cabinet integrity, base bolt tightness, cracks and impact marks" } },
     { no: 2, key: "r2", label: { th: "2) ตรวจสอบดักซีล,ซิลิโคนกันซึม", en: "2) Check sealant and silicone" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบความยืดหยุ่นของขอบยางกันน้ำ, รอยต่อของเคเบิลแกลนด์และและสภาพซิลิโคนตามแนวตะเข็บตู้", en: "Check waterproof rubber flexibility, cable gland joints and silicone condition" } },
     { no: 3, key: "r3", label: { th: "3) ตรวจสอบสายอัดประจุ", en: "3) Check charging cables" }, kind: "group", hasPhoto: true, items: [{ label: { th: "3.1) สายที่ 1", en: "3.1) Cable 1" }, key: "r3_1" }], tooltip: { th: "ตรวจสอบความสมบูรณ์ของฉนวนหุ้มสาย, คอสายว่าไม่มีการบิดงอหรือปริแตกและตรวจสอบรอยไหม้", en: "Check cable insulation, bends or cracks, and burn marks" } },
-    { no: 4, key: "r4", label: { th: "4) ตรวจสอบหัวจ่ายอัดประจุ", en: "4) Check charging connector" }, kind: "group", hasPhoto: true, items: [{ label: { th: "4.1) หัวจ่ายอัดประจุที่ 1", en: "4.1) Connector 1" }, key: "r4_1" }], tooltip: { th: "ตรวจสอบความสะอาดของขั้วสัมผัส (Pin), ตรวจสอบสปริงล็อกและรอยร้าวบริเวณด้ามจับ", en: "Check pin cleanliness, spring lock and handle cracks" } },
+    { no: 4, key: "r4", label: { th: "4) ตรวจสอบหัวจ่ายอัดประจุ", en: "4) Check charging connector" }, kind: "group", hasPhoto: true, items: [{ label: { th: "4.1) หัวจ่ายอัดประจุที่ 1", en: "4.1) Connector 1" }, key: "r4_1" }], tooltip: { th: "ตรวจสอบความสะอาดของขั้วสัมผัส (Pin), ตรวจสอบสปริงล็อกและรอยร้าวบริเวณด้ามจับ, ขันน็อตแน่นทุกจุดบริเวณหัวชาร์จทั้ง 2 หัว", en: "Check pin cleanliness, spring lock and handle cracks, tighten all bolts at both charging connector heads" } },
     { no: 5, key: "r5", label: { th: "5) ตรวจสอบปุ่มหยุดฉุกเฉิน", en: "5) Check emergency stop button" }, kind: "group", hasPhoto: true, items: [{ label: { th: "5.1) ปุ่มหยุดฉุกเฉินที่ 1", en: "5.1) Emergency stop 1" }, key: "r5_1" }], tooltip: { th: "ตรวจสอบกลไกการกดและการคลายล็อกและตรวจสอบหน้าสัมผัสทางไฟฟ้าว่าไม่มีคราบสกปรก", en: "Check press/release mechanism and electrical contacts" } },
     { no: 6, key: "r6", label: { th: "6) ตรวจสอบ QR CODE", en: "6) Check QR CODE" }, kind: "group", hasPhoto: true, items: [{ label: { th: "6.1) QR CODE ที่ 1", en: "6.1) QR CODE 1" }, key: "r6_1" }], tooltip: { th: "ตรวจสอบความคมชัดของ QR CODE และการยึดติดของสติ๊กเกอร์", en: "Check QR CODE clarity and sticker adhesion" } },
     { no: 7, key: "r7", label: { th: "7) ตรวจสอบป้ายเตือนระวังไฟฟ้าช็อก", en: "7) Check electric shock warning sign" }, kind: "group", hasPhoto: true, items: [{ label: { th: "7.1) ป้ายเตือนระวังไฟฟ้าช็อกที่ 1", en: "7.1) Warning sign 1" }, key: "r7_1" }], tooltip: { th: "ตรวจสอบการติดตั้งและความชัดเจนของป้ายเตือนอันตราย", en: "Check installation and clarity of warning signs" } },
@@ -411,12 +413,12 @@ const QUESTIONS: Question[] = [
             { label: { th: "11.5) แผ่นกรองอากาศ (ด้านล่าง)", en: "11.5) Air filter (bottom)" }, key: "r11_5" },
         ]
     },
-    { no: 12, key: "r12", label: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและและตรวจเช็ครอยไหม้ด้วยกล้องถ่ายภาพความร้อน", en: "Check bolt tightness at cable connection points and inspect for burn marks using thermal imaging camera" } },
+    { no: 12, key: "r12", label: { th: "12) ตรวจสอบจุดต่อทางไฟฟ้า", en: "12) Check electrical connections" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบการขันแน่นของน็อตบริเวณจุดต่อสายและตรวจเช็ครอยไหม้", en: "Check bolt tightness at cable connection points and inspect for burn marks" } },
     { no: 13, key: "r13", label: { th: "13) ตรวจสอบคอนแทคเตอร์", en: "13) Check contactor" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบสภาพหน้าสัมผัส, การทำงานของคอยล์และเสียงผิดปกติขณะทำงาน", en: "Check contact condition, coil operation and abnormal sounds" } },
     { no: 14, key: "r14", label: { th: "14) ตรวจสอบอุปกรณ์ป้องกันไฟกระชาก", en: "14) Check surge protection device" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบหน้าต่างแสดงสถานะและตรวจสอบสายกราวด์ที่ต่อเข้ากับ Surge Protective Devices", en: "Check status window and ground wire to SPD" } },
     { no: 15, key: "r15", label: { th: "15) ตรวจสอบลำดับเฟส", en: "15) Check phase sequence" }, kind: "simple", hasPhoto: true, tooltip: { th: "ตรวจสอบทิศทางการเรียงเฟส", en: "Check phase sequence direction" } },
     { no: 16, key: "r16", label: { th: "16) วัดแรงดันไฟฟ้าด้านเข้า", en: "16) Measure input voltage" }, kind: "measure", hasPhoto: true, tooltip: { th: "วัดค่าแรงดันไฟฟ้าระหว่างเฟส และระหว่างเฟสกับนิวทรัล/กราวด์", en: "Measure phase-to-phase and phase-to-neutral/ground voltage" } },
-    { no: 17, key: "r17", label: { th: "17) ทดสอบการอัดประจุ", en: "17) Charging test" }, kind: "group", hasPhoto: true, items: [{ label: { th: "17.1) ทดสอบการอัดประจุ สายที่ 1", en: "17.1) Charging test cable 1" }, key: "r17_1" }], tooltip: { th: "ตรวจสอบการทำงานร่วมกับ EV Simulator หรือรถจริง", en: "Test with EV Simulator or actual vehicle" } },
+    { no: 17, key: "r17", label: { th: "17) ทดสอบการอัดประจุ", en: "17) Charging test" }, kind: "group", hasPhoto: true, items: [{ label: { th: "17.1) ทดสอบการอัดประจุ สายที่ 1", en: "17.1) Charging test cable 1" }, key: "r17_1" }], tooltip: { th: "ตรวจสอบการทำงานร่วมกับ EV Simulator หรือรถจริง อย่างน้อย 1 นาที", en: "Test with EV Simulator or actual vehicle for at least 1 minute" } },
 
     // ===== ข้อ 18 - ทำความสะอาด (Post-PM only) =====
     {
@@ -1400,10 +1402,10 @@ function isMobileDevice(): boolean {
 }
 
 function PhotoMultiInput({
-    photos, setPhotos, max = 10, draftKey, qNo, lang, id,
+    photos, setPhotos, max = 10, draftKey, qNo, lang, id, hideMaxLabel = false,
 }: {
     label?: string; photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
-    max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
+    max?: number; draftKey: string; qNo: number; lang: Lang; id?: string; hideMaxLabel?: boolean;
 }) {
     const cameraRef = useRef<HTMLInputElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
@@ -1440,7 +1442,19 @@ function PhotoMultiInput({
     const handleFiles = async (list: FileList | null, fromCamera: boolean) => {
         if (!list || list.length === 0) return;
         const remain = Math.max(0, max - photos.length);
+
+        if (remain === 0) {
+            alert(lang === "th" ? `แนบรูปได้สูงสุด ${max} รูปต่อข้อ` : `Maximum ${max} photos per item`);
+            return;
+        }
+
         const files = Array.from(list).slice(0, remain);
+
+        if (Array.from(list).length > remain) {
+            alert(lang === "th"
+                ? `เลือกได้อีก ${remain} รูป (ครบ ${max} รูปแล้ว)`
+                : `Only ${remain} more photo(s) allowed (max ${max})`);
+        }
 
         let hasLandscape = false;
         const validFiles: File[] = [];
@@ -1532,9 +1546,11 @@ function PhotoMultiInput({
             {!isMobile && <input ref={fileRef} type="file" accept="image/*" multiple className="tw-hidden"
                 onChange={(e) => { void handleFiles(e.target.files, false); }} />}
 
-            <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-                {t("maxPhotos", lang)} {max} {t("photos", lang)}
-            </Typography>
+            {!hideMaxLabel && (
+                <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
+                    {t("maxPhotos", lang)} {max} {t("photos", lang)}
+                </Typography>
+            )}
             {photos.length > 0 ? (
                 <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
                     {photos.map((p) => (
@@ -1614,13 +1630,29 @@ function DynamicItemsSection({
 
     // POST MODE - use PassFailRow like MDBPMForm.tsx
     if (isPostMode) {
+        const totalPhotosInGroup = items.reduce((sum, _, idx) => sum + (photos[`${qNo}_${idx}`]?.length ?? 0), 0);
+        const GROUP_MAX = 10;
+        const groupPhotoLabel = lang === "th"
+            ? `สูงสุด ${GROUP_MAX} รูป (รวมทุกข้อย่อย)`
+            : `Max ${GROUP_MAX} photos (total across sub-items)`;
         return (
             <div className="tw-space-y-0">
                 {/* Count summary row for POST mode */}
                 {countLabel && count !== undefined && (
-                    <div className="tw-flex tw-items-center tw-gap-2 tw-pb-3 tw-border-b tw-border-gray-200">
-                        <Typography variant="small" className="tw-text-blue-gray-600">{countLabel}</Typography>
-                        <Typography variant="small" className="tw-font-bold tw-text-blue-600">{count} {countUnit || t("unit", lang)}</Typography>
+                    <div className="tw-flex tw-items-center tw-justify-between tw-pb-3 tw-border-b tw-border-gray-200">
+                        <div className="tw-flex tw-items-center tw-gap-2">
+                            <Typography variant="small" className="tw-text-blue-gray-600">{countLabel}</Typography>
+                            <Typography variant="small" className="tw-font-bold tw-text-blue-600">{count} {countUnit || t("unit", lang)}</Typography>
+                        </div>
+                        {/* แสดง groupPhotoLabel ถ้าไม่มี add button หรือแสดง add button */}
+                        {editable && addItem && addButtonLabel && items.length < 66 ? (
+                            <Button size="sm" color="gray" variant="outlined" onClick={addItem} className="tw-flex tw-items-center tw-gap-1">
+                                <span className="tw-text-lg tw-leading-none">+</span>
+                                <span className="tw-text-xs">{addButtonLabel}</span>
+                            </Button>
+                        ) : (
+                            <Typography variant="small" className="!tw-text-blue-gray-400 tw-italic">{groupPhotoLabel}</Typography>
+                        )}
                     </div>
                 )}
                 <div className="tw-divide-y tw-divide-gray-200">
@@ -1687,10 +1719,11 @@ function DynamicItemsSection({
                                                     id={photoId}
                                                     photos={photos[`${qNo}_${idx}`] || []}
                                                     setPhotos={makePhotoSetter(`${qNo}_${idx}`)}
-                                                    max={10}
+                                                    max={Math.max(0, GROUP_MAX - (totalPhotosInGroup - (photos[`${qNo}_${idx}`]?.length ?? 0)))}
                                                     draftKey={draftKey}
                                                     qNo={qNo}
                                                     lang={lang}
+                                                    hideMaxLabel={true}
                                                 />
                                             </div>
                                             {checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}
@@ -1717,6 +1750,10 @@ function DynamicItemsSection({
     }
 
     // PRE MODE - original layout with count summary
+    const GROUP_MAX = 10;
+    const groupPhotoLabel = lang === "th"
+        ? `สูงสุด ${GROUP_MAX} รูป (รวมทุกข้อย่อย)`
+        : `Max ${GROUP_MAX} photos (total across sub-items)`;
     return (
         <div className="tw-space-y-0">
             {/* Count summary row with optional add button */}
@@ -1726,11 +1763,13 @@ function DynamicItemsSection({
                         <Typography variant="small" className="tw-text-blue-gray-600">{countLabel}</Typography>
                         <Typography variant="small" className="tw-font-bold tw-text-blue-600">{count} {countUnit || t("unit", lang)}</Typography>
                     </div>
-                    {editable && addItem && addButtonLabel && items.length < 66 && (
+                    {editable && addItem && addButtonLabel && items.length < 66 ? (
                         <Button size="sm" color="gray" variant="outlined" onClick={addItem} className="tw-flex tw-items-center tw-gap-1">
                             <span className="tw-text-lg tw-leading-none">+</span>
                             <span className="tw-text-xs">{addButtonLabel}</span>
                         </Button>
+                    ) : (
+                        <Typography variant="small" className="!tw-text-blue-gray-400 tw-italic">{groupPhotoLabel}</Typography>
                     )}
                 </div>
             )}
@@ -1751,6 +1790,7 @@ function DynamicItemsSection({
                     const subNo = idx + 1;
                     const photoId = `pm-photo-${qNo}-${subNo}`;
                     const remarkId = `pm-remark-${qNo}-${subNo}`;
+                    const totalPhotosInGroup = items.reduce((sum, _, idx) => sum + (photos[`${qNo}_${idx}`]?.length ?? 0), 0);
                     return (
                         <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
@@ -1789,7 +1829,8 @@ function DynamicItemsSection({
                                             return { ...prev, [photoKey]: next };
                                         });
                                     }}
-                                    max={10} draftKey={draftKey} qNo={qNo} lang={lang} />
+                                    max={Math.max(0, GROUP_MAX - (totalPhotosInGroup - (photos[`${qNo}_${idx}`]?.length ?? 0)))}
+                                    draftKey={draftKey} qNo={qNo} lang={lang} hideMaxLabel={true} />
                             </div>
                             {renderAdditionalFields && (
                                 <div id={`pm-input-${qNo}-${subNo}`} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
@@ -1977,6 +2018,10 @@ export default function ChargerPMForm() {
     const preReportIdRef = useRef<string | null>(null);
     const postReportIdRef = useRef<string | null>(null);
 
+    useEffect(() => {
+        postReportIdRef.current = null;
+    }, [editId]);
+
     // ⚡ Fix: ใช้ ref เก็บค่าล่าสุดของ photos เพื่อ cleanup ตอน unmount
     const photosRef = useRef(photos);
     useEffect(() => { photosRef.current = photos; }, [photos]);
@@ -2054,7 +2099,10 @@ export default function ChargerPMForm() {
         if (q5Items.length > 1) {
             const oldItems = q5Items;
             const survivingItems = oldItems.filter((_, i) => i !== index);
-            const newItems = survivingItems.map((_, idx) => ({ key: `r5_${idx + 1}`, label: getDynamicLabel.emergencyStop(idx + 1, lang) }));
+            const newItems = survivingItems.map((_, idx) => ({
+                key: `r5_${idx + 1}`,
+                label: getDynamicLabel.emergencyStop(idx + 1, lang)
+            }));
             setQ5Items(newItems);
             setRows(prev => {
                 const next = { ...prev };
@@ -2063,14 +2111,21 @@ export default function ChargerPMForm() {
                 newItems.forEach((item, idx) => { next[item.key] = survivingData[idx]; });
                 return next;
             });
-            // ⚡ Fix: migrate photos ตาม index ใหม่ + revoke blob ของ item ที่ถูกลบ
             setPhotos(prev => {
                 const next = { ...prev };
+                // ✅ revoke blob ของ item ที่ถูกลบก่อน
                 const removedPhotos = next[`5_${index}`] || [];
-                removedPhotos.forEach(p => { if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview); });
-                const survivingIndices = oldItems.map((_, i) => i).filter(i => i !== index);
-                const survivingPhotos = survivingIndices.map(i => next[`5_${i}`] || []);
+                removedPhotos.forEach(p => {
+                    if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview);
+                });
+                // ✅ เก็บ photos ของ surviving items ตาม old index ก่อน
+                const survivingOldIndices = oldItems
+                    .map((_, i) => i)
+                    .filter(i => i !== index);
+                const survivingPhotos = survivingOldIndices.map(i => next[`5_${i}`] || []);
+                // ✅ ลบ keys เก่าทั้งหมด
                 oldItems.forEach((_, i) => { delete next[`5_${i}`]; });
+                // ✅ เขียน keys ใหม่ตาม index ที่ถูก remap
                 survivingPhotos.forEach((photoList, idx) => { next[`5_${idx}`] = photoList; });
                 return next;
             });
@@ -2160,11 +2215,31 @@ export default function ChargerPMForm() {
         // Reset Post-mode inputs เพื่อไม่ให้ค่าจาก Pre ติดมา
         m16.setState(initMeasureState(VOLTAGE1_FIELDS, "V"));
         setCp({});
+
+        setRows(() => {
+            const initial: Record<string, { pf: PF; remark: string }> = {};
+            QUESTIONS.forEach((q) => { initial[q.key] = { pf: "", remark: "" }; });
+            getFixedItemsQ8("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+            getFixedItemsQ11("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+            getFixedItemsQ18("th").forEach((item) => { initial[item.key] = { pf: "", remark: "" }; });
+            return initial;
+        });
+
         (async () => {
             try {
                 const data = await fetchReport(editId, sn);
                 if (data.job) {
-                    setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.numberOfCables || prev.chargingCables || 1 }));
+                    setJob(prev => ({ ...prev, ...data.job, issue_id: data.issue_id ?? prev.issue_id, chargingCables: data.job.numberOfCables || data.job.chargingCables || prev.chargingCables || 1 }));
+
+                    if (!data.job?.numberOfCables && sn) {
+                        getChargerInfoBySN(sn)
+                            .then(st => {
+                                if (st.numberOfCables) {
+                                    setJob(prev => ({ ...prev, chargingCables: st.numberOfCables! }));
+                                }
+                            })
+                            .catch(() => { });
+                    }
                 }
                 if (data.pm_date) setJob(prev => ({ ...prev, date: data.pm_date }));
                 if (data?.measures_pre?.cp) {
@@ -2767,12 +2842,9 @@ export default function ChargerPMForm() {
             ? `${API_BASE}/pmreport/${reportId}/pre/photos`
             : `${API_BASE}/pmreport/${reportId}/post/photos`;
 
-        console.log(`[upload] ${group} → 1 file | size: ${(file.size / 1024).toFixed(0)}KB | name: ${file.name}`);
-
-        const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
-        const res = await fetch(url, {
+        // ✅ ใช้ apiFetch แทน fetch ตรง
+        const res = await apiFetch(url, {
             method: "POST",
-            headers: { ...(token ? { "Authorization": `Bearer ${token}` } : {}) },
             body: form,
         });
 
@@ -2781,7 +2853,6 @@ export default function ChargerPMForm() {
             throw new Error(`[${res.status}] ${group}: ${errText || res.statusText}`);
         }
 
-        // ✅ เพิ่ม: เช็ค response body ว่า backend เซฟรูปจริง
         const resJson = await res.json().catch(() => null);
         if (!resJson || resJson.count === 0) {
             throw new Error(`[upload empty] group ${group}: backend saved 0 files`);
@@ -2854,14 +2925,20 @@ export default function ChargerPMForm() {
             if (!report_id) {
                 const pm_date = job.date?.trim() || "";
                 const { issue_id: issueIdFromJob, ...jobWithoutIssueId } = job;
-                const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName,summary_pre: summaryPre, side: "pre" as TabId };
+                const payload = { sn: sn, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector, measures_pre: { m16: m16.state, cp }, rows_pre: rows, pm_date, doc_name: docName, summary_pre: summaryPre, side: "pre" as TabId };
                 const submitRes = await apiFetch(`${API_BASE}/pmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 if (!submitRes.ok) throw new Error(await submitRes.text());
                 const jsonRes = await submitRes.json() as { report_id: string; doc_name?: string };
                 report_id = jsonRes.report_id;
                 if (jsonRes.doc_name) setDocName(jsonRes.doc_name);
                 preReportIdRef.current = report_id;
-                saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, cp, m16: m16.state, summary, dustFilterChanged, photoRefs });
+                saveDraftLocal(key, {
+                    ...loadDraftLocal(key),
+                    pendingReportId: report_id,
+                    rows, cp, m16: m16.state,
+                    summary: summaryPre,  // ← ใช้ summaryPre
+                    dustFilterChanged, photoRefs
+                });
             }
 
             // ✅ FIX: ไม่ clone ด้วย arrayBuffer() — ใช้ file ตรงๆ เหมือน onFinalSave
@@ -2939,6 +3016,11 @@ export default function ChargerPMForm() {
 
     const onFinalSave = async () => {
         if (!sn) { alert(t("alertNoSN", lang)); return; }
+        // ✅ เพิ่ม guards เหมือน onPreSave
+        if (!allPhotosAttachedPost) { alert(t("alertPhotoNotComplete", lang)); return; }
+        if (!allRequiredInputsFilled) { alert(t("alertFillRequired", lang)); return; }
+        if (!allRemarksFilledPost) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`); return; }
+        if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("alertCompleteAll", lang)); return; }
         if (submitting) return;
         setSubmitting(true);
         try {
