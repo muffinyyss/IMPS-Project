@@ -1,6 +1,5 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   getCoreRowModel,
@@ -27,7 +26,7 @@ import {
   ChevronRightIcon,
   ChevronUpDownIcon,
 } from "@heroicons/react/24/solid";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon, EyeIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon, DocumentArrowDownIcon} from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import ChargerPMForm from "@/app/dashboard/pm-report/charger/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
@@ -102,6 +101,7 @@ type TData = {
   office: string;
   inspector?: string;
   side?: string;
+  has_photos?: boolean;
 };
 
 type Props = {
@@ -509,7 +509,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: fileUrl,
           inspector,
-          side
+          side,
+          has_photos: Boolean(it.has_photos),
         } as TData;
       });
 
@@ -531,7 +532,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: href,
           inspector,
-          side
+          side,
+          has_photos: Boolean(it.has_photos),
         } as TData;
       });
 
@@ -714,19 +716,26 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           );
         } else {
           return (
-            <div className="tw-flex tw-items-center tw-justify-center">
+            <div className="tw-flex tw-items-center tw-justify-center tw-gap-1">
+              {/* Download PDF */}
               <a
                 aria-label={t("preview", lang)}
                 href={previewHref}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => {
+                  apiFetch(`${BASE}/pmreport/${info.row.original.id}/mark-downloaded?sn=${encodeURIComponent(sn || "")}&download_type=pdf`, {
+                    method: "POST", credentials: "include",
+                  }).catch(console.error);
+                }}
                 className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-red-600 hover:tw-text-red-800 hover:tw-bg-red-50 tw-transition-colors"
                 title={t("preview", lang)}
               >
+
                 <DocumentArrowDownIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
               </a>
-            </div>
-          )
+            </div >
+          );
         }
       },
       size: 100,
@@ -947,7 +956,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         </div>
       )}
       {/* Main Card */}
-      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
+      <Card className="tw-border tw-border-gray-200 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-2xl tw-overflow-hidden">
 
         {/* Card Header */}
         {/* <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0"> */}
@@ -1052,8 +1061,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         </CardBody>
 
         {/* Table Content */}
-        <CardFooter className="tw-p-0">
-          <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth tw--webkit-overflow-scrolling-touch">
+        <CardFooter className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-3 sm:tw-py-4">
+          <div className="tw-overflow-x-auto tw-w-full tw-rounded-xl tw-border tw-border-blue-gray-100 tw-shadow-sm">
             <table className="tw-w-full tw-text-left tw-min-w-[700px]">
               {/* Table Header */}
               {/* <thead className="tw-bg-gray-50/80 tw-sticky tw-top-0 tw-backdrop-blur-sm"> */}
@@ -1158,7 +1167,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
         {/* Pagination */}
         {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-50 tw-bg-gray-50/30"> */}
-        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-100">
+        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-3 sm:tw-py-4 tw-border-t tw-border-blue-gray-100">
           <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-text-blue-gray-600 tw-order-2 sm:tw-order-1">
             {t("page", lang)} <strong className="tw-text-blue-gray-800">{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)} <strong className="tw-text-blue-gray-800">{table.getPageCount() || 1}</strong>
           </Typography>

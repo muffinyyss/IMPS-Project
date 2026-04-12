@@ -1,6 +1,6 @@
 """PM Report routes for Chargers (SN-based)"""
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFile, File, Form, Path
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import Response, JSONResponse, StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from datetime import datetime, timedelta, timezone, date
@@ -50,32 +50,31 @@ from routers.pm_helpers import (
 from PIL import Image
 from io import BytesIO
 
+import tempfile
+
 def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) -> bytes:
     """Resize รูปถ้าใหญ่เกิน max_width, return JPEG bytes"""
     try:
         img = Image.open(BytesIO(data))
-        # ข้ามไฟล์ที่ไม่ใช่รูป หรือเล็กอยู่แล้ว
         if img.width <= max_width:
             return data
         ratio = max_width / img.width
         new_size = (max_width, int(img.height * ratio))
         img = img.resize(new_size, Image.LANCZOS)
-        # แปลง RGBA → RGB (ถ้ามี alpha channel)
-        if img.mode in ("RGBA", "P"):
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        elif img.mode != "RGB":
             img = img.convert("RGB")
         buf = BytesIO()
         img.save(buf, format="JPEG", quality=quality, optimize=True)
         return buf.getvalue()
     except Exception:
-        # ถ้า Pillow อ่านไม่ได้ ส่ง data เดิมกลับ
         return data
 
 router = APIRouter()
 
 async def _get_charger_by_sn(sn: str) -> dict:
     """Get charger document by SN, raise 404 if not found"""
-    # FIX #1: เพิ่ม await — charger_collection เป็น Motor async collection
-    # charger = charger_collection.find_one({"SN": sn})
     charger = charger_collection.find_one({"SN": sn})
     if not charger:
         raise HTTPException(status_code=404, detail=f"Charger with SN '{sn}' not found")
@@ -89,9 +88,8 @@ def _compute_next_pm_date_str(pm_date_str: str | None) -> str | None:
     except ValueError:
         return None
     next_d = d + relativedelta(months=+6)
-    return next_d.isoformat()     
+    return next_d.isoformat()
 
-# --- helper: เอา pm_date ล่าสุดจาก PMReportDB/<sn> ---
 async def _latest_pm_date_from_pmreport(sn: str) -> dict | None:
     _validate_sn(sn)
     coll = PMReportDB.get_collection(str(sn))
@@ -128,20 +126,17 @@ async def _latest_pm_date_from_pmreport(sn: str) -> dict | None:
 async def _pmreport_latest_core(sn: str, current: UserClaims):
     """Get latest PM report info for a charger by SN"""
     _validate_sn(sn)
-    
-    # 1) ดึงข้อมูล Charger จาก SN
+
     charger = await _get_charger_by_sn(sn)
-    
+
     pi_fw  = charger.get("PIFirmware")
     plc_fw = charger.get("PLCFirmware")
     rt_fw  = charger.get("RTFirmware")
     station_id = charger.get("station_id")
 
-    # 2) ดึง pm_date ล่าสุดจาก PMReportDB
     pm_latest = await _latest_pm_date_from_pmreport(sn)
     pm_date = pm_latest.get("pm_date") if pm_latest else None
 
-    # เวลา: ใช้ timestamp จาก pm report ถ้ามี ไม่งั้น fallback ไปของ charger
     ts_raw = (pm_latest.get("timestamp") if pm_latest else None) or charger.get("createdAt")
 
     ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
@@ -160,7 +155,7 @@ async def _pmreport_latest_core(sn: str, current: UserClaims):
         "plc_firmware": plc_fw,
         "rt_firmware": rt_fw,
         "pm_date": pm_date,
-        "pm_next_date": pm_next_date, 
+        "pm_next_date": pm_next_date,
         "timestamp": ts_raw,
         "timestamp_utc": ts_utc,
         "timestamp_th": ts_th,
@@ -171,18 +166,18 @@ def serialize_doc(doc):
     if doc is None:
         return None
     if isinstance(doc, list):
-        return [serialize_doc(d) for d in doc]  # วน list
+        return [serialize_doc(d) for d in doc]
     if isinstance(doc, dict):
         result = {}
         for k, v in doc.items():
             if isinstance(v, ObjectId):
-                result[k] = str(v)              # ObjectId → string
+                result[k] = str(v)
             elif isinstance(v, datetime):
-                result[k] = v.isoformat()       # datetime → "2025-02-06T12:00:00"
+                result[k] = v.isoformat()
             elif isinstance(v, Decimal128):
-                result[k] = float(v.to_decimal())  # Decimal128 → float
+                result[k] = float(v.to_decimal())
             else:
-                result[k] = serialize_doc(v)    # วน recursive ถ้าเป็น nested dict/list
+                result[k] = serialize_doc(v)
         return result
     return doc
 
@@ -196,9 +191,9 @@ async def pmreport_get(sn: str, report_id: str, current: UserClaims = Depends(ge
     doc = await coll.find_one({"_id": oid})
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
-    return serialize_doc(doc)  # ← ✅ แปลง ObjectId เป็น string
+    return serialize_doc(doc)
 
-# FIX #2: เพิ่ม auth ให้ pmreport_list
+
 @router.get("/pmreport/list")
 async def pmreport_list(
     sn: str = Query(...),
@@ -210,13 +205,12 @@ async def pmreport_list(
     coll = get_pmreport_collection_for(sn)
     skip = (page - 1) * pageSize
 
-    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector": 1, "side": 1, "createdAt": 1}).sort(
+    cursor = coll.find({}, {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector": 1, "side": 1, "has_photos": 1, "createdAt": 1}).sort(
         [("createdAt", -1), ("_id", -1)]
     ).skip(skip).limit(pageSize)
     items_raw = await cursor.to_list(length=pageSize)
     total = await coll.count_documents({})
 
-    # --- ดึงไฟล์จาก PMReportURL โดย map ด้วย pm_date (string) ---
     pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
     urls_coll = get_pmurl_coll_upload(sn)
     url_by_day: dict[str, str] = {}
@@ -239,13 +233,13 @@ async def pmreport_list(
         "side": it.get("side"),
         "createdAt": _ensure_utc_iso(it.get("createdAt")),
         "file_url": url_by_day.get(it.get("pm_date") or "", ""),
+        "has_photos": True if it.get("has_photos") else None,
     } for it in items_raw]
 
     pm_date_arr = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
     return {"items": items, "pm_date": pm_date_arr, "page": page, "pageSize": pageSize, "total": total}
 
 
-# ใหม่ (query param)
 @router.get("/pmreport/latest/{sn}")
 async def pmreport_latest_by_path(
     sn: str = Path(..., description="Charger Serial Number"),
@@ -268,14 +262,14 @@ class PMRowPF(BaseModel):
 
 class PMSubmitIn(BaseModel):
     side: Literal["pre", "post"]
-    sn: str  # Changed from station_id to sn
+    sn: str
     job: dict
     measures_pre: dict
     rows_pre: Optional[dict[str, Any]] = None
     pm_date: str
     issue_id: Optional[str] = None
-    doc_name: Optional[str] = None 
-    inspector: Optional[str] = None 
+    doc_name: Optional[str] = None
+    inspector: Optional[str] = None
     summary_pre: Optional[str] = None
 
 @router.get("/pmreport/preview-issueid")
@@ -291,7 +285,6 @@ async def pmreport_preview_issueid(
         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
 
     pm_type = "CG"
-
     latest = await _latest_issue_id_anywhere(sn, pm_type, d)
 
     yymm = f"{d.year % 100:02d}{d.month:02d}"
@@ -314,7 +307,6 @@ async def pmreport_latest_docname(
 ):
     """Get latest doc_name for calculating next number at frontend"""
     latest = await _latest_doc_name_from_pmreport(sn, pm_date)
-    
     return {
         "doc_name": latest.get("doc_name") if latest else None,
         "sn": sn,
@@ -334,7 +326,6 @@ async def preview_docname(
         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
 
     year = d.year
-
     latest = await _latest_doc_name_anywhere(sn, year)
 
     if not latest:
@@ -361,10 +352,8 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
     except ValueError:
         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
 
-    # ============ ⚡ รัน parallel แทน sequential ============
     charger_task = _get_charger_by_sn(sn)
 
-    # validate issue_id + doc_name พร้อมกัน
     client_issue = body.issue_id
     client_doc = body.doc_name
 
@@ -374,18 +363,18 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
         yymm = f"{d.year % 100:02d}{d.month:02d}"
         prefix = f"PM-{pm_type}-{yymm}-"
         if client_issue.startswith(prefix):
-            tasks.append(coll.find_one({"issue_id": client_issue}, {"_id": 1}))    # idx 1
-            tasks.append(url_coll.find_one({"issue_id": client_issue}, {"_id": 1})) # idx 2
+            tasks.append(coll.find_one({"issue_id": client_issue}, {"_id": 1}))
+            tasks.append(url_coll.find_one({"issue_id": client_issue}, {"_id": 1}))
         else:
-            tasks.append(asyncio.sleep(0))  # placeholder
+            tasks.append(asyncio.sleep(0))
             tasks.append(asyncio.sleep(0))
     else:
         tasks.append(asyncio.sleep(0))
         tasks.append(asyncio.sleep(0))
 
     if client_doc:
-        tasks.append(coll.find_one({"doc_name": client_doc}, {"_id": 1}))    # idx 3
-        tasks.append(url_coll.find_one({"doc_name": client_doc}, {"_id": 1})) # idx 4
+        tasks.append(coll.find_one({"doc_name": client_doc}, {"_id": 1}))
+        tasks.append(url_coll.find_one({"doc_name": client_doc}, {"_id": 1}))
     else:
         tasks.append(asyncio.sleep(0))
         tasks.append(asyncio.sleep(0))
@@ -395,17 +384,15 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
     charger = results[0]
     station_id = charger.get("station_id")
 
-    # ---- resolve issue_id ----
     issue_id = None
     if client_issue and client_issue.startswith(prefix):
         rep_exists, url_exists = results[1], results[2]
         if not rep_exists and not url_exists:
             issue_id = client_issue
-    
+
     if not issue_id:
         issue_id = await _next_issue_id_no_conflict(db, coll, url_coll, sn, pm_type, d)
 
-    # ---- resolve doc_name ----
     doc_name = None
     if client_doc and client_doc.startswith(f"{sn}_"):
         rep_exists, url_exists = results[3], results[4]
@@ -416,17 +403,12 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
         year_seq = await _next_year_seq(db, sn, pm_type, d)
         doc_name = f"{sn}_{year_seq}/{d.year}"
 
-    # ======================================================================
-    # ⚡ FIX: Idempotent — ถ้ามี draft สำหรับ sn + pm_date + side="pre"
-    #   อยู่แล้ว → update แทน insert → ป้องกัน document ซ้ำ
-    # ======================================================================
     existing_draft = await coll.find_one(
         {"sn": sn, "pm_date": body.pm_date, "side": "pre", "status": "draft"},
         {"_id": 1, "issue_id": 1, "doc_name": 1},
     )
 
     if existing_draft:
-        # ⚡ มี draft อยู่แล้ว → update doc เดิม + คืน report_id เดิม
         await coll.update_one(
             {"_id": existing_draft["_id"]},
             {"$set": {
@@ -447,7 +429,6 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
             "doc_name": existing_draft.get("doc_name") or doc_name,
         }
 
-    # ⚡ ไม่มี draft → insert ใหม่ตามปกติ
     doc = {
         "sn": sn,
         "station_id": station_id,
@@ -471,7 +452,7 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
 
 class PMPostIn(BaseModel):
     report_id: str | None = None
-    sn: str  # Changed from station_id to sn
+    sn: str
     rows: dict
     measures: dict
     summary: str
@@ -490,7 +471,6 @@ async def pmreport_post_submit(
     db = coll.database
     url_coll = get_pmurl_coll_upload(sn)
 
-    # ---------- กรณี 1: มี report_id → UPDATE doc เดิม ----------
     if body.report_id:
         try:
             oid = ObjectId(body.report_id)
@@ -512,24 +492,14 @@ async def pmreport_post_submit(
         }
 
         await coll.update_one({"_id": oid}, {"$set": update_fields})
+        return {"ok": True, "report_id": body.report_id}
 
-        return {
-            "ok": True,
-            "report_id": body.report_id,
-        }
-
-    # ---------- กรณี 2: ไม่มี report_id ----------
-    # Validate charger exists
     charger = await _get_charger_by_sn(sn)
 
-    # ======================================================================
-    # ⚡ FIX: Idempotent — ถ้ามี draft สำหรับ sn + side="post" + status="draft"
-    #   อยู่แล้ว → update แทน insert → ป้องกัน document ซ้ำ
-    # ======================================================================
     existing_draft = await coll.find_one(
         {"sn": sn, "side": "post", "status": "draft"},
         {"_id": 1},
-        sort=[("timestamp", -1)],  # เอาอันล่าสุด
+        sort=[("timestamp", -1)],
     )
 
     update_fields = {
@@ -543,14 +513,9 @@ async def pmreport_post_submit(
     }
 
     if existing_draft:
-        # ⚡ มี draft อยู่แล้ว → update doc เดิม
         await coll.update_one({"_id": existing_draft["_id"]}, {"$set": update_fields})
-        return {
-            "ok": True,
-            "report_id": str(existing_draft["_id"]),
-        }
+        return {"ok": True, "report_id": str(existing_draft["_id"])}
 
-    # ⚡ ไม่มี draft → insert ใหม่
     doc = {
         "sn": sn,
         "station_id": charger.get("station_id"),
@@ -561,16 +526,9 @@ async def pmreport_post_submit(
         "timestamp": datetime.now(timezone.utc),
     }
     res = await coll.insert_one(doc)
-    return {
-        "ok": True,
-        "report_id": str(res.inserted_id),
-    }
-
-# ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
+    return {"ok": True, "report_id": str(res.inserted_id)}
 
 
-# FIX #4 & #6: เติม unique suffix + ป้องกันชื่อพิเศษ เช่น "." หรือ ".."
-# FIX #2: เพิ่ม auth ให้ upload pre photos
 @router.post("/pmreport/{report_id}/pre/photos")
 async def pmreport_upload_pre_photos(
     report_id: str,
@@ -589,13 +547,18 @@ async def pmreport_upload_pre_photos(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid}, {"_id": 1, "sn": 1})
+    doc = await coll.find_one({"_id": oid}, {"_id": 1, "sn": 1, f"photos_pre.{group}": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
     if doc.get("sn") != sn:
         raise HTTPException(status_code=400, detail="sn mismatch")
 
-    # โฟลเดอร์ปลายทาง - ใช้ sn แทน station_id
+    MAX_PHOTOS_PER_GROUP = 10
+    existing_count = len((doc.get("photos_pre") or {}).get(group, []))
+    if existing_count >= MAX_PHOTOS_PER_GROUP:
+        raise HTTPException(status_code=400, detail=f"Max {MAX_PHOTOS_PER_GROUP} photos per group")
+    files = files[:MAX_PHOTOS_PER_GROUP - existing_count]
+
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "pm" / sn / report_id / "pre" / group
     dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -611,9 +574,10 @@ async def pmreport_upload_pre_photos(
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
-        data = resize_image_bytes(data, max_width=1920, quality=85)
+        data = resize_image_bytes(data, max_width=1280, quality=75)
 
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.jpg")
+        fname = pathlib.Path(fname).stem + ".jpg"
         path = dest_dir / fname
         with open(path, "wb") as out:
             out.write(data)
@@ -621,21 +585,23 @@ async def pmreport_upload_pre_photos(
         url_path = f"/uploads/pm/{sn}/{report_id}/pre/{group}/{fname}"
         saved.append({
             "filename": fname,
-            "size": len(data),
             "url": url_path,
             "uploadedAt": datetime.now(timezone.utc)
         })
 
     await coll.update_one(
         {"_id": oid},
-        {"$push": {f"photos_pre.{group}": {"$each": saved}}}
+        {
+            "$push": {f"photos_pre.{group}": {"$each": saved}},
+            "$set": {"has_photos": True},
+        }
     )
     if not saved:
         raise HTTPException(status_code=400, detail="No files were saved")
 
     return {"ok": True, "count": len(saved), "group": group, "files": saved}
 
-# FIX #2: เพิ่ม auth ให้ upload post photos
+
 @router.post("/pmreport/{report_id}/post/photos")
 async def pmreport_upload_post_photos(
     report_id: str,
@@ -655,13 +621,18 @@ async def pmreport_upload_post_photos(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid}, {"_id": 1, "sn": 1})
+    doc = await coll.find_one({"_id": oid}, {"_id": 1, "sn": 1, f"photos.{group}": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
     if doc.get("sn") != sn:
         raise HTTPException(status_code=400, detail="sn mismatch")
 
-    # โฟลเดอร์ปลายทาง - ใช้ sn แทน station_id
+    MAX_PHOTOS_PER_GROUP = 10
+    existing_count = len((doc.get("photos") or {}).get(group, []))
+    if existing_count >= MAX_PHOTOS_PER_GROUP:
+        raise HTTPException(status_code=400, detail=f"Max {MAX_PHOTOS_PER_GROUP} photos per group")
+    files = files[:MAX_PHOTOS_PER_GROUP - existing_count]
+
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "pm" / sn / report_id / "post" / group
     dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -677,9 +648,10 @@ async def pmreport_upload_post_photos(
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
-        data = resize_image_bytes(data, max_width=1920, quality=85)
+        data = resize_image_bytes(data, max_width=1280, quality=75)
 
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.jpg")
+        fname = pathlib.Path(fname).stem + ".jpg"
         path = dest_dir / fname
         with open(path, "wb") as out:
             out.write(data)
@@ -687,7 +659,6 @@ async def pmreport_upload_post_photos(
         url_path = f"/uploads/pm/{sn}/{report_id}/post/{group}/{fname}"
         saved.append({
             "filename": fname,
-            "size": len(data),
             "url": url_path,
             "remark": remark or "",
             "uploadedAt": datetime.now(timezone.utc)
@@ -695,15 +666,17 @@ async def pmreport_upload_post_photos(
 
     await coll.update_one(
         {"_id": oid},
-        {"$push": {f"photos.{group}": {"$each": saved}}}
+        {
+            "$push": {f"photos.{group}": {"$each": saved}},
+            "$set": {"has_photos": True},
+        }
     )
-    
     if not saved:
         raise HTTPException(status_code=400, detail="No files were saved")
 
     return {"ok": True, "count": len(saved), "group": group, "files": saved}
 
-# FIX #2: เพิ่ม auth ให้ finalize
+
 @router.post("/pmreport/{report_id}/finalize")
 async def pmreport_finalize(report_id: str, sn: str = Form(...), current: UserClaims = Depends(get_current_user)):
     coll = get_pmreport_collection_for(sn)
@@ -711,13 +684,28 @@ async def pmreport_finalize(report_id: str, sn: str = Form(...), current: UserCl
         oid = ObjectId(report_id)
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
+
+    doc = await coll.find_one({"_id": oid}, {"_id": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+
     res = await coll.update_one(
         {"_id": oid},
-        {"$set": {"status": "submitted", "submittedAt": datetime.now(timezone.utc)}}
+        {"$set": {
+            "status": "submitted",
+            "submittedAt": datetime.now(timezone.utc),
+        }}
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Report not found")
+
+    for lang in ("th", "en"):
+        cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / sn / f"{report_id}_{lang}.pdf"
+        if cache_path.exists():
+            cache_path.unlink()
+
     return {"ok": True}
+
 
 def parse_report_date_to_utc(s: str) -> datetime:
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
@@ -750,10 +738,9 @@ async def pmurl_upload_files(
     current: UserClaims = Depends(get_current_user),
 ):
     """Upload PM PDF files for a charger"""
-    # Validate charger exists
     charger = await _get_charger_by_sn(sn)
     station_id = charger.get("station_id")
-    
+
     coll = get_pmurl_coll_upload(sn)
     pm_date = normalize_pm_date(reportDate)
 
@@ -764,9 +751,6 @@ async def pmurl_upload_files(
 
     pm_type = "CG"
 
-    # -------------------------
-    # 1) ตัดสินใจเลือก issue_id
-    # -------------------------
     rep_coll = get_pmreport_collection_for(sn)
     final_issue_id: str | None = None
     client_issue = (issue_id or "").strip()
@@ -783,7 +767,6 @@ async def pmurl_upload_files(
         if valid_fmt and unique:
             final_issue_id = client_issue
 
-    # FIX #3: ใช้ atomic sequence แทน while True loop
     if not final_issue_id:
         final_issue_id = await _next_issue_id_no_conflict(
             coll.database, rep_coll, coll, sn, pm_type, d, pad=2
@@ -820,9 +803,6 @@ async def pmurl_upload_files(
 
     doc_name = final_doc_name
 
-    # -------------------------
-    # 3) เซฟไฟล์ PDF ลงดิสก์
-    # -------------------------
     subdir = pm_date
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "pmurl" / sn / subdir
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -833,7 +813,6 @@ async def pmurl_upload_files(
 
     for f in files:
         ext = (f.filename.rsplit(".", 1)[-1].lower() if f.filename and "." in f.filename else "")
-        # FIX #7: ลบเงื่อนไขซ้ำซ้อน — เช็คแค่ ext != "pdf"
         if ext != "pdf":
             raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
 
@@ -844,10 +823,7 @@ async def pmurl_upload_files(
             raise HTTPException(status_code=400, detail=f"Invalid PDF file: {f.filename}")
         total_size += len(data)
         if len(data) > MAX_FILE_MB * 1024 * 1024:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large (> {MAX_FILE_MB} MB)"
-            )
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
         safe = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
         dest = dest_dir / safe
@@ -860,9 +836,6 @@ async def pmurl_upload_files(
 
     inspector_clean = (inspector or "").strip() or None
 
-    # -------------------------
-    # 4) บันทึกลง Mongo
-    # -------------------------
     now = datetime.now(timezone.utc)
     doc = {
         "sn": sn,
@@ -893,7 +866,7 @@ async def pmurl_upload_files(
         "inspector": inspector_clean,
     }
 
-# FIX #2: เพิ่ม auth ให้ pmurl_list
+
 @router.get("/pmurl/list")
 async def pmurl_list(
     sn: str = Query(...),
@@ -917,7 +890,6 @@ async def pmurl_list(
         s = doc.get("pm_date")
         if isinstance(s, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
             return s
-
         rd = doc.get("reportDate")
         if isinstance(rd, datetime):
             return rd.astimezone(th_tz).date().isoformat()
@@ -930,7 +902,6 @@ async def pmurl_list(
                 except Exception:
                     return None
             return dt.astimezone(th_tz).date().isoformat()
-
         return None
 
     items = []
@@ -946,8 +917,8 @@ async def pmurl_list(
 
         items.append({
             "id": str(it["_id"]),
-            "pm_date": pm_date_str, 
-            "inspector": it.get("inspector"), 
+            "pm_date": pm_date_str,
+            "inspector": it.get("inspector"),
             "doc_name": it.get("doc_name"),
             "issue_id": it.get("issue_id"),
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
@@ -962,3 +933,23 @@ async def pmurl_list(
         "pageSize": pageSize,
         "total": total,
     }
+
+
+@router.post("/pmreport/migrate/has-photos")
+async def migrate_has_photos_endpoint(
+    sn: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """One-time migration: set has_photos=True for docs that have photos but missing the flag"""
+    coll = get_pmreport_collection_for(sn)
+    result = await coll.update_many(
+        {
+            "has_photos": {"$exists": False},
+            "$or": [
+                {"photos_pre": {"$ne": {}, "$exists": True}},
+                {"photos": {"$ne": {}, "$exists": True}},
+            ]
+        },
+        {"$set": {"has_photos": True}}
+    )
+    return {"ok": True, "modified": result.modified_count}
