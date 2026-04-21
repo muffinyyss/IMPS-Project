@@ -566,8 +566,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
         </CardBody>
 
-        <CardFooter className="tw-p-0">
-          <div className="tw-relative tw-w-full tw-overflow-x-auto tw-overflow-y-hidden tw-scroll-smooth tw--webkit-overflow-scrolling-touch">
+        <CardFooter className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-3 sm:tw-py-4">
+          <div className="tw-overflow-x-auto tw-w-full tw-rounded-xl tw-border tw-border-blue-gray-100 tw-shadow-sm">
             <table className="tw-w-full tw-text-left tw-min-w-[700px]">
               {/* <thead className="tw-bg-gray-50/80 tw-sticky tw-top-0 tw-backdrop-blur-sm"> */}
               <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800 tw-sticky tw-top-0">
