@@ -343,6 +343,7 @@ type PhotoItem = {
     preview?: string;
     remark?: string;
     uploading?: boolean;
+    uploaded?: boolean;
     error?: string;
     ref?: PhotoRef;
     isNA?: boolean;
@@ -2389,6 +2390,7 @@ export default function ChargerPMForm() {
                                     preview: URL.createObjectURL(file),
                                     remark: ref.remark,
                                     ref: ref as PhotoRef,
+                                    uploaded: (ref as any).uploaded === true,
                                 });
                             }
                         }
@@ -2462,6 +2464,7 @@ export default function ChargerPMForm() {
                                     preview: URL.createObjectURL(file),
                                     remark: ref.remark,
                                     ref: ref as PhotoRef,
+                                    uploaded: (ref as any).uploaded === true,
                                 });
                             }
                         }
@@ -2792,7 +2795,14 @@ export default function ChargerPMForm() {
     const photoRefs = useMemo(() => {
         const out: Record<string, (PhotoRef | { isNA: true })[]> = {};
         Object.entries(photos).forEach(([key, list]) => {
-            out[key] = (list || []).map(p => p.isNA ? { isNA: true } : p.ref).filter(Boolean) as (PhotoRef | { isNA: true })[];
+            out[key] = (list || [])
+                .map(p => {
+                    if (p.isNA) return { isNA: true } as const;
+                    if (!p.ref) return null;
+                    // ⚡ เก็บ uploaded ไปพร้อม ref
+                    return { ...p.ref, uploaded: p.uploaded === true } as PhotoRef & { uploaded: boolean };
+                })
+                .filter(Boolean) as (PhotoRef | { isNA: true })[];
         });
         return out;
     }, [photos]);
@@ -2941,18 +2951,24 @@ export default function ChargerPMForm() {
                 });
             }
 
-            // ✅ FIX: ไม่ clone ด้วย arrayBuffer() — ใช้ file ตรงๆ เหมือน onFinalSave
-            const uploadEntries: { group: string; files: File[] }[] = [];
+            // ⚡ สร้าง tasks per-photo + skip รูปที่ upload สำเร็จไปแล้ว (uploaded=true)
+            type UploadTask = { group: string; photoId: string; file: File };
+            const allPreTasks: UploadTask[] = [];
             for (const [no, list] of Object.entries(photos)) {
-                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
-                if (files.length > 0) uploadEntries.push({ group: no, files });
+                (list || []).forEach(p => {
+                    if (p.file && !p.uploaded && !p.isNA) {
+                        allPreTasks.push({ group: no, photoId: p.id, file: p.file });
+                    }
+                });
             }
 
-            const totalPhotos = uploadEntries.reduce((sum, e) => sum + e.files.length, 0);
+            const totalPhotos = allPreTasks.length;
 
-            // ✅ FIX: Guard — ถ้าไม่มีรูป ให้ block ไว้ก่อน (ไม่ควรถึงได้ถ้า validation ผ่าน)
-            if (totalPhotos === 0 && allPhotosAttachedPre) {
-                // photos อยู่ใน state แต่ไม่มี file → draft load ไม่สมบูรณ์
+            // Guard: มี photos ใน state แต่ไม่มี file จริง (draft load ไม่สมบูรณ์)
+            // หมายเหตุ: ถ้าทุกรูป uploaded=true แล้ว totalPhotos จะเป็น 0 ซึ่ง valid (retry ครั้งที่ 2 ที่ทุกรูปผ่านแล้ว)
+            const hasAnyPhotoInState = Object.values(photos).some(list => (list || []).length > 0);
+            const hasAnyFile = Object.values(photos).some(list => (list || []).some(p => p.file || p.isNA));
+            if (hasAnyPhotoInState && !hasAnyFile) {
                 throw new Error(lang === "th" ? "ไม่พบไฟล์รูปภาพ กรุณาแนบรูปใหม่อีกครั้ง" : "Photo files not found. Please re-attach photos.");
             }
 
@@ -2962,28 +2978,29 @@ export default function ChargerPMForm() {
                 let failedCount = 0;
                 const failures: { group: string; error: string }[] = [];
 
-                const allTasks: { group: string; file: File }[] = [];
-                for (const entry of uploadEntries) {
-                    // ✅ FIX: compress ตรงๆ ไม่ต้อง clone ก่อน
-                    const compressed = await Promise.all(entry.files.map(f => compressImage(f)));
-                    for (const file of compressed) {
-                        allTasks.push({ group: entry.group, file });
-                    }
-                }
-
+                // ⚡ compress ใน runNext แทนที่จะ compress ทั้งหมดก่อน เพื่อคงการ mapping task → photoId
                 const CONCURRENCY = 3;
                 let idx = 0;
-
-                // ✅ FIX: capture report_id เป็น local const เพื่อ type safety ใน closure
-                const finalReportId = report_id;
+                const finalReportId = report_id!;
 
                 const runNext = async (): Promise<void> => {
-                    while (idx < allTasks.length) {
+                    while (idx < allPreTasks.length) {
                         const taskIdx = idx++;
-                        const task = allTasks[taskIdx];
+                        const task = allPreTasks[taskIdx];
                         try {
-                            // ✅ FIX: ใช้ finalReportId (guaranteed non-null) แทน report_id
-                            await uploadSinglePhotoWithRetry(finalReportId, sn, `g${task.group}`, task.file, "pre");
+                            const compressed = await compressImage(task.file);
+                            await uploadSinglePhotoWithRetry(finalReportId, sn, `g${task.group}`, compressed, "pre");
+
+                            // ⚡ CORE FIX: mark รูปนี้ว่าอัปโหลดสำเร็จ — ถ้า user กด save อีกครั้ง จะถูกข้าม
+                            setPhotos(prev => {
+                                const list = prev[task.group] || [];
+                                return {
+                                    ...prev,
+                                    [task.group]: list.map(p =>
+                                        p.id === task.photoId ? { ...p, uploaded: true } : p
+                                    ),
+                                };
+                            });
                         } catch (err: any) {
                             failedCount++;
                             failures.push({ group: task.group, error: err?.message || "unknown" });
@@ -2997,8 +3014,21 @@ export default function ChargerPMForm() {
                 setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
 
                 if (failures.length > 0) {
+                    // ⚡ Flush draft ทันที เพื่อ persist uploaded flag ที่สำเร็จแล้ว — กันกรณี user refresh ก่อน debounce ทำงาน
+                    const latestPhotoRefs: Record<string, any> = {};
+                    Object.entries(photosRef.current).forEach(([k, list]) => {
+                        latestPhotoRefs[k] = (list || []).map(p => {
+                            if (p.isNA) return { isNA: true };
+                            if (!p.ref) return null;
+                            return { ...p.ref, uploaded: p.uploaded === true };
+                        }).filter(Boolean);
+                    });
+                    saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, cp, m16: m16.state, summary: summaryPre, dustFilterChanged, photoRefs: latestPhotoRefs });
+
                     const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
-                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n${details}`);
+                    alert(
+                        `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
+                    );
                     return;
                 }
             }
@@ -3046,39 +3076,45 @@ export default function ChargerPMForm() {
             }
 
             // ⚡ เตรียม entries สำหรับ upload (เฉพาะกลุ่มที่มี file จริง)
-            const uploadEntries: { group: string; files: File[] }[] = [];
+            type UploadTask = { group: string; photoId: string; file: File };
+            const allPostTasks: UploadTask[] = [];
             Object.entries(photos).forEach(([no, list]) => {
-                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
-                if (files.length > 0) uploadEntries.push({ group: no, files });
+                (list || []).forEach(p => {
+                    if (p.file && !p.uploaded && !p.isNA) {
+                        allPostTasks.push({ group: no, photoId: p.id, file: p.file });
+                    }
+                });
             });
 
-            // ⚡ อัปโหลดทีละ batch (3 กลุ่มพร้อมกัน) + retry แต่ละกลุ่ม 3 ครั้ง
-            if (uploadEntries.length > 0) {
-                const totalPhotos = uploadEntries.reduce((sum, e) => sum + e.files.length, 0);
+            if (allPostTasks.length > 0) {
+                const totalPhotos = allPostTasks.length;
                 setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
                 let completedCount = 0;
                 let failedCount = 0;
                 const failures: { group: string; error: string }[] = [];
 
-                // Flatten all upload tasks
-                const allTasks: { group: string; file: File }[] = [];
-                for (const entry of uploadEntries) {
-                    const compressed = await Promise.all(entry.files.map(f => compressImage(f)));
-                    for (const file of compressed) {
-                        allTasks.push({ group: entry.group, file });
-                    }
-                }
-
-                // Upload with concurrency pool (3 at a time)
                 const CONCURRENCY = 3;
                 let idx = 0;
-                const finalReportId = report_id;
+                const finalReportId = report_id!;
+
                 const runNext = async (): Promise<void> => {
-                    while (idx < allTasks.length) {
+                    while (idx < allPostTasks.length) {
                         const taskIdx = idx++;
-                        const task = allTasks[taskIdx];
+                        const task = allPostTasks[taskIdx];
                         try {
-                            await uploadSinglePhotoWithRetry(finalReportId, sn, `g${task.group}`, task.file, "post");
+                            const compressed = await compressImage(task.file);
+                            await uploadSinglePhotoWithRetry(finalReportId, sn, `g${task.group}`, compressed, "post");
+
+                            // ⚡ CORE FIX: mark uploaded=true
+                            setPhotos(prev => {
+                                const list = prev[task.group] || [];
+                                return {
+                                    ...prev,
+                                    [task.group]: list.map(p =>
+                                        p.id === task.photoId ? { ...p, uploaded: true } : p
+                                    ),
+                                };
+                            });
                         } catch (err: any) {
                             failedCount++;
                             failures.push({ group: task.group, error: err?.message || "unknown" });
@@ -3092,10 +3128,23 @@ export default function ChargerPMForm() {
                 setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
 
                 if (failures.length > 0) {
+                    // ⚡ Flush draft ทันทีเพื่อ persist uploaded flag
+                    const latestPhotoRefs: Record<string, any> = {};
+                    Object.entries(photosRef.current).forEach(([k, list]) => {
+                        latestPhotoRefs[k] = (list || []).map(p => {
+                            if (p.isNA) return { isNA: true };
+                            if (!p.ref) return null;
+                            return { ...p.ref, uploaded: p.uploaded === true };
+                        }).filter(Boolean);
+                    });
+                    saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs });
+
                     const groupNums = failures.map(f => f.group).join(", ");
                     const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
                     console.error("[Post-PM upload failures]", failures);
-                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${details}`);
+                    alert(
+                        `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จในข้อ" : "Photo upload failed for group"}: ${groupNums}\n\n${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
+                    );
                     return;
                 }
             }
