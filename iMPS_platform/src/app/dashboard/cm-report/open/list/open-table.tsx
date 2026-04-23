@@ -21,6 +21,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -59,8 +60,18 @@ const T = {
   noFile: { th: "ไม่มีไฟล์", en: "No file" },
 
   // Dialog
-  dialogTitle: { th: "เลือกวันที่รายงาน", en: "Select Report Date" },
-  dateLabel: { th: "วันที่", en: "Date" },
+  // dialogTitle: { th: "เลือกวันที่รายงาน", en: "Select Report Date" },
+  // dateLabel: { th: "วันที่", en: "Date" },
+  // statusLabel: { th: "สถานะ", en: "Status" },
+  // filesSelected: { th: "ไฟล์ที่เลือก:", en: "Selected files:" },
+  // filesUnit: { th: "ไฟล์", en: "file(s)" },
+
+  // Dialog
+  dialogTitle: { th: "อัปโหลดไฟล์ CM", en: "Upload CM File" },
+  docNameLabel: { th: "ชื่อเอกสาร", en: "Document Name" },
+  issueIdLabel: { th: "Issue ID", en: "Issue ID" },
+  inspectorLabel: { th: "ผู้ตรวจสอบ", en: "Inspector" },
+  dateLabel: { th: "วันที่ CM", en: "CM Date" },
   statusLabel: { th: "สถานะ", en: "Status" },
   filesSelected: { th: "ไฟล์ที่เลือก:", en: "Selected files:" },
   filesUnit: { th: "ไฟล์", en: "file(s)" },
@@ -102,6 +113,103 @@ type Props = {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+type Me = {
+  id: string;
+  username: string;
+  email: string;
+  role: string;
+  company: string;
+  tel: string;
+};
+
+const PM_TYPE_CODE = "CM";
+
+function makePrefix(typeCode: string, dateISO: string) {
+  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `PM-${typeCode}-${yy}${mm}-`;
+}
+
+function nextIssueIdFor(typeCode: string, dateISO: string, latestFromDb?: string) {
+  const prefix = makePrefix(typeCode, dateISO);
+  const s = String(latestFromDb || "").trim();
+  if (!s || !s.startsWith(prefix)) return `${prefix}01`;
+  const m = s.match(/(\d+)$/);
+  const pad = m ? m[1].length : 2;
+  const n = (m ? parseInt(m[1], 10) : 0) + 1;
+  return `${prefix}${n.toString().padStart(pad, "0")}`;
+}
+
+function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
+  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+  const year = d.getFullYear();
+  const prefix = `${stationId}_`;
+  const suffix = `/${year}`;
+  const s = String(latestFromDb || "").trim();
+  if (!s || !s.startsWith(prefix) || !s.endsWith(suffix)) return `${prefix}1${suffix}`;
+  const inside = s.slice(prefix.length, s.length - suffix.length);
+  const cur = parseInt(inside, 10);
+  return `${prefix}${isNaN(cur) ? 1 : cur + 1}${suffix}`;
+}
+
+async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string, apiBase: string) {
+  const build = (path: string) => {
+    const u = new URL(`${apiBase}${path}`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("page", "1");
+    u.searchParams.set("pageSize", "50");
+    u.searchParams.set("_ts", String(Date.now()));
+    return u.toString();
+  };
+  const [a, b] = await Promise.allSettled([
+    apiFetch(build("/cmreport/list")),
+    apiFetch(build("/cmurl/list")),
+  ]);
+  let ids: string[] = [];
+  for (const r of [a, b]) {
+    if (r.status === "fulfilled" && r.value.ok) {
+      const j = await r.value.json();
+      ids = ids.concat((Array.isArray(j?.items) ? j.items : []).map((it: any) => String(it?.issue_id || "")).filter(Boolean));
+    }
+  }
+  const prefix = makePrefix(PM_TYPE_CODE, dateISO);
+  const same = ids.filter(x => x.startsWith(prefix));
+  if (!same.length) return null;
+  const toTail = (s: string) => { const m = s.match(/(\d+)$/); return m ? parseInt(m[1], 10) : -1; };
+  return same.reduce((acc, cur) => toTail(cur) > toTail(acc) ? cur : acc, same[0]);
+}
+
+async function fetchLatestDocName(stationId: string, dateISO: string, apiBase: string) {
+  const build = (path: string) => {
+    const u = new URL(`${apiBase}${path}`);
+    u.searchParams.set("station_id", stationId);
+    u.searchParams.set("page", "1");
+    u.searchParams.set("pageSize", "50");
+    u.searchParams.set("_ts", String(Date.now()));
+    return u.toString();
+  };
+  const [a, b] = await Promise.allSettled([
+    apiFetch(build("/cmreport/list")),
+    apiFetch(build("/cmurl/list")),
+  ]);
+  let docNames: string[] = [];
+  for (const r of [a, b]) {
+    if (r.status === "fulfilled" && r.value.ok) {
+      const j = await r.value.json();
+      docNames = docNames.concat((Array.isArray(j?.items) ? j.items : []).map((it: any) => String(it?.doc_name || "")).filter(Boolean));
+    }
+  }
+  const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
+  const year = d.getFullYear();
+  const prefix = `${stationId}_`;
+  const suffix = `/${year}`;
+  const same = docNames.filter(x => x.startsWith(prefix) && x.endsWith(suffix));
+  if (!same.length) return null;
+  const toNum = (s: string) => { const inside = s.slice(prefix.length, s.length - suffix.length); const n = parseInt(inside, 10); return isNaN(n) ? -1 : n; };
+  return same.reduce((acc, cur) => toNum(cur) > toNum(acc) ? cur : acc, same[0]);
+}
+
 export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
   const [userRole, setUserRole] = useState<string>("");
@@ -110,6 +218,20 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
+  const [username, setUsername] = useState<string>("");
+  const [pageLoading, setPageLoading] = useState(true);
+  const [issueId, setIssueId] = useState<string>("");
+  const [sn, setSn] = useState<string | null>(null);
+  const [docName, setDocName] = useState<string>("");
+  const [me, setMe] = useState<Me | null>(null);
+  const [inspector, setInspector] = useState<string>("");
+  const [toast, setToast] = useState<{ show: boolean; type: "success" | "error" | "warning" | "info"; message: string }>({ show: false, type: "info", message: "" });
+
+
+  const showToast = (type: "success" | "error" | "warning" | "info", message: string, duration = 4000) => {
+    setToast({ show: true, type, message });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), duration);
+  };
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -121,6 +243,53 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
+
+
+
+  useEffect(() => {
+    const snFromUrl = searchParams.get("sn");
+    if (snFromUrl) {
+      setSn(snFromUrl);
+      localStorage.setItem("selected_sn", snFromUrl);
+      return;
+    }
+    const snLocal = localStorage.getItem("selected_sn");
+    setSn(snLocal);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const useHttpOnlyCookie = true;
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (!useHttpOnlyCookie) {
+          const t = typeof window !== "undefined"
+            ? localStorage.getItem("access_token") ?? ""
+            : "";
+          if (t) headers.Authorization = `Bearer ${t}`;
+        }
+
+        const res = await apiFetch(`${apiBase}/me`, {
+          method: "GET",
+          headers,
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          console.warn("/me failed:", res.status);
+          return;
+        }
+
+        const data: Me = await res.json();
+        setMe(data);
+
+        setInspector((prev) => prev || data.username || "");
+      } catch (err) {
+        console.error("fetch /me error:", err);
+      }
+    })();
+  }, [apiBase]);
+
 
   useEffect(() => {
     const sidFromUrl = searchParams.get("station_id");
@@ -141,7 +310,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const res = await apiFetch(`${apiBase}/me`);
         if (res.ok) {
           const user = await res.json();
-          if (alive) setUserRole(user.role ?? "");
+          if (alive) {
+            setUserRole(user.role ?? "");
+            setUsername(user.username ?? "");
+          }
         }
       } catch (err) {
         console.error("fetch /me error:", err);
@@ -149,6 +321,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     })();
     return () => { alive = false; };
   }, [apiBase]);
+
+
 
   const statusFromTab = (searchParams.get("status") ?? searchParams.get("tab") ?? "open").toLowerCase();
   const statusLabel = statusFromTab
@@ -172,6 +346,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     }
     router[replace ? "replace" : "push"](`${pathname}?${params.toString()}`, { scroll: false });
   };
+
 
 
   // Date formatting with language support
@@ -343,6 +518,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       setData([]);
     } finally {
       setLoading(false);
+      setPageLoading(false);
     }
   };
 
@@ -356,6 +532,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId, mode, statusFromTab]);
+
+
 
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
@@ -446,7 +624,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       id: "problem_details",
       header: () => t("colProblemDetails", lang),
       cell: (info: CellContext<TData, unknown>) => (
-        <span className="tw-block tw-truncate" title={info.getValue() as string}>
+        <span
+          className="tw-block tw-truncate tw-max-w-[200px]"
+          title={info.getValue() as string}
+        >
           {info.getValue() as React.ReactNode}
         </span>
       ),
@@ -480,6 +661,10 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     },
   ], [lang]);
 
+  function sameUser(a?: string, b?: string) {
+    return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+  }
+
   const table = useReactTable({
     data,
     columns,
@@ -498,74 +683,98 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [dateOpen, setDateOpen] = useState(false);
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [urlText, setUrlText] = useState("");
 
-  async function uploadUrls() {
-    if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert("วันที่ไม่ถูกต้อง"); return; }
+  useEffect(() => {
+    if (!dateOpen || !stationId || !reportDate) return;
+    let canceled = false;
+    (async () => {
+      try {
+        const [latestIssue, latestDoc] = await Promise.all([
+          fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase),
+          fetchLatestDocName(stationId, reportDate, apiBase),
+        ]);
+        if (!canceled) {
+          setIssueId(nextIssueIdFor(PM_TYPE_CODE, reportDate, latestIssue || ""));
+          setDocName(nextDocNameFor(stationId, reportDate, latestDoc || undefined));
+        }
+      } catch {
+        if (!canceled) {
+          setIssueId(nextIssueIdFor(PM_TYPE_CODE, reportDate, ""));
+          setDocName(nextDocNameFor(stationId, reportDate));
+        }
+      }
+    })();
+    return () => { canceled = true; };
+  }, [dateOpen, stationId, reportDate]);
 
-    const urls = urlText.split("\n").map(s => s.trim()).filter(Boolean);
-    if (!urls.length) { alert("กรุณากรอก URL"); return; }
-
-    const fd = new FormData();
-    fd.append("station_id", stationId);
-    fd.append("rows", JSON.stringify({ reportDate, urls }));
-
-    const res = await apiFetch(`${apiBase}/cmurl/upload`, {
-      method: "POST", body: fd,
-    });
-
-    if (!res.ok) { alert("อัปโหลดไม่สำเร็จ: " + await res.text()); return; }
-    alert("อัปโหลดสำเร็จ");
-    setDateOpen(false);
-    setUrlText("");
-    await fetchRows();
-  }
-
-  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdfChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.currentTarget.value = "";
     if (!files.length) return;
+
     const pdfs = files.filter(
       (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
     );
-    if (!pdfs.length) { alert("รองรับเฉพาะไฟล์ PDF เท่านั้น"); return; }
-    setPendingFiles(pdfs);
+    if (!pdfs.length) {
+      showToast("error", t("alertPdfOnly", lang));
+      return;
+    }
+
+    const validPdfs: File[] = [];
+    for (const f of pdfs) {
+      const header = await f.slice(0, 5).text();
+      if (header.startsWith("%PDF-")) {
+        validPdfs.push(f);
+      }
+    }
+    if (validPdfs.length === 0) {
+      showToast("error", lang === "th"
+        ? "ไฟล์ที่เลือกไม่ใช่ PDF จริง กรุณาเลือกไฟล์ PDF ที่ถูกต้อง"
+        : "Selected files are not valid PDFs");
+      return;
+    }
+    if (validPdfs.length < pdfs.length) {
+      showToast("warning", lang === "th"
+        ? `มี ${pdfs.length - validPdfs.length} ไฟล์ไม่ใช่ PDF จริง — อัปโหลดเฉพาะ ${validPdfs.length} ไฟล์ที่ถูกต้อง`
+        : `${pdfs.length - validPdfs.length} invalid file(s) skipped — uploading ${validPdfs.length} valid file(s)`);
+    }
+
+    setPendingFiles(validPdfs);
     setDateOpen(true);
   };
 
   async function uploadPdfs() {
     try {
-      if (!stationId) { alert("กรุณาเลือกสถานีก่อน"); return; }
+      if (!stationId) { showToast("warning", t("alertSelectStation", lang)); return; }
       if (!pendingFiles.length) { setDateOpen(false); return; }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
-        alert("รูปแบบวันที่ไม่ถูกต้อง (ควรเป็น YYYY-MM-DD)");
-        return;
-      }
-
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { showToast("error", t("alertInvalidDate", lang)); return; }
       const fd = new FormData();
+
       fd.append("station_id", stationId);
       fd.append("reportDate", reportDate);
       fd.append("status", statusFromTab);
+      fd.append("issue_id", issueId);
+      fd.append("doc_name", docName || "");
+      fd.append("inspector", inspector || "");
       pendingFiles.forEach((f) => fd.append("files", f));
 
       const res = await apiFetch(`${apiBase}/cmurl/upload-files`, {
-        method: "POST", body: fd,
+        method: "POST", body: fd
       });
 
       if (!res.ok) {
         const txt = await res.text();
-        alert("อัปโหลดไม่สำเร็จ: " + txt);
+        showToast("error", `${t("alertUploadFailed", lang)} ${txt}`);
         return;
       }
-
-      alert("อัปโหลดสำเร็จ");
+      await res.json();
+      showToast("success", t("alertUploadSuccess", lang));
       setPendingFiles([]);
       setDateOpen(false);
       await fetchRows();
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดระหว่างอัปโหลด");
+      showToast("error", t("alertUploadError", lang));
     }
   }
 
@@ -602,12 +811,35 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
   return (
     <>
+      <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+      {toast.show && (
+        <div className="tw-fixed tw-top-4 tw-left-1/2 tw--translate-x-1/2 tw-z-[9999] tw-max-w-md tw-w-[calc(100%-2rem)]">
+          <div className={`tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-border ${toast.type === "success" ? "tw-bg-green-50 tw-border-green-200" :
+            toast.type === "error" ? "tw-bg-red-50 tw-border-red-200" :
+              toast.type === "warning" ? "tw-bg-amber-50 tw-border-amber-200" :
+                "tw-bg-blue-50 tw-border-blue-200"}`}>
+            <div className={`tw-flex-shrink-0 tw-w-8 tw-h-8 tw-rounded-full tw-flex tw-items-center tw-justify-center ${toast.type === "success" ? "tw-bg-green-500" : toast.type === "error" ? "tw-bg-red-500" :
+              toast.type === "warning" ? "tw-bg-amber-500" : "tw-bg-blue-500"}`}>
+              {toast.type === "success" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
+              {toast.type === "error" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>}
+              {toast.type === "warning" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01" /></svg>}
+              {toast.type === "info" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01" /></svg>}
+            </div>
+            <p className={`tw-text-sm tw-font-medium tw-flex-1 tw-pt-1 ${toast.type === "success" ? "tw-text-green-800" : toast.type === "error" ? "tw-text-red-800" :
+              toast.type === "warning" ? "tw-text-amber-800" : "tw-text-blue-800"}`}>{toast.message}</p>
+            <button onClick={() => setToast(prev => ({ ...prev, show: false }))}
+              className="tw-flex-shrink-0 tw-p-1 tw-rounded-full tw-text-gray-400 hover:tw-text-gray-600 hover:tw-bg-gray-100 tw-transition-colors">
+              <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        </div>
+      )}
       {/* Main Card */}
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
 
         {/* Card Header */}
         {/* <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0"> */}
-          <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30">
+        <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30">
           <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-3 sm:tw-gap-4">
             {/* Title Section */}
             <div className="tw-min-w-0 tw-flex-1">
@@ -628,56 +860,32 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
             {/* Buttons Section */}
             {!isTechnician && (
-            <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
-              <input
-                ref={pdfInputRef}
-                type="file"
-                accept="application/pdf,.pdf"
-                multiple
-                className="tw-hidden"
-                onChange={handlePdfChange}
-              />
-              <Button
-                variant="outlined"
-                size="sm"
-                disabled={!stationId}
-                onClick={() => pdfInputRef.current?.click()}
-                className="tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4 tw-flex tw-items-center tw-justify-center tw-gap-1 sm:tw-gap-1.5 tw-border-blue-gray-200 tw-font-medium hover:tw-bg-blue-gray-50 tw-transition-colors"
-                title={t("uploadPdf", lang)}
-              >
-                <ArrowUpTrayIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 tw-flex-shrink-0" />
-                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("upload", lang)}</span>
-              </Button>
-              {/* <Button
-                size="sm"
-                onClick={goAdd}
-                disabled={!stationId}
-                className={`
-                  tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4
-                  tw-flex tw-items-center tw-justify-center tw-font-medium
-                  ${!stationId
-                    ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                    : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white"}
-                  tw-shadow-md tw-transition-all
-                `} */}
-
+              <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
+                <input
+                  ref={pdfInputRef}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  multiple
+                  className="tw-hidden"
+                  onChange={handlePdfChange}
+                />
                 <Button
-                size="sm"
-                onClick={goAdd}
-                disabled={!stationId}
-                className={`
+                  size="sm"
+                  onClick={goAdd}
+                  disabled={!stationId}
+                  className={`
                   tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-xl tw-px-3 sm:tw-px-4 lg:tw-px-5
                   tw-flex tw-items-center tw-justify-center tw-font-semibold tw-tracking-wide
                   ${!stationId
-                    ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-                    : "tw-bg-gray-900 hover:tw-bg-black tw-text-white"}
+                      ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+                      : "tw-bg-gray-900 hover:tw-bg-black tw-text-white"}
                   tw-shadow-lg tw-transition-all
                 `}
-                title={stationId ? "" : t("selectStationFirst", lang)}
-              >
-                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("add", lang)}</span>
-              </Button>
-            </div>
+                  title={stationId ? "" : t("selectStationFirst", lang)}
+                >
+                  <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("add", lang)}</span>
+                </Button>
+              </div>
             )}
           </div>
         </CardHeader>
@@ -728,7 +936,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
             <table className="tw-w-full tw-text-left tw-min-w-[600px]">
               {/* Table Header */}
               {/* <thead className="tw-bg-gray-50/80 tw-sticky tw-top-0 tw-backdrop-blur-sm"> */}
-                <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800 tw-sticky tw-top-0">
+              <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800 tw-sticky tw-top-0">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
                     {hg.headers.map((header) => {
@@ -753,7 +961,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                               {flexRender(header.column.columnDef.header, header.getContext())}
                               {/* <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0" />
                                */}
-                               <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0 tw-text-white/60" />
+                              <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0 tw-text-white/60" />
                             </Typography>
                           ) : (
                             <Typography
@@ -788,7 +996,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
                     <tr
                       key={row.id}
                       onClick={() => handleRowClick(row.original)}
-                      className={`tw-transition-colors hover:tw-bg-blue-50/50 tw-cursor-pointer ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-gray-50/30'}`}
+                      // className={`tw-transition-colors hover:tw-bg-blue-50/50 tw-cursor-pointer ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-gray-50/30'}`}
+                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] tw-cursor-pointer ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'}`}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
@@ -857,60 +1066,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         </div>
       </Card>
 
-      {/* Upload Dialog */}
-      <Dialog
-        open={dateOpen}
-        handler={setDateOpen}
-        size="sm"
-        className="tw-mx-4 tw-max-w-[calc(100vw-2rem)] sm:tw-max-w-md tw-rounded-xl sm:tw-rounded-2xl"
-      >
-        <DialogHeader className="tw-text-base sm:tw-text-lg lg:tw-text-xl tw-font-semibold tw-px-4 sm:tw-px-6 tw-pt-5 sm:tw-pt-6 tw-pb-2">
-          {t("dialogTitle", lang)}
-        </DialogHeader>
-        <DialogBody className="tw-space-y-4 tw-px-4 sm:tw-px-6 tw-py-4">
-          <div>
-            <Input
-              type="date"
-              value={reportDate}
-              max={todayStr}
-              onChange={(e) => setReportDate(e.target.value)}
-              label={t("dateLabel", lang)}
-              crossOrigin=""
-              containerProps={{ className: "!tw-min-w-0" }}
-              className="!tw-text-sm"
-              labelProps={{ className: "!tw-text-sm" }}
-            />
-          </div>
-          <div className="tw-text-sm tw-text-blue-gray-600">
-            {t("statusLabel", lang)}: <span className="tw-font-medium">{statusLabel}</span>
-          </div>
-          <div className="tw-bg-blue-50 tw-rounded-lg tw-p-3 sm:tw-p-4">
-            <Typography variant="small" className="tw-text-blue-gray-600 tw-text-xs sm:tw-text-sm">
-              {t("filesSelected", lang)} <strong className="tw-text-blue-600">{pendingFiles.length}</strong> {t("filesUnit", lang)}
-            </Typography>
-          </div>
-        </DialogBody>
-        <DialogFooter className="tw-gap-2 sm:tw-gap-3 tw-px-4 sm:tw-px-6 tw-pb-5 sm:tw-pb-6 tw-pt-2">
-          <Button
-            variant="text"
-            size="sm"
-            onClick={() => {
-              setPendingFiles([]);
-              setDateOpen(false);
-            }}
-            className="tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-text-blue-gray-600 hover:tw-bg-blue-gray-50 tw-transition-colors tw-rounded-lg"
-          >
-            {t("cancel", lang)}
-          </Button>
-          <Button
-            onClick={uploadPdfs}
-            size="sm"
-            className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all"
-          >
-            {t("uploadBtn", lang)}
-          </Button>
-        </DialogFooter>
-      </Dialog>
+
     </>
   );
 }

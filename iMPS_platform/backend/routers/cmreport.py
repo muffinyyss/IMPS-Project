@@ -216,6 +216,7 @@ async def cmreport_list(
         "cm_date": 1, 
         "status": 1, 
         "reported_by": 1,
+        "inspector": 1,
         "faulty_equipment": 1,
         "severity": 1,
         "problem_details": 1,
@@ -255,6 +256,7 @@ async def cmreport_list(
             "issue_id": it.get("issue_id") or job.get("issue_id") or "",
             "cm_date": it.get("cm_date"),
             "reported_by": it.get("reported_by") or job.get("reported_by") or "",
+            "inspector": it.get("inspector") or job.get("inspector") or "",
             "status": it.get("status") or job.get("status") or "",
             "faulty_equipment": it.get("faulty_equipment") or job.get("faulty_equipment") or "",
             "problem_details": it.get("problem_details") or job.get("problem_details") or "",
@@ -484,6 +486,8 @@ async def cmurl_list(
         "status": 1, 
         "job": 1,
         "inspector": 1,
+        "reported_by": 1,
+        "faulty_equipment": 1,
     }
 
     cursor = (
@@ -527,6 +531,8 @@ async def cmurl_list(
             "issue_id": it.get("issue_id") or "",
             "cm_date": cm_date_str,
             "inspector": it.get("inspector") or "",
+            "reported_by": it.get("reported_by") or "",
+            "faulty_equipment": it.get("faulty_equipment") or "",
             "createdAt": _ensure_utc_iso(it.get("createdAt")),
             "status": (it.get("status") or (it.get("job") or {}).get("status") or ""),
             "file_url": first_url,
@@ -774,7 +780,7 @@ async def cmreport_update_status(
         allowed_job_keys = {
             "issue_id", "found_date", "location", "wo", "sn",
             "equipment_list", "problem_details", "problem_type", "severity",
-            "reported_by", "assignee", "initial_cause", "corrective_actions",
+            "reported_by","inspector", "assignee", "initial_cause", "corrective_actions",
             "resolved_date", "repair_result", "preventive_action", 
             "remarks", "remarks_open",
             "faulty_equipment",
