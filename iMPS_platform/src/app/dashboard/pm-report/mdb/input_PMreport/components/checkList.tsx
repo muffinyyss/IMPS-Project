@@ -101,19 +101,39 @@ async function _bgCompressImage(file: File, maxWidth = 1920, quality = 0.8): Pro
 }
 
 async function _bgUploadSingle(reportId: string, stationId: string, group: string, file: File, side: "pre" | "post") {
-    if (!file || file.size === 0) throw new Error(`Empty file: ${file?.name ?? "unknown"}`);
+    if (!reportId || reportId === "undefined" || reportId === "null") {
+        throw new Error(`Invalid reportId: ${reportId}`);
+    }
+
+    // normalize group เหมือน foreground
+    const normalizedGroup = (() => {
+        const k = String(group);
+        if (/^\d+$/.test(k)) return `g${k}`;
+        if (/^r\d+_\d+$/.test(k)) return k;
+        if (k.startsWith("g")) return k;
+        return `g${k}`;
+    })();
+
     const form = new FormData();
     form.append("station_id", stationId);
-    form.append("group", group);
+    form.append("group", normalizedGroup); // ← normalize แล้ว
     form.append("side", side);
     form.append("files", file, ensureJpgFilename(file.name));
+
     const url = side === "pre"
         ? `${API_BASE}/mdbpmreport/${reportId}/pre/photos`
         : `${API_BASE}/mdbpmreport/${reportId}/post/photos`;
-    const res = await apiFetch(url, { method: "POST", body: form });
-    if (!res.ok) { const errText = await res.text().catch(() => ""); throw new Error(`[${res.status}] ${group}: ${errText || res.statusText}`); }
-}
 
+    const res = await apiFetch(url, {
+        method: "POST",
+        body: form,
+        credentials: "include"  // ← เพิ่ม
+    });
+    if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`[${res.status}] ${normalizedGroup}: ${errText || res.statusText}`);
+    }
+}
 async function _bgUploadWithRetry(reportId: string, stationId: string, group: string, file: File, side: "pre" | "post", maxRetries = 3) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try { await _bgUploadSingle(reportId, stationId, group, file, side); return; }
@@ -1311,6 +1331,11 @@ export default function MDBPMForm() {
             if (k.startsWith("g")) return k;             // "g1" -> "g1"
             return `g${k}`;
         })();
+
+        console.log("[upload] reportId:", reportId, "| group:", normalizedGroup, "| side:", side);
+        console.log("[upload] URL:", side === "pre"
+            ? `${API_BASE}/mdbpmreport/${reportId}/pre/photos`
+            : `${API_BASE}/mdbpmreport/${reportId}/post/photos`);
         const form = new FormData();
         form.append("station_id", stationId);
         form.append("group", normalizedGroup);
@@ -1377,6 +1402,9 @@ export default function MDBPMForm() {
                 const res = await apiFetch(`${API_BASE}/mdbpmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
                 if (!res.ok) throw new Error(await res.text());
                 const jsonRes = await res.json() as { report_id: string; doc_name?: string };
+                if (!jsonRes?.report_id) {
+                    throw new Error(`pre/submit did not return report_id. Response: ${JSON.stringify(jsonRes)}`);
+                }
                 report_id = jsonRes.report_id;
                 if (jsonRes.doc_name) setDocName(jsonRes.doc_name);
                 preReportIdRef.current = report_id;
@@ -1814,32 +1842,32 @@ export default function MDBPMForm() {
                             </div>
                         </div>
                         <div className="tw-divide-y tw-divide-gray-200">
-                        {cfg.items.map((item, idx) => {
-                            const isSkipped = rowsPre[item.key]?.pf === "NA";
-                            if (isSkipped) {
-                                return (
-                                    <div key={item.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
-                                        <div className="tw-flex tw-items-center tw-justify-between">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
-                                            <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
+                            {cfg.items.map((item, idx) => {
+                                const isSkipped = rowsPre[item.key]?.pf === "NA";
+                                if (isSkipped) {
+                                    return (
+                                        <div key={item.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
+                                            <div className="tw-flex tw-items-center tw-justify-between">
+                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{item.label}</Typography>
+                                                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
+                                            </div>
+                                            {rowsPre[item.key]?.remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {rowsPre[item.key]?.remark}</Typography>}
                                         </div>
-                                        {rowsPre[item.key]?.remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {rowsPre[item.key]?.remark}</Typography>}
+                                    );
+                                }
+                                return (
+                                    <div key={item.key} className="tw-py-4 first:tw-pt-2">
+                                        <PassFailRow label={item.label} value={rows[item.key]?.pf ?? ""} lang={lang}
+                                            onChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { remark: "" }), pf: v } })}
+                                            remark={rows[item.key]?.remark ?? ""}
+                                            onRemarkChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
+                                            pfButtonsId={getPfIdFromKey(item.key)} remarkId={getRemarkIdFromKey(item.key)}
+                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>}
+                                            beforeRemark={<><div id={getInputIdFromKey(item.key)} className="tw-mb-3 tw-transition-all tw-duration-300">{renderDynamicMeasureGridWithPre(cfg.qNo, item.key)}</div><PreRemarkElement remark={rowsPre[item.key]?.remark} lang={lang} /></>}
+                                        />
                                     </div>
                                 );
-                            }
-                            return (
-                                <div key={item.key} className="tw-py-4 first:tw-pt-2">
-                                    <PassFailRow label={item.label} value={rows[item.key]?.pf ?? ""} lang={lang}
-                                        onChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { remark: "" }), pf: v } })}
-                                        remark={rows[item.key]?.remark ?? ""}
-                                        onRemarkChange={v => setRows({ ...rows, [item.key]: { ...(rows[item.key] ?? { pf: "" }), remark: v } })}
-                                        pfButtonsId={getPfIdFromKey(item.key)} remarkId={getRemarkIdFromKey(item.key)}
-                                        aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[item.key] || []} setPhotos={makePhotoSetter(item.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(item.key)} /></div>}
-                                        beforeRemark={<><div id={getInputIdFromKey(item.key)} className="tw-mb-3 tw-transition-all tw-duration-300">{renderDynamicMeasureGridWithPre(cfg.qNo, item.key)}</div><PreRemarkElement remark={rowsPre[item.key]?.remark} lang={lang} /></>}
-                                    />
-                                </div>
-                            );
-                        })}
+                            })}
                         </div>
                     </div>
                 </SectionCard>
@@ -1867,32 +1895,32 @@ export default function MDBPMForm() {
                             </div>
                         </div>
                         <div className="tw-divide-y tw-divide-gray-200">
-                        {cfg.items.map((it, idx) => {
-                            const isSkipped = rowsPre[it.key]?.pf === "NA";
-                            if (isSkipped) {
-                                return (
-                                    <div key={it.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
-                                        <div className="tw-flex tw-items-center tw-justify-between">
-                                            <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{it.label}</Typography>
-                                            <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
+                            {cfg.items.map((it, idx) => {
+                                const isSkipped = rowsPre[it.key]?.pf === "NA";
+                                if (isSkipped) {
+                                    return (
+                                        <div key={it.key} className="tw-py-4 first:tw-pt-2 tw-bg-amber-50/50">
+                                            <div className="tw-flex tw-items-center tw-justify-between">
+                                                <Typography className="tw-font-semibold tw-text-sm tw-text-gray-800">{it.label}</Typography>
+                                                <span className="tw-text-xs tw-text-amber-600 tw-font-medium">N/A</span>
+                                            </div>
+                                            {rowsPre[it.key]?.remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {rowsPre[it.key]?.remark}</Typography>}
                                         </div>
-                                        {rowsPre[it.key]?.remark && <Typography variant="small" className="tw-text-gray-600 tw-mt-1">{t("remarkLabel", lang)}: {rowsPre[it.key]?.remark}</Typography>}
+                                    );
+                                }
+                                return (
+                                    <div key={it.key} className="tw-py-4 first:tw-pt-2">
+                                        <PassFailRow label={it.label} value={rows[it.key]?.pf ?? ""} lang={lang}
+                                            onChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
+                                            remark={rows[it.key]?.remark ?? ""}
+                                            onRemarkChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
+                                            pfButtonsId={getPfIdFromKey(it.key)} remarkId={getRemarkIdFromKey(it.key)}
+                                            aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(it.key)} /></div>}
+                                            beforeRemark={<PreRemarkElement remark={rowsPre[it.key]?.remark} lang={lang} />}
+                                        />
                                     </div>
                                 );
-                            }
-                            return (
-                                <div key={it.key} className="tw-py-4 first:tw-pt-2">
-                                    <PassFailRow label={it.label} value={rows[it.key]?.pf ?? ""} lang={lang}
-                                        onChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { remark: "" }), pf: v } })}
-                                        remark={rows[it.key]?.remark ?? ""}
-                                        onRemarkChange={v => setRows({ ...rows, [it.key]: { ...(rows[it.key] ?? { pf: "" }), remark: v } })}
-                                        pfButtonsId={getPfIdFromKey(it.key)} remarkId={getRemarkIdFromKey(it.key)}
-                                        aboveRemark={<div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[it.key] || []} setPhotos={makePhotoSetter(it.key)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(it.key)} /></div>}
-                                        beforeRemark={<PreRemarkElement remark={rowsPre[it.key]?.remark} lang={lang} />}
-                                    />
-                                </div>
-                            );
-                        })}
+                            })}
                         </div>
                     </div>
                 </SectionCard>

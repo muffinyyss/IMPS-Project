@@ -28,6 +28,7 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwi
 import StationPMForm from "@/app/dashboard/pm-report/station/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -249,6 +250,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [docName, setDocName] = useState<string>("");
   const [me, setMe] = useState<Me | null>(null);
   const [inspector, setInspector] = useState<string>("");
+  const [pageLoading, setPageLoading] = useState(true);
+  const [toast, setToast] = useState<{ show: boolean; type: "success" | "error" | "warning" | "info"; message: string }>({ show: false, type: "info", message: "" });
+
+  const showToast = (type: "success" | "error" | "warning" | "info", message: string, duration = 4000) => {
+    setToast({ show: true, type, message });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), duration);
+  };
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -512,6 +520,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       setData([]);
     } finally {
       setLoading(false);
+      setPageLoading(false);
     }
   };
 
@@ -739,65 +748,28 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     const files = Array.from(e.target.files ?? []);
     e.currentTarget.value = "";
     if (!files.length) return;
-
-    const pdfs = files.filter(
-      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
-    );
-    if (!pdfs.length) {
-      alert(t("alertPdfOnly", lang));
-      return;
-    }
+    const pdfs = files.filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
+    if (!pdfs.length) { showToast("error", t("alertPdfOnly", lang)); return; }
     setPendingFiles(pdfs);
     setDateOpen(true);
   };
 
   async function uploadPdfs() {
     try {
-      if (!stationId) {
-        alert(t("alertSelectStation", lang));
-        return;
-      }
-      if (!pendingFiles.length) {
-        setDateOpen(false);
-        return;
-      }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) {
-        alert(t("alertInvalidDate", lang));
-        return;
-      }
-
+      if (!stationId) { showToast("warning", t("alertSelectStation", lang)); return; }
+      if (!pendingFiles.length) { setDateOpen(false); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { showToast("error", t("alertInvalidDate", lang)); return; }
       const fd = new FormData();
-      fd.append("station_id", stationId);
-      fd.append("reportDate", reportDate);
-      fd.append("issue_id", issueId);
-      fd.append("doc_name", docName || "");
-      fd.append("inspector", inspector || "");
+      fd.append("station_id", stationId); fd.append("reportDate", reportDate); fd.append("issue_id", issueId);
+      fd.append("doc_name", docName || ""); fd.append("inspector", inspector || "");
       pendingFiles.forEach((f) => fd.append("files", f));
-
-      const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, {
-        method: "POST",
-        body: fd,
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const txt = await res.text();
-        alert(`${t("alertUploadFailed", lang)} ${txt}`);
-        return;
-      }
-
-      const j = await res.json();
-      console.log("uploaded:", j);
-      alert(t("alertUploadSuccess", lang));
-
-      setPendingFiles([]);
-      setDateOpen(false);
-
+      const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, { method: "POST", body: fd, credentials: "include" });
+      if (!res.ok) { const txt = await res.text(); showToast("error", `${t("alertUploadFailed", lang)} ${txt}`); return; }
+      await res.json();
+      showToast("success", t("alertUploadSuccess", lang));
+      setPendingFiles([]); setDateOpen(false);
       await fetchRows();
-    } catch (err) {
-      console.error(err);
-      alert(t("alertUploadError", lang));
-    }
+    } catch (err) { console.error(err); showToast("error", t("alertUploadError", lang)); }
   }
 
   useEffect(() => {
@@ -864,300 +836,323 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     );
   }
 
- return (
-  <>
-    {/* Main Card */}
-    <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
-      {/* Card Header */}
-      {/* <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0"> */}
-      <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30">
-        <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-3 sm:tw-gap-4">
-          {/* Title */}
-          <div className="tw-min-w-0 tw-flex-1">
-            <Typography
-              variant="h5"
-              color="blue-gray"
-              className="tw-text-sm sm:tw-text-base lg:tw-text-lg tw-leading-tight tw-font-semibold"
-            >
-              {t("pageTitle", lang)}
-            </Typography>
-            <Typography
-              variant="small"
-              className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-leading-relaxed tw-font-normal tw-text-blue-gray-400 tw-mt-0.5"
-            >
-              {t("pageSubtitle", lang)}
-            </Typography>
-          </div>
-
-          {/* Buttons */}
-          <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
-            <input
-              ref={pdfInputRef}
-              type="file"
-              accept="application/pdf,.pdf"
-              multiple
-              className="tw-hidden"
-              onChange={handlePdfChange}
-            />
-
-            <Button
-              variant="outlined"
-              size="sm"
-              disabled={!stationId}
-              onClick={() => pdfInputRef.current?.click()}
-              className="tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4 tw-flex tw-items-center tw-justify-center tw-gap-1 sm:tw-gap-1.5 tw-border-blue-gray-200 tw-font-medium hover:tw-bg-blue-gray-50 tw-transition-colors"
-              title={stationId ? t("upload", lang) : t("selectStationFirst", lang)}
-            >
-              <ArrowUpTrayIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 tw-flex-shrink-0" />
-              <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("upload", lang)}</span>
-            </Button>
-
-            <Button
-              size="sm"
-              onClick={goAdd}
-              disabled={!stationId}
-              className={`tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-xl tw-px-3 sm:tw-px-4 lg:tw-px-5 tw-flex tw-items-center tw-justify-center tw-font-semibold tw-tracking-wide ${!stationId ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed" : "tw-bg-gray-900 hover:tw-bg-black tw-text-white"} tw-shadow-lg tw-transition-all`}
-              // className={`
-              //   tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4
-              //   tw-flex tw-items-center tw-justify-center tw-font-medium
-              //   ${!stationId
-              //     ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
-              //     : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white"}
-              //   tw-shadow-md tw-transition-all
-              // `}
-              title={stationId ? "" : t("selectStationFirst", lang)}
-            >
-              <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("add", lang)}</span>
-            </Button>
+  return (
+    <>
+      <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+      {toast.show && (
+        <div className="tw-fixed tw-top-4 tw-left-1/2 tw--translate-x-1/2 tw-z-[9999] tw-max-w-md tw-w-[calc(100%-2rem)]">
+          <div className={`tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-border ${toast.type === "success" ? "tw-bg-green-50 tw-border-green-200" :
+              toast.type === "error" ? "tw-bg-red-50 tw-border-red-200" :
+                toast.type === "warning" ? "tw-bg-amber-50 tw-border-amber-200" :
+                  "tw-bg-blue-50 tw-border-blue-200"}`}>
+            <div className={`tw-flex-shrink-0 tw-w-8 tw-h-8 tw-rounded-full tw-flex tw-items-center tw-justify-center ${toast.type === "success" ? "tw-bg-green-500" : toast.type === "error" ? "tw-bg-red-500" :
+                toast.type === "warning" ? "tw-bg-amber-500" : "tw-bg-blue-500"}`}>
+              {toast.type === "success" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
+              {toast.type === "error" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>}
+              {toast.type === "warning" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01" /></svg>}
+              {toast.type === "info" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01" /></svg>}
+            </div>
+            <p className={`tw-text-sm tw-font-medium tw-flex-1 tw-pt-1 ${toast.type === "success" ? "tw-text-green-800" : toast.type === "error" ? "tw-text-red-800" :
+                toast.type === "warning" ? "tw-text-amber-800" : "tw-text-blue-800"}`}>{toast.message}</p>
+            <button onClick={() => setToast(prev => ({ ...prev, show: false }))}
+              className="tw-flex-shrink-0 tw-p-1 tw-rounded-full tw-text-gray-400 hover:tw-text-gray-600 hover:tw-bg-gray-100 tw-transition-colors">
+              <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
           </div>
         </div>
-      </CardHeader>
+      )}
+      {/* Main Card */}
+      <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
+        {/* Card Header */}
+        {/* <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0"> */}
+        <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30">
+          <div className="tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-3 sm:tw-gap-4">
+            {/* Title */}
+            <div className="tw-min-w-0 tw-flex-1">
+              <Typography
+                variant="h5"
+                color="blue-gray"
+                className="tw-text-sm sm:tw-text-base lg:tw-text-lg tw-leading-tight tw-font-semibold"
+              >
+                {t("pageTitle", lang)}
+              </Typography>
+              <Typography
+                variant="small"
+                className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-leading-relaxed tw-font-normal tw-text-blue-gray-400 tw-mt-0.5"
+              >
+                {t("pageSubtitle", lang)}
+              </Typography>
+            </div>
 
-      {/* Toolbar */}
-      <CardBody className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-border-t tw-border-blue-gray-50">
-        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-stretch sm:tw-items-center tw-gap-2.5 sm:tw-gap-3 lg:tw-gap-4">
-          <div className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2 tw-flex-shrink-0">
-            <select
-              value={table.getState().pagination.pageSize}
-              onChange={(e) => table.setPageSize(Number(e.target.value))}
-              className="tw-border tw-border-blue-gray-200 tw-py-1.5 sm:tw-py-2 tw-px-2 sm:tw-px-3 tw-rounded-lg tw-text-xs sm:tw-text-sm tw-w-14 sm:tw-w-16 lg:tw-w-20 tw-bg-white focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent tw-cursor-pointer"
-            >
-              {[5, 10, 15, 20, 25, 50].map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-            <Typography variant="small" className="tw-text-blue-gray-500 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-whitespace-nowrap">
-              {t("entriesPerPage", lang)}
-            </Typography>
+            {/* Buttons */}
+            <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                multiple
+                className="tw-hidden"
+                onChange={handlePdfChange}
+              />
+
+              <Button
+                variant="outlined"
+                size="sm"
+                disabled={!stationId}
+                onClick={() => pdfInputRef.current?.click()}
+                className="tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4 tw-flex tw-items-center tw-justify-center tw-gap-1 sm:tw-gap-1.5 tw-border-blue-gray-200 tw-font-medium hover:tw-bg-blue-gray-50 tw-transition-colors"
+                title={stationId ? t("upload", lang) : t("selectStationFirst", lang)}
+              >
+                <ArrowUpTrayIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 tw-flex-shrink-0" />
+                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("upload", lang)}</span>
+              </Button>
+
+              <Button
+                size="sm"
+                onClick={goAdd}
+                disabled={!stationId}
+                className={`tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-xl tw-px-3 sm:tw-px-4 lg:tw-px-5 tw-flex tw-items-center tw-justify-center tw-font-semibold tw-tracking-wide ${!stationId ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed" : "tw-bg-gray-900 hover:tw-bg-black tw-text-white"} tw-shadow-lg tw-transition-all`}
+                // className={`
+                //   tw-h-7 sm:tw-h-8 lg:tw-h-9 tw-rounded-lg tw-px-2.5 sm:tw-px-3 lg:tw-px-4
+                //   tw-flex tw-items-center tw-justify-center tw-font-medium
+                //   ${!stationId
+                //     ? "tw-bg-gray-300 tw-text-white tw-cursor-not-allowed"
+                //     : "tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-white"}
+                //   tw-shadow-md tw-transition-all
+                // `}
+                title={stationId ? "" : t("selectStationFirst", lang)}
+              >
+                <span className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">{t("add", lang)}</span>
+              </Button>
+            </div>
           </div>
+        </CardHeader>
 
-          <div className="tw-flex-1 tw-hidden sm:tw-block" />
+        {/* Toolbar */}
+        <CardBody className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-border-t tw-border-blue-gray-50">
+          <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-stretch sm:tw-items-center tw-gap-2.5 sm:tw-gap-3 lg:tw-gap-4">
+            <div className="tw-flex tw-items-center tw-gap-1.5 sm:tw-gap-2 tw-flex-shrink-0">
+              <select
+                value={table.getState().pagination.pageSize}
+                onChange={(e) => table.setPageSize(Number(e.target.value))}
+                className="tw-border tw-border-blue-gray-200 tw-py-1.5 sm:tw-py-2 tw-px-2 sm:tw-px-3 tw-rounded-lg tw-text-xs sm:tw-text-sm tw-w-14 sm:tw-w-16 lg:tw-w-20 tw-bg-white focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent tw-cursor-pointer"
+              >
+                {[5, 10, 15, 20, 25, 50].map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <Typography variant="small" className="tw-text-blue-gray-500 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-whitespace-nowrap">
+                {t("entriesPerPage", lang)}
+              </Typography>
+            </div>
 
-          <div className="tw-w-full sm:tw-w-48 lg:tw-w-64">
-            <Input
-              value={filtering}
-              onChange={(e) => setFiltering(e.target.value)}
-              label={t("search", lang)}
-              crossOrigin={undefined}
-            />
+            <div className="tw-flex-1 tw-hidden sm:tw-block" />
+
+            <div className="tw-w-full sm:tw-w-48 lg:tw-w-64">
+              <Input
+                value={filtering}
+                onChange={(e) => setFiltering(e.target.value)}
+                label={t("search", lang)}
+                crossOrigin={undefined}
+              />
+            </div>
           </div>
-        </div>
-      </CardBody>
+        </CardBody>
 
-      {/* Table */}
-      <CardFooter className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-3 sm:tw-py-4">
-        <div className="tw-overflow-x-auto tw-w-full tw-rounded-xl tw-border tw-border-blue-gray-100 tw-shadow-sm">
-          <table className="tw-w-full tw-text-left tw-min-w-[700px]">
-            {/* <thead className="tw-bg-gray-50/80 tw-sticky tw-top-0 tw-backdrop-blur-sm"> */}
-            <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800 tw-sticky tw-top-0">
-              {table.getHeaderGroups().map((hg) => (
-                <tr key={hg.id}>
-                  {hg.headers.map((header) => {
-                    const canSort = header.column.getCanSort();
-                    const align = (header.column.columnDef as any).meta?.headerAlign ?? "left";
-                    return (
-                      <th
-                        key={header.id}
-                        onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                        className={`tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-uppercase !tw-font-semibold tw-whitespace-nowrap tw-border-b tw-border-gray-700 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"} ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-700 tw-transition-colors tw-select-none" : ""}`}>
-                        <Typography
-                          color="blue-gray"
-                          className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}>
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {canSort && 
-                          // <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0" />}
-                          <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0 tw-text-white/60" />}
-                        </Typography>
-                      </th>
-                    );
-                  })}
-                </tr>
-              ))}
-            </thead>
-
-            <tbody className="tw-divide-y tw-divide-blue-gray-50">
-              {loading ? (
-                <tr>
-                  <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
-                    <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
-                      <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin" />
-                      <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t("loading", lang)}</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : table.getRowModel().rows.length ? (
-                table.getRowModel().rows.map((row, index) => (
-                  // <tr key={row.id} className={`tw-transition-colors hover:tw-bg-blue-50/50 ${index % 2 === 0 ? "tw-bg-white" : "tw-bg-gray-50/30"}`}>
-                  <tr key={row.id} className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'}`}>
-                    {row.getVisibleCells().map((cell) => {
-                      const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
+        {/* Table */}
+        <CardFooter className="tw-px-3 sm:tw-px-4 lg:tw-px-6 tw-py-3 sm:tw-py-4">
+          <div className="tw-overflow-x-auto tw-w-full tw-rounded-xl tw-border tw-border-blue-gray-100 tw-shadow-sm">
+            <table className="tw-w-full tw-text-left tw-min-w-[700px]">
+              {/* <thead className="tw-bg-gray-50/80 tw-sticky tw-top-0 tw-backdrop-blur-sm"> */}
+              <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800 tw-sticky tw-top-0">
+                {table.getHeaderGroups().map((hg) => (
+                  <tr key={hg.id}>
+                    {hg.headers.map((header) => {
+                      const canSort = header.column.getCanSort();
+                      const align = (header.column.columnDef as any).meta?.headerAlign ?? "left";
                       return (
-                        <td
-                          key={cell.id}
-                          className={`tw-align-middle tw-border-0 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4
-                            ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
-                        >
-                          <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-700 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        <th
+                          key={header.id}
+                          onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                          className={`tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-uppercase !tw-font-semibold tw-whitespace-nowrap tw-border-b tw-border-gray-700 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"} ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-700 tw-transition-colors tw-select-none" : ""}`}>
+                          <Typography
+                            color="blue-gray"
+                            className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}>
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                            {canSort &&
+                              // <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0" />}
+                              <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0 tw-text-white/60" />}
                           </Typography>
-                        </td>
+                        </th>
                       );
                     })}
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
-                    <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm tw-font-medium">
-                      {!stationId ? t("selectStationFirst", lang) : t("noData", lang)}
-                    </span>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </CardFooter>
+                ))}
+              </thead>
 
-      {/* Pagination */}
-      {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-50 tw-bg-gray-50/30"> */}
-      <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-100">
-        <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-text-blue-gray-600">
-          {t("page", lang)} <strong className="tw-text-blue-gray-800">{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)}{" "}
-          <strong className="tw-text-blue-gray-800">{table.getPageCount() || 1}</strong>
-        </Typography>
+              <tbody className="tw-divide-y tw-divide-blue-gray-50">
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                      <div className="tw-flex tw-flex-col tw-items-center tw-gap-2 sm:tw-gap-3">
+                        <div className="tw-w-6 tw-h-6 sm:tw-w-8 sm:tw-h-8 lg:tw-w-10 lg:tw-h-10 tw-border-2 sm:tw-border-3 tw-border-blue-500 tw-border-t-transparent tw-rounded-full tw-animate-spin" />
+                        <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm">{t("loading", lang)}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : table.getRowModel().rows.length ? (
+                  table.getRowModel().rows.map((row, index) => (
+                    // <tr key={row.id} className={`tw-transition-colors hover:tw-bg-blue-50/50 ${index % 2 === 0 ? "tw-bg-white" : "tw-bg-gray-50/30"}`}>
+                    <tr key={row.id} className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3] ${index % 2 === 0 ? 'tw-bg-white' : 'tw-bg-blue-gray-50/30'}`}>
+                      {row.getVisibleCells().map((cell) => {
+                        const align = (cell.column.columnDef as any).meta?.cellAlign ?? "left";
+                        return (
+                          <td
+                            key={cell.id}
+                            className={`tw-align-middle tw-border-0 tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4
+                            ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}
+                          >
+                            <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-700 tw-text-[11px] sm:tw-text-xs lg:tw-text-sm">
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </Typography>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={columns.length} className="tw-text-center tw-py-10 sm:tw-py-12 lg:tw-py-16">
+                      <span className="tw-text-blue-gray-400 tw-text-xs sm:tw-text-sm tw-font-medium">
+                        {!stationId ? t("selectStationFirst", lang) : t("noData", lang)}
+                      </span>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardFooter>
 
-        <div className="tw-flex tw-gap-1.5 sm:tw-gap-2">
-          <Button
-            size="sm"
-            variant="outlined"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors"
-          >
-            <ChevronLeftIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outlined"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors"
-          >
-            <ChevronRightIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
-          </Button>
-        </div>
-      </div>
-    </Card>
-
-    {/* Upload Dialog */}
-    <Dialog
-      open={dateOpen}
-      handler={setDateOpen}
-      size="sm"
-      className="tw-mx-4 tw-max-w-[calc(100vw-2rem)] sm:tw-max-w-md tw-rounded-xl sm:tw-rounded-2xl"
-    >
-      <DialogHeader className="tw-text-base sm:tw-text-lg lg:tw-text-xl tw-font-semibold tw-px-4 sm:tw-px-6 tw-pt-5 sm:tw-pt-6 tw-pb-2">
-        {t("dialogTitle", lang)}
-      </DialogHeader>
-
-      <DialogBody className="tw-space-y-4 tw-px-4 sm:tw-px-6 tw-py-4">
-        <Input
-          label={t("docNameLabel", lang)}
-          value={docName}
-          onChange={(e) => setDocName(e.target.value)}
-          crossOrigin=""
-          containerProps={{ className: "!tw-min-w-0" }}
-          className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm"
-          labelProps={{ className: "!tw-text-sm" }}
-          readOnly
-        />
-
-        <Input
-          label={t("issueIdLabel", lang)}
-          value={issueId}
-          onChange={(e) => setIssueId(e.target.value)}
-          crossOrigin=""
-          containerProps={{ className: "!tw-min-w-0" }}
-          className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm"
-          labelProps={{ className: "!tw-text-sm" }}
-          readOnly
-        />
-
-        <Input
-          label={t("inspectorLabel", lang)}
-          value={inspector}
-          onChange={(e) => setInspector(e.target.value)}
-          crossOrigin=""
-          containerProps={{ className: "!tw-min-w-0" }}
-          className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm"
-          labelProps={{ className: "!tw-text-sm" }}
-          readOnly
-        />
-
-        <Input
-          type="date"
-          value={reportDate}
-          max={todayStr}
-          onChange={(e) => setReportDate(e.target.value)}
-          label={t("pmDateLabel", lang)}
-          crossOrigin=""
-          containerProps={{ className: "!tw-min-w-0" }}
-          className="!tw-text-sm"
-          labelProps={{ className: "!tw-text-sm" }}
-        />
-
-        <div className="tw-bg-blue-50 tw-rounded-lg tw-p-3 sm:tw-p-4">
-          <Typography variant="small" className="tw-text-blue-gray-600 tw-text-xs sm:tw-text-sm">
-            {t("filesSelected", lang)} <strong className="tw-text-blue-600">{pendingFiles.length}</strong> {t("filesUnit", lang)}
+        {/* Pagination */}
+        {/* <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-50 tw-bg-gray-50/30"> */}
+        <div className="tw-flex tw-flex-col sm:tw-flex-row tw-items-center tw-justify-between tw-gap-2 sm:tw-gap-3 tw-p-2.5 sm:tw-p-3 lg:tw-p-4 tw-border-t tw-border-blue-gray-100">
+          <Typography variant="small" className="tw-text-[11px] sm:tw-text-xs lg:tw-text-sm tw-text-blue-gray-600">
+            {t("page", lang)} <strong className="tw-text-blue-gray-800">{table.getState().pagination.pageIndex + 1}</strong> {t("of", lang)}{" "}
+            <strong className="tw-text-blue-gray-800">{table.getPageCount() || 1}</strong>
           </Typography>
+
+          <div className="tw-flex tw-gap-1.5 sm:tw-gap-2">
+            <Button
+              size="sm"
+              variant="outlined"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors"
+            >
+              <ChevronLeftIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outlined"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="tw-p-1.5 sm:tw-p-2 tw-min-w-0 tw-rounded-lg disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 tw-transition-colors"
+            >
+              <ChevronRightIcon className="tw-h-3.5 tw-w-3.5 sm:tw-h-4 sm:tw-w-4 lg:tw-h-5 lg:tw-w-5" />
+            </Button>
+          </div>
         </div>
-      </DialogBody>
+      </Card>
 
-      <DialogFooter className="tw-gap-2 sm:tw-gap-3 tw-px-4 sm:tw-px-6 tw-pb-5 sm:tw-pb-6 tw-pt-2">
-        <Button
-          variant="text"
-          size="sm"
-          onClick={() => {
-            setPendingFiles([]);
-            setDateOpen(false);
-          }}
-          className="tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-text-blue-gray-600 hover:tw-bg-blue-gray-50 tw-transition-colors tw-rounded-lg"
-        >
-          {t("cancel", lang)}
-        </Button>
+      {/* Upload Dialog */}
+      <Dialog
+        open={dateOpen}
+        handler={setDateOpen}
+        size="sm"
+        className="tw-mx-4 tw-max-w-[calc(100vw-2rem)] sm:tw-max-w-md tw-rounded-xl sm:tw-rounded-2xl"
+      >
+        <DialogHeader className="tw-text-base sm:tw-text-lg lg:tw-text-xl tw-font-semibold tw-px-4 sm:tw-px-6 tw-pt-5 sm:tw-pt-6 tw-pb-2">
+          {t("dialogTitle", lang)}
+        </DialogHeader>
 
-        <Button
-          onClick={uploadPdfs}
-          size="sm"
-          className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all"
-        >
-          {t("uploadBtn", lang)}
-        </Button>
-      </DialogFooter>
-    </Dialog>
-  </>
-);
+        <DialogBody className="tw-space-y-4 tw-px-4 sm:tw-px-6 tw-py-4">
+          <Input
+            label={t("docNameLabel", lang)}
+            value={docName}
+            onChange={(e) => setDocName(e.target.value)}
+            crossOrigin=""
+            containerProps={{ className: "!tw-min-w-0" }}
+            className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm"
+            labelProps={{ className: "!tw-text-sm" }}
+            readOnly
+          />
+
+          <Input
+            label={t("issueIdLabel", lang)}
+            value={issueId}
+            onChange={(e) => setIssueId(e.target.value)}
+            crossOrigin=""
+            containerProps={{ className: "!tw-min-w-0" }}
+            className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm"
+            labelProps={{ className: "!tw-text-sm" }}
+            readOnly
+          />
+
+          <Input
+            label={t("inspectorLabel", lang)}
+            value={inspector}
+            onChange={(e) => setInspector(e.target.value)}
+            crossOrigin=""
+            containerProps={{ className: "!tw-min-w-0" }}
+            className="!tw-w-full !tw-bg-blue-gray-50 !tw-text-sm"
+            labelProps={{ className: "!tw-text-sm" }}
+            readOnly
+          />
+
+          <Input
+            type="date"
+            value={reportDate}
+            max={todayStr}
+            onChange={(e) => setReportDate(e.target.value)}
+            label={t("pmDateLabel", lang)}
+            crossOrigin=""
+            containerProps={{ className: "!tw-min-w-0" }}
+            className="!tw-text-sm"
+            labelProps={{ className: "!tw-text-sm" }}
+          />
+
+          <div className="tw-bg-blue-50 tw-rounded-lg tw-p-3 sm:tw-p-4">
+            <Typography variant="small" className="tw-text-blue-gray-600 tw-text-xs sm:tw-text-sm">
+              {t("filesSelected", lang)} <strong className="tw-text-blue-600">{pendingFiles.length}</strong> {t("filesUnit", lang)}
+            </Typography>
+          </div>
+        </DialogBody>
+
+        <DialogFooter className="tw-gap-2 sm:tw-gap-3 tw-px-4 sm:tw-px-6 tw-pb-5 sm:tw-pb-6 tw-pt-2">
+          <Button
+            variant="text"
+            size="sm"
+            onClick={() => {
+              setPendingFiles([]);
+              setDateOpen(false);
+            }}
+            className="tw-text-xs sm:tw-text-sm tw-px-4 sm:tw-px-5 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-text-blue-gray-600 hover:tw-bg-blue-gray-50 tw-transition-colors tw-rounded-lg"
+          >
+            {t("cancel", lang)}
+          </Button>
+
+          <Button
+            onClick={uploadPdfs}
+            size="sm"
+            className="tw-bg-gradient-to-b tw-from-neutral-800 tw-to-neutral-900 hover:tw-to-black tw-text-xs sm:tw-text-sm tw-px-5 sm:tw-px-6 tw-py-2 sm:tw-py-2.5 tw-font-medium tw-rounded-lg tw-shadow-md tw-transition-all"
+          >
+            {t("uploadBtn", lang)}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </>
+  );
 
 }

@@ -2983,33 +2983,40 @@ export default function ChargerPMForm() {
                 let idx = 0;
                 const finalReportId = report_id!;
 
-                const runNext = async (): Promise<void> => {
-                    while (idx < allPreTasks.length) {
-                        const taskIdx = idx++;
-                        const task = allPreTasks[taskIdx];
-                        try {
-                            const compressed = await compressImage(task.file);
-                            await uploadSinglePhotoWithRetry(finalReportId, sn, `g${task.group}`, compressed, "pre");
+                const tasksByGroup = new Map<string, UploadTask[]>();
+                for (const task of allPreTasks) {
+                    if (!tasksByGroup.has(task.group)) tasksByGroup.set(task.group, []);
+                    tasksByGroup.get(task.group)!.push(task);
+                }
 
-                            // ⚡ CORE FIX: mark รูปนี้ว่าอัปโหลดสำเร็จ — ถ้า user กด save อีกครั้ง จะถูกข้าม
-                            setPhotos(prev => {
-                                const list = prev[task.group] || [];
-                                return {
+                const groupEntries = Array.from(tasksByGroup.entries());
+                let groupIdx = 0;
+
+                const runNextGroup = async (): Promise<void> => {
+                    while (groupIdx < groupEntries.length) {
+                        const myIdx = groupIdx++;
+                        const [group, tasks] = groupEntries[myIdx];
+                        for (const task of tasks) {
+                            try {
+                                const compressed = await compressImage(task.file);
+                                await uploadSinglePhotoWithRetry(finalReportId, sn, `g${group}`, compressed, "pre");
+                                setPhotos(prev => ({
                                     ...prev,
-                                    [task.group]: list.map(p =>
+                                    [group]: (prev[group] || []).map(p =>
                                         p.id === task.photoId ? { ...p, uploaded: true } : p
                                     ),
-                                };
-                            });
-                        } catch (err: any) {
-                            failedCount++;
-                            failures.push({ group: task.group, error: err?.message || "unknown" });
+                                }));
+                            } catch (err: any) {
+                                failedCount++;
+                                failures.push({ group, error: err?.message || "unknown" });
+                            }
+                            completedCount++;
+                            setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
                         }
-                        completedCount++;
-                        setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
                     }
                 };
-                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNext()));
+
+                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNextGroup()));
 
                 setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
 
@@ -3097,33 +3104,40 @@ export default function ChargerPMForm() {
                 let idx = 0;
                 const finalReportId = report_id!;
 
-                const runNext = async (): Promise<void> => {
-                    while (idx < allPostTasks.length) {
-                        const taskIdx = idx++;
-                        const task = allPostTasks[taskIdx];
-                        try {
-                            const compressed = await compressImage(task.file);
-                            await uploadSinglePhotoWithRetry(finalReportId, sn, `g${task.group}`, compressed, "post");
+                const tasksByGroup = new Map<string, UploadTask[]>();
+                for (const task of allPostTasks) {
+                    if (!tasksByGroup.has(task.group)) tasksByGroup.set(task.group, []);
+                    tasksByGroup.get(task.group)!.push(task);
+                }
 
-                            // ⚡ CORE FIX: mark uploaded=true
-                            setPhotos(prev => {
-                                const list = prev[task.group] || [];
-                                return {
+                const groupEntries = Array.from(tasksByGroup.entries());
+                let groupIdx = 0;
+
+                const runNextGroup = async (): Promise<void> => {
+                    while (groupIdx < groupEntries.length) {
+                        const myIdx = groupIdx++;
+                        const [group, tasks] = groupEntries[myIdx];
+                        for (const task of tasks) {
+                            try {
+                                const compressed = await compressImage(task.file);
+                                await uploadSinglePhotoWithRetry(finalReportId, sn, `g${group}`, compressed, "post");
+                                setPhotos(prev => ({
                                     ...prev,
-                                    [task.group]: list.map(p =>
+                                    [group]: (prev[group] || []).map(p =>
                                         p.id === task.photoId ? { ...p, uploaded: true } : p
                                     ),
-                                };
-                            });
-                        } catch (err: any) {
-                            failedCount++;
-                            failures.push({ group: task.group, error: err?.message || "unknown" });
+                                }));
+                            } catch (err: any) {
+                                failedCount++;
+                                failures.push({ group, error: err?.message || "unknown" });
+                            }
+                            completedCount++;
+                            setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
                         }
-                        completedCount++;
-                        setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
                     }
                 };
-                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNext()));
+
+                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNextGroup()));
 
                 setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
 
