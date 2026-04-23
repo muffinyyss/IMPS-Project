@@ -585,26 +585,6 @@ function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string
     );
 }
 
-// Scroll to first error helper
-function scrollToFirstError(scrollId: string) {
-    const element = document.getElementById(scrollId);
-    if (element) {
-        const rect = element.getBoundingClientRect();
-        const elementTop = rect.top + window.scrollY;
-        const elementHeight = rect.height;
-        const viewportHeight = window.innerHeight;
-        let targetScrollY = elementTop - (viewportHeight / 2) + (elementHeight / 2);
-        targetScrollY = Math.max(0, targetScrollY);
-        const maxScrollY = document.documentElement.scrollHeight - viewportHeight;
-        targetScrollY = Math.min(targetScrollY, maxScrollY);
-        window.scrollTo({ top: targetScrollY, behavior: "smooth" });
-        element.classList.add("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
-        setTimeout(() => {
-            element.classList.remove("tw-ring-2", "tw-ring-amber-400", "tw-bg-amber-50");
-        }, 2000);
-    }
-}
-
 // ==================== MAIN COMPONENT ====================
 
 export default function CBBOXPMForm() {
@@ -685,8 +665,8 @@ export default function CBBOXPMForm() {
     // Preview issue_id and doc_name
     useEffect(() => {
         if (isPostMode || !stationId || !job.date) return;
-        fetchPreviewIssueId(stationId, job.date).then(id => { if (id) setJob(prev => ({ ...prev, issue_id: id })); }).catch(() => {});
-        fetchPreviewDocName(stationId, job.date).then(name => { if (name) setDocName(name); }).catch(() => {});
+        fetchPreviewIssueId(stationId, job.date).then(id => { if (id) setJob(prev => ({ ...prev, issue_id: id })); }).catch(() => { });
+        fetchPreviewDocName(stationId, job.date).then(name => { if (name) setDocName(name); }).catch(() => { });
     }, [stationId, job.date, isPostMode]);
 
     // Load draft Pre
@@ -822,29 +802,7 @@ export default function CBBOXPMForm() {
         saveDraftLocal(postKey, { rows, m5: m5.state, summary, summaryCheck, photoRefs });
     }, [postKey, stationId, rows, m5.state, summary, summaryCheck, photoRefs, isPostMode, editId]);
 
-    // Helper functions for scroll IDs
-    const getFirstMissingPhotoScrollId = (): string | null => {
-        if (missingPhotoItems.length === 0) return null;
-        return `${ID_PREFIX}-photo-${missingPhotoItems[0]}`;
-    };
-
-    const getFirstMissingPFScrollId = (): string | null => {
-        if (missingPFItemsPost.length === 0) return null;
-        return `${ID_PREFIX}-pf-${missingPFItemsPost[0]}`;
-    };
-
-    const getFirstMissingRemarkScrollId = (): string | null => {
-        const missing = isPostMode ? missingRemarksPost : missingRemarksPre;
-        if (missing.length === 0) return null;
-        return `${ID_PREFIX}-remark-${missing[0]}`;
-    };
-
-    const getFirstMissingInputScrollId = (): string | null => {
-        if (missingInputsDetailed.length === 0) return null;
-        const first = missingInputsDetailed[0];
-        return `${ID_PREFIX}-input-${first.qNo}-${first.fieldKey}`;
-    };
-
+   
     // Render measure grid
     const renderMeasureGrid = (no: number, isPreView = false) => {
         const cfg = FIELD_GROUPS[no]; if (!cfg) return null;
@@ -853,12 +811,12 @@ export default function CBBOXPMForm() {
             <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-5 tw-gap-3">
                 {cfg.keys.map(k => (
                     <div key={k} className={isPreView ? "tw-pointer-events-none tw-opacity-60" : ""}>
-                        <InputWithUnit 
-                            label={LABELS[k] ?? k} 
-                            value={state[k]?.value || ""} 
-                            unit="V" 
-                            onValueChange={v => !isPreView && m5.patch(k, { value: v })} 
-                            readOnly={isPreView} 
+                        <InputWithUnit
+                            label={LABELS[k] ?? k}
+                            value={state[k]?.value || ""}
+                            unit="V"
+                            onValueChange={v => !isPreView && m5.patch(k, { value: v })}
+                            readOnly={isPreView}
                             required={!isPreView}
                             id={!isPreView ? getInputIdFromKey(no, k) : undefined}
                         />
@@ -931,17 +889,17 @@ export default function CBBOXPMForm() {
 
         return (
             <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
-                <PassFailRow 
-                    label={t("testResult", lang)} 
-                    value={rows[q.key]?.pf ?? ""} 
-                    lang={lang} 
-                    onChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })} 
-                    remark={rows[q.key]?.remark || ""} 
+                <PassFailRow
+                    label={t("testResult", lang)}
+                    value={rows[q.key]?.pf ?? ""}
+                    lang={lang}
+                    onChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
+                    remark={rows[q.key]?.remark || ""}
                     onRemarkChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
                     id={getPfIdFromKey(q.no)}
                     remarkId={getRemarkIdFromKey(q.no)}
                     aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
-                    beforeRemark={<>{hasMeasure && (q.no === 5 ? renderMeasureGridWithPre(q.no) : renderMeasureGrid(q.no))}{preRemarkElement}</>} 
+                    beforeRemark={<>{hasMeasure && (q.no === 5 ? renderMeasureGridWithPre(q.no) : renderMeasureGrid(q.no))}{preRemarkElement}</>}
                 />
             </SectionCard>
         );
@@ -970,27 +928,12 @@ export default function CBBOXPMForm() {
 
     const onPreSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        
+
         // Validation checks with scroll to error
-        if (!allPhotosAttachedPre) { 
-            alert(t("alertFillPhoto", lang)); 
-            const scrollId = getFirstMissingPhotoScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return; 
-        }
-        if (!allRequiredInputsFilled) { 
-            alert(t("alertInputNotComplete", lang)); 
-            const scrollId = getFirstMissingInputScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return; 
-        }
-        if (!allRemarksFilledPre) { 
-            alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); 
-            const scrollId = getFirstMissingRemarkScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return; 
-        }
-        
+        if (!allPhotosAttachedPre) { alert(t("alertFillPhoto", lang)); return; }
+        if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
+        if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
+
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -1015,43 +958,14 @@ export default function CBBOXPMForm() {
 
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        
+
         // Validation checks with scroll to error
-        if (!allPhotosAttachedPost) {
-            alert(t("alertFillPhoto", lang));
-            const scrollId = getFirstMissingPhotoScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
-        if (!allPFAnsweredPost) {
-            alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items");
-            const scrollId = getFirstMissingPFScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
-        if (!allRequiredInputsFilled) {
-            alert(t("alertInputNotComplete", lang));
-            const scrollId = getFirstMissingInputScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
-        if (!allRemarksFilledPost) {
-            alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`);
-            const scrollId = getFirstMissingRemarkScrollId();
-            if (scrollId) scrollToFirstError(scrollId);
-            return;
-        }
-        if (!isSummaryFilled) {
-            alert(t("missingSummaryText", lang));
-            scrollToFirstError(`${ID_PREFIX}-summary-section`);
-            return;
-        }
-        if (!isSummaryCheckFilled) {
-            alert(t("missingSummaryStatus", lang));
-            scrollToFirstError(`${ID_PREFIX}-summary-section`);
-            return;
-        }
-        
+        if (!allPhotosAttachedPost) { alert(t("alertFillPhoto", lang)); return; }
+        if (!allPFAnsweredPost) { alert(lang === "th" ? "กรุณาเลือก PASS/FAIL/N/A ทุกข้อ" : "Please select PASS/FAIL/N/A for all items"); return; }
+        if (!allRequiredInputsFilled) { alert(t("alertInputNotComplete", lang)); return; }
+        if (!allRemarksFilledPost) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPost.join(", ")}`); return; }
+        if (!isSummaryFilled || !isSummaryCheckFilled) { alert(t("alertCompleteAll", lang)); return; }
+
         if (submitting) return;
         setSubmitting(true);
         try {

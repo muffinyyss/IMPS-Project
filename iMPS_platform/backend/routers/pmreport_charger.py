@@ -12,6 +12,7 @@ from bson.decimal128 import Decimal128
 from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, Optional, Literal
 import re, json, uuid, pathlib, secrets, os, asyncio
+import zipfile
 
 from config import (
     PMReportDB, PMUrlDB, charger_collection, station_collection,
@@ -953,3 +954,70 @@ async def migrate_has_photos_endpoint(
         {"$set": {"has_photos": True}}
     )
     return {"ok": True, "modified": result.modified_count}
+
+
+
+@router.get("/pmreport/{report_id}/photos/zip")
+async def download_photos_zip(
+    report_id: str,
+    sn: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    coll = get_pmreport_collection_for(sn)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    doc = await coll.find_one(
+        {"_id": oid, "sn": sn},
+        {"photos_pre": 1, "photos": 1, "has_photos": 1}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    if not doc.get("has_photos"):
+        raise HTTPException(status_code=404, detail="No photos found")
+
+    # รวม photos_pre และ photos เข้าด้วยกัน
+    all_photos: list[tuple[str, str]] = []  # (zip_path, disk_path)
+
+    photos_pre: dict = doc.get("photos_pre") or {}
+    for group, items in photos_pre.items():
+        for item in (items or []):
+            fname = item.get("filename", "")
+            if not fname:
+                continue
+            disk_path = pathlib.Path(UPLOADS_ROOT) / "pm" / sn / report_id / "pre" / group / fname
+            zip_path = f"pre/{group}/{fname}"
+            all_photos.append((zip_path, str(disk_path)))
+
+    photos_post: dict = doc.get("photos") or {}
+    for group, items in photos_post.items():
+        for item in (items or []):
+            fname = item.get("filename", "")
+            if not fname:
+                continue
+            disk_path = pathlib.Path(UPLOADS_ROOT) / "pm" / sn / report_id / "post" / group / fname
+            zip_path = f"post/{group}/{fname}"
+            all_photos.append((zip_path, str(disk_path)))
+            
+    if not all_photos:
+        raise HTTPException(status_code=404, detail="No photos found")
+
+    # สร้าง ZIP ใน memory
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for zip_path, disk_path in all_photos:
+            p = pathlib.Path(disk_path)
+            if p.exists():
+                zf.write(p, arcname=zip_path)
+
+    zip_buffer.seek(0)
+    zip_filename = f"photos_{sn}_{report_id}.zip"
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )

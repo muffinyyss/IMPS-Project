@@ -506,3 +506,162 @@ async def mdbpmreport_finalize(
             cache_path.unlink()
 
     return {"ok": True, "report_id": report_id}
+
+
+# ============================================
+# MDB PM URL (PDF Upload + List)
+# ============================================
+
+class MDBPMUrlUploadIn(BaseModel):
+    station_id: str
+    reportDate: str
+    issue_id: Optional[str] = None
+    doc_name: Optional[str] = None
+    inspector: Optional[str] = None
+
+
+@router.post("/mdbpmurl/upload-files", status_code=201)
+async def mdbpmurl_upload_files(
+    station_id: str = Form(...),
+    reportDate: str = Form(...),
+    files: List[UploadFile] = File(...),
+    issue_id: Optional[str] = Form(None),
+    doc_name: Optional[str] = Form(None),
+    inspector: Optional[str] = Form(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    coll = get_mdbpmurl_coll_upload(station_id)
+    rep_coll = get_mdbpmreport_collection_for(station_id)
+
+    try:
+        d = datetime.strptime(reportDate[:10], "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="reportDate must be YYYY-MM-DD")
+
+    pm_date = d.isoformat()
+    pm_type = "MB"
+    year = d.year
+
+    # Resolve issue_id
+    final_issue_id = None
+    if issue_id:
+        yymm = f"{d.year % 100:02d}{d.month:02d}"
+        prefix = f"PM-{pm_type}-{yymm}-"
+        if issue_id.startswith(prefix):
+            rep_ex = await rep_coll.find_one({"issue_id": issue_id})
+            url_ex = await coll.find_one({"issue_id": issue_id})
+            if not rep_ex and not url_ex:
+                final_issue_id = issue_id
+
+    if not final_issue_id:
+        latest = await _latest_issue_id_anywhere(station_id, pm_type, d, source="mdb")
+        yymm = f"{d.year % 100:02d}{d.month:02d}"
+        prefix = f"PM-{pm_type}-{yymm}-"
+        if not latest:
+            final_issue_id = f"{prefix}01"
+        else:
+            m = re.search(r"(\d+)$", latest)
+            cur = int(m.group(1)) if m else 0
+            final_issue_id = f"{prefix}{cur+1:02d}"
+
+    # Resolve doc_name
+    final_doc_name = None
+    if doc_name:
+        candidate = doc_name.strip()
+        if candidate.startswith(f"{station_id}_"):
+            rep_ex = await rep_coll.find_one({"doc_name": candidate})
+            url_ex = await coll.find_one({"doc_name": candidate})
+            if not rep_ex and not url_ex:
+                final_doc_name = candidate
+
+    if not final_doc_name:
+        latest_doc = await _latest_doc_name_anywhere(station_id, year, source="mdb")
+        if not latest_doc:
+            final_doc_name = f"{station_id}_1/{year}"
+        else:
+            m = re.search(r"_(\d+)/\d{4}$", latest_doc)
+            num = int(m.group(1)) if m else 0
+            final_doc_name = f"{station_id}_{num+1}/{year}"
+
+    # Save files
+    subdir = pm_date
+    dest_dir = pathlib.Path(UPLOADS_ROOT) / "mdbpmurl" / station_id / subdir
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    urls = []
+    metas = []
+    for f in files:
+        ext = (f.filename.rsplit(".", 1)[-1].lower() if f.filename and "." in f.filename else "")
+        if ext != "pdf":
+            raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
+        data = await f.read()
+        if len(data) == 0:
+            raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
+        if len(data) > MAX_FILE_MB * 1024 * 1024:
+            raise HTTPException(status_code=413, detail=f"File too large")
+        safe = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
+        with open(dest_dir / safe, "wb") as out:
+            out.write(data)
+        urls.append(f"/uploads/mdbpmurl/{station_id}/{subdir}/{safe}")
+        metas.append({"name": f.filename, "size": len(data)})
+
+    now = datetime.now(timezone.utc)
+    doc = {
+        "station_id": station_id,
+        "pm_date": pm_date,
+        "issue_id": final_issue_id,
+        "doc_name": final_doc_name,
+        "inspector": (inspector or "").strip() or None,
+        "urls": urls,
+        "meta": {"files": metas},
+        "source": "upload-files",
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    res = await coll.insert_one(doc)
+    return {
+        "ok": True,
+        "inserted_id": str(res.inserted_id),
+        "count": len(urls),
+        "urls": urls,
+        "issue_id": final_issue_id,
+        "doc_name": final_doc_name,
+    }
+
+
+@router.get("/mdbpmurl/list")
+async def mdbpmurl_list(
+    station_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    current: UserClaims = Depends(get_current_user),
+):
+    coll = get_mdbpmurl_coll_upload(station_id)
+    skip = (page - 1) * pageSize
+
+    cursor = coll.find(
+        {},
+        {"_id": 1, "issue_id": 1, "doc_name": 1, "inspector": 1, "pm_date": 1, "urls": 1, "createdAt": 1}
+    ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+
+    items_raw = await cursor.to_list(length=pageSize)
+    total = await coll.count_documents({})
+
+    items = [{
+        "id": str(it["_id"]),
+        "pm_date": it.get("pm_date"),
+        "inspector": it.get("inspector"),
+        "doc_name": it.get("doc_name"),
+        "issue_id": it.get("issue_id"),
+        "createdAt": _ensure_utc_iso(it.get("createdAt")),
+        "file_url": (it.get("urls") or [""])[0],
+        "urls": it.get("urls") or [],
+    } for it in items_raw]
+
+    return {
+        "items": items,
+        "pm_date": [it.get("pm_date") for it in items_raw if it.get("pm_date")],
+        "page": page,
+        "pageSize": pageSize,
+        "total": total,
+    }

@@ -28,6 +28,7 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwi
 import CBBOXPMForm from "@/app/dashboard/pm-report/cb-box/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -198,6 +199,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [docName, setDocName] = useState<string>("");
   const [me, setMe] = useState<Me | null>(null);
   const [inspector, setInspector] = useState<string>("");
+  const [pageLoading, setPageLoading] = useState(true);
+  const [toast, setToast] = useState<{ show: boolean; type: "success" | "error" | "warning" | "info"; message: string }>({ show: false, type: "info", message: "" });
+
+  const showToast = (type: "success" | "error" | "warning" | "info", message: string, duration = 4000) => {
+    setToast({ show: true, type, message });
+    setTimeout(() => setToast(prev => ({ ...prev, show: false })), duration);
+  };
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -354,7 +362,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       });
       setData(allRows);
     } catch (err: any) { if (err?.name !== "AbortError") { console.error("fetch error:", err); setData([]); } }
-    finally { setLoading(false); }
+    finally { setLoading(false); setPageLoading(false); }
   };
 
   useEffect(() => { fetchRows(); }, [apiBase, stationId]);
@@ -467,27 +475,27 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     e.currentTarget.value = "";
     if (!files.length) return;
     const pdfs = files.filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-    if (!pdfs.length) { alert(t("alertPdfOnly", lang)); return; }
+    if (!pdfs.length) { showToast("error", t("alertPdfOnly", lang)); return; }
     setPendingFiles(pdfs);
     setDateOpen(true);
   };
 
   async function uploadPdfs() {
     try {
-      if (!stationId) { alert(t("alertSelectStation", lang)); return; }
+      if (!stationId) { showToast("warning", t("alertSelectStation", lang)); return; }
       if (!pendingFiles.length) { setDateOpen(false); return; }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { alert(t("alertInvalidDate", lang)); return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(reportDate)) { showToast("error", t("alertInvalidDate", lang)); return; }
       const fd = new FormData();
       fd.append("station_id", stationId); fd.append("reportDate", reportDate); fd.append("issue_id", issueId);
       fd.append("doc_name", docName || ""); fd.append("inspector", inspector || "");
       pendingFiles.forEach((f) => fd.append("files", f));
-      const res = await fetch(`${apiBase}/${URL_PREFIX}/upload-files`, { method: "POST", body: fd, credentials: "include" });
-      if (!res.ok) { const txt = await res.text(); alert(`${t("alertUploadFailed", lang)} ${txt}`); return; }
+      const res = await apiFetch(`${apiBase}/${URL_PREFIX}/upload-files`, { method: "POST", body: fd, credentials: "include" });
+      if (!res.ok) { const txt = await res.text(); showToast("error", `${t("alertUploadFailed", lang)} ${txt}`); return; }
       await res.json();
-      alert(t("alertUploadSuccess", lang));
+      showToast("success", t("alertUploadSuccess", lang));
       setPendingFiles([]); setDateOpen(false);
       await fetchRows();
-    } catch (err) { console.error(err); alert(t("alertUploadError", lang)); }
+    } catch (err) { console.error(err); showToast("error", t("alertUploadError", lang)); }
   }
 
   useEffect(() => {
@@ -524,6 +532,32 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
 
   return (
     <>
+      <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
+      {toast.show && (
+      <div className="tw-fixed tw-top-4 tw-left-1/2 tw--translate-x-1/2 tw-z-[9999] tw-max-w-md tw-w-[calc(100%-2rem)]">
+        <div className={`tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-border ${
+          toast.type === "success" ? "tw-bg-green-50 tw-border-green-200" :
+          toast.type === "error" ? "tw-bg-red-50 tw-border-red-200" :
+          toast.type === "warning" ? "tw-bg-amber-50 tw-border-amber-200" :
+          "tw-bg-blue-50 tw-border-blue-200"}`}>
+          <div className={`tw-flex-shrink-0 tw-w-8 tw-h-8 tw-rounded-full tw-flex tw-items-center tw-justify-center ${
+            toast.type === "success" ? "tw-bg-green-500" : toast.type === "error" ? "tw-bg-red-500" :
+            toast.type === "warning" ? "tw-bg-amber-500" : "tw-bg-blue-500"}`}>
+            {toast.type === "success" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
+            {toast.type === "error" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>}
+            {toast.type === "warning" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01" /></svg>}
+            {toast.type === "info" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01" /></svg>}
+          </div>
+          <p className={`tw-text-sm tw-font-medium tw-flex-1 tw-pt-1 ${
+            toast.type === "success" ? "tw-text-green-800" : toast.type === "error" ? "tw-text-red-800" :
+            toast.type === "warning" ? "tw-text-amber-800" : "tw-text-blue-800"}`}>{toast.message}</p>
+          <button onClick={() => setToast(prev => ({ ...prev, show: false }))}
+            className="tw-flex-shrink-0 tw-p-1 tw-rounded-full tw-text-gray-400 hover:tw-text-gray-600 hover:tw-bg-gray-100 tw-transition-colors">
+            <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      </div>
+    )}
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
         {/* <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0"> */}
         <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30">
@@ -581,17 +615,17 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                           // className={`tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-uppercase !tw-text-blue-gray-500 !tw-font-semibold tw-whitespace-nowrap tw-border-b tw-border-blue-gray-100 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"} ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-100 tw-transition-colors tw-select-none" : ""}`}>
                           className={`tw-py-2.5 sm:tw-py-3 lg:tw-py-4 tw-px-2 sm:tw-px-3 lg:tw-px-4 tw-uppercase !tw-font-semibold tw-whitespace-nowrap tw-border-b tw-border-gray-700 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"} ${canSort ? "tw-cursor-pointer hover:tw-bg-gray-700 tw-transition-colors tw-select-none" : ""}`}>
                           {canSort ? (
-                            <Typography color="blue-gray" 
-                            // className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60 ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}>
-                            className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}>
+                            <Typography color="blue-gray"
+                              // className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60 ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}>
+                              className={`tw-flex tw-items-center tw-gap-0.5 sm:tw-gap-1 tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${align === "center" ? "tw-justify-center" : align === "right" ? "tw-justify-end" : "tw-justify-start"}`}>
                               {flexRender(header.column.columnDef.header, header.getContext())}
                               {/* <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0" /> */}
                               <ChevronUpDownIcon strokeWidth={2} className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5 lg:tw-h-4 lg:tw-w-4 tw-flex-shrink-0 tw-text-white/60" />
                             </Typography>
                           ) : (
-                            <Typography color="blue-gray" 
-                            // className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}>
-                            className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}>
+                            <Typography color="blue-gray"
+                              // className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-60 ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}>
+                              className={`tw-text-[9px] sm:tw-text-[10px] lg:tw-text-xs !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${align === "center" ? "tw-text-center" : align === "right" ? "tw-text-right" : "tw-text-left"}`}>
                               {flexRender(header.column.columnDef.header, header.getContext())}
                             </Typography>
                           )}
