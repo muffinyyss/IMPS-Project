@@ -613,8 +613,6 @@ async def mdbpmreport_upload_photos_pre(
 
     # MDB-specific: map r7_* -> g7 storage
     storage_key = group
-    if re.match(r"r7_\d+", group):
-        storage_key = "g7"
 
     coll = get_mdbpmreport_collection_for(station_id)
     try:
