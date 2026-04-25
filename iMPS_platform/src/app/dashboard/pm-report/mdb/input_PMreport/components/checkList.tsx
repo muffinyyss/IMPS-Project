@@ -1372,7 +1372,9 @@ export default function MDBPMForm() {
         const res = await apiFetch(url, { method: "POST", body: form, credentials: "include" });
         if (!res.ok) { const e = await res.text().catch(() => ""); throw new Error(`[${res.status}] ${normalizedGroup}: ${e || res.statusText}`); }
         const resJson = await res.json().catch(() => null);
-        if (!resJson || resJson.count === 0) throw new Error(`[upload empty] group ${normalizedGroup}: backend saved 0 files`);
+        if (!resJson) throw new Error(`[upload empty] group ${normalizedGroup}: no response`);
+        if (resJson.count === 0 && resJson.skipped === "group_full") return; // เต็มแล้ว = ok
+        if (resJson.count === 0) throw new Error(`[upload empty] group ${normalizedGroup}: backend saved 0 files`);
     }
 
     async function uploadSinglePhotoWithRetry(reportId: string, stationId: string, group: string, file: File, side: TabId, maxRetries = 3): Promise<void> {
