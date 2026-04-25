@@ -1571,7 +1571,7 @@ export default function MDBPMForm() {
                     station_id: stationId, rows: flattenRows(),
                     measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
                     summary, ...(summaryCheck ? { summaryCheck } : {}),
-                    dust_filter: dustFilterChanged ? "yes" : "no",
+                    dust_filter: dustFilterChanged ? { changed: true } : null,
                     side: "post" as TabId, report_id: editId
                 };
                 const res = await apiFetch(`${API_BASE}/${PM_PREFIX}/submit`, {
