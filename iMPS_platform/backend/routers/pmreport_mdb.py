@@ -693,8 +693,6 @@ async def mdbpmreport_upload_photos_post(
         raise HTTPException(status_code=400, detail=f"Bad group key format: {group}")
 
     storage_key = group
-    if re.match(r"r7_\d+", group):
-        storage_key = "g7"
 
     coll = get_mdbpmreport_collection_for(station_id)
     try:
