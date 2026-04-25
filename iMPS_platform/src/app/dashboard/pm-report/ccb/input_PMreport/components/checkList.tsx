@@ -1974,7 +1974,7 @@ export default function CCBPMReport() {
 
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
-            clearDraftLocal(key);
+            await clearDraftLocal(key);
             setPhotos(initialPhotos);
             const nextParams = new URLSearchParams(searchParams.toString());
             nextParams.set("station_id", stationId);
@@ -2099,7 +2099,7 @@ export default function CCBPMReport() {
 
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
-            clearDraftLocal(postKey);
+            await clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=ccb`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };

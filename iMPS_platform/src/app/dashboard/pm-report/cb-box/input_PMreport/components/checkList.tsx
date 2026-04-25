@@ -802,7 +802,7 @@ export default function CBBOXPMForm() {
         saveDraftLocal(postKey, { rows, m5: m5.state, summary, summaryCheck, photoRefs });
     }, [postKey, stationId, rows, m5.state, summary, summaryCheck, photoRefs, isPostMode, editId]);
 
-   
+
     // Render measure grid
     const renderMeasureGrid = (no: number, isPreView = false) => {
         const cfg = FIELD_GROUPS[no]; if (!cfg) return null;
@@ -951,7 +951,7 @@ export default function CBBOXPMForm() {
             if (uploadPromises.length > 0) await Promise.all(uploadPromises);
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
-            clearDraftLocal(key);
+            await clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
@@ -981,7 +981,7 @@ export default function CBBOXPMForm() {
             await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
-            clearDraftLocal(postKey);
+            await clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=cb-box`);
         } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
     };
