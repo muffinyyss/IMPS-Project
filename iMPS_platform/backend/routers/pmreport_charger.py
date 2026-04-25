@@ -556,9 +556,10 @@ async def pmreport_upload_pre_photos(
 
     MAX_PHOTOS_PER_GROUP = 10
     existing_count = len((doc.get("photos_pre") or {}).get(group, []))
-    if existing_count >= MAX_PHOTOS_PER_GROUP:
-        raise HTTPException(status_code=400, detail=f"Max {MAX_PHOTOS_PER_GROUP} photos per group")
-    files = files[:MAX_PHOTOS_PER_GROUP - existing_count]
+    remaining = MAX_PHOTOS_PER_GROUP - existing_count
+    if remaining <= 0:
+        return {"ok": True, "count": 0, "group": group, "files": [], "skipped": "group_full"}
+    files = files[:remaining]
 
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "pm" / sn / report_id / "pre" / group
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -630,9 +631,10 @@ async def pmreport_upload_post_photos(
 
     MAX_PHOTOS_PER_GROUP = 10
     existing_count = len((doc.get("photos") or {}).get(group, []))
-    if existing_count >= MAX_PHOTOS_PER_GROUP:
-        raise HTTPException(status_code=400, detail=f"Max {MAX_PHOTOS_PER_GROUP} photos per group")
-    files = files[:MAX_PHOTOS_PER_GROUP - existing_count]
+    remaining = MAX_PHOTOS_PER_GROUP - existing_count
+    if remaining <= 0:
+        return {"ok": True, "count": 0, "group": group, "files": [], "skipped": "group_full"}
+    files = files[:remaining]
 
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "pm" / sn / report_id / "post" / group
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -1001,7 +1003,7 @@ async def download_photos_zip(
             disk_path = pathlib.Path(UPLOADS_ROOT) / "pm" / sn / report_id / "post" / group / fname
             zip_path = f"post/{group}/{fname}"
             all_photos.append((zip_path, str(disk_path)))
-            
+
     if not all_photos:
         raise HTTPException(status_code=404, detail="No photos found")
 

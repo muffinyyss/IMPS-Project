@@ -735,19 +735,19 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 <DocumentArrowDownIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
               </a>
               {info.row.original.has_photos && (
-  <a
-    aria-label="Download Photos"
-    href={`${BASE}/pmreport/${info.row.original.id}/photos/zip?sn=${encodeURIComponent(sn || "")}`}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-green-600 hover:tw-text-green-800 hover:tw-bg-green-50 tw-transition-colors"
-    title="Download Photos"
-  >
-    <PhotoIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
-  </a>
-)}
+                <a
+                  aria-label="Download Photos"
+                  href={`${BASE}/pmreport/${info.row.original.id}/photos/zip?sn=${encodeURIComponent(sn || "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-green-600 hover:tw-text-green-800 hover:tw-bg-green-50 tw-transition-colors"
+                  title="Download Photos"
+                >
+                  <PhotoIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
+                </a>
+              )}
             </div >
-            
+
           );
         }
       },

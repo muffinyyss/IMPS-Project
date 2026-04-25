@@ -1,14 +1,22 @@
-"""PM Report routes for MDB"""
-from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFile, File, Form
-from fastapi.responses import Response, JSONResponse
+"""PM Report routes for MDB (station_id-based)"""
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, UploadFile, File, Form, Path
+from fastapi.responses import Response, JSONResponse, StreamingResponse
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime, timedelta, timezone, date
 from dateutil.relativedelta import relativedelta
 from bson.objectid import ObjectId
+from bson.errors import InvalidId
+from bson.decimal128 import Decimal128
+from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, Optional, Literal
-import re, json, uuid, pathlib, secrets
-from config import MDBPMReportDB, MDBPMUrlDB, station_collection, _validate_station_id, th_tz, _ensure_utc_iso
+import re, json, uuid, pathlib, secrets, os, asyncio
+import zipfile
+
+from config import (
+    MDBPMReportDB, MDBPMUrlDB, station_collection,
+    _validate_station_id, th_tz, _ensure_utc_iso,
+)
 from deps import UserClaims, get_current_user
 from routers.pm_helpers import (
     UPLOADS_ROOT,
@@ -16,16 +24,19 @@ from routers.pm_helpers import (
     MAX_FILE_MB,
     _safe_name,
     _ext,
+    parse_iso_any_tz,
     get_mdbpmreport_collection_for,
     get_mdbpmurl_coll_upload,
     _latest_issue_id_anywhere,
     _next_issue_id,
+    _next_issue_id_no_conflict,
     _latest_doc_name_anywhere,
     _next_year_seq,
-    _next_issue_id_no_conflict,
 )
+
 from PIL import Image
 from io import BytesIO
+
 
 def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) -> bytes:
     """Resize รูปถ้าใหญ่เกิน max_width, return JPEG bytes"""
@@ -45,9 +56,143 @@ def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) ->
         return buf.getvalue()
     except Exception:
         return data
-    
+
+
 router = APIRouter()
 
+
+# ============================================
+# Helpers
+# ============================================
+
+async def _get_station_by_id(station_id: str) -> dict:
+    """Get station document by station_id, raise 404 if not found"""
+    station = station_collection.find_one({"station_id": station_id})
+    if not station:
+        raise HTTPException(status_code=404, detail=f"Station with ID '{station_id}' not found")
+    return station
+
+
+def _compute_next_pm_date_str(pm_date_str: str | None) -> str | None:
+    if not pm_date_str:
+        return None
+    try:
+        d = datetime.fromisoformat(pm_date_str).date()
+    except ValueError:
+        return None
+    next_d = d + relativedelta(months=+6)
+    return next_d.isoformat()
+
+
+async def _latest_pm_date_from_mdbpmreport(station_id: str) -> dict | None:
+    _validate_station_id(station_id)
+    coll = MDBPMReportDB.get_collection(str(station_id))
+
+    pipeline = [
+        {"$addFields": {
+            "_ts": {
+                "$ifNull": [
+                    {
+                        "$cond": [
+                            {"$eq": [{"$type": "$timestamp"}, "string"]},
+                            {"$dateFromString": {
+                                "dateString": "$timestamp",
+                                "timezone": "UTC",
+                                "onError": None,
+                                "onNull": None
+                            }},
+                            "$timestamp"
+                        ]
+                    },
+                    {"$toDate": "$_id"}
+                ]
+            }
+        }},
+        {"$sort": {"_ts": -1, "_id": -1}},
+        {"$limit": 1},
+        {"$project": {"_id": 1, "pm_date": 1, "timestamp": 1}}
+    ]
+
+    cursor = coll.aggregate(pipeline)
+    docs = await cursor.to_list(length=1)
+    return docs[0] if docs else None
+
+
+async def _mdbpmreport_latest_core(station_id: str, current: UserClaims):
+    """Get latest PM report info for an MDB by station_id"""
+    _validate_station_id(station_id)
+
+    station = await _get_station_by_id(station_id)
+
+    pm_latest = await _latest_pm_date_from_mdbpmreport(station_id)
+    pm_date = pm_latest.get("pm_date") if pm_latest else None
+
+    ts_raw = (pm_latest.get("timestamp") if pm_latest else None) or station.get("createdAt")
+
+    ts_dt = (parse_iso_any_tz(ts_raw) if isinstance(ts_raw, str)
+             else (ts_raw if isinstance(ts_raw, datetime) else None))
+    ts_utc = ts_dt.astimezone(ZoneInfo("UTC")).isoformat() if ts_dt else None
+    ts_th = ts_dt.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if ts_dt else None
+
+    pm_next_date = _compute_next_pm_date_str(pm_date)
+
+    return {
+        "_id": str(station["_id"]),
+        "station_id": station_id,
+        "pm_date": pm_date,
+        "pm_next_date": pm_next_date,
+        "timestamp": ts_raw,
+        "timestamp_utc": ts_utc,
+        "timestamp_th": ts_th,
+        "source": "stations + MDBPMReportDB",
+    }
+
+
+def serialize_doc(doc):
+    if doc is None:
+        return None
+    if isinstance(doc, list):
+        return [serialize_doc(d) for d in doc]
+    if isinstance(doc, dict):
+        result = {}
+        for k, v in doc.items():
+            if isinstance(v, ObjectId):
+                result[k] = str(v)
+            elif isinstance(v, datetime):
+                result[k] = v.isoformat()
+            elif isinstance(v, Decimal128):
+                result[k] = float(v.to_decimal())
+            else:
+                result[k] = serialize_doc(v)
+        return result
+    return doc
+
+
+def parse_report_date_to_utc(s: str) -> datetime:
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
+        tz_th = ZoneInfo("Asia/Bangkok")
+        dt_th = datetime.fromisoformat(s + "T00:00:00").replace(tzinfo=tz_th)
+        return dt_th.astimezone(timezone.utc)
+    if s.endswith("Z"):
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
+    if re.search(r"[+\-]\d{2}:\d{2}$", s):
+        return datetime.fromisoformat(s).astimezone(timezone.utc)
+    return datetime.fromisoformat(s + "+07:00").astimezone(timezone.utc)
+
+
+def normalize_pm_date(s: str) -> str:
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
+        return s
+    if s.endswith("Z") or re.search(r"[+\-]\d{2}:\d{2}$", s):
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    else:
+        dt = datetime.fromisoformat(s).replace(tzinfo=th_tz)
+    return dt.astimezone(th_tz).date().isoformat()
+
+
+# ============================================
+# Preview endpoints
+# ============================================
 
 @router.get("/mdbpmreport/preview-issueid")
 async def mdbpmreport_preview_issueid(
@@ -55,6 +200,7 @@ async def mdbpmreport_preview_issueid(
     pm_date: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
+    """Preview next issue_id without actually generating it"""
     try:
         d = datetime.strptime(pm_date, "%Y-%m-%d").date()
     except ValueError:
@@ -76,12 +222,33 @@ async def mdbpmreport_preview_issueid(
     return {"issue_id": next_issue}
 
 
+@router.get("/mdbpmreport/latest-docname")
+async def mdbpmreport_latest_docname(
+    station_id: str = Query(...),
+    pm_date: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """Get latest doc_name for calculating next number at frontend"""
+    try:
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
+
+    latest = await _latest_doc_name_anywhere(station_id, d.year, source="mdb")
+    return {
+        "doc_name": latest,
+        "station_id": station_id,
+        "pm_date": pm_date,
+    }
+
+
 @router.get("/mdbpmreport/preview-docname")
 async def preview_docname(
     station_id: str = Query(...),
     pm_date: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
+    """Preview next doc_name without actually generating it"""
     try:
         d = datetime.strptime(pm_date, "%Y-%m-%d").date()
     except ValueError:
@@ -111,12 +278,13 @@ class MDBPMSubmitIn(BaseModel):
     measures_pre: Dict[str, Any]
     rows_pre: Optional[Dict[str, Dict[str, Any]]] = None
     q4_items: Optional[List[Dict[str, str]]] = None
+    q6_items: Optional[List[Dict[str, str]]] = None
     charger_count: Optional[int] = None
     pm_date: str
     issue_id: Optional[str] = None
     doc_name: Optional[str] = None
     inspector: Optional[str] = None
-    q6_items: Optional[List[Dict[str, str]]] = None
+    summary_pre: Optional[str] = None
 
 
 class MDBPMPostIn(BaseModel):
@@ -126,8 +294,106 @@ class MDBPMPostIn(BaseModel):
     measures: Dict[str, Any]
     summary: str
     summaryCheck: Optional[str] = None
-    dust_filter: Optional[str] = None
+    dust_filter: Optional[Dict[str, bool]] = None
     side: Literal["post", "after"]
+
+
+# ============================================
+# Get / List / Latest
+# ============================================
+
+@router.get("/mdbpmreport/get")
+async def mdbpmreport_get(
+    station_id: str,
+    report_id: str,
+    current: UserClaims = Depends(get_current_user),
+):
+    coll = get_mdbpmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    doc = await coll.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # backward compatibility
+    if "q4_items" not in doc:
+        doc["q4_items"] = [{"key": "r4_1", "label": "4.1) Breaker Main ตัวที่ 1"}]
+    if "charger_count" not in doc:
+        doc["charger_count"] = 1
+    if "rows_pre" not in doc:
+        doc["rows_pre"] = {}
+    if "q6_items" not in doc:
+        doc["q6_items"] = [{"key": "r6_1", "label": "6.1) Breaker CCB ตัวที่ 1"}]
+
+    return serialize_doc(doc)
+
+
+@router.get("/mdbpmreport/list")
+async def mdbpmreport_list(
+    station_id: str = Query(...),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    current: UserClaims = Depends(get_current_user),
+):
+    """List PM reports for an MDB by station_id"""
+    coll = get_mdbpmreport_collection_for(station_id)
+    skip = (page - 1) * pageSize
+
+    cursor = coll.find(
+        {},
+        {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector": 1,
+         "side": 1, "has_photos": 1, "createdAt": 1, "charger_count": 1},
+    ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
+
+    items_raw = await cursor.to_list(length=pageSize)
+    total = await coll.count_documents({})
+
+    pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+    url_coll = get_mdbpmurl_coll_upload(station_id)
+    url_by_day: Dict[str, str] = {}
+
+    if pm_dates:
+        ucur = url_coll.find({"pm_date": {"$in": pm_dates}}, {"pm_date": 1, "urls": 1})
+        url_docs = await ucur.to_list(length=10_000)
+        for u in url_docs:
+            day = u.get("pm_date")
+            first_url = (u.get("urls") or [None])[0]
+            if day and first_url and day not in url_by_day:
+                url_by_day[day] = first_url
+
+    items = [{
+        "id": str(it["_id"]),
+        "issue_id": it.get("issue_id"),
+        "doc_name": it.get("doc_name"),
+        "pm_date": it.get("pm_date"),
+        "inspector": it.get("inspector"),
+        "side": it.get("side"),
+        "charger_count": it.get("charger_count", 1),
+        "createdAt": _ensure_utc_iso(it.get("createdAt")),
+        "file_url": url_by_day.get(it.get("pm_date") or "", ""),
+        "has_photos": True if it.get("has_photos") else None,
+    } for it in items_raw]
+
+    pm_date_arr = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
+    return {
+        "items": items,
+        "pm_date": pm_date_arr,
+        "page": page,
+        "pageSize": pageSize,
+        "total": total,
+    }
+
+
+@router.get("/mdbpmreport/latest/{station_id}")
+async def mdbpmreport_latest_by_path(
+    station_id: str = Path(..., description="Station ID"),
+    current: UserClaims = Depends(get_current_user),
+):
+    """Get latest PM info for an MDB by station_id (path param)"""
+    return await _mdbpmreport_latest_core(station_id, current)
 
 
 # ============================================
@@ -135,15 +401,17 @@ class MDBPMPostIn(BaseModel):
 # ============================================
 
 @router.post("/mdbpmreport/pre/submit")
-async def mdbpmreport_pre_submit(body: MDBPMSubmitIn, current: UserClaims = Depends(get_current_user)):
+async def mdbpmreport_pre_submit(
+    body: MDBPMSubmitIn,
+    current: UserClaims = Depends(get_current_user),
+):
     station_id = body.station_id.strip()
     coll = get_mdbpmreport_collection_for(station_id)
+    url_coll = get_mdbpmurl_coll_upload(station_id)
     db = coll.database
 
     pm_type = str(body.job.get("pm_type") or "MB").upper()
     body.job["pm_type"] = pm_type
-
-    url_coll = get_mdbpmurl_coll_upload(station_id)
 
     try:
         d = datetime.strptime(body.pm_date, "%Y-%m-%d").date()
@@ -151,41 +419,82 @@ async def mdbpmreport_pre_submit(body: MDBPMSubmitIn, current: UserClaims = Depe
         raise HTTPException(status_code=400, detail="pm_date must be YYYY-MM-DD")
 
     client_issue = body.issue_id
-    issue_id: str | None = None
+    client_doc = body.doc_name
+
+    # parallel existence checks (issue_id / doc_name)
+    tasks: list = []
+    prefix = ""
 
     if client_issue:
         yymm = f"{d.year % 100:02d}{d.month:02d}"
         prefix = f"PM-{pm_type}-{yymm}-"
-        valid_fmt = client_issue.startswith(prefix)
-        rep_exists = await coll.find_one({"station_id": station_id, "issue_id": client_issue})
-        url_exists = await url_coll.find_one({"issue_id": client_issue})
-        unique = not (rep_exists or url_exists)
-        if valid_fmt and unique:
+        if client_issue.startswith(prefix):
+            tasks.append(coll.find_one({"issue_id": client_issue}, {"_id": 1}))
+            tasks.append(url_coll.find_one({"issue_id": client_issue}, {"_id": 1}))
+        else:
+            tasks.append(asyncio.sleep(0))
+            tasks.append(asyncio.sleep(0))
+    else:
+        tasks.append(asyncio.sleep(0))
+        tasks.append(asyncio.sleep(0))
+
+    if client_doc:
+        tasks.append(coll.find_one({"doc_name": client_doc}, {"_id": 1}))
+        tasks.append(url_coll.find_one({"doc_name": client_doc}, {"_id": 1}))
+    else:
+        tasks.append(asyncio.sleep(0))
+        tasks.append(asyncio.sleep(0))
+
+    results = await asyncio.gather(*tasks)
+
+    # Resolve issue_id
+    issue_id: str | None = None
+    if client_issue and client_issue.startswith(prefix):
+        rep_exists, url_exists = results[0], results[1]
+        if not rep_exists and not url_exists:
             issue_id = client_issue
 
     if not issue_id:
-        while True:
-            candidate = await _next_issue_id(db, station_id, pm_type, d, pad=2)
-            rep_exists = await coll.find_one({"issue_id": candidate})
-            url_exists = await url_coll.find_one({"issue_id": candidate})
-            if not rep_exists and not url_exists:
-                issue_id = candidate
-                break
+        issue_id = await _next_issue_id_no_conflict(db, coll, url_coll, station_id, pm_type, d)
 
-    client_docName = body.doc_name
-    doc_name = None
-    if client_docName:
-        prefix = f"{station_id}_"
-        valid_fmt = client_docName.startswith(prefix)
-        rep_exists = await coll.find_one({"station_id": station_id, "doc_name": client_docName})
-        url_exists = await url_coll.find_one({"doc_name": client_docName})
-        unique = not (rep_exists or url_exists)
-        if valid_fmt and unique:
-            doc_name = client_docName
+    # Resolve doc_name
+    doc_name: str | None = None
+    if client_doc and client_doc.startswith(f"{station_id}_"):
+        rep_exists, url_exists = results[2], results[3]
+        if not rep_exists and not url_exists:
+            doc_name = client_doc
 
     if not doc_name:
         year_seq = await _next_year_seq(db, station_id, pm_type, d)
         doc_name = f"{station_id}_{year_seq}/{d.year}"
+
+    # Reuse existing draft (same station/date/pre) if exists
+    existing_draft = await coll.find_one(
+        {"station_id": station_id, "pm_date": body.pm_date, "side": "pre", "status": "draft"},
+        {"_id": 1, "issue_id": 1, "doc_name": 1},
+    )
+
+    if existing_draft:
+        await coll.update_one(
+            {"_id": existing_draft["_id"]},
+            {"$set": {
+                "job": body.job,
+                "rows_pre": body.rows_pre or {},
+                "measures_pre": body.measures_pre,
+                "q4_items": body.q4_items or [{"key": "r4_1", "label": "4.1) Breaker Main ตัวที่ 1"}],
+                "q6_items": body.q6_items or [{"key": "r6_1", "label": "6.1) Breaker CCB ตัวที่ 1"}],
+                "charger_count": body.charger_count or 1,
+                "inspector": body.inspector,
+                "summary_pre": body.summary_pre or "",
+                "timestamp": datetime.now(timezone.utc),
+            }},
+        )
+        return {
+            "ok": True,
+            "report_id": str(existing_draft["_id"]),
+            "issue_id": existing_draft.get("issue_id") or issue_id,
+            "doc_name": existing_draft.get("doc_name") or doc_name,
+        }
 
     doc = {
         "station_id": station_id,
@@ -199,6 +508,7 @@ async def mdbpmreport_pre_submit(body: MDBPMSubmitIn, current: UserClaims = Depe
         "charger_count": body.charger_count or 1,
         "pm_date": body.pm_date,
         "inspector": body.inspector,
+        "summary_pre": body.summary_pre or "",
         "photos_pre": {},
         "status": "draft",
         "side": body.side,
@@ -219,21 +529,25 @@ async def mdbpmreport_pre_submit(body: MDBPMSubmitIn, current: UserClaims = Depe
 # ============================================
 
 @router.post("/mdbpmreport/submit")
-async def mdbpmreport_post_submit(body: MDBPMPostIn, current: UserClaims = Depends(get_current_user)):
+async def mdbpmreport_post_submit(
+    body: MDBPMPostIn,
+    current: UserClaims = Depends(get_current_user),
+):
+    """Submit Post-PM report for an MDB"""
     station_id = body.station_id.strip()
     coll = get_mdbpmreport_collection_for(station_id)
 
     if body.report_id:
         try:
             oid = ObjectId(body.report_id)
-        except Exception:
+        except InvalidId:
             raise HTTPException(status_code=400, detail="invalid report_id")
 
         existing = await coll.find_one({"_id": oid, "station_id": station_id})
         if not existing:
             raise HTTPException(status_code=404, detail="Report not found")
 
-        await coll.update_one({"_id": oid}, {"$set": {
+        update_fields = {
             "rows": body.rows,
             "measures": body.measures,
             "summary": body.summary,
@@ -241,19 +555,37 @@ async def mdbpmreport_post_submit(body: MDBPMPostIn, current: UserClaims = Depen
             "dust_filter": body.dust_filter,
             "side": "post",
             "timestamp_post": datetime.now(timezone.utc),
-        }})
+        }
+
+        await coll.update_one({"_id": oid}, {"$set": update_fields})
         return {"ok": True, "report_id": body.report_id}
 
-    doc = {
-        "station_id": station_id,
+    # Auto-discover latest draft
+    existing_draft = await coll.find_one(
+        {"station_id": station_id, "side": "post", "status": "draft"},
+        {"_id": 1},
+        sort=[("timestamp", -1)],
+    )
+
+    update_fields = {
         "rows": body.rows,
         "measures": body.measures,
         "summary": body.summary,
         "summaryCheck": body.summaryCheck,
         "dust_filter": body.dust_filter,
-        "status": "draft",
-        "photos": {},
         "side": "post",
+        "timestamp_post": datetime.now(timezone.utc),
+    }
+
+    if existing_draft:
+        await coll.update_one({"_id": existing_draft["_id"]}, {"$set": update_fields})
+        return {"ok": True, "report_id": str(existing_draft["_id"])}
+
+    doc = {
+        "station_id": station_id,
+        **update_fields,
+        "photos": {},
+        "status": "draft",
         "timestamp": datetime.now(timezone.utc),
     }
     res = await coll.insert_one(doc)
@@ -261,7 +593,7 @@ async def mdbpmreport_post_submit(body: MDBPMPostIn, current: UserClaims = Depen
 
 
 # ============================================
-# Photo Upload
+# Photo Upload (Pre / Post)
 # ============================================
 
 PHOTO_GROUP_PATTERN = r"(g\d+|r\d+_\d+)"
@@ -275,9 +607,11 @@ async def mdbpmreport_upload_photos_pre(
     files: List[UploadFile] = File(...),
     current: UserClaims = Depends(get_current_user),
 ):
+    """Upload Pre-PM photos for an MDB report"""
     if not re.fullmatch(PHOTO_GROUP_PATTERN, group):
         raise HTTPException(status_code=400, detail=f"Bad group key format: {group}")
 
+    # MDB-specific: map r7_* -> g7 storage
     storage_key = group
     if re.match(r"r7_\d+", group):
         storage_key = "g7"
@@ -288,11 +622,21 @@ async def mdbpmreport_upload_photos_pre(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid}, {"_id": 1, "station_id": 1})
+    doc = await coll.find_one(
+        {"_id": oid},
+        {"_id": 1, "station_id": 1, f"photos_pre.{storage_key}": 1},
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
     if doc.get("station_id") != station_id:
         raise HTTPException(status_code=400, detail="station_id mismatch")
+
+    MAX_PHOTOS_PER_GROUP = 10
+    existing_count = len((doc.get("photos_pre") or {}).get(storage_key, []))
+    remaining = MAX_PHOTOS_PER_GROUP - existing_count
+    if remaining <= 0:
+        return {"ok": True, "count": 0, "group": group, "storage_key": storage_key, "files": [], "skipped": "group_full"}
+    files = files[:remaining]
 
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "mdbpm" / station_id / report_id / "pre" / storage_key
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -309,14 +653,18 @@ async def mdbpmreport_upload_photos_pre(
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        data = resize_image_bytes(data, max_width=1280, quality=75)
+
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.jpg")
+        fname = pathlib.Path(fname).stem + ".jpg"
         path = dest_dir / fname
         with open(path, "wb") as out:
             out.write(data)
 
+        url_path = f"/uploads/mdbpm/{station_id}/{report_id}/pre/{storage_key}/{fname}"
         saved.append({
             "filename": fname,
-            "url": f"/uploads/mdbpm/{station_id}/{report_id}/pre/{storage_key}/{fname}",
+            "url": url_path,
             "uploadedAt": datetime.now(timezone.utc),
         })
 
@@ -327,6 +675,9 @@ async def mdbpmreport_upload_photos_pre(
             "$set": {"has_photos": True},
         },
     )
+    if not saved:
+        raise HTTPException(status_code=400, detail="No files were saved")
+
     return {"ok": True, "count": len(saved), "group": group, "storage_key": storage_key, "files": saved}
 
 
@@ -339,10 +690,13 @@ async def mdbpmreport_upload_photos_post(
     remark: Optional[str] = Form(None),
     current: UserClaims = Depends(get_current_user),
 ):
+    """Upload Post-PM photos for an MDB report"""
     if not re.fullmatch(PHOTO_GROUP_PATTERN, group):
         raise HTTPException(status_code=400, detail=f"Bad group key format: {group}")
 
     storage_key = group
+    if re.match(r"r7_\d+", group):
+        storage_key = "g7"
 
     coll = get_mdbpmreport_collection_for(station_id)
     try:
@@ -350,11 +704,21 @@ async def mdbpmreport_upload_photos_post(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid}, {"_id": 1, "station_id": 1})
+    doc = await coll.find_one(
+        {"_id": oid},
+        {"_id": 1, "station_id": 1, f"photos.{storage_key}": 1},
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
     if doc.get("station_id") != station_id:
         raise HTTPException(status_code=400, detail="station_id mismatch")
+
+    MAX_PHOTOS_PER_GROUP = 10
+    existing_count = len((doc.get("photos") or {}).get(storage_key, []))
+    remaining = MAX_PHOTOS_PER_GROUP - existing_count
+    if remaining <= 0:
+        return {"ok": True, "count": 0, "group": group, "storage_key": storage_key, "files": [], "skipped": "group_full"}
+    files = files[:remaining]
 
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "mdbpm" / station_id / report_id / "post" / storage_key
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -371,14 +735,18 @@ async def mdbpmreport_upload_photos_post(
         if len(data) > MAX_FILE_MB * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
 
-        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.{ext}")
+        data = resize_image_bytes(data, max_width=1280, quality=75)
+
+        fname = _safe_name(f.filename or f"image_{secrets.token_hex(3)}.jpg")
+        fname = pathlib.Path(fname).stem + ".jpg"
         path = dest_dir / fname
         with open(path, "wb") as out:
             out.write(data)
 
+        url_path = f"/uploads/mdbpm/{station_id}/{report_id}/post/{storage_key}/{fname}"
         saved.append({
             "filename": fname,
-            "url": f"/uploads/mdbpm/{station_id}/{report_id}/post/{storage_key}/{fname}",
+            "url": url_path,
             "remark": remark or "",
             "uploadedAt": datetime.now(timezone.utc),
         })
@@ -390,83 +758,10 @@ async def mdbpmreport_upload_photos_post(
             "$set": {"has_photos": True, "updatedAt": datetime.now(timezone.utc)},
         },
     )
+    if not saved:
+        raise HTTPException(status_code=400, detail="No files were saved")
+
     return {"ok": True, "count": len(saved), "group": group, "storage_key": storage_key, "files": saved}
-
-
-# ============================================
-# Get / List
-# ============================================
-
-@router.get("/mdbpmreport/get")
-async def mdbpmreport_get(station_id: str, report_id: str, current: UserClaims = Depends(get_current_user)):
-    coll = get_mdbpmreport_collection_for(station_id)
-    doc = await coll.find_one({"_id": ObjectId(report_id)})
-    if not doc:
-        raise HTTPException(status_code=404, detail="not found")
-
-    doc["_id"] = str(doc["_id"])
-
-    # backward compatibility
-    if "q4_items" not in doc:
-        doc["q4_items"] = [{"key": "r4_1", "label": "4.1) Breaker Main ตัวที่ 1"}]
-    if "charger_count" not in doc:
-        doc["charger_count"] = 1
-    if "rows_pre" not in doc:
-        doc["rows_pre"] = {}
-    if "q6_items" not in doc:
-        doc["q6_items"] = [{"key": "r6_1", "label": "6.1) Breaker CCB ตัวที่ 1"}]
-
-    return doc
-
-
-@router.get("/mdbpmreport/list")
-async def mdbpmreport_list(
-    station_id: str = Query(...),
-    page: int = Query(1, ge=1),
-    pageSize: int = Query(20, ge=1, le=100),
-):
-    coll = get_mdbpmreport_collection_for(station_id)
-    skip = (page - 1) * pageSize
-
-    cursor = coll.find(
-        {},
-        {"_id": 1, "issue_id": 1, "doc_name": 1, "pm_date": 1, "inspector": 1, "side": 1, "createdAt": 1, "charger_count": 1},
-    ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
-
-    items_raw = await cursor.to_list(length=pageSize)
-    total = await coll.count_documents({})
-
-    pm_dates = [it.get("pm_date") for it in items_raw if it.get("pm_date")]
-    url_by_day: Dict[str, str] = {}
-    if pm_dates:
-        ucoll = get_mdbpmurl_coll_upload(station_id)
-        ucur = ucoll.find({"pm_date": {"$in": pm_dates}}, {"pm_date": 1, "urls": 1})
-        url_docs = await ucur.to_list(length=10_000)
-        for u in url_docs:
-            day = u.get("pm_date")
-            first_url = (u.get("urls") or [None])[0]
-            if day and first_url and day not in url_by_day:
-                url_by_day[day] = first_url
-
-    items = [{
-        "id": str(it["_id"]),
-        "issue_id": it.get("issue_id"),
-        "doc_name": it.get("doc_name"),
-        "inspector": it.get("inspector"),
-        "side": it.get("side"),
-        "pm_date": it.get("pm_date"),
-        "charger_count": it.get("charger_count", 1),
-        "createdAt": _ensure_utc_iso(it.get("createdAt")),
-        "file_url": url_by_day.get(it.get("pm_date") or "", ""),
-    } for it in items_raw]
-
-    return {
-        "items": items,
-        "pm_date": [it.get("pm_date") for it in items_raw if it.get("pm_date")],
-        "page": page,
-        "pageSize": pageSize,
-        "total": total,
-    }
 
 
 # ============================================
@@ -485,7 +780,7 @@ async def mdbpmreport_finalize(
     except Exception:
         raise HTTPException(status_code=400, detail="Bad report_id")
 
-    doc = await coll.find_one({"_id": oid, "station_id": station_id})
+    doc = await coll.find_one({"_id": oid, "station_id": station_id}, {"_id": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
 
@@ -512,14 +807,6 @@ async def mdbpmreport_finalize(
 # MDB PM URL (PDF Upload + List)
 # ============================================
 
-class MDBPMUrlUploadIn(BaseModel):
-    station_id: str
-    reportDate: str
-    issue_id: Optional[str] = None
-    doc_name: Optional[str] = None
-    inspector: Optional[str] = None
-
-
 @router.post("/mdbpmurl/upload-files", status_code=201)
 async def mdbpmurl_upload_files(
     station_id: str = Form(...),
@@ -530,88 +817,109 @@ async def mdbpmurl_upload_files(
     inspector: Optional[str] = Form(None),
     current: UserClaims = Depends(get_current_user),
 ):
+    """Upload PM PDF files for an MDB"""
     coll = get_mdbpmurl_coll_upload(station_id)
     rep_coll = get_mdbpmreport_collection_for(station_id)
 
+    pm_date = normalize_pm_date(reportDate)
     try:
-        d = datetime.strptime(reportDate[:10], "%Y-%m-%d").date()
+        d = datetime.strptime(pm_date, "%Y-%m-%d").date()
     except ValueError:
-        raise HTTPException(status_code=400, detail="reportDate must be YYYY-MM-DD")
+        raise HTTPException(status_code=400, detail="reportDate/pm_date must be YYYY-MM-DD")
 
-    pm_date = d.isoformat()
     pm_type = "MB"
-    year = d.year
 
     # Resolve issue_id
-    final_issue_id = None
-    if issue_id:
+    final_issue_id: str | None = None
+    client_issue = (issue_id or "").strip()
+
+    if client_issue:
         yymm = f"{d.year % 100:02d}{d.month:02d}"
         prefix = f"PM-{pm_type}-{yymm}-"
-        if issue_id.startswith(prefix):
-            rep_ex = await rep_coll.find_one({"issue_id": issue_id})
-            url_ex = await coll.find_one({"issue_id": issue_id})
-            if not rep_ex and not url_ex:
-                final_issue_id = issue_id
+        valid_fmt = client_issue.startswith(prefix)
+
+        url_exists = await coll.find_one({"issue_id": client_issue})
+        rep_exists = await rep_coll.find_one({"issue_id": client_issue})
+        unique = not (url_exists or rep_exists)
+
+        if valid_fmt and unique:
+            final_issue_id = client_issue
 
     if not final_issue_id:
-        latest = await _latest_issue_id_anywhere(station_id, pm_type, d, source="mdb")
-        yymm = f"{d.year % 100:02d}{d.month:02d}"
-        prefix = f"PM-{pm_type}-{yymm}-"
-        if not latest:
-            final_issue_id = f"{prefix}01"
-        else:
-            m = re.search(r"(\d+)$", latest)
-            cur = int(m.group(1)) if m else 0
-            final_issue_id = f"{prefix}{cur+1:02d}"
+        final_issue_id = await _next_issue_id_no_conflict(
+            coll.database, rep_coll, coll, station_id, pm_type, d, pad=2
+        )
+
+    # Resolve year_seq (reuse from existing report if possible)
+    year_seq: int | None = None
+    rep = await rep_coll.find_one(
+        {"issue_id": final_issue_id},
+        {"year_seq": 1, "pm_date": 1},
+    )
+    if rep and rep.get("year_seq") is not None:
+        year_seq = int(rep["year_seq"])
+
+    if year_seq is None:
+        year_seq = await _next_year_seq(coll.database, station_id, pm_type, d)
+
+    year = d.year
 
     # Resolve doc_name
-    final_doc_name = None
+    final_doc_name: str | None = None
     if doc_name:
         candidate = doc_name.strip()
-        if candidate.startswith(f"{station_id}_"):
-            rep_ex = await rep_coll.find_one({"doc_name": candidate})
-            url_ex = await coll.find_one({"doc_name": candidate})
-            if not rep_ex and not url_ex:
-                final_doc_name = candidate
+        ok_format = candidate.startswith(f"{station_id}_")
+
+        rep_exists = await rep_coll.find_one({"doc_name": candidate})
+        url_exists = await coll.find_one({"doc_name": candidate})
+        unique = not (rep_exists or url_exists)
+
+        if ok_format and unique:
+            final_doc_name = candidate
 
     if not final_doc_name:
-        latest_doc = await _latest_doc_name_anywhere(station_id, year, source="mdb")
-        if not latest_doc:
-            final_doc_name = f"{station_id}_1/{year}"
-        else:
-            m = re.search(r"_(\d+)/\d{4}$", latest_doc)
-            num = int(m.group(1)) if m else 0
-            final_doc_name = f"{station_id}_{num+1}/{year}"
+        final_doc_name = f"{station_id}_{year_seq}/{year}"
 
     # Save files
     subdir = pm_date
     dest_dir = pathlib.Path(UPLOADS_ROOT) / "mdbpmurl" / station_id / subdir
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    urls = []
-    metas = []
+    urls: list[str] = []
+    metas: list[dict] = []
+
     for f in files:
         ext = (f.filename.rsplit(".", 1)[-1].lower() if f.filename and "." in f.filename else "")
         if ext != "pdf":
             raise HTTPException(status_code=400, detail=f"Only PDF allowed, got: {ext}")
+
         data = await f.read()
         if len(data) == 0:
             raise HTTPException(status_code=400, detail=f"Empty file: {f.filename}")
+        if not data[:5].startswith(b"%PDF-"):
+            raise HTTPException(status_code=400, detail=f"Invalid PDF file: {f.filename}")
         if len(data) > MAX_FILE_MB * 1024 * 1024:
-            raise HTTPException(status_code=413, detail=f"File too large")
+            raise HTTPException(status_code=413, detail=f"File too large (> {MAX_FILE_MB} MB)")
+
         safe = _safe_name(f.filename or f"file_{secrets.token_hex(3)}.pdf")
-        with open(dest_dir / safe, "wb") as out:
+        dest = dest_dir / safe
+        with open(dest, "wb") as out:
             out.write(data)
+
         urls.append(f"/uploads/mdbpmurl/{station_id}/{subdir}/{safe}")
         metas.append({"name": f.filename, "size": len(data)})
+
+    inspector_clean = (inspector or "").strip() or None
 
     now = datetime.now(timezone.utc)
     doc = {
         "station_id": station_id,
         "pm_date": pm_date,
         "issue_id": final_issue_id,
+        "inspector": inspector_clean,
+        "year": year,
+        "year_seq": year_seq,
         "doc_name": final_doc_name,
-        "inspector": (inspector or "").strip() or None,
         "urls": urls,
         "meta": {"files": metas},
         "source": "upload-files",
@@ -619,13 +927,16 @@ async def mdbpmurl_upload_files(
         "updatedAt": now,
     }
     res = await coll.insert_one(doc)
+
     return {
         "ok": True,
         "inserted_id": str(res.inserted_id),
         "count": len(urls),
         "urls": urls,
         "issue_id": final_issue_id,
+        "year_seq": year_seq,
         "doc_name": final_doc_name,
+        "inspector": inspector_clean,
     }
 
 
@@ -636,32 +947,154 @@ async def mdbpmurl_list(
     pageSize: int = Query(20, ge=1, le=100),
     current: UserClaims = Depends(get_current_user),
 ):
+    """List PM URL documents for an MDB"""
     coll = get_mdbpmurl_coll_upload(station_id)
     skip = (page - 1) * pageSize
 
     cursor = coll.find(
         {},
-        {"_id": 1, "issue_id": 1, "doc_name": 1, "inspector": 1, "pm_date": 1, "urls": 1, "createdAt": 1}
+        {"_id": 1, "issue_id": 1, "doc_name": 1, "inspector": 1,
+         "pm_date": 1, "reportDate": 1, "urls": 1, "createdAt": 1},
     ).sort([("createdAt", -1), ("_id", -1)]).skip(skip).limit(pageSize)
 
     items_raw = await cursor.to_list(length=pageSize)
     total = await coll.count_documents({})
 
-    items = [{
-        "id": str(it["_id"]),
-        "pm_date": it.get("pm_date"),
-        "inspector": it.get("inspector"),
-        "doc_name": it.get("doc_name"),
-        "issue_id": it.get("issue_id"),
-        "createdAt": _ensure_utc_iso(it.get("createdAt")),
-        "file_url": (it.get("urls") or [""])[0],
-        "urls": it.get("urls") or [],
-    } for it in items_raw]
+    def _pm_date_from(doc: dict) -> str | None:
+        s = doc.get("pm_date")
+        if isinstance(s, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
+            return s
+        rd = doc.get("reportDate")
+        if isinstance(rd, datetime):
+            return rd.astimezone(th_tz).date().isoformat()
+        if isinstance(rd, str):
+            try:
+                dt = datetime.fromisoformat(rd.replace("Z", "+00:00"))
+            except Exception:
+                try:
+                    dt = datetime.fromisoformat(rd).replace(tzinfo=th_tz)
+                except Exception:
+                    return None
+            return dt.astimezone(th_tz).date().isoformat()
+        return None
+
+    items = []
+    pm_date_arr = []
+
+    for it in items_raw:
+        pm_date_str = _pm_date_from(it)
+        if pm_date_str:
+            pm_date_arr.append(pm_date_str)
+
+        urls = it.get("urls") or []
+        first_url = urls[0] if urls else ""
+
+        items.append({
+            "id": str(it["_id"]),
+            "pm_date": pm_date_str,
+            "inspector": it.get("inspector"),
+            "doc_name": it.get("doc_name"),
+            "issue_id": it.get("issue_id"),
+            "createdAt": _ensure_utc_iso(it.get("createdAt")),
+            "file_url": first_url,
+            "urls": urls,
+        })
 
     return {
         "items": items,
-        "pm_date": [it.get("pm_date") for it in items_raw if it.get("pm_date")],
+        "pm_date": [d for d in pm_date_arr if d],
         "page": page,
         "pageSize": pageSize,
         "total": total,
     }
+
+
+# ============================================
+# Migration & Photos ZIP
+# ============================================
+
+@router.post("/mdbpmreport/migrate/has-photos")
+async def migrate_has_photos_endpoint(
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """One-time migration: set has_photos=True for docs that have photos but missing the flag"""
+    coll = get_mdbpmreport_collection_for(station_id)
+    result = await coll.update_many(
+        {
+            "has_photos": {"$exists": False},
+            "$or": [
+                {"photos_pre": {"$ne": {}, "$exists": True}},
+                {"photos": {"$ne": {}, "$exists": True}},
+            ],
+        },
+        {"$set": {"has_photos": True}},
+    )
+    return {"ok": True, "modified": result.modified_count}
+
+
+@router.get("/mdbpmreport/{report_id}/photos/zip")
+async def download_photos_zip(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """Download all Pre & Post photos of a report as a single ZIP file"""
+    coll = get_mdbpmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    doc = await coll.find_one(
+        {"_id": oid, "station_id": station_id},
+        {"photos_pre": 1, "photos": 1, "has_photos": 1},
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    if not doc.get("has_photos"):
+        raise HTTPException(status_code=404, detail="No photos found")
+
+    # รวม photos_pre และ photos เข้าด้วยกัน
+    all_photos: list[tuple[str, str]] = []  # (zip_path, disk_path)
+
+    photos_pre: dict = doc.get("photos_pre") or {}
+    for group, items in photos_pre.items():
+        for item in (items or []):
+            fname = item.get("filename", "")
+            if not fname:
+                continue
+            disk_path = pathlib.Path(UPLOADS_ROOT) / "mdbpm" / station_id / report_id / "pre" / group / fname
+            zip_path = f"pre/{group}/{fname}"
+            all_photos.append((zip_path, str(disk_path)))
+
+    photos_post: dict = doc.get("photos") or {}
+    for group, items in photos_post.items():
+        for item in (items or []):
+            fname = item.get("filename", "")
+            if not fname:
+                continue
+            disk_path = pathlib.Path(UPLOADS_ROOT) / "mdbpm" / station_id / report_id / "post" / group / fname
+            zip_path = f"post/{group}/{fname}"
+            all_photos.append((zip_path, str(disk_path)))
+
+    if not all_photos:
+        raise HTTPException(status_code=404, detail="No photos found")
+
+    # สร้าง ZIP ใน memory
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for zip_path, disk_path in all_photos:
+            p = pathlib.Path(disk_path)
+            if p.exists():
+                zf.write(p, arcname=zip_path)
+
+    zip_buffer.seek(0)
+    zip_filename = f"photos_{station_id}_{report_id}.zip"
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )

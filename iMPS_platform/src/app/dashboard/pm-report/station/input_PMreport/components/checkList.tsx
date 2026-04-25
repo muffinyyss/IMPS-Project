@@ -1220,21 +1220,21 @@ export default function StationPMReport() {
 
     const onPreSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        
+
         // Validation checks with scroll to error
-        if (!allPhotosAttachedPre) { 
-            alert(t("alertFillPhoto", lang)); 
+        if (!allPhotosAttachedPre) {
+            alert(t("alertFillPhoto", lang));
             const scrollId = getFirstMissingPhotoScrollId();
             if (scrollId) scrollToFirstError(scrollId);
-            return; 
+            return;
         }
-        if (!allRemarksFilledPre) { 
-            alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); 
+        if (!allRemarksFilledPre) {
+            alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`);
             const scrollId = getFirstMissingRemarkScrollId();
             if (scrollId) scrollToFirstError(scrollId);
-            return; 
+            return;
         }
-        
+
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -1284,7 +1284,7 @@ export default function StationPMReport() {
 
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
-            clearDraftLocal(key);
+            await clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=station`);
         } catch (err: any) {
             alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`);
@@ -1295,7 +1295,7 @@ export default function StationPMReport() {
 
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
-        
+
         // Validation checks with scroll to error
         if (!allPhotosAttachedPost) {
             alert(t("alertFillPhoto", lang));
@@ -1325,7 +1325,7 @@ export default function StationPMReport() {
             scrollToFirstError(`${ID_PREFIX}-summary-section`);
             return;
         }
-        
+
         if (submitting) return;
         setSubmitting(true);
         try {
@@ -1377,7 +1377,7 @@ export default function StationPMReport() {
 
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
-            clearDraftLocal(postKey);
+            await clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=station`);
         } catch (err: any) {
             alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`);

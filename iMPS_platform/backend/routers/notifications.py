@@ -1,16 +1,16 @@
 # routers/notifications.py
 import smtplib
+import asyncio
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SENDER_EMAIL
 
-from fastapi import APIRouter, Depends, Request, Query, HTTPException
+from fastapi import APIRouter, Request, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
 from pydantic import BaseModel, Field
-import asyncio
 import json
 import re
 
@@ -19,6 +19,88 @@ router = APIRouter(
     tags=["Notifications"]
 )
 
+# FIX #2: เรียง specific keywords ก่อน generic เสมอ (Python หยุด match ตัวแรกที่เจอ)
+FAULT_THRESHOLDS: list[tuple[str, int]] = [
+    # threshold 1 — most specific first
+    ("output short circuit",                  1),
+    ("duplicate module id",                   1),
+    ("input phase lost",                      1),
+    ("input asymmetric",                      1),
+    ("input under voltage",                   1),
+    ("output over voltage",                   1),
+    ("no isolation fault",                    1),
+    ("imd self check",                        1),
+    ("inactive",                              1),
+    ("ev can current range",                  1),
+    ("pe cut",                                1),
+    ("charging connector temperature",        1),
+    ("cp measures only 0v",                   1),
+
+    # threshold 2
+    ("can communication error",               2),
+
+    # threshold 3
+    ("discharge abnormal",                    3),
+    ("module protection",                     3),
+    ("power module fan error",                3),
+    ("over temperature",                      3),
+    ("pfc circuit abnormal",                  3),
+    ("pfc circuit disabled",                  3),
+    ("internal communication loss",           3),
+    ("can error",                             3),
+    ("load distribution",                     3),
+
+    # threshold 5
+    ("power units not ready",                 5),
+    ("no active power module",                5),
+    ("power module error",                    5),
+
+    # threshold 10 — specific
+    ("sdp timeout",                          10),
+    ("supportedappprotocol timeout",         10),
+    ("sessionsetup timeout",                 10),
+    ("servicediscovery timeout",             10),
+    ("servicepaymentselection timeout",      10),
+    ("contractauthentication timeout",       10),
+    ("chargeparameterdiscovery timeout",     10),
+    ("cablecheck timeout",                   10),
+    ("precharge timeout",                    10),
+    ("powerdelivery timeout",                10),
+    ("insulation_fault",                     10),
+    ("user error shutdown",                  10),
+    ("emergency stop",                       10),
+    ("stuck in initialization state",        10),
+    ("stuck in initialization secc ok",      10),
+    ("stuck in initialization contrac",      10),
+
+    # threshold 10 — generic fallback (ต้องอยู่ท้ายสุด!)
+    ("error",                                10),
+]
+
+DEFAULT_FAULT_THRESHOLD = 5
+
+_fault_counters: dict[tuple, int] = {}
+_fault_sent: set[tuple] = set()
+
+def _get_threshold(error: str) -> int:
+    error_lower = error.strip().lower()
+    for keyword, threshold in FAULT_THRESHOLDS:
+        if keyword in error_lower:
+            return threshold
+    return DEFAULT_FAULT_THRESHOLD
+
+def _increment_fault(sn: str, error: str) -> int:
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = (sn, error.strip().lower(), today)
+    _fault_counters[key] = _fault_counters.get(key, 0) + 1
+    return _fault_counters[key]
+
+def _cleanup_old_counters():
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for k in [k for k in _fault_counters if k[2] != today]:
+        del _fault_counters[k]
+    for k in [k for k in _fault_sent if k[2] != today]:  # ✅ ล้าง sent ของเมื่อวานด้วย
+        _fault_sent.discard(k)
 
 # ===== Helper Functions =====
 
@@ -66,7 +148,6 @@ def get_stations_collection(request: Request):
 
 
 def get_users_collection(request: Request):
-    """ดึง users collection จาก iMPS database"""
     try:
         from main import client
         return client["iMPS"]["users"]
@@ -75,7 +156,6 @@ def get_users_collection(request: Request):
 
 
 def get_email_rules_collection(request: Request):
-    """ดึง email_notification_rules collection จาก iMPS database"""
     try:
         from main import client
         return client["iMPS"]["email_notification_rules"]
@@ -83,73 +163,26 @@ def get_email_rules_collection(request: Request):
         raise HTTPException(status_code=500, detail="email_notification_rules collection not configured")
 
 
-async def lookup_station_name(request: Request, station_id: str) -> str:
-    if not station_id:
-        return station_id
-    try:
-        stations_coll = get_stations_collection(request)
-        station = await stations_coll.find_one({"station_id": station_id})
-        if station and station.get("station_name"):
-            return station.get("station_name")
-    except Exception as e:
-        print(f"[notifications] Lookup station name error: {e}")
-    return station_id
-
-
-async def lookup_charger_info(request: Request, chargebox_id: str) -> dict:
-    if not chargebox_id:
-        return {}
-    try:
-        charger_coll = get_charger_collection(request)
-        charger = await charger_coll.find_one({"chargeBoxID": chargebox_id})
-        if charger:
-            return {
-                "charger_no": charger.get("chargerNo"),
-                "sn": charger.get("SN"),
-                "station_name": charger.get("station_name"),
-            }
-    except Exception as e:
-        print(f"[notifications] Lookup charger error: {e}")
-    return {}
-
-
 # ================================================================
 # Email Rule Models
 # ================================================================
 
 class EmailRuleCreate(BaseModel):
-    """Body สำหรับสร้าง/อัปเดต email rule"""
-    id: Optional[str] = None           # ถ้ามี = update, ไม่มี = create
+    id: Optional[str] = None
     station_id: str
     station_name: str = ""
-    chargebox_id: str = "all"           # "all" หรือ chargeBoxID เฉพาะ
+    chargebox_id: str = "all"
     user_ids: List[str] = Field(default_factory=list)
-    notify_types: List[str] = Field(default_factory=lambda: ["error", "warning"])
     enabled: bool = True
 
 
-class EmailRuleOut(BaseModel):
-    id: str
-    station_id: str
-    station_name: str
-    chargebox_id: str
-    user_ids: List[str]
-    notify_types: List[str]
-    enabled: bool
-    created_by: Optional[str] = None
-    createdAt: Optional[str] = None
-    updatedAt: Optional[str] = None
-
-
 def format_email_rule(doc: dict) -> dict:
-    """Convert MongoDB document → response dict"""
     return {
         "id": str(doc["_id"]),
         "station_id": doc.get("station_id", ""),
         "station_name": doc.get("station_name", ""),
         "chargebox_id": doc.get("chargebox_id", "all"),
         "user_ids": doc.get("user_ids", []),
-        "notify_types": doc.get("notify_types", []),
         "enabled": doc.get("enabled", True),
         "created_by": doc.get("created_by"),
         "createdAt": doc["createdAt"].isoformat() if isinstance(doc.get("createdAt"), datetime) else doc.get("createdAt"),
@@ -165,18 +198,13 @@ def format_email_rule(doc: dict) -> dict:
 async def get_email_rules(
     request: Request,
     station_id: Optional[str] = Query(None, description="กรองตาม station_id"),
-    # current: UserClaims = Depends(get_current_user),
 ):
-    """ดึง email rules ทั้งหมด (หรือกรองตาม station_id)"""
     coll = get_email_rules_collection(request)
-
     query = {}
     if station_id:
         query["station_id"] = station_id
-
     cursor = coll.find(query).sort("createdAt", -1)
     docs = await cursor.to_list(length=200)
-
     return {
         "rules": [format_email_rule(d) for d in docs],
         "total": len(docs),
@@ -187,33 +215,16 @@ async def get_email_rules(
 async def upsert_email_rule(
     request: Request,
     body: EmailRuleCreate,
-    # current: UserClaims = Depends(get_current_user),
 ):
-    """
-    สร้างหรืออัปเดต email rule
-    - ถ้า body.id มีค่าและเจอใน DB → update
-    - ถ้าไม่มี → insert ใหม่
-    """
     coll = get_email_rules_collection(request)
     now = datetime.now(timezone.utc)
 
-    # Validate
     if not body.station_id:
         raise HTTPException(status_code=400, detail="station_id is required")
     if not body.user_ids:
         raise HTTPException(status_code=400, detail="user_ids is required")
-    if not body.notify_types:
-        raise HTTPException(status_code=400, detail="notify_types is required")
 
-    # Validate notify_types
-    valid_types = {"info", "warning", "success", "error"}
-    for nt in body.notify_types:
-        if nt not in valid_types:
-            raise HTTPException(status_code=400, detail=f"Invalid notify_type: {nt}")
-
-    # ===== Update existing =====
     if body.id:
-        # ลอง parse เป็น ObjectId ก่อน ถ้าไม่ได้ก็ค้นหาจาก rule_id field
         existing = None
         try:
             existing = await coll.find_one({"_id": ObjectId(body.id)})
@@ -226,31 +237,25 @@ async def upsert_email_rule(
                 "station_name": body.station_name,
                 "chargebox_id": body.chargebox_id,
                 "user_ids": body.user_ids,
-                "notify_types": body.notify_types,
                 "enabled": body.enabled,
                 "updatedAt": now,
             }
             await coll.update_one({"_id": existing["_id"]}, {"$set": update_data})
-
             updated = await coll.find_one({"_id": existing["_id"]})
             return {"success": True, "rule": format_email_rule(updated)}
 
-    # ===== Create new =====
     doc = {
         "station_id": body.station_id,
         "station_name": body.station_name,
         "chargebox_id": body.chargebox_id,
         "user_ids": body.user_ids,
-        "notify_types": body.notify_types,
         "enabled": body.enabled,
         "rule_id": body.id or f"rule-{int(now.timestamp() * 1000)}",
-        # "created_by": current.user_id,  # เปิดเมื่อมี auth
         "createdAt": now,
         "updatedAt": now,
     }
     result = await coll.insert_one(doc)
     doc["_id"] = result.inserted_id
-
     return {"success": True, "rule": format_email_rule(doc)}
 
 
@@ -258,12 +263,8 @@ async def upsert_email_rule(
 async def delete_email_rule(
     request: Request,
     rule_id: str,
-    # current: UserClaims = Depends(get_current_user),
 ):
-    """ลบ email rule"""
     coll = get_email_rules_collection(request)
-
-    # ลอง ObjectId ก่อน → fallback เป็น rule_id field
     deleted = False
     try:
         result = await coll.delete_one({"_id": ObjectId(rule_id)})
@@ -283,33 +284,35 @@ async def delete_email_rule(
 
 
 # ================================================================
-# Email Sending Helper (เรียกจาก SSE หรือ notification flow)
+# Email Sending Helper
 # ================================================================
 
 async def send_email_smtp(to: list[str], subject: str, body: str):
-    """ส่งอีเมลจริงผ่าน SMTP"""
+    """FIX #1: ส่งอีเมลใน thread pool ไม่บล็อก async event loop"""
     if not SMTP_USER or not SMTP_PASS:
         print("[email-notify] ❌ SMTP credentials not configured")
         return False
 
-    try:
+    def _send_blocking():
         msg = MIMEMultipart()
         msg["Subject"] = subject
         msg["From"] = SENDER_EMAIL
         msg["To"] = ", ".join(to)
         msg.attach(MIMEText(body, "plain", "utf-8"))
-
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg)
 
+    try:
+        await asyncio.to_thread(_send_blocking)
         print(f"[email-notify] ✅ Email sent to: {to}")
         return True
     except Exception as e:
         print(f"[email-notify] ❌ SMTP error: {e}")
         return False
-    
+
+
 async def check_and_send_email(request: Request, notification: dict):
     try:
         rules_coll = get_email_rules_collection(request)
@@ -318,9 +321,29 @@ async def check_and_send_email(request: Request, notification: dict):
         station_id = notification.get("station_id", "")
         sn = notification.get("sn", "")
         chargebox_id = notification.get("chargebox_id", "")
-        notif_type = notification.get("type", "error")
+        error_msg = notification.get("error", "")
 
-        # ★ ถ้า station_id ว่างหรือเป็น SN → ลอง lookup อีกครั้ง
+        # นับ fault และเช็ค threshold
+        _cleanup_old_counters()
+        current_count = _increment_fault(sn, error_msg)
+        threshold = _get_threshold(error_msg)
+
+        if current_count < threshold:
+            print(f"[email-notify] fault count {current_count}/{threshold} SN={sn} — ยังไม่ส่ง")
+            return
+
+        # ✅ เช็คว่าส่งไปแล้ววันนี้หรือยัง
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        sent_key = (sn, error_msg.strip().lower(), today)
+
+        if sent_key in _fault_sent:
+            print(f"[email-notify] already sent today SN={sn} error='{error_msg}' — skip")
+            return
+
+        print(f"[email-notify] threshold reached ({current_count}/{threshold}) SN={sn} → sending email")
+
+
+        # Lookup station จาก SN ถ้ายังไม่มี
         if not station_id or station_id == sn:
             try:
                 charger_coll = get_charger_collection(request)
@@ -332,24 +355,29 @@ async def check_and_send_email(request: Request, notification: dict):
             except Exception as e:
                 print(f"[email-notify] SN lookup fallback error: {e}")
 
+        # FIX (all station): ไม่ return ถ้า station_id ว่าง — ยังหา rule "all" ได้
         if not station_id:
-            print(f"[email-notify] No station_id for SN={sn}, skipping")
-            return
+            print(f"[email-notify] No station_id for SN={sn}, will only match 'all' rules")
 
-        # ★ Query rules ที่ match station + enabled + type
+        # Build query ให้ครอบ "all" เสมอ
+        query_conditions = [{"station_id": "all"}]
+        if station_id:
+            query_conditions.append({"station_id": station_id})
+
         query = {
-            "station_id": station_id,
+            "$or": query_conditions,
             "enabled": True,
-            "notify_types": notif_type,
         }
 
         cursor = rules_coll.find(query)
         rules = await cursor.to_list(length=100)
 
         if not rules:
-            # ★ ไม่มี rule → ไม่ส่ง email
-            print(f"[email-notify] No rules for station={station_id} type={notif_type}, skip")
+            print(f"[email-notify] No rules for station={station_id or 'unknown'}, skip")
             return
+
+        # FIX #3: dedup recipients ข้าม rules ทั้งหมด ก่อนส่ง
+        all_recipients: set[str] = set()
 
         for rule in rules:
             # เช็ค chargebox/SN filter
@@ -358,7 +386,6 @@ async def check_and_send_email(request: Request, notification: dict):
                 if rule_chargebox != chargebox_id and rule_chargebox != sn:
                     continue
 
-            # ดึง email ของ users ใน rule
             user_ids = rule.get("user_ids", [])
             if not user_ids:
                 continue
@@ -375,42 +402,54 @@ async def check_and_send_email(request: Request, notification: dict):
                 {"email": 1, "username": 1}
             )
             users = await users_cursor.to_list(length=200)
-            recipient_emails = [u["email"] for u in users if u.get("email")]
 
-            if not recipient_emails:
-                continue
+            for u in users:
+                email = u.get("email")
+                if email:
+                    all_recipients.add(email)
 
-            # ★ สร้าง email
-            station_name = notification.get("station_name", station_id)
-            head = notification.get("head", "")
-            error_msg = notification.get("error", "New notification")
+        if not all_recipients:
+            print(f"[email-notify] No recipient emails found, skip")
+            return
 
-            subject = f"[{station_name}] {notif_type.upper()}: {error_msg}"
-            body_text = f"Station: {station_name}\nSN: {sn}\n"
-            if head:
-                body_text += f"Head: {head}\n"
-            if chargebox_id:
-                body_text += f"ChargeBox ID: {chargebox_id}\n"
-            body_text += (
-                f"Type: {notif_type}\n"
-                f"Message: {error_msg}\n"
-                f"Time: {notification.get('timestamp', '-')}\n"
-            )
+        # สร้าง email และส่งครั้งเดียว
+        station_name = notification.get("station_name", station_id)
+        head = notification.get("head", "")
+        final_error_msg = notification.get("error", "New notification")
 
-            await send_email_smtp(
-                to=recipient_emails,
-                subject=subject,
-                body=body_text,
-            )
+        subject = f"[{station_name}] FAULT: {final_error_msg}"
+        body_text = f"Station: {station_name}\nSN: {sn}\n"
+        if head:
+            body_text += f"Head: {head}\n"
+        if chargebox_id:
+            body_text += f"ChargeBox ID: {chargebox_id}\n"
+        ts = notification.get('timestamp', '')
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            formatted_time = dt.strftime("%d/%m/%Y %H:%M:%S")
+        except Exception:
+            formatted_time = ts or "-"
 
-            # TODO: เปลี่ยนเป็น SMTP จริง
+        body_text += (
+            f"Message: {final_error_msg} (เกิดขึ้น {current_count} ครั้งวันนี้)\n"
+            f"Time: {formatted_time}\n"
+        )
+
+        success = await send_email_smtp(
+            to=list(all_recipients),
+            subject=subject,
+            body=body_text,
+        )
+        if success:
+            _fault_sent.add(sent_key)
 
     except Exception as e:
         print(f"[email-notify] Error: {e}")
-# ===== API Endpoints (เดิม) =====
+
+
+# ===== Station Lookup =====
 
 async def lookup_station_by_sn(request: Request, sn: str) -> dict:
-    """ค้นหา station จาก SN ของ charger"""
     if not sn:
         return {}
     try:
@@ -424,7 +463,6 @@ async def lookup_station_by_sn(request: Request, sn: str) -> dict:
                 station = await stations_coll.find_one({"station_id": station_id})
                 if station:
                     station_name = station.get("station_name", station_id)
-
             return {
                 "station_id": station_id,
                 "station_name": station_name,
@@ -436,6 +474,7 @@ async def lookup_station_by_sn(request: Request, sn: str) -> dict:
         print(f"[notifications] Lookup SN error: {e}")
     return {"sn": sn}
 
+
 def parse_fault_message(message: str) -> dict:
     """
     Parse "KungPhatthana:Head 1: EMERGENCY STOP ACTIVIVE"
@@ -443,8 +482,7 @@ def parse_fault_message(message: str) -> dict:
     """
     if not message:
         return {"source": "", "head": "", "error": ""}
-    
-    parts = message.split(":", 2)  # แยกสูงสุด 3 ส่วน
+    parts = message.split(":", 2)
     if len(parts) >= 3:
         return {
             "source": parts[0].strip(),
@@ -460,12 +498,20 @@ def parse_fault_message(message: str) -> dict:
     return {"source": "", "head": "", "error": message.strip()}
 
 
+# ================================================================
+# API Endpoints
+# ================================================================
+
 @router.get("/all")
 async def get_all_notifications(
     request: Request,
-    limit: int = Query(default=50, ge=1, le=200),
+    date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
     unread_only: bool = Query(default=False),
 ):
+    dt_from = datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc) if date_from else None
+    dt_to = datetime.fromisoformat(date_to).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc) if date_to else None
+
     errorDB = get_error_db(request)
     all_notifications = []
 
@@ -474,22 +520,32 @@ async def get_all_notifications(
 
     print(f"[notifications] Found {len(collection_names)} SN collections: {collection_names}")
 
-    # ★ cache SN → station info เพื่อไม่ต้อง query ซ้ำทุก doc
     sn_cache: dict[str, dict] = {}
 
     for sn in collection_names:
         try:
-            # Lookup SN → station info (ใช้ cache)
             if sn not in sn_cache:
                 sn_cache[sn] = await lookup_station_by_sn(request, sn)
             station_info = sn_cache[sn]
 
             coll = errorDB[sn]
-            cursor = coll.find({}).sort("_id", -1).limit(limit)
+            cursor = coll.find({}).sort("_id", -1)
             docs = await cursor.to_list(None)
 
             for doc in docs:
-                # ★ Parse message field แทน error field
+                ts = _get_timestamp(doc)
+                if (dt_from or dt_to) and ts:
+                    try:
+                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        if dt_from and dt < dt_from:
+                            continue
+                        if dt_to and dt > dt_to:
+                            continue
+                    except Exception as e:
+                        print(f"[notifications] timestamp parse error: {ts} — {e}")
+
                 raw_message = doc.get("message") or doc.get("error") or ""
                 parsed = parse_fault_message(raw_message)
 
@@ -505,7 +561,6 @@ async def get_all_notifications(
                     "error_code": doc.get("error_code") or doc.get("errorCode"),
                     "timestamp": _get_timestamp(doc),
                     "read": doc.get("read", False),
-                    "type": _determine_type_from_message(raw_message),
                 }
                 all_notifications.append(notification)
 
@@ -518,8 +573,6 @@ async def get_all_notifications(
     if unread_only:
         all_notifications = [n for n in all_notifications if not n.get("read")]
 
-    all_notifications = all_notifications[:limit]
-
     return {
         "notifications": all_notifications,
         "total": len(all_notifications),
@@ -527,10 +580,10 @@ async def get_all_notifications(
         "stations": collection_names,
     }
 
+
 @router.get("/count")
 async def get_notification_count(request: Request):
     errorDB = get_error_db(request)
-
     unread_count = 0
     total_count = 0
 
@@ -559,16 +612,6 @@ async def notifications_stream(request: Request):
     """SSE stream สำหรับ real-time notifications จากทุก stations — พร้อมส่ง email"""
     errorDB = get_error_db(request)
 
-    try:
-        charger_coll = get_charger_collection(request)
-    except:
-        charger_coll = None
-
-    try:
-        stations_coll = get_stations_collection(request)
-    except:
-        stations_coll = None
-
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -578,36 +621,7 @@ async def notifications_stream(request: Request):
 
     async def event_generator():
         last_ids = {}
-        station_name_cache = {}
-        sn_cache = {} 
-
-        async def get_charger_info(chargebox_id: str) -> dict:
-            if not chargebox_id or not charger_coll:
-                return {}
-            try:
-                charger = await charger_coll.find_one({"chargeBoxID": chargebox_id})
-                if charger:
-                    return {
-                        "charger_no": charger.get("chargerNo"),
-                        "sn": charger.get("SN"),
-                    }
-            except:
-                pass
-            return {}
-
-        async def get_station_name(station_id: str) -> str:
-            if station_id in station_name_cache:
-                return station_name_cache[station_id]
-            if not stations_coll:
-                return station_id
-            try:
-                station = await stations_coll.find_one({"station_id": station_id})
-                if station and station.get("station_name"):
-                    station_name_cache[station_id] = station.get("station_name")
-                    return station.get("station_name")
-            except:
-                pass
-            return station_id
+        sn_cache = {}
 
         # ----- Initial load -----
         collection_names = await errorDB.list_collection_names()
@@ -640,7 +654,6 @@ async def notifications_stream(request: Request):
                         "head": parsed.get("head", ""),
                         "timestamp": _get_timestamp(latest),
                         "read": latest.get("read", False),
-                        "type": _determine_type_from_message(raw_message),
                     })
             except Exception as e:
                 print(f"[notifications] Init error for {sn}: {e}")
@@ -679,17 +692,15 @@ async def notifications_stream(request: Request):
                             "station_name": station_info.get("station_name") or parsed.get("source") or station_id,
                             "chargebox_id": station_info.get("chargebox_id", ""),
                             "charger_no": station_info.get("charger_no"),
-                            "sn": station_id,  # collection name = SN
+                            "sn": station_id,
                             "error": parsed.get("error") or raw_message,
                             "head": parsed.get("head", ""),
                             "timestamp": _get_timestamp(latest),
                             "read": latest.get("read", False),
-                            "type": _determine_type_from_message(raw_message),
                         }
 
                         yield f"event: new\ndata: {to_json(notification)}\n\n"
 
-                        # ★ ส่ง email ถ้ามี rule ที่ match
                         try:
                             await check_and_send_email(request, notification)
                         except Exception as email_err:
@@ -713,7 +724,6 @@ async def mark_as_read(
     sn: str = Query(None, description="SN = ชื่อ collection ใน errorDB"),
 ):
     errorDB = get_error_db(request)
-    # ★ ใช้ sn เป็นหลัก, fallback เป็น station_id (backward compat)
     collection_name = sn or station_id
     if not collection_name:
         raise HTTPException(status_code=400, detail="sn or station_id is required")
@@ -777,6 +787,7 @@ async def delete_notification(
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+
 # ===== Private Helper Functions =====
 
 def _get_timestamp(doc: dict):
@@ -785,23 +796,106 @@ def _get_timestamp(doc: dict):
         return ts.isoformat()
     return ts
 
-def _determine_type(doc: dict) -> str:
-    # ★ ดูจาก message ด้วย (ไม่ใช่แค่ error)
-    error_text = str(doc.get("message") or doc.get("error", "")).lower()
-    return _classify_error_text(error_text)
+@router.get("/debug/fault-counters")
+async def get_fault_counters(request: Request):
+    """ดู fault counters ปัจจุบัน + faults ทั้งหมดของวันนี้จาก DB"""
+    from datetime import datetime, timezone
 
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    dt_start = datetime.strptime(today, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    dt_end = dt_start.replace(hour=23, minute=59, second=59)
 
-def _determine_type_from_message(message: str) -> str:
-    return _classify_error_text(message.lower())
+    # ===== In-memory counters =====
+    counter_result = []
+    for (sn, error, date), count in _fault_counters.items():
+        threshold = _get_threshold(error)
+        counter_result.append({
+            "sn": sn,
+            "error": error,
+            "date": date,
+            "count": count,
+            "threshold": threshold,
+            "reached": count >= threshold,
+        })
+    counter_result.sort(key=lambda x: x["count"], reverse=True)
 
+    # ===== Faults from DB today =====
+    errorDB = get_error_db(request)
+    db_faults = []
+    total_today = 0
 
-def _classify_error_text(error_text: str) -> str:
-    if any(kw in error_text for kw in ["emergency", "offline", "disconnect", "fail", "critical", "overcurrent", "fault"]):
-        return "error"
-    if any(kw in error_text for kw in ["warning", "maintenance", "pm", "low", "high"]):
-        return "warning"
-    if any(kw in error_text for kw in ["success", "complete", "approved", "done"]):
-        return "success"
-    if any(kw in error_text for kw in ["info", "update", "notice"]):
-        return "info"
-    return "error"
+    try:
+        collection_names = await errorDB.list_collection_names()
+        collection_names = [c for c in collection_names if not c.startswith("system.")]
+
+        for sn in collection_names:
+            try:
+                coll = errorDB[sn]
+                # นับ + ดึง docs ของวันนี้
+                docs = await coll.find({}).sort("_id", -1).to_list(None)
+
+                sn_count = 0
+                for doc in docs:
+                    ts = _get_timestamp(doc)
+                    if not ts:
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        if dt < dt_start or dt > dt_end:
+                            continue
+                    except Exception:
+                        continue
+
+                    raw = doc.get("message") or doc.get("error") or ""
+                    parsed = parse_fault_message(raw)
+                    error_text = parsed.get("error") or raw
+
+                    db_faults.append({
+                        "sn": sn,
+                        "error": error_text,
+                        "head": parsed.get("head", ""),
+                        "timestamp": ts,
+                        "threshold": _get_threshold(error_text),
+                    })
+                    sn_count += 1
+
+                total_today += sn_count
+
+            except Exception as e:
+                print(f"[debug] Error reading {sn}: {e}")
+                continue
+
+    except Exception as e:
+        db_faults = [{"error": f"DB error: {e}"}]
+
+    db_faults.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+
+    return {
+        "today": today,
+        # in-memory counters
+        "counters": {
+            "total_tracked": len(counter_result),
+            "reached_threshold": [r for r in counter_result if r["reached"]],
+            "pending": [r for r in counter_result if not r["reached"]],
+        },
+        # faults from DB
+        "db_today": {
+            "total": total_today,
+            "faults": db_faults,
+        },
+    }
+
+@router.get("/debug/watcher-status")
+async def watcher_status():
+    import main
+    task = main.email_watcher_task
+    if task is None:
+        return {"status": "task is None — lifespan ไม่ได้ start watcher"}
+    return {
+        "task_exists": True,
+        "task_done": task.done(),
+        "task_cancelled": task.cancelled(),
+        "task_exception": str(task.exception()) if task.done() and not task.cancelled() else None,
+    }

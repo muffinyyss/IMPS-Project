@@ -1,4 +1,5 @@
 import type { PhotoRef } from "./draftPhotos";
+import { delAllPhotosForDraft } from "./draftPhotos";
 
 type PF = "PASS" | "FAIL" | "NA" | "";
 
@@ -79,12 +80,28 @@ export function loadDraftLocal<T = DraftData>(key: string): T | null {
   }
 }
 
-export function clearDraftLocal(key: string) {
+export async function clearDraftLocal(key: string) {
   const ls = safeStorage();
-  if (!ls) return;
+  let photoRefs: DraftData["photoRefs"] | undefined;
+  if (ls) {
+    try {
+      const raw = ls.getItem(key);
+      if (raw) {
+        const data = JSON.parse(raw) as DraftData;
+        photoRefs = data.photoRefs;
+      }
+    } catch { }
+  }
+
   try {
-    ls.removeItem(key);
-  } catch (e) {
-    console.error("clearDraftLocal failed:", e);
+    await delAllPhotosForDraft(key, photoRefs);
+  } catch { }
+
+  if (ls) {
+    try {
+      ls.removeItem(key);
+    } catch (e) {
+      console.error("clearDraftLocal failed:", e);
+    }
   }
 }

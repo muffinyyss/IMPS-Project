@@ -315,7 +315,7 @@ type UnitVoltage = (typeof UNITS.voltage)[number];
 
 type PhotoItem = {
     id: string; file?: File; preview?: string; remark?: string;
-    uploading?: boolean; error?: string; ref?: PhotoRef; isNA?: boolean;
+    uploading?: boolean; uploaded?: boolean; error?: string; ref?: PhotoRef; isNA?: boolean;
     createdAt?: string; location?: string;
 };
 
@@ -885,6 +885,7 @@ export default function MDBPMForm() {
     const [postApiLoaded, setPostApiLoaded] = useState(false);
     const [photos, setPhotos] = useState<Record<string | number, PhotoItem[]>>({});
     const [summary, setSummary] = useState<string>("");
+    const [summaryPre, setSummaryPre] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
 
     const key = useMemo(() => draftKey(stationId), [stationId]);
@@ -1064,7 +1065,7 @@ export default function MDBPMForm() {
         if (draft.m6) setM6State(draft.m6);
         if (draft.m7) setM7State(draft.m7);
         if (typeof draft.dustFilterChanged === "boolean") setDustFilterChanged(draft.dustFilterChanged);
-        if (draft.summary) setSummary(draft.summary);
+        if (draft.summary) setSummaryPre(draft.summary); // เปลี่ยน
         if (draft.q4_items) setQ4Items(draft.q4_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerMain(i + 1, lang) })));
         if (draft.q6_items) setQ6Items(draft.q6_items.map((it: any, i: number) => ({ ...it, label: getDynamicLabel.breakerCCB(i + 1, lang) })));
         if (draft.charger_count) setChargerCount(draft.charger_count);
@@ -1082,7 +1083,14 @@ export default function MDBPMForm() {
                         if ('isNA' in ref && ref.isNA) { items.push({ id: `na-${photoKey}`, isNA: true }); }
                         else if ('dbKey' in ref) {
                             const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
-                            if (file && !canceled) items.push({ id: (ref as PhotoRef).id, file, preview: URL.createObjectURL(file), remark: (ref as PhotoRef).remark, ref: ref as PhotoRef });
+                            if (file && !canceled) items.push({
+                                id: (ref as PhotoRef).id,
+                                file,
+                                preview: URL.createObjectURL(file),
+                                remark: (ref as PhotoRef).remark,
+                                ref: ref as PhotoRef,
+                                uploaded: (ref as any).uploaded === true, // เพิ่มบรรทัดนี้
+                            });
                         }
                     }
                     if (items.length > 0) loadedPhotos[photoKey] = items;
@@ -1120,7 +1128,14 @@ export default function MDBPMForm() {
                         if ('isNA' in ref && ref.isNA) { items.push({ id: `na-${photoKey}`, isNA: true }); }
                         else if ('dbKey' in ref) {
                             const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
-                            if (file && !canceled) items.push({ id: (ref as PhotoRef).id, file, preview: URL.createObjectURL(file), remark: (ref as PhotoRef).remark, ref: ref as PhotoRef });
+                            if (file && !canceled) items.push({
+                                id: (ref as PhotoRef).id,
+                                file,
+                                preview: URL.createObjectURL(file),
+                                remark: (ref as PhotoRef).remark,
+                                ref: ref as PhotoRef,
+                                uploaded: (ref as any).uploaded === true, // เพิ่มบรรทัดนี้
+                            });
                         }
                     }
                     if (items.length > 0) loadedPhotos[photoKey] = items;
@@ -1288,15 +1303,27 @@ export default function MDBPMForm() {
     const photoRefs = useMemo(() => {
         const out: Record<string | number, (PhotoRef | { isNA: true })[]> = {};
         Object.entries(photos).forEach(([k, list]) => {
-            out[k] = (list || []).map(p => p.isNA ? { isNA: true } : p.ref).filter(Boolean) as (PhotoRef | { isNA: true })[];
+            out[k] = (list || [])
+                .map(p => {
+                    if (p.isNA) return { isNA: true } as const;
+                    if (!p.ref) return null;
+                    return { ...p.ref, uploaded: p.uploaded === true } as PhotoRef & { uploaded: boolean };
+                })
+                .filter(Boolean) as (PhotoRef | { isNA: true })[];
         });
         return out;
     }, [photos]);
 
     useDebouncedEffect(() => {
         if (!stationId || isPostMode) return;
-        saveDraftLocal(key, { rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State, summary, dustFilterChanged, photoRefs, q4_items: q4Items, q6_items: q6Items, charger_count: chargerCount });
-    }, [key, stationId, rows, m4State, m5State, m6State, m7State, summary, dustFilterChanged, photoRefs, q4Items, q6Items, chargerCount, isPostMode]);
+        saveDraftLocal(key, {
+            rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
+            summary: summaryPre,
+            dustFilterChanged, photoRefs,
+            q4_items: q4Items, q6_items: q6Items, charger_count: chargerCount
+        });
+    }, [key, stationId, rows, m4State, m5State, m6State, m7State, summaryPre,
+        dustFilterChanged, photoRefs, q4Items, q6Items, chargerCount, isPostMode]);
 
     useDebouncedEffect(() => {
         if (!stationId || !isPostMode || !editId) return;
@@ -1381,6 +1408,7 @@ export default function MDBPMForm() {
 
     const onPreSave = async () => {
         if (!stationId) { alert(t("alertNoStation", lang)); return; }
+        if (!allPhotosAttachedPre) { alert(t("photoNotComplete", lang)); return; } // เพิ่ม guard
         if (!allRequiredInputsFilled) { alert(t("alertFillVoltage", lang)); return; }
         if (!allRemarksFilledPre) { alert(`${t("alertFillRemark", lang)} ${missingRemarksPre.join(", ")}`); return; }
         if (submitting) return;
@@ -1396,56 +1424,113 @@ export default function MDBPMForm() {
                 const payload = {
                     station_id: stationId, issue_id: issueIdFromJob, job: jobWithoutIssueId, inspector,
                     measures_pre: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
-                    rows_pre: flattenRows(), pm_date: job.date?.trim() || "", doc_name: docName, side: "pre" as TabId,
+                    rows_pre: flattenRows(), pm_date: job.date?.trim() || "",
+                    doc_name: docName, side: "pre" as TabId,
                     q4_items: q4Items, q6_items: q6Items, charger_count: chargerCount,
                 };
-                const res = await apiFetch(`${API_BASE}/mdbpmreport/pre/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
+                const res = await apiFetch(`${API_BASE}/mdbpmreport/pre/submit`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    credentials: "include", body: JSON.stringify(payload)
+                });
                 if (!res.ok) throw new Error(await res.text());
                 const jsonRes = await res.json() as { report_id: string; doc_name?: string };
-                if (!jsonRes?.report_id) {
-                    throw new Error(`pre/submit did not return report_id. Response: ${JSON.stringify(jsonRes)}`);
-                }
+                if (!jsonRes?.report_id) throw new Error(`pre/submit did not return report_id. Response: ${JSON.stringify(jsonRes)}`);
                 report_id = jsonRes.report_id;
                 if (jsonRes.doc_name) setDocName(jsonRes.doc_name);
                 preReportIdRef.current = report_id;
-                saveDraftLocal(key, { ...loadDraftLocal(key), pendingReportId: report_id, rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State, summary, dustFilterChanged, photoRefs });
+                saveDraftLocal(key, {
+                    ...loadDraftLocal(key),
+                    pendingReportId: report_id,
+                    rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
+                    summary: summaryPre, dustFilterChanged, photoRefs
+                });
             }
 
-            const uploadEntries: { group: string; files: File[] }[] = [];
+            // ⚡ per-photo tasks — skip รูปที่ uploaded แล้ว
+            type UploadTask = { group: string; photoId: string; file: File };
+            const allPreTasks: UploadTask[] = [];
             for (const [no, list] of Object.entries(photos)) {
-                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
-                if (files.length > 0) uploadEntries.push({ group: no, files });
+                (list || []).forEach(p => {
+                    if (p.file && !p.uploaded && !p.isNA) {
+                        allPreTasks.push({ group: no, photoId: p.id, file: p.file });
+                    }
+                });
             }
-            const totalPhotos = uploadEntries.reduce((sum, e) => sum + e.files.length, 0);
+            const totalPhotos = allPreTasks.length;
+
+            // Guard: มีรูปใน state แต่ไม่มี file (draft โหลดไม่สมบูรณ์)
+            const hasAnyPhotoInState = Object.values(photos).some(list => (list || []).length > 0);
+            const hasAnyFile = Object.values(photos).some(list => (list || []).some(p => p.file || p.isNA));
+            if (hasAnyPhotoInState && !hasAnyFile) {
+                throw new Error(lang === "th"
+                    ? "ไม่พบไฟล์รูปภาพ กรุณาแนบรูปใหม่อีกครั้ง"
+                    : "Photo files not found. Please re-attach photos.");
+            }
 
             if (totalPhotos > 0) {
                 setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
                 let completedCount = 0, failedCount = 0;
                 const failures: { group: string; error: string }[] = [];
-                const allTasks: { group: string; file: File }[] = [];
-                for (const entry of uploadEntries) {
-                    const compressed = await Promise.all(entry.files.map(f => compressImage(f)));
-                    for (const file of compressed) allTasks.push({ group: entry.group, file });
-                }
+
                 const CONCURRENCY = 3;
-                let idx = 0;
-                const finalReportId = report_id;
+                const finalReportId = report_id!;
                 const finalStationId = stationId;
-                const runNext = async (): Promise<void> => {
-                    while (idx < allTasks.length) {
-                        const taskIdx = idx++;
-                        const task = allTasks[taskIdx];
-                        try { await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, task.file, "pre"); }
-                        catch (err: any) { failedCount++; failures.push({ group: task.group, error: err?.message || "unknown" }); }
-                        completedCount++;
-                        setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
+
+                const tasksByGroup = new Map<string, UploadTask[]>();
+                for (const task of allPreTasks) {
+                    if (!tasksByGroup.has(task.group)) tasksByGroup.set(task.group, []);
+                    tasksByGroup.get(task.group)!.push(task);
+                }
+                const groupEntries = Array.from(tasksByGroup.entries());
+                let groupIdx = 0;
+
+                const runNextGroup = async (): Promise<void> => {
+                    while (groupIdx < groupEntries.length) {
+                        const myIdx = groupIdx++;
+                        const [group, tasks] = groupEntries[myIdx];
+                        for (const task of tasks) {
+                            try {
+                                const compressed = await compressImage(task.file);
+                                await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, compressed, "pre");
+                                setPhotos(prev => ({
+                                    ...prev,
+                                    [group]: (prev[group] || []).map(p =>
+                                        p.id === task.photoId ? { ...p, uploaded: true } : p
+                                    ),
+                                }));
+                            } catch (err: any) {
+                                failedCount++;
+                                failures.push({ group, error: err?.message || "unknown" });
+                            }
+                            completedCount++;
+                            setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
+                        }
                     }
                 };
-                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNext()));
+
+                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNextGroup()));
                 setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
+
                 if (failures.length > 0) {
+                    // Flush draft ทันที เพื่อ persist uploaded flags ก่อน debounce
+                    const latestPhotoRefs: Record<string, any> = {};
+                    Object.entries(photosRef.current).forEach(([k, list]) => {
+                        latestPhotoRefs[k] = (list || []).map(p => {
+                            if (p.isNA) return { isNA: true };
+                            if (!p.ref) return null;
+                            return { ...p.ref, uploaded: p.uploaded === true };
+                        }).filter(Boolean);
+                    });
+                    saveDraftLocal(key, {
+                        ...loadDraftLocal(key), pendingReportId: report_id,
+                        rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
+                        summary: summaryPre, dustFilterChanged, photoRefs: latestPhotoRefs
+                    });
                     const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
-                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n${details}`);
+                    alert(
+                        `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length} ${lang === "th" ? "รูป" : "photos"}\n\n`
+                        + `${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
+                    );
                     return;
                 }
             }
@@ -1461,7 +1546,8 @@ export default function MDBPMForm() {
             nextParams.set("edit_id", report_id);
             nextParams.set("pmtab", "post");
             router.replace(`${pathname}?${nextParams.toString()}`);
-        } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
+        } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); }
+        finally { setSubmitting(false); }
     };
 
     const onFinalSave = async () => {
@@ -1479,67 +1565,123 @@ export default function MDBPMForm() {
                 if (draft?.pendingReportId) { report_id = draft.pendingReportId; postReportIdRef.current = report_id; }
             }
             if (!report_id) {
-                const payload = { station_id: stationId, rows: flattenRows(), measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State }, summary, ...(summaryCheck ? { summaryCheck } : {}), dust_filter: dustFilterChanged ? "yes" : "no", side: "post" as TabId, report_id: editId };
-                const res = await apiFetch(`${API_BASE}/${PM_PREFIX}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(payload) });
+                const payload = {
+                    station_id: stationId, rows: flattenRows(),
+                    measures: { m4: m4State, m5: m5State, m6: m6State, m7: m7State },
+                    summary, ...(summaryCheck ? { summaryCheck } : {}),
+                    dust_filter: dustFilterChanged ? "yes" : "no",
+                    side: "post" as TabId, report_id: editId
+                };
+                const res = await apiFetch(`${API_BASE}/${PM_PREFIX}/submit`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    credentials: "include", body: JSON.stringify(payload)
+                });
                 if (!res.ok) throw new Error(await res.text());
                 const jsonRes = await res.json() as { report_id: string };
                 report_id = jsonRes.report_id;
                 postReportIdRef.current = report_id;
-                saveDraftLocal(postKey, { ...loadDraftLocal(postKey), pendingReportId: report_id, rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State, summary, summaryCheck, dustFilterChanged, photoRefs });
+                saveDraftLocal(postKey, {
+                    ...loadDraftLocal(postKey), pendingReportId: report_id,
+                    rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
+                    summary, summaryCheck, dustFilterChanged, photoRefs
+                });
             }
 
-            const uploadEntries: { group: string; files: File[] }[] = [];
-            for (const [no, list] of Object.entries(photos)) {
-                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
-                if (files.length > 0) uploadEntries.push({ group: no, files });
-            }
-            const totalPhotos = uploadEntries.reduce((sum, e) => sum + e.files.length, 0);
+            // ⚡ per-photo tasks — skip รูปที่ uploaded แล้ว
+            type UploadTask = { group: string; photoId: string; file: File };
+            const allPostTasks: UploadTask[] = [];
+            Object.entries(photos).forEach(([no, list]) => {
+                (list || []).forEach(p => {
+                    if (p.file && !p.uploaded && !p.isNA) {
+                        allPostTasks.push({ group: no, photoId: p.id, file: p.file });
+                    }
+                });
+            });
 
-            if (totalPhotos > 0) {
+            if (allPostTasks.length > 0) {
+                const totalPhotos = allPostTasks.length;
                 setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
                 let completedCount = 0, failedCount = 0;
                 const failures: { group: string; error: string }[] = [];
-                const allTasks: { group: string; file: File }[] = [];
-                for (const entry of uploadEntries) {
-                    const compressed = await Promise.all(entry.files.map(f => compressImage(f)));
-                    for (const file of compressed) allTasks.push({ group: entry.group, file });
-                }
                 const CONCURRENCY = 3;
-                let idx = 0;
-                const finalReportId = report_id;
+                const finalReportId = report_id!;
                 const finalStationId = stationId;
-                const runNext = async (): Promise<void> => {
-                    while (idx < allTasks.length) {
-                        const taskIdx = idx++;
-                        const task = allTasks[taskIdx];
-                        try { await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, task.file, "post"); }
-                        catch (err: any) { failedCount++; failures.push({ group: task.group, error: err?.message || "unknown" }); }
-                        completedCount++;
-                        setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
+
+                const tasksByGroup = new Map<string, UploadTask[]>();
+                for (const task of allPostTasks) {
+                    if (!tasksByGroup.has(task.group)) tasksByGroup.set(task.group, []);
+                    tasksByGroup.get(task.group)!.push(task);
+                }
+                const groupEntries = Array.from(tasksByGroup.entries());
+                let groupIdx = 0;
+
+                const runNextGroup = async (): Promise<void> => {
+                    while (groupIdx < groupEntries.length) {
+                        const myIdx = groupIdx++;
+                        const [group, tasks] = groupEntries[myIdx];
+                        for (const task of tasks) {
+                            try {
+                                const compressed = await compressImage(task.file);
+                                await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, compressed, "post");
+                                setPhotos(prev => ({
+                                    ...prev,
+                                    [group]: (prev[group] || []).map(p =>
+                                        p.id === task.photoId ? { ...p, uploaded: true } : p
+                                    ),
+                                }));
+                            } catch (err: any) {
+                                failedCount++;
+                                failures.push({ group, error: err?.message || "unknown" });
+                            }
+                            completedCount++;
+                            setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
+                        }
                     }
                 };
-                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNext()));
+
+                await Promise.all(Array.from({ length: CONCURRENCY }, () => runNextGroup()));
                 setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
+
                 if (failures.length > 0) {
+                    // Flush draft ทันที
+                    const latestPhotoRefs: Record<string, any> = {};
+                    Object.entries(photosRef.current).forEach(([k, list]) => {
+                        latestPhotoRefs[k] = (list || []).map(p => {
+                            if (p.isNA) return { isNA: true };
+                            if (!p.ref) return null;
+                            return { ...p.ref, uploaded: p.uploaded === true };
+                        }).filter(Boolean);
+                    });
+                    saveDraftLocal(postKey, {
+                        ...loadDraftLocal(postKey), pendingReportId: report_id,
+                        rows, m4: m4State, m5: m5State, m6: m6State, m7: m7State,
+                        summary, summaryCheck, dustFilterChanged, photoRefs: latestPhotoRefs
+                    });
                     const details = failures.map(f => `ข้อ ${f.group}: ${f.error}`).join("\n");
-                    alert(`${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length}\n\n${details}`);
+                    alert(
+                        `${lang === "th" ? "อัปโหลดรูปไม่สำเร็จ" : "Photo upload failed"} ${failures.length}\n\n`
+                        + `${lang === "th" ? "กดบันทึกอีกครั้งเพื่ออัปโหลดเฉพาะรูปที่ค้าง" : "Click save again to retry only the failed photos"}\n\n${details}`
+                    );
                     return;
                 }
             }
 
-            const finalizeRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, { method: "POST", credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
+            const finalizeRes = await apiFetch(`${API_BASE}/${PM_PREFIX}/${report_id}/finalize`, {
+                method: "POST", credentials: "include",
+                body: new URLSearchParams({ station_id: stationId })
+            });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             postReportIdRef.current = null;
             const allPhotos = Object.values(photos).flat();
             Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => { });
             clearDraftLocal(postKey);
-            // navigate to list - remove post mode params
             const listParams = new URLSearchParams();
             listParams.set("station_id", stationId);
             const viewParam = searchParams.get("view");
             if (viewParam) listParams.set("view", viewParam);
             router.replace(`${pathname}?${listParams.toString()}`);
-        } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); } finally { setSubmitting(false); }
+        } catch (err: any) { alert(`${t("alertSaveFailed", lang)} ${err?.message ?? err}`); }
+        finally { setSubmitting(false); }
     };
 
     // ==================== TAB NAVIGATION ====================
@@ -2015,12 +2157,45 @@ export default function MDBPMForm() {
 
                     <div id="mdb-pm-summary-section" className="tw-mt-6 sm:tw-mt-8 tw-space-y-3 tw-transition-all tw-duration-300">
                         <Typography variant="h6" className="tw-mb-1 tw-text-sm sm:tw-text-base">{t("comment", lang)}</Typography>
-                        <Textarea label={t("comment", lang)} value={summary} onChange={e => setSummary(e.target.value)} rows={3} required={isPostMode} autoComplete="off" containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full !tw-text-sm resize-none" />
-                        {displayTab === "post" && (
-                            <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
-                                <PassFailRow label={t("summaryResult", lang)} value={summaryCheck} onChange={v => setSummaryCheck(v)} lang={lang}
-                                    labels={{ PASS: t("summaryPassLabel", lang), FAIL: t("summaryFailLabel", lang), NA: t("summaryNALabel", lang) }} />
-                            </div>
+
+                        {displayTab === "pre" ? (
+                            // Pre-PM: ใช้ summaryPre
+                            <Textarea
+                                label={t("comment", lang)}
+                                value={summaryPre}
+                                onChange={e => setSummaryPre(e.target.value)}
+                                rows={3}
+                                autoComplete="off"
+                                containerProps={{ className: "!tw-min-w-0" }}
+                                className="!tw-w-full !tw-text-sm resize-none"
+                            />
+                        ) : (
+                            // Post-PM: ใช้ summary
+                            <>
+                                <Textarea
+                                    label={t("comment", lang)}
+                                    value={summary}
+                                    onChange={e => setSummary(e.target.value)}
+                                    rows={3}
+                                    required={isPostMode}
+                                    autoComplete="off"
+                                    containerProps={{ className: "!tw-min-w-0" }}
+                                    className="!tw-w-full !tw-text-sm resize-none"
+                                />
+                                <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-200">
+                                    <PassFailRow
+                                        label={t("summaryResult", lang)}
+                                        value={summaryCheck}
+                                        onChange={v => setSummaryCheck(v)}
+                                        lang={lang}
+                                        labels={{
+                                            PASS: t("summaryPassLabel", lang),
+                                            FAIL: t("summaryFailLabel", lang),
+                                            NA: t("summaryNALabel", lang)
+                                        }}
+                                    />
+                                </div>
+                            </>
                         )}
                     </div>
 

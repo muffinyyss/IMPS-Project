@@ -22,7 +22,7 @@ import {
   Typography,
 } from "@material-tailwind/react";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon, DocumentArrowDownIcon, PhotoIcon } from "@heroicons/react/24/outline";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
 import CCBPMForm from "@/app/dashboard/pm-report/ccb/input_PMreport/components/checkList";
 import { apiFetch } from "@/utils/api";
@@ -79,6 +79,7 @@ type TData = {
   office: string;
   inspector?: string;
   side?: string;
+  has_photos?: boolean;
 };
 
 type Props = { token?: string; apiBase?: string; };
@@ -340,7 +341,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         const id = extractId(it);
         const generatedUrl = id ? `${apiBase}/pdf/ccb/${encodeURIComponent(id)}/export` : "";
         const fileUrl = uploadedUrl || generatedUrl;
-        return { id, issue_id: (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "", doc_name: it.doc_name ? String(it.doc_name) : "", pm_date: isoDay, position: isoDay, office: fileUrl, inspector: (it.inspector ?? it.job?.inspector ?? "") as string, side: (it.side ?? it.job?.side ?? "") as string } as TData;
+        return { id, issue_id: (it.issue_id ? String(it.issue_id) : "") || extractDocIdFromAnything(fileUrl) || "", doc_name: it.doc_name ? String(it.doc_name) : "", pm_date: isoDay, position: isoDay, office: fileUrl, inspector: (it.inspector ?? it.job?.inspector ?? "") as string, side: (it.side ?? it.job?.side ?? "") as string, has_photos: Boolean(it.has_photos) } as TData;
       });
 
       const urlRows: TData[] = urlItems.map((it: any) => {
@@ -435,10 +436,33 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         } else {
           return (
             <div className="tw-flex tw-items-center tw-justify-center tw-gap-1">
-              <a aria-label={t("preview", lang)} href={previewHref} target="_blank" rel="noopener noreferrer"
+              <a
+                aria-label={t("preview", lang)}
+                href={previewHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  apiFetch(`${BASE}/ccbpmreport/${info.row.original.id}/mark-downloaded?station_id=${encodeURIComponent(stationId || "")}&download_type=pdf`, {
+                    method: "POST", credentials: "include",
+                  }).catch(console.error);
+                }}
                 className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-red-600 hover:tw-text-red-800 hover:tw-bg-red-50 tw-transition-colors"
-                title={t("preview", lang)}><DocumentArrowDownIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" /></a>
-              
+                title={t("preview", lang)}
+              >
+                <DocumentArrowDownIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
+              </a>
+              {info.row.original.has_photos && (
+                <a
+                  aria-label="Download Photos"
+                  href={`${BASE}/ccbpmreport/${info.row.original.id}/photos/zip?station_id=${encodeURIComponent(stationId || "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-green-600 hover:tw-text-green-800 hover:tw-bg-green-50 tw-transition-colors"
+                  title="Download Photos"
+                >
+                  <PhotoIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
+                </a>
+              )}
             </div>
           );
         }

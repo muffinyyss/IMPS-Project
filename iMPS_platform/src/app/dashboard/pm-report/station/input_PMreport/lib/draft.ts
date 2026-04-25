@@ -1,4 +1,5 @@
 import type { PhotoRef } from "./draftPhotos";
+import { delAllPhotosForDraft } from "./draftPhotos";  // เพิ่ม
 
 type PF = "PASS" | "FAIL" | "NA" | "";
 
@@ -19,12 +20,9 @@ function safeStorage() {
   }
 }
 
-// เพิ่มฟังก์ชันใหม่สำหรับรายงาน PM ประเภทใหม่ (สมมติว่าเป็น "General" หรือ "Station")
 export function draftKey(stationId: string | null | undefined, draftId = "default") {
-  // เช่น 'pmDraft:v2:station-general:ST-001:UUID'
   return `pmDraft:v2:station:${stationId ?? "unknown"}:${draftId}`;
 }
-
 
 export function saveDraftLocal(key: string, data: DraftData) {
   const ls = safeStorage();
@@ -49,12 +47,28 @@ export function loadDraftLocal<T = DraftData>(key: string): T | null {
   }
 }
 
-export function clearDraftLocal(key: string) {
+export async function clearDraftLocal(key: string) {
   const ls = safeStorage();
-  if (!ls) return;
+  let photoRefs: DraftData["photoRefs"] | undefined;
+  if (ls) {
+    try {
+      const raw = ls.getItem(key);
+      if (raw) {
+        const data = JSON.parse(raw) as DraftData;
+        photoRefs = data.photoRefs;
+      }
+    } catch { }
+  }
+
   try {
-    ls.removeItem(key);
-  } catch (e) {
-    console.error("clearDraftLocal failed:", e);
+    await delAllPhotosForDraft(key, photoRefs);
+  } catch { }
+
+  if (ls) {
+    try {
+      ls.removeItem(key);
+    } catch (e) {
+      console.error("clearDraftLocal failed:", e);
+    }
   }
 }
