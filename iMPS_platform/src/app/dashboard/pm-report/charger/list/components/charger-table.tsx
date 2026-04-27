@@ -145,15 +145,14 @@ async function fetchLatestIssueIdAcrossLists(sn: string, dateISO: string, apiBas
   };
 
   const [a, b] = await Promise.allSettled([
-    apiFetch(build(`/${REPORT_PREFIX}/list`), fetchOpts),
-    apiFetch(build(`/${URL_PREFIX}/list`), fetchOpts),
+    apiFetch(build(`/${REPORT_PREFIX}/list`), fetchOpts).then(r => r.ok ? r.json() : null),
+    apiFetch(build(`/${URL_PREFIX}/list`), fetchOpts).then(r => r.ok ? r.json() : null),
   ]);
 
   let ids: string[] = [];
   for (const r of [a, b]) {
-    if (r.status === "fulfilled" && r.value.ok) {
-      const j = await r.value.json();
-      const items: any[] = Array.isArray(j?.items) ? j.items : [];
+    if (r.status === "fulfilled" && r.value) {
+      const items: any[] = Array.isArray(r.value?.items) ? r.value.items : [];
       ids = ids.concat(items.map((it) => String(it?.issue_id || "")).filter(Boolean));
     }
   }
@@ -359,11 +358,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     }
     return h;
   }
-  const FetchOpts: RequestInit = {
+  const fetchOpts = useMemo<RequestInit>(() => ({
     headers: makeHeaders(),
     ...(useHttpOnlyCookie ? { credentials: "include" as const } : {}),
     cache: "no-store",
-  };
+  }), [token]);
 
   // Date formatting with language support
   function formatDate(iso?: string, currentLang: Lang = lang) {
@@ -447,6 +446,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const fetchRows = async (signal?: AbortSignal) => {
     if (!sn) {
       setData([]);
+      setPageLoading(false);
       return;
     }
     setLoading(true);
@@ -460,8 +460,8 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         return u.toString();
       };
       const [pmRes, urlRes] = await Promise.allSettled([
-        apiFetch(makeURL("/pmreport/list"), FetchOpts),
-        apiFetch(makeURL("/pmurl/list"), FetchOpts),
+        apiFetch(makeURL("/pmreport/list"), fetchOpts),
+        apiFetch(makeURL("/pmurl/list"), fetchOpts),
       ]);
 
       let pmItems: any[] = [];
@@ -757,13 +757,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   }
 
   const visibleData = useMemo(() => {
-    const username = me?.username;
+    if (!me) return data; // me ยังโหลดไม่เสร็จ → แสดงทั้งหมดก่อน
+    const username = me.username;
     return data.filter((row) => {
       if (row.side !== "pre") return true;
-      if (!username) return false;
       return sameUser(row.inspector, username);
     });
-  }, [data, me?.username]);
+  }, [data, me]);
 
   const table = useReactTable({
     data: visibleData,
@@ -777,6 +777,13 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     getPaginationRowModel: getPaginationRowModel(),
     columnResizeMode: "onChange",
   });
+
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
 
   // Upload dialog
   const pdfInputRef = useRef<HTMLInputElement>(null);
@@ -850,7 +857,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       showToast("success", t("alertUploadSuccess", lang));
       setPendingFiles([]);
       setDateOpen(false);
-      await fetchRows();
+      if (isMountedRef.current) await fetchRows();
     } catch (err) {
       console.error(err);
       showToast("error", t("alertUploadError", lang));
@@ -895,7 +902,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     let canceled = false;
     (async () => {
       try {
-        const latest = await fetchLatestIssueIdAcrossLists(sn, reportDate, apiBase, FetchOpts);
+        const latest = await fetchLatestIssueIdAcrossLists(sn, reportDate, apiBase, fetchOpts);
         const next = nextIssueIdFor(PM_TYPE_CODE, reportDate, latest || "");
         if (!canceled) setIssueId(next);
       } catch {
@@ -904,7 +911,7 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     })();
 
     return () => { canceled = true; };
-  }, [dateOpen, sn, reportDate]);
+  }, [dateOpen, sn, reportDate, fetchOpts]);
 
   const goAdd = () => setView("form");
   const goList = () => {

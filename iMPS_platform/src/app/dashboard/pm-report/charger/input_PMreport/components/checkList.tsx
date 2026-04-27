@@ -89,26 +89,41 @@ function resetBgUpload() {
     _bgNotify();
 }
 
-async function _bgCompressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
+async function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
     if (!file.type.startsWith("image/") || file.size < 500 * 1024) return file;
     return new Promise((resolve) => {
         const img = document.createElement("img");
         img.onload = () => {
             URL.revokeObjectURL(img.src);
             let { width, height } = img;
-            if (width > maxWidth) { height = (height * maxWidth) / width; width = maxWidth; }
+            if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+            }
             const canvas = document.createElement("canvas");
-            canvas.width = width; canvas.height = height;
+            canvas.width = width;
+            canvas.height = height;
             const ctx = canvas.getContext("2d")!;
             ctx.drawImage(img, 0, 0, width, height);
-            canvas.toBlob((blob) => {
-                if (blob && blob.size < file.size) resolve(new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" }));
-                else resolve(file);
-            }, "image/jpeg", quality);
+            canvas.toBlob(
+                (blob) => {
+                    if (blob && blob.size < file.size) {
+                        resolve(new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" }));
+                    } else {
+                        resolve(file);
+                    }
+                },
+                "image/jpeg",
+                quality
+            );
         };
         img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
         img.src = URL.createObjectURL(file);
     });
+}
+
+async function _bgCompressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
+    return compressImage(file, maxWidth, quality);
 }
 
 async function _bgUploadSingle(reportId: string, sn: string, group: string, file: File, side: "pre" | "post") {
@@ -2005,7 +2020,13 @@ export default function ChargerPMForm() {
     const router = useRouter();
     const [submitting, setSubmitting] = useState(false);
     const [pageLoading, setPageLoading] = useState(true);
-    const [preUploadState, setPreUploadState] = useState({ show: false, total: 0, completed: 0, failed: 0 });
+    const [uploadProgress, setUploadProgress] = useState({
+        show: false,
+        total: 0,
+        completed: 0,
+        failed: 0,
+        side: "" as "pre" | "post" | "",
+    });
     const [docName, setDocName] = useState("");
 
     const pathname = usePathname();
@@ -2020,9 +2041,25 @@ export default function ChargerPMForm() {
     const preReportIdRef = useRef<string | null>(null);
     const postReportIdRef = useRef<string | null>(null);
 
+    const [cpPre, setCpPre] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
+    const [cp, setCp] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
+    const [summary, setSummary] = useState<string>("");
+    const [summaryPre, setSummaryPre] = useState<string>("");
+    const [sn, setSn] = useState<string | null>(null);
+    const [summaryCheck, setSummaryCheck] = useState<PF>("");
+
+    const key = useMemo(() => draftKey(sn), [sn]);
+    const postKey = useMemo(() => `${draftKey(sn)}:${editId}:post`, [sn, editId]);
+    const currentDraftKey = isPostMode ? postKey : key;
+
     useEffect(() => {
         postReportIdRef.current = null;
     }, [editId]);
+
+    useEffect(() => {
+        preReportIdRef.current = null;
+    }, [sn]);
+
 
     // ⚡ Fix: ใช้ ref เก็บค่าล่าสุดของ photos เพื่อ cleanup ตอน unmount
     const photosRef = useRef(photos);
@@ -2034,16 +2071,7 @@ export default function ChargerPMForm() {
             });
         };
     }, []);
-    const [cpPre, setCpPre] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
-    const [cp, setCp] = useState<Record<string, { value: string; unit: UnitVoltage }>>({});
-    const [summary, setSummary] = useState<string>("");
-    const [summaryPre, setSummaryPre] = useState<string>("");
-    const [sn, setSn] = useState<string | null>(null);
-    const [summaryCheck, setSummaryCheck] = useState<PF>("");
 
-    const key = useMemo(() => draftKey(sn), [sn]);
-    const postKey = useMemo(() => `${draftKey(sn)}:${editId}:post`, [sn, editId]);
-    const currentDraftKey = isPostMode ? postKey : key;
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -2097,6 +2125,35 @@ export default function ChargerPMForm() {
             setRows(prev => ({ ...prev, [`r5_${newIndex}`]: { pf: "", remark: "" } }));
         }
     };
+
+    const removeItemPhotos = (
+        prev: Record<string | number, PhotoItem[]>,
+        qNo: number,
+        index: number,
+        totalOldCount: number
+    ) => {
+        const next = { ...prev };
+        // Revoke blob ของ item ที่ถูกลบ
+        const removedPhotos = next[`${qNo}_${index}`] || [];
+        removedPhotos.forEach(p => {
+            if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview);
+        });
+        // เก็บ photos ของ surviving items ตาม old index
+        const survivingOldIndices = Array.from(
+            { length: totalOldCount }, (_, i) => i
+        ).filter(i => i !== index);
+        const survivingPhotos = survivingOldIndices.map(i => next[`${qNo}_${i}`] || []);
+        // ลบ keys เก่าทั้งหมด
+        for (let i = 0; i < totalOldCount; i++) {
+            delete next[`${qNo}_${i}`];
+        }
+        // เขียน keys ใหม่
+        survivingPhotos.forEach((photoList, idx) => {
+            next[`${qNo}_${idx}`] = photoList;
+        });
+        return next;
+    };
+
     const removeQ5Item = (index: number) => {
         if (q5Items.length > 1) {
             const oldItems = q5Items;
@@ -2108,31 +2165,18 @@ export default function ChargerPMForm() {
             setQ5Items(newItems);
             setRows(prev => {
                 const next = { ...prev };
-                const survivingData = survivingItems.map(item => next[item.key] ?? { pf: "" as PF, remark: "" });
+                const survivingData = survivingItems.map(
+                    item => next[item.key] ?? { pf: "" as PF, remark: "" }
+                );
                 oldItems.forEach(item => { delete next[item.key]; });
                 newItems.forEach((item, idx) => { next[item.key] = survivingData[idx]; });
                 return next;
             });
-            setPhotos(prev => {
-                const next = { ...prev };
-                // ✅ revoke blob ของ item ที่ถูกลบก่อน
-                const removedPhotos = next[`5_${index}`] || [];
-                removedPhotos.forEach(p => {
-                    if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview);
-                });
-                // ✅ เก็บ photos ของ surviving items ตาม old index ก่อน
-                const survivingOldIndices = oldItems
-                    .map((_, i) => i)
-                    .filter(i => i !== index);
-                const survivingPhotos = survivingOldIndices.map(i => next[`5_${i}`] || []);
-                // ✅ ลบ keys เก่าทั้งหมด
-                oldItems.forEach((_, i) => { delete next[`5_${i}`]; });
-                // ✅ เขียน keys ใหม่ตาม index ที่ถูก remap
-                survivingPhotos.forEach((photoList, idx) => { next[`5_${idx}`] = photoList; });
-                return next;
-            });
+            // ✅ ใช้ helper แทน — qNo=5 ชัดเจน ไม่ hardcode ผิด
+            setPhotos(prev => removeItemPhotos(prev, 5, index, oldItems.length));
         }
     };
+
     const initQ5Items = (count: number) => {
         setQ5Items(Array.from({ length: count }, (_, idx) => ({ key: `r5_${idx + 1}`, label: getDynamicLabel.emergencyStop(idx + 1, lang) })));
     };
@@ -2148,26 +2192,22 @@ export default function ChargerPMForm() {
         if (q7Items.length > 1) {
             const oldItems = q7Items;
             const survivingItems = oldItems.filter((_, i) => i !== index);
-            const newItems = survivingItems.map((_, idx) => ({ key: `r7_${idx + 1}`, label: getDynamicLabel.warningSign(idx + 1, lang) }));
+            const newItems = survivingItems.map((_, idx) => ({
+                key: `r7_${idx + 1}`,
+                label: getDynamicLabel.warningSign(idx + 1, lang)
+            }));
             setQ7Items(newItems);
             setRows(prev => {
                 const next = { ...prev };
-                const survivingData = survivingItems.map(item => next[item.key] ?? { pf: "" as PF, remark: "" });
+                const survivingData = survivingItems.map(
+                    item => next[item.key] ?? { pf: "" as PF, remark: "" }
+                );
                 oldItems.forEach(item => { delete next[item.key]; });
                 newItems.forEach((item, idx) => { next[item.key] = survivingData[idx]; });
                 return next;
             });
-            // ⚡ Fix: migrate photos ตาม index ใหม่ + revoke blob ของ item ที่ถูกลบ
-            setPhotos(prev => {
-                const next = { ...prev };
-                const removedPhotos = next[`7_${index}`] || [];
-                removedPhotos.forEach(p => { if (p.preview?.startsWith("blob:")) URL.revokeObjectURL(p.preview); });
-                const survivingIndices = oldItems.map((_, i) => i).filter(i => i !== index);
-                const survivingPhotos = survivingIndices.map(i => next[`7_${i}`] || []);
-                oldItems.forEach((_, i) => { delete next[`7_${i}`]; });
-                survivingPhotos.forEach((photoList, idx) => { next[`7_${idx}`] = photoList; });
-                return next;
-            });
+            // ✅ ใช้ helper — qNo=7
+            setPhotos(prev => removeItemPhotos(prev, 7, index, oldItems.length));
         }
     };
     const initQ7Items = (count: number) => {
@@ -2818,25 +2858,7 @@ export default function ChargerPMForm() {
         saveDraftLocal(postKey, { rows, cp, m16: m16.state, summary, summaryCheck, dustFilterChanged, photoRefs });
     }, [postKey, sn, rows, cp, m16.state, summary, summaryCheck, dustFilterChanged, photoRefs, isPostMode, editId]);
 
-    async function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
-        if (!file.type.startsWith("image/") || file.size < 500 * 1024) return file;
-        return new Promise((resolve) => {
-            const img = document.createElement("img");
-            img.onload = () => {
-                URL.revokeObjectURL(img.src);
-                let { width, height } = img;
-                if (width > maxWidth) { height = (height * maxWidth) / width; width = maxWidth; }
-                const canvas = document.createElement("canvas");
-                canvas.width = width; canvas.height = height;
-                const ctx = canvas.getContext("2d")!;
-                ctx.drawImage(img, 0, 0, width, height);
-                // ⚡ FIX: ใช้ ensureJpgFilename เพื่อแก้นามสกุลให้ตรงกับ content (JPEG)
-                canvas.toBlob((blob) => { if (blob && blob.size < file.size) resolve(new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" })); else resolve(file); }, "image/jpeg", quality);
-            };
-            img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
-            img.src = URL.createObjectURL(file);
-        });
-    }
+
 
     // ⚡ FIX 413: ส่งทีละรูป (sequential) แทนรวมทั้งกลุ่ม → ไม่เกิน nginx body limit
     async function uploadSinglePhoto(reportId: string, sn: string, group: string, file: File, side: TabId) {
@@ -2870,15 +2892,6 @@ export default function ChargerPMForm() {
         }
     }
 
-    async function uploadGroupPhotos(reportId: string, sn: string, group: string, files: File[], side: TabId) {
-        if (files.length === 0) return;
-        const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
-        // ⚡ ส่งทีละรูป sequential + retry แต่ละรูป — ป้องกัน 413 + ไม่ duplicate
-        for (let i = 0; i < compressedFiles.length; i++) {
-            console.log(`[upload] ${group} file ${i + 1}/${compressedFiles.length}`);
-            await uploadSinglePhotoWithRetry(reportId, sn, group, compressedFiles[i], side);
-        }
-    }
 
     // ⚡ Retry ระดับรูปเดียว — ไม่ re-upload รูปที่สำเร็จแล้ว
     async function uploadSinglePhotoWithRetry(reportId: string, sn: string, group: string, file: File, side: TabId, maxRetries = 3): Promise<void> {
@@ -2895,27 +2908,6 @@ export default function ChargerPMForm() {
         }
     }
 
-    // ⚡ Batch upload: อัปโหลดทีละ concurrency กลุ่ม (retry อยู่ระดับรูปเดียวแล้ว)
-    async function uploadPhotosInBatches(
-        entries: { group: string; files: File[] }[],
-        reportId: string, sn: string, side: TabId,
-        concurrency = 3
-    ): Promise<{ group: string; error: string }[]> {
-        const failures: { group: string; error: string }[] = [];
-        for (let i = 0; i < entries.length; i += concurrency) {
-            const batch = entries.slice(i, i + concurrency);
-            const results = await Promise.allSettled(
-                batch.map(e => uploadGroupPhotos(reportId, sn, `g${e.group}`, e.files, side))
-            );
-            results.forEach((r, idx) => {
-                if (r.status === "rejected") {
-                    const errMsg = r.reason?.message || r.reason?.toString() || "unknown error";
-                    failures.push({ group: batch[idx].group, error: errMsg });
-                }
-            });
-        }
-        return failures;
-    }
 
     const onPreSave = async () => {
         if (!sn) { alert(t("alertNoSN", lang)); return; }
@@ -2955,7 +2947,7 @@ export default function ChargerPMForm() {
             // ⚡ สร้าง tasks per-photo + skip รูปที่ upload สำเร็จไปแล้ว (uploaded=true)
             type UploadTask = { group: string; photoId: string; file: File };
             const allPreTasks: UploadTask[] = [];
-            for (const [no, list] of Object.entries(photos)) {
+            for (const [no, list] of Object.entries(photosRef.current)) {
                 (list || []).forEach(p => {
                     if (p.file && !p.uploaded && !p.isNA) {
                         allPreTasks.push({ group: no, photoId: p.id, file: p.file });
@@ -2967,21 +2959,20 @@ export default function ChargerPMForm() {
 
             // Guard: มี photos ใน state แต่ไม่มี file จริง (draft load ไม่สมบูรณ์)
             // หมายเหตุ: ถ้าทุกรูป uploaded=true แล้ว totalPhotos จะเป็น 0 ซึ่ง valid (retry ครั้งที่ 2 ที่ทุกรูปผ่านแล้ว)
-            const hasAnyPhotoInState = Object.values(photos).some(list => (list || []).length > 0);
-            const hasAnyFile = Object.values(photos).some(list => (list || []).some(p => p.file || p.isNA));
+            const hasAnyPhotoInState = Object.values(photosRef.current).some(list => (list || []).length > 0);
+            const hasAnyFile = Object.values(photosRef.current).some(list => (list || []).some(p => p.file || p.isNA));
             if (hasAnyPhotoInState && !hasAnyFile) {
                 throw new Error(lang === "th" ? "ไม่พบไฟล์รูปภาพ กรุณาแนบรูปใหม่อีกครั้ง" : "Photo files not found. Please re-attach photos.");
             }
 
             if (totalPhotos > 0) {
-                setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
+                setUploadProgress({ show: true, total: totalPhotos, completed: 0, failed: 0, side: "pre" });
                 let completedCount = 0;
                 let failedCount = 0;
                 const failures: { group: string; error: string }[] = [];
 
                 // ⚡ compress ใน runNext แทนที่จะ compress ทั้งหมดก่อน เพื่อคงการ mapping task → photoId
                 const CONCURRENCY = 3;
-                let idx = 0;
                 const finalReportId = report_id!;
 
                 const tasksByGroup = new Map<string, UploadTask[]>();
@@ -3012,14 +3003,14 @@ export default function ChargerPMForm() {
                                 failures.push({ group, error: err?.message || "unknown" });
                             }
                             completedCount++;
-                            setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
+                            setUploadProgress({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount, side: "pre" });
                         }
                     }
                 };
 
                 await Promise.all(Array.from({ length: CONCURRENCY }, () => runNextGroup()));
 
-                setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
+                setUploadProgress({ show: false, total: 0, completed: 0, failed: 0, side: "" });
 
                 if (failures.length > 0) {
                     // ⚡ Flush draft ทันที เพื่อ persist uploaded flag ที่สำเร็จแล้ว — กันกรณี user refresh ก่อน debounce ทำงาน
@@ -3043,7 +3034,7 @@ export default function ChargerPMForm() {
 
             // Cleanup + navigate หลังอัปโหลดสำเร็จทั้งหมด
             preReportIdRef.current = null;
-            const allPhotos = Object.values(photos).flat();
+            const allPhotos = Object.values(photosRef.current).flat();
             Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => { });
             clearDraftLocal(key);
             setPhotos({});
@@ -3086,7 +3077,7 @@ export default function ChargerPMForm() {
             // ⚡ เตรียม entries สำหรับ upload (เฉพาะกลุ่มที่มี file จริง)
             type UploadTask = { group: string; photoId: string; file: File };
             const allPostTasks: UploadTask[] = [];
-            Object.entries(photos).forEach(([no, list]) => {
+            Object.entries(photosRef.current).forEach(([no, list]) => {
                 (list || []).forEach(p => {
                     if (p.file && !p.uploaded && !p.isNA) {
                         allPostTasks.push({ group: no, photoId: p.id, file: p.file });
@@ -3096,13 +3087,12 @@ export default function ChargerPMForm() {
 
             if (allPostTasks.length > 0) {
                 const totalPhotos = allPostTasks.length;
-                setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
+                setUploadProgress({ show: true, total: totalPhotos, completed: 0, failed: 0, side: "post" });
                 let completedCount = 0;
                 let failedCount = 0;
                 const failures: { group: string; error: string }[] = [];
 
                 const CONCURRENCY = 3;
-                let idx = 0;
                 const finalReportId = report_id!;
 
                 const tasksByGroup = new Map<string, UploadTask[]>();
@@ -3133,14 +3123,14 @@ export default function ChargerPMForm() {
                                 failures.push({ group, error: err?.message || "unknown" });
                             }
                             completedCount++;
-                            setPreUploadState({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount });
+                            setUploadProgress({ show: true, total: totalPhotos, completed: completedCount, failed: failedCount, side: "post" });
                         }
                     }
                 };
 
                 await Promise.all(Array.from({ length: CONCURRENCY }, () => runNextGroup()));
 
-                setPreUploadState({ show: false, total: 0, completed: 0, failed: 0 });
+                setUploadProgress({ show: false, total: 0, completed: 0, failed: 0, side: "" });
 
                 if (failures.length > 0) {
                     // ⚡ Flush draft ทันทีเพื่อ persist uploaded flag
@@ -3166,7 +3156,7 @@ export default function ChargerPMForm() {
             const finalizeRes = await apiFetch(`${API_BASE}/pmreport/${report_id}/finalize`, { method: "POST", body: new URLSearchParams({ sn: sn }) });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             postReportIdRef.current = null; // ⚡ สำเร็จแล้ว → reset
-            const allPhotos = Object.values(photos).flat();
+            const allPhotos = Object.values(photosRef.current).flat();
             Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => { });
             clearDraftLocal(postKey);
             router.replace(`/dashboard/pm-report?sn=${encodeURIComponent(sn)}`);
@@ -3200,10 +3190,10 @@ export default function ChargerPMForm() {
             <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
             {/* Pre-PM Upload Progress Overlay */}
             <LoadingOverlay
-                show={preUploadState.show}
+                show={uploadProgress.show}
                 text={lang === "th"
-                    ? `กำลังอัปโหลดรูป${isPostMode ? " Post-PM" : " Pre-PM"}... ${preUploadState.completed}/${preUploadState.total} รูป`
-                    : `Uploading ${isPostMode ? "Post-PM" : "Pre-PM"} photos... ${preUploadState.completed}/${preUploadState.total}`}
+                    ? `กำลังอัปโหลดรูป ${uploadProgress.side === "post" ? "Post-PM" : "Pre-PM"}... ${uploadProgress.completed}/${uploadProgress.total} รูป`
+                    : `Uploading ${uploadProgress.side === "post" ? "Post-PM" : "Pre-PM"} photos... ${uploadProgress.completed}/${uploadProgress.total}`}
             />
             <div className="tw-mx-auto tw-max-w-6xl tw-flex tw-items-center tw-justify-between tw-mb-4">
                 <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}>
@@ -3218,7 +3208,7 @@ export default function ChargerPMForm() {
                                 <Tab
                                     key={tb.id}
                                     value={tb.id}
-                                    disabled={isPreDisabled}
+                                    disabled={isPreDisabled || isLockedAfter}
                                     onClick={() => {
                                         if (isPreDisabled) return;
                                         if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
@@ -3226,7 +3216,9 @@ export default function ChargerPMForm() {
                                     }}
                                     className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}
                                 >
-                                    {tb.label}
+                                    <div className="tw-flex tw-items-center tw-gap-1.5">
+                                        {tb.label}
+                                    </div>
                                 </Tab>
                             );
                         })}

@@ -1773,14 +1773,25 @@ export default function StationPMReport() {
                 <Button variant="outlined" size="sm" onClick={() => router.back()} title={t("backToList", lang)}>
                     <ArrowLeftIcon className="tw-w-4 tw-h-4 tw-stroke-gray-900 tw-stroke-2" />
                 </Button>
-                <Tabs value={displayTab}>
+                <Tabs value={displayTab} key={displayTab}>
                     <TabsHeader className="tw-bg-gray-50 tw-rounded-lg">
                         {TABS.map((tb) => {
                             const isPreDisabled = isPostMode && tb.id === "pre";
                             const isLockedAfter = tb.id === "post" && !canGoAfter;
-                            if (isPreDisabled) return <div key={tb.id} className="tw-px-4 tw-py-2 tw-font-medium tw-opacity-50 tw-cursor-not-allowed tw-select-none">{tb.label}</div>;
-                            if (isLockedAfter) return <div key={tb.id} className="tw-px-4 tw-py-2 tw-font-medium tw-opacity-50 tw-cursor-not-allowed tw-select-none" onClick={() => alert(t("alertFillPreFirst", lang))}>{tb.label}</div>;
-                            return <Tab key={tb.id} value={tb.id} onClick={() => go(tb.id)} className="tw-px-4 tw-py-2 tw-font-medium">{tb.label}</Tab>;
+                            return (
+                                <Tab
+                                    key={tb.id}
+                                    value={tb.id}
+                                    disabled={isPreDisabled || isLockedAfter}
+                                    onClick={() => {
+                                        if (isPreDisabled) return;
+                                        if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }
+                                        go(tb.id);
+                                    }}
+                                    className={`tw-px-4 tw-py-2 tw-font-medium ${isPreDisabled || isLockedAfter ? "tw-opacity-50 tw-cursor-not-allowed" : ""}`}>
+                                    {tb.label}
+                                </Tab>
+                            );
                         })}
                     </TabsHeader>
                 </Tabs>
