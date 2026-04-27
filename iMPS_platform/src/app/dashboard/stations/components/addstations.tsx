@@ -273,7 +273,12 @@ export default function AddStationModal({
 
     const isFlexxfast = (brand: string) => brand.trim().toLowerCase() === "flexxfast";
 
-    useEffect(() => { if (open) setStation((s) => ({ ...s, owner: currentUser || s.owner })); }, [open, currentUser]);
+    useEffect(() => {
+        if (open && !isAdmin) {
+            setStation((s) => ({ ...s, owner: currentUser || "" }));
+        }
+    }, [open, currentUser, isAdmin]);
+
     useEffect(() => {
         setStation((s) => ({ ...s, station_id: s.station_name.trim() ? generateStationId(s.station_name) : "" }));
     }, [station.station_name]);
@@ -404,7 +409,7 @@ export default function AddStationModal({
     const resetAndClose = () => {
         Object.values(stationPreviews).forEach((urls) => urls.forEach((u) => u && URL.revokeObjectURL(u)));
         Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
-        setStation({ station_id: "", station_name: "", owner: "", is_active: true, maximo_location: "", maximo_desc: "", stationImages: [], mdbImages: [] });
+        setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", stationImages: [], mdbImages: [] });
         setStationPreviews({ station: [], mdb: [] });
         setChargerPreviews({});
         setChargers([createEmptyCharger(1)]);
