@@ -2112,7 +2112,7 @@ export default function MDBPMForm() {
                             const isPreDisabled = isPostMode && tb.id === "pre";
                             const isLockedAfter = tb.id === "post" && !canGoAfter;
                             return (
-                                <Tab key={tb.id} value={tb.id} disabled={isPreDisabled}
+                                <Tab key={tb.id} value={tb.id} disabled={isPreDisabled || isLockedAfter}
                                     onClick={() => {
                                         if (isPreDisabled) return;
                                         if (isLockedAfter) { alert(t("alertFillPreFirst", lang)); return; }

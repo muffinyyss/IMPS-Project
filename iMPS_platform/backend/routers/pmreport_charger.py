@@ -54,21 +54,20 @@ from io import BytesIO
 import tempfile
 
 def resize_image_bytes(data: bytes, max_width: int = 1920, quality: int = 85) -> bytes:
-    """Resize รูปถ้าใหญ่เกิน max_width, return JPEG bytes"""
     try:
-        img = Image.open(BytesIO(data))
-        if img.width <= max_width:
-            return data
-        ratio = max_width / img.width
-        new_size = (max_width, int(img.height * ratio))
-        img = img.resize(new_size, Image.LANCZOS)
-        if img.mode in ("RGBA", "P", "LA"):
-            img = img.convert("RGB")
-        elif img.mode != "RGB":
-            img = img.convert("RGB")
-        buf = BytesIO()
-        img.save(buf, format="JPEG", quality=quality, optimize=True)
-        return buf.getvalue()
+        with BytesIO(data) as src:
+            img = Image.open(src)
+            img.load()  # force load ก่อน src ถูก close
+            if img.width <= max_width:
+                return data
+            ratio = max_width / img.width
+            new_size = (max_width, int(img.height * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+            if img.mode not in ("RGB",):
+                img = img.convert("RGB")
+            with BytesIO() as buf:
+                img.save(buf, format="JPEG", quality=quality, optimize=True)
+                return buf.getvalue()
     except Exception:
         return data
 
@@ -241,7 +240,7 @@ async def pmreport_list(
     return {"items": items, "pm_date": pm_date_arr, "page": page, "pageSize": pageSize, "total": total}
 
 
-@router.get("/pmreport/latest/{sn}")
+@router.get("/pmreport/latest/{sn:path}")
 async def pmreport_latest_by_path(
     sn: str = Path(..., description="Charger Serial Number"),
     current: UserClaims = Depends(get_current_user),
@@ -360,6 +359,7 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
 
     tasks = [charger_task]
 
+    prefix = ""
     if client_issue:
         yymm = f"{d.year % 100:02d}{d.month:02d}"
         prefix = f"PM-{pm_type}-{yymm}-"
@@ -721,15 +721,6 @@ def parse_report_date_to_utc(s: str) -> datetime:
         return datetime.fromisoformat(s).astimezone(timezone.utc)
     return datetime.fromisoformat(s + "+07:00").astimezone(timezone.utc)
 
-def normalize_pm_date(s: str) -> str:
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}$", s):
-        return s
-    if s.endswith("Z") or re.search(r"[+\-]\d{2}:\d{2}$", s):
-        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-    else:
-        dt = datetime.fromisoformat(s).replace(tzinfo=th_tz)
-    return dt.astimezone(th_tz).date().isoformat()
-
 @router.post("/pmurl/upload-files", status_code=201)
 async def pmurl_upload_files(
     sn: str = Form(...),
@@ -1009,13 +1000,19 @@ async def download_photos_zip(
 
     # สร้าง ZIP ใน memory
     zip_buffer = BytesIO()
+    written = 0
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for zip_path, disk_path in all_photos:
             p = pathlib.Path(disk_path)
             if p.exists():
                 zf.write(p, arcname=zip_path)
+                written += 1
+
+    if written == 0:
+        raise HTTPException(status_code=404, detail="Photo files not found on disk")
 
     zip_buffer.seek(0)
+    
     zip_filename = f"photos_{sn}_{report_id}.zip"
 
     return StreamingResponse(
