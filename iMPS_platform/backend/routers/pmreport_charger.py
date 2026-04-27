@@ -240,7 +240,7 @@ async def pmreport_list(
     return {"items": items, "pm_date": pm_date_arr, "page": page, "pageSize": pageSize, "total": total}
 
 
-@router.get("/pmreport/latest/{sn}")
+@router.get("/pmreport/latest/{sn:path}")
 async def pmreport_latest_by_path(
     sn: str = Path(..., description="Charger Serial Number"),
     current: UserClaims = Depends(get_current_user),

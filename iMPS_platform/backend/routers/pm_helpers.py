@@ -24,8 +24,8 @@ MAX_FILE_MB = 20
 
 # ─── SN Validation ────────────────────────────────────────────
 def _validate_sn(sn: str):
-    if not sn or not re.fullmatch(r"[A-Za-z0-9_\-]+", str(sn)):
-        raise HTTPException(status_code=400, detail="Bad SN format")
+    if not sn or not str(sn).strip():
+        raise HTTPException(status_code=400, detail="SN is required")
 
 
 # ─── Collection Getters (charger) ─────────────────────────────
