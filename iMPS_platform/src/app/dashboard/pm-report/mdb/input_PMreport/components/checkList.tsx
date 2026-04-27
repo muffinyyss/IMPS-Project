@@ -41,7 +41,10 @@ async function getCachedLocation(): Promise<string> {
         void prefetchLocation();
         return _cachedLocation.text;
     }
-    await prefetchLocation();
+    await Promise.race([
+        prefetchLocation(),
+        new Promise<void>(resolve => setTimeout(resolve, 2000))
+    ]);
     return _cachedLocation?.text || "ไม่สามารถระบุตำแหน่งได้";
 }
 

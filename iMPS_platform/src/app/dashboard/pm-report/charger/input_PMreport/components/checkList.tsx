@@ -44,14 +44,15 @@ async function prefetchLocation(): Promise<void> {
 }
 
 async function getCachedLocation(): Promise<string> {
-    // ถ้ามี cache อยู่และยังไม่หมดอายุ ใช้เลย
     if (_cachedLocation && (Date.now() - _cachedLocation.timestamp) < LOCATION_CACHE_MAX_AGE) {
-        // refresh เบื้องหลังสำหรับรูปถัดไป
         void prefetchLocation();
         return _cachedLocation.text;
     }
-    // ถ้าไม่มี cache ต้องรอ fetch
-    await prefetchLocation();
+    // Race: ถ้า GPS ไม่ตอบใน 2 วินาที ใช้ fallback ทันที
+    await Promise.race([
+        prefetchLocation(),
+        new Promise<void>(resolve => setTimeout(resolve, 2000))
+    ]);
     return _cachedLocation?.text || "ไม่สามารถระบุตำแหน่งได้";
 }
 

@@ -723,15 +723,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 href={previewHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => {
-                  apiFetch(`${BASE}/pmreport/${info.row.original.id}/mark-downloaded?sn=${encodeURIComponent(sn || "")}&download_type=pdf`, {
-                    method: "POST", credentials: "include",
-                  }).catch(console.error);
-                }}
                 className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-red-600 hover:tw-text-red-800 hover:tw-bg-red-50 tw-transition-colors"
                 title={t("preview", lang)}
               >
-
                 <DocumentArrowDownIcon className="tw-h-5 tw-w-5 sm:tw-h-6 sm:tw-w-6" />
               </a>
               {info.row.original.has_photos && (
