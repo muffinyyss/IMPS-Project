@@ -16,8 +16,178 @@ import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
-import { putPhoto, getPhoto, delPhoto, type PhotoRef } from "../lib/draftPhotos";
+import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
+
+// ==================== GPS + IMAGE UTILS ====================
+let _cachedLocation: { text: string; timestamp: number } | null = null;
+let _locationFetching = false;
+const LOCATION_CACHE_MAX_AGE = 5 * 60 * 1000;
+const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ?? "";
+
+async function getCurrentGPS(): Promise<{ lat: number; lng: number } | null> {
+    if (!navigator.geolocation) return null;
+    if (window.isSecureContext === false) return null;
+    const fast = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), 2000);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => { clearTimeout(timer); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+            () => { clearTimeout(timer); resolve(null); },
+            { enableHighAccuracy: false, timeout: 1500, maximumAge: 300000 }
+        );
+    });
+    if (fast) return fast;
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), 8000);
+        navigator.geolocation.getCurrentPosition(
+            (pos) => { clearTimeout(timer); resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }); },
+            () => { clearTimeout(timer); resolve(null); },
+            { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
+        );
+    });
+}
+
+async function reverseGeocodeGoogle(lat: number, lng: number): Promise<string | null> {
+    if (!GOOGLE_MAPS_KEY) return null;
+    try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 5000);
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=th&result_type=street_address|route|premise&key=${GOOGLE_MAPS_KEY}`;
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(tid);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data.status !== "OK" || !data.results?.length) return null;
+        const best = data.results[0];
+        const c = best.address_components || [];
+        const get = (type: string) => c.find((x: any) => x.types?.includes(type))?.long_name || "";
+        const parts: string[] = [];
+        const premise = get("premise"); if (premise) parts.push(premise);
+        const hn = get("street_number"), road = get("route");
+        if (hn && road) parts.push(`${hn} ${road}`); else if (road) parts.push(road);
+        const sub2 = get("sublocality_level_2"); if (sub2 && !parts.some(p => p.includes(sub2))) parts.push(sub2);
+        const sub1 = get("sublocality_level_1"); if (sub1 && !parts.some(p => p.includes(sub1))) parts.push(sub1);
+        const dist = get("locality") || get("administrative_area_level_2"); if (dist && !parts.some(p => p.includes(dist))) parts.push(dist);
+        const prov = get("administrative_area_level_1"); if (prov && !parts.some(p => p.includes(prov))) parts.push(prov);
+        if (parts.length > 0) { let r = parts.join(" "); return r.length > 80 ? r.substring(0, 77) + "..." : r; }
+        if (best.formatted_address) { const a = best.formatted_address.replace(/\s*\d{5}\s*/, " ").replace(/ประเทศไทย/g, "").trim(); return a.length > 80 ? a.substring(0, 77) + "..." : a; }
+        return null;
+    } catch { return null; }
+}
+
+async function reverseGeocodeNominatim(lat: number, lng: number): Promise<string> {
+    try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 5000);
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th&zoom=21&addressdetails=1`;
+        const res = await fetch(url, { headers: { "User-Agent": "PM-Checklist-App/1.0" }, signal: controller.signal });
+        clearTimeout(tid);
+        if (!res.ok) return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        const data = await res.json();
+        const addr = data.address || {};
+        const poi = addr.amenity || addr.building || addr.shop || addr.tourism || "";
+        let roadPart = "";
+        const hn = addr.house_number || "", road = addr.road || addr.pedestrian || "";
+        if (hn && road) roadPart = `${hn} ${road}`; else if (road) roadPart = road;
+        const village = addr.village || addr.neighbourhood || addr.residential || "";
+        const subdistrict = addr.subdistrict || addr.suburb || "";
+        const district = addr.district || addr.city_district || "";
+        const province = addr.province || addr.state || addr.city || "";
+        const rawParts = [poi, roadPart, village, subdistrict, district, province].filter(Boolean);
+        const parts: string[] = [];
+        for (const p of rawParts) { if (!parts.some(e => e.includes(p) || p.includes(e))) parts.push(p); }
+        if (parts.length > 0) { let r = parts.slice(0, 4).join(" "); return r.length > 70 ? r.substring(0, 67) + "..." : r; }
+        if (data.display_name) { const s = data.display_name.split(",").slice(0, 4).join(",").trim(); return s.length > 70 ? s.substring(0, 67) + "..." : s; }
+        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } catch { return `${lat.toFixed(6)}, ${lng.toFixed(6)}`; }
+}
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+    const google = await reverseGeocodeGoogle(lat, lng);
+    if (google) return google;
+    return reverseGeocodeNominatim(lat, lng);
+}
+
+async function prefetchLocation(): Promise<void> {
+    if (_locationFetching) return;
+    _locationFetching = true;
+    try {
+        const gps = await getCurrentGPS();
+        if (gps) { const text = await reverseGeocode(gps.lat, gps.lng); _cachedLocation = { text, timestamp: Date.now() }; }
+    } catch { /* silent */ }
+    finally { _locationFetching = false; }
+}
+
+async function getCachedLocation(): Promise<string> {
+    if (_cachedLocation && (Date.now() - _cachedLocation.timestamp) < LOCATION_CACHE_MAX_AGE) {
+        void prefetchLocation(); return _cachedLocation.text;
+    }
+    await Promise.race([prefetchLocation(), new Promise<void>(resolve => setTimeout(resolve, 2000))]);
+    return _cachedLocation?.text || "ไม่สามารถระบุตำแหน่งได้";
+}
+
+function ensureJpgFilename(name: string): string {
+    if (!name) return `image_${Date.now()}.jpg`;
+    const dot = name.lastIndexOf(".");
+    if (dot <= 0) return `${name}.jpg`;
+    return `${name.substring(0, dot)}.jpg`;
+}
+
+async function addTimestampToImage(file: File, locationText: string): Promise<File> {
+    return new Promise((resolve) => {
+        const img = document.createElement("img");
+        img.onload = () => {
+            try {
+                URL.revokeObjectURL(img.src);
+                const canvas = document.createElement("canvas");
+                canvas.width = img.width; canvas.height = img.height;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) { resolve(file); return; }
+                ctx.drawImage(img, 0, 0);
+                const now = new Date();
+                const timestamp = now.toLocaleString("th-TH", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                const fontSize = Math.max(14, Math.floor(img.width * 0.022));
+                const padding = Math.floor(fontSize * 0.5);
+                const lineHeight = fontSize * 1.3;
+                ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+                const tsWidth = ctx.measureText(timestamp).width;
+                const locDisplay = `📍 ${locationText}`;
+                const locWidth = ctx.measureText(locDisplay).width;
+                const totalHeight = lineHeight * 2;
+                const boxWidth = Math.max(Math.floor(img.width * 0.6), Math.max(tsWidth, locWidth) + padding * 2);
+                const bgX = 10, bgY = Math.max(0, img.height - totalHeight - padding * 2 - 10);
+                ctx.fillStyle = "rgba(0,0,0,0.65)"; ctx.fillRect(bgX, bgY, boxWidth, totalHeight + padding * 2);
+                ctx.fillStyle = "#FFFFFF"; ctx.textBaseline = "top";
+                ctx.fillText(timestamp, bgX + padding, bgY + padding);
+                let locText = locDisplay;
+                while (ctx.measureText(locText).width > boxWidth - padding * 2 && locText.length > 10) locText = locText.slice(0, -4) + "...";
+                ctx.fillText(locText, bgX + padding, bgY + padding + lineHeight);
+                canvas.toBlob((blob) => {
+                    if (blob) resolve(new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" }));
+                    else resolve(file);
+                }, "image/jpeg", 0.9);
+            } catch { resolve(file); }
+        };
+        img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
+    return new Promise((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => { resolve({ width: img.naturalWidth, height: img.naturalHeight }); URL.revokeObjectURL(img.src); };
+        img.onerror = () => { reject(new Error("Cannot read image")); URL.revokeObjectURL(img.src); };
+        img.src = URL.createObjectURL(file);
+    });
+}
+
+function isMobileDevice(): boolean {
+    if (typeof navigator === "undefined") return false;
+    return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+        || ("ontouchstart" in window && navigator.maxTouchPoints > 0);
+}
+
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -169,7 +339,7 @@ async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
     return json.station ?? json;
 }
 
-type PhotoItem = { id: string; file?: File; preview?: string; remark?: string; uploading?: boolean; error?: string; ref?: PhotoRef; isNA?: boolean; };
+type PhotoItem = { id: string; file?: File; preview?: string; remark?: string; uploading?: boolean; uploaded?: boolean; error?: string; ref?: PhotoRef; isNA?: boolean; createdAt?: string; location?: string; };
 type PF = "PASS" | "FAIL" | "NA" | "";
 
 type Question =
@@ -611,58 +781,86 @@ function PhotoMultiInput({
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
 }) {
+    const cameraRef = useRef<HTMLInputElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
-    const handlePick = () => fileRef.current?.click();
-    const handleFiles = async (list: FileList | null) => {
-        if (!list) return;
+    const isMobile = useMemo(() => isMobileDevice(), []);
+    const [landscapeWarning, setLandscapeWarning] = useState(false);
+
+    const processFile = async (file: File): Promise<PhotoItem | null> => {
+        try {
+            const locationText = await getCachedLocation();
+            const fileWithTimestamp = await addTimestampToImage(file, locationText);
+            const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
+            const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
+            if (!ref) return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "" };
+            return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
+        } catch (err) { console.error("processFile error:", err); return null; }
+    };
+
+    const handleFiles = async (list: FileList | null, fromCamera: boolean) => {
+        if (!list || list.length === 0) return;
         const remain = Math.max(0, max - photos.length);
+        if (remain === 0) { alert(lang === "th" ? `แนบรูปได้สูงสุด ${max} รูปต่อข้อ` : `Maximum ${max} photos per item`); return; }
         const files = Array.from(list).slice(0, remain);
-        const items: PhotoItem[] = await Promise.all(
-            files.map(async (f, i) => {
-                const photoId = `${qNo}-${Date.now()}-${i}-${f.name}`;
-                const ref = await putPhoto(draftKey, photoId, f);
-                return { id: photoId, file: f, preview: URL.createObjectURL(f), remark: "", ref };
-            })
-        );
-        setPhotos((prev) => [...prev, ...items]);
+        let hasLandscape = false;
+        const validFiles: File[] = [];
+        for (const f of files) {
+            if (fromCamera) {
+                try { const dim = await getImageDimensions(f); if (dim.width > dim.height) { hasLandscape = true; continue; } } catch { }
+            }
+            validFiles.push(f);
+        }
+        const results = await Promise.all(validFiles.map(f => processFile(f)));
+        const accepted = results.filter(Boolean) as PhotoItem[];
+        if (accepted.length > 0) setPhotos(prev => [...prev, ...accepted]);
+        if (hasLandscape) setLandscapeWarning(true);
+        if (cameraRef.current) cameraRef.current.value = "";
         if (fileRef.current) fileRef.current.value = "";
     };
+
     const handleRemove = async (id: string) => {
         await delPhoto(draftKey, id);
-        setPhotos((prev) => {
-            const target = prev.find((p) => p.id === id);
-            if (target?.preview) URL.revokeObjectURL(target.preview);
-            return prev.filter((p) => p.id !== id);
-        });
+        setPhotos((prev) => { const target = prev.find((p) => p.id === id); if (target?.preview) URL.revokeObjectURL(target.preview); return prev.filter((p) => p.id !== id); });
     };
+
     return (
-        <div id={id} className="tw-space-y-3">
-            <div className="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-2">
-                <Button size="sm" color="blue" variant="outlined" onClick={handlePick} className="tw-shrink-0">{t("attachPhoto", lang)}</Button>
-            </div>
-            <Typography variant="small" className="!tw-text-gray-500 tw-flex tw-items-center">
-                {t("maxPhotos", lang)} {max} {t("photos", lang)} • {t("cameraSupported", lang)}
-            </Typography>
-            <input ref={fileRef} type="file" accept="image/*" multiple capture="environment" className="tw-hidden" onChange={(e) => { void handleFiles(e.target.files); }} />
-            {photos.length > 0 ? (
-                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
-                    {photos.map((p) => (
-                        <div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col">
-                            <div className="tw-relative tw-aspect-[4/3] tw-bg-gray-50">
-                                {p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}
-                                <button onClick={() => { void handleRemove(p.id); }}
-                                    className="tw-absolute tw-top-2 tw-right-2 tw-bg-red-500 tw-text-white tw-w-6 tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors">×</button>
-                            </div>
-                        </div>
-                    ))}
+        <div id={id} className="tw-space-y-2 sm:tw-space-y-3 tw-transition-all tw-duration-300">
+            {landscapeWarning && (
+                <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-bg-black/70 tw-flex tw-items-center tw-justify-center tw-p-6" onClick={() => setLandscapeWarning(false)}>
+                    <div className="tw-bg-white tw-rounded-2xl tw-p-6 tw-max-w-sm tw-text-center tw-shadow-xl" onClick={e => e.stopPropagation()}>
+                        <svg className="tw-w-14 tw-h-14 tw-text-amber-500 tw-mx-auto tw-mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                        <p className="tw-text-lg tw-font-bold tw-text-gray-800 tw-mb-2">{lang === "th" ? "กรุณาถ่ายรูปแนวตั้ง" : "Please take portrait photos"}</p>
+                        <p className="tw-text-sm tw-text-gray-600 tw-mb-4">{lang === "th" ? "รูปที่ถ่ายเป็นแนวนอนจะไม่ถูกรับ กรุณาหมุนมือถือเป็นแนวตั้งแล้วถ่ายใหม่" : "Landscape photos are not accepted. Please hold your phone upright and retake."}</p>
+                        <Button size="sm" color="amber" variant="filled" onClick={() => setLandscapeWarning(false)} className="tw-w-full">{lang === "th" ? "รับทราบ" : "OK"}</Button>
+                    </div>
                 </div>
-            ) : (
-                <Typography variant="small" className="!tw-text-gray-500">{t("noPhotos", lang)}</Typography>
             )}
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
+                {isMobile ? (
+                    <Button size="sm" color="blue" variant="outlined" onClick={() => cameraRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
+                        <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        {lang === "th" ? "ถ่ายรูป" : "Take Photo"}
+                    </Button>
+                ) : (
+                    <Button size="sm" color="blue" variant="outlined" onClick={() => fileRef.current?.click()} className="tw-shrink-0 tw-flex tw-items-center tw-gap-1">
+                        <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        {t("attachPhoto", lang)}
+                    </Button>
+                )}
+            </div>
+            {isMobile && <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="tw-hidden" onChange={e => { void handleFiles(e.target.files, true); }} />}
+            {!isMobile && <input ref={fileRef} type="file" accept="image/*" multiple className="tw-hidden" onChange={e => { void handleFiles(e.target.files, false); }} />}
+            <Typography variant="small" className="!tw-text-blue-gray-500">
+                {t("maxPhotos", lang)} {max} {t("photos", lang)}
+            </Typography>
+            {photos.length > 0 ? (
+                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-2 sm:tw-gap-3">
+                    {photos.map((p) => (<div key={p.id} className="tw-border tw-rounded-lg tw-overflow-hidden tw-bg-white tw-shadow-xs tw-flex tw-flex-col"><div className="tw-relative tw-aspect-[4/3] tw-bg-blue-gray-50">{p.preview && <img src={p.preview} alt="preview" className="tw-w-full tw-h-full tw-object-cover" />}<button onClick={() => { void handleRemove(p.id); }} className="tw-absolute tw-top-1.5 tw-right-1.5 tw-bg-red-500 tw-text-white tw-w-5 tw-h-5 sm:tw-w-6 sm:tw-h-6 tw-rounded-full tw-flex tw-items-center tw-justify-center tw-shadow-md hover:tw-bg-red-600 tw-transition-colors tw-text-xs sm:tw-text-sm">×</button></div></div>))}
+                </div>
+            ) : (<Typography variant="small" className="!tw-text-blue-gray-500 tw-text-xs sm:tw-text-sm">{t("noPhotos", lang)}</Typography>)}
         </div>
     );
 }
-
 function SkippedNAItem({ label, remark, lang }: { label: string; remark?: string; lang: Lang }) {
     return (
         <div className="tw-py-4 tw-bg-amber-50/50">
@@ -832,7 +1030,7 @@ export default function StationPMReport() {
                 for (const ref of refs || []) {
                     if ('isNA' in ref && ref.isNA) { items.push({ id: `${photoKey}-NA-restored`, isNA: true, preview: undefined }); continue; }
                     if (!('id' in ref) || !ref.id) continue;
-                    const file = await getPhoto(postKey, ref.id);
+                    const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
                     if (!file) continue;
                     items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
                 }
@@ -910,7 +1108,7 @@ export default function StationPMReport() {
                 for (const ref of refs || []) {
                     if ('isNA' in ref && ref.isNA) { items.push({ id: `${photoKey}-NA-restored`, isNA: true, preview: undefined }); continue; }
                     if (!('id' in ref) || !ref.id) continue;
-                    const file = await getPhoto(key, ref.id);
+                    const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
                     if (!file) continue;
                     items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
                 }
@@ -1138,7 +1336,13 @@ export default function StationPMReport() {
     const photoRefs = useMemo(() => {
         const out: Record<string, (PhotoRef | { isNA: true })[]> = {};
         Object.entries(photos).forEach(([photoKey, list]) => {
-            out[photoKey] = (list || []).map(p => p.isNA ? { isNA: true } : p.ref).filter(Boolean) as (PhotoRef | { isNA: true })[];
+            out[photoKey] = (list || [])
+                .map(p => {
+                    if (p.isNA) return { isNA: true } as const;
+                    if (!p.ref) return null;
+                    return { ...p.ref, uploaded: p.uploaded === true };
+                })
+                .filter(Boolean) as (PhotoRef | { isNA: true })[];
         });
         return out;
     }, [photos]);
@@ -1550,6 +1754,8 @@ export default function StationPMReport() {
             router.replace(`${pathname}?${params.toString()}`, { scroll: false });
         }
     }, [searchParams, canGoAfter, pathname, router, isPostMode]);
+
+    useEffect(() => { void prefetchLocation(); }, []);
 
     const go = (next: TabId) => {
         if (isPostMode && next === "pre") return;

@@ -133,7 +133,10 @@ async function getCachedLocation(): Promise<string> {
         void prefetchLocation();
         return _cachedLocation.text;
     }
-    await prefetchLocation();
+    await Promise.race([
+        prefetchLocation(),
+        new Promise<void>(resolve => setTimeout(resolve, 2000))
+    ]);
     return _cachedLocation?.text || "ไม่สามารถระบุตำแหน่งได้";
 }
 
@@ -566,16 +569,7 @@ async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
 const UNITS = { voltage: ["V"] as const };
 type UnitVoltage = (typeof UNITS.voltage)[number];
 
-type PhotoItem = {
-    id: string;
-    file?: File;
-    preview?: string;
-    remark?: string;
-    uploading?: boolean;
-    error?: string;
-    ref?: PhotoRef;
-    isNA?: boolean;
-};
+type PhotoItem = { id: string; file?: File; preview?: string; remark?: string; uploading?: boolean; uploaded?: boolean; error?: string; ref?: PhotoRef; isNA?: boolean; createdAt?: string; location?: string; };
 
 type PF = "PASS" | "FAIL" | "NA" | "";
 
@@ -1802,7 +1796,13 @@ export default function CCBPMReport() {
         const out: Record<number, (PhotoRef | { isNA: true })[]> = {};
         Object.entries(photos).forEach(([noStr, list]) => {
             const no = Number(noStr);
-            out[no] = (list || []).map(p => p.isNA ? { isNA: true } : p.ref).filter(Boolean) as (PhotoRef | { isNA: true })[];
+            out[no] = (list || [])
+                .map(p => {
+                    if (p.isNA) return { isNA: true } as const;
+                    if (!p.ref) return null;
+                    return { ...p.ref, uploaded: (p as any).uploaded === true };
+                })
+                .filter(Boolean) as (PhotoRef | { isNA: true })[];
         });
         return out;
     }, [photos]);

@@ -451,11 +451,6 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
                 href={previewHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => {
-                  apiFetch(`${BASE}/cbboxpmreport/${info.row.original.id}/mark-downloaded?station_id=${encodeURIComponent(stationId || "")}&download_type=pdf`, {
-                    method: "POST", credentials: "include",
-                  }).catch(console.error);
-                }}
                 className="tw-inline-flex tw-items-center tw-justify-center tw-rounded-md tw-p-1.5 sm:tw-p-2 tw-text-red-600 hover:tw-text-red-800 hover:tw-bg-red-50 tw-transition-colors"
                 title={t("preview", lang)}
               >
@@ -561,18 +556,18 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
       {toast.show && (
         <div className="tw-fixed tw-top-4 tw-left-1/2 tw--translate-x-1/2 tw-z-[9999] tw-max-w-md tw-w-[calc(100%-2rem)]">
           <div className={`tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-xl tw-shadow-2xl tw-border ${toast.type === "success" ? "tw-bg-green-50 tw-border-green-200" :
-              toast.type === "error" ? "tw-bg-red-50 tw-border-red-200" :
-                toast.type === "warning" ? "tw-bg-amber-50 tw-border-amber-200" :
-                  "tw-bg-blue-50 tw-border-blue-200"}`}>
+            toast.type === "error" ? "tw-bg-red-50 tw-border-red-200" :
+              toast.type === "warning" ? "tw-bg-amber-50 tw-border-amber-200" :
+                "tw-bg-blue-50 tw-border-blue-200"}`}>
             <div className={`tw-flex-shrink-0 tw-w-8 tw-h-8 tw-rounded-full tw-flex tw-items-center tw-justify-center ${toast.type === "success" ? "tw-bg-green-500" : toast.type === "error" ? "tw-bg-red-500" :
-                toast.type === "warning" ? "tw-bg-amber-500" : "tw-bg-blue-500"}`}>
+              toast.type === "warning" ? "tw-bg-amber-500" : "tw-bg-blue-500"}`}>
               {toast.type === "success" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>}
               {toast.type === "error" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>}
               {toast.type === "warning" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01" /></svg>}
               {toast.type === "info" && <svg className="tw-w-4 tw-h-4 tw-text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01" /></svg>}
             </div>
             <p className={`tw-text-sm tw-font-medium tw-flex-1 tw-pt-1 ${toast.type === "success" ? "tw-text-green-800" : toast.type === "error" ? "tw-text-red-800" :
-                toast.type === "warning" ? "tw-text-amber-800" : "tw-text-blue-800"}`}>{toast.message}</p>
+              toast.type === "warning" ? "tw-text-amber-800" : "tw-text-blue-800"}`}>{toast.message}</p>
             <button onClick={() => setToast(prev => ({ ...prev, show: false }))}
               className="tw-flex-shrink-0 tw-p-1 tw-rounded-full tw-text-gray-400 hover:tw-text-gray-600 hover:tw-bg-gray-100 tw-transition-colors">
               <svg className="tw-w-4 tw-h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
