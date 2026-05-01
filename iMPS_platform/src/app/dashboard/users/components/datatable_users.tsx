@@ -3,7 +3,7 @@
 import ConfirmDialog from "@/app/dashboard/stations/components/ConfirmDialog";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   getCoreRowModel,
@@ -152,6 +152,20 @@ export default function SearchDataTables() {
     enabled: false,
     expires_at: "",
   });
+
+  const stationBoxRef = useRef<HTMLDivElement>(null);
+
+  // ปิด dropdown เมื่อคลิกนอกกล่อง
+  useEffect(() => {
+    if (!showStationDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (stationBoxRef.current && !stationBoxRef.current.contains(e.target as Node)) {
+        setShowStationDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showStationDropdown]);
 
   // ดึงข้อมูลผู้ใช้หลัง auth ผ่านเท่านั้น
   useEffect(() => {
@@ -691,13 +705,18 @@ export default function SearchDataTables() {
       <AddUser open={openAdd} onClose={() => setOpenAdd(false)} onSubmit={handleCreateUser} loading={saving} />
 
       {/* Dialog: Edit */}
-      <Dialog open={openEdit} handler={() => {
-        setOpenEdit(false);
-        setStationSearchValue("");
-        setShowStationDropdown(false);
-        setSelectedStations([]);
-      }} size="md" className="tw-space-y-5 tw-px-8 tw-py-4">
-        <DialogHeader className="tw-flex tw-items-center tw-justify-between">
+      <Dialog
+        open={openEdit}
+        handler={() => {
+          setOpenEdit(false);
+          setStationSearchValue("");
+          setShowStationDropdown(false);
+          setSelectedStations([]);
+        }}
+        size="md"
+        className="tw-flex tw-flex-col tw-max-h-[90vh] tw-px-8 tw-py-4"
+      >
+        <DialogHeader className="tw-flex tw-items-center tw-justify-between tw-flex-shrink-0">
           <Typography variant="h5" color="blue-gray">
             Edit User
           </Typography>
@@ -706,7 +725,7 @@ export default function SearchDataTables() {
           </Button>
         </DialogHeader>
 
-        <form
+        <form className="tw-flex tw-flex-col tw-flex-1 tw-min-h-0"
           onSubmit={async (e) => {
             e.preventDefault();
             if (!editingRow?.id) return;
@@ -753,12 +772,12 @@ export default function SearchDataTables() {
             }
           }}
         >
-          <DialogBody className="tw-space-y-6 tw-px-6 tw-py-4">
+          <DialogBody className="tw-space-y-6 tw-px-6 tw-py-4 tw-overflow-y-auto tw-flex-1 tw-min-h-0">
             <div className="tw-flex tw-flex-col tw-gap-4">
-              <Input name="username" label="Username" defaultValue={editingRow?.username ?? ""} required />
-              <Input name="email" label="Email" type="email" defaultValue={editingRow?.email ?? ""} required />
-              <Input name="company" label="Company" defaultValue={editingRow?.company ?? ""} />
-              <Input name="tel" label="tel" defaultValue={editingRow?.tel ?? ""} />
+              <Input name="username" label="Username" defaultValue={editingRow?.username ?? ""} required crossOrigin={undefined} />
+              <Input name="email" label="Email" type="email" defaultValue={editingRow?.email ?? ""} required crossOrigin={undefined} />
+              <Input name="company" label="Company" defaultValue={editingRow?.company ?? ""} crossOrigin={undefined} />
+              <Input name="tel" label="tel" defaultValue={editingRow?.tel ?? ""} crossOrigin={undefined} />
               {/* <Input name="password" label="New Password (optional)" type="password" /> */}
 
               {isAdmin && (
@@ -788,6 +807,7 @@ export default function SearchDataTables() {
                     <Switch
                       checked={aiPackage.enabled}
                       onChange={() => setAiPackage(p => ({ ...p, enabled: !p.enabled }))}
+                      crossOrigin={undefined}
                     />
                   </div>
                   {/* <Input
@@ -802,67 +822,66 @@ export default function SearchDataTables() {
 
 
               {roleValue === "technician" && (
-                <div className="tw-relative">
-                  <Input
-                    label="Select Station"
-                    placeholder="Type to search..."
-                    value={stationSearchValue}
-                    onChange={(e) => {
-                      setStationSearchValue(e.target.value);
-                      setShowStationDropdown(true);
-                    }}
-                    onFocus={() => setShowStationDropdown(true)}
-                    disabled={loadingStations || availableStations.length === 0}
-                    crossOrigin={undefined}
-                  />
+                <div ref={stationBoxRef}>
+                  {/* Input + Dropdown (ครอบเฉพาะ input ให้ dropdown absolute เทียบกับ input อย่างเดียว) */}
+                  <div className="tw-relative">
+                    <Input
+                      label="Select Station"
+                      placeholder="Type to search..."
+                      value={stationSearchValue}
+                      onChange={(e) => {
+                        setStationSearchValue(e.target.value);
+                        setShowStationDropdown(true);
+                      }}
+                      onFocus={() => setShowStationDropdown(true)}
+                      disabled={loadingStations || availableStations.length === 0}
+                      crossOrigin={undefined}
+                    />
 
-                  {/* Dropdown suggestions */}
-                  {showStationDropdown && (
-                    <div className="tw-absolute tw-top-full tw-left-0 tw-right-0 tw-z-10 tw-mt-1 tw-max-h-48 tw-overflow-y-auto tw-bg-white tw-border tw-border-gray-300 tw-rounded-lg tw-shadow-lg">
-                      {availableStations
-                        .filter((station) =>
-                          !selectedStations.find(s => s.station_id === station.station_id) &&
-                          (station.station_name
-                            .toLowerCase()
-                            .includes(stationSearchValue.toLowerCase()) ||
-                            station.station_id
-                              .toLowerCase()
-                              .includes(stationSearchValue.toLowerCase()))
-                        )
-                        .map((station) => (
-                          <div
-                            key={station.station_id}
-                            onClick={() => {
-                              setSelectedStations([...selectedStations, station]);
-                              setStationSearchValue("");
-                              setShowStationDropdown(false);
-                            }}
-                            className="tw-px-4 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-50 tw-border-b tw-border-gray-100 last:tw-border-b-0"
-                          >
-                            <Typography variant="small" className="tw-font-medium">
-                              {station.station_name}
-                            </Typography>
-                            <Typography variant="small" color="gray">
-                              {station.station_id}
-                            </Typography>
-                          </div>
-                        ))}
+                    {showStationDropdown && (
+                      <div className="tw-absolute tw-top-full tw-left-0 tw-right-0 tw-z-50 tw-mt-1 tw-max-h-48 tw-overflow-y-auto tw-bg-white tw-border tw-border-gray-300 tw-rounded-lg tw-shadow-lg">
+                        {(() => {
+                          const filtered = availableStations.filter((station) => {
+                            if (!station) return false;
+                            const name = (station.station_name || "").toLowerCase();
+                            const id = (station.station_id || "").toLowerCase();
+                            const search = stationSearchValue.toLowerCase();
+                            return (
+                              !selectedStations.find((s) => s.station_id === station.station_id) &&
+                              (name.includes(search) || id.includes(search))
+                            );
+                          });
 
-                      {stationSearchValue && availableStations.filter((station) =>
-                        !selectedStations.find(s => s.station_id === station.station_id) &&
-                        (station.station_name
-                          .toLowerCase()
-                          .includes(stationSearchValue.toLowerCase()) ||
-                          station.station_id
-                            .toLowerCase()
-                            .includes(stationSearchValue.toLowerCase()))
-                      ).length === 0 && (
-                          <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
-                            No stations found
-                          </div>
-                        )}
-                    </div>
-                  )}
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="tw-px-4 tw-py-3 tw-text-center tw-text-gray-500">
+                                No stations found
+                              </div>
+                            );
+                          }
+
+                          return filtered.map((station) => (
+                            <div
+                              key={station.station_id}
+                              onClick={() => {
+                                setSelectedStations([...selectedStations, station]);
+                                setStationSearchValue("");
+                                setShowStationDropdown(false);
+                              }}
+                              className="tw-px-4 tw-py-2 tw-cursor-pointer hover:tw-bg-blue-50 tw-border-b tw-border-gray-100 last:tw-border-b-0"
+                            >
+                              <Typography variant="small" className="tw-font-medium">
+                                {station.station_name}
+                              </Typography>
+                              <Typography variant="small" color="gray">
+                                {station.station_id}
+                              </Typography>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    )}
+                  </div>
 
                   {loadingStations && (
                     <Typography variant="small" color="gray" className="tw-mt-1">
@@ -875,13 +894,13 @@ export default function SearchDataTables() {
                     </Typography>
                   )}
 
-                  {/* Selected Stations Tags */}
+                  {/* Selected Stations Tags — กลับมาอยู่ใต้ Input เหมือนเดิม */}
                   {selectedStations.length > 0 && (
                     <div className="tw-mt-3">
                       <Typography variant="small" className="tw-font-semibold tw-mb-2">
                         Selected Stations ({selectedStations.length}):
                       </Typography>
-                      <div className="tw-flex tw-flex-wrap tw-gap-2">
+                      <div className="tw-flex tw-flex-wrap tw-gap-2 tw-max-h-40 tw-overflow-y-auto tw-p-2 tw-border tw-border-blue-gray-100 tw-rounded-lg tw-bg-blue-gray-50/30">
                         {selectedStations.map((station) => (
                           <div
                             key={station.station_id}
@@ -892,7 +911,7 @@ export default function SearchDataTables() {
                               type="button"
                               onClick={() => {
                                 setSelectedStations(
-                                  selectedStations.filter(s => s.station_id !== station.station_id)
+                                  selectedStations.filter((s) => s.station_id !== station.station_id)
                                 );
                               }}
                               className="tw-font-bold tw-cursor-pointer hover:tw-text-blue-900"
@@ -909,7 +928,7 @@ export default function SearchDataTables() {
             </div>
           </DialogBody>
 
-          <DialogFooter className="tw-gap-2">
+          <DialogFooter className="tw-gap-2 tw-flex-shrink-0 tw-border-t tw-border-blue-gray-50 tw-pt-4">
             <Button variant="outlined" type="button" onClick={() => setOpenEdit(false)}>
               Cancel
             </Button>
