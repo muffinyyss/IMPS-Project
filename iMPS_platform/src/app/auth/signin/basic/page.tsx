@@ -115,10 +115,15 @@ export default function BasicPage() {
               >
                 Your email
               </Typography>
-              <Input size="lg" label="Your email"
+              <Input
+                size="lg"
+                label="Your email"
                 type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                crossOrigin={undefined}
+                onPointerEnterCapture={undefined}
+                onPointerLeaveCapture={undefined}
               />
               <Typography
                 variant="small"
@@ -130,12 +135,15 @@ export default function BasicPage() {
               {/* <Input type="password" size="lg" label="Password"
                 value={password}
                 onChange={(e) => setPassword((e.target.value))} /> */}
-              <Input 
-                type={showPassword ? "text" : "password"} 
-                size="lg" 
+              <Input
+                type={showPassword ? "text" : "password"}
+                size="lg"
                 label="Password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)} 
+                onChange={(e) => setPassword(e.target.value)}
+                crossOrigin={undefined}
+                onPointerEnterCapture={undefined}
+                onPointerLeaveCapture={undefined}
                 icon={
                   <div onClick={() => setShowPassword(!showPassword)} className="tw-cursor-pointer">
                     {showPassword ? (
@@ -179,7 +187,8 @@ export default function BasicPage() {
               />
             </div> */}
 
-            <Typography className="tw-text-center !tw-text-blue-gray-500 !tw-font-medium tw-mt-4">
+            {/* register */}
+            {/* <Typography className="tw-text-center !tw-text-blue-gray-500 !tw-font-medium tw-mt-4">
               Not registered?
               <Link
                 href="/auth/signup/basic-signup"
@@ -187,7 +196,8 @@ export default function BasicPage() {
               >
                 Create account
               </Link>
-            </Typography>
+            </Typography> */}
+
           </form>
         </div>
       </div>
