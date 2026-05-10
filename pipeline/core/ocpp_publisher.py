@@ -70,13 +70,33 @@ class OCPPPublisher:
         for station_id, config in settings.stations.items():
             self._publish_station(config, action)
     
+    # def _publish_station(self, config: StationConfig, action: str):
+    #     """Publish config for a single station"""
+    #     topic = config.topics.ocppConfig
+        
+    #     # Skip if no topic configured
+    #     if not topic:
+    #         return
+        
+    #     timestamp = now_tz()
+        
+    #     payload = {
+    #         "SN": config.serialNumber,
+    #         "chargeBoxID": config.chargeBoxId,
+    #         "ocppUrl": config.ocppUrl,
+    #         "action": action,
+    #         "timestamp": timestamp.isoformat()
+    #     }
+        
+    #     try:
+    #         self.mqtt.publish(topic, payload)
+    #         logger.debug(f"[{config.stationId}] Published OCPP config: {action}")
+    #     except Exception as e:
+    #         logger.error(f"[{config.stationId}] Failed to publish OCPP config: {e}")
     def _publish_station(self, config: StationConfig, action: str):
-        """Publish config for a single station"""
         topic = config.topics.ocppConfig
         
-        # Skip if no topic configured
-        if not topic:
-            return
+        setting_topic = f"OCPP/{config.stationId}/settingPLC"
         
         timestamp = now_tz()
         
@@ -89,10 +109,12 @@ class OCPPPublisher:
         }
         
         try:
-            self.mqtt.publish(topic, payload)
-            logger.debug(f"[{config.stationId}] Published OCPP config: {action}")
+            if topic:
+                self.mqtt.publish(topic, payload)
+            self.mqtt.publish(setting_topic, payload) 
+            logger.info(f"Published to {setting_topic}")
         except Exception as e:
-            logger.error(f"[{config.stationId}] Failed to publish OCPP config: {e}")
+            logger.error(f"Failed: {e}")
     
     def check_and_publish_changes(self):
         """
