@@ -49,15 +49,23 @@ export default function BasicPage() {
         body: JSON.stringify({ email, password }) // ★ ตรงกับ LoginRequest(email,password)
       });
 
-      const data = await res.json();
+      // อ่าน body เป็น text ก่อน แล้วลอง parse JSON — กันกรณี server ตอบ plain text (เช่น 500/proxy error)
+      const rawBody = await res.text();
+      let data: any = {};
+      try {
+        data = rawBody ? JSON.parse(rawBody) : {};
+      } catch {
+        data = {};
+      }
 
       if (!res.ok) {
         // รองรับ both cases: detail เป็น string หรือเป็น list of errors
-        if (Array.isArray((data as any)?.detail)) {
-          const msgs = (data as any).detail.map((err: any) => `${err.loc?.join(".")}: ${err.msg}`);
+        if (Array.isArray(data?.detail)) {
+          const msgs = data.detail.map((err: any) => `${err.loc?.join(".")}: ${err.msg}`);
           throw new Error(msgs.join(", "));
         }
-        throw new Error((data as any)?.detail || "Login failed ❌");
+        const fallback = (rawBody && rawBody.length < 200) ? rawBody : `Login failed (${res.status})`;
+        throw new Error(data?.detail || fallback);
       }
 
       // ✅ เก็บคีย์ให้ “ตรงกับ Navbar”

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:/Users/Asus/Documents/GitHub/IMPS-Project/iMPS_platform\" log --oneline -20)",
+      "Bash(git -C \"c:/Users/Asus/Documents/GitHub/IMPS-Project/iMPS_platform\" log --oneline -- backend/routers/users.py)",
+      "Bash(python -m py_compile \"c:/Users/Asus/Documents/GitHub/IMPS-Project/iMPS_platform/backend/routers/users.py\")"
+    ]
+  }
+}
