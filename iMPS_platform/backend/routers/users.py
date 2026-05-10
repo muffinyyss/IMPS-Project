@@ -53,24 +53,7 @@ def login(body: LoginRequest, response: Response):
         {"email": body.email},
         {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1, "ai_package": 1},
     )
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    stored_pw = user.get("password")
-    if isinstance(stored_pw, bytes):
-        stored_hash_bytes = stored_pw
-    elif isinstance(stored_pw, str) and stored_pw:
-        stored_hash_bytes = stored_pw.encode("utf-8")
-    else:
-        # password field หาย / None / type ผิด — ถือว่าล็อกอินไม่ผ่าน (ไม่ใช่ 500)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    try:
-        ok = bcrypt.checkpw(body.password.encode("utf-8"), stored_hash_bytes)
-    except (ValueError, TypeError):
-        # hash format ใน DB ใช้ไม่ได้ → ไม่ผ่าน (ไม่ throw 500)
-        ok = False
-    if not ok:
+    if not user or not bcrypt.checkpw(body.password.encode("utf-8"), user["password"].encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     station_ids = user.get("station_id", [])
