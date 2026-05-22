@@ -12,6 +12,8 @@ import PMCard from "./components/PMCard";
 import CBMCard from "./components/condition-Based";
 import Lightbox from "./components/Lightbox";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import StationDetailCard from "./components/stationDetailsCard";
+
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/utils/api";
 
@@ -277,10 +279,11 @@ export default function ChargersPage() {
 
   // ===== Render =====
   return (
-    <div className="tw-mt-8 tw-mb-4 tw-mx-auto tw-px-4 sm:tw-px-6">
+    // <div className="tw-mt-8 tw-mb-4 tw-mx-auto tw-px-4 sm:tw-px-6">
+    <div className="tw-mt-4 tw-mb-4">
       <LoadingOverlay show={pageLoading} text="กำลังโหลดข้อมูล..." />
 
-      <div className="tw-mt-8 tw-mb-4">
+      <div className="tw-mt-4 tw-mb-4">
         <div className="tw-mt-6 tw-grid tw-grid-cols-1 lg:tw-grid-cols-3 lg:tw-gap-6 tw-gap-y-6">
 
           {/* LEFT: Carousel */}
