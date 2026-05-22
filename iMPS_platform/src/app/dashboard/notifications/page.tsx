@@ -3,11 +3,10 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   BellIcon,
   CheckCircleIcon,
+  CheckIcon,
   ExclamationTriangleIcon,
-  InformationCircleIcon,
   XMarkIcon,
   TrashIcon,
-  CheckIcon,
   ArrowPathIcon,
   Cog6ToothIcon,
   EnvelopeIcon,
@@ -18,7 +17,6 @@ import {
 } from "@heroicons/react/24/solid";
 
 type Lang = "th" | "en";
-type NotificationType = "info" | "warning" | "success" | "error";
 
 interface Notification {
   id: string;
@@ -30,8 +28,8 @@ interface Notification {
   error: string;
   error_code?: string;
   timestamp: string;
-  read: boolean;
-  type: NotificationType;
+  head?: string;
+  connector?: string | number;
 }
 
 interface ChargerInfo {
@@ -67,7 +65,6 @@ interface EmailRule {
   station_name: string;
   chargebox_id: string | "all";
   user_ids: string[];
-  notify_types: NotificationType[];
   enabled: boolean;
 }
 
@@ -75,7 +72,6 @@ interface NotificationSettings {
   enableSound: boolean;
   enableDesktopNotif: boolean;
   autoRefreshInterval: number;
-  showTypes: Record<NotificationType, boolean>;
   emailRules: EmailRule[];
 }
 
@@ -83,21 +79,11 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   enableSound: true,
   enableDesktopNotif: false,
   autoRefreshInterval: 0,
-  showTypes: { info: true, warning: true, success: true, error: true },
   emailRules: [],
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-const typeConfig: Record<
-  NotificationType,
-  { icon: React.ElementType; bgColor: string; iconColor: string; label: Record<Lang, string> }
-> = {
-  info: { icon: InformationCircleIcon, bgColor: "tw-bg-blue-100", iconColor: "tw-text-blue-600", label: { th: "ข้อมูล", en: "Info" } },
-  warning: { icon: ExclamationTriangleIcon, bgColor: "tw-bg-amber-100", iconColor: "tw-text-amber-600", label: { th: "เตือน", en: "Warning" } },
-  success: { icon: CheckCircleIcon, bgColor: "tw-bg-emerald-100", iconColor: "tw-text-emerald-600", label: { th: "สำเร็จ", en: "Success" } },
-  error: { icon: ExclamationTriangleIcon, bgColor: "tw-bg-red-100", iconColor: "tw-text-red-600", label: { th: "ข้อผิดพลาด", en: "Error" } },
-};
 
 type SettingsView = "main" | "email-rules" | "email-rule-edit";
 
@@ -110,7 +96,6 @@ const roleBadge: Record<string, { bg: string; text: string; label: Record<Lang, 
 export default function NotificationsPage() {
   const [lang, setLang] = useState<Lang>("th");
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [filter, setFilter] = useState<"all" | "unread">("all");
   const [selectedStation, setSelectedStation] = useState<string>("all");
   const [selectedCharger, setSelectedCharger] = useState<string>("all");
   const [loading, setLoading] = useState(true);
@@ -119,6 +104,9 @@ export default function NotificationsPage() {
   const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
   const [settingsView, setSettingsView] = useState<SettingsView>("main");
   const settingsRef = useRef<HTMLDivElement>(null);
+  const today = new Date().toISOString().split("T")[0];
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
 
   const [stationDropdownOpen, setStationDropdownOpen] = useState(false);
   const [chargerDropdownOpen, setChargerDropdownOpen] = useState(false);
@@ -148,6 +136,33 @@ export default function NotificationsPage() {
     setToast({ message, type });
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   };
+
+  // เพิ่มฟังก์ชัน fetchEmailRules
+  const fetchEmailRules = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(`${API_BASE}/notifications/email-rules`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const rules: EmailRule[] = data.rules || [];
+      setSettings((prev) => {
+        const next = { ...prev, emailRules: rules };
+        persistSettings(next);
+        return next;
+      });
+    } catch (err) {
+      console.error("[EmailRule] Fetch rules error:", err);
+    }
+  }, []);
+
+  // เรียกตอน settings เปิด
+  useEffect(() => {
+    if (showSettings) {
+      fetchEmailRules(); // ★ โหลด background ไว้ก่อน
+    }
+  }, [showSettings, fetchEmailRules]);
 
   // Confirm dialog
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -219,13 +234,6 @@ export default function NotificationsPage() {
     });
   };
 
-  const updateShowType = (type: NotificationType, value: boolean) => {
-    setSettings((prev) => {
-      const next = { ...prev, showTypes: { ...prev.showTypes, [type]: value } };
-      persistSettings(next);
-      return next;
-    });
-  };
 
   // ===== Close settings on outside click =====
   useEffect(() => {
@@ -313,12 +321,7 @@ export default function NotificationsPage() {
   // ===== Translations =====
   const t = {
     title: lang === "th" ? "การแจ้งเตือน" : "Notifications",
-    all: lang === "th" ? "ทั้งหมด" : "All",
-    unread: lang === "th" ? "ยังไม่อ่าน" : "Unread",
-    markAllRead: lang === "th" ? "อ่านทั้งหมด" : "Mark all read",
-    deleteAll: lang === "th" ? "ลบทั้งหมด" : "Delete all",
     noNotifications: lang === "th" ? "ไม่มีการแจ้งเตือน" : "No notifications",
-    noUnread: lang === "th" ? "ไม่มีการแจ้งเตือนที่ยังไม่อ่าน" : "No unread notifications",
     loading: lang === "th" ? "กำลังโหลด..." : "Loading...",
     errorLoading: lang === "th" ? "ไม่สามารถโหลดข้อมูลได้" : "Failed to load data",
     retry: lang === "th" ? "ลองใหม่" : "Retry",
@@ -327,7 +330,6 @@ export default function NotificationsPage() {
     settingsDesktop: lang === "th" ? "แจ้งเตือนเดสก์ท็อป" : "Desktop notifications",
     settingsAutoRefresh: lang === "th" ? "รีเฟรชอัตโนมัติ" : "Auto-refresh",
     settingsOff: lang === "th" ? "ปิด" : "Off",
-    settingsShowTypes: lang === "th" ? "แสดงประเภท" : "Show types",
     settingsReset: lang === "th" ? "รีเซ็ตค่าเริ่มต้น" : "Reset defaults",
     emailRules: lang === "th" ? "ตั้งค่าส่งอีเมล" : "Email Notifications",
     emailRulesDesc: lang === "th" ? "กำหนดสถานี/ตู้ชาร์จ ที่จะส่งอีเมลแจ้งเตือน" : "Configure email alerts per station/charger",
@@ -339,7 +341,6 @@ export default function NotificationsPage() {
     allChargers: lang === "th" ? "ทุกตู้ชาร์จ" : "All Chargers",
     recipients: lang === "th" ? "ผู้รับอีเมล" : "Recipients",
     recipientsDesc: lang === "th" ? "แสดงเฉพาะ Admin และ Owner ของสถานีนี้" : "Showing Admin and Owner of this station",
-    notifyFor: lang === "th" ? "แจ้งเตือนเมื่อ" : "Notify for",
     save: lang === "th" ? "บันทึก" : "Save",
     cancel: lang === "th" ? "ยกเลิก" : "Cancel",
     delete: lang === "th" ? "ลบ" : "Delete",
@@ -352,6 +353,9 @@ export default function NotificationsPage() {
     selectStation: lang === "th" ? "เลือกสถานี" : "Select station",
     selectStationFirst: lang === "th" ? "กรุณาเลือกสถานีก่อน" : "Please select a station first",
     loadingStations: lang === "th" ? "กำลังโหลดสถานี..." : "Loading stations...",
+    dateFrom: lang === "th" ? "จาก" : "From",
+    dateTo: lang === "th" ? "ถึง" : "To",
+    clearDate: lang === "th" ? "ล้าง" : "Clear",
   };
 
   // ===== Auto-refresh =====
@@ -368,7 +372,10 @@ export default function NotificationsPage() {
     setError(null);
     try {
       const token = localStorage.getItem("access_token");
-      const res = await fetch(`${API_BASE}/notifications/all?limit=100`, {
+      const params = new URLSearchParams();
+      if (dateFrom) params.set("date_from", dateFrom);
+      if (dateTo) params.set("date_to", dateTo);
+      const res = await fetch(`${API_BASE}/notifications/all?${params}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -380,7 +387,7 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [t.errorLoading]);
+  }, [t.errorLoading, dateFrom, dateTo]);
 
   useEffect(() => {
     fetchNotifications();
@@ -447,59 +454,13 @@ export default function NotificationsPage() {
   // ===== Filtered notifications =====
   const filteredNotifications = React.useMemo(() => {
     let result = notifications;
-    result = result.filter((n) => settings.showTypes[n.type] !== false);
     // ★ เพิ่ม filter station
     if (selectedStation !== "all") result = result.filter((n) => (n.station_id || n.sn) === selectedStation);
     if (selectedCharger !== "all") result = result.filter((n) => n.sn === selectedCharger);
-    if (filter === "unread") result = result.filter((n) => !n.read);
     return result;
-  }, [notifications, selectedStation, selectedCharger, filter, settings.showTypes]);
+  }, [notifications, selectedStation, selectedCharger]);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
 
-  // ===== Actions =====
-  const markAsRead = async (notification: Notification) => {
-    try {
-      const token = localStorage.getItem("access_token");
-      await fetch(`${API_BASE}/notifications/${notification.id}/read?sn=${notification.sn}`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)));
-    } catch (err) {
-      console.error("[Notifications] Mark as read error:", err);
-    }
-  };
-
-  const markAllAsRead = async () => {
-    try {
-      const token = localStorage.getItem("access_token");
-      await fetch(`${API_BASE}/notifications/read-all`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    } catch (err) {
-      console.error("[Notifications] Mark all read error:", err);
-    }
-  };
-
-  const deleteNotification = async (notification: Notification) => {
-    try {
-      const token = localStorage.getItem("access_token");
-      await fetch(`${API_BASE}/notifications/${notification.id}?station_id=${notification.station_id}`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
-    } catch (err) {
-      console.error("[Notifications] Delete error:", err);
-    }
-  };
-
-  const deleteAll = () => {
-    setNotifications([]);
-  };
 
   // ===== Email Rule helpers =====
   const saveEmailRule = async (rule: EmailRule) => {
@@ -513,18 +474,20 @@ export default function NotificationsPage() {
         },
         body: JSON.stringify(rule),
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      // อัปเดต local state
+      const data = await res.json();
+      // ★ ใช้ rule ที่ backend return กลับมา (มี _id จริง)
+      const savedRule: EmailRule = data.rule;
+
       setSettings((prev) => {
         const existing = prev.emailRules.findIndex((r) => r.id === rule.id);
         let newRules: EmailRule[];
         if (existing >= 0) {
           newRules = [...prev.emailRules];
-          newRules[existing] = rule;
+          newRules[existing] = savedRule;  // ← ใช้ savedRule ไม่ใช่ rule เดิม
         } else {
-          newRules = [...prev.emailRules, rule];
+          newRules = [...prev.emailRules, savedRule];
         }
         const next = { ...prev, emailRules: newRules };
         persistSettings(next);
@@ -534,63 +497,68 @@ export default function NotificationsPage() {
       showToast(lang === "th" ? "บันทึกกฎเรียบร้อยแล้ว" : "Rule saved successfully", "success");
     } catch (err) {
       console.error("[EmailRule] Save error:", err);
-      showToast(lang === "th" ? "บันทึกไม่สำเร็จ กรุณาลองใหม่" : "Failed to save rule. Please try again.", "error");
+      showToast(lang === "th" ? "บันทึกไม่สำเร็จ" : "Failed to save rule.", "error");
     }
   };
 
   const deleteEmailRule = async (ruleId: string) => {
-    try {
-      const token = localStorage.getItem("access_token");
-      const res = await fetch(`${API_BASE}/notifications/email-rules/${ruleId}`, {
-        method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      setSettings((prev) => {
-        const next = { ...prev, emailRules: prev.emailRules.filter((r) => r.id !== ruleId) };
-        persistSettings(next);
-        return next;
-      });
-
-      showToast(lang === "th" ? "ลบกฎเรียบร้อยแล้ว" : "Rule deleted successfully", "success");
-    } catch (err) {
-      console.error("[EmailRule] Delete error:", err);
-      showToast(lang === "th" ? "ลบไม่สำเร็จ กรุณาลองใหม่" : "Failed to delete rule. Please try again.", "error");
-    }
-  };
-
-  const toggleEmailRule = async (ruleId: string) => {
-    const rule = settings.emailRules.find((r) => r.id === ruleId);
-    if (!rule) return;
-
-    const toggled = { ...rule, enabled: !rule.enabled };
-
+    // ★ Optimistic — ลบออกจาก UI ทันที
+    const prevRules = settings.emailRules;
     setSettings((prev) => {
-      const newRules = prev.emailRules.map((r) => (r.id === ruleId ? toggled : r));
-      const next = { ...prev, emailRules: newRules };
+      const next = { ...prev, emailRules: prev.emailRules.filter((r) => r.id !== ruleId) };
       persistSettings(next);
       return next;
     });
 
     try {
       const token = localStorage.getItem("access_token");
-      await fetch(`${API_BASE}/notifications/email-rules`, {
+      const res = await fetch(`${API_BASE}/notifications/email-rules/${ruleId}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast(lang === "th" ? "ลบกฎเรียบร้อยแล้ว" : "Rule deleted successfully", "success");
+    } catch (err) {
+      // ★ Rollback ถ้า API fail
+      setSettings((prev) => {
+        const next = { ...prev, emailRules: prevRules };
+        persistSettings(next);
+        return next;
+      });
+      showToast(lang === "th" ? "ลบไม่สำเร็จ กรุณาลองใหม่" : "Failed to delete rule. Please try again.", "error");
+      console.error("[EmailRule] Delete error:", err);
+    }
+  };
+
+  const toggleEmailRule = async (ruleId: string) => {
+    const rule = settings.emailRules.find((r) => r.id === ruleId);
+    if (!rule) return;
+    const toggled = { ...rule, enabled: !rule.enabled };
+
+    // Optimistic update
+    setSettings((prev) => {
+      const next = { ...prev, emailRules: prev.emailRules.map((r) => (r.id === ruleId ? toggled : r)) };
+      persistSettings(next);
+      return next;
+    });
+
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(`${API_BASE}/notifications/email-rules`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(toggled),
       });
-      showToast(
-        toggled.enabled
-          ? (lang === "th" ? "เปิดใช้งานกฎแล้ว" : "Rule enabled")
-          : (lang === "th" ? "ปิดใช้งานกฎแล้ว" : "Rule disabled"),
-        "success"
-      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast(toggled.enabled ? (lang === "th" ? "เปิดใช้งานกฎแล้ว" : "Rule enabled") : (lang === "th" ? "ปิดใช้งานกฎแล้ว" : "Rule disabled"), "success");
     } catch (err) {
+      // ★ Rollback กลับสถานะเดิม
+      setSettings((prev) => {
+        const next = { ...prev, emailRules: prev.emailRules.map((r) => (r.id === ruleId ? rule : r)) };
+        persistSettings(next);
+        return next;
+      });
+      showToast(lang === "th" ? "เปลี่ยนสถานะไม่สำเร็จ" : "Failed to update rule status", "error");
       console.error("[EmailRule] Toggle error:", err);
     }
   };
@@ -617,7 +585,9 @@ export default function NotificationsPage() {
     const stationChargers = editingRule.station_id ? chargersForStation(editingRule.station_id) : [];
 
     // ★ Filter users: admin ทุกคน + owner ของ station ที่เลือก
-    const eligibleUsers = editingRule.station_id ? usersForStation(editingRule.station_id) : [];
+    const eligibleUsers = editingRule.station_id === "all"
+      ? allUsers.filter((u) => u.role === "admin")
+      : editingRule.station_id ? usersForStation(editingRule.station_id) : [];
 
     const filteredUsers = eligibleUsers.filter(
       (u) =>
@@ -633,21 +603,13 @@ export default function NotificationsPage() {
       });
     };
 
-    const toggleNotifyType = (type: NotificationType) => {
-      setEditingRule((prev) => {
-        if (!prev) return prev;
-        const has = prev.notify_types.includes(type);
-        return {
-          ...prev,
-          notify_types: has ? prev.notify_types.filter((t) => t !== type) : [...prev.notify_types, type],
-        };
-      });
-    };
 
     // เมื่อเปลี่ยน station ให้ clear user_ids ที่ไม่ eligible แล้ว
     const handleStationChange = (sid: string) => {
       const found = allStations.find((s) => s.station_id === sid);
-      const newEligible = sid ? usersForStation(sid) : [];
+      const newEligible = sid === "all"
+        ? allUsers.filter((u) => u.role === "admin")  // ← แก้
+        : sid ? usersForStation(sid) : [];
       const eligibleIds = new Set(newEligible.map((u) => u.id));
 
       setEditingRule((prev) =>
@@ -655,7 +617,9 @@ export default function NotificationsPage() {
           ? {
             ...prev,
             station_id: sid,
-            station_name: found?.station_name || sid,
+            station_name: sid === "all"
+              ? (lang === "th" ? "ทุกสถานี" : "All Stations")
+              : found?.station_name || sid,
             chargebox_id: "all",
             // ลบ user ที่ไม่ eligible ออก
             user_ids: prev.user_ids.filter((uid) => eligibleIds.has(uid)),
@@ -680,6 +644,8 @@ export default function NotificationsPage() {
         </div>
 
         <div className="tw-space-y-4 tw-overflow-y-auto tw-max-h-[420px] tw-pr-1">
+
+
           {/* Station Selection */}
           <div>
             <label className="tw-block tw-text-xs tw-font-medium tw-text-gray-500 tw-mb-1">{t.station}</label>
@@ -695,6 +661,7 @@ export default function NotificationsPage() {
                 className="tw-w-full tw-px-3 tw-py-2 tw-text-sm tw-border tw-border-gray-200 tw-rounded-lg tw-bg-white focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-gray-300"
               >
                 <option value="">{t.selectStation}</option>
+                <option value="all">{lang === "th" ? "ทุกสถานี" : "All Stations"}</option>
                 {allStations.map((s) => (
                   <option key={s.station_id} value={s.station_id}>
                     {s.station_name} ({s.chargers.length} {lang === "th" ? "ตู้" : "chargers"})
@@ -725,37 +692,16 @@ export default function NotificationsPage() {
             </div>
           )}
 
-          {/* Notify Types */}
-          <div>
-            <label className="tw-block tw-text-xs tw-font-medium tw-text-gray-500 tw-mb-2">{t.notifyFor}</label>
-            <div className="tw-flex tw-flex-wrap tw-gap-2">
-              {(Object.keys(typeConfig) as NotificationType[]).map((type) => {
-                const cfg = typeConfig[type];
-                const selected = editingRule.notify_types.includes(type);
-                return (
-                  <button
-                    key={type}
-                    onClick={() => toggleNotifyType(type)}
-                    className={`
-                      tw-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-text-xs tw-font-medium
-                      tw-rounded-full tw-border tw-transition-all
-                      ${selected ? `${cfg.bgColor} ${cfg.iconColor} tw-border-current` : "tw-bg-white tw-text-gray-400 tw-border-gray-200"}
-                    `}
-                  >
-                    {React.createElement(cfg.icon, { className: "tw-h-3.5 tw-w-3.5" })}
-                    {cfg.label[lang]}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Recipients — admin + owner ของ station เท่านั้น */}
           <div>
             <label className="tw-block tw-text-xs tw-font-medium tw-text-gray-500 tw-mb-1">
               {t.recipients} ({editingRule.user_ids.length} {t.selectedUsers})
             </label>
-            <p className="tw-text-[11px] tw-text-gray-400 tw-mb-2">{t.recipientsDesc}</p>
+            <p className="tw-text-[11px] tw-text-gray-400 tw-mb-2">
+              {editingRule.station_id === "all"
+                ? (lang === "th" ? "แสดงเฉพาะ Admin (ทุกสถานี)" : "Showing all Admins")
+                : t.recipientsDesc}
+            </p>
 
             {/* ยังไม่เลือก station */}
             {!editingRule.station_id ? (
@@ -897,7 +843,7 @@ export default function NotificationsPage() {
           </button>
           <button
             onClick={() => {
-              if (editingRule.station_id && editingRule.user_ids.length > 0 && editingRule.notify_types.length > 0) {
+              if (editingRule.station_id && editingRule.user_ids.length > 0) {
                 const ruleToSave = editingRule.id.startsWith("new-")
                   ? { ...editingRule, id: `rule-${Date.now()}` }
                   : editingRule;
@@ -916,7 +862,7 @@ export default function NotificationsPage() {
                 });
               }
             }}
-            disabled={!editingRule.station_id || editingRule.user_ids.length === 0 || editingRule.notify_types.length === 0}
+            disabled={!editingRule.station_id || editingRule.user_ids.length === 0}
             className="tw-px-4 tw-py-2 tw-text-sm tw-font-medium tw-text-white tw-bg-gray-900 tw-rounded-lg hover:tw-bg-gray-800 tw-transition-colors disabled:tw-opacity-40 disabled:tw-cursor-not-allowed"
           >
             {t.save}
@@ -942,8 +888,9 @@ export default function NotificationsPage() {
             fetchStations();
             fetchUsers();
             setEditingRule({
-              id: `new-${Date.now()}`, station_id: "", station_name: "",
-              chargebox_id: "all", user_ids: [], notify_types: ["error", "warning"], enabled: true,
+              id: `new-${Date.now()}`,
+              station_id: "", station_name: "",
+              chargebox_id: "all", user_ids: [], enabled: true,
             });
             setUserSearchQuery("");
             setSettingsView("email-rule-edit");
@@ -978,7 +925,6 @@ export default function NotificationsPage() {
                   <p className="tw-text-xs tw-text-gray-400 tw-truncate">
                     {rule.chargebox_id === "all" ? t.allChargers : rule.chargebox_id}
                     {" · "}{rule.user_ids.length} {lang === "th" ? "คน" : "user(s)"}
-                    {" · "}{rule.notify_types.map((nt) => typeConfig[nt].label[lang]).join(", ")}
                   </p>
                 </div>
                 <div className="tw-flex tw-items-center tw-gap-1.5 tw-flex-shrink-0">
@@ -1062,23 +1008,6 @@ export default function NotificationsPage() {
 
       <hr className="tw-my-3 tw-border-gray-100" />
 
-      <p className="tw-text-xs tw-font-semibold tw-text-gray-500 tw-uppercase tw-tracking-wide tw-mb-2">{t.settingsShowTypes}</p>
-      <div className="tw-space-y-2">
-        {(Object.keys(typeConfig) as NotificationType[]).map((type) => {
-          const cfg = typeConfig[type];
-          const IconComp = cfg.icon;
-          return (
-            <label key={type} className="tw-flex tw-items-center tw-gap-2.5 tw-py-1 tw-cursor-pointer tw-select-none">
-              <input type="checkbox" checked={settings.showTypes[type] !== false} onChange={(e) => updateShowType(type, e.target.checked)} className="tw-w-4 tw-h-4 tw-rounded tw-border-gray-300 tw-text-gray-900 focus:tw-ring-gray-500" />
-              <span className={`tw-p-1 tw-rounded-lg ${cfg.bgColor}`}><IconComp className={`tw-h-3.5 tw-w-3.5 ${cfg.iconColor}`} /></span>
-              <span className="tw-text-sm tw-text-gray-700">{cfg.label[lang]}</span>
-            </label>
-          );
-        })}
-      </div>
-
-      <hr className="tw-my-3 tw-border-gray-100" />
-
       <button onClick={() => setSettingsView("email-rules")} className="tw-flex tw-items-center tw-justify-between tw-w-full tw-px-3 tw-py-3 tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white hover:tw-bg-gray-50 tw-transition-colors tw-group">
         <div className="tw-flex tw-items-center tw-gap-3">
           <div className="tw-p-2 tw-bg-blue-100 tw-rounded-lg"><EnvelopeIcon className="tw-h-4 tw-w-4 tw-text-blue-600" /></div>
@@ -1096,7 +1025,16 @@ export default function NotificationsPage() {
 
       <hr className="tw-my-3 tw-border-gray-100" />
 
-      <button onClick={() => { setSettings(DEFAULT_SETTINGS); persistSettings(DEFAULT_SETTINGS); }} className="tw-w-full tw-text-center tw-text-sm tw-text-gray-500 hover:tw-text-gray-800 tw-py-1.5 tw-transition-colors">
+      <button
+        onClick={() => {
+          setSettings((prev) => {
+            const next = { ...DEFAULT_SETTINGS, emailRules: prev.emailRules };
+            persistSettings(next);
+            return next;
+          });
+        }}
+        className="tw-w-full tw-text-center tw-text-sm tw-text-gray-500 hover:tw-text-gray-800 tw-py-1.5 tw-transition-colors"
+      >
         {t.settingsReset}
       </button>
     </>
@@ -1149,21 +1087,13 @@ export default function NotificationsPage() {
             <div className="tw-p-3 tw-bg-gray-900 tw-rounded-xl"><BellIcon className="tw-h-6 tw-w-6 tw-text-white" /></div>
             <div>
               <h1 className="tw-text-2xl tw-font-bold tw-text-gray-900">{t.title}</h1>
-              {unreadCount > 0 && <p className="tw-text-sm tw-text-gray-500">{unreadCount} {lang === "th" ? "รายการยังไม่อ่าน" : "unread"}</p>}
+
             </div>
           </div>
 
           <div className="tw-flex tw-items-center tw-gap-2">
             <button onClick={fetchNotifications} className="tw-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-bg-white tw-border tw-border-gray-200 tw-rounded-lg hover:tw-bg-gray-50 tw-transition-colors" title={t.retry}>
               <ArrowPathIcon className="tw-h-4 tw-w-4" />
-            </button>
-            <button onClick={markAllAsRead} disabled={unreadCount === 0} className="tw-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-gray-600 tw-bg-white tw-border tw-border-gray-200 tw-rounded-lg hover:tw-bg-gray-50 tw-transition-colors disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
-              <CheckIcon className="tw-h-4 tw-w-4" />
-              <span className="tw-hidden sm:tw-inline">{t.markAllRead}</span>
-            </button>
-            <button onClick={deleteAll} disabled={notifications.length === 0} className="tw-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-2 tw-text-sm tw-font-medium tw-text-red-600 tw-bg-white tw-border tw-border-gray-200 tw-rounded-lg hover:tw-bg-red-50 tw-transition-colors disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
-              <TrashIcon className="tw-h-4 tw-w-4" />
-              <span className="tw-hidden sm:tw-inline">{t.deleteAll}</span>
             </button>
 
             {/* Settings */}
@@ -1189,15 +1119,31 @@ export default function NotificationsPage() {
 
         {/* Filter Tabs */}
         <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-4 tw-mb-4">
-          <div className="tw-flex tw-gap-2">
-            <button onClick={() => setFilter("all")} className={`tw-px-4 tw-py-2 tw-text-sm tw-font-medium tw-rounded-lg tw-transition-colors ${filter === "all" ? "tw-bg-gray-900 tw-text-white" : "tw-bg-white tw-text-gray-600 tw-border tw-border-gray-200 hover:tw-bg-gray-50"}`}>
-              {t.all} ({notifications.length})
-            </button>
-            <button onClick={() => setFilter("unread")} className={`tw-px-4 tw-py-2 tw-text-sm tw-font-medium tw-rounded-lg tw-transition-colors ${filter === "unread" ? "tw-bg-gray-900 tw-text-white" : "tw-bg-white tw-text-gray-600 tw-border tw-border-gray-200 hover:tw-bg-gray-50"}`}>
-              {t.unread} ({unreadCount})
-            </button>
+          {/* ★ Date filter */}
+          <div className="tw-flex tw-items-center tw-gap-2">
+            <label className="tw-text-sm tw-text-gray-500">{t.dateFrom}</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="tw-px-3 tw-py-2 tw-text-sm tw-bg-white tw-border tw-border-gray-200 tw-rounded-lg tw-text-gray-700 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-gray-300"
+            />
+            <label className="tw-text-sm tw-text-gray-500">{t.dateTo}</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="tw-px-3 tw-py-2 tw-text-sm tw-bg-white tw-border tw-border-gray-200 tw-rounded-lg tw-text-gray-700 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-gray-300"
+            />
+            {(dateFrom || dateTo) && (
+              <button
+                onClick={() => { setDateFrom(""); setDateTo(""); }}
+                className="tw-p-1.5 tw-text-gray-400 hover:tw-text-gray-600"
+              >
+                <XMarkIcon className="tw-h-4 tw-w-4" />
+              </button>
+            )}
           </div>
-
           {/* ★ Station filter (searchable) */}
           <div className="tw-flex tw-items-center tw-gap-2">
             <label className="tw-text-sm tw-text-gray-500">{lang === "th" ? "สถานี:" : "Station:"}</label>
@@ -1296,50 +1242,140 @@ export default function NotificationsPage() {
         </div>
 
         {/* Notification List */}
-        <div className="tw-space-y-3">
-          {filteredNotifications.length > 0 ? (
-            filteredNotifications.map((notification) => {
-              const config = typeConfig[notification.type] || typeConfig.error;
-              const IconComponent = config.icon;
-              return (
-                <div key={notification.id} className={`tw-relative tw-flex tw-items-start tw-gap-4 tw-p-4 tw-bg-white tw-rounded-xl tw-border tw-transition-all ${notification.read ? "tw-border-gray-100" : "tw-border-gray-200 tw-shadow-sm"}`}>
-                  {!notification.read && <div className="tw-absolute tw-top-4 tw-left-0 tw-w-1 tw-h-8 tw-bg-blue-500 tw-rounded-r-full" />}
-                  <div className={`tw-flex-shrink-0 tw-p-2.5 tw-rounded-xl ${config.bgColor}`}><IconComponent className={`tw-h-5 tw-w-5 ${config.iconColor}`} /></div>
-                  <div className="tw-flex-1 tw-min-w-0">
-                    <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2 tw-mb-2">
-                      <span className="tw-text-xs tw-font-medium tw-px-2 tw-py-0.5 tw-rounded-full tw-bg-gray-800 tw-text-white">{notification.station_name || notification.station_id}</span>
-                      {notification.charger_no && <span className="tw-text-xs tw-font-medium tw-px-2 tw-py-0.5 tw-rounded-full tw-bg-blue-600 tw-text-white">Charger{notification.charger_no}</span>}
-                      {/* {notification.chargebox_id && <span className={`tw-text-xs tw-px-2 tw-py-0.5 tw-rounded-full tw-bg-gray-100 ${notification.read ? "tw-text-gray-400" : "tw-text-gray-600"}`}>{notification.chargebox_id}</span>} */}
+        {/* Notification List */}
+        <div className="tw-overflow-x-auto tw-w-full tw-rounded-xl tw-border tw-border-blue-gray-100 tw-shadow-sm">
+          <table className="tw-w-full tw-border-separate tw-border-spacing-0 tw-min-w-[900px]">
+            <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800">
+              <tr>
+                {/* unread indicator column */}
+                {/* <th className="tw-w-1 tw-p-0" /> */}
+                {[
+                  { label: lang === "th" ? "วันที่" : "Date" },
+                  { label: lang === "th" ? "เวลา" : "Time" },
+                  { label: lang === "th" ? "สถานี" : "Station" },
+                  { label: "Event" },
+                  { label: "Connector" },
+                  { label: lang === "th" ? "ข้อความ" : "Message" },
+                  { label: lang === "th" ? "เมื่อ" : "When" },
+                  // { label: lang === "th" ? "จัดการ" : "Actions" },
+                ].map((h) => (
+                  <th key={h.label} className="tw-px-3 tw-py-3 tw-text-left tw-whitespace-nowrap">
+                    <span className="tw-text-[11px] tw-font-bold tw-uppercase tw-tracking-wider tw-text-white/80">
+                      {h.label}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredNotifications.length > 0 ? (
+                filteredNotifications.map((notification, i) => {
+                  return (
+                    <tr
+                      key={notification.id}
+                      className={`tw-transition-colors hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3]
+  ${i % 2 === 0 ? "tw-bg-white" : "tw-bg-blue-gray-50/30"}`}
+                    >
+
+                      {/* Date */}
+                      <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50 tw-whitespace-nowrap">
+                        <span className="tw-text-xs tw-tabular-nums tw-text-blue-gray-600">
+                          {notification.timestamp
+                            ? new Date(notification.timestamp).toLocaleDateString("th-TH", {
+                              year: "numeric", month: "short", day: "numeric",
+                            })
+                            : "—"}
+                        </span>
+                      </td>
+
+                      {/* Time */}
+                      <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50 tw-whitespace-nowrap">
+                        <span className="tw-text-xs tw-tabular-nums tw-font-mono tw-text-blue-gray-600">
+                          {notification.timestamp
+                            ? new Date(notification.timestamp).toLocaleTimeString("th-TH", {
+                              hour: "2-digit", minute: "2-digit", second: "2-digit",
+                            })
+                            : "—"}
+                        </span>
+                      </td>
+
+                      {/* Station */}
+                      <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50 tw-whitespace-nowrap">
+                        <span className="tw-text-xs tw-tabular-nums tw-text-blue-gray-600">
+                          {notification.station_name || notification.station_id}
+                        </span>
+                      </td>
+
+                      {/* Charger */}
+                      <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50 tw-whitespace-nowrap">
+                        {notification.charger_no ? (
+                          <span className="tw-text-xs tw-font-medium tw-text-blue-gray-700">
+                            Charger {notification.charger_no}
+                          </span>
+                        ) : (
+                          <span className="tw-text-blue-gray-300 tw-text-xs">—</span>
+                        )}
+                      </td>
+
+                      {/* Connector */}
+                      <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50 tw-whitespace-nowrap">
+                        {notification.head ? (
+                          <span className="tw-text-xs tw-font-medium tw-text-blue-gray-700">
+                            {String(notification.head).replace(/^head\s*/i, "")}
+                          </span>
+                        ) : (
+                          <span className="tw-text-blue-gray-300 tw-text-xs">—</span>
+                        )}
+                      </td>
+
+                      {/* Message */}
+                      <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50 tw-max-w-xs">
+                        <span className="tw-text-xs tw-text-blue-gray-700 tw-font-medium">
+                          {notification.error}
+                        </span>
+                      </td>
+
+                      {/* When */}
+                      <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50 tw-whitespace-nowrap">
+                        <span className="tw-text-xs tw-text-blue-gray-400">{formatTime(notification.timestamp)}</span>
+                      </td>
+
+                      {/* Actions */}
+                      {/* <td className="tw-px-3 tw-py-3 tw-border-y tw-border-x-0 tw-border-blue-gray-50">
+                        <span className="tw-inline-flex tw-items-center tw-gap-1">
+                          {!notification.read && (
+                            <button
+                              onClick={() => markAsRead(notification)}
+                              className="tw-group/btn tw-rounded-lg tw-p-1.5 tw-bg-blue-50 tw-ring-1 tw-ring-blue-200/60 hover:tw-bg-blue-600 hover:tw-ring-blue-600 tw-transition-all tw-duration-200 tw-shadow-sm"
+                              title={lang === "th" ? "อ่านแล้ว" : "Mark as read"}
+                            >
+                              <CheckCircleIcon className="tw-h-3.5 tw-w-3.5 tw-text-blue-600 group-hover/btn:tw-text-white tw-transition-colors" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => deleteNotification(notification)}
+                            className="tw-group/btn tw-rounded-lg tw-p-1.5 tw-bg-red-50 tw-ring-1 tw-ring-red-200/60 hover:tw-bg-red-600 hover:tw-ring-red-600 tw-transition-all tw-duration-200 tw-shadow-sm"
+                            title={lang === "th" ? "ลบ" : "Delete"}
+                          >
+                            <XMarkIcon className="tw-h-3.5 tw-w-3.5 tw-text-red-500 group-hover/btn:tw-text-white tw-transition-colors" />
+                          </button>
+                        </span>
+                      </td> */}
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={7} className="tw-px-4 tw-py-16 tw-text-center">
+                    <div className="tw-flex tw-flex-col tw-items-center tw-gap-3 tw-text-blue-gray-400">
+                      <BellIcon className="tw-h-12 tw-w-12 tw-opacity-20" />
+                      <p className="tw-text-sm tw-font-medium">{t.noNotifications}</p>
                     </div>
-                    <div className="tw-flex tw-items-start tw-justify-between tw-gap-2">
-                      <p className={`tw-text-sm ${notification.read ? "tw-text-gray-500" : "tw-text-gray-700"}`}>{notification.error}</p>
-                      <span className="tw-text-xs tw-text-gray-400 tw-whitespace-nowrap">{formatTime(notification.timestamp)}</span>
-                    </div>
-                    {notification.timestamp && (
-                      <p className={`tw-text-xs tw-mt-2 ${notification.read ? "tw-text-gray-400" : "tw-text-gray-500"}`}>
-                        🕐 {new Date(notification.timestamp).toLocaleString("th-TH", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </p>
-                    )}
-                  </div>
-                  <div className="tw-flex tw-items-center tw-gap-1">
-                    {!notification.read && (
-                      <button onClick={() => markAsRead(notification)} className="tw-p-1.5 tw-text-gray-400 hover:tw-text-blue-600 tw-transition-colors" title={lang === "th" ? "อ่านแล้ว" : "Mark as read"}>
-                        <CheckCircleIcon className="tw-h-5 tw-w-5" />
-                      </button>
-                    )}
-                    <button onClick={() => deleteNotification(notification)} className="tw-p-1.5 tw-text-gray-400 hover:tw-text-red-600 tw-transition-colors" title={lang === "th" ? "ลบ" : "Delete"}>
-                      <XMarkIcon className="tw-h-5 tw-w-5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="tw-flex tw-flex-col tw-items-center tw-justify-center tw-py-16 tw-text-gray-400">
-              <BellIcon className="tw-h-16 tw-w-16 tw-mb-4 tw-opacity-30" />
-              <p className="tw-text-lg tw-font-medium">{filter === "all" ? t.noNotifications : t.noUnread}</p>
-            </div>
-          )}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
