@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 import json, re, asyncio, logging
 
-from config import settingDB, _ensure_utc_iso, to_json, mqtt_client, MQTT_TOPIC, BROKER_HOST, BROKER_PORT, charger_collection
+from config import settingDB, _ensure_utc_iso, to_json, mqtt_client, MQTT_TOPIC, BROKER_HOST, BROKER_PORT, charger_collection, charger_coll_async
 from deps import UserClaims, get_current_user
 
 router = APIRouter()
@@ -176,17 +176,27 @@ class PLCCPCommand(BaseModel):
 @router.post("/setting/PLC/CP")
 async def setting_plc_cp(payload: PLCCPCommand):
     now_iso = datetime.now().isoformat()
-    msg = {"SN": payload.SN, "cp_status1": payload.cp_status1, "timestamp": now_iso}
+
+    # Lookup ocppConfig topic from station config
+    charger = await charger_coll_async.find_one({"SN": payload.SN})
+    if not charger:
+        raise HTTPException(status_code=404, detail=f"Charger SN={payload.SN} not found")
+    topic = (charger.get("pipeline_config") or {}).get("topics", {}).get("ocppConfig")
+    if not topic:
+        raise HTTPException(status_code=400, detail="No ocppConfig topic configured for this station")
+
+    command = "remote_start" if payload.cp_status1 == "start" else "remote_stop"
+    msg = {"SN": payload.SN, "command": command, "head": 1, "timestamp": now_iso}
     payload_str = json.dumps(msg, ensure_ascii=False)
     published = False
     try:
-        pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
+        pub_result = mqtt_client.publish(topic, payload_str, qos=1, retain=False)
         pub_result.wait_for_publish(timeout=2.0)
         published = pub_result.is_published()
     except Exception as e:
         print(f"[MQTT] publish error: {e}")
         published = False
-    return {"ok": True, "message": "ส่ง MQTT แล้ว", "timestamp": now_iso, "mqtt": {"broker": f"{BROKER_HOST}:{BROKER_PORT}", "topic": MQTT_TOPIC, "published": bool(published)}, "data": msg}
+    return {"ok": True, "message": "ส่ง MQTT แล้ว", "timestamp": now_iso, "mqtt": {"broker": f"{BROKER_HOST}:{BROKER_PORT}", "topic": topic, "published": bool(published)}, "data": msg}
 
 
 class PLCH2MaxSetting(BaseModel):
@@ -225,17 +235,27 @@ class PLCH2CPCommand(BaseModel):
 @router.post("/setting/PLC/CPH2")
 async def setting_plc_cph2(payload: PLCH2CPCommand):
     now_iso = datetime.now().isoformat()
-    msg = {"SN": payload.SN, "cp_status2": payload.cp_status2, "timestamp": now_iso}
+
+    # Lookup ocppConfig topic from station config
+    charger = await charger_coll_async.find_one({"SN": payload.SN})
+    if not charger:
+        raise HTTPException(status_code=404, detail=f"Charger SN={payload.SN} not found")
+    topic = (charger.get("pipeline_config") or {}).get("topics", {}).get("ocppConfig")
+    if not topic:
+        raise HTTPException(status_code=400, detail="No ocppConfig topic configured for this station")
+
+    command = "remote_start" if payload.cp_status2 == "start" else "remote_stop"
+    msg = {"SN": payload.SN, "command": command, "head": 2, "timestamp": now_iso}
     payload_str = json.dumps(msg, ensure_ascii=False)
     published = False
     try:
-        pub_result = mqtt_client.publish(MQTT_TOPIC, payload_str, qos=1, retain=False)
+        pub_result = mqtt_client.publish(topic, payload_str, qos=1, retain=False)
         pub_result.wait_for_publish(timeout=2.0)
         published = pub_result.is_published()
     except Exception as e:
         print(f"[MQTT] publish error: {e}")
         published = False
-    return {"ok": True, "message": "ส่ง MQTT แล้ว", "timestamp": now_iso, "mqtt": {"broker": f"{BROKER_HOST}:{BROKER_PORT}", "topic": MQTT_TOPIC, "published": bool(published)}, "data": msg}
+    return {"ok": True, "message": "ส่ง MQTT แล้ว", "timestamp": now_iso, "mqtt": {"broker": f"{BROKER_HOST}:{BROKER_PORT}", "topic": topic, "published": bool(published)}, "data": msg}
 
 
 class ChargerSettingBody(BaseModel):

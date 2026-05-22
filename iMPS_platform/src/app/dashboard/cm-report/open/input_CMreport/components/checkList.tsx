@@ -9,6 +9,8 @@ import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { draftKey as getDraftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal, type CMDraftData } from "../lib/draft";
 import { putPhoto, getPhotosByDraftKey, delPhoto, delPhotosByDraftKey, createPreviewUrl, photoRefToFile, type PhotoRef } from "../lib/draftPhotos";
 import { apiFetch } from "@/utils/api";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+
 // ==================== TRANSLATIONS ====================
 const T = {
     pageTitle: { th: "รายงานบันทึกปัญหา (CM)", en: "Corrective Maintenance Report (CM)" },
@@ -89,6 +91,7 @@ function CMValidationCard({ validations, lang }: { validations: ValidationItem[]
     const requiredValidations = validations.filter(v => v.isRequired);
     const allRequiredValid = requiredValidations.every(v => v.isValid);
     const missingCount = requiredValidations.filter(v => !v.isValid).length;
+
 
     const scrollToElement = (scrollId?: string) => {
         if (!scrollId) return;
@@ -291,6 +294,9 @@ export default function CMOpenForm() {
     const [photos_open, setPhotosOpen] = useState<PhotoItem[]>([]);
     const [draftStatus, setDraftStatus] = useState<"idle" | "saving" | "saved">("idle");
     const [draftLoaded, setDraftLoaded] = useState(false);
+    const [uploadState, setUploadState] = useState({ show: false, total: 0, completed: 0 });
+
+    const [overlayText, setOverlayText] = useState("");
 
     // ═══ Maximo state ═══
     const [maximoTicketId, setMaximoTicketId] = useState<string | null>(null);
@@ -559,39 +565,50 @@ export default function CMOpenForm() {
         const newPhotos = photos_open.filter(p => !p.isServer);
         if (newPhotos.length === 0) return;
 
+        setUploadState({ show: true, total: newPhotos.length, completed: 0 });
+
         const fd = new FormData();
         fd.append("station_id", stationId);
         fd.append("group", "cm_photos");
         fd.append("phase", "problem");
         newPhotos.forEach(p => fd.append("files", p.file, p.file.name));
-        // ส่ง location ของรูปแรกที่มี (รูปทั้งหมดถ่ายจากที่เดียวกัน)
         const photoLocation = newPhotos.find(p => p.location)?.location || "";
         if (photoLocation) fd.append("location", photoLocation);
         fd.append("created_at", new Date().toISOString());
-        const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`, { method: "POST", body: fd, credentials: "include" });
+
+        const res = await apiFetch(
+            `${API_BASE}/cmreport/${encodeURIComponent(reportId)}/photos`,
+            { method: "POST", body: fd, credentials: "include" }
+        );
         if (!res.ok) throw new Error(`Upload failed`);
+
+        setUploadState({ show: true, total: newPhotos.length, completed: newPhotos.length });
     }
 
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStationId", lang)); return; }
         if (!canSave && !isEdit) return;
         setSaving(true);
+        setOverlayText(lang === "th" ? "กำลังบันทึก..." : "Saving...");
         try {
             if (isEdit && editId) {
-                // Edit mode - ส่งแค่ status เท่านั้น
                 const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
                     credentials: "include",
-                    body: JSON.stringify({
-                        station_id: stationId,
-                        status: "In Progress"
-                    })
+                    body: JSON.stringify({ station_id: stationId, status: "In Progress" })
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+
+                const p = new URLSearchParams();
+                if (stationId) p.set("station_id", stationId);
+                p.set("tab", "in-progress");
+                p.set("view", "form");
+                p.set("edit_id", editId);
+                router.push(`${LIST_ROUTE}?${p.toString()}`);
+
             } else {
-                // ═══ Create mode — submit + Maximo SR ═══
-                const res = await apiFetch(`${API_BASE}/cmreport/submit`, {
+                const submitRes = await apiFetch(`${API_BASE}/cmreport/submit`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     credentials: "include",
@@ -603,49 +620,35 @@ export default function CMOpenForm() {
                         problem_details: problemDetails,
                         remarks_open,
                         location,
-                        reported_by: reported_by,
+                        reported_by,
                     })
                 });
-                if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
+                if (!submitRes.ok) throw new Error((await submitRes.json()).detail || `HTTP ${submitRes.status}`);
 
-                const {
-                    report_id,
-                    doc_name: newDocName,
-                    issue_id: newIssueId,
-                    maximo_ticket_id,                // ← รับ Maximo ticket จาก response
-                } = await res.json();
+                const { report_id, doc_name: newDocName, issue_id: newIssueId, maximo_ticket_id } = await submitRes.json();
 
-                setDocName(newDocName);
-                setIssueId(newIssueId);
-                setMaximoTicketId(maximo_ticket_id || null);
-
+                // อัปโหลดรูป
+                setOverlayText(lang === "th" ? "กำลังอัปโหลดรูปภาพ..." : "Uploading photos...");
+                setUploadState({ show: true, total: photos_open.filter(p => !p.isServer).length, completed: 0 });
                 await uploadPhotosForReport(report_id);
+                setUploadState({ show: false, total: 0, completed: 0 });
+
+                // cleanup draft
                 clearDraftLocal(draftKey);
                 await delPhotosByDraftKey(draftKey);
 
-                // ═══ แสดง Success Banner ก่อน redirect ═══
-                setShowSuccessBanner(true);
-                setSaving(false);
-                // รอ 3 วินาทีให้ user เห็น Maximo ticket ID แล้วค่อย redirect
-                setTimeout(() => {
-                    router.push(buildListUrl("open"));
-                }, 3000);
-                return; // ← หยุดไม่ให้ไปถึง finally redirect
+                // แสดง "บันทึกสำเร็จ" แล้ว redirect
+                setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
+                await new Promise(r => setTimeout(r, 1500));
+                router.push(buildListUrl("open"));
             }
-
-            // กด In Progress → ไปหน้า form In Progress
-            if (isEdit) {
-                const p = new URLSearchParams();
-                if (stationId) p.set("station_id", stationId);
-                p.set("tab", "in-progress");
-                p.set("view", "form");
-                p.set("edit_id", editId);
-                router.push(`${LIST_ROUTE}?${p.toString()}`);
-            }
-        } catch (e: any) { alert(`${t("alertSaveFailed", lang)} ${e.message || e}`); }
-        finally { setSaving(false); }
+        } catch (e: any) {
+            setUploadState({ show: false, total: 0, completed: 0 });
+            alert(`${t("alertSaveFailed", lang)} ${e.message || e}`);
+        } finally {
+            setSaving(false);
+        }
     };
-
     const handleClearDraft = async () => {
         clearDraftLocal(draftKey);
         await delPhotosByDraftKey(draftKey);
@@ -667,6 +670,11 @@ export default function CMOpenForm() {
     // ==================== RENDER ====================
     return (
         <section className="tw-pb-24">
+            {/* Loading Overlay ระหว่างบันทึก */}
+            <LoadingOverlay
+                show={saving || uploadState.show}
+                text={overlayText}
+            />
             {/* ═══ Success Banner (แสดงหลัง submit สำเร็จ) ═══ */}
             {showSuccessBanner && (
                 <SuccessBanner

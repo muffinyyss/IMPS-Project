@@ -1,11 +1,19 @@
-// app/pm-report/charger/input_PMreport/lib/draftPhotos.ts
-import { createStore, set, get, del } from "idb-keyval";
+import { createStore, set, get, del, keys, type UseStore } from "idb-keyval";
 
-const store = createStore("pmDraftDB", "photos");
+let _store: UseStore | null = null;
+function getStore(): UseStore {
+  if (!_store) {
+    if (typeof indexedDB === "undefined") {
+      throw new Error("IndexedDB is not available (SSR or unsupported browser)");
+    }
+    _store = createStore("pmDraftDB", "photos");
+  }
+  return _store;
+}
 
 export type PhotoRef = {
-  id: string;          // id ของรูปใน UI
-  dbKey: string;       // key จริงที่ใช้เก็บใน IndexedDB
+  id: string;
+  dbKey: string;
   remark?: string;
   name: string;
   type: string;
@@ -21,37 +29,72 @@ export async function putPhoto(
   draftKey: string,
   photoId: string,
   file: File,
-  remark?: string
+  remark?: string,
 ): Promise<PhotoRef> {
   const dbKey = makePhotoDbKey(draftKey, photoId);
-  await set(dbKey, file, store);
-
-  return {
-    id: photoId,
-    dbKey,
-    remark,
-    name: file.name,
-    type: file.type,
-    size: file.size,
-    lastModified: file.lastModified,
-  };
+  try {
+    await set(dbKey, file, getStore());
+  } catch (e) {
+    console.error("putPhoto failed:", e);
+    throw e;
+  }
+  return { id: photoId, dbKey, remark, name: file.name, type: file.type, size: file.size, lastModified: file.lastModified };
 }
 
 export async function getPhoto(draftKey: string, photoId: string): Promise<File | undefined> {
   const dbKey = makePhotoDbKey(draftKey, photoId);
-  return (await get(dbKey, store)) as File | undefined;
+  try {
+    return (await get(dbKey, getStore())) as File | undefined;
+  } catch (e) {
+    console.error("getPhoto failed:", e);
+    return undefined;
+  }
 }
 
-// เผื่อกรณีคุณเก็บ dbKey ไว้ใน PhotoRef แล้วอยากโหลดด้วย dbKey ตรงๆ
 export async function getPhotoByDbKey(dbKey: string): Promise<File | undefined> {
-  return (await get(dbKey, store)) as File | undefined;
+  try {
+    return (await get(dbKey, getStore())) as File | undefined;
+  } catch (e) {
+    console.error("getPhotoByDbKey failed:", e);
+    return undefined;
+  }
 }
 
 export async function delPhoto(draftKey: string, photoId: string) {
   const dbKey = makePhotoDbKey(draftKey, photoId);
-  await del(dbKey, store);
+  try {
+    await del(dbKey, getStore());
+  } catch (e) {
+    console.error("delPhoto failed:", e);
+  }
 }
 
 export async function delPhotoByDbKey(dbKey: string) {
-  await del(dbKey, store);
+  try {
+    await del(dbKey, getStore());
+  } catch (e) {
+    console.error("delPhotoByDbKey failed:", e);
+  }
+}
+
+export async function delAllPhotosForDraft(
+  draftKey: string,
+  photoRefs?: Record<number | string, (PhotoRef | { isNA: true })[]>,
+) {
+  try {
+    const store = getStore();
+    if (photoRefs) {
+      const dbKeys = Object.values(photoRefs).flat()
+        .filter((r): r is PhotoRef => "dbKey" in r && typeof (r as PhotoRef).dbKey === "string")
+        .map((r) => r.dbKey);
+      await Promise.all(dbKeys.map((k) => del(k, store).catch(() => {})));
+      return;
+    }
+    const prefix = `pmDraftPhoto:${draftKey}:`;
+    const allKeys = (await keys(store)) as string[];
+    const matched = allKeys.filter((k) => typeof k === "string" && k.startsWith(prefix));
+    await Promise.all(matched.map((k) => del(k, store).catch(() => {})));
+  } catch (e) {
+    console.error("delAllPhotosForDraft failed:", e);
+  }
 }

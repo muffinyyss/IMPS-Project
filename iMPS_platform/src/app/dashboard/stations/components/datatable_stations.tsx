@@ -440,12 +440,25 @@ export function SearchDataTables() {
   useEffect(() => {
     if (openEditStation && editingStation) {
       setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, maximo_location: editingStation.maximo_location ?? "", maximo_desc: editingStation.maximo_desc ?? "" });
-      setSelectedOwnerId(editingStation.user_id ?? "");
-      resetEditImages();
-      setIsOtherOwnerEdit(false);
-      setOtherOwnerNameEdit("");
+       const ownerExists = owners.some(o => o.user_id === editingStation.user_id);
+        if (ownerExists) {
+            setIsOtherOwnerEdit(false);
+            setSelectedOwnerId(editingStation.user_id ?? "");
+            setOtherOwnerNameEdit("");
+        } else if (editingStation.username) {
+            // ไม่เจอใน list → เข้า Other mode แล้วใส่ username เดิม
+            setIsOtherOwnerEdit(true);
+            setSelectedOwnerId("");
+            setOtherOwnerNameEdit(editingStation.username);
+        } else {
+            setIsOtherOwnerEdit(false);
+            setSelectedOwnerId("");
+            setOtherOwnerNameEdit("");
+        }
+        
+        resetEditImages();
     }
-  }, [openEditStation, editingStation]);
+}, [openEditStation, editingStation, owners]);
 
   useEffect(() => {
     if (openEditCharger && editingCharger) {

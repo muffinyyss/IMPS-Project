@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile \"c:/Users/Asus/Documents/GitHub/IMPS-Project/iMPS_platform/backend/pdf/templates/pdf_cm.py\")"
+    ]
+  }
+}
