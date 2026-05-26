@@ -187,17 +187,6 @@ export default function BasicPage() {
               />
             </div> */}
 
-            {/* register */}
-            {/* <Typography className="tw-text-center !tw-text-blue-gray-500 !tw-font-medium tw-mt-4">
-              Not registered?
-              <Link
-                href="/auth/signup/basic-signup"
-                className="tw-text-gray-900 tw-ml-1"
-              >
-                Create account
-              </Link>
-            </Typography> */}
-
           </form>
         </div>
       </div>

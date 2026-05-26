@@ -802,6 +802,10 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
             # นับจำนวนข้อย่อยที่กรองแล้ว
             sub_count = len(filtered_subs)
 
+            # บันทึก line offset ของหัวข้อย่อยแต่ละข้อ เพื่อให้ checkbox ตรงกับบรรทัดใน Item column
+            # (ข้อย่อยที่มี voltage data จะกินหลายบรรทัด — offset จึงไม่ใช่ค่าคงที่)
+            result_line_offsets: List[int] = []
+
             for original_i, sub_idx, sub_key in filtered_subs:
 
                 if sub_key:
@@ -852,6 +856,8 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 # if original_i in voltage_data:
                 #     lines.append(f"        {voltage_data[original_i]}")
                 # แสดงเป็น 3.1), 3.2), 4.1), 4.2) etc. - เยื้อง 4 ช่องว่าง
+                # บันทึก offset ของบรรทัดหัวข้อย่อย (ก่อน append) เพื่อใช้จัดตำแหน่ง checkbox
+                result_line_offsets.append(len(lines))
                 lines.append(f"    {main_idx}.{sub_idx}) {sub_title}")
 
                 # เพิ่มข้อมูล voltage ถ้ามี (ในบรรทัดถัดไป) - เยื้อง 4 ช่องว่างเหมือนกับข้อย่อย
@@ -895,6 +901,7 @@ def _rows_to_checks(rows: dict, measures: Optional[dict] = None, row_titles: dic
                 "remark": combined_remark if combined_remark else "-",
                 "has_subs": True,
                 "sub_count": sub_count,
+                "result_line_offsets": result_line_offsets,
             })
     
     return items
@@ -1139,8 +1146,14 @@ def _draw_result_cell(
     result: Union[str, List[str]],
     offset_lines: int = 0,
     line_step: int = 1,
+    line_offsets: Optional[List[int]] = None,
 ):
-    """วาด result cell รองรับทั้ง single result และ list of results"""
+    """วาด result cell รองรับทั้ง single result และ list of results
+
+    line_offsets: ถ้าระบุ จะใช้เป็น absolute line offset (นับจาก y) ของแต่ละ result
+                  เพื่อให้ checkbox ตรงกับบรรทัดหัวข้อย่อยในคอลัมน์ Item
+                  (จำเป็นเมื่อข้อย่อยมีจำนวนบรรทัด voltage data ต่างกัน)
+    """
     pdf.rect(x, y, w, h)
 
     # ให้ result เป็น list เสมอ
@@ -1150,7 +1163,7 @@ def _draw_result_cell(
         results = [result]
 
     results = [_norm_result(r) for r in results]
-    
+
     col_w = w / 3.0
     labels = ["pass", "fail", "na"]
     label_text = {"pass": "Pass", "fail": "Fail", "na": "N/A"}
@@ -1162,10 +1175,13 @@ def _draw_result_cell(
         sx = x + i * col_w
         pdf.line(sx, y, sx, y + h)
 
-    base_y = y + PADDING_Y + offset_lines * LINE_H
+    base_y = y + PADDING_Y
 
     for row_idx, res in enumerate(results):
-        line_y = base_y + row_idx * line_step * LINE_H
+        if line_offsets is not None and row_idx < len(line_offsets):
+            line_y = base_y + line_offsets[row_idx] * LINE_H
+        else:
+            line_y = base_y + (offset_lines + row_idx * line_step) * LINE_H
 
         if line_y + CHECKBOX_SIZE > y + h - PADDING_Y:
             break
@@ -1857,10 +1873,9 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         # Result column
         if has_subs and isinstance(result, list):
             _draw_result_cell(
-                pdf, base_font, x, y, result_w, row_h_eff, 
+                pdf, base_font, x, y, result_w, row_h_eff,
                 result,
-                offset_lines=1,
-                line_step=1
+                line_offsets=it.get("result_line_offsets"),
             )
         else:
             _draw_result_cell(
