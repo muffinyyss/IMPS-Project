@@ -520,9 +520,12 @@ def load_image_autorotate(path_or_bytes):
     if w > h:
         img = img.rotate(90, expand=True)
 
+    # ลดขนาดรูปก่อนฝังลง PDF — แสดงจริงสูง ~40mm เท่านั้น ฝังรูป >1400px จึงเปลือง file size
+    img.thumbnail((1400, 1400))
+
     # ส่งออก
     buf = BytesIO()
-    img.save(buf, format="JPEG")
+    img.save(buf, format="JPEG", quality=82, optimize=True)
     buf.seek(0)
     return buf
 

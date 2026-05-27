@@ -331,8 +331,11 @@ def load_image_autorotate(path_or_bytes) -> Optional[BytesIO]:
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
 
+        # ลดขนาดรูปก่อนฝังลง PDF — แสดงจริงไม่ใหญ่ ฝังรูป >1400px จึงเปลือง file size
+        img.thumbnail((1400, 1400))
+
         buf = BytesIO()
-        img.save(buf, format="JPEG", quality=85)
+        img.save(buf, format="JPEG", quality=82, optimize=True)
         buf.seek(0)
         return buf
     except Exception as e:
@@ -485,6 +488,40 @@ def _draw_title_bar(
 
 
 # -------------------- Info block (key-value table) --------------------
+def _compute_info_row_heights(
+    pdf: FPDF,
+    base_font: str,
+    w: float,
+    data: List[Tuple[str, str]],
+    cols: int = 2,
+    label_w: float = 38,
+    row_h: float = 6.5,
+) -> List[float]:
+    """คำนวณความสูงจริงของแต่ละแถวใน info block — wrap value ถ้ายาวเกินช่อง"""
+    total_rows = math.ceil(len(data) / cols) if data else 0
+    col_w = w / cols
+    line_h_value = 4.0
+    value_w = col_w - label_w - 2 * PADDING_X
+
+    pdf.set_font(base_font, "", FONT_MAIN)
+    row_heights: List[float] = []
+    for r in range(total_rows):
+        max_lines = 1
+        for c in range(cols):
+            i = r * cols + c
+            if i >= len(data):
+                continue
+            _, value = data[i]
+            val_str = "-" if value in (None, "", "-") else str(value)
+            wrapped, _ = _split_lines(pdf, value_w, val_str, line_h_value)
+            max_lines = max(max_lines, len(wrapped))
+        if max_lines > 1:
+            row_heights.append(max(row_h, line_h_value * max_lines + 2.5))
+        else:
+            row_heights.append(row_h)
+    return row_heights
+
+
 def _draw_info_block(
     pdf: FPDF,
     base_font: str,
@@ -501,10 +538,18 @@ def _draw_info_block(
     cols=1 → ข้อมูลเต็มความกว้างต่อแถว
     cols=2 → แบ่งเป็น 2 คอลัมน์ข้างกัน
     draw_outer → วาดกรอบรอบนอก (ปิดได้เมื่ออยู่ภายใน group box)
+    แถวที่ value ยาวจะ wrap หลายบรรทัดและขยายความสูงเฉพาะแถวนั้น
     """
-    total_rows = math.ceil(len(data) / cols)
-    box_h = total_rows * row_h
+    total_rows = math.ceil(len(data) / cols) if data else 0
     col_w = w / cols
+    line_h_value = 4.0
+    value_w = col_w - label_w - 2 * PADDING_X
+
+    row_heights = _compute_info_row_heights(pdf, base_font, w, data, cols, label_w, row_h)
+    row_y_offsets = [0.0]
+    for rh in row_heights:
+        row_y_offsets.append(row_y_offsets[-1] + rh)
+    box_h = row_y_offsets[-1]
 
     pdf.set_line_width(LINE_W_INNER)
     if draw_outer:
@@ -516,31 +561,40 @@ def _draw_info_block(
 
     # เส้นแบ่งแถว
     for r in range(1, total_rows):
-        pdf.line(x, y + r * row_h, x + w, y + r * row_h)
+        rrh = y + row_y_offsets[r]
+        pdf.line(x, rrh, x + w, rrh)
 
     # เส้นแบ่ง label|value แต่ละ cell
     for r in range(total_rows):
+        top = y + row_y_offsets[r]
+        bot = y + row_y_offsets[r + 1]
         for c in range(cols):
-            pdf.line(
-                x + c * col_w + label_w, y + r * row_h,
-                x + c * col_w + label_w, y + (r + 1) * row_h,
-            )
+            pdf.line(x + c * col_w + label_w, top, x + c * col_w + label_w, bot)
 
     # เติมข้อความ
     for i, (label, value) in enumerate(data):
         r = i // cols
         c = i % cols
+        rh = row_heights[r]
         cx = x + c * col_w
-        cy = y + r * row_h
+        cy = y + row_y_offsets[r]
 
         pdf.set_font(base_font, "B", FONT_MAIN)
-        pdf.set_xy(cx + PADDING_X, cy + (row_h - LINE_H) / 2.0)
+        pdf.set_xy(cx + PADDING_X, cy + (rh - LINE_H) / 2.0)
         pdf.cell(label_w - 2 * PADDING_X, LINE_H, str(label or ""), border=0, align="L")
 
         pdf.set_font(base_font, "", FONT_MAIN)
         val_str = "-" if value in (None, "", "-") else str(value)
-        pdf.set_xy(cx + label_w + PADDING_X, cy + (row_h - LINE_H) / 2.0)
-        pdf.cell(col_w - label_w - 2 * PADDING_X, LINE_H, val_str, border=0, align="L")
+        wrapped, _ = _split_lines(pdf, value_w, val_str, line_h_value)
+        if len(wrapped) > 1:
+            # wrap หลายบรรทัด — ใช้ multi_cell และจัดให้อยู่ตรงกลางแนวตั้ง
+            text_h = len(wrapped) * line_h_value
+            start_y = cy + max(PADDING_Y, (rh - text_h) / 2.0)
+            pdf.set_xy(cx + label_w + PADDING_X, start_y)
+            pdf.multi_cell(value_w, line_h_value, val_str, border=0, align="L")
+        else:
+            pdf.set_xy(cx + label_w + PADDING_X, cy + (rh - LINE_H) / 2.0)
+            pdf.cell(value_w, LINE_H, val_str, border=0, align="L")
 
     return y + box_h
 
@@ -599,8 +653,10 @@ def _measure_part_height(
         data = part.get("data") or []
         cols = int(part.get("cols", 2))
         row_h = float(part.get("row_h", 6.5))
-        total_rows = math.ceil(len(data) / cols) if data else 0
-        return total_rows * row_h
+        # ใช้ความสูงแบบ dynamic — แถวที่ value ยาวจะถูก wrap และสูงขึ้น
+        base_font = getattr(pdf, "_base_font_name", "Arial")
+        row_heights = _compute_info_row_heights(pdf, base_font, w, data, cols, 38, row_h)
+        return sum(row_heights)
     if kind == "text":
         label_h = 6.0
         min_h = float(part.get("min_h", 10.0))

@@ -1522,8 +1522,11 @@ def load_image_autorotate(path_or_bytes: Union[str, Path, BytesIO]) -> BytesIO:
         if img.mode in ('RGBA', 'P'):
             img = img.convert('RGB')
 
+        # ลดขนาดรูปก่อนฝังลง PDF — แสดงจริงสูง ~60mm เท่านั้น ฝังรูป >1400px จึงเปลือง file size
+        img.thumbnail((1400, 1400))
+
         buf = BytesIO()
-        img.save(buf, format="JPEG", quality=90)
+        img.save(buf, format="JPEG", quality=82, optimize=True)
         buf.seek(0)
         return buf
 

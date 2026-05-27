@@ -459,9 +459,12 @@ def load_image_autorotate(path_or_bytes):
     if w > h:
         img = img.rotate(90, expand=True)
 
+    # ลดขนาดรูปก่อนฝังลง PDF — แสดงจริงสูง ~40mm เท่านั้น ฝังรูป >1400px จึงเปลือง file size
+    img.thumbnail((1400, 1400))
+
     # ส่งออก
     buf = BytesIO()
-    img.save(buf, format="JPEG")
+    img.save(buf, format="JPEG", quality=82, optimize=True)
     buf.seek(0)
     return buf
 
@@ -497,9 +500,12 @@ def load_image_autorotate(path_or_bytes):
     if w > h:
         img = img.rotate(90, expand=True)
 
+    # ลดขนาดรูปก่อนฝังลง PDF — แสดงจริงสูง ~40mm เท่านั้น ฝังรูป >1400px จึงเปลือง file size
+    img.thumbnail((1400, 1400))
+
     # ส่งออก
     buf = BytesIO()
-    img.save(buf, format="JPEG")
+    img.save(buf, format="JPEG", quality=82, optimize=True)
     buf.seek(0)
     return buf
 
@@ -1211,26 +1217,48 @@ def _draw_photos_row(
 
 # -------------------- Drawing – job / summary blocks --------------------
 def _draw_job_info_block(pdf: FPDF, base_font: str, x: float, y: float, w: float,
-                         station_name: str, pm_date: str, label_station: str = "Station", label_pm_date: str = "PM Date") -> float:
+                         station_name: str, pm_date: str, label_station: str = "Station", label_pm_date: str = "PM Date",
+                         col_split: Optional[float] = None) -> float:
+    """col_split: ตำแหน่ง x ของเส้นแบ่งคอลัมน์ (วัดจาก x) — ใช้ตั้งให้ตรงกับเส้นแบ่งของตารางด้านล่าง"""
     row_h = 6.5
-    col_w = w / 2.0
+    if col_split is None:
+        col_split = w / 2.0
+    left_w = col_split
+    right_w = w - col_split
     label_w = 30
-    box_h = row_h
+    line_h_value = 4.0
+
+    # ถ้า station_name ยาวเกินช่อง — wrap หลายบรรทัด แล้วขยายความสูง box
+    pdf.set_font(base_font, "", FONT_MAIN)
+    station_str = str(station_name or "-")
+    value_w_left = left_w - label_w - 4
+    wrapped_station, _ = _split_lines(pdf, value_w_left, station_str, row_h - 3)
+    station_lines = max(1, len(wrapped_station))
+
+    if station_lines > 1:
+        box_h = max(row_h, line_h_value * station_lines + 2.5)
+    else:
+        box_h = row_h
+
     pdf.set_line_width(LINE_W_INNER)
     pdf.rect(x, y, w, box_h)
-    pdf.line(x + col_w, y, x + col_w, y + box_h)
+    pdf.line(x + col_split, y, x + col_split, y + box_h)
     # pdf.line(x, y + row_h, x + w, y + row_h)       # แถว
 
-    def _item(x0, y0, label, value):
+    def _item(x0, y0, col_width, label, value, wrap=False):
         pdf.set_xy(x0 + 2, y0 + 1.5)
         pdf.set_font(base_font, "B", FONT_MAIN)
         pdf.cell(label_w, row_h - 3, label, border=0, align="L")
         pdf.set_font(base_font, "", FONT_MAIN)
+        value_w = col_width - label_w - 4
         pdf.set_xy(x0 + 2 + label_w, y0 + 1.5)
-        pdf.cell(col_w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
+        if wrap:
+            pdf.multi_cell(value_w, line_h_value, str(value or "-"), border=0, align="L")
+        else:
+            pdf.cell(value_w, row_h - 3, str(value or "-"), border=0, align="L")
 
-    _item(x, y, label_station, station_name)
-    _item(x + col_w, y, label_pm_date, pm_date)
+    _item(x, y, left_w, label_station, station_str, wrap=station_lines > 1)
+    _item(x + col_split, y, right_w, label_pm_date, pm_date)
 
     return y + box_h
 
@@ -1496,7 +1524,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         y += TITLE_H
 
         # ========== วาด Job Info Block ==========
-        y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date, label_station, label_pm_date)
+        # เลื่อนเส้นแบ่งคอลัมน์ใน header ให้ตรงกับเส้นแบ่ง รายการ/คำถาม | รูปภาพอ้างอิง ของตารางด้านล่าง
+        y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date, label_station, label_pm_date, col_split=EDGE_ALIGN_FIX + 85.0)
 
         x_table = x0 + EDGE_ALIGN_FIX
         q_w = 85.0
@@ -1622,8 +1651,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
 
     y += TITLE_H
 
-    # ข้อมูลงาน
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date, label_station, label_pm_date)
+    # ข้อมูลงาน — เลื่อนเส้นแบ่งคอลัมน์ให้ตรงกับเส้นแบ่ง Item | Result ของตาราง checklist ด้านล่าง
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, pm_date, label_station, label_pm_date, col_split=EDGE_ALIGN_FIX + 65)
 
     # ตารางรายการตรวจสอบ
     x_table = x0 + EDGE_ALIGN_FIX
