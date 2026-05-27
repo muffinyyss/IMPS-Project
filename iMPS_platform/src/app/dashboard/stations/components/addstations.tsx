@@ -337,35 +337,26 @@ export default function AddStationModal({
             return file;
         }
         try {
+            // ถ้า orientation = 1 (ตั้งตรงอยู่แล้ว) ไม่ต้องแตะ คงไฟล์เดิมไว้เพื่อรักษาคุณภาพ
             const orientation = await readExifOrientation(file);
             if (orientation === 1) return file;
 
-            // Force raw pixels (ignore browser auto-rotation) so we don't double-rotate
+            // ให้เบราว์เซอร์หมุนตาม EXIF ให้ตั้งตรงเอง (from-image)
+            // แล้วเราวาดลง canvas ตรง ๆ ไม่ต้องคำนวณ matrix เอง
+            // -> ป้องกันปัญหา "หมุนซ้ำสองครั้ง" ที่ทำให้รูปกลับหัว/ตะแคง
             let bitmap: ImageBitmap;
             try {
-                bitmap = await createImageBitmap(file, { imageOrientation: "none" } as any);
+                bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
             } catch {
                 bitmap = await createImageBitmap(file);
             }
-            const w = bitmap.width;
-            const h = bitmap.height;
-            const swap = orientation >= 5 && orientation <= 8;
+
             const canvas = document.createElement("canvas");
-            canvas.width = swap ? h : w;
-            canvas.height = swap ? w : h;
+            canvas.width = bitmap.width;   // bitmap ตั้งตรงแล้ว ใช้ขนาดของมันได้เลย
+            canvas.height = bitmap.height;
             const ctx = canvas.getContext("2d");
             if (!ctx) { bitmap.close?.(); return file; }
 
-            switch (orientation) {
-                case 2: ctx.transform(-1, 0, 0, 1, w, 0); break;
-                case 3: ctx.transform(-1, 0, 0, -1, w, h); break;
-                case 4: ctx.transform(1, 0, 0, -1, 0, h); break;
-                case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
-                case 6: ctx.transform(0, 1, -1, 0, h, 0); break;
-                case 7: ctx.transform(0, -1, -1, 0, h, w); break;
-                case 8: ctx.transform(0, -1, 1, 0, 0, w); break;
-                default: break;
-            }
             ctx.drawImage(bitmap, 0, 0);
             bitmap.close?.();
 
