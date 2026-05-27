@@ -271,6 +271,15 @@ export default function StationInfo({
   const [sseStatus, setSseStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
   const [canConfig, setCanConfig] = useState(false);
   const [showPipelineModal, setShowPipelineModal] = useState(false);
+  const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((ok: boolean, msg: string) => {
+    setToast({ ok, msg });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || localStorage.getItem("token") || "";
     const claims = decodeJwt(token);
@@ -824,7 +833,15 @@ export default function StationInfo({
         sn={snForApi}
         chargeBoxID={null}
         stationId={null}
+        onSaved={showToast}
       />
+      {toast && (
+        <div className="tw-fixed tw-bottom-5 tw-right-5 tw-z-[200] tw-flex tw-items-center tw-gap-2.5 tw-px-4 tw-py-3 tw-rounded-xl tw-shadow-lg tw-text-white tw-text-sm tw-font-medium tw-animate-in"
+          style={{ background: toast.ok ? "#16a34a" : "#dc2626" }}>
+          {toast.ok ? <CheckIcon /> : <CloseIcon />}
+          <span>{toast.msg}</span>
+        </div>
+      )}
     </>
   );
 }
