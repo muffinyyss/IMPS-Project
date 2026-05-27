@@ -83,6 +83,86 @@ type Owner = { user_id: string; username: string };
 type Lang = "th" | "en";
 function getTodayDate(): string { return new Date().toISOString().split("T")[0]; }
 
+// ─── Read EXIF orientation tag from JPEG bytes (1..8, 1 = normal) ───
+async function readExifOrientation(file: File): Promise<number> {
+  if (file.type !== "image/jpeg" && file.type !== "image/jpg") return 1;
+  try {
+    const buf = await file.slice(0, 256 * 1024).arrayBuffer();
+    const view = new DataView(buf);
+    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return 1;
+    let offset = 2;
+    while (offset < view.byteLength) {
+      const marker = view.getUint16(offset);
+      offset += 2;
+      if (marker === 0xffe1) {
+        if (view.getUint32(offset + 2) !== 0x45786966) return 1;
+        const tiff = offset + 8;
+        const little = view.getUint16(tiff) === 0x4949;
+        const get16 = (o: number) => view.getUint16(o, little);
+        const get32 = (o: number) => view.getUint32(o, little);
+        if (get16(tiff + 2) !== 0x002a) return 1;
+        const ifd = tiff + get32(tiff + 4);
+        const tags = get16(ifd);
+        for (let i = 0; i < tags; i++) {
+          const entry = ifd + 2 + i * 12;
+          if (get16(entry) === 0x0112) return get16(entry + 8);
+        }
+        return 1;
+      } else if ((marker & 0xff00) !== 0xff00) {
+        return 1;
+      } else {
+        offset += view.getUint16(offset);
+      }
+    }
+  } catch { /* ignore */ }
+  return 1;
+}
+
+// ─── Normalize EXIF orientation: returns a new File with pixels rotated upright ───
+async function normalizeImageOrientation(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") return file;
+  try {
+    const orientation = await readExifOrientation(file);
+    if (orientation === 1) return file;
+
+    let bitmap: ImageBitmap;
+    try {
+      bitmap = await createImageBitmap(file, { imageOrientation: "none" } as any);
+    } catch {
+      bitmap = await createImageBitmap(file);
+    }
+    const w = bitmap.width;
+    const h = bitmap.height;
+    const swap = orientation >= 5 && orientation <= 8;
+    const canvas = document.createElement("canvas");
+    canvas.width = swap ? h : w;
+    canvas.height = swap ? w : h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) { bitmap.close?.(); return file; }
+
+    switch (orientation) {
+      case 2: ctx.transform(-1, 0, 0, 1, w, 0); break;
+      case 3: ctx.transform(-1, 0, 0, -1, w, h); break;
+      case 4: ctx.transform(1, 0, 0, -1, 0, h); break;
+      case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+      case 6: ctx.transform(0, 1, -1, 0, h, 0); break;
+      case 7: ctx.transform(0, -1, -1, 0, h, w); break;
+      case 8: ctx.transform(0, -1, 1, 0, 0, w); break;
+      default: break;
+    }
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+
+    const outType = file.type === "image/png" ? "image/png" : "image/jpeg";
+    const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, outType, 0.92));
+    if (!blob) return file;
+    const newName = file.name.replace(/\.(jpe?g|png|webp|bmp)$/i, "") + (outType === "image/png" ? ".png" : ".jpg");
+    return new File([blob], newName, { type: blob.type, lastModified: Date.now() });
+  } catch {
+    return file;
+  }
+}
+
 /* ─────────────────────── Shared Sub-components ─────────────────────── */
 
 const SectionIcon = ({ emoji }: { emoji: string }) => (
@@ -351,45 +431,49 @@ export function SearchDataTables() {
   // ===== Image handlers =====
   const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 
-  const pickChargerImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+  const pickChargerImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
     const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
-    if (!valid.length) return;
-    setEditChargerImages(prev => [...prev, ...valid]);
-    setEditChargerPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
     e.target.value = "";
+    if (!valid.length) return;
+    const normalized = await Promise.all(valid.map(normalizeImageOrientation));
+    setEditChargerImages(prev => [...prev, ...normalized]);
+    setEditChargerPreviews(prev => [...prev, ...normalized.map(f => URL.createObjectURL(f))]);
   };
 
-  const pickDeviceImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+  const pickDeviceImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
     const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
-    if (!valid.length) return;
-    setEditDeviceImages(prev => [...prev, ...valid]);
-    setEditDevicePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
     e.target.value = "";
+    if (!valid.length) return;
+    const normalized = await Promise.all(valid.map(normalizeImageOrientation));
+    setEditDeviceImages(prev => [...prev, ...normalized]);
+    setEditDevicePreviews(prev => [...prev, ...normalized.map(f => URL.createObjectURL(f))]);
   };
 
   const removeEditChargerImage = (idx: number) => { URL.revokeObjectURL(editChargerPreviews[idx]); setEditChargerImages(prev => prev.filter((_, i) => i !== idx)); setEditChargerPreviews(prev => prev.filter((_, i) => i !== idx)); };
   const removeEditDeviceImage = (idx: number) => { URL.revokeObjectURL(editDevicePreviews[idx]); setEditDeviceImages(prev => prev.filter((_, i) => i !== idx)); setEditDevicePreviews(prev => prev.filter((_, i) => i !== idx)); };
   const resetEditChargerImages = () => { editChargerPreviews.forEach(u => URL.revokeObjectURL(u)); editDevicePreviews.forEach(u => URL.revokeObjectURL(u)); setEditChargerImages([]); setEditDeviceImages([]); setEditChargerPreviews([]); setEditDevicePreviews([]); setDeleteChargerImage(false); setDeleteDeviceImage(false); setDeletedExistingChargerIdxs(new Set()); setDeletedExistingDeviceIdxs(new Set()); };
 
-  const pickStationImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+  const pickStationImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
     const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
-    if (!valid.length) return;
-    setEditStationImages(prev => [...prev, ...valid]);
-    setEditStationPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
     e.target.value = "";
+    if (!valid.length) return;
+    const normalized = await Promise.all(valid.map(normalizeImageOrientation));
+    setEditStationImages(prev => [...prev, ...normalized]);
+    setEditStationPreviews(prev => [...prev, ...normalized.map(f => URL.createObjectURL(f))]);
   };
 
   // ✅ MDB image handler
-  const pickMdbImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+  const pickMdbImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
     const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
-    if (!valid.length) return;
-    setEditMdbImages(prev => [...prev, ...valid]);
-    setEditMdbPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
     e.target.value = "";
+    if (!valid.length) return;
+    const normalized = await Promise.all(valid.map(normalizeImageOrientation));
+    setEditMdbImages(prev => [...prev, ...normalized]);
+    setEditMdbPreviews(prev => [...prev, ...normalized.map(f => URL.createObjectURL(f))]);
   };
 
   const removeEditStationImage = (idx: number) => { URL.revokeObjectURL(editStationPreviews[idx]); setEditStationImages(prev => prev.filter((_, i) => i !== idx)); setEditStationPreviews(prev => prev.filter((_, i) => i !== idx)); };
@@ -405,22 +489,24 @@ export function SearchDataTables() {
     setDeleteCurrentImage(false);
   };
 
-  const pickAddChargerImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+  const pickAddChargerImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
     const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
-    if (!valid.length) return;
-    setAddChargerImages(prev => [...prev, ...valid]);
-    setAddChargerPreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
     e.target.value = "";
+    if (!valid.length) return;
+    const normalized = await Promise.all(valid.map(normalizeImageOrientation));
+    setAddChargerImages(prev => [...prev, ...normalized]);
+    setAddChargerPreviews(prev => [...prev, ...normalized.map(f => URL.createObjectURL(f))]);
   };
 
-  const pickAddDeviceImage: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+  const pickAddDeviceImage: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
     const valid = files.filter(f => { if (!f.type.startsWith("image/")) { alert("Please select image files only"); return false; } if (f.size > MAX_IMAGE_BYTES) { alert(`${f.name} is too large (max 3MB)`); return false; } return true; });
-    if (!valid.length) return;
-    setAddDeviceImages(prev => [...prev, ...valid]);
-    setAddDevicePreviews(prev => [...prev, ...valid.map(f => URL.createObjectURL(f))]);
     e.target.value = "";
+    if (!valid.length) return;
+    const normalized = await Promise.all(valid.map(normalizeImageOrientation));
+    setAddDeviceImages(prev => [...prev, ...normalized]);
+    setAddDevicePreviews(prev => [...prev, ...normalized.map(f => URL.createObjectURL(f))]);
   };
 
   const removeAddChargerImage = (idx: number) => { URL.revokeObjectURL(addChargerPreviews[idx]); setAddChargerImages(prev => prev.filter((_, i) => i !== idx)); setAddChargerPreviews(prev => prev.filter((_, i) => i !== idx)); };
