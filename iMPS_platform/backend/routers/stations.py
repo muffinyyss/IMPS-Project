@@ -167,6 +167,7 @@ class ChargerUpdate(BaseModel):
     maximo_desc: Optional[str] = None
     ocppUrl: Optional[str] = None
     chargerType: Optional[str] = None
+    pipeline_config: Optional[Dict[str, Any]] = None
 
 class ChargerOut(BaseModel):
     id: str
@@ -189,6 +190,7 @@ class ChargerOut(BaseModel):
     maximo_desc: Optional[str] = ""
     ocppUrl: Optional[str] = ""
     chargerType: Optional[str] = ""
+    pipeline_config: Optional[Dict[str, Any]] = None
     status: Optional[bool] = None
     images: Optional[dict] = None
     createdAt: Optional[datetime] = None
@@ -385,6 +387,7 @@ def format_charger(doc: dict, include_status: bool = True) -> ChargerOut:
         maximo_desc=doc.get("maximo_desc", ""),
         ocppUrl=doc.get("ocppUrl", ""),
         chargerType=doc.get("chargerType", ""),
+        pipeline_config=doc.get("pipeline_config"),
         status=status,
         images=normalized,
         createdAt=doc.get("createdAt"),
@@ -812,6 +815,9 @@ def update_charger(
 
     if body.is_active is not None:
         update_data["is_active"] = body.is_active
+
+    if body.pipeline_config is not None:          
+        update_data["pipeline_config"] = body.pipeline_config
 
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")

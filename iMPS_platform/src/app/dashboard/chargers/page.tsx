@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
+
 import {
   Card, CardHeader, CardBody, Typography, Carousel,
 } from "@/components/MaterialTailwind";
@@ -13,8 +14,7 @@ import CBMCard from "./components/condition-Based";
 import Lightbox from "./components/Lightbox";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import StationDetailCard from "./components/stationDetailsCard";
-
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/utils/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
@@ -23,6 +23,7 @@ type GalleryImage = { src: string; alt?: string };
 
 export default function ChargersPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [stationId, setStationId] = useState<string | null>(null);
   const [sn, setSn] = useState<string | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
@@ -345,6 +346,11 @@ export default function ChargersPage() {
                   RTFirmware={stationDetail.RTFirmware}
                   chargerSN={sn}
                   apiBaseUrl={API_BASE}
+                  onConfig={() =>
+                    router.push(
+                      `/dashboard/chargers/config?sn=${encodeURIComponent(sn ?? "")}&station_id=${encodeURIComponent(stationId ?? "")}`
+                    )
+                  }
                 />
               </CardBody>
             </Card>

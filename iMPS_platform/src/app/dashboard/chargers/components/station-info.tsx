@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
+import PipelineConfigModal from "./PipelineConfigModal";
 
 type Lang = "th" | "en";
 
@@ -34,6 +35,7 @@ export type StationInfoProps = {
   chargerSN?: string | null;
   apiBaseUrl?: string;
   onAddSetting?: () => void;
+  onConfig?: () => void;
 };
 
 // ===== Translations =====
@@ -69,6 +71,8 @@ const translations = {
     addMonitoringValue: "เพิ่มค่าตรวจวัด",
     addSettingDesc: "กำหนดค่า Setting สำหรับสถานี",
     addMonitoringDesc: "เลือกค่า CBM ที่ต้องการแสดง",
+    config: "ตั้งค่า Pipeline",
+    configDesc: "กำหนดค่า pipeline ของตู้ชาร์จ",
     monitoringValues: "ค่าตรวจวัด (CBM)",
     selectMonitoring: "เลือกค่าตรวจวัด CBM",
     confirm: "ยืนยัน",
@@ -118,6 +122,8 @@ const translations = {
     addMonitoringValue: "Add Monitoring Value",
     addSettingDesc: "Configure setting values for station",
     addMonitoringDesc: "Select CBM values to display",
+    config: "Pipeline Config",
+    configDesc: "Configure charger pipeline",
     monitoringValues: "Monitoring (CBM)",
     selectMonitoring: "Select CBM Monitoring Values",
     confirm: "Confirm",
@@ -145,6 +151,15 @@ const EXCLUDED_KEYS = new Set([
   "created_at", "updated_at", "createdAt", "updatedAt",
   "__v", "$oid", "$date",
 ]);
+
+type JwtClaims = { role?: string; };
+function decodeJwt(token: string | null): JwtClaims | null {
+  try {
+    if (!token) return null;
+    const payload = token.split(".")[1];
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch { return null; }
+}
 
 // ===== Flatten nested object =====
 // { voltage: { L1: 220 }, temp: 25 } → [["voltage.L1", 220], ["temp", 25]]
@@ -242,7 +257,7 @@ const RefreshIcon = () => (
 export default function StationInfo({
   station_name, SN, WO, brand, model, power, status,
   commissioningDate, warrantyYears, PLCFirmware, PIFirmware, RTFirmware,
-  chargerSN, apiBaseUrl = "", onAddSetting,
+  chargerSN, apiBaseUrl = "", onAddSetting, onConfig,
 }: StationInfoProps) {
   const [lang, setLang] = useState<Lang>("th");
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -254,6 +269,13 @@ export default function StationInfo({
   const [availableFields, setAvailableFields] = useState<CBMField[]>([]);
   const [isLoadingFields, setIsLoadingFields] = useState(false);
   const [sseStatus, setSseStatus] = useState<"connecting" | "connected" | "disconnected">("disconnected");
+  const [canConfig, setCanConfig] = useState(false);
+  const [showPipelineModal, setShowPipelineModal] = useState(false);
+  useEffect(() => {
+    const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || localStorage.getItem("token") || "";
+    const claims = decodeJwt(token);
+    setCanConfig(claims?.role === "admin");
+  }, []);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -558,10 +580,10 @@ export default function StationInfo({
     try {
       const d = new Date(s);
       if (lang === "th") {
-        const tm = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+        const tm = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
         return `${d.getDate().toString().padStart(2, "0")} ${tm[d.getMonth()]} ${d.getFullYear() + 543}`;
       }
-      const em = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const em = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       return `${d.getDate().toString().padStart(2, "0")} ${em[d.getMonth()]} ${d.getFullYear()}`;
     } catch { return "-"; }
   };
@@ -646,6 +668,15 @@ export default function StationInfo({
                           <div><div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">{t.addMonitoringValue}</div>
                             <div className="tw-text-xs tw-text-blue-gray-400 tw-mt-0.5">{t.addMonitoringDesc}</div></div>
                         </button>
+
+                        {canConfig && (
+                          <button onClick={() => { setShowSettingsMenu(false); setShowPipelineModal(true); }}
+                            className="tw-w-full tw-flex tw-items-start tw-gap-3 tw-px-3 tw-py-2.5 tw-rounded-lg tw-text-left hover:tw-bg-indigo-50 tw-transition-colors tw-group">
+                            <span className="tw-mt-0.5 tw-text-indigo-500"><GearIcon /></span>
+                            <div><div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800">{t.config}</div>
+                              <div className="tw-text-xs tw-text-blue-gray-400 tw-mt-0.5">{t.configDesc}</div></div>
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}
@@ -787,6 +818,13 @@ export default function StationInfo({
           </div>
         </div>
       )}
+      <PipelineConfigModal
+        open={showPipelineModal}
+        onClose={() => setShowPipelineModal(false)}
+        sn={snForApi}
+        chargeBoxID={null}
+        stationId={null}
+      />
     </>
   );
 }
