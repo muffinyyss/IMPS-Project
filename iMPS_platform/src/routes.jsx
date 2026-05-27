@@ -33,7 +33,43 @@ const baseRoutes = [
       },
     ],
   },
-  { name: "EV Stations", icon: <i className="fa fa-map-marker-alt" />, path: "/dashboard/stations", allow: ["admin", "owner", "technician"], showMode: "both" },
+  // { name: "EV Stations", icon: <i className="fa fa-map-marker-alt" />, path: "/dashboard/stations", allow: ["admin", "owner", "technician"], showMode: "both" },
+  {
+    name: "EV Stations",
+    icon: <i className="fa fa-map-marker-alt" />,
+    allow: ["admin", "owner", "technician"],
+    showMode: "both",  // แสดงตลอด
+    pages: [
+      {
+        layout: "dashboard",
+        icon: <i className="fa fa-map-marker-alt" />,
+        name: "EV Stations",
+        path: "/dashboard/stations",
+        allow: ["admin", "owner", "technician"],
+      },
+      {
+        layout: "dashboard",
+        icon: <i className="fa fa-file-alt" />,
+        name: "PM report (All)",        // รวมทุก charger
+        path: "/dashboard/pm-all",
+        allow: ["admin", "owner"],
+      },
+      // {
+      //   layout: "dashboard",
+      //   icon: <i className="far fa-file" />,
+      //   name: "CM report (All)",
+      //   path: "/dashboard/cm-report?mode=all",
+      //   allow: ["admin", "owner", "technician"],
+      // },
+      // {
+      //   layout: "dashboard",
+      //   icon: <i className="fa fa-check-square" />,
+      //   name: "Test report (All)",
+      //   path: "/dashboard/test-report?mode=all",
+      //   allow: ["admin", "owner", "technician"],
+      // },
+    ],
+  },
   { name: "Solar Plant", icon: <i className="fa fa-solar-panel" />, path: "/dashboard/solar-plant", allow: ["admin", "owner"], showMode: "before" },
   { name: "Power Plant", icon: <i className="fa fa-industry" />, path: "/dashboard/power-plant", allow: ["admin", "owner"], showMode: "before" },
   { name: "Users", icon: <i className="fa fa-users" />, path: "/dashboard/users", allow: ["admin"], showMode: "before" },

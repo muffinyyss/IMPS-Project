@@ -3,7 +3,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Card,
   Typography,
@@ -53,18 +53,47 @@ type RouteItem = {
   newTab?: boolean;
 };
 
-type PropTypes = { routes: RouteItem[];  brandImg?: string; brandName?: string };
+type PropTypes = { routes: RouteItem[]; brandImg?: string; brandName?: string };
 
 /* ---------- Helpers ---------- */
 const toKey = (v: string) => String(v || "").toLowerCase();
 const safeHref = (v?: string) => (v && v.length > 0 ? v : "#");
 const SKIP_MINI = new Set(["my profile", "logout"]);
 
-export default function Sidenav({}: PropTypes) {
+const SafeListItemPrefix = ({ children }: { children: React.ReactNode }) => (
+  <ListItemPrefix
+    placeholder=""
+    onPointerEnterCapture={undefined}
+    onPointerLeaveCapture={undefined}
+    onResize={undefined}
+    onResizeCapture={undefined}
+  >
+    {children}
+  </ListItemPrefix>
+);
+
+export default function Sidenav({ }: PropTypes) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [controller, dispatch] = useMaterialTailwindController();
   const { sidenavType, sidenavColor, openSidenav } = controller as any;
+
+  const isActivePath = (routePath?: string) => {
+    if (!routePath) return false;
+    if (routePath.includes("?")) {
+      const [p, q] = routePath.split("?");
+      if (pathname !== p) return false;
+      const routeParams = new URLSearchParams(q);
+      let match = true;
+      routeParams.forEach((val, key) => {
+        if (searchParams.get(key) !== val) match = false;
+      });
+      return match;
+    }
+    // ✅ ถ้า route ไม่มี query string → match เฉพาะเมื่อ URL ก็ไม่มี query string ด้วย
+    return pathname === routePath && searchParams.toString() === "";
+  };
 
   // ✅ ใช้ useRoutes hook - เมนูจะอัปเดตอัตโนมัติเมื่อ URL params เปลี่ยน
   const menu: RouteItem[] = useRoutes();
@@ -91,8 +120,8 @@ export default function Sidenav({}: PropTypes) {
   const [openCollapse, setOpenCollapse] = React.useState<string | null>(null);
   const [openSubCollapse, setOpenSubCollapse] = React.useState<string | null>(null);
 
-  const sidenavRef = React.useRef<HTMLDivElement | null>(null);
-  useOnClickOutside(sidenavRef, () => setOpenSidenav(dispatch, false));
+  const sidenavRef = React.useRef<HTMLDivElement>(null);
+  useOnClickOutside(sidenavRef as React.RefObject<HTMLElement>, () => setOpenSidenav(dispatch, false));
 
   // อัปเดตตัวแปร CSS: เว้นระยะ content ให้มากขึ้นบนจอใหญ่
   React.useEffect(() => {
@@ -163,9 +192,8 @@ export default function Sidenav({}: PropTypes) {
         href={href}
         target={external ? (newTab === false ? "_self" : "_blank") : undefined}
         title={title}
-        className={`tw-block tw-w-[3.5rem] tw-h-11 tw-mx-auto tw-rounded-lg tw-flex tw-items-center tw-justify-center ${
-          active ? `${COLORS[sidenavColor]} tw-text-white` : "hover:tw-bg-gray-200"
-        }`}
+        className={`tw-block tw-w-[3.5rem] tw-h-11 tw-mx-auto tw-rounded-lg tw-flex tw-items-center tw-justify-center ${active ? `${COLORS[sidenavColor]} tw-text-white` : "hover:tw-bg-gray-200"
+          }`}
       >
         <span className="tw-h-6 tw-w-6 tw-grid tw-place-items-center">{icon}</span>
       </Wrapper>
@@ -178,7 +206,7 @@ export default function Sidenav({}: PropTypes) {
       href={safeHref(item.path)}
       icon={item.icon as React.ReactNode}
       title={item.name}
-      active={pathname === item.path}
+      active={isActivePath(item.path)}
       external={item.external}
       newTab={item.newTab}
     />
@@ -218,6 +246,7 @@ export default function Sidenav({}: PropTypes) {
   // ตำแหน่ง Sidenav: ตรึงซ้ายเมื่อ desktopLike, ไม่งั้นเป็น off-canvas
   const leftClass = desktopLike ? "tw-left-4" : openSidenav ? "tw-left-4" : "-tw-left-72";
 
+
   return (
     <Card
       ref={sidenavRef}
@@ -233,9 +262,8 @@ export default function Sidenav({}: PropTypes) {
     >
       {/* Header */}
       <div
-        className={`tw-sticky tw-top-0 tw-z-30 tw-mb-3 tw-flex tw-items-center ${
-          miniMode ? "tw-justify-center" : "tw-justify-between"
-        }`}
+        className={`tw-sticky tw-top-0 tw-z-30 tw-mb-3 tw-flex tw-items-center ${miniMode ? "tw-justify-center" : "tw-justify-between"
+          }`}
       >
         {!miniMode && (
           <Link href="/" className="tw-flex tw-items-center tw-gap-1">
@@ -343,7 +371,7 @@ export default function Sidenav({}: PropTypes) {
         </div>
       ) : (
         <List className="tw-text-inherit">
-          {menu.map(({ name, icon, pages, title, divider, external, path , newTab}, key) =>
+          {menu.map(({ name, icon, pages, title, divider, external, path, newTab }, key) =>
             pages ? (
               <React.Fragment key={key}>
                 {title && (
@@ -363,27 +391,25 @@ export default function Sidenav({}: PropTypes) {
                       <span>
                         <ChevronDownIcon
                           strokeWidth={2.5}
-                          className={`tw-mx-auto tw-h-3 tw-w-3 tw-text-inherit tw-transition-transform ${
-                            openCollapse === name ? "tw-rotate-180" : ""
-                          }`}
+                          className={`tw-mx-auto tw-h-3 tw-w-3 tw-text-inherit tw-transition-transform ${openCollapse === name ? "tw-rotate-180" : ""
+                            }`}
                         />
                       </span>
                     ) : null
                   }
                 >
                   <ListItem
-                    className={`!tw-overflow-hidden ${
-                      openCollapse === name ? (sidenavType === "dark" ? "tw-bg-white/10" : "tw-bg-gray-200") : ""
-                    } ${collapseItemClasses} !tw-w-full !tw-p-0`}
+                    className={`!tw-overflow-hidden ${openCollapse === name ? (sidenavType === "dark" ? "tw-bg-white/10" : "tw-bg-gray-200") : ""
+                      } ${collapseItemClasses} !tw-w-full !tw-p-0`}
                     selected={openCollapse === name}
                   >
                     <AccordionHeader
                       onClick={() => handleOpenCollapse(name || "")}
                       className={`${collapseHeaderClasses} ${!desktopLike ? "[&>svg]:tw-hidden [&>i]:tw-hidden" : ""}`}
                     >
-                      <ListItemPrefix>
+                      <SafeListItemPrefix>
                         <span className="tw-grid tw-place-items-center tw-h-6 tw-w-6">{icon}</span>
-                      </ListItemPrefix>
+                      </SafeListItemPrefix>
                       <Typography color="inherit" className="tw-mr-auto tw-font-normal tw-capitalize tw-truncate">
                         {name}
                       </Typography>
@@ -402,29 +428,27 @@ export default function Sidenav({}: PropTypes) {
                                 <span>
                                   <ChevronDownIcon
                                     strokeWidth={2.5}
-                                    className={`tw-mx-auto tw-h-3 tw-w-3 tw-text-inherit tw-transition-transform ${
-                                      openSubCollapse === page.name ? "tw-rotate-180" : ""
-                                    }`}
+                                    className={`tw-mx-auto tw-h-3 tw-w-3 tw-text-inherit tw-transition-transform ${openSubCollapse === page.name ? "tw-rotate-180" : ""
+                                      }`}
                                   />
                                 </span>
                               ) : null
                             }
                           >
                             <ListItem
-                              className={`!tw-p-0 ${
-                                openSubCollapse === page.name
-                                  ? sidenavType === "dark"
-                                    ? "tw-bg-white/10"
-                                    : "tw-bg-gray-200"
-                                  : ""
-                              } ${collapseItemClasses}`}
+                              className={`!tw-p-0 ${openSubCollapse === page.name
+                                ? sidenavType === "dark"
+                                  ? "tw-bg-white/10"
+                                  : "tw-bg-gray-200"
+                                : ""
+                                } ${collapseItemClasses}`}
                               selected={openSubCollapse === page.name}
                             >
                               <AccordionHeader
                                 onClick={() => handleOpenSubCollapse(page.name || "")}
                                 className={`${collapseHeaderClasses} ${!desktopLike ? "[&>svg]:tw-hidden [&>i]:tw-hidden" : ""}`}
                               >
-                                <ListItemPrefix>{page.icon}</ListItemPrefix>
+                                <SafeListItemPrefix>{page.icon}</SafeListItemPrefix>
                                 <Typography color="inherit" className="tw-mr-auto tw-font-normal tw-capitalize">
                                   {page.name}
                                 </Typography>
@@ -437,18 +461,17 @@ export default function Sidenav({}: PropTypes) {
                                   subPage.external ? (
                                     <a key={k} href={safeHref(subPage.path)} target="_blank" rel="noreferrer">
                                       <ListItem className="tw-capitalize">
-                                        <ListItemPrefix>{subPage.icon}</ListItemPrefix>
+                                        <SafeListItemPrefix>{subPage.icon}</SafeListItemPrefix>
                                         {subPage.name}
                                       </ListItem>
                                     </a>
                                   ) : (
                                     <Link key={k} href={safeHref(subPage.path)}>
                                       <ListItem
-                                        className={`tw-capitalize ${
-                                          pathname === subPage.path ? activeRouteClasses : collapseItemClasses
-                                        }`}
+                                        className={`tw-capitalize ${isActivePath(subPage.path) ? activeRouteClasses : collapseItemClasses
+                                          }`}
                                       >
-                                        <ListItemPrefix>{subPage.icon}</ListItemPrefix>
+                                        <SafeListItemPrefix>{subPage.icon}</SafeListItemPrefix>
                                         {subPage.name}
                                       </ListItem>
                                     </Link>
@@ -460,18 +483,17 @@ export default function Sidenav({}: PropTypes) {
                         ) : page.external ? (
                           <a key={idx} href={safeHref(page.path)} target="_blank" rel="noreferrer">
                             <ListItem className="tw-capitalize">
-                              <ListItemPrefix>{page.icon}</ListItemPrefix>
+                              <SafeListItemPrefix>{page.icon}</SafeListItemPrefix>
                               {page.name}
                             </ListItem>
                           </a>
                         ) : (
                           <Link key={idx} href={safeHref(page.path)}>
                             <ListItem
-                              className={`tw-capitalize ${
-                                pathname === page.path ? activeRouteClasses : collapseItemClasses
-                              }`}
+                              className={`tw-capitalize ${isActivePath(page.path) ? activeRouteClasses : collapseItemClasses
+                                }`}
                             >
-                              <ListItemPrefix>{page.icon}</ListItemPrefix>
+                              <SafeListItemPrefix>{page.icon}</SafeListItemPrefix>
                               {page.name}
                             </ListItem>
                           </Link>
@@ -488,7 +510,10 @@ export default function Sidenav({}: PropTypes) {
                 {external ? (
                   <a href={safeHref(path)} target={newTab === false ? "_self" : "_blank"} rel="noreferrer">
                     <ListItem className="tw-capitalize">
-                      <ListItemPrefix>{icon}</ListItemPrefix>
+                      <SafeListItemPrefix
+                      >
+                        {icon}
+                      </SafeListItemPrefix>
                       {name}
                     </ListItem>
                   </a>
@@ -497,7 +522,7 @@ export default function Sidenav({}: PropTypes) {
                     <ListItem
                       className={`tw-capitalize ${pathname === path ? activeRouteClasses : collapseItemClasses}`}
                     >
-                      <ListItemPrefix>{icon}</ListItemPrefix>
+                      <SafeListItemPrefix>{icon}</SafeListItemPrefix>
                       {name}
                     </ListItem>
                   </Link>

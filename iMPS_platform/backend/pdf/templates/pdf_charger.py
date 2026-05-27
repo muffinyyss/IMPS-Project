@@ -1305,10 +1305,10 @@ def _draw_photos_row(
 
 # -------------------- Drawing – job / summary blocks --------------------
 def _draw_job_info_block(
-    pdf: FPDF, 
-    base_font: str, 
-    x: float, 
-    y: float, 
+    pdf: FPDF,
+    base_font: str,
+    x: float,
+    y: float,
     w: float,
     station_name: str,
     model: str,
@@ -1316,37 +1316,68 @@ def _draw_job_info_block(
     charger_no: str,
     sn: str,
     pm_date: str,
-    label_station: str = "Station",         
-    label_charger_no: str = "Charger No.",  
-    label_model: str = "Model",           
-    label_serial: str = "Serial No.",    
-    label_pm_date: str = "PM Date",       
-    label_power: str = "Power", 
+    label_station: str = "Station",
+    label_charger_no: str = "Charger No.",
+    label_model: str = "Model",
+    label_serial: str = "Serial No.",
+    label_pm_date: str = "PM Date",
+    label_power: str = "Power",
+    col_split: Optional[float] = None,
 ) -> float:
+    """วาดบล็อก Job Info 3 แถว × 2 คอลัมน์
+
+    col_split: ตำแหน่ง x ของเส้นแบ่งคอลัมน์ (วัดจาก x) — ใช้ตั้งให้ตรงกับ
+               เส้นแบ่งของตารางด้านล่าง (เช่น Item/Result divider หรือ Photo Q/G divider)
+               ถ้าไม่ระบุ จะใช้กึ่งกลาง (w/2)
+    """
     row_h = 6.5
-    col_w = w / 2.0
+    if col_split is None:
+        col_split = w / 2.0
+    left_w = col_split
+    right_w = w - col_split
     label_w = 30
-    box_h = row_h * 3
+
+    # ถ้า station_name ยาวเกินช่อง — wrap หลายบรรทัด แล้วขยายความสูงแถวที่ 1
+    pdf.set_font(base_font, "", FONT_MAIN)
+    station_str = str(station_name or "-")
+    value_w_left = left_w - label_w - 4
+    wrapped_station, _ = _split_lines(pdf, value_w_left, station_str, row_h - 3)
+    station_lines = max(1, len(wrapped_station))
+
+    line_h_value = 4.0
+    if station_lines > 1:
+        row_h_station = max(row_h, line_h_value * station_lines + 2.5)
+    else:
+        row_h_station = row_h
+
+    box_h = row_h_station + row_h * 2
     pdf.set_line_width(LINE_W_INNER)
     pdf.rect(x, y, w, box_h)
-    pdf.line(x + col_w, y, x + col_w, y + box_h)
-    pdf.line(x, y + row_h, x + w, y + row_h)
-    pdf.line(x, y + row_h * 2, x + w, y + row_h * 2)
+    pdf.line(x + col_split, y, x + col_split, y + box_h)
+    pdf.line(x, y + row_h_station, x + w, y + row_h_station)
+    pdf.line(x, y + row_h_station + row_h, x + w, y + row_h_station + row_h)
 
-    def _item(x0, y0, label, value):
+    def _item(x0, y0, col_width, label, value, wrap=False):
         pdf.set_xy(x0 + 2, y0 + 1.5)
         pdf.set_font(base_font, "B", FONT_MAIN)
         pdf.cell(label_w, row_h - 3, label, border=0, align="L")
         pdf.set_font(base_font, "", FONT_MAIN)
+        value_w = col_width - label_w - 4
         pdf.set_xy(x0 + 2 + label_w, y0 + 1.5)
-        pdf.cell(col_w - label_w - 4, row_h - 3, str(value or "-"), border=0, align="L")
+        if wrap:
+            pdf.multi_cell(value_w, line_h_value, str(value or "-"), border=0, align="L")
+        else:
+            pdf.cell(value_w, row_h - 3, str(value or "-"), border=0, align="L")
 
-    _item(x, y, label_station, station_name)
-    _item(x + col_w, y, label_charger_no, charger_no)
-    _item(x, y + row_h, label_model, model)
-    _item(x + col_w, y + row_h, label_serial, sn)
-    _item(x, y + row_h * 2, label_pm_date, pm_date)
-    _item(x + col_w, y + row_h * 2, label_power, power)
+    # Row 1: Station (wrap) | Charger No.
+    _item(x, y, left_w, label_station, station_str, wrap=station_lines > 1)
+    _item(x + col_split, y, right_w, label_charger_no, charger_no)
+    # Row 2: Model | Serial No.
+    _item(x, y + row_h_station, left_w, label_model, model)
+    _item(x + col_split, y + row_h_station, right_w, label_serial, sn)
+    # Row 3: PM Date | Power
+    _item(x, y + row_h_station + row_h, left_w, label_pm_date, pm_date)
+    _item(x + col_split, y + row_h_station + row_h, right_w, label_power, power)
 
     return y + box_h
 
@@ -1665,8 +1696,9 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
         y += TITLE_H
         
         # ========== วาด Job Info Block ==========
-        y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date, label_station, label_charger_no, label_model, label_serial, label_pm_date, label_power)
-        
+        # เลื่อนเส้นแบ่งคอลัมน์ใน header ให้ตรงกับเส้นแบ่ง Item/Question | Reference Photos ของตารางด้านล่าง
+        y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date, label_station, label_charger_no, label_model, label_serial, label_pm_date, label_power, col_split=EDGE_ALIGN_FIX + PHOTO_Q_W)
+
         x_table = x0 + EDGE_ALIGN_FIX
         q_w = PHOTO_Q_W
         g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
@@ -1833,7 +1865,8 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     
     y += TITLE_H
 
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date, label_station, label_charger_no, label_model, label_serial, label_pm_date, label_power)
+    # เลื่อนเส้นแบ่งคอลัมน์ใน header ให้ตรงกับเส้นแบ่ง Item | Result ของตาราง checklist ด้านล่าง
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date, label_station, label_charger_no, label_model, label_serial, label_pm_date, label_power, col_split=EDGE_ALIGN_FIX + ITEM_W)
 
 
     x_table = x0 + EDGE_ALIGN_FIX
@@ -2049,12 +2082,13 @@ def make_pm_report_html_pdf_bytes(doc: dict, lang: str = "th") -> bytes:
     y += TITLE_H
     
     # ========== วาด Job Info Block ==========
-    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date, label_station, label_charger_no, label_model, label_serial, label_pm_date, label_power)
+    # เลื่อนเส้นแบ่งคอลัมน์ใน header ให้ตรงกับเส้นแบ่ง Item/Question | Reference Photos ของตารางด้านล่าง
+    y = _draw_job_info_block(pdf, base_font, x0, y, page_w, station_name, model, power, charger_no, sn, pm_date, label_station, label_charger_no, label_model, label_serial, label_pm_date, label_power, col_split=EDGE_ALIGN_FIX + PHOTO_Q_W)
 
     x_table = x0 + EDGE_ALIGN_FIX
     q_w = PHOTO_Q_W
     g_w = (page_w - 2 * EDGE_ALIGN_FIX) - q_w
-    
+
     def _ensure_space_photo(height_needed: float):
         nonlocal y
         if y + height_needed > (pdf.h - pdf.b_margin):
