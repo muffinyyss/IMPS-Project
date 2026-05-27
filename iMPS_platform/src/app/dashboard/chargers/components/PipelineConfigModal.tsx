@@ -18,8 +18,7 @@ type PipelineHardware = {
   fanType: string; energyMeterType: string; powerModuleDefaults: PowerModuleDefaults;
 };
 type PipelineTopics = {
-  plc: string | null; router: string | null; bme280: string | null;
-  insulation1: string | null; insulation2: string | null; meter: string | null;
+  plc: string | null; router: string | null; meter: string | null;
   ocpp_config: string | null; ebCountDevice: string | null; ebError: string | null;
   ebHeartbeat: string | null; ebTemp: string | null; fanRpm: string | null;
   pi5Heartbeat: string | null; mdbRaw: string | null;
@@ -37,12 +36,13 @@ type Props = {
   sn?: string | null;
   chargeBoxID?: string | null;
   stationId?: string | null;
+  onSaved?: (ok: boolean, msg: string) => void;
 };
 
 const emptyConfig = (): PipelineConfig => ({
   hardware: { dcContractorCount: 0, powerModuleCount: 0, dcFanCount: 0, fanType: "FIXED", energyMeterType: "PILOT", powerModuleDefaults: {} },
   topics: {
-    plc: "", router: "", bme280: "", insulation1: "", insulation2: "", meter: null,
+    plc: "", router: "", meter: null,
     ocpp_config: "", ebCountDevice: "", ebError: "", ebHeartbeat: "", ebTemp: "",
     fanRpm: "", pi5Heartbeat: "", mdbRaw: "",
   },
@@ -57,9 +57,6 @@ const emptyToNull = (v: string): string | null => { const s = v.trim(); return s
 const TOPIC_FIELDS: { key: keyof PipelineTopics; label: string }[] = [
   { key: "plc", label: "PLC" },
   { key: "router", label: "Router" },
-  { key: "bme280", label: "BME280 (Temperature)" },
-  { key: "insulation1", label: "Insulation 1 (IMD)" },
-  { key: "insulation2", label: "Insulation 2 (IMD)" },
   { key: "meter", label: "Meter" },
   { key: "ocpp_config", label: "OCPP Config" },
   { key: "ebCountDevice", label: "Edgebox Count Device" },
@@ -88,7 +85,7 @@ const SectionCard = ({ icon, title, children }: { icon: React.ReactNode; title: 
   </section>
 );
 
-export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, stationId }: Props) {
+export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, stationId, onSaved }: Props) {
   const [lang, setLang] = useState<Lang>("th");
   useEffect(() => {
     const saved = localStorage.getItem("app_language") as Lang | null;
@@ -188,6 +185,21 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
     if (!chargerId) return;
     try {
       setSaving(true);
+
+      // เช็ค PM key ซ้ำก่อนทุกอย่าง
+      const seen = new Set<string>();
+      for (const r of pmRows) {
+        const k = r.key.trim();
+        if (!k) continue;
+        if (seen.has(k)) {
+          const msg = lang === "th" ? `คีย์ซ้ำ: ${k}` : `Duplicate key: ${k}`;
+          setNotice({ type: "error", msg });
+          setSaving(false);
+          return;
+        }
+        seen.add(k);
+      }
+
       const powerModuleDefaults: PowerModuleDefaults = {};
       pmRows.forEach(r => {
         const k = r.key.trim();
@@ -224,10 +236,13 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
         throw new Error(errBody?.detail || `Update failed: ${res.status}`);
       }
       setNotice({ type: "success", msg: t.saved });
+      onSaved?.(true, t.saved);                       // ← เพิ่ม
       setTimeout(() => { setNotice(null); onClose(); }, 1200);
     } catch (e: any) {
       console.error(e);
-      setNotice({ type: "error", msg: e?.message || "Update failed" });
+      const msg = e?.message || "Update failed";
+      setNotice({ type: "error", msg });
+      onSaved?.(false, msg);                           // ← เพิ่ม
       setTimeout(() => setNotice(null), 3500);
     } finally { setSaving(false); }
   };
@@ -290,11 +305,21 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
                 ) : (
                   <div className="tw-space-y-2">
                     {pmRows.map((row, i) => (
-                      <div key={i} className="tw-flex tw-items-center tw-gap-2">
-                        <div className="tw-flex-1"><Input label={t.pmKey} value={row.key} onChange={(e) => setPmRow(i, "key", e.target.value)} crossOrigin={undefined} /></div>
-                        <div className="tw-w-28"><Input label={t.pmValue} type="number" value={row.value} onChange={(e) => setPmRow(i, "value", e.target.value)} crossOrigin={undefined} /></div>
+                      <div key={i} className="tw-grid tw-grid-cols-[minmax(0,1fr)_6rem_2.25rem] tw-items-center tw-gap-2">
+                        <div className="tw-min-w-0">
+                          <Input label={t.pmKey} value={row.key}
+                            onChange={(e) => setPmRow(i, "key", e.target.value)}
+                            crossOrigin={undefined}
+                            containerProps={{ className: "!tw-min-w-0" }} />
+                        </div>
+                        <div className="tw-min-w-0">
+                          <Input label={t.pmValue} type="number" value={row.value}
+                            onChange={(e) => setPmRow(i, "value", e.target.value)}
+                            crossOrigin={undefined}
+                            containerProps={{ className: "!tw-min-w-0" }} />
+                        </div>
                         <Tooltip content={t.remove}>
-                          <button type="button" onClick={() => removePmRow(i)} className="tw-p-2 tw-rounded-lg tw-text-red-400 hover:tw-text-red-600 hover:tw-bg-red-50 tw-transition-colors tw-shrink-0">
+                          <button type="button" onClick={() => removePmRow(i)} className="tw-flex tw-items-center tw-justify-center tw-w-9 tw-h-9 tw-rounded-lg tw-text-red-400 hover:tw-text-red-600 hover:tw-bg-red-50 tw-transition-colors">
                             <TrashIcon className="tw-h-4 tw-w-4" />
                           </button>
                         </Tooltip>

@@ -777,7 +777,38 @@ def add_charger_to_station(
     charger_doc["_id"] = result.inserted_id
     return format_charger(charger_doc, include_status=False).dict()
 
+def _assert_pipeline_unique(pc: dict, exclude_id: ObjectId = None):
+    """กัน MQTT topics และ meter collection ซ้ำกับตู้อื่น"""
+    if not isinstance(pc, dict):
+        return
+    extra = {"_id": {"$ne": exclude_id}} if exclude_id else {}
 
+    topics = (pc.get("topics") or {})
+    for tkey, tval in topics.items():
+        if not tval or not str(tval).strip():
+            continue
+        dup = charger_collection.find_one(
+            {f"pipeline_config.topics.{tkey}": str(tval).strip(), **extra},
+            {"SN": 1},
+        )
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Topic '{tval}' ({tkey}) ซ้ำกับตู้ SN {dup.get('SN', '-')}",
+            )
+
+    meter = ((pc.get("collections") or {}).get("meter") or "").strip()
+    if meter:
+        dup = charger_collection.find_one(
+            {"pipeline_config.collections.meter": meter, **extra},
+            {"SN": 1},
+        )
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Meter collection '{meter}' ซ้ำกับตู้ SN {dup.get('SN', '-')}",
+            )
+        
 # ---------------------------------------------------------
 # PATCH /update_charger/{id}
 # ---------------------------------------------------------
@@ -816,7 +847,8 @@ def update_charger(
     if body.is_active is not None:
         update_data["is_active"] = body.is_active
 
-    if body.pipeline_config is not None:          
+    if body.pipeline_config is not None:        
+        _assert_pipeline_unique(body.pipeline_config, exclude_id=oid)  
         update_data["pipeline_config"] = body.pipeline_config
 
     if not update_data:
