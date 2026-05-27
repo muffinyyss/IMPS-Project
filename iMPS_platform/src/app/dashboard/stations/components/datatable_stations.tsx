@@ -118,6 +118,34 @@ async function readExifOrientation(file: File): Promise<number> {
   return 1;
 }
 
+// ─── Read raw JPEG dimensions from SOF marker (pre-EXIF rotation) ───
+async function readJpegDimensions(file: File): Promise<{ width: number; height: number } | null> {
+  if (!/jpe?g/i.test(file.type)) return null;
+  try {
+    const buf = await file.arrayBuffer();
+    const view = new DataView(buf);
+    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
+    let offset = 2;
+    while (offset < view.byteLength) {
+      if (view.getUint8(offset) !== 0xff) return null;
+      const marker = view.getUint16(offset);
+      offset += 2;
+      const isSOF =
+        (marker >= 0xffc0 && marker <= 0xffc3) ||
+        (marker >= 0xffc5 && marker <= 0xffc7) ||
+        (marker >= 0xffc9 && marker <= 0xffcb) ||
+        (marker >= 0xffcd && marker <= 0xffcf);
+      if (isSOF) {
+        const height = view.getUint16(offset + 3);
+        const width = view.getUint16(offset + 5);
+        return { width, height };
+      }
+      offset += view.getUint16(offset);
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 // ─── Normalize EXIF orientation: returns a new File with pixels rotated upright ───
 async function normalizeImageOrientation(file: File): Promise<File> {
   if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") return file;
@@ -125,32 +153,44 @@ async function normalizeImageOrientation(file: File): Promise<File> {
     const orientation = await readExifOrientation(file);
     if (orientation === 1) return file;
 
+    const rawDims = await readJpegDimensions(file);
+
     let bitmap: ImageBitmap;
     try {
       bitmap = await createImageBitmap(file, { imageOrientation: "none" } as any);
     } catch {
       bitmap = await createImageBitmap(file);
     }
-    const w = bitmap.width;
-    const h = bitmap.height;
+
     const swap = orientation >= 5 && orientation <= 8;
+    // ถ้า bitmap.width/height ถูกสลับเทียบกับ raw → เบราว์เซอร์ auto-rotate ให้แล้ว วาดตรง ๆ ห้ามหมุนซ้ำ
+    const alreadyRotated = !!rawDims && swap &&
+      bitmap.width === rawDims.height && bitmap.height === rawDims.width;
+
     const canvas = document.createElement("canvas");
-    canvas.width = swap ? h : w;
-    canvas.height = swap ? w : h;
     const ctx = canvas.getContext("2d");
     if (!ctx) { bitmap.close?.(); return file; }
 
-    switch (orientation) {
-      case 2: ctx.transform(-1, 0, 0, 1, w, 0); break;
-      case 3: ctx.transform(-1, 0, 0, -1, w, h); break;
-      case 4: ctx.transform(1, 0, 0, -1, 0, h); break;
-      case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
-      case 6: ctx.transform(0, 1, -1, 0, h, 0); break;
-      case 7: ctx.transform(0, -1, -1, 0, h, w); break;
-      case 8: ctx.transform(0, -1, 1, 0, 0, w); break;
-      default: break;
+    if (alreadyRotated) {
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      ctx.drawImage(bitmap, 0, 0);
+    } else {
+      const w = bitmap.width, h = bitmap.height;
+      canvas.width = swap ? h : w;
+      canvas.height = swap ? w : h;
+      switch (orientation) {
+        case 2: ctx.transform(-1, 0, 0, 1, w, 0); break;
+        case 3: ctx.transform(-1, 0, 0, -1, w, h); break;
+        case 4: ctx.transform(1, 0, 0, -1, 0, h); break;
+        case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+        case 6: ctx.transform(0, 1, -1, 0, h, 0); break;
+        case 7: ctx.transform(0, -1, -1, 0, h, w); break;
+        case 8: ctx.transform(0, -1, 1, 0, 0, w); break;
+        default: break;
+      }
+      ctx.drawImage(bitmap, 0, 0);
     }
-    ctx.drawImage(bitmap, 0, 0);
     bitmap.close?.();
 
     const outType = file.type === "image/png" ? "image/png" : "image/jpeg";

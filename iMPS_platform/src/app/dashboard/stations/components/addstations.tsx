@@ -331,33 +331,81 @@ export default function AddStationModal({
         return 1;
     };
 
+    /* ── read raw JPEG dimensions from SOF marker (pre-EXIF rotation) ── */
+    const readJpegDimensions = async (file: File): Promise<{ width: number; height: number } | null> => {
+        if (!/jpe?g/i.test(file.type)) return null;
+        try {
+            const buf = await file.arrayBuffer();
+            const view = new DataView(buf);
+            if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
+            let offset = 2;
+            while (offset < view.byteLength) {
+                if (view.getUint8(offset) !== 0xff) return null;
+                const marker = view.getUint16(offset);
+                offset += 2;
+                const isSOF =
+                    (marker >= 0xffc0 && marker <= 0xffc3) ||
+                    (marker >= 0xffc5 && marker <= 0xffc7) ||
+                    (marker >= 0xffc9 && marker <= 0xffcb) ||
+                    (marker >= 0xffcd && marker <= 0xffcf);
+                if (isSOF) {
+                    const height = view.getUint16(offset + 3);
+                    const width = view.getUint16(offset + 5);
+                    return { width, height };
+                }
+                offset += view.getUint16(offset);
+            }
+        } catch { /* ignore */ }
+        return null;
+    };
+
     /* ── normalize EXIF orientation (rotate image upright) ── */
     const normalizeImageOrientation = async (file: File): Promise<File> => {
         if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") {
             return file;
         }
         try {
-            // ถ้า orientation = 1 (ตั้งตรงอยู่แล้ว) ไม่ต้องแตะ คงไฟล์เดิมไว้เพื่อรักษาคุณภาพ
             const orientation = await readExifOrientation(file);
             if (orientation === 1) return file;
 
-            // ให้เบราว์เซอร์หมุนตาม EXIF ให้ตั้งตรงเอง (from-image)
-            // แล้วเราวาดลง canvas ตรง ๆ ไม่ต้องคำนวณ matrix เอง
-            // -> ป้องกันปัญหา "หมุนซ้ำสองครั้ง" ที่ทำให้รูปกลับหัว/ตะแคง
+            const rawDims = await readJpegDimensions(file);
+
+            // ขอ bitmap แบบไม่หมุน แต่บางเบราว์เซอร์ก็ยังหมุนให้อยู่ดี → ต้องตรวจสอบจากขนาดจริง
             let bitmap: ImageBitmap;
             try {
-                bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+                bitmap = await createImageBitmap(file, { imageOrientation: "none" } as any);
             } catch {
                 bitmap = await createImageBitmap(file);
             }
 
+            const swap = orientation >= 5 && orientation <= 8;
+            // ถ้า bitmap.width/height สลับเทียบกับ raw → เบราว์เซอร์หมุนให้แล้ว วาดตรง ๆ
+            const alreadyRotated = !!rawDims && swap &&
+                bitmap.width === rawDims.height && bitmap.height === rawDims.width;
+
             const canvas = document.createElement("canvas");
-            canvas.width = bitmap.width;   // bitmap ตั้งตรงแล้ว ใช้ขนาดของมันได้เลย
-            canvas.height = bitmap.height;
             const ctx = canvas.getContext("2d");
             if (!ctx) { bitmap.close?.(); return file; }
 
-            ctx.drawImage(bitmap, 0, 0);
+            if (alreadyRotated) {
+                canvas.width = bitmap.width;
+                canvas.height = bitmap.height;
+                ctx.drawImage(bitmap, 0, 0);
+            } else {
+                const w = bitmap.width, h = bitmap.height;
+                canvas.width = swap ? h : w;
+                canvas.height = swap ? w : h;
+                switch (orientation) {
+                    case 2: ctx.transform(-1, 0, 0, 1, w, 0); break;
+                    case 3: ctx.transform(-1, 0, 0, -1, w, h); break;
+                    case 4: ctx.transform(1, 0, 0, -1, 0, h); break;
+                    case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+                    case 6: ctx.transform(0, 1, -1, 0, h, 0); break;
+                    case 7: ctx.transform(0, -1, -1, 0, h, w); break;
+                    case 8: ctx.transform(0, -1, 1, 0, 0, w); break;
+                }
+                ctx.drawImage(bitmap, 0, 0);
+            }
             bitmap.close?.();
 
             const outType = file.type === "image/png" ? "image/png" : "image/jpeg";
