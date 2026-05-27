@@ -719,7 +719,16 @@ export default function AddStationModal({
                                                 </>)}
                                             <Input label={t.maximoLocation} value={charger.maximo_location} onChange={(e) => onChargerChange(charger.id, "maximo_location", e.target.value)} crossOrigin={undefined} />
                                             <Input label={t.maximoDesc} value={charger.maximo_desc} onChange={(e) => onChargerChange(charger.id, "maximo_desc", e.target.value)} crossOrigin={undefined} />
-                                            <Input label={t.commissioningDate} type="date" required value={charger.commissioningDate} onChange={(e) => onChargerChange(charger.id, "commissioningDate", e.target.value)} crossOrigin={undefined} />
+                                            <Input
+                                                label={t.commissioningDate}
+                                                type="date"
+                                                required
+                                                value={charger.commissioningDate}
+                                                onChange={(e) => onChargerChange(charger.id, "commissioningDate", e.target.value)}
+                                                crossOrigin={undefined}
+                                                containerProps={{ className: "!tw-min-w-0 tw-w-full" }}
+                                                className="tw-w-full tw-min-w-0 tw-appearance-none"
+                                            />
                                             <Input label={t.warrantyYears} type="number" min={1} max={10} required value={charger.warrantyYears} onChange={(e) => onChargerChange(charger.id, "warrantyYears", parseInt(e.target.value) || 1)} crossOrigin={undefined} />
                                             <Input label={t.numberOfCables} type="number" min={1} max={10} required value={charger.numberOfCables} onChange={(e) => onChargerChange(charger.id, "numberOfCables", parseInt(e.target.value) || 1)} crossOrigin={undefined} />
                                             <Select label={t.status} value={String(charger.is_active)} onChange={(v) => onChargerChange(charger.id, "is_active", v === "true")}>
