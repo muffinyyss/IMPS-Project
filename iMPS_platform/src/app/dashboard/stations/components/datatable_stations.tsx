@@ -566,25 +566,25 @@ export function SearchDataTables() {
   useEffect(() => {
     if (openEditStation && editingStation) {
       setEditStationForm({ station_name: editingStation.station_name ?? "", is_active: !!editingStation.is_active, maximo_location: editingStation.maximo_location ?? "", maximo_desc: editingStation.maximo_desc ?? "" });
-       const ownerExists = owners.some(o => o.user_id === editingStation.user_id);
-        if (ownerExists) {
-            setIsOtherOwnerEdit(false);
-            setSelectedOwnerId(editingStation.user_id ?? "");
-            setOtherOwnerNameEdit("");
-        } else if (editingStation.username) {
-            // ไม่เจอใน list → เข้า Other mode แล้วใส่ username เดิม
-            setIsOtherOwnerEdit(true);
-            setSelectedOwnerId("");
-            setOtherOwnerNameEdit(editingStation.username);
-        } else {
-            setIsOtherOwnerEdit(false);
-            setSelectedOwnerId("");
-            setOtherOwnerNameEdit("");
-        }
-        
-        resetEditImages();
+      const ownerExists = owners.some(o => o.user_id === editingStation.user_id);
+      if (ownerExists) {
+        setIsOtherOwnerEdit(false);
+        setSelectedOwnerId(editingStation.user_id ?? "");
+        setOtherOwnerNameEdit("");
+      } else if (editingStation.username) {
+        // ไม่เจอใน list → เข้า Other mode แล้วใส่ username เดิม
+        setIsOtherOwnerEdit(true);
+        setSelectedOwnerId("");
+        setOtherOwnerNameEdit(editingStation.username);
+      } else {
+        setIsOtherOwnerEdit(false);
+        setSelectedOwnerId("");
+        setOtherOwnerNameEdit("");
+      }
+
+      resetEditImages();
     }
-}, [openEditStation, editingStation, owners]);
+  }, [openEditStation, editingStation, owners]);
 
   useEffect(() => {
     if (openEditCharger && editingCharger) {
@@ -1066,6 +1066,16 @@ export function SearchDataTables() {
               </div>
               <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-4 sm:tw-space-y-5">
                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
+                  {isAdmin && (
+                    <Input
+                      label="Station ID"
+                      value={editingStation?.station_id ?? "-"}
+                      readOnly
+                      disabled
+                      className="!tw-bg-gray-50"
+                      crossOrigin={undefined}
+                    />
+                  )}
                   <Input label={t.stationName} required value={editStationForm.station_name} onChange={(e) => setEditStationForm(s => ({ ...s, station_name: e.target.value }))} crossOrigin={undefined} />
                   {isAdmin ? (
                     <div className="tw-flex tw-gap-2">
