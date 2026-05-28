@@ -21,7 +21,7 @@ type PipelineTopics = {
   plc: string | null; router: string | null; meter: string | null;
   ocpp_config: string | null; ebCountDevice: string | null; ebError: string | null;
   ebHeartbeat: string | null; ebTemp: string | null; fanRpm: string | null;
-  pi5Heartbeat: string | null; mdbRaw: string | null;
+  pi5Heartbeat: string | null; mdbRaw: string | null;faultStatus: string | null;
 };
 type PipelineConfig = {
   hardware: PipelineHardware;
@@ -44,7 +44,7 @@ const emptyConfig = (): PipelineConfig => ({
   topics: {
     plc: "", router: "", meter: null,
     ocpp_config: "", ebCountDevice: "", ebError: "", ebHeartbeat: "", ebTemp: "",
-    fanRpm: "", pi5Heartbeat: "", mdbRaw: "",
+    fanRpm: "", pi5Heartbeat: "", mdbRaw: "",faultStatus: "",   
   },
   collections: { meter: "" },
   service_life: { endDate: null },
@@ -66,6 +66,7 @@ const TOPIC_FIELDS: { key: keyof PipelineTopics; label: string }[] = [
   { key: "fanRpm", label: "Fan RPM" },
   { key: "pi5Heartbeat", label: "Pi5 Heartbeat" },
   { key: "mdbRaw", label: "MDB Raw" },
+  { key: "faultStatus", label: "Fault Status" },
 ];
 
 const Spinner = () => (
