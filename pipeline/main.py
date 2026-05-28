@@ -252,6 +252,18 @@ class Pipeline:
         old_ids = set(settings.stations.keys())
         new_ids = set(new_configs.keys())
 
+        # Heartbeat: prove the reload loop is actually polling MongoDB each cycle
+        changed_ids = [
+            sid for sid in (old_ids & new_ids)
+            if self._config_hashes.get(sid) != self._config_hash(new_configs[sid])
+        ]
+        logger.info(
+            f"[Reload] Poll OK: fetched={len(new_configs)} "
+            f"new={len(new_ids - old_ids)} removed={len(old_ids - new_ids)} "
+            f"changed={len(changed_ids)}"
+            + (f" -> {changed_ids}" if changed_ids else "")
+        )
+
         # Removed stations
         for sid in old_ids - new_ids:
             logger.info(f"[Reload] Station removed from config: {sid}")
@@ -271,6 +283,12 @@ class Pipeline:
                 continue  # unchanged
 
             old_config = settings.stations[sid]
+            old_topics = set(old_config.topics.get_all_topics())
+            new_topics = set(new_config.topics.get_all_topics())
+            logger.info(
+                f"[Reload] Change detected for {sid}: "
+                f"+{sorted(new_topics - old_topics)} -{sorted(old_topics - new_topics)}"
+            )
             if self._topics_only_change(old_config, new_config):
                 logger.info(f"[Reload] Topics changed for {sid}; refreshing subscriptions")
                 settings.stations[sid] = new_config
