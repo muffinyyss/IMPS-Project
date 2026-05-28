@@ -125,6 +125,11 @@ def _validate_station_id(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
 
+def _validate_station_id_th(station_id: str):
+    # Allows Thai characters (U+0E00-U+0E7F) in addition to ASCII alphanumerics, _ and -
+    if not re.fullmatch(r"[A-Za-z0-9_\-฀-๿]+", str(station_id)):
+        raise HTTPException(status_code=400, detail="Bad station_id")
+
 def get_mdb_collection_for(station_id: str):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")

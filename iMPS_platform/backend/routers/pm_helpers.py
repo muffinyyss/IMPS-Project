@@ -7,6 +7,7 @@ import re, os, secrets
 
 from config import (
     _validate_station_id,
+    _validate_station_id_th,
     PMReportDB, PMUrlDB,
     MDBPMReportDB, MDBPMUrlDB,
     CCBPMReportDB, CCBPMUrlDB,
@@ -40,11 +41,11 @@ def get_pmurl_coll_upload(sn: str):
 
 # ─── Collection Getters (MDB) ─────────────────────────────────
 def get_mdbpmreport_collection_for(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     return MDBPMReportDB.get_collection(str(station_id))
 
 def get_mdbpmurl_coll_upload(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     return MDBPMUrlDB.get_collection(str(station_id))
 
 
@@ -88,8 +89,7 @@ def _get_collections_for_source(
         _validate_sn(identifier)
         return get_pmreport_collection_for(identifier), get_pmurl_coll_upload(identifier)
 
-    _validate_station_id(identifier)
-
+    # Each station-based getter validates the station_id itself (mdb allows Thai)
     if source == "mdb":
         return get_mdbpmreport_collection_for(identifier), get_mdbpmurl_coll_upload(identifier)
     elif source == "ccb":
