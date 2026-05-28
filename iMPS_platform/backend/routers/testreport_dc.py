@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional, Literal
 import re, json, uuid, pathlib, secrets, os
 from starlette.staticfiles import StaticFiles
 
-from config import normalize_pm_date, DCTestReportDB, DCUrlDB, station_collection, _validate_station_id, th_tz, _ensure_utc_iso, PMUrlDB, ACTestReportDB, ACUrlDB
+from config import normalize_pm_date, DCTestReportDB, DCUrlDB, station_collection, _validate_station_id_th, th_tz, _ensure_utc_iso, PMUrlDB, ACTestReportDB, ACUrlDB
 from deps import UserClaims, get_current_user
 from routers.pm_helpers import (
     UPLOADS_ROOT, ALLOWED_EXTS, MAX_FILE_MB,
@@ -25,12 +25,12 @@ from routers.pm_helpers import (
 router = APIRouter()
 
 def get_dc_testreport_collection_for(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     coll = DCTestReportDB.get_collection(str(sn))
     return coll
 
 def get_dcurl_coll_upload(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     coll = DCUrlDB.get_collection(str(sn))
     return coll
 
@@ -539,7 +539,7 @@ async def dcreport_next_ids(
     chargerNo: str = Query(...),
     inspection_date: str = Query(None),
 ):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     
     if not chargerNo:
         raise HTTPException(status_code=400, detail="chargerNo is required")

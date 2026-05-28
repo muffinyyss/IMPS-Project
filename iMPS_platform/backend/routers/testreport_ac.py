@@ -8,7 +8,7 @@ from bson.objectid import ObjectId
 from typing import List, Dict, Any, Optional, Literal
 import re, json, uuid, pathlib, secrets
 
-from config import normalize_pm_date, ACTestReportDB, ACUrlDB, station_collection, _validate_station_id, th_tz, _ensure_utc_iso
+from config import normalize_pm_date, ACTestReportDB, ACUrlDB, station_collection, _validate_station_id_th, th_tz, _ensure_utc_iso
 from deps import UserClaims, get_current_user
 from routers.pm_helpers import (
     UPLOADS_ROOT, ALLOWED_DOC_EXTS, MAX_DOC_FILE_MB,
@@ -79,7 +79,7 @@ async def acreport_next_ids(
     chargerNo: str = Query(...),
     inspection_date: str = Query(None),
 ):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     
     if not chargerNo:
         raise HTTPException(status_code=400, detail="chargerNo is required")

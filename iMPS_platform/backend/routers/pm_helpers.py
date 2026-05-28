@@ -6,7 +6,6 @@ from typing import Literal
 import re, os, secrets
 
 from config import (
-    _validate_station_id,
     _validate_station_id_th,
     PMReportDB, PMUrlDB,
     MDBPMReportDB, MDBPMUrlDB,
@@ -303,17 +302,17 @@ def _normalize_tick_to_pass(obj):
 
 
 def get_dc_testreport_collection_for(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     return DCTestReportDB.get_collection(str(sn))
 
 def get_dcurl_coll_upload(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     return DCUrlDB.get_collection(str(sn))
 
 def get_ac_testreport_collection_for(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     return ACTestReportDB.get_collection(str(sn))
 
 def get_acurl_coll_upload(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     return ACUrlDB.get_collection(str(sn))
