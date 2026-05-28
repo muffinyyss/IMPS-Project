@@ -15,7 +15,7 @@ import zipfile
 
 from config import (
     normalize_pm_date, CBBOXPMReportDB, CBBOXPMUrlDB,
-    station_collection, _validate_station_id, th_tz, _ensure_utc_iso,
+    station_collection, _validate_station_id_th, th_tz, _ensure_utc_iso,
 )
 from deps import UserClaims, get_current_user
 from routers.pm_helpers import (
@@ -86,7 +86,7 @@ def _compute_next_pm_date_str(pm_date_str: str | None) -> str | None:
 
 
 async def _latest_pm_date_from_cbboxpmreport(station_id: str) -> dict | None:
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     coll = CBBOXPMReportDB.get_collection(str(station_id))
 
     pipeline = [
@@ -116,7 +116,7 @@ async def _latest_pm_date_from_cbboxpmreport(station_id: str) -> dict | None:
 
 async def _cbboxpmreport_latest_core(station_id: str, current: UserClaims):
     """Get latest PM report info for a CB-BOX by station_id"""
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
 
     station = await _get_station_by_id(station_id)
 
