@@ -59,9 +59,10 @@ class MongoDBConfig:
         "module5": "module5NetworkProblemPrediction",
         "module6": "module6DcChargerRulPrediction",
         "module7": "module7ChargerPowerIssue",
-        "errorCode": "errorCode"
+        "errorCode": "errorCode",
+        "faultStatus": "FaultStatus"
     })
-    
+
     # Collection naming rules
     collection_naming: Dict[str, str] = field(default_factory=lambda: {
         "plc": "serial_number",
@@ -77,7 +78,8 @@ class MongoDBConfig:
         "module5": "serial_number",
         "module6": "serial_number",
         "module7": "serial_number",
-        "errorCode": "serial_number"
+        "errorCode": "serial_number",
+        "faultStatus": "serial_number"
     })
 
 
@@ -111,8 +113,9 @@ class TopicsConfig:
     ocppConfig: Optional[str] = None
     plcTemp1: Optional[str] = None
     plcTemp2: Optional[str] = None
-    mdb: Optional[str] = None 
-    
+    mdb: Optional[str] = None
+    faultStatus: Optional[str] = None
+
     def get_all_topics(self) -> List[str]:
         """Get list of all non-empty subscribe topics"""
         topics = []
@@ -120,7 +123,7 @@ class TopicsConfig:
         for key in ['plc', 'pi5Heartbeat', 'ebError', 'ebTemp', 'ebHeartbeat',
                     'router', 'bme280',
                     'insulation1', 'insulation2', 'fanRpm', 'meter',
-                    'plcTemp1', 'plcTemp2', 'mdb']:
+                    'plcTemp1', 'plcTemp2', 'mdb', 'faultStatus']:
             val = getattr(self, key, None)
             if val:
                 topics.append(val)
@@ -204,7 +207,8 @@ def parse_station_config(doc: Dict[str, Any]) -> Optional[StationConfig]:
         ocppConfig=topics_data.get('ocppConfig'),
         plcTemp1=topics_data.get('plcTemp1'),
         plcTemp2=topics_data.get('plcTemp2'),
-        mdb=topics_data.get('mdbRaw') or topics_data.get('mdb'), 
+        mdb=topics_data.get('mdbRaw') or topics_data.get('mdb'),
+        faultStatus=topics_data.get('faultStatus_topic') or topics_data.get('faultStatus'),
     )
     
     # Parse service life config
@@ -283,6 +287,35 @@ class Settings:
         except Exception as e:
             logger.error(f"Failed to load stations from MongoDB: {e}")
     
+    def fetch_station_configs(self, station_ids: Optional[List[str]] = None) -> Dict[str, StationConfig]:
+        """Fetch station configs from MongoDB WITHOUT mutating self.stations.
+
+        Used by the hot-reload loop to diff against the currently loaded configs.
+        Returns a fresh {station_id: StationConfig} map.
+        """
+        from pymongo import MongoClient
+
+        result: Dict[str, StationConfig] = {}
+        try:
+            client = MongoClient(self.mongodb.uri)
+            db = client[self.mongodb.config_database]
+            collection = db[self.mongodb.config_collection]
+
+            query = {}
+            if station_ids:
+                query['station_id'] = {'$in': station_ids}
+
+            for doc in collection.find(query):
+                config = parse_station_config(doc)
+                if config:
+                    result[config.stationId] = config
+
+            client.close()
+        except Exception as e:
+            logger.error(f"Failed to fetch stations from MongoDB: {e}")
+
+        return result
+
     def reload_station_config(self, station_id: str) -> Optional[StationConfig]:
         """Reload a single station config from MongoDB"""
         from pymongo import MongoClient

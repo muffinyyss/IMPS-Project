@@ -354,6 +354,14 @@ class StateManager:
         """Get station state by ID"""
         with self._lock:
             return self.stations.get(station_id)
+
+    def remove_station(self, station_id: str) -> Optional[StationState]:
+        """Remove a station state (used by hot-reload when a station is deleted)"""
+        with self._lock:
+            state = self.stations.pop(station_id, None)
+            if state:
+                logger.info(f"Removed station state: {station_id}")
+            return state
     
     def get_all_stations(self) -> Dict[str, StationState]:
         """Get all station states"""

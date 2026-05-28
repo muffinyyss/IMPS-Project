@@ -161,8 +161,34 @@ function personalize(items) {
   });
 }
 
+/** 5.1) ต่อท้าย sn & station_id ให้ path ภายใน (ข้าม external link) */
+function withStationParams(path, sn, stationId) {
+  if (!path || !sn || !stationId) return path;
+  if (/^https?:\/\//i.test(path)) return path; // external link ไม่ต้องแตะ
+  const [base, existingQuery = ""] = path.split("?");
+  const params = new URLSearchParams(existingQuery);
+  params.set("sn", sn);
+  params.set("station_id", stationId);
+  return `${base}?${params.toString()}`;
+}
+
+/** 5.2) ใส่ sn & station_id ให้เมนูที่เป็น per-station (showMode === "after") เท่านั้น
+ * เมนูกลุ่ม before/both (Stations, Users ฯลฯ) ไม่ผูกกับสถานี จึงไม่ต่อ params
+ */
+function applyStationParams(items, stationParams) {
+  const sn = stationParams?.sn || "";
+  const stationId = stationParams?.stationId || "";
+  if (!sn || !stationId) return items;
+  return items.map((r) => {
+    if (r.showMode === "after" && r.path) {
+      return { ...r, path: withStationParams(r.path, sn, stationId) };
+    }
+    return r;
+  });
+}
+
 /** 6) คำนวณเมนูตาม role + showMode + ใส่ชื่อผู้ใช้ */
-export function getRoutes(roles, hasChargerSelected = false) {
+export function getRoutes(roles, hasChargerSelected = false, stationParams = null) {
   const r = roles && roles.length ? roles : getRolesFromStorage();
   let filtered = prune(baseRoutes, r, hasChargerSelected);
 
@@ -176,7 +202,7 @@ export function getRoutes(roles, hasChargerSelected = false) {
     );
   }
 
-  return personalize(filtered);
+  return applyStationParams(personalize(filtered), stationParams);
 }
 
 
@@ -184,6 +210,7 @@ export function getRoutes(roles, hasChargerSelected = false) {
 export function useRoutes(rolesFromApp) {
   const [hasChargerSelected, setHasChargerSelected] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false); // ← เพิ่ม
+  const [stationParams, setStationParams] = useState({ sn: "", stationId: "" }); // ← sn/station_id ปัจจุบัน
 
   useEffect(() => {
     // อ่าน ai_package จาก storage ทุกครั้งที่ storage เปลี่ยน
@@ -208,12 +235,20 @@ export function useRoutes(rolesFromApp) {
 
       // Also check localStorage - only need selected_sn to indicate charger is selected
       const snFromStorage = localStorage.getItem("selected_sn");
+      const stationIdFromStorage = localStorage.getItem("selected_station_id");
 
       // Has charger if URL has both OR localStorage has sn
       const hasFromUrl = !!snFromUrl && !!stationIdFromUrl;
       const hasFromStorage = !!snFromStorage;
 
       setHasChargerSelected(hasFromUrl || hasFromStorage);
+
+      // เก็บ sn/station_id ปัจจุบันไว้ต่อท้าย path เมนู (URL ก่อน → localStorage)
+      const sn = snFromUrl || snFromStorage || "";
+      const stationId = stationIdFromUrl || stationIdFromStorage || "";
+      setStationParams((prev) =>
+        prev.sn === sn && prev.stationId === stationId ? prev : { sn, stationId }
+      );
     };
 
     // Check on mount
@@ -242,10 +277,10 @@ export function useRoutes(rolesFromApp) {
   }, []);
 
   const routes = React.useMemo(() => {
-    let result = getRoutes(rolesFromApp, hasChargerSelected);
+    let result = getRoutes(rolesFromApp, hasChargerSelected, stationParams);
 
     return result;
-  }, [rolesFromApp, hasChargerSelected, aiEnabled]);
+  }, [rolesFromApp, hasChargerSelected, aiEnabled, stationParams]);
 
   return routes;
 }

@@ -520,7 +520,7 @@ export default function Sidenav({ }: PropTypes) {
                 ) : (
                   <Link href={safeHref(path)}>
                     <ListItem
-                      className={`tw-capitalize ${pathname === path ? activeRouteClasses : collapseItemClasses}`}
+                      className={`tw-capitalize ${isActivePath(path) ? activeRouteClasses : collapseItemClasses}`}
                     >
                       <SafeListItemPrefix>{icon}</SafeListItemPrefix>
                       {name}

@@ -50,11 +50,39 @@ class MQTTClient:
         self._lock = threading.Lock()
     
     def register_handler(self, topic: str, handler: Callable):
-        """Register a handler for a topic."""
+        """Register a handler for a topic.
+
+        If the client is already connected (e.g. during hot-reload), subscribe
+        to the topic immediately. Otherwise it will be subscribed in _on_connect.
+        """
         with self._lock:
             self._handlers[topic] = handler
-            self._topics.append(topic)
+            if topic not in self._topics:
+                self._topics.append(topic)
+            connected = self._connected
+
+        if connected:
+            self.client.subscribe(topic)
+            logger.info(f"[MQTT] Subscribed to new topic: {topic}")
+        else:
             logger.debug(f"Registered handler for topic: {topic}")
+
+    def unsubscribe_topic(self, topic: str):
+        """Unsubscribe from a topic and drop its handler (used by hot-reload)."""
+        with self._lock:
+            had_handler = self._handlers.pop(topic, None) is not None
+            if topic in self._topics:
+                self._topics.remove(topic)
+            connected = self._connected
+
+        if connected and had_handler:
+            self.client.unsubscribe(topic)
+            logger.info(f"[MQTT] Unsubscribed from topic: {topic}")
+
+    def unregister_station_topics(self, station_config: StationConfig):
+        """Unsubscribe from all topics belonging to a station."""
+        for topic in station_config.topics.get_all_topics():
+            self.unsubscribe_topic(topic)
     
     def register_station_topics(self, station_config: StationConfig, 
                             processor_callback: Callable):
@@ -78,6 +106,7 @@ class MQTTClient:
             topics.plcTemp1: 'plcTemp1',
             topics.plcTemp2: 'plcTemp2',
             topics.mdb: 'mdb',
+            topics.faultStatus: 'faultStatus',
         }
 
         # Filter out None keys (optional topics that aren't configured)
