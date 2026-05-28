@@ -6,7 +6,6 @@ from typing import Literal
 import re, os, secrets
 
 from config import (
-    _validate_station_id,
     _validate_station_id_th,
     PMReportDB, PMUrlDB,
     MDBPMReportDB, MDBPMUrlDB,
@@ -51,31 +50,31 @@ def get_mdbpmurl_coll_upload(station_id: str):
 
 # ─── Collection Getters (CCB) ─────────────────────────────────
 def get_ccbpmreport_collection_for(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     return CCBPMReportDB.get_collection(str(station_id))
 
 def get_ccbpmurl_coll_upload(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     return CCBPMUrlDB.get_collection(str(station_id))
 
 
 # ─── Collection Getters (CB-BOX) ──────────────────────────────
 def get_cbboxpmreport_collection_for(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     return CBBOXPMReportDB.get_collection(str(station_id))
 
 def get_cbboxpmurl_coll_upload(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     return CBBOXPMUrlDB.get_collection(str(station_id))
 
 
 # ─── Collection Getters (Station) ─────────────────────────────
 def get_stationpmreport_collection_for(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     return stationPMReportDB.get_collection(str(station_id))
 
 def get_stationpmurl_coll_upload(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     return stationPMUrlDB.get_collection(str(station_id))
 
 
@@ -303,17 +302,17 @@ def _normalize_tick_to_pass(obj):
 
 
 def get_dc_testreport_collection_for(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     return DCTestReportDB.get_collection(str(sn))
 
 def get_dcurl_coll_upload(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     return DCUrlDB.get_collection(str(sn))
 
 def get_ac_testreport_collection_for(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     return ACTestReportDB.get_collection(str(sn))
 
 def get_acurl_coll_upload(sn: str):
-    _validate_station_id(sn)
+    _validate_station_id_th(sn)
     return ACUrlDB.get_collection(str(sn))

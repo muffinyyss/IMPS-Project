@@ -11,7 +11,7 @@ import re, json, uuid, pathlib, secrets, os
 from config import (
     normalize_pm_date, _ensure_utc_iso,
     CMReportDB, CMUrlDB, DCTestReportDB, DCUrlDB,
-    station_collection, _validate_station_id, th_tz,
+    station_collection, _validate_station_id_th, th_tz,
 )
 from services.maximo import create_sr as maximo_create_sr          # ← A) เพิ่ม
 import inspect                                                     # ← รองรับทั้ง sync/async
@@ -24,12 +24,12 @@ router = APIRouter()
 
 # ---------------------------------------------------------------------
 def get_cmreport_collection_for(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     coll = CMReportDB.get_collection(str(station_id))
     return coll
 
 def get_cmurl_coll_upload(station_id: str):
-    _validate_station_id(station_id)
+    _validate_station_id_th(station_id)
     coll = CMUrlDB.get_collection(str(station_id))
     return coll
 
