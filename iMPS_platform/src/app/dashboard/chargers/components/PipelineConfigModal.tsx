@@ -19,14 +19,13 @@ type PipelineHardware = {
 };
 type PipelineTopics = {
   plc: string | null; router: string | null; meter: string | null;
-  ocpp_config: string | null; ebCountDevice: string | null; ebError: string | null;
+  ocpp_config: string | null; 
   ebHeartbeat: string | null; ebTemp: string | null; fanRpm: string | null;
-  pi5Heartbeat: string | null; mdbRaw: string | null;faultStatus: string | null;
+  pi5Heartbeat: string | null; faultStatus: string | null;
 };
 type PipelineConfig = {
   hardware: PipelineHardware;
   topics: PipelineTopics;
-  collections: { meter: string | null };
   service_life: { endDate: string | null };
 };
 
@@ -43,10 +42,9 @@ const emptyConfig = (): PipelineConfig => ({
   hardware: { dcContractorCount: 0, powerModuleCount: 0, dcFanCount: 0, fanType: "FIXED", energyMeterType: "PILOT", powerModuleDefaults: {} },
   topics: {
     plc: "", router: "", meter: null,
-    ocpp_config: "", ebCountDevice: "", ebError: "", ebHeartbeat: "", ebTemp: "",
-    fanRpm: "", pi5Heartbeat: "", mdbRaw: "",faultStatus: "",   
+    ocpp_config: "",  ebHeartbeat: "", ebTemp: "",
+    fanRpm: "", pi5Heartbeat: "", faultStatus: "",   
   },
-  collections: { meter: "" },
   service_life: { endDate: null },
 });
 
@@ -59,13 +57,10 @@ const TOPIC_FIELDS: { key: keyof PipelineTopics; label: string }[] = [
   { key: "router", label: "Router" },
   { key: "meter", label: "Meter" },
   { key: "ocpp_config", label: "OCPP Config" },
-  { key: "ebCountDevice", label: "Edgebox Count Device" },
-  { key: "ebError", label: "Edgebox Error" },
   { key: "ebHeartbeat", label: "Edgebox Heartbeat" },
   { key: "ebTemp", label: "Edgebox Temp" },
   { key: "fanRpm", label: "Fan RPM" },
   { key: "pi5Heartbeat", label: "Pi5 Heartbeat" },
-  { key: "mdbRaw", label: "MDB Raw" },
   { key: "faultStatus", label: "Fault Status" },
 ];
 
@@ -100,20 +95,20 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
     const tr = {
       th: {
         title: "ตั้งค่า Pipeline", charger: "ตู้ชาร์จ", station: "สถานี",
-        hardware: "ฮาร์ดแวร์", topics: "MQTT Topics", collections: "Collections", serviceLife: "อายุการใช้งาน",
+        hardware: "ฮาร์ดแวร์", topics: "MQTT Topics", serviceLife: "อายุการใช้งาน",
         dcContractorCount: "จำนวน DC Contactor", powerModuleCount: "จำนวน Power Module", dcFanCount: "จำนวน DC Fan",
         fanType: "ชนิดพัดลม", energyMeterType: "ชนิดมิเตอร์", powerModuleDefaults: "ค่าเริ่มต้น Power Module",
-        meterCollection: "Meter Collection", endDate: "วันหมดอายุการใช้งาน",
+        endDate: "วันหมดอายุการใช้งาน",
         addPm: "เพิ่ม", pmKey: "คีย์ (เช่น pm1)", pmValue: "ค่า", remove: "ลบ",
         save: "บันทึก", saving: "กำลังบันทึก...", saved: "บันทึกสำเร็จ", loading: "กำลังโหลด...",
         cancel: "ยกเลิก", notFound: "ไม่พบตู้ชาร์จนี้", emptyTopicHint: "เว้นว่าง = null", noSn: "ไม่พบ SN ของตู้ชาร์จ",
       },
       en: {
         title: "Pipeline Config", charger: "Charger", station: "Station",
-        hardware: "Hardware", topics: "MQTT Topics", collections: "Collections", serviceLife: "Service Life",
+        hardware: "Hardware", topics: "MQTT Topics", serviceLife: "Service Life",
         dcContractorCount: "DC Contactor Count", powerModuleCount: "Power Module Count", dcFanCount: "DC Fan Count",
         fanType: "Fan Type", energyMeterType: "Energy Meter Type", powerModuleDefaults: "Power Module Defaults",
-        meterCollection: "Meter Collection", endDate: "Service End Date",
+        endDate: "Service End Date",
         addPm: "Add", pmKey: "Key (e.g. pm1)", pmValue: "Value", remove: "Remove",
         save: "Save", saving: "Saving...", saved: "Saved successfully", loading: "Loading...",
         cancel: "Cancel", notFound: "Charger not found", emptyTopicHint: "Empty = null", noSn: "No charger SN provided",
@@ -135,7 +130,6 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
     const next: PipelineConfig = {
       hardware: { ...base.hardware, ...(pc.hardware ?? {}), powerModuleDefaults: { ...(pc.hardware?.powerModuleDefaults ?? {}) } },
       topics: { ...base.topics, ...(pc.topics ?? {}) },
-      collections: { ...base.collections, ...(pc.collections ?? {}) },
       service_life: { ...base.service_life, ...(pc.service_life ?? {}) },
     };
     setCfg(next);
@@ -174,8 +168,8 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
   const setTopic = (key: keyof PipelineTopics, value: string) =>
     setCfg(c => ({ ...c, topics: { ...c.topics, [key]: value } }));
 
-  const fanTypeOptions = useMemo(() => Array.from(new Set(["FIXED", "VARIABLE", cfg.hardware.fanType].filter(Boolean))), [cfg.hardware.fanType]);
-  const meterTypeOptions = useMemo(() => Array.from(new Set(["PILOT", "MODBUS", "NONE", cfg.hardware.energyMeterType].filter(Boolean))), [cfg.hardware.energyMeterType]);
+  const fanTypeOptions = useMemo(() => Array.from(new Set(["FIXED", "EBM", cfg.hardware.fanType].filter(Boolean))), [cfg.hardware.fanType]);
+  const meterTypeOptions = useMemo(() => Array.from(new Set(["PILOT", "LEM", cfg.hardware.energyMeterType].filter(Boolean))), [cfg.hardware.energyMeterType]);
 
   const addPmRow = () => setPmRows(rows => [...rows, { key: "", value: "0" }]);
   const removePmRow = (i: number) => setPmRows(rows => rows.filter((_, idx) => idx !== i));
@@ -222,7 +216,6 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
             powerModuleDefaults,
           },
           topics,
-          collections: { meter: emptyToNull(String(cfg.collections.meter ?? "")) },
           service_life: { endDate: cfg.service_life.endDate },
         },
       };
@@ -338,14 +331,6 @@ export default function PipelineConfigModal({ open, onClose, sn, chargeBoxID, st
                 {TOPIC_FIELDS.map(({ key, label }) => (
                   <Input key={key} label={label} value={cfg.topics[key] ?? ""} onChange={(e) => setTopic(key, e.target.value)} crossOrigin={undefined} />
                 ))}
-              </div>
-            </SectionCard>
-
-            {/* Collections */}
-            <SectionCard icon={<CircleStackIcon className="tw-h-4 tw-w-4" />} title={t.collections}>
-              <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3">
-                <Input label={t.meterCollection} value={cfg.collections.meter ?? ""}
-                  onChange={(e) => setCfg(c => ({ ...c, collections: { meter: e.target.value } }))} crossOrigin={undefined} />
               </div>
             </SectionCard>
 
