@@ -1,96 +1,75 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  DocumentTextIcon,
   BookOpenIcon,
-  WrenchScrewdriverIcon,
-  ShieldCheckIcon,
-  QuestionMarkCircleIcon,
-  ArrowTopRightOnSquareIcon,
+  CodeBracketIcon,
+  DocumentArrowDownIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/solid";
 
 type DocLink = {
   title: string;
   description: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  adminOnly?: boolean; // แสดงเฉพาะ user ที่มี role = "admin"
+  icon: React.ElementType;
+  adminOnly?: boolean; // แสดงเฉพาะ role = "admin"
 };
 
-// วางไฟล์เอกสารไว้ใน public/docs/ แล้วแก้ href ให้ตรงกับไฟล์จริง
-// หรือเปลี่ยนเป็นลิงก์ภายนอก (Google Drive / เว็บไซต์) ได้เลย
+// วางไฟล์ไว้ใน /public/docs แล้วอ้าง path ตรงนี้ (encodeURI รองรับชื่อไทย/เว้นวรรค)
 const DOCS: DocLink[] = [
   {
-    title: "คู่มือการใช้งานระบบ (User Manual)",
-    description: "ภาพรวมการใช้งาน iMPS Platform สำหรับผู้ใช้งานทั่วไป",
+    title: "คู่มือการใช้งานระบบ",
+    description: "ภาพรวมและวิธีใช้งาน iMPS Platform สำหรับผู้ใช้งานทั่วไป",
     href: encodeURI("/docs/คู่มือการใช้งานระบบ_iMPS Platform.pdf"),
     icon: BookOpenIcon,
   },
   {
     title: "คู่มือการใช้งาน Source Code",
-    description: "คู่มือสำหรับนักพัฒนา โครงสร้างและการใช้งาน source code ของ iMPS Platform",
+    description: "โครงสร้างโค้ดและแนวทางพัฒนาต่อยอด สำหรับทีมพัฒนา",
     href: encodeURI("/docs/คู่มือการใช้งาน source code_iMPS Platform.pdf"),
-    icon: WrenchScrewdriverIcon,
+    icon: CodeBracketIcon,
     adminOnly: true,
-  }
-  // {
-  //   title: "คู่มือการบำรุงรักษา (Maintenance / PM)",
-  //   description: "แนวทางการบำรุงรักษาเชิงป้องกันและการรายงานผล",
-  //   href: "/docs/maintenance-guide.pdf",
-  //   icon: ShieldCheckIcon,
-  // },
-  // {
-  //   title: "คำถามที่พบบ่อย (FAQ)",
-  //   description: "รวมคำถามและการแก้ไขปัญหาเบื้องต้น",
-  //   href: "/docs/faq.pdf",
-  //   icon: QuestionMarkCircleIcon,
-  // },
+  },
 ];
 
 export default function HelpPage() {
-  const [userRole, setUserRole] = useState<string>("");
+  const [role, setRole] = useState<string>("");
 
   useEffect(() => {
     const token =
       localStorage.getItem("access_token") ||
       localStorage.getItem("accessToken") ||
       "";
-    if (token) {
-      try {
-        const payload = token.split(".")[1];
-        const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-        const claims = JSON.parse(json);
-        setUserRole(claims.role || "user");
-      } catch {
-        setUserRole("user");
-      }
+    if (!token) return;
+    try {
+      const payload = token.split(".")[1];
+      const claims = JSON.parse(
+        atob(payload.replace(/-/g, "+").replace(/_/g, "/"))
+      );
+      setRole(claims.role || "user");
+    } catch {
+      setRole("user");
     }
   }, []);
 
-  // กรองเอกสารที่เป็น adminOnly ออก ถ้า user ไม่ใช่ admin
-  const visibleDocs = DOCS.filter((doc) => !doc.adminOnly || userRole === "admin");
+  const docs = DOCS.filter((d) => !d.adminOnly || role === "admin");
 
   return (
-    <div className="tw-space-y-6 tw-mt-8">
-      {/* Header */}
-      {/* <div className="tw-flex tw-items-center tw-gap-3">
-        <span className="tw-flex tw-h-11 tw-w-11 tw-items-center tw-justify-center tw-rounded-xl tw-bg-blue-50 tw-text-blue-600">
-          <DocumentTextIcon className="tw-h-6 tw-w-6" />
-        </span>
-        <div>
-          <h1 className="tw-text-xl tw-font-bold tw-text-blue-gray-800">
-            ศูนย์ช่วยเหลือ
-          </h1>
-          <p className="tw-text-sm tw-text-blue-gray-500">
-            เอกสารคู่มือและแหล่งข้อมูลการใช้งาน
-          </p>
-        </div>
-      </div> */}
+    <div className="tw-w-full tw-space-y-5 tw-mt-6">
+      {/* หัวข้อ */}
+      <div>
+        <h2 className="tw-text-lg sm:tw-text-xl tw-font-bold tw-text-blue-gray-900">
+          คู่มือการใช้งาน
+        </h2>
+        <p className="tw-text-sm tw-text-blue-gray-500 tw-mt-0.5">
+          เอกสารแนะนำการใช้งาน iMPS Platform
+        </p>
+      </div>
 
-      {/* Document links */}
-      <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-4">
-        {visibleDocs.map((doc) => {
+      {/* รายการเอกสาร */}
+      <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
+        {docs.map((doc) => {
           const Icon = doc.icon;
           return (
             <a
@@ -98,37 +77,52 @@ export default function HelpPage() {
               href={doc.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="tw-group tw-flex tw-items-start tw-gap-4 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-white tw-p-5 tw-shadow-sm tw-transition hover:tw-border-blue-200 hover:tw-shadow-md"
+              className="tw-group tw-rounded-xl tw-bg-white tw-border tw-border-blue-gray-100 tw-shadow-sm tw-overflow-hidden tw-transition-all tw-duration-300 hover:tw-shadow-lg hover:tw--translate-y-0.5 hover:tw-border-blue-200"
             >
-              <span className="tw-flex tw-h-10 tw-w-10 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-lg tw-bg-blue-gray-50 tw-text-blue-gray-500 tw-transition group-hover:tw-bg-blue-50 group-hover:tw-text-blue-600">
-                <Icon className="tw-h-5 tw-w-5" />
-              </span>
-              <div className="tw-min-w-0 tw-flex-1">
-                <div className="tw-flex tw-items-center tw-gap-1.5">
-                  <h2 className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 group-hover:tw-text-blue-700">
-                    {doc.title}
-                  </h2>
-                  <ArrowTopRightOnSquareIcon className="tw-h-3.5 tw-w-3.5 tw-text-blue-gray-300 group-hover:tw-text-blue-500" />
+              {/* เนื้อหา */}
+              <div className="tw-flex tw-items-start tw-gap-3 lg:tw-gap-4 tw-p-4">
+                <div className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11 tw-rounded-xl tw-bg-gray-900 tw-shadow-md tw-flex-shrink-0">
+                  <Icon className="tw-w-5 tw-h-5 tw-text-white" />
                 </div>
-                <p className="tw-mt-1 tw-text-xs tw-text-blue-gray-500">
-                  {doc.description}
-                </p>
+                <div className="tw-flex-1 tw-min-w-0">
+                  <h3 className="tw-text-sm lg:tw-text-base tw-font-bold tw-text-blue-gray-900 tw-leading-snug">
+                    {doc.title}
+                  </h3>
+                  <p className="tw-text-xs lg:tw-text-sm tw-text-blue-gray-500 tw-mt-1 tw-leading-relaxed">
+                    {doc.description}
+                  </p>
+                </div>
+              </div>
+
+              {/* เส้นคั่น */}
+              <div className="tw-border-t tw-border-blue-gray-50" />
+
+              {/* footer */}
+              <div className="tw-flex tw-items-center tw-justify-between tw-px-4 tw-py-2.5 tw-bg-gray-50/50">
+                <span className="tw-inline-flex tw-items-center tw-gap-1.5 tw-text-[11px] lg:tw-text-xs tw-font-medium tw-text-blue-gray-500">
+                  <DocumentArrowDownIcon className="tw-w-3.5 tw-h-3.5" />
+                  เอกสาร PDF
+                </span>
+                <span className="tw-inline-flex tw-items-center tw-gap-0.5 tw-text-[11px] lg:tw-text-xs tw-font-semibold tw-text-blue-gray-700 group-hover:tw-text-gray-900 tw-transition-colors">
+                  เปิดเอกสาร
+                  <ChevronRightIcon className="tw-w-3.5 tw-h-3.5 tw-transition-transform group-hover:tw-translate-x-0.5" />
+                </span>
               </div>
             </a>
           );
         })}
       </div>
 
-      {/* Contact / support note */}
-      <div className="tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50/60 tw-p-4 tw-text-sm tw-text-blue-gray-600">
-        ต้องการความช่วยเหลือเพิ่มเติม? ติดต่อทีมสนับสนุนที่{" "}
+      {/* ติดต่อสอบถาม */}
+      <p className="tw-text-xs lg:tw-text-sm tw-text-blue-gray-500">
+        มีข้อสงสัยเพิ่มเติม?{" "}
         <a
-          href="mailto:support@imps.com"
-          className="tw-font-semibold tw-text-blue-600 hover:tw-underline"
+          href="/pages/mainpages/contact"
+          className="tw-font-semibold tw-text-gray-900 hover:tw-underline"
         >
-          support@imps.com
+          ติดต่อทีมงาน
         </a>
-      </div>
+      </p>
     </div>
   );
 }
