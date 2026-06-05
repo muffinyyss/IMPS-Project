@@ -56,19 +56,19 @@ export default function HelpPage() {
   const docs = DOCS.filter((d) => !d.adminOnly || role === "admin");
 
   return (
-    <div className="tw-w-full tw-space-y-5 tw-mt-6">
+    <>
       {/* หัวข้อ */}
-      <div>
+      {/* <div>
         <h2 className="tw-text-lg sm:tw-text-xl tw-font-bold tw-text-blue-gray-900">
           คู่มือการใช้งาน
         </h2>
         <p className="tw-text-sm tw-text-blue-gray-500 tw-mt-0.5">
           เอกสารแนะนำการใช้งาน iMPS Platform
         </p>
-      </div>
+      </div> */}
 
       {/* รายการเอกสาร */}
-      <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
+      <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4 tw-mt-6">
         {docs.map((doc) => {
           const Icon = doc.icon;
           return (
@@ -114,7 +114,7 @@ export default function HelpPage() {
       </div>
 
       {/* ติดต่อสอบถาม */}
-      <p className="tw-text-xs lg:tw-text-sm tw-text-blue-gray-500">
+      {/* <p className="tw-text-xs lg:tw-text-sm tw-text-blue-gray-500 tw-mt-5">
         มีข้อสงสัยเพิ่มเติม?{" "}
         <a
           href="/pages/mainpages/contact"
@@ -122,7 +122,7 @@ export default function HelpPage() {
         >
           ติดต่อทีมงาน
         </a>
-      </p>
-    </div>
+      </p> */}
+    </>
   );
 }
