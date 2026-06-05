@@ -216,9 +216,9 @@ export default function Settings() {
                   </button>
                 }
               />
-              <Input 
-                label="New Password" 
-                type={showCurrentPassword ? "text" : "password"}
+              <Input
+                label="New Password"
+                type={showNewPassword ? "text" : "password"}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 crossOrigin=""
@@ -228,9 +228,9 @@ export default function Settings() {
                   </button>
                 }
               />
-              <Input 
-                label="Confirm New Password" 
-                type={showCurrentPassword ? "text" : "password"}
+              <Input
+                label="Confirm New Password"
+                type={showConfirmPassword ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 error={confirmPassword.length > 0 && !passwordsMatch}
