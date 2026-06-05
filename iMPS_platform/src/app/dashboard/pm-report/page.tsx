@@ -191,7 +191,7 @@ export default function DataTablesPage() {
   // );
 
   return (
-    <div className="tw-w-full tw-mt-12">
+    <div className="tw-w-full">
       {/* Custom Tabs */}
       <div className={`tw-w-full tw-flex tw-justify-start tw-overflow-x-auto tw-scrollbar-hide ${isFormView ? "tw-pointer-events-none tw-opacity-60" : ""}`}>
         <div className="tw-inline-flex tw-items-center tw-gap-1 tw-p-1 tw-bg-gray-100 tw-rounded-xl tw-border tw-border-gray-200">
