@@ -30,26 +30,26 @@ const DOCS: DocLink[] = [
     description: "ขั้นตอนการติดตั้งและตั้งค่าอุปกรณ์เริ่มต้น",
     href: "/docs/installation-guide.pdf",
     icon: WrenchScrewdriverIcon,
-  },
-  {
-    title: "คู่มือการบำรุงรักษา (Maintenance / PM)",
-    description: "แนวทางการบำรุงรักษาเชิงป้องกันและการรายงานผล",
-    href: "/docs/maintenance-guide.pdf",
-    icon: ShieldCheckIcon,
-  },
-  {
-    title: "คำถามที่พบบ่อย (FAQ)",
-    description: "รวมคำถามและการแก้ไขปัญหาเบื้องต้น",
-    href: "/docs/faq.pdf",
-    icon: QuestionMarkCircleIcon,
-  },
+  }
+  // {
+  //   title: "คู่มือการบำรุงรักษา (Maintenance / PM)",
+  //   description: "แนวทางการบำรุงรักษาเชิงป้องกันและการรายงานผล",
+  //   href: "/docs/maintenance-guide.pdf",
+  //   icon: ShieldCheckIcon,
+  // },
+  // {
+  //   title: "คำถามที่พบบ่อย (FAQ)",
+  //   description: "รวมคำถามและการแก้ไขปัญหาเบื้องต้น",
+  //   href: "/docs/faq.pdf",
+  //   icon: QuestionMarkCircleIcon,
+  // },
 ];
 
 export default function HelpPage() {
   return (
     <div className="tw-space-y-6 tw-mt-8">
       {/* Header */}
-      <div className="tw-flex tw-items-center tw-gap-3">
+      {/* <div className="tw-flex tw-items-center tw-gap-3">
         <span className="tw-flex tw-h-11 tw-w-11 tw-items-center tw-justify-center tw-rounded-xl tw-bg-blue-50 tw-text-blue-600">
           <DocumentTextIcon className="tw-h-6 tw-w-6" />
         </span>
@@ -61,7 +61,7 @@ export default function HelpPage() {
             เอกสารคู่มือและแหล่งข้อมูลการใช้งาน
           </p>
         </div>
-      </div>
+      </div> */}
 
       {/* Document links */}
       <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-4">
