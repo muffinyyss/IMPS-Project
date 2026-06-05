@@ -157,8 +157,7 @@ export default function StatisticsCards() {
       {/* Cards Grid */}
       <div
         className={`
-          tw-mt-2.5 sm:tw-mt-3 lg:tw-mt-4 
-          tw-mb-2.5 sm:tw-mb-3 lg:tw-mb-4 
+          tw-mb-2.5 sm:tw-mb-3 lg:tw-mb-4
           tw-grid tw-gap-2 sm:tw-gap-3 lg:tw-gap-4 xl:tw-gap-5
           tw-min-w-0 
           tw-grid-cols-2 xl:tw-grid-cols-4
