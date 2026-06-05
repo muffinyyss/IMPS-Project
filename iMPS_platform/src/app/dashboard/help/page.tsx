@@ -22,13 +22,13 @@ const DOCS: DocLink[] = [
   {
     title: "คู่มือการใช้งานระบบ (User Manual)",
     description: "ภาพรวมการใช้งาน iMPS Platform สำหรับผู้ใช้งานทั่วไป",
-    href: "/docs/user-manual.pdf",
+    href: encodeURI("/docs/คู่มือการใช้งานระบบ_iMPS Platform.pdf"),
     icon: BookOpenIcon,
   },
   {
-    title: "คู่มือการติดตั้ง (Installation Guide)",
-    description: "ขั้นตอนการติดตั้งและตั้งค่าอุปกรณ์เริ่มต้น",
-    href: "/docs/installation-guide.pdf",
+    title: "คู่มือการใช้งาน Source Code",
+    description: "คู่มือสำหรับนักพัฒนา โครงสร้างและการใช้งาน source code ของ iMPS Platform",
+    href: encodeURI("/docs/คู่มือการใช้งาน source code_iMPS Platform.pdf"),
     icon: WrenchScrewdriverIcon,
   }
   // {
