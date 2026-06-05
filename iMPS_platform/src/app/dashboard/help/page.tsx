@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   DocumentTextIcon,
   BookOpenIcon,
@@ -14,6 +15,7 @@ type DocLink = {
   description: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  adminOnly?: boolean; // แสดงเฉพาะ user ที่มี role = "admin"
 };
 
 // วางไฟล์เอกสารไว้ใน public/docs/ แล้วแก้ href ให้ตรงกับไฟล์จริง
@@ -30,6 +32,7 @@ const DOCS: DocLink[] = [
     description: "คู่มือสำหรับนักพัฒนา โครงสร้างและการใช้งาน source code ของ iMPS Platform",
     href: encodeURI("/docs/คู่มือการใช้งาน source code_iMPS Platform.pdf"),
     icon: WrenchScrewdriverIcon,
+    adminOnly: true,
   }
   // {
   //   title: "คู่มือการบำรุงรักษา (Maintenance / PM)",
@@ -46,6 +49,28 @@ const DOCS: DocLink[] = [
 ];
 
 export default function HelpPage() {
+  const [userRole, setUserRole] = useState<string>("");
+
+  useEffect(() => {
+    const token =
+      localStorage.getItem("access_token") ||
+      localStorage.getItem("accessToken") ||
+      "";
+    if (token) {
+      try {
+        const payload = token.split(".")[1];
+        const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+        const claims = JSON.parse(json);
+        setUserRole(claims.role || "user");
+      } catch {
+        setUserRole("user");
+      }
+    }
+  }, []);
+
+  // กรองเอกสารที่เป็น adminOnly ออก ถ้า user ไม่ใช่ admin
+  const visibleDocs = DOCS.filter((doc) => !doc.adminOnly || userRole === "admin");
+
   return (
     <div className="tw-space-y-6 tw-mt-8">
       {/* Header */}
@@ -65,7 +90,7 @@ export default function HelpPage() {
 
       {/* Document links */}
       <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-4">
-        {DOCS.map((doc) => {
+        {visibleDocs.map((doc) => {
           const Icon = doc.icon;
           return (
             <a
