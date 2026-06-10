@@ -108,27 +108,19 @@ def create_setting_document(plc_data: Dict[str, Any],
     insu_kohm2 = None
     insu_fault1 = False
     insu_fault2 = False
-
-    # has_insuN = PLC/insulation topic ส่งข้อมูลหัวนั้นมาจริง (dict ไม่ว่าง)
-    # ถ้าส่งมาจริง -> เก็บค่าตามที่ส่ง รวมถึง null (ไม่ fallback / ไม่แปลง)
-    has_insu1 = False
-    has_insu2 = False
+    
     if insulation_data:
         insu1 = insulation_data.get("insulation1", {}) or {}
         insu2 = insulation_data.get("insulation2", {}) or {}
-        has_insu1 = bool(insu1)
-        has_insu2 = bool(insu2)
-        if has_insu1:
-            insu_kohm1 = insu1.get("RF_kohm")
-            insu_fault1 = insu1.get("is_alarm")
-        if has_insu2:
-            insu_kohm2 = insu2.get("RF_kohm")
-            insu_fault2 = insu2.get("is_alarm")
-
-    # Fallback: ใช้ PLC insuStatus เป็นค่า kohm เฉพาะเมื่อ "ไม่มี" ข้อมูล insulation ของหัวนั้นเลย
-    if not has_insu1:
+        insu_kohm1 = insu1.get("RF_kohm")
+        insu_kohm2 = insu2.get("RF_kohm")
+        insu_fault1 = insu1.get("is_alarm", False)
+        insu_fault2 = insu2.get("is_alarm", False)
+    
+    # If no insulation data from aggregator, use PLC insuStatus as kohm value
+    if insu_kohm1 is None:
         insu_kohm1 = parse_int(plc_data.get("insuStatus1"))
-    if not has_insu2:
+    if insu_kohm2 is None:
         insu_kohm2 = parse_int(plc_data.get("insuStatus2"))
     
     return {
@@ -296,6 +288,11 @@ def create_cbm_document(state: 'StationState', cbm_data: Dict[str, Any],
     plc_temp_data = cbm_data.get('PLCTemp', {}) or {}
     
     doc = {
+        "power_module_temp1": parse_int(plc_data.get("tempPowerModule1")),
+        "power_module_temp2": parse_int(plc_data.get("tempPowerModule1")),
+        "power_module_temp3": parse_int(plc_data.get("tempPowerModule2")),
+        "power_module_temp4": parse_int(plc_data.get("tempPowerModule2")),
+        "power_module_temp5": parse_int(plc_data.get("tempPowerModule2")),
         "charger_gun_temp_plus1": parse_int(plc_data.get("temp1Head1")),
         "charger_gun_temp_plus2": parse_int(plc_data.get("temp1Head2")),
         "charger_gan_temp_minus1": parse_int(plc_data.get("temp2Head1")),
@@ -328,20 +325,11 @@ def create_cbm_document(state: 'StationState', cbm_data: Dict[str, Any],
         "timestamp": timestamp
     }
     
-    # Add power module temps - dynamic ตาม powerModuleCount (รองรับ 6 ตัว)
-    # มี sensor จริง 2 ตัว (tempPowerModule1/2) แบ่งตามหัวชาร์จเหมือน UI:
-    # หัว 1 = ครึ่งแรก -> tempPowerModule1, หัว 2 = ที่เหลือ -> tempPowerModule2
-    pm_count = state.config.hardware.powerModuleCount
-    head1_count = pm_count // 2
-    for i in range(1, pm_count + 1):
-        sensor = "tempPowerModule1" if i <= head1_count else "tempPowerModule2"
-        doc[f"power_module_temp{i}"] = parse_int(plc_data.get(sensor))
-
     # Add fan RPMs and status
     for i in range(1, state.config.hardware.dcFanCount + 1):
         doc[f"fan_RPM{i}"] = fan_rpms.get(f"fan{i}", 0)
         doc[f"fan_status{i}"] = parse_int(fan_status)
-
+    
     return doc
 
 
@@ -430,6 +418,11 @@ def create_module2_document(state: 'StationState', module2_data: Dict[str, Any],
         "ambient_temp": ambient.get('ambient_temp'),
         "edgebox_temp": eb_temp_data.get('eb_temp'),
         "router_temp": parse_float(router.get('rt_temp', 0)) / 10 if router.get('rt_temp') else 0,
+        "power_module_temp1": parse_int(plc_data.get("tempPowerModule1", 0)),
+        "power_module_temp2": parse_int(plc_data.get("tempPowerModule1", 0)),
+        "power_module_temp3": parse_int(plc_data.get("tempPowerModule2", 0)),
+        "power_module_temp4": parse_int(plc_data.get("tempPowerModule2", 0)),
+        "power_module_temp5": parse_int(plc_data.get("tempPowerModule2", 0)),
         "pi5_temp": plc_data.get("pi5_temp"),
         "pressure": bme280.get('pressure'),
         "humidity": ambient.get('humidity'),
@@ -447,19 +440,11 @@ def create_module2_document(state: 'StationState', module2_data: Dict[str, Any],
         "timestamp": timestamp
     }
     
-    # Add power module temps - dynamic ตาม powerModuleCount (รองรับ 6 ตัว)
-    # sensor จริง 2 ตัว แบ่งตามหัวชาร์จเหมือน UI: หัว 1 -> tempPowerModule1, หัว 2 -> tempPowerModule2
-    pm_count = state.config.hardware.powerModuleCount
-    head1_count = pm_count // 2
-    for i in range(1, pm_count + 1):
-        sensor = "tempPowerModule1" if i <= head1_count else "tempPowerModule2"
-        doc[f"power_module_temp{i}"] = parse_int(plc_data.get(sensor, 0))
-
     # Add fan status and RPM (1-8)
     for i in range(1, 9):
         doc[f"fan_status{i}"] = parse_int(fan_status)
         doc[f"fan_RPM{i}"] = fan_rpms.get(f"fan{i}", 0)
-
+    
     return doc
 
 
@@ -514,8 +499,8 @@ def create_module4_document(state: 'StationState', cbm_data: Dict[str, Any],
     
     plc_data = state.get_latest('plc') or {}
     mdb_data = state.get_latest('mdb') or {}
-
-    doc = {
+    
+    return {
         "time": now.strftime("%H:%M:%S"),
         "day_of_month": now.day,
         "mouth_of_year": now.month,
@@ -533,6 +518,11 @@ def create_module4_document(state: 'StationState', cbm_data: Dict[str, Any],
         "power_module_status4": state.get_power_module_status(4),
         "power_module_status5": state.get_power_module_status(5),
         "SOC": plc_data.get("SOC1"),  # Use SOC1 as main SOC
+        "power_module_temp1": parse_int(plc_data.get("tempPowerModule1", 0)),
+        "power_module_temp2": parse_int(plc_data.get("tempPowerModule1", 0)),
+        "power_module_temp3": parse_int(plc_data.get("tempPowerModule2", 0)),
+        "power_module_temp4": parse_int(plc_data.get("tempPowerModule2", 0)),
+        "power_module_temp5": parse_int(plc_data.get("tempPowerModule2", 0)),
         "charger_temp": cbm_data.get("Ambient", {}).get("ambient_temp") or mdb_data.get("Ambient_Temp"),
         "charger_gun_temp_plus1": parse_int(plc_data.get("temp1Head1")),
         "charger_gun_temp_plus2": parse_int(plc_data.get("temp1Head2")),
@@ -548,16 +538,6 @@ def create_module4_document(state: 'StationState', cbm_data: Dict[str, Any],
         "timestamp_utc": now_utc(),
         "timestamp": timestamp
     }
-
-    # Add power module temps - dynamic ตาม powerModuleCount (รองรับ 6 ตัว)
-    # sensor จริง 2 ตัว แบ่งตามหัวชาร์จเหมือน UI: หัว 1 -> tempPowerModule1, หัว 2 -> tempPowerModule2
-    pm_count = state.config.hardware.powerModuleCount
-    head1_count = pm_count // 2
-    for i in range(1, pm_count + 1):
-        sensor = "tempPowerModule1" if i <= head1_count else "tempPowerModule2"
-        doc[f"power_module_temp{i}"] = parse_int(plc_data.get(sensor, 0))
-
-    return doc
 
 
 def create_module5_document(state: 'StationState', timestamp: str = None) -> Dict[str, Any]:

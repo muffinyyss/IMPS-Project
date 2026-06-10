@@ -19,22 +19,19 @@ export default function InfoPanel({ head, data }: { head: 1 | 2; data: any }) {
         return status === true ? "Fault" : status === false ? "No Fault" : "N/A";
     };
 
-        // ค่าเป็น null/undefined => แถวนั้น disabled (ไม่มีข้อมูลจาก PLC)
-        const isNil = (v: any): boolean => v === null || v === undefined;
-
         const rows = useMemo(() => {
 
             const config1 = [
             // รายการข้อมูลสำหรับ Head 1
-                    { label: "IMD Status Head 1", value: (data?.insulation_monitoring1 == "1") ? "active" : "inactive", disabled: isNil(data?.insulation_monitoring1) },
-                    { label: "Insulation Head 1", value: data?.insulation_kohm1 ?? "N/A", unit: "kohm", disabled: isNil(data?.insulation_kohm1) },
-                    { label: "Isolation Status Head 1", value: formatFaultStatus(data?.insulation_fault1), disabled: isNil(data?.insulation_fault1) },
+                    { label: "IMD Status Head 1", value: (data?.insulation_monitoring1 == "1") ? "active" : "inactive" },
+                    { label: "Insulation Head 1", value: data?.insulation_kohm1 ?? "N/A", unit: "kohm" },
+                    { label: "Isolation Status Head 1", value: formatFaultStatus(data?.insulation_fault1) },
                 ];
             const config2 = [
             // รายการข้อมูลสำหรับ Head 2
-                    { label: "IMD Status Head 2", value: (data?.insulation_monitoring2 == "1") ? "active" : "inactive", disabled: isNil(data?.insulation_monitoring2) },
-                    { label: "Insulation Head 2", value: data?.insulation_kohm2 ?? "N/A", unit: "kohm", disabled: isNil(data?.insulation_kohm2) },
-                    { label: "Isolation Status Head 2", value: formatFaultStatus(data?.insulation_fault2), disabled: isNil(data?.insulation_fault2) },
+                    { label: "IMD Status Head 2", value: (data?.insulation_monitoring2 == "1") ? "active" : "inactive" },
+                    { label: "Insulation Head 2", value: data?.insulation_kohm2 ?? "N/A", unit: "kohm" },
+                    { label: "Isolation Status Head 2", value: formatFaultStatus(data?.insulation_fault2) },
                 ];
             return head === 1 ? config1 : config2;
             }, [data , head]);
@@ -49,7 +46,7 @@ export default function InfoPanel({ head, data }: { head: 1 | 2; data: any }) {
 
             <div className="tw-rounded-lg tw-overflow-hidden">
                 {data && rows.map((r, i) => (
-                    <Row key={i} label={r.label} value={r.value} unit={r.unit} zebra={i % 2 === 1} disabled={r.disabled} />
+                    <Row key={i} label={r.label} value={r.value} unit={r.unit} zebra={i % 2 === 1} />
                 ))}
             </div>
         </Card>
@@ -62,25 +59,21 @@ function Row({
     value,
     unit,
     zebra = false,
-    disabled = false,
 }: {
     label: string;
     value: string;
     unit?: string;
     zebra?: boolean;
-    disabled?: boolean;
 }) {
     return (
         <div
             className={`tw-grid tw-grid-cols-2 tw-gap-2 tw-py-2 tw-px-3
         ${zebra ? "tw-bg-blue-gray-50/60" : "tw-bg-white"}
-        ${disabled ? "tw-opacity-50 tw-pointer-events-none" : ""}
       `}
-            aria-disabled={disabled}
         >
-            <span className={`tw-text-sm ${disabled ? "tw-text-blue-gray-400" : "tw-text-blue-gray-700"}`}>{label}</span>
-            <span className={`tw-text-sm tw-font-semibold tw-text-right tw-tabular-nums ${disabled ? "tw-text-blue-gray-400" : "tw-text-blue-gray-900"}`}>
-                {disabled ? "N/A" : value}{unit && !disabled && (<span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-blue-gray-400">{unit}</span>)}
+            <span className="tw-text-sm tw-text-blue-gray-700">{label}</span>
+            <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-900 tw-text-right tw-tabular-nums">
+                {value}{unit && (<span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-blue-gray-400">{unit}</span>)}
             </span>
         </div>
     );
