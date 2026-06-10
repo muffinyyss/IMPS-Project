@@ -248,14 +248,18 @@ class InsulationAggregator(BaseAggregator):
             self._has_plc_insulation = True
         
         if has_insu1:
-            is_alarm1 = plc_data.get('insu1_alarm', 'NORMAL') != 'NORMAL'
+            # เก็บ null ตามที่ PLC ส่งมา: null -> None (ไม่ตีความเป็น alarm)
+            raw_alarm1 = plc_data.get('insu1_alarm')
+            is_alarm1 = None if raw_alarm1 is None else (raw_alarm1 != 'NORMAL')
             self.update('insulation1', {
                 'RF_kohm': plc_data.get('insu1_RF_kohm'),
                 'is_alarm': is_alarm1
             }, ts)
-        
+
         if has_insu2:
-            is_alarm2 = plc_data.get('insu2_alarm', 'NORMAL') != 'NORMAL'
+            # เก็บ null ตามที่ PLC ส่งมา: null -> None (ไม่ตีความเป็น alarm)
+            raw_alarm2 = plc_data.get('insu2_alarm')
+            is_alarm2 = None if raw_alarm2 is None else (raw_alarm2 != 'NORMAL')
             self.update('insulation2', {
                 'RF_kohm': plc_data.get('insu2_RF_kohm'),
                 'is_alarm': is_alarm2
