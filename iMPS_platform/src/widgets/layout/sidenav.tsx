@@ -123,6 +123,14 @@ export default function Sidenav({ }: PropTypes) {
   const sidenavRef = React.useRef<HTMLDivElement>(null);
   useOnClickOutside(sidenavRef as React.RefObject<HTMLElement>, () => setOpenSidenav(dispatch, false));
 
+  // ✅ ปิด sidebar อัตโนมัติเมื่อเปลี่ยนหน้า (เฉพาะมือถือ/off-canvas)
+  React.useEffect(() => {
+    if (!desktopLike) {
+      setOpenSidenav(dispatch, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, searchParams]);
+
   // อัปเดตตัวแปร CSS: เว้นระยะ content ให้มากขึ้นบนจอใหญ่
   React.useEffect(() => {
     const W_FULL = "18rem";
