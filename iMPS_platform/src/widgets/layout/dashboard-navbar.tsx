@@ -119,12 +119,13 @@ export function DashboardNavbar() {
   // Title
   const segs = pathname.split("/").filter(Boolean);
   let title = segs[segs.length - 1]?.replace(/-/g, " ");
-  if (segs[1] === "mdb") title = "Main Distribution Board (MDB)";
+  if (segs[1] === "mdb") title = "Main Distribution Board";
   else if (segs[1] === "chargers") title = "My Charger Station";
   else if (segs[1] === "device") title = "Device";
   else if (segs[1] === "setting") title = "Configuration";
   else if (segs[1] === "ai") title = "Ai Module";
   else if (segs[2] === "settings") title = "My Profile";
+  else if (segs[1] === "pm-all") title = "PM Report All";
   else if (segs[1] === "pm-report") title = "PM Report";
   else if (segs[1] === "input_PMreport") title = "Add PM Report";
   else if (segs[1] === "cm-report") title = "CM Report";
