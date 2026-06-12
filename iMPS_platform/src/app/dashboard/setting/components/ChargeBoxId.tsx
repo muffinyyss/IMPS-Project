@@ -262,9 +262,9 @@ export default function ChargeBoxId() {
         }
       >
         {!SN ? renderNoStation() : loading ? renderLoading() : error ? renderError() : (
-          <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
+          <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-items-center tw-gap-3">
             {/* Charge Box ID */}
-            <div className="tw-flex-1 tw-min-w-[160px] tw-px-3.5 tw-py-2.5 tw-rounded-xl tw-bg-blue-gray-50/60 tw-border tw-border-blue-gray-100">
+            <div className="tw-min-w-0 tw-px-3.5 tw-py-2.5 tw-rounded-xl tw-bg-blue-gray-50/60 tw-border tw-border-blue-gray-100">
               <div className="tw-text-[10px] tw-font-semibold tw-uppercase tw-tracking-wider tw-text-blue-gray-400 tw-mb-1">
                 Charge Box ID
               </div>
@@ -274,7 +274,7 @@ export default function ChargeBoxId() {
             </div>
 
             {/* OCPP URL */}
-            <div className="tw-flex-1 tw-min-w-[160px] tw-px-3.5 tw-py-2.5 tw-rounded-xl tw-bg-blue-gray-50/60 tw-border tw-border-blue-gray-100">
+            <div className="tw-min-w-0 tw-px-3.5 tw-py-2.5 tw-rounded-xl tw-bg-blue-gray-50/60 tw-border tw-border-blue-gray-100">
               <div className="tw-text-[10px] tw-font-semibold tw-uppercase tw-tracking-wider tw-text-blue-gray-400 tw-mb-1">
                 OCPP URL
               </div>
