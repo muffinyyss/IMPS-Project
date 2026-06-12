@@ -108,19 +108,27 @@ def create_setting_document(plc_data: Dict[str, Any],
     insu_kohm2 = None
     insu_fault1 = False
     insu_fault2 = False
-    
+
+    # has_insuN = PLC/insulation topic ส่งข้อมูลหัวนั้นมาจริง (dict ไม่ว่าง)
+    # ถ้าส่งมาจริง -> เก็บค่าตามที่ส่ง รวมถึง null (ไม่ fallback / ไม่แปลง)
+    has_insu1 = False
+    has_insu2 = False
     if insulation_data:
         insu1 = insulation_data.get("insulation1", {}) or {}
         insu2 = insulation_data.get("insulation2", {}) or {}
-        insu_kohm1 = insu1.get("RF_kohm")
-        insu_kohm2 = insu2.get("RF_kohm")
-        insu_fault1 = insu1.get("is_alarm", False)
-        insu_fault2 = insu2.get("is_alarm", False)
-    
-    # If no insulation data from aggregator, use PLC insuStatus as kohm value
-    if insu_kohm1 is None:
+        has_insu1 = bool(insu1)
+        has_insu2 = bool(insu2)
+        if has_insu1:
+            insu_kohm1 = insu1.get("RF_kohm")
+            insu_fault1 = insu1.get("is_alarm")
+        if has_insu2:
+            insu_kohm2 = insu2.get("RF_kohm")
+            insu_fault2 = insu2.get("is_alarm")
+
+    # Fallback: ใช้ PLC insuStatus เป็นค่า kohm เฉพาะเมื่อ "ไม่มี" ข้อมูล insulation ของหัวนั้นเลย
+    if not has_insu1:
         insu_kohm1 = parse_int(plc_data.get("insuStatus1"))
-    if insu_kohm2 is None:
+    if not has_insu2:
         insu_kohm2 = parse_int(plc_data.get("insuStatus2"))
     
     return {
