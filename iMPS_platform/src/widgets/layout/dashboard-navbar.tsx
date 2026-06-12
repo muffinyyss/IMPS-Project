@@ -278,12 +278,12 @@ export function DashboardNavbar() {
           "
           style={{ left: "auto", right: "1rem" }}
         >
-          <div className="tw-px-4 sm:tw-px-6 tw-py-2">
+          <div className="tw-px-3 sm:tw-px-6 tw-py-2">
           {/* ===== Single Row Layout ===== */}
           <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
 
             {/* Left: Title & Breadcrumbs */}
-            <div className="tw-min-w-0 tw-flex-shrink-0">
+            <div className="tw-min-w-0 tw-flex-1">
               {!hideTopbar && (
                 <>
                   {/* Breadcrumbs - Hidden on mobile */}
@@ -312,7 +312,7 @@ export function DashboardNavbar() {
             </div>
 
             {/* Right: Station/Charger Info + Language + Menu */}
-            <div className="tw-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-flex-shrink-0">
+            <div className="tw-flex tw-items-center tw-gap-1.5 tw-flex-shrink-0">
 
               {/* ===== Station & Charger Pills ===== */}
               {!isStationsPage && !isEnergyPage && (
@@ -349,7 +349,7 @@ export function DashboardNavbar() {
                       </div>
 
                       {/* Mobile: Consistent Icon Buttons with Tap Tooltip */}
-                      <div className="tw-relative tw-flex sm:tw-hidden tw-items-center tw-gap-2">
+                      <div className="tw-relative tw-flex sm:tw-hidden tw-items-center tw-gap-1.5">
                         <NavIconButton
                           onClick={(e) => {
                             e?.stopPropagation();
