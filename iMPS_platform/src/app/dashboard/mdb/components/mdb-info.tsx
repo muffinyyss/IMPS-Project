@@ -110,7 +110,7 @@ export default function MDBInfo(props: MDBType) {
             <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 lg:tw-grid-cols-6 tw-gap-2.5 sm:tw-gap-3">
 
                 {/* Main Breaker */}
-                <div className="tw-relative tw-overflow-hidden tw-rounded-xl tw-px-4 tw-py-4 tw-border tw-border-gray-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-all tw-duration-200">
+                <div className="tw-relative tw-overflow-hidden tw-rounded-xl tw-px-4 tw-py-4 tw-border tw-border-gray-200 tw-bg-white tw-shadow-md hover:tw-shadow-lg tw-transition-all tw-duration-200">
                     <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2.5">
                         <div className="tw-h-7 tw-w-7 tw-rounded-lg tw-flex tw-items-center tw-justify-center tw-bg-gray-100">
                             <PowerIcon className="tw-h-4 tw-w-4 tw-text-gray-500" />
@@ -130,7 +130,7 @@ export default function MDBInfo(props: MDBType) {
                 </div>
 
                 {/* Break Charger */}
-                <div className="tw-relative tw-overflow-hidden tw-rounded-xl tw-px-4 tw-py-4 tw-border tw-border-gray-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-all tw-duration-200">
+                <div className="tw-relative tw-overflow-hidden tw-rounded-xl tw-px-4 tw-py-4 tw-border tw-border-gray-200 tw-bg-white tw-shadow-md hover:tw-shadow-lg tw-transition-all tw-duration-200">
                     <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2.5">
                         <div className="tw-h-7 tw-w-7 tw-rounded-lg tw-flex tw-items-center tw-justify-center tw-bg-gray-100">
                             <PowerIcon className="tw-h-4 tw-w-4 tw-text-gray-500" />
@@ -151,7 +151,7 @@ export default function MDBInfo(props: MDBType) {
                 
 
                 {items.map((item, i) => (
-                    <div key={i} className="tw-relative tw-overflow-hidden tw-rounded-xl tw-px-4 tw-py-4 tw-border tw-border-gray-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-all tw-duration-200 hover:tw--translate-y-0.5">
+                    <div key={i} className="tw-relative tw-overflow-hidden tw-rounded-xl tw-px-4 tw-py-4 tw-border tw-border-gray-200 tw-bg-white tw-shadow-md hover:tw-shadow-lg tw-transition-all tw-duration-200 hover:tw--translate-y-0.5">
                         <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2.5">
                             <div className="tw-h-7 tw-w-7 tw-rounded-lg tw-flex tw-items-center tw-justify-center"
                                 style={{ background: `${item.accent}15` }}>
