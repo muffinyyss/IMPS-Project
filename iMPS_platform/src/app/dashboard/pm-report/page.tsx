@@ -14,6 +14,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
+import { ChevronDoubleUpIcon, ChevronDoubleDownIcon } from "@heroicons/react/24/solid";
 
 type TabId = "charger" | "mdb" | "ccb" | "cb-box" | "station";
 
@@ -116,6 +117,12 @@ export default function DataTablesPage() {
     params.delete("edit_id");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   };
+
+  // เลื่อนขึ้นสุด/ลงสุดของหน้า (ใช้บนมือถือ)
+  const scrollToTop = () =>
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  const scrollToBottom = () =>
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
 
 
   // return (
@@ -242,6 +249,36 @@ export default function DataTablesPage() {
         {active === "station" && (
           <div className="tw-space-y-5"><StationTables /></div>
         )}
+      </div>
+
+      {/* ปุ่มเลื่อนขึ้นสุด/ลงสุด — แสดงเฉพาะมือถือ */}
+      <div className="sm:tw-hidden tw-fixed tw-bottom-5 tw-right-4 tw-z-40 tw-flex tw-flex-col tw-gap-2">
+        <button
+          type="button"
+          onClick={scrollToTop}
+          title="เลื่อนขึ้นสุด"
+          aria-label="Scroll to top"
+          className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
+                     tw-rounded-full tw-bg-gray-900 tw-text-white
+                     tw-shadow-lg tw-shadow-gray-900/30
+                     hover:tw-bg-gray-700 active:tw-scale-95
+                     tw-transition-all tw-duration-200"
+        >
+          <ChevronDoubleUpIcon className="tw-h-5 tw-w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          title="เลื่อนลงสุด"
+          aria-label="Scroll to bottom"
+          className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
+                     tw-rounded-full tw-bg-gray-900 tw-text-white
+                     tw-shadow-lg tw-shadow-gray-900/30
+                     hover:tw-bg-gray-700 active:tw-scale-95
+                     tw-transition-all tw-duration-200"
+        >
+          <ChevronDoubleDownIcon className="tw-h-5 tw-w-5" />
+        </button>
       </div>
     </div>
   );
