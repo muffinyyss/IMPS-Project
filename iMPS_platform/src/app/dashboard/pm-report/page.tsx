@@ -251,8 +251,8 @@ export default function DataTablesPage() {
         )}
       </div>
 
-      {/* ปุ่มเลื่อนขึ้นสุด/ลงสุด — แสดงเฉพาะตอนกรอกเอกสาร PM (ทั้ง PC และมือถือ) */}
-      {isFormView && (
+      {/* ปุ่มเลื่อนขึ้นสุด/ลงสุด — แสดงเฉพาะตอนกรอกเอกสาร PM (pre/post pm, ทั้ง PC และมือถือ) */}
+      {mode === "form" && (
       <div className="tw-fixed tw-bottom-5 tw-right-4 tw-z-40 tw-flex tw-flex-col tw-gap-2">
         <button
           type="button"
