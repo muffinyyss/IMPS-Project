@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 
 import DCTables from "@/app/dashboard/test-report/dc/list/components/dc-table";
 import ACTables from "@/app/dashboard/test-report/ac/list/components/ac-table";
@@ -16,6 +17,10 @@ const scrollToBottom = () =>
 
 export default function DataTablesPage() {
   const [chargerType, setChargerType] = useState<ChargerType | null>(null);
+  const searchParams = useSearchParams();
+
+  // โหมดกรอกเอกสาร (add) — แสดงปุ่มเลื่อนเฉพาะตอนนี้
+  const isFormView = searchParams.get("view") === "form";
 
   const loadChargerType = useCallback(() => {
     const type = localStorage.getItem("selected_chargerType");
@@ -55,8 +60,9 @@ export default function DataTablesPage() {
     <div className="tw-w-full tw-space-y-5">
       {chargerType === "DC" ? <DCTables /> : <ACTables />}
 
-      {/* ปุ่มเลื่อนขึ้นสุด/ลงสุด — แสดงเฉพาะมือถือ */}
-      <div className="sm:tw-hidden tw-fixed tw-bottom-5 tw-right-4 tw-z-40 tw-flex tw-flex-col tw-gap-2">
+      {/* ปุ่มเลื่อนขึ้นสุด/ลงสุด — แสดงเฉพาะตอนกรอกเอกสาร (ทั้ง PC และมือถือ) */}
+      {isFormView && (
+      <div className="tw-fixed tw-bottom-5 tw-right-4 tw-z-40 tw-flex tw-flex-col tw-gap-2">
         <button
           type="button"
           onClick={scrollToTop}
@@ -84,6 +90,7 @@ export default function DataTablesPage() {
           <ChevronDoubleDownIcon className="tw-h-5 tw-w-5" />
         </button>
       </div>
+      )}
     </div>
   );
 }
