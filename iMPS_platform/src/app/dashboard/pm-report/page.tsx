@@ -251,8 +251,9 @@ export default function DataTablesPage() {
         )}
       </div>
 
-      {/* ปุ่มเลื่อนขึ้นสุด/ลงสุด — แสดงเฉพาะมือถือ */}
-      <div className="sm:tw-hidden tw-fixed tw-bottom-5 tw-right-4 tw-z-40 tw-flex tw-flex-col tw-gap-2">
+      {/* ปุ่มเลื่อนขึ้นสุด/ลงสุด — แสดงเฉพาะตอนกรอกเอกสาร PM (ทั้ง PC และมือถือ) */}
+      {isFormView && (
+      <div className="tw-fixed tw-bottom-5 tw-right-4 tw-z-40 tw-flex tw-flex-col tw-gap-2">
         <button
           type="button"
           onClick={scrollToTop}
@@ -280,6 +281,7 @@ export default function DataTablesPage() {
           <ChevronDoubleDownIcon className="tw-h-5 tw-w-5" />
         </button>
       </div>
+      )}
     </div>
   );
 }
