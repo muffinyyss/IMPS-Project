@@ -1,14 +1,26 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 
 import DCTables from "@/app/dashboard/test-report/dc/list/components/dc-table";
 import ACTables from "@/app/dashboard/test-report/ac/list/components/ac-table";
+import { ChevronDoubleUpIcon, ChevronDoubleDownIcon } from "@heroicons/react/24/solid";
 
 type ChargerType = "DC" | "AC";
 
+// เลื่อนขึ้นสุด/ลงสุดของหน้า
+const scrollToTop = () =>
+  window.scrollTo({ top: 0, behavior: "smooth" });
+const scrollToBottom = () =>
+  window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+
 export default function DataTablesPage() {
   const [chargerType, setChargerType] = useState<ChargerType | null>(null);
+  const searchParams = useSearchParams();
+
+  // โหมดกรอกเอกสาร (add) — แสดงปุ่มเลื่อนเฉพาะตอนนี้
+  const isFormView = searchParams.get("view") === "form";
 
   const loadChargerType = useCallback(() => {
     const type = localStorage.getItem("selected_chargerType");
@@ -47,6 +59,38 @@ export default function DataTablesPage() {
   return (
     <div className="tw-w-full tw-space-y-5">
       {chargerType === "DC" ? <DCTables /> : <ACTables />}
+
+      {/* ปุ่มเลื่อนขึ้นสุด/ลงสุด — แสดงเฉพาะตอนกรอกเอกสาร (ทั้ง PC และมือถือ) */}
+      {isFormView && (
+      <div className="tw-fixed tw-bottom-5 tw-right-4 tw-z-40 tw-flex tw-flex-col tw-gap-2">
+        <button
+          type="button"
+          onClick={scrollToTop}
+          title="เลื่อนขึ้นสุด"
+          aria-label="Scroll to top"
+          className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
+                     tw-rounded-full tw-bg-gray-900 tw-text-white
+                     tw-shadow-lg tw-shadow-gray-900/30
+                     hover:tw-bg-gray-700 active:tw-scale-95
+                     tw-transition-all tw-duration-200"
+        >
+          <ChevronDoubleUpIcon className="tw-h-5 tw-w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          title="เลื่อนลงสุด"
+          aria-label="Scroll to bottom"
+          className="tw-flex tw-items-center tw-justify-center tw-w-11 tw-h-11
+                     tw-rounded-full tw-bg-gray-900 tw-text-white
+                     tw-shadow-lg tw-shadow-gray-900/30
+                     hover:tw-bg-gray-700 active:tw-scale-95
+                     tw-transition-all tw-duration-200"
+        >
+          <ChevronDoubleDownIcon className="tw-h-5 tw-w-5" />
+        </button>
+      </div>
+      )}
     </div>
   );
 }
