@@ -270,11 +270,109 @@ async def cmreport_list(
         })
 
     return {
-        "items": items, 
-        "page": page, 
-        "pageSize": pageSize, 
+        "items": items,
+        "page": page,
+        "pageSize": pageSize,
         "total": total
     }
+
+
+async def _cm_items_for_station(station_id: str, station_name: str, status: str | None) -> list[dict]:
+    """ดึง CM report ของสถานีเดียว (merge กับ CMUrl ด้วย cm_date) + ใส่ station info"""
+    coll = get_cmreport_collection_for(station_id)
+
+    mongo_filter: dict = {}
+    if status:
+        want = status.strip()
+        mongo_filter["$or"] = [
+            {"status": {"$regex": f"^{re.escape(want)}$", "$options": "i"}},
+            {"job.status": {"$regex": f"^{re.escape(want)}$", "$options": "i"}},
+        ]
+
+    cursor = coll.find(mongo_filter, {
+        "_id": 1, "doc_name": 1, "issue_id": 1, "cm_date": 1, "status": 1,
+        "reported_by": 1, "inspector": 1, "faulty_equipment": 1, "severity": 1,
+        "problem_details": 1, "location": 1, "job": 1, "repair_result": 1,
+        "repair_result_remark": 1, "maximo_ticket_id": 1, "createdAt": 1,
+    }).sort([("createdAt", -1), ("_id", -1)])
+    items_raw = await cursor.to_list(length=10_000)
+
+    # map ไฟล์จาก CMUrl ด้วย cm_date
+    cm_dates = [it.get("cm_date") for it in items_raw if it.get("cm_date")]
+    url_by_day: dict[str, str] = {}
+    if cm_dates:
+        urls_coll = get_cmurl_coll_upload(station_id)
+        ucur = urls_coll.find({"cm_date": {"$in": cm_dates}}, {"cm_date": 1, "urls": 1})
+        for u in await ucur.to_list(length=10_000):
+            day = u.get("cm_date")
+            first_url = (u.get("urls") or [None])[0]
+            if day and first_url and day not in url_by_day:
+                url_by_day[day] = first_url
+
+    out = []
+    for it in items_raw:
+        job = it.get("job", {})
+        out.append({
+            "id": str(it["_id"]),
+            "station_id": station_id,
+            "station_name": station_name,
+            "doc_name": it.get("doc_name") or "",
+            "issue_id": it.get("issue_id") or job.get("issue_id") or "",
+            "cm_date": it.get("cm_date"),
+            "reported_by": it.get("reported_by") or job.get("reported_by") or "",
+            "inspector": it.get("inspector") or job.get("inspector") or "",
+            "status": it.get("status") or job.get("status") or "",
+            "faulty_equipment": it.get("faulty_equipment") or job.get("faulty_equipment") or "",
+            "problem_details": it.get("problem_details") or job.get("problem_details") or "",
+            "severity": it.get("severity") or job.get("severity") or "",
+            "location": it.get("location") or job.get("location") or "",
+            "repair_result": it.get("repair_result") or job.get("repair_result") or "",
+            "repair_result_remark": it.get("repair_result_remark") or "",
+            "maximo_ticket_id": it.get("maximo_ticket_id") or "",
+            "createdAt": _ensure_utc_iso(it.get("createdAt")),
+            "file_url": url_by_day.get(it.get("cm_date") or "", ""),
+        })
+    return out
+
+
+@router.get("/cmreport/list-all")
+async def cmreport_list_all(
+    status: str | None = Query(None),
+    station_id: str | None = Query(None),
+    current: UserClaims = Depends(get_current_user),
+):
+    """รวม CM report จากทุกสถานี (สำหรับหน้า CM report (All))"""
+    import asyncio
+    loop = asyncio.get_event_loop()
+
+    station_query = {"station_id": station_id} if station_id else {}
+    try:
+        stations = await loop.run_in_executor(
+            None,
+            lambda: list(station_collection.find(
+                station_query, {"_id": 0, "station_id": 1, "station_name": 1}
+            )),
+        )
+    except Exception:
+        stations = []
+
+    if not stations:
+        return {"items": [], "total": 0, "stations_count": 0}
+
+    tasks = [
+        _cm_items_for_station(s["station_id"], s.get("station_name", "-"), status)
+        for s in stations
+        if s.get("station_id")
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    items: list[dict] = []
+    for r in results:
+        if isinstance(r, list):
+            items.extend(r)
+
+    items.sort(key=lambda x: x.get("createdAt") or x.get("cm_date") or "", reverse=True)
+    return {"items": items, "total": len(items), "stations_count": len(stations)}
 
 
 # ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์
