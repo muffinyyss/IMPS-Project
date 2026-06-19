@@ -226,6 +226,27 @@ export function SearchDataTables() {
 
     const [pmReports, setPmReports] = useState<Map<string, PMReportData[]>>(new Map());
     const [pmLoading, setPmLoading] = useState<Set<string>>(new Set());
+    const [pmCounts, setPmCounts] = useState<Map<string, number>>(new Map());
+
+    // นับจำนวน PM report ต่อสถานี (endpoint count โดยเฉพาะ — เร็ว แม่นยำ ไม่ติด limit)
+    useEffect(() => {
+        let stopped = false;
+        (async () => {
+            try {
+                const res = await apiFetch(`/pm-reports/counts`);
+                if (!res.ok) return;
+                const json = await res.json();
+                const counts = new Map<string, number>();
+                Object.entries(json.counts ?? {}).forEach(([sid, n]) => {
+                    counts.set(sid, Number(n) || 0);
+                });
+                if (!stopped) setPmCounts(counts);
+            } catch (e) {
+                console.error("Failed to fetch PM counts:", e);
+            }
+        })();
+        return () => { stopped = true; };
+    }, []);
 
     const fetchPMReports = async (stationId: string) => {
         if (pmReports.has(stationId) || pmLoading.has(stationId)) return;
@@ -372,7 +393,7 @@ export function SearchDataTables() {
                 updateSuccess: "อัปเดตสำเร็จ", createSuccess: "สร้างสำเร็จ", deleteSuccess: "ลบสำเร็จ",
                 chargerDeleted: "ลบตู้ชาร์จแล้ว", chargerCreated: "สร้างตู้ชาร์จสำเร็จ",
                 chargerUpdated: "อัปเดตตู้ชาร์จสำเร็จ", stationUpdated: "อัปเดตสถานีสำเร็จ",
-                available: "พร้อมใช้งาน", availableOf: "หัว",
+                available: "พร้อมใช้งาน", availableOf: "หัว", pmReportCount: "จำนวน PM",
                 stationInfo: "ข้อมูลสถานี", chargerInfo: "ข้อมูลตู้ชาร์จ",
                 upload: "เลือกรูป", noImages: "ยังไม่มีรูป",
                 stationImages: "รูปภาพสถานี", chargerImages: "รูปภาพ",
@@ -402,7 +423,7 @@ export function SearchDataTables() {
                 updateSuccess: "Updated successfully", createSuccess: "Created successfully", deleteSuccess: "Deleted successfully",
                 chargerDeleted: "Charger deleted", chargerCreated: "Charger created successfully",
                 chargerUpdated: "Charger updated successfully", stationUpdated: "Station updated successfully",
-                available: "Available", availableOf: "heads",
+                available: "Available", availableOf: "heads", pmReportCount: "PM Reports",
                 stationInfo: "Station Information", chargerInfo: "Charger Information",
                 upload: "Browse", noImages: "No images yet",
                 stationImages: "Station Images", chargerImages: "Images",
@@ -882,11 +903,24 @@ export function SearchDataTables() {
             cell: (info: any) => <span className="tw-font-semibold tw-text-blue-gray-800">{info.getValue()}</span>,
         },
         {
+            id: "pm_count", header: () => t.pmReportCount, size: 120,
+            accessorFn: (row: StationRow) => pmCounts.get(row.station_id) ?? 0,
+            cell: (info: any) => {
+                const n = (info.getValue() as number) ?? 0;
+                return (
+                    <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-lg tw-text-xs tw-font-bold ${n > 0 ? "tw-bg-blue-50 tw-text-blue-700" : "tw-bg-blue-gray-50 tw-text-blue-gray-400"}`}>
+                        <i className="fa fa-file-alt tw-text-[10px]" />
+                        {n}
+                    </span>
+                );
+            },
+        },
+        {
             id: "username", header: () => t.owner,
             accessorFn: (row: StationRow) => row.username ?? "-",
             cell: (info: any) => <span className="tw-text-blue-gray-600">{info.getValue()}</span>,
         },
-    ], [me, isAdmin, t]);
+    ], [me, isAdmin, t, pmCounts]);
 
     const table = useReactTable({
         data: filteredDataByStatus, columns,

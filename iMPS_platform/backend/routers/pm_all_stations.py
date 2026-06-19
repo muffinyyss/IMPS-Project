@@ -61,13 +61,21 @@ def _serialize_report(doc: dict, source: str, station_id: str) -> dict:
             "STATION": "station",
         }
         pdf_type = source_map.get(source, "charger")
-        sn = doc.get("sn") or doc.get("SN") or ""
 
-        # ✅ ต่อ ?sn= ด้วย
-        if sn and sn not in ("-", ""):
-            file_url = f"/pdf/{pdf_type}/{doc_id}/export?sn={sn}"
+        # charger → ใช้ sn, ส่วน mdb/ccb/cbbox/station → ใช้ station_id
+        # (ตรงกับ endpoint /pdf/{template}/{id}/export)
+        if pdf_type == "charger":
+            sn = doc.get("sn") or doc.get("SN") or ""
+            if sn and sn not in ("-", ""):
+                file_url = f"/pdf/{pdf_type}/{doc_id}/export?sn={sn}"
+            else:
+                file_url = f"/pdf/{pdf_type}/{doc_id}/export"
         else:
-            file_url = f"/pdf/{pdf_type}/{doc_id}/export"
+            sid = doc.get("station_id") or station_id or ""
+            if sid and sid not in ("-", ""):
+                file_url = f"/pdf/{pdf_type}/{doc_id}/export?station_id={sid}"
+            else:
+                file_url = f"/pdf/{pdf_type}/{doc_id}/export"
 
     return {
         "id":            doc_id,
@@ -250,6 +258,94 @@ async def get_all_station_pm_reports(
         "total":          len(all_reports),
         "stations_count": len(station_ids),
     }
+
+
+# ===== PM report count per station (เร็ว: ใช้ count_documents) =====
+
+# กรอง side == pre ออก ให้ตรงกับที่แสดงในหน้า all-stations
+_COUNT_FILTER = {"side": {"$nin": ["pre", "Pre", "PRE"]}}
+
+
+async def _count_collection(coll) -> int:
+    """count_documents รองรับทั้ง Motor (async) และ PyMongo (sync)"""
+    try:
+        maybe = coll.count_documents(_COUNT_FILTER)
+        if asyncio.iscoroutine(maybe):
+            return await maybe
+        return int(maybe)
+    except Exception:
+        return 0
+
+
+@router.get("/pm-reports/counts")
+async def get_pm_report_counts(
+    current: UserClaims = Depends(get_current_user),
+):
+    """คืนจำนวน PM report ต่อสถานี: { counts: { station_id: n } } (นับครบ ไม่ติด limit)"""
+    loop = asyncio.get_event_loop()
+
+    try:
+        stations = await loop.run_in_executor(
+            None,
+            lambda: list(station_collection.find({}, {"_id": 0, "station_id": 1})),
+        )
+    except Exception:
+        traceback.print_exc()
+        stations = []
+
+    station_ids = [s["station_id"] for s in stations if s.get("station_id")]
+    if not station_ids:
+        return {"counts": {}}
+
+    try:
+        chargers = await loop.run_in_executor(
+            None,
+            lambda: list(charger_collection.find(
+                {"station_id": {"$in": station_ids}},
+                {"_id": 0, "SN": 1, "station_id": 1},
+            )),
+        )
+    except Exception:
+        traceback.print_exc()
+        chargers = []
+
+    sn_list = [
+        (c["SN"], c.get("station_id", ""))
+        for c in chargers
+        if c.get("SN") and c["SN"] not in ("-", "", None)
+    ]
+
+    async def _count_sn(sn: str, sid: str):
+        total = 0
+        for label, fn in PM_SOURCES:
+            if label == "STATION":
+                continue  # STATION นับจาก station_id แยกด้านล่าง
+            try:
+                total += await _count_collection(fn(sn))
+            except Exception:
+                pass
+        return (sid, total)
+
+    async def _count_station(sid: str):
+        try:
+            return (sid, await _count_collection(get_stationpmreport_collection_for(sid)))
+        except Exception:
+            return (sid, 0)
+
+    tasks = (
+        [_count_sn(sn, sid) for sn, sid in sn_list]
+        + [_count_station(sid) for sid in station_ids]
+    )
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    counts: dict[str, int] = {sid: 0 for sid in station_ids}
+    for r in results:
+        if isinstance(r, tuple):
+            sid, n = r
+            counts[sid] = counts.get(sid, 0) + n
+
+    return {"counts": counts, "stations_count": len(station_ids)}
+
 
 @router.delete("/pmreport/{report_id}")
 async def delete_pmreport(
