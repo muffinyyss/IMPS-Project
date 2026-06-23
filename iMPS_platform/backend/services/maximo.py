@@ -176,3 +176,41 @@ async def query_locations(location_filter: str = "%-EV%") -> list[dict] | None:
     except Exception as e:
         log.error(f"  ❌ Maximo location query error: {e}")
         return None
+
+
+async def query_locations_by_codes(codes: list[str]) -> list[dict] | None:
+    """
+    ดึง location ตามรหัสที่ระบุ (exact match) ด้วย oslc.where `location in [...]`
+    ใช้สำหรับดึง station root (เช่น "HMP0002") ที่ไม่มี -EV ต่อท้าย
+
+    Returns:
+        [{"location": "HMP0002", "description": "HomeproRatchburi"}, ...] หรือ None
+    """
+    if not MAXIMO_ENABLED:
+        return None
+
+    codes = [c for c in dict.fromkeys(codes) if c]  # unique + ตัดค่าว่าง
+    if not codes:
+        return []
+
+    url = f"{MAXIMO_BASE_URL}/ZAPILOCATION"
+    headers = {"apikey": MAXIMO_API_KEY}
+    in_list = ",".join(f'"{c}"' for c in codes)
+    params = {
+        "Content-Type": "application/json",
+        "lean": 1,
+        "oslc.select": "location,description",
+        "oslc.where": f"location in [{in_list}]",
+        "oslc.pageSize": max(len(codes), 1),
+    }
+
+    try:
+        async with httpx.AsyncClient(verify=_ssl_ctx, timeout=30) as client:
+            resp = await client.get(url, params=params, headers=headers)
+        if resp.status_code != 200:
+            log.error(f"Maximo location-by-codes query failed: {resp.status_code}")
+            return None
+        return resp.json().get("member", [])
+    except Exception as e:
+        log.error(f"  ❌ Maximo location-by-codes query error: {e}")
+        return None

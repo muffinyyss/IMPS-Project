@@ -232,13 +232,22 @@ export function SearchDataTables() {
     const [pmCountsLoading, setPmCountsLoading] = useState(true);
     // type ที่เลือกจากการ์ดด้านบน (default = CHARGER) → กรองคอลัมน์ + รายการที่ขยาย
     const [typeFilter, setTypeFilter] = useState<string>("CHARGER");
+    // เดือนที่เลือก (default = เดือนปัจจุบัน, "all" = ทุกเดือน) → กรองจำนวนเอกสารตามเดือน (อิง pm_date)
+    const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    });
 
-    // นับจำนวนเอกสาร PM (ต่อสถานี + แยกตาม type) — endpoint count โดยเฉพาะ
+    // นับจำนวนเอกสาร PM (ต่อสถานี + แยกตาม type) — รองรับกรองตามเดือน
     useEffect(() => {
         let stopped = false;
+        setPmCountsLoading(true);
         (async () => {
             try {
-                const res = await apiFetch(`/pm-reports/counts`);
+                const url = selectedMonth === "all"
+                    ? `/pm-reports/counts`
+                    : `/pm-reports/counts?month=${encodeURIComponent(selectedMonth)}`;
+                const res = await apiFetch(url);
                 if (!res.ok) return;
                 const json = await res.json();
                 const counts = new Map<string, Record<string, number>>();
@@ -257,7 +266,7 @@ export function SearchDataTables() {
             }
         })();
         return () => { stopped = true; };
-    }, []);
+    }, [selectedMonth]);
 
     const fetchPMReports = async (stationId: string) => {
         if (pmReports.has(stationId) || pmLoading.has(stationId)) return;
@@ -344,6 +353,23 @@ export function SearchDataTables() {
         window.addEventListener("language:change", handleLangChange as EventListener);
         return () => { window.removeEventListener("language:change", handleLangChange as EventListener); };
     }, []);
+
+    // ตัวเลือกเดือน: "ทุกเดือน" + ย้อนหลัง 12 เดือน (วางหลัง lang เพื่อหลีกเลี่ยง TDZ)
+    const monthOptions = useMemo(() => {
+        const opts: { value: string; label: string }[] = [{ value: "all", label: lang === "th" ? "ทุกเดือน" : "All months" }];
+        const thMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+        const enMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const now = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const y = d.getFullYear();
+            const m = d.getMonth();
+            const value = `${y}-${String(m + 1).padStart(2, "0")}`;
+            const label = lang === "th" ? `${thMonths[m]} ${y + 543}` : `${enMonths[m]} ${y}`;
+            opts.push({ value, label });
+        }
+        return opts;
+    }, [lang]);
 
     const handleDeleteReport = async (report: PMReportData, stationId: string) => {
         if (!confirm(lang === "th" ? `ลบรายงาน "${report.document_name}" ใช่หรือไม่?` : `Delete report "${report.document_name}"?`)) return;
@@ -1115,6 +1141,28 @@ export function SearchDataTables() {
                         </>
                     )}
                 </div>
+                <div className="tw-mt-3 tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-2">
+                    <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-700">
+                        {lang === "th" ? "สรุปเอกสาร PM" : "PM Document Summary"}
+                        {selectedMonth !== "all" && (
+                            <span className="tw-ml-2 tw-text-xs tw-font-normal tw-text-blue-gray-400">
+                                ({monthOptions.find((o) => o.value === selectedMonth)?.label ?? selectedMonth} · {pmTotal} {lang === "th" ? "เอกสาร" : "docs"})
+                            </span>
+                        )}
+                    </span>
+                    <div className="tw-flex tw-items-center tw-gap-2">
+                        <i className="fa fa-calendar tw-text-blue-gray-400 tw-text-sm" />
+                        <select
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-blue-gray-700 tw-shadow-sm focus:tw-border-blue-400 focus:tw-outline-none tw-cursor-pointer"
+                        >
+                            {monthOptions.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
             </div>
 
             <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4">
@@ -1161,7 +1209,7 @@ export function SearchDataTables() {
                                         {row.getIsExpanded() && (
                                             <ChargersExpandedSection
                                                 stationId={row.original.station_id}
-                                                reports={(pmReports.get(row.original.station_id) ?? []).filter((r) => r.pm_type === typeFilter)}
+                                                reports={(pmReports.get(row.original.station_id) ?? []).filter((r) => r.pm_type === typeFilter && (selectedMonth === "all" || String(r.pm_date ?? "").startsWith(selectedMonth)))}
                                                 isLoading={pmLoading.has(row.original.station_id)}
                                                 canDelete={me?.username === "Thatsawan Snongphan"}
                                                 onDelete={(report) => handleDeleteReport(report, row.original.station_id)}

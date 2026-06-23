@@ -16,7 +16,7 @@ import {
   BoltIcon, CpuChipIcon, PhotoIcon,
 } from "@heroicons/react/24/solid";
 import { useRouter } from "next/navigation";
-import AddStation, { type NewStationPayload } from "@/app/dashboard/stations/components/addstations";
+import AddStation, { type NewStationPayload, MaximoLocationSelect, type MaximoLocation } from "@/app/dashboard/stations/components/addstations";
 import { apiFetch } from "@/utils/api";
 
 // const API_BASE = "http://localhost:8000";
@@ -356,6 +356,60 @@ export function SearchDataTables() {
   const [addChargerPreviews, setAddChargerPreviews] = useState<string[]>([]);
   const [addDevicePreviews, setAddDevicePreviews] = useState<string[]>([]);
 
+  // ── Maximo locations (สำหรับ dropdown ใน edit/add) ──
+  const [stationLocations, setStationLocations] = useState<MaximoLocation[]>([]);
+  const [chargerLocations, setChargerLocations] = useState<MaximoLocation[]>([]);
+  const [maximoLoading, setMaximoLoading] = useState(false);
+
+  useEffect(() => {
+    const needed = openEditStation || openEditCharger || openAddCharger;
+    if (!needed || stationLocations.length || chargerLocations.length || maximoLoading) return;
+    let cancelled = false;
+    (async () => {
+      setMaximoLoading(true);
+      try {
+        const [stRes, chRes] = await Promise.all([
+          apiFetch(`/maximo/locations?level=station`),
+          apiFetch(`/maximo/locations?level=charger`),
+        ]);
+        if (!cancelled && stRes.ok) {
+          const json = await stRes.json();
+          if (Array.isArray(json?.locations)) setStationLocations(json.locations);
+        }
+        if (!cancelled && chRes.ok) {
+          const json = await chRes.json();
+          if (Array.isArray(json?.locations)) setChargerLocations(json.locations);
+        }
+      } catch (e) {
+        console.error("Failed to fetch Maximo locations:", e);
+      } finally {
+        if (!cancelled) setMaximoLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [openEditStation, openEditCharger, openAddCharger]);
+
+  // maximo_location ของสถานีแม่ (ใช้กรอง charger ให้อยู่ใต้สถานีเดียวกัน)
+  const editChargerStationMaximo = useMemo(
+    () => (data.find(s => s.station_id === editingCharger?.stationId)?.maximo_location ?? "").trim(),
+    [data, editingCharger?.stationId]
+  );
+  const editChargerOptions = useMemo(() => {
+    if (!editChargerStationMaximo) return [];
+    const prefix = `${editChargerStationMaximo}-`;
+    return chargerLocations.filter(o => o.location.startsWith(prefix) && /-EV$/i.test(o.location));
+  }, [chargerLocations, editChargerStationMaximo]);
+
+  const addChargerStationMaximo = useMemo(
+    () => (data.find(s => s.station_id === addingChargerStationId)?.maximo_location ?? "").trim(),
+    [data, addingChargerStationId]
+  );
+  const addChargerOptions = useMemo(() => {
+    if (!addChargerStationMaximo) return [];
+    const prefix = `${addChargerStationMaximo}-`;
+    return chargerLocations.filter(o => o.location.startsWith(prefix) && /-EV$/i.test(o.location));
+  }, [chargerLocations, addChargerStationMaximo]);
+
   const addChargerImageInputRef = useRef<HTMLInputElement | null>(null);
   const addDeviceImageInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -398,6 +452,7 @@ export function SearchDataTables() {
         stationName: "ชื่อสถานี", chargers: "ตู้ชาร์จ", owner: "เจ้าของ", technician: "ช่างเทคนิค",
         active: "เปิดใช้งาน", inactive: "ปิดใช้งาน", actions: "จัดการ", online: "ออนไลน์", offline: "ออฟไลน์",
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
+        maximoSearch: "ค้นหา location...", maximoEmpty: "ไม่พบ location",
         chargerBoxId: "รหัสตู้ชาร์จ (Charge Box ID)", chargerType: "ประเภทตู้ชาร์จ",
         brand: "ยี่ห้อ", model: "รุ่น", serialNumber: "S/N", workOrder: "W/O", power: "กำลังไฟ",
         cables: "สายชาร์จ", warranty: "รับประกัน", year: "ปี", firmware: "เฟิร์มแวร์",
@@ -428,6 +483,7 @@ export function SearchDataTables() {
         stationName: "Station Name", chargers: "Chargers", owner: "Owner", technician: "Technician",
         active: "Active", inactive: "Inactive", actions: "Actions", online: "online", offline: "offline",
         maximoLocation: "Maximo Location", maximoDescription: "Maximo Description", ocppUrl: "OCPP URL", ocppSection: "🔌 OCPP",
+        maximoSearch: "Search location...", maximoEmpty: "No location found",
         chargerBoxId: "Charge Box ID", chargerType: "Charger Type",
         brand: "Brand", model: "Model", serialNumber: "S/N", workOrder: "W/O", power: "Power",
         cables: "Cables", warranty: "Warranty", year: "y", firmware: "Firmware",
@@ -1066,6 +1122,19 @@ export function SearchDataTables() {
               </div>
               <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-4 sm:tw-space-y-5">
                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
+                  <MaximoLocationSelect
+                    label={t.maximoLocation}
+                    value={editStationForm.maximo_location}
+                    options={stationLocations}
+                    loading={maximoLoading}
+                    disabled={false}
+                    searchPlaceholder={t.maximoSearch}
+                    emptyLabel={t.maximoEmpty}
+                    onSelect={(loc, desc) => setEditStationForm(s => ({ ...s, maximo_location: loc, maximo_desc: desc, station_name: desc || loc }))}
+                  />
+                  {editStationForm.maximo_location?.trim() && (
+                    <Input label={t.maximoDescription} value={editStationForm.maximo_desc} readOnly disabled crossOrigin={undefined} />
+                  )}
                   {isAdmin && (
                     <Input
                       label="Station ID"
@@ -1076,7 +1145,9 @@ export function SearchDataTables() {
                       crossOrigin={undefined}
                     />
                   )}
-                  <Input label={t.stationName} required value={editStationForm.station_name} onChange={(e) => setEditStationForm(s => ({ ...s, station_name: e.target.value }))} crossOrigin={undefined} />
+                  {!editStationForm.maximo_location?.trim() && (
+                    <Input label={t.stationName} required value={editStationForm.station_name} onChange={(e) => setEditStationForm(s => ({ ...s, station_name: e.target.value }))} crossOrigin={undefined} />
+                  )}
                   {isAdmin ? (
                     <div className="tw-flex tw-gap-2">
                       <div className="tw-relative tw-w-full tw-min-w-[200px] tw-h-10">
@@ -1126,8 +1197,6 @@ export function SearchDataTables() {
                   ) : (
                     <Input label={t.owner} value={editingStation?.username ?? "-"} readOnly disabled crossOrigin={undefined} />
                   )}
-                  <Input label={t.maximoLocation} value={editStationForm.maximo_location} onChange={(e) => setEditStationForm(s => ({ ...s, maximo_location: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.maximoDescription} value={editStationForm.maximo_desc} onChange={(e) => setEditStationForm(s => ({ ...s, maximo_desc: e.target.value }))} crossOrigin={undefined} />
                   <Select label={t.status} value={String(editStationForm.is_active)} onChange={(v) => setEditStationForm(s => ({ ...s, is_active: v === "true" }))}>
                     <Option value="true">{t.active}</Option>
                     <Option value="false">{t.inactive}</Option>
@@ -1219,6 +1288,21 @@ export function SearchDataTables() {
               </div>
               <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">
                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-2.5 sm:tw-gap-3">
+                  {editChargerStationMaximo && (
+                    <MaximoLocationSelect
+                      label={t.maximoLocation}
+                      value={editChargerForm.maximo_location}
+                      options={editChargerOptions}
+                      loading={maximoLoading}
+                      disabled={false}
+                      searchPlaceholder={t.maximoSearch}
+                      emptyLabel={t.maximoEmpty}
+                      onSelect={(loc, desc) => setEditChargerForm(s => ({ ...s, maximo_location: loc, maximo_desc: desc }))}
+                    />
+                  )}
+                  {editChargerStationMaximo && editChargerForm.maximo_location?.trim() && (
+                    <Input label={t.maximoDescription} value={editChargerForm.maximo_desc} readOnly disabled crossOrigin={undefined} />
+                  )}
                   <div className="tw-relative"><Input label={`${t.chargerNo} (${t.auto})`} type="number" value={editChargerForm.chargerNo} readOnly className="!tw-bg-gray-50" crossOrigin={undefined} /><span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span></div>
                   <Select label={t.chargerType} value={editChargerForm.chargerType} onChange={(v) => setEditChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}><Option value="DC">DC</Option><Option value="AC">AC</Option><Option value="DC & AC">DC & AC</Option></Select>
                   <Input label={t.brand} required value={editChargerForm.brand} onChange={(e) => setEditChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
@@ -1231,8 +1315,6 @@ export function SearchDataTables() {
                     <Input label={t.piFirmware} required value={editChargerForm.PIFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, PIFirmware: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.routerFirmware} required value={editChargerForm.RTFirmware} onChange={(e) => setEditChargerForm(s => ({ ...s, RTFirmware: e.target.value }))} crossOrigin={undefined} />
                   </>)}
-                  <Input label={t.maximoLocation} value={editChargerForm.maximo_location} onChange={(e) => setEditChargerForm(s => ({ ...s, maximo_location: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.maximoDescription} value={editChargerForm.maximo_desc} onChange={(e) => setEditChargerForm(s => ({ ...s, maximo_desc: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.commissioningDate} type="date" value={editChargerForm.commissioningDate} onChange={(e) => setEditChargerForm(s => ({ ...s, commissioningDate: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.warrantyYears} type="number" min={1} max={10} value={editChargerForm.warrantyYears} onChange={(e) => setEditChargerForm(s => ({ ...s, warrantyYears: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
                   <Input label={t.numberOfCables} type="number" min={1} max={10} value={editChargerForm.numberOfCables} onChange={(e) => setEditChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
@@ -1293,6 +1375,21 @@ export function SearchDataTables() {
               </div>
               <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">
                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-2.5 sm:tw-gap-3">
+                  {addChargerStationMaximo && (
+                    <MaximoLocationSelect
+                      label={t.maximoLocation}
+                      value={addChargerForm.maximo_location}
+                      options={addChargerOptions}
+                      loading={maximoLoading}
+                      disabled={false}
+                      searchPlaceholder={t.maximoSearch}
+                      emptyLabel={t.maximoEmpty}
+                      onSelect={(loc, desc) => setAddChargerForm(s => ({ ...s, maximo_location: loc, maximo_desc: desc }))}
+                    />
+                  )}
+                  {addChargerStationMaximo && addChargerForm.maximo_location?.trim() && (
+                    <Input label={t.maximoDescription} value={addChargerForm.maximo_desc} readOnly disabled crossOrigin={undefined} />
+                  )}
                   <div className="tw-relative"><Input label={`${t.chargerNo} (${t.auto})`} type="number" value={addChargerForm.chargerNo} readOnly className="!tw-bg-gray-50 !tw-cursor-not-allowed" crossOrigin={undefined} /><span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span></div>
                   <Select label={t.chargerType} value={addChargerForm.chargerType} onChange={(v) => setAddChargerForm(s => ({ ...s, chargerType: v ?? "DC" }))}><Option value="DC">DC</Option><Option value="AC">AC</Option></Select>
                   <Input label={t.brand} required value={addChargerForm.brand} onChange={(e) => setAddChargerForm(s => ({ ...s, brand: e.target.value }))} crossOrigin={undefined} />
@@ -1307,8 +1404,6 @@ export function SearchDataTables() {
                     <Input label={t.chargerBoxId} required value={addChargerForm.chargeBoxID} onChange={(e) => setAddChargerForm(s => ({ ...s, chargeBoxID: e.target.value }))} crossOrigin={undefined} />
                     <Input label={t.ocppUrl} value={addChargerForm.ocppUrl} onChange={(e) => setAddChargerForm(s => ({ ...s, ocppUrl: e.target.value }))} crossOrigin={undefined} />
                   </>)}
-                  <Input label={t.maximoLocation} value={addChargerForm.maximo_location} onChange={(e) => setAddChargerForm(s => ({ ...s, maximo_location: e.target.value }))} crossOrigin={undefined} />
-                  <Input label={t.maximoDescription} value={addChargerForm.maximo_desc} onChange={(e) => setAddChargerForm(s => ({ ...s, maximo_desc: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.commissioningDate} type="date" required value={addChargerForm.commissioningDate} onChange={(e) => setAddChargerForm(s => ({ ...s, commissioningDate: e.target.value }))} crossOrigin={undefined} />
                   <Input label={t.warrantyYears} type="number" min={1} max={10} required value={addChargerForm.warrantyYears} onChange={(e) => setAddChargerForm(s => ({ ...s, warrantyYears: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />
                   <Input label={t.numberOfCables} type="number" min={1} max={10} required value={addChargerForm.numberOfCables} onChange={(e) => setAddChargerForm(s => ({ ...s, numberOfCables: parseInt(e.target.value) || 1 }))} crossOrigin={undefined} />

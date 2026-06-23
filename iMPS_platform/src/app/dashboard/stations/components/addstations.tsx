@@ -1,6 +1,7 @@
 "use client";
 import LoadingOverlay from "../../components/Loadingoverlay";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { apiFetch } from "@/utils/api";
 import {
     Dialog,
     DialogHeader,
@@ -183,6 +184,104 @@ const Spinner = () => (
     </svg>
 );
 
+/** Maximo location option from API */
+export type MaximoLocation = { location: string; description: string };
+
+/**
+ * Searchable Maximo-location dropdown.
+ * Selecting an option fills both location + description (via onSelect).
+ * Falls back to a plain text input when Maximo is unreachable/disabled (no options),
+ * so the form still works offline.
+ */
+export const MaximoLocationSelect = ({
+    label, value, onSelect, options, loading, disabled, searchPlaceholder, emptyLabel,
+}: {
+    label: string;
+    value: string;
+    onSelect: (location: string, description: string) => void;
+    options: MaximoLocation[];
+    loading: boolean;
+    disabled: boolean;
+    searchPlaceholder: string;
+    emptyLabel: string;
+}) => {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState("");
+    const boxRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const onDoc = (e: MouseEvent) => {
+            if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener("mousedown", onDoc);
+        return () => document.removeEventListener("mousedown", onDoc);
+    }, [open]);
+
+    const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return options;
+        return options.filter(
+            (o) => o.location.toLowerCase().includes(q) || (o.description || "").toLowerCase().includes(q)
+        );
+    }, [options, query]);
+
+    return (
+        <div ref={boxRef} className="tw-relative tw-w-full tw-min-w-[200px] tw-h-10">
+            <button
+                type="button"
+                disabled={disabled}
+                onClick={() => setOpen((v) => !v)}
+                className="tw-peer tw-w-full tw-h-full tw-flex tw-items-center tw-justify-between tw-gap-2 tw-bg-transparent tw-text-left tw-text-blue-gray-700 tw-font-sans tw-font-normal tw-outline-none tw-border tw-border-blue-gray-200 focus:tw-border-2 focus:tw-border-gray-900 tw-rounded-[7px] tw-px-3 tw-py-2.5 tw-text-sm tw-cursor-pointer disabled:tw-opacity-50 disabled:tw-cursor-not-allowed"
+            >
+                <span className={`tw-truncate ${value ? "" : "tw-text-blue-gray-300"}`}>
+                    {value || ""}
+                </span>
+                <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-4 tw-w-4 tw-shrink-0 tw-text-blue-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+            </button>
+            <label className="tw-pointer-events-none tw-absolute tw-left-3 tw--top-1.5 tw-text-[11px] tw-text-blue-gray-400 tw-bg-white tw-px-1 tw-font-normal">
+                {label}
+            </label>
+
+            {open && (
+                <div className="tw-absolute tw-z-50 tw-mt-1 tw-w-full tw-rounded-lg tw-bg-white tw-shadow-xl tw-ring-1 tw-ring-black/10 tw-overflow-hidden">
+                    <div className="tw-p-2 tw-border-b tw-border-blue-gray-50">
+                        <input
+                            autoFocus
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder={searchPlaceholder}
+                            className="tw-w-full tw-text-sm tw-px-2.5 tw-py-1.5 tw-rounded-md tw-border tw-border-blue-gray-100 tw-outline-none focus:tw-border-gray-900"
+                        />
+                    </div>
+                    <ul className="tw-max-h-56 tw-overflow-y-auto tw-py-1">
+                        {loading ? (
+                            <li className="tw-px-3 tw-py-3 tw-flex tw-items-center tw-gap-2 tw-text-sm tw-text-blue-gray-400"><Spinner />Loading…</li>
+                        ) : filtered.length === 0 ? (
+                            <li className="tw-px-3 tw-py-3 tw-text-sm tw-text-blue-gray-400">{emptyLabel}</li>
+                        ) : (
+                            filtered.map((o) => (
+                                <li key={o.location}>
+                                    <button
+                                        type="button"
+                                        onClick={() => { onSelect(o.location, o.description || ""); setOpen(false); setQuery(""); }}
+                                        className={`tw-w-full tw-text-left tw-px-3 tw-py-2 tw-text-sm hover:tw-bg-blue-gray-50 tw-transition-colors ${value === o.location ? "tw-bg-blue-gray-50/70" : ""}`}
+                                    >
+                                        <span className="tw-font-medium tw-text-blue-gray-800">{o.location}</span>
+                                        {o.description && <span className="tw-block tw-text-[11px] tw-text-blue-gray-400 tw-truncate">{o.description}</span>}
+                                    </button>
+                                </li>
+                            ))
+                        )}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+};
+
 /* ─────────────────────────── Main Component ─────────────────────────── */
 export default function AddStationModal({
     open, onClose, onSubmit, loading, currentUser, isAdmin, allOwners = [], onSubmitImages,
@@ -227,6 +326,8 @@ export default function AddStationModal({
                 duplicateChargeBoxID: "Charge Box ID ซ้ำกัน กรุณาตรวจสอบ",
                 other: "อื่นๆ",
                 enterOwner: "ระบุชื่อเจ้าของ",
+                maximoSearch: "ค้นหา location...",
+                maximoEmpty: "ไม่พบ location",
             },
             en: {
                 addNewStation: "Add New Station", subtitle: "Fill in station and charger details",
@@ -255,6 +356,8 @@ export default function AddStationModal({
                 duplicateChargeBoxID: "Duplicate Charge Box ID found, please check",
                 other: "Other",
                 enterOwner: "Enter owner name",
+                maximoSearch: "Search location...",
+                maximoEmpty: "No location found",
             },
         };
         return tr[lang];
@@ -270,6 +373,48 @@ export default function AddStationModal({
     const [chargers, setChargers] = useState<ChargerForm[]>([createEmptyCharger(1)]);
     const [submitting, setSubmitting] = useState(false);
     const [isOtherOwner, setIsOtherOwner] = useState(false);
+
+    /* ── Maximo locations (for dropdowns) ── */
+    // station = location ไม่มี -EV ต่อท้าย (เช่น HMP0002), charger = มี -EV (เช่น HMP0002-EV-BTL01...)
+    const [stationLocations, setStationLocations] = useState<MaximoLocation[]>([]);
+    const [chargerLocations, setChargerLocations] = useState<MaximoLocation[]>([]);
+    const [maximoLoading, setMaximoLoading] = useState(false);
+
+    useEffect(() => {
+        if (!open || stationLocations.length || chargerLocations.length || maximoLoading) return;
+        let cancelled = false;
+        (async () => {
+            setMaximoLoading(true);
+            try {
+                const [stRes, chRes] = await Promise.all([
+                    apiFetch(`/maximo/locations?level=station`),
+                    apiFetch(`/maximo/locations?level=charger`),
+                ]);
+                if (!cancelled && stRes.ok) {
+                    const json = await stRes.json();
+                    if (Array.isArray(json?.locations)) setStationLocations(json.locations);
+                }
+                if (!cancelled && chRes.ok) {
+                    const json = await chRes.json();
+                    if (Array.isArray(json?.locations)) setChargerLocations(json.locations);
+                }
+            } catch (e) {
+                console.error("Failed to fetch Maximo locations:", e);
+            } finally {
+                if (!cancelled) setMaximoLoading(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [open]);
+
+    // charger dropdown: เอาเฉพาะ location ที่อยู่ใต้ station ที่เลือก และลงท้าย -EV พอดี (ไม่มี segment ต่อท้าย)
+    // ถ้ายังไม่เลือก station จะไม่มี option (และ dropdown ถูก disable)
+    const filteredChargerLocations = useMemo(() => {
+        const st = station.maximo_location?.trim();
+        if (!st) return [];
+        const prefix = `${st}-`;
+        return chargerLocations.filter((o) => o.location.startsWith(prefix) && /-EV$/i.test(o.location));
+    }, [chargerLocations, station.maximo_location]);
 
     const isFlexxfast = (brand: string) => brand.trim().toLowerCase() === "flexxfast";
 
@@ -586,7 +731,34 @@ export default function AddStationModal({
                             </div>
                             <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-4 sm:tw-space-y-5">
                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
-                                    <Input label={t.stationName} required value={station.station_name} onChange={(e) => onStationChange("station_name", e.target.value)} crossOrigin={undefined} />
+                                    <MaximoLocationSelect
+                                        label={t.maximoLocation}
+                                        value={station.maximo_location}
+                                        options={stationLocations}
+                                        loading={maximoLoading}
+                                        disabled={false}
+                                        searchPlaceholder={t.maximoSearch}
+                                        emptyLabel={t.maximoEmpty}
+                                        onSelect={(loc, desc) => {
+                                            onStationChange("maximo_location", loc);
+                                            onStationChange("maximo_desc", desc);
+                                            // เลือก maximo แล้ว → ใช้ description เป็นชื่อสถานี (fallback เป็นรหัส location ถ้า desc ว่าง)
+                                            onStationChange("station_name", desc || loc);
+                                            // ล้าง charger location ที่ไม่อยู่ใต้ station ใหม่
+                                            const prefix = `${loc}-`;
+                                            setChargers((prev) => prev.map((c) =>
+                                                c.maximo_location && !c.maximo_location.startsWith(prefix)
+                                                    ? { ...c, maximo_location: "", maximo_desc: "" }
+                                                    : c
+                                            ));
+                                        }}
+                                    />
+                                    {station.maximo_location?.trim() && (
+                                        <Input label={t.maximoDesc} value={station.maximo_desc} readOnly disabled crossOrigin={undefined} />
+                                    )}
+                                    {!station.maximo_location?.trim() && (
+                                        <Input label={t.stationName} required value={station.station_name} onChange={(e) => onStationChange("station_name", e.target.value)} crossOrigin={undefined} />
+                                    )}
                                     {isAdmin ? (
                                         <div className="tw-flex tw-gap-2">
                                             <div className="tw-relative tw-w-full tw-min-w-[200px] tw-h-10">
@@ -634,8 +806,6 @@ export default function AddStationModal({
                                     ) : (
                                         <Input label={t.owner} value={station.owner || currentUser || ""} readOnly disabled crossOrigin={undefined} />
                                     )}
-                                    <Input label={t.maximoLocation} value={station.maximo_location} onChange={(e) => onStationChange("maximo_location", e.target.value)} crossOrigin={undefined} />
-                                    <Input label={t.maximoDesc} value={station.maximo_desc} onChange={(e) => onStationChange("maximo_desc", e.target.value)} crossOrigin={undefined} />
                                     <Select label={t.status} value={String(station.is_active)} onChange={(v) => onStationChange("is_active", v === "true")}>
                                         <Option value="true">{t.active}</Option>
                                         <Option value="false">{t.inactive}</Option>
@@ -698,6 +868,24 @@ export default function AddStationModal({
 
                                     <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">
                                         <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-2.5 sm:tw-gap-3">
+                                            {station.maximo_location?.trim() && (
+                                                <MaximoLocationSelect
+                                                    label={t.maximoLocation}
+                                                    value={charger.maximo_location}
+                                                    options={filteredChargerLocations}
+                                                    loading={maximoLoading}
+                                                    disabled={false}
+                                                    searchPlaceholder={t.maximoSearch}
+                                                    emptyLabel={t.maximoEmpty}
+                                                    onSelect={(loc, desc) => {
+                                                        onChargerChange(charger.id, "maximo_location", loc);
+                                                        onChargerChange(charger.id, "maximo_desc", desc);
+                                                    }}
+                                                />
+                                            )}
+                                            {station.maximo_location?.trim() && charger.maximo_location?.trim() && (
+                                                <Input label={t.maximoDesc} value={charger.maximo_desc} readOnly disabled crossOrigin={undefined} />
+                                            )}
                                             <div className="tw-relative">
                                                 <Input label={t.chargerNoAuto} type="number" value={charger.chargerNo} readOnly className="!tw-bg-gray-50" crossOrigin={undefined} />
                                                 <span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span>
@@ -717,8 +905,6 @@ export default function AddStationModal({
                                                     <Input label={t.piFirmware} required value={charger.PIFirmware} onChange={(e) => onChargerChange(charger.id, "PIFirmware", e.target.value)} crossOrigin={undefined} />
                                                     <Input label={t.routerFirmware} required value={charger.RTFirmware} onChange={(e) => onChargerChange(charger.id, "RTFirmware", e.target.value)} crossOrigin={undefined} />
                                                 </>)}
-                                            <Input label={t.maximoLocation} value={charger.maximo_location} onChange={(e) => onChargerChange(charger.id, "maximo_location", e.target.value)} crossOrigin={undefined} />
-                                            <Input label={t.maximoDesc} value={charger.maximo_desc} onChange={(e) => onChargerChange(charger.id, "maximo_desc", e.target.value)} crossOrigin={undefined} />
                                             <Input
                                                 label={t.commissioningDate}
                                                 type="date"
