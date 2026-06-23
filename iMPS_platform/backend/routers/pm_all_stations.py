@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional
 import asyncio
 import traceback
+import re
 from bson import ObjectId
 
 from config import charger_collection, station_collection
@@ -232,17 +233,30 @@ async def get_all_station_pm_reports(
 
     # ── 3. Fetch all sources concurrently ───────────────────────
     # CHARGER → keyed ด้วย SN ; MDB/CCB/CB-BOX/STATION → keyed ด้วย station_id
-    _station_keyed = [
+    # นับ "เอกสาร" ทั้ง report form + ไฟล์อัปโหลด (URL) ให้ตรงกับคอลัมน์/การ์ด
+    _station_keyed_report = [
         ("MDB",     get_mdbpmreport_collection_for),
         ("CCB",     get_ccbpmreport_collection_for),
         ("CB-BOX",  get_cbboxpmreport_collection_for),
         ("STATION", get_stationpmreport_collection_for),
     ]
+    _station_keyed_url = [
+        ("MDB",     get_mdbpmurl_coll_upload),
+        ("CCB",     get_ccbpmurl_coll_upload),
+        ("CB-BOX",  get_cbboxpmurl_coll_upload),
+        ("STATION", get_stationpmurl_coll_upload),
+    ]
     tasks = (
+        # report forms
         [_fetch_sn_source("CHARGER", get_pmreport_collection_for, sn, sid, limit_per_source)
          for sn, sid in sn_list]
         + [_fetch_sn_source(label, fn, sid, sid, limit_per_source)
-           for sid in station_ids for label, fn in _station_keyed]
+           for sid in station_ids for label, fn in _station_keyed_report]
+        # uploaded files (URL)
+        + [_fetch_sn_source("CHARGER", get_pmurl_coll_upload, sn, sid, limit_per_source)
+           for sn, sid in sn_list]
+        + [_fetch_sn_source(label, fn, sid, sid, limit_per_source)
+           for sid in station_ids for label, fn in _station_keyed_url]
     )
 
     all_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -293,10 +307,10 @@ _PM_TYPE_SOURCES = [
 _PM_TYPES = [t[0] for t in _PM_TYPE_SOURCES]
 
 
-async def _count_collection(coll) -> int:
+async def _count_collection(coll, filt: dict) -> int:
     """count_documents รองรับทั้ง Motor (async awaitable) และ PyMongo (sync int)"""
     try:
-        maybe = coll.count_documents({})
+        maybe = coll.count_documents(filt)
         if hasattr(maybe, "__await__"):   # motor: awaitable (ไม่ใช่ native coroutine เสมอไป)
             return int(await maybe)
         return int(maybe)
@@ -306,13 +320,20 @@ async def _count_collection(coll) -> int:
 
 @router.get("/pm-reports/counts")
 async def get_pm_report_counts(
+    month: Optional[str] = Query(None, description="กรองตามเดือน รูปแบบ YYYY-MM"),
     current: UserClaims = Depends(get_current_user),
 ):
     """
     คืนจำนวนเอกสาร PM (report + upload, ครบทุก source):
-      { counts: {station_id: n}, by_type: {TYPE: n}, total: n, stations_count: n }
+      { counts: {station_id: {...by type, total}}, by_type: {TYPE: n}, total: n }
+    ถ้าระบุ month=YYYY-MM จะนับเฉพาะเอกสารของเดือนนั้น (อิงจาก pm_date)
     """
     loop = asyncio.get_event_loop()
+
+    # filter ตามเดือน (pm_date เป็น string "YYYY-MM-DD")
+    date_filter: dict = {}
+    if month and re.fullmatch(r"\d{4}-\d{2}", month):
+        date_filter = {"pm_date": {"$regex": f"^{re.escape(month)}"}}
 
     try:
         stations = await loop.run_in_executor(
@@ -356,7 +377,7 @@ async def get_pm_report_counts(
             for key in keys:
                 for fn in getters:
                     try:
-                        n += await _count_collection(fn(key))
+                        n += await _count_collection(fn(key), date_filter)
                     except Exception:
                         pass
             per_type[label] = n
