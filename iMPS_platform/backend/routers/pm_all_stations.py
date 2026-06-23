@@ -15,6 +15,11 @@ from routers.pm_helpers import (
     get_ccbpmreport_collection_for,
     get_cbboxpmreport_collection_for,
     get_stationpmreport_collection_for,
+    get_pmurl_coll_upload,
+    get_mdbpmurl_coll_upload,
+    get_ccbpmurl_coll_upload,
+    get_cbboxpmurl_coll_upload,
+    get_stationpmurl_coll_upload,
 )
 
 router = APIRouter()
@@ -61,13 +66,21 @@ def _serialize_report(doc: dict, source: str, station_id: str) -> dict:
             "STATION": "station",
         }
         pdf_type = source_map.get(source, "charger")
-        sn = doc.get("sn") or doc.get("SN") or ""
 
-        # ✅ ต่อ ?sn= ด้วย
-        if sn and sn not in ("-", ""):
-            file_url = f"/pdf/{pdf_type}/{doc_id}/export?sn={sn}"
+        # charger → ใช้ sn, ส่วน mdb/ccb/cbbox/station → ใช้ station_id
+        # (ตรงกับ endpoint /pdf/{template}/{id}/export)
+        if pdf_type == "charger":
+            sn = doc.get("sn") or doc.get("SN") or ""
+            if sn and sn not in ("-", ""):
+                file_url = f"/pdf/{pdf_type}/{doc_id}/export?sn={sn}"
+            else:
+                file_url = f"/pdf/{pdf_type}/{doc_id}/export"
         else:
-            file_url = f"/pdf/{pdf_type}/{doc_id}/export"
+            sid = doc.get("station_id") or station_id or ""
+            if sid and sid not in ("-", ""):
+                file_url = f"/pdf/{pdf_type}/{doc_id}/export?station_id={sid}"
+            else:
+                file_url = f"/pdf/{pdf_type}/{doc_id}/export"
 
     return {
         "id":            doc_id,
@@ -218,9 +231,18 @@ async def get_all_station_pm_reports(
     ]
 
     # ── 3. Fetch all sources concurrently ───────────────────────
+    # CHARGER → keyed ด้วย SN ; MDB/CCB/CB-BOX/STATION → keyed ด้วย station_id
+    _station_keyed = [
+        ("MDB",     get_mdbpmreport_collection_for),
+        ("CCB",     get_ccbpmreport_collection_for),
+        ("CB-BOX",  get_cbboxpmreport_collection_for),
+        ("STATION", get_stationpmreport_collection_for),
+    ]
     tasks = (
-        [_fetch_reports_for_sn(sn, sid, limit_per_source) for sn, sid in sn_list]
-        + [_fetch_station_level_reports(sid, limit_per_source) for sid in station_ids]
+        [_fetch_sn_source("CHARGER", get_pmreport_collection_for, sn, sid, limit_per_source)
+         for sn, sid in sn_list]
+        + [_fetch_sn_source(label, fn, sid, sid, limit_per_source)
+           for sid in station_ids for label, fn in _station_keyed]
     )
 
     all_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -250,6 +272,120 @@ async def get_all_station_pm_reports(
         "total":          len(all_reports),
         "stations_count": len(station_ids),
     }
+
+
+# ===== PM document count per station (เร็ว: ใช้ count_documents) =====
+# นับเอกสารทั้งหมดของสถานี = report form + เอกสารอัปโหลด (URL) ทุก source
+#   CHARGER  → keyed ด้วย SN (PMReport / PMReportURL)
+#   MDB/CCB/CB-BOX/STATION → keyed ด้วย station_id
+# (ตรงกับที่แสดงเป็นแถวในตาราง PM report per-station ซึ่ง concat report + url)
+
+# แต่ละ type: (label, [report getter, url getter], key_mode)
+#   key_mode "sn"  → นับต่อ SN ของตู้ชาร์จในสถานี
+#   key_mode "sid" → นับต่อ station_id
+_PM_TYPE_SOURCES = [
+    ("CHARGER", [get_pmreport_collection_for, get_pmurl_coll_upload], "sn"),
+    ("MDB",     [get_mdbpmreport_collection_for, get_mdbpmurl_coll_upload], "sid"),
+    ("CCB",     [get_ccbpmreport_collection_for, get_ccbpmurl_coll_upload], "sid"),
+    ("CB-BOX",  [get_cbboxpmreport_collection_for, get_cbboxpmurl_coll_upload], "sid"),
+    ("STATION", [get_stationpmreport_collection_for, get_stationpmurl_coll_upload], "sid"),
+]
+_PM_TYPES = [t[0] for t in _PM_TYPE_SOURCES]
+
+
+async def _count_collection(coll) -> int:
+    """count_documents รองรับทั้ง Motor (async awaitable) และ PyMongo (sync int)"""
+    try:
+        maybe = coll.count_documents({})
+        if hasattr(maybe, "__await__"):   # motor: awaitable (ไม่ใช่ native coroutine เสมอไป)
+            return int(await maybe)
+        return int(maybe)
+    except Exception:
+        return 0
+
+
+@router.get("/pm-reports/counts")
+async def get_pm_report_counts(
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    คืนจำนวนเอกสาร PM (report + upload, ครบทุก source):
+      { counts: {station_id: n}, by_type: {TYPE: n}, total: n, stations_count: n }
+    """
+    loop = asyncio.get_event_loop()
+
+    try:
+        stations = await loop.run_in_executor(
+            None,
+            lambda: list(station_collection.find({}, {"_id": 0, "station_id": 1})),
+        )
+    except Exception:
+        traceback.print_exc()
+        stations = []
+
+    station_ids = [s["station_id"] for s in stations if s.get("station_id")]
+    empty = {"counts": {}, "by_type": {t: 0 for t in _PM_TYPES}, "total": 0, "stations_count": 0}
+    if not station_ids:
+        return empty
+
+    try:
+        chargers = await loop.run_in_executor(
+            None,
+            lambda: list(charger_collection.find(
+                {"station_id": {"$in": station_ids}},
+                {"_id": 0, "SN": 1, "station_id": 1},
+            )),
+        )
+    except Exception:
+        traceback.print_exc()
+        chargers = []
+
+    # SN ต่อสถานี
+    sns_by_station: dict[str, list[str]] = {sid: [] for sid in station_ids}
+    for c in chargers:
+        sn = c.get("SN")
+        sid = c.get("station_id", "")
+        if sn and sn not in ("-", "", None) and sid in sns_by_station:
+            sns_by_station[sid].append(sn)
+
+    async def _count_station_by_type(sid: str):
+        per_type: dict[str, int] = {}
+        for label, getters, mode in _PM_TYPE_SOURCES:
+            n = 0
+            keys = sns_by_station.get(sid, []) if mode == "sn" else [sid]
+            for key in keys:
+                for fn in getters:
+                    try:
+                        n += await _count_collection(fn(key))
+                    except Exception:
+                        pass
+            per_type[label] = n
+        return (sid, per_type)
+
+    results = await asyncio.gather(
+        *[_count_station_by_type(sid) for sid in station_ids],
+        return_exceptions=True,
+    )
+
+    # counts[sid] = { TYPE: n, ... , "total": n }  → คอลัมน์เลือกแสดงตาม type ได้
+    counts: dict[str, dict] = {}
+    by_type: dict[str, int] = {t: 0 for t in _PM_TYPES}
+    for r in results:
+        if isinstance(r, tuple):
+            sid, per_type = r
+            per_type = {t: per_type.get(t, 0) for t in _PM_TYPES}
+            per_type["total"] = sum(per_type.values())
+            counts[sid] = per_type
+            for t in _PM_TYPES:
+                by_type[t] += per_type[t]
+
+    return {
+        "counts": counts,
+        "by_type": by_type,
+        "total": sum(by_type.values()),
+        "stations_count": len(station_ids),
+    }
+
 
 @router.delete("/pmreport/{report_id}")
 async def delete_pmreport(

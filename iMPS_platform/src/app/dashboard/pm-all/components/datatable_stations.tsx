@@ -226,6 +226,38 @@ export function SearchDataTables() {
 
     const [pmReports, setPmReports] = useState<Map<string, PMReportData[]>>(new Map());
     const [pmLoading, setPmLoading] = useState<Set<string>>(new Set());
+    const [pmCounts, setPmCounts] = useState<Map<string, Record<string, number>>>(new Map());
+    const [pmByType, setPmByType] = useState<Record<string, number>>({});
+    const [pmTotal, setPmTotal] = useState<number>(0);
+    const [pmCountsLoading, setPmCountsLoading] = useState(true);
+    // type ที่เลือกจากการ์ดด้านบน (default = CHARGER) → กรองคอลัมน์ + รายการที่ขยาย
+    const [typeFilter, setTypeFilter] = useState<string>("CHARGER");
+
+    // นับจำนวนเอกสาร PM (ต่อสถานี + แยกตาม type) — endpoint count โดยเฉพาะ
+    useEffect(() => {
+        let stopped = false;
+        (async () => {
+            try {
+                const res = await apiFetch(`/pm-reports/counts`);
+                if (!res.ok) return;
+                const json = await res.json();
+                const counts = new Map<string, Record<string, number>>();
+                Object.entries(json.counts ?? {}).forEach(([sid, obj]) => {
+                    counts.set(sid, (obj as Record<string, number>) ?? {});
+                });
+                if (!stopped) {
+                    setPmCounts(counts);
+                    setPmByType(json.by_type ?? {});
+                    setPmTotal(Number(json.total) || 0);
+                }
+            } catch (e) {
+                console.error("Failed to fetch PM counts:", e);
+            } finally {
+                if (!stopped) setPmCountsLoading(false);
+            }
+        })();
+        return () => { stopped = true; };
+    }, []);
 
     const fetchPMReports = async (stationId: string) => {
         if (pmReports.has(stationId) || pmLoading.has(stationId)) return;
@@ -372,7 +404,7 @@ export function SearchDataTables() {
                 updateSuccess: "อัปเดตสำเร็จ", createSuccess: "สร้างสำเร็จ", deleteSuccess: "ลบสำเร็จ",
                 chargerDeleted: "ลบตู้ชาร์จแล้ว", chargerCreated: "สร้างตู้ชาร์จสำเร็จ",
                 chargerUpdated: "อัปเดตตู้ชาร์จสำเร็จ", stationUpdated: "อัปเดตสถานีสำเร็จ",
-                available: "พร้อมใช้งาน", availableOf: "หัว",
+                available: "พร้อมใช้งาน", availableOf: "หัว", pmReportCount: "จำนวน PM",
                 stationInfo: "ข้อมูลสถานี", chargerInfo: "ข้อมูลตู้ชาร์จ",
                 upload: "เลือกรูป", noImages: "ยังไม่มีรูป",
                 stationImages: "รูปภาพสถานี", chargerImages: "รูปภาพ",
@@ -402,7 +434,7 @@ export function SearchDataTables() {
                 updateSuccess: "Updated successfully", createSuccess: "Created successfully", deleteSuccess: "Deleted successfully",
                 chargerDeleted: "Charger deleted", chargerCreated: "Charger created successfully",
                 chargerUpdated: "Charger updated successfully", stationUpdated: "Station updated successfully",
-                available: "Available", availableOf: "heads",
+                available: "Available", availableOf: "heads", pmReportCount: "PM Reports",
                 stationInfo: "Station Information", chargerInfo: "Charger Information",
                 upload: "Browse", noImages: "No images yet",
                 stationImages: "Station Images", chargerImages: "Images",
@@ -882,11 +914,24 @@ export function SearchDataTables() {
             cell: (info: any) => <span className="tw-font-semibold tw-text-blue-gray-800">{info.getValue()}</span>,
         },
         {
+            id: "pm_count", header: () => `${t.pmReportCount} · ${typeFilter}`, size: 140,
+            accessorFn: (row: StationRow) => pmCounts.get(row.station_id)?.[typeFilter] ?? 0,
+            cell: (info: any) => {
+                const n = (info.getValue() as number) ?? 0;
+                return (
+                    <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-lg tw-text-xs tw-font-bold ${n > 0 ? "tw-bg-blue-50 tw-text-blue-700" : "tw-bg-blue-gray-50 tw-text-blue-gray-400"}`}>
+                        <i className="fa fa-file-alt tw-text-[10px]" />
+                        {n}
+                    </span>
+                );
+            },
+        },
+        {
             id: "username", header: () => t.owner,
             accessorFn: (row: StationRow) => row.username ?? "-",
             cell: (info: any) => <span className="tw-text-blue-gray-600">{info.getValue()}</span>,
         },
-    ], [me, isAdmin, t]);
+    ], [me, isAdmin, t, pmCounts, typeFilter]);
 
     const table = useReactTable({
         data: filteredDataByStatus, columns,
@@ -1043,25 +1088,30 @@ export function SearchDataTables() {
                         <button type="button" onClick={() => setStatusFilter("all")} className="tw-text-sm tw-text-blue-600 hover:tw-underline">{lang === "th" ? "ล้างตัวกรอง" : "Clear"}</button>
                     </div>
                 )}
-                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-4 tw-gap-2.5 sm:tw-gap-3">
-                    {loading ? (<>{Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}</>) : (
+                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 lg:tw-grid-cols-5 tw-gap-2.5 sm:tw-gap-3">
+                    {pmCountsLoading ? (<>{Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)}</>) : (
                         <>
-                            <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
-                                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-                                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-blue-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-blue-400/20"><span className="tw-text-base">📍</span></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">{lang === "th" ? "สถานี" : "Stations"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">{data.length}</div></div>
-                            </div>
-                            <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
-                                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-                                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-bg-amber-500/20 tw-flex tw-items-center tw-justify-center tw-ring-1 tw-ring-amber-400/20"><BoltIcon className="tw-h-4 tw-w-4 tw-text-amber-400" /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">{lang === "th" ? "ตู้ชาร์จ" : "Chargers"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-text-white tw-tabular-nums tw-tracking-tight tw-leading-none">{data.reduce((sum, s) => sum + s.chargers.length, 0)}</div></div>
-                            </div>
-                            <div onClick={() => setStatusFilter((prev) => (prev === "online" ? "all" : "online"))} className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "online" ? "tw-ring-green-400 tw-scale-[1.02]" : "tw-ring-white/10"}`}>
-                                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-                                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.25)' }}><span className="tw-relative tw-flex tw-h-2.5 tw-w-2.5"><span className="tw-animate-ping tw-absolute tw-inline-flex tw-h-full tw-w-full tw-rounded-full tw-opacity-75" style={{ background: '#34d399' }} /><span className="tw-relative tw-inline-flex tw-rounded-full tw-h-2.5 tw-w-2.5" style={{ background: '#34d399' }} /></span></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ออนไลน์" : "Online"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#34d399' }}>{data.reduce((sum, s) => sum + s.chargers.filter(c => c.status).length, 0)}</div></div>
-                            </div>
-                            <div onClick={() => setStatusFilter((prev) => (prev === "offline" ? "all" : "offline"))} className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "offline" ? "tw-ring-red-400 tw-scale-[1.02]" : "tw-ring-white/10"}`}>
-                                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
-                                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.25)' }}><span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#f87171' }} /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ออฟไลน์" : "Offline"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#f87171' }}>{data.reduce((sum, s) => sum + s.chargers.filter(c => !c.status).length, 0)}</div></div>
-                            </div>
+                            {([
+                                { key: "CHARGER", label: lang === "th" ? "ตู้ชาร์จ" : "Charger", emoji: "⚡", color: "rgba(59,130,246,0.18)", ring: "rgba(96,165,250,0.25)", num: "#60a5fa" },
+                                { key: "MDB", label: "MDB", emoji: "🔌", color: "rgba(168,85,247,0.18)", ring: "rgba(192,132,252,0.25)", num: "#c084fc" },
+                                { key: "CCB", label: "CCB", emoji: "🧰", color: "rgba(249,115,22,0.18)", ring: "rgba(251,146,60,0.25)", num: "#fb923c" },
+                                { key: "CB-BOX", label: "CB-Box", emoji: "📦", color: "rgba(20,184,166,0.18)", ring: "rgba(45,212,191,0.25)", num: "#2dd4bf" },
+                                { key: "STATION", label: lang === "th" ? "สถานี" : "Station", emoji: "🏢", color: "rgba(148,163,184,0.18)", ring: "rgba(203,213,225,0.25)", num: "#cbd5e1" },
+                            ] as const).map((c) => (
+                                <div key={c.key} onClick={() => setTypeFilter(c.key)} role="button" aria-pressed={typeFilter === c.key} className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${typeFilter === c.key ? "tw-scale-[1.02]" : "tw-ring-white/10"}`} style={typeFilter === c.key ? { boxShadow: `0 0 0 2px ${c.num}` } : undefined}>
+                                    <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+                                    <div className="tw-relative tw-z-10">
+                                        <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2">
+                                            <div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: c.color, borderColor: c.ring }}>
+                                                <span className="tw-text-base">{c.emoji}</span>
+                                            </div>
+                                            <span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-text-white/40 tw-uppercase tw-tracking-wider">{c.label}</span>
+                                        </div>
+                                        <div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: c.num }}>{pmByType[c.key] ?? 0}</div>
+                                        <div className="tw-mt-1 tw-text-[10px] tw-text-white/30">{lang === "th" ? "เอกสาร PM" : "PM docs"}</div>
+                                    </div>
+                                </div>
+                            ))}
                         </>
                     )}
                 </div>
@@ -1111,7 +1161,7 @@ export function SearchDataTables() {
                                         {row.getIsExpanded() && (
                                             <ChargersExpandedSection
                                                 stationId={row.original.station_id}
-                                                reports={pmReports.get(row.original.station_id) ?? []}
+                                                reports={(pmReports.get(row.original.station_id) ?? []).filter((r) => r.pm_type === typeFilter)}
                                                 isLoading={pmLoading.has(row.original.station_id)}
                                                 canDelete={me?.username === "Thatsawan Snongphan"}
                                                 onDelete={(report) => handleDeleteReport(report, row.original.station_id)}
