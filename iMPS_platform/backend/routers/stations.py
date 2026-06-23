@@ -79,6 +79,51 @@ async def get_owners():
     return {"owners": owners}
 
 
+@router.get("/maximo/locations")
+async def get_maximo_locations(
+    level: str = Query("charger", description="ระดับ location: 'station' (ไม่มี -EV ต่อท้าย) หรือ 'charger' (มี -EV)"),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดึงรายการ Maximo location สำหรับ dropdown (location + description)
+
+    - level=charger : location ที่มี -EV (เช่น HMP0002-EV-BTL01GU001) — ค่า default
+    - level=station : station root ที่ไม่มี -EV ต่อท้าย (เช่น HMP0002)
+                      derive จาก prefix ของ EV-family แล้ว query description กลับ
+    """
+    from services.maximo import (
+        query_locations, query_locations_by_codes, MAXIMO_ENABLED,
+    )
+
+    if not MAXIMO_ENABLED:
+        return {"enabled": False, "locations": []}
+
+    # EV-family (ทุก location ที่มี -EV)
+    ev_members = await query_locations("%-EV%")
+    if ev_members is None:
+        raise HTTPException(status_code=502, detail="Maximo query failed")
+
+    if level == "station":
+        # station code = ส่วนหน้าก่อน "-EV" (เช่น "HMP0002-EV-BTL01..." -> "HMP0002")
+        codes = sorted({
+            (m.get("location") or "").split("-EV")[0]
+            for m in ev_members
+            if "-EV" in (m.get("location") or "")
+        } - {""})
+        members = await query_locations_by_codes(codes)
+        if members is None:
+            raise HTTPException(status_code=502, detail="Maximo query failed")
+    else:
+        members = ev_members
+
+    locations = [
+        {"location": m.get("location", ""), "description": m.get("description", "")}
+        for m in members
+        if m.get("location")
+    ]
+    return {"enabled": True, "locations": locations}
+
+
 async def latest_onoff(sn: str) -> Dict[str, Any]:
     try:
         coll = charger_onoff[sn]
