@@ -3,107 +3,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { apiFetch } from "@/utils/api";
+import {
+  CMRow, Period, ActiveFilters, STATUS_LABELS,
+  normalizeStatus, statusBadge, filterByPeriod, applyFilters, applySearch, groupCount,
+} from "@/utils/cm-dashboard";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type CMRow = {
-  id: string;
-  station_id: string;
-  station_name: string;
-  status: string;
-  faulty_equipment: string;
-  cause: string;
-  severity: string;
-  cm_date: string | null;
-  reported_by: string;
-  inspector: string;
-  issue_id: string;
-  doc_name: string;
-};
-
-type Period = "yearly" | "monthly" | "weekly";
-
-type ActiveFilters = {
-  status: string | null;
-  equipment: string | null;
-  severity: string | null;
-  station: string | null;
-};
-
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const STATUS_LABELS = { completed: "เสร็จสิ้น", in_progress: "รอดำเนินการ", open: "รอจัดซื้อ" } as const;
 const DONUT_COLORS = ["#22c55e", "#f43f5e", "#f97316"];
 const EQUIPMENT_COLORS = ["#3b82f6","#f43f5e","#f97316","#a855f7","#06b6d4","#eab308","#10b981","#64748b","#ec4899","#14b8a6"];
 const PAGE_SIZE = 15;
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function normalizeStatus(s: string): keyof typeof STATUS_LABELS {
-  const v = (s || "").trim().toLowerCase().replace(/[-_\s]+/g, " ");
-  if (v === "closed" || v === "close") return "completed";
-  if (v === "in progress" || v === "inprogress") return "in_progress";
-  return "open";
-}
-
-function statusBadge(status: string) {
-  const s = normalizeStatus(status);
-  if (s === "completed") return { bg: "#dcfce7", text: "#15803d", label: "Closed" };
-  if (s === "in_progress") return { bg: "#fce7f3", text: "#be185d", label: "In Progress" };
-  return { bg: "#ffedd5", text: "#c2410c", label: "Open" };
-}
-
-function filterByPeriod(rows: CMRow[], period: Period): CMRow[] {
-  const now = new Date();
-  return rows.filter((r) => {
-    if (!r.cm_date) return period === "yearly";
-    const d = new Date(r.cm_date);
-    if (isNaN(d.getTime())) return period === "yearly";
-    if (period === "weekly") return (now.getTime() - d.getTime()) / 86400000 <= 7;
-    if (period === "monthly") return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-    return d.getFullYear() === now.getFullYear();
-  });
-}
-
-function applyFilters(rows: CMRow[], filters: ActiveFilters, exclude?: keyof ActiveFilters): CMRow[] {
-  return rows.filter((r) => {
-    if (filters.status && exclude !== "status") {
-      if (STATUS_LABELS[normalizeStatus(r.status)] !== filters.status) return false;
-    }
-    if (filters.equipment && exclude !== "equipment") {
-      if ((r.faulty_equipment || "Unknown") !== filters.equipment) return false;
-    }
-    if (filters.severity && exclude !== "severity") {
-      if ((r.severity || "Unknown") !== filters.severity) return false;
-    }
-    if (filters.station && exclude !== "station") {
-      if ((r.station_name || r.station_id || "Unknown") !== filters.station) return false;
-    }
-    return true;
-  });
-}
-
-function applySearch(rows: CMRow[], q: string): CMRow[] {
-  if (!q.trim()) return rows;
-  const lq = q.trim().toLowerCase();
-  return rows.filter((r) =>
-    [r.station_name, r.station_id, r.issue_id, r.faulty_equipment,
-     r.severity, r.cause, r.inspector, r.reported_by, r.status]
-      .some((v) => (v || "").toLowerCase().includes(lq))
-  );
-}
-
-function groupCount(rows: CMRow[], key: keyof CMRow): { keys: string[]; vals: number[] } {
-  const map: Record<string, number> = {};
-  for (const r of rows) {
-    const v = (r[key] as string) || "Unknown";
-    map[v] = (map[v] || 0) + 1;
-  }
-  const sorted = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 9);
-  return { keys: sorted.map((e) => e[0]), vals: sorted.map((e) => e[1]) };
-}
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -215,8 +126,11 @@ function Pagination({ page, total, pageSize, onChange }: {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+const FETCH_LIMIT = 10000;
+
 export default function CMDashboardPage() {
   const [rows, setRows] = useState<CMRow[]>([]);
+  const [totalInDB, setTotalInDB] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>("yearly");
@@ -230,10 +144,11 @@ export default function CMDashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiFetch("/cmreport/list-all");
+        const res = await apiFetch(`/cmreport/list-all?limit=${FETCH_LIMIT}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.detail || `HTTP ${res.status}`);
         setRows(Array.isArray(json?.items) ? json.items : []);
+        setTotalInDB(json?.total ?? 0);
       } catch (e) {
         setError(e instanceof Error ? e.message : "โหลดข้อมูลไม่สำเร็จ");
         setRows([]);
@@ -456,6 +371,16 @@ export default function CMDashboardPage() {
 
   return (
     <div className="tw-min-h-screen tw-bg-gray-50/60 tw-p-6">
+
+      {/* ── Volume warning (> FETCH_LIMIT records) ── */}
+      {totalInDB > FETCH_LIMIT && (
+        <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-700">
+          <span className="tw-text-base">⚡</span>
+          <span>
+            ฐานข้อมูลมี <strong>{totalInDB.toLocaleString()}</strong> รายการ — แสดงผล {FETCH_LIMIT.toLocaleString()} รายการล่าสุด กราฟอาจไม่ครบทั้งหมด
+          </span>
+        </div>
+      )}
 
       {/* ── Error banner ── */}
       {error && (
