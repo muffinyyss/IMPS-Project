@@ -39,12 +39,12 @@ SMTP_PASS = os.getenv("SMTP_PASS", "depllvpufjwtpysc")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
 # ─── MongoDB ─────────────────────────────────────────────────
-client1 = MongoClient(
+_MONGO_URI = os.getenv(
+    "MONGO_URI",
     "mongodb://imps_platform:eds_imps@203.154.130.132:27017/?authSource=admin&directConnection=true"
 )
-client = AsyncIOMotorClient(
-    "mongodb://imps_platform:eds_imps@203.154.130.132:27017/?authSource=admin&directConnection=true"
-)
+client1 = MongoClient(_MONGO_URI)
+client = AsyncIOMotorClient(_MONGO_URI)
 
 deviceDB = client["utilizationFactor"]
 settingDB = client["settingParameter"]
