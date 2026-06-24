@@ -221,7 +221,7 @@ const MonthSelect = ({ value, onChange, options }: {
     const current = options.find((o) => o.value === value);
 
     return (
-        <div ref={ref} className="tw-relative tw-w-full sm:tw-w-56">
+        <div ref={ref} className="tw-relative tw-w-full">
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
@@ -301,11 +301,10 @@ export function SearchDataTables() {
     const [pmCountsLoading, setPmCountsLoading] = useState(true);
     // type ที่เลือกจากการ์ดด้านบน (default = CHARGER) → กรองคอลัมน์ + รายการที่ขยาย
     const [typeFilter, setTypeFilter] = useState<string>("CHARGER");
-    // เดือนที่เลือก (default = เดือนปัจจุบัน, "all" = ทุกเดือน) → กรองจำนวนเอกสารตามเดือน (อิง pm_date)
-    const [selectedMonth, setSelectedMonth] = useState<string>(() => {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    });
+    // ปี/เดือนที่เลือก → กรองจำนวนเอกสาร (อิง pm_date)
+    // selectedYear: "YYYY" หรือ "all" (ทุกปี) | selectedMonth: "MM" หรือ "all" (ทุกเดือนของปีนั้น)
+    const [selectedYear, setSelectedYear] = useState<string>(() => String(new Date().getFullYear()));
+    const [selectedMonth, setSelectedMonth] = useState<string>(() => String(new Date().getMonth() + 1).padStart(2, "0"));
     // เดือนที่มีเอกสาร PM จริง (YYYY-MM, ใหม่→เก่า) — ใช้สร้างตัวเลือก dropdown
     const [availableMonths, setAvailableMonths] = useState<string[]>([]);
 
@@ -328,9 +327,11 @@ export function SearchDataTables() {
         setPmCountsLoading(true);
         (async () => {
             try {
-                const url = selectedMonth === "all"
+                const url = selectedYear === "all"
                     ? `/pm-reports/counts`
-                    : `/pm-reports/counts?month=${encodeURIComponent(selectedMonth)}`;
+                    : selectedMonth === "all"
+                        ? `/pm-reports/counts?year=${encodeURIComponent(selectedYear)}`
+                        : `/pm-reports/counts?month=${encodeURIComponent(`${selectedYear}-${selectedMonth}`)}`;
                 const res = await apiFetch(url);
                 if (!res.ok) return;
                 const json = await res.json();
@@ -350,7 +351,7 @@ export function SearchDataTables() {
             }
         })();
         return () => { stopped = true; };
-    }, [selectedMonth]);
+    }, [selectedYear, selectedMonth]);
 
     const fetchPMReports = async (stationId: string) => {
         if (pmReports.has(stationId) || pmLoading.has(stationId)) return;
@@ -438,25 +439,54 @@ export function SearchDataTables() {
         return () => { window.removeEventListener("language:change", handleLangChange as EventListener); };
     }, []);
 
-    // ตัวเลือกเดือน: "ทุกเดือน" + เฉพาะเดือนที่มีเอกสารจริง (เริ่มจากเดือนล่าสุดที่มีเอกสาร)
-    const monthOptions = useMemo(() => {
-        const thMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
-        const enMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const labelOf = (ym: string) => {
-            const [ys, ms] = ym.split("-");
-            const y = parseInt(ys, 10);
-            const m = parseInt(ms, 10) - 1;
-            if (isNaN(y) || m < 0 || m > 11) return ym;
-            return lang === "th" ? `${thMonths[m]} ${y + 543}` : `${enMonths[m]} ${y}`;
-        };
-        // เผื่อเดือนที่เลือกอยู่ (เช่น เดือนปัจจุบันที่ยังไม่มีเอกสาร) ให้แสดงในรายการเสมอ
-        const set = new Set(availableMonths);
-        if (selectedMonth !== "all") set.add(selectedMonth);
-        const months = Array.from(set).sort().reverse();
-        const opts: { value: string; label: string }[] = [{ value: "all", label: lang === "th" ? "ทุกเดือน" : "All months" }];
-        for (const ym of months) opts.push({ value: ym, label: labelOf(ym) });
+    const thMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+    const enMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    // ตัวเลือกปี: "ทุกปี" + ตั้งแต่ปี 2025 ถึงปีปัจจุบัน/ปีล่าสุดที่มีเอกสาร
+    const yearOptions = useMemo(() => {
+        const START = 2025;
+        const dataYears = availableMonths.map((m) => parseInt(m.slice(0, 4), 10)).filter((n) => !isNaN(n));
+        const end = Math.max(START, new Date().getFullYear(), ...(dataYears.length ? dataYears : [START]));
+        const set = new Set<string>();
+        for (let y = START; y <= end; y++) set.add(String(y));
+        if (selectedYear !== "all") set.add(selectedYear);
+        const years = Array.from(set).filter(Boolean).sort().reverse();
+        const opts: { value: string; label: string }[] = [{ value: "all", label: lang === "th" ? "ทุกปี" : "All years" }];
+        for (const y of years) {
+            const yi = parseInt(y, 10);
+            opts.push({ value: y, label: lang === "th" ? String(yi + 543) : y });
+        }
         return opts;
-    }, [lang, availableMonths, selectedMonth]);
+    }, [lang, availableMonths, selectedYear]);
+
+    // ตัวเลือกเดือน: "ทุกเดือน" + ครบทั้ง 12 เดือน (ม.ค.–ธ.ค.)
+    const monthOptions = useMemo(() => {
+        const opts: { value: string; label: string }[] = [{ value: "all", label: lang === "th" ? "ทุกเดือน" : "All months" }];
+        if (selectedYear === "all") return opts;
+        for (let i = 0; i < 12; i++) {
+            const mm = String(i + 1).padStart(2, "0");
+            opts.push({ value: mm, label: lang === "th" ? thMonths[i] : enMonths[i] });
+        }
+        return opts;
+    }, [lang, selectedYear]);
+
+    // prefix ของ pm_date ตามช่วงที่เลือก (ใช้กรอง report ฝั่ง client)
+    const pmDatePrefix = useMemo(() => {
+        if (selectedYear === "all") return "";
+        if (selectedMonth === "all") return `${selectedYear}-`;
+        return `${selectedYear}-${selectedMonth}`;
+    }, [selectedYear, selectedMonth]);
+
+    // ป้ายช่วงเวลาที่เลือก (ใช้ในหัวการ์ด)
+    const periodLabel = useMemo(() => {
+        if (selectedYear === "all") return lang === "th" ? "ทุกปี" : "All years";
+        const yi = parseInt(selectedYear, 10);
+        const yLabel = lang === "th" ? String(yi + 543) : selectedYear;
+        if (selectedMonth === "all") return yLabel;
+        const mi = parseInt(selectedMonth, 10) - 1;
+        const mLabel = mi >= 0 && mi < 12 ? (lang === "th" ? thMonths[mi] : enMonths[mi]) : selectedMonth;
+        return `${mLabel} ${yLabel}`;
+    }, [lang, selectedYear, selectedMonth]);
 
     const handleDeleteReport = async (report: PMReportData, stationId: string) => {
         if (!confirm(lang === "th" ? `ลบรายงาน "${report.document_name}" ใช่หรือไม่?` : `Delete report "${report.document_name}"?`)) return;
@@ -1225,22 +1255,23 @@ export function SearchDataTables() {
             </div>
 
             <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4">
-                <CardHeader floated={false} shadow={false} className="tw-!px-4 sm:tw-!px-6 tw-!py-5 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30 tw-rounded-t-xl">
+                <CardHeader floated={false} shadow={false} className="tw-!px-4 sm:tw-!px-6 tw-!py-5 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30 tw-rounded-t-xl !tw-overflow-visible">
                     <div className="tw-flex tw-items-start tw-justify-between tw-gap-3">
                         <div className="tw-min-w-0 tw-flex-1">
                             <Typography color="blue-gray" variant="h5" className="tw-text-lg sm:tw-text-xl">
                                 {lang === "th" ? "สรุปเอกสาร PM" : "PM Document Summary"}
-                                {selectedMonth !== "all" && (
-                                    <span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-blue-gray-400">
-                                        ({monthOptions.find((o) => o.value === selectedMonth)?.label ?? selectedMonth} · {pmTotal} {lang === "th" ? "เอกสาร" : "docs"})
-                                    </span>
-                                )}
+                                <span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-blue-gray-400">
+                                    ({periodLabel} · {pmTotal} {lang === "th" ? "เอกสาร" : "docs"})
+                                </span>
                             </Typography>
                             <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm">
                                 {lang === "th" ? "จำนวนเอกสาร PM แต่ละสถานี — เลือกชนิดจากการ์ดด้านบน และกรองตามเดือนได้" : "PM document counts per station — pick a type from the cards above and filter by month"}
                             </Typography>
                         </div>
-                        <div className="tw-w-40 sm:tw-w-56 tw-flex-shrink-0"><MonthSelect value={selectedMonth} onChange={setSelectedMonth} options={monthOptions} /></div>
+                        <div className="tw-flex tw-items-center tw-gap-2 tw-flex-shrink-0">
+                            <div className="tw-w-28 sm:tw-w-32"><MonthSelect value={selectedYear} onChange={(v) => { setSelectedYear(v); setSelectedMonth("all"); }} options={yearOptions} /></div>
+                            <div className="tw-w-28 sm:tw-w-36"><MonthSelect value={selectedMonth} onChange={setSelectedMonth} options={monthOptions} /></div>
+                        </div>
                     </div>
                 </CardHeader>
                 {notice && (<div className="tw-px-4 tw-pt-4"><Alert color={notice.type === "success" ? "green" : "red"} onClose={() => setNotice(null)}>{notice.msg}</Alert></div>)}
@@ -1286,7 +1317,7 @@ export function SearchDataTables() {
                                         {row.getIsExpanded() && (
                                             <ChargersExpandedSection
                                                 stationId={row.original.station_id}
-                                                reports={(pmReports.get(row.original.station_id) ?? []).filter((r) => r.pm_type === typeFilter && (selectedMonth === "all" || String(r.pm_date ?? "").startsWith(selectedMonth)))}
+                                                reports={(pmReports.get(row.original.station_id) ?? []).filter((r) => r.pm_type === typeFilter && (pmDatePrefix === "" || String(r.pm_date ?? "").startsWith(pmDatePrefix)))}
                                                 isLoading={pmLoading.has(row.original.station_id)}
                                                 canDelete={me?.username === "Thatsawan Snongphan"}
                                                 onDelete={(report) => handleDeleteReport(report, row.original.station_id)}

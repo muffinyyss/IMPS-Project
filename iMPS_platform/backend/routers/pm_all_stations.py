@@ -321,19 +321,24 @@ async def _count_collection(coll, filt: dict) -> int:
 @router.get("/pm-reports/counts")
 async def get_pm_report_counts(
     month: Optional[str] = Query(None, description="กรองตามเดือน รูปแบบ YYYY-MM"),
+    year: Optional[str] = Query(None, description="กรองตามปี รูปแบบ YYYY (ถ้าไม่ได้ระบุ month)"),
     current: UserClaims = Depends(get_current_user),
 ):
     """
     คืนจำนวนเอกสาร PM (report + upload, ครบทุก source):
       { counts: {station_id: {...by type, total}}, by_type: {TYPE: n}, total: n }
-    ถ้าระบุ month=YYYY-MM จะนับเฉพาะเอกสารของเดือนนั้น (อิงจาก pm_date)
+    - month=YYYY-MM → นับเฉพาะเดือนนั้น
+    - year=YYYY     → นับทั้งปีนั้น (เมื่อไม่ได้ระบุ month)
+    (อิงจาก pm_date)
     """
     loop = asyncio.get_event_loop()
 
-    # filter ตามเดือน (pm_date เป็น string "YYYY-MM-DD")
+    # filter ตามเดือน/ปี (pm_date เป็น string "YYYY-MM-DD") — month มาก่อน year
     date_filter: dict = {}
     if month and re.fullmatch(r"\d{4}-\d{2}", month):
         date_filter = {"pm_date": {"$regex": f"^{re.escape(month)}"}}
+    elif year and re.fullmatch(r"\d{4}", year):
+        date_filter = {"pm_date": {"$regex": f"^{re.escape(year)}-"}}
 
     try:
         stations = await loop.run_in_executor(
