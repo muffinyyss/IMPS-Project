@@ -710,7 +710,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id 
         try {
             const locationText = await getCachedLocation();
             const fileWithTimestamp = await addTimestampToImage(file, locationText);
-            const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
+            const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
             if (!ref) return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "" };
             const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -964,23 +964,25 @@ export default function MDBPMForm() {
     const addQ4Item = () => { const i = q4Items.length + 1; setQ4Items(prev => [...prev, { key: `r4_${i}`, label: getDynamicLabel.breakerMain(i, lang) }]); };
     const removeQ4Item = (idx: number) => {
         if (q4Items.length <= 1) return;
-        const keyToRemove = q4Items[idx].key;
-        const newItems = q4Items.filter((_, i) => i !== idx).map((_, i) => ({ key: `r4_${i + 1}`, label: getDynamicLabel.breakerMain(i + 1, lang) }));
+        const oldKeys = q4Items.map(it => it.key);
+        const remainingOldKeys = oldKeys.filter((_, i) => i !== idx);
+        const newItems = remainingOldKeys.map((_, i) => ({ key: `r4_${i + 1}`, label: getDynamicLabel.breakerMain(i + 1, lang) }));
         setQ4Items(newItems);
-        setRows(prev => { const n = { ...prev }; delete n[keyToRemove]; return n; });
-        setM4State(prev => { const n = { ...prev }; delete n[keyToRemove]; return n; });
-        setPhotos(prev => { const n = { ...prev }; delete n[keyToRemove]; return n; });
+        setRows(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r4_${i + 1}`] = prev[oldKey]; }); return n; });
+        setM4State(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r4_${i + 1}`] = prev[oldKey]; }); return n; });
+        setPhotos(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r4_${i + 1}`] = prev[oldKey]; }); return n; });
     };
 
     const addQ6Item = () => { if (q6Items.length >= 4) return; const i = q6Items.length + 1; setQ6Items(prev => [...prev, { key: `r6_${i}`, label: getDynamicLabel.breakerCCB(i, lang) }]); };
     const removeQ6Item = (idx: number) => {
         if (q6Items.length <= 1) return;
-        const keyToRemove = q6Items[idx].key;
-        const newItems = q6Items.filter((_, i) => i !== idx).map((_, i) => ({ key: `r6_${i + 1}`, label: getDynamicLabel.breakerCCB(i + 1, lang) }));
+        const oldKeys = q6Items.map(it => it.key);
+        const remainingOldKeys = oldKeys.filter((_, i) => i !== idx);
+        const newItems = remainingOldKeys.map((_, i) => ({ key: `r6_${i + 1}`, label: getDynamicLabel.breakerCCB(i + 1, lang) }));
         setQ6Items(newItems);
-        setRows(prev => { const n = { ...prev }; delete n[keyToRemove]; return n; });
-        setM6State(prev => { const n = { ...prev }; delete n[keyToRemove]; return n; });
-        setPhotos(prev => { const n = { ...prev }; delete n[keyToRemove]; return n; });
+        setRows(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r6_${i + 1}`] = prev[oldKey]; }); return n; });
+        setM6State(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r6_${i + 1}`] = prev[oldKey]; }); return n; });
+        setPhotos(prev => { const n = { ...prev }; oldKeys.forEach(k => delete n[k]); remainingOldKeys.forEach((oldKey, i) => { if (prev[oldKey] !== undefined) n[`r6_${i + 1}`] = prev[oldKey]; }); return n; });
     };
 
     // ==================== EFFECTS ====================

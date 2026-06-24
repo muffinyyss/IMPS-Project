@@ -739,7 +739,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id 
         try {
             const locationText = await getCachedLocation();
             const fileWithTimestamp = await addTimestampToImage(file, locationText);
-            const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
+            const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
             if (!ref) return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "" };
             const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -857,6 +857,13 @@ export default function CBBOXPMForm() {
 
     const initialPhotos: Record<number, PhotoItem[]> = Object.fromEntries(QUESTIONS.filter(q => q.hasPhoto).map(q => [q.no, []])) as Record<number, PhotoItem[]>;
     const [photos, setPhotos] = useState<Record<number, PhotoItem[]>>(initialPhotos);
+    const photosRef = useRef(photos);
+    useEffect(() => { photosRef.current = photos; }, [photos]);
+    useEffect(() => () => {
+        Object.values(photosRef.current).flat().forEach((p: any) => {
+            if (typeof p?.preview === "string" && p.preview.startsWith("blob:")) URL.revokeObjectURL(p.preview);
+        });
+    }, []);
 
     const [rowsPre, setRowsPre] = useState<Record<string, { pf: PF; remark: string }>>({});
     const [rows, setRows] = useState<Record<string, { pf: PF; remark: string }>>(() => {
@@ -1153,7 +1160,7 @@ export default function CBBOXPMForm() {
                         {hasMeasure && <div className={`tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>{renderMeasureGrid(q.no)}</div>}
                         {q.no === 1 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ1} onChange={e => setDropdownQ1(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectPowerSource", lang)}</option>{DROPDOWN_Q1_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select></div>}
                         {q.no === 2 && <div className={`tw-mb-4 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}><select value={dropdownQ2} onChange={e => setDropdownQ2(e.target.value)} className="tw-w-full tw-max-w-sm tw-px-3 tw-py-2 tw-rounded-lg tw-border tw-border-gray-300 tw-bg-white tw-text-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500/30"><option value="">{t("selectDevice", lang)}</option>{DROPDOWN_Q2_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt[lang]}</option>)}</select>{isNA && <Typography variant="small" className="tw-text-amber-700 tw-mt-2">{lang === "th" ? "* ข้อ 5, 6, 7 จะเป็น N/A ตามข้อนี้" : "* Q5, 6, 7 will be N/A accordingly"}</Typography>}</div>}
-                        <div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={3} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div>
+                        <div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={3} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full" /></div>
                     </div>
                 </SectionCard>
             );
@@ -1165,8 +1172,8 @@ export default function CBBOXPMForm() {
             return (
                 <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
                     {q.hasPhoto && <div className="tw-mb-3"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
-                    {q.no === 1 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("powerSource", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ1 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
-                    {q.no === 2 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("circuitDevice", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ2 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: e.target.value } })} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
+                    {q.no === 1 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("powerSource", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ1 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
+                    {q.no === 2 && <div className="tw-mb-4"><Typography variant="small" className="tw-font-medium tw-text-gray-700 tw-mb-2">{t("circuitDevice", lang)}</Typography><div className="tw-p-3 tw-bg-gray-100 tw-rounded tw-border tw-border-gray-200"><Typography variant="small">{dropdownQ2 || "-"}</Typography></div>{preRemarkElement}<div id={getRemarkIdFromKey(q.no)}><Textarea label={t("remark", lang)} value={rows[q.key]?.remark || ""} onChange={e => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: e.target.value } }))} rows={2} containerProps={{ className: "!tw-min-w-0" }} className="!tw-w-full tw-mt-3" /></div></div>}
                 </SectionCard>
             );
         }
@@ -1177,9 +1184,9 @@ export default function CBBOXPMForm() {
                     label={t("testResult", lang)}
                     value={rows[q.key]?.pf ?? ""}
                     lang={lang}
-                    onChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], pf: v } })}
+                    onChange={v => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], pf: v } }))}
                     remark={rows[q.key]?.remark || ""}
-                    onRemarkChange={v => setRows({ ...rows, [q.key]: { ...rows[q.key], remark: v } })}
+                    onRemarkChange={v => setRows(prev => ({ ...prev, [q.key]: { ...prev[q.key], remark: v } }))}
                     id={getPfIdFromKey(q.no)}
                     remarkId={getRemarkIdFromKey(q.no)}
                     aboveRemark={q.hasPhoto && <div className="tw-pb-4 tw-border-b tw-mb-4 tw-border-gray-100"><PhotoMultiInput photos={photos[q.no] || []} setPhotos={makePhotoSetter(q.no)} max={10} draftKey={currentDraftKey} qNo={q.no} lang={lang} id={getPhotoIdFromKey(q.no)} /></div>}
@@ -1262,7 +1269,8 @@ export default function CBBOXPMForm() {
             const uploadPromises: Promise<void>[] = [];
             Object.entries(photos).forEach(([no, list]) => { const files = (list || []).map(p => p.file).filter(Boolean) as File[]; if (files.length > 0) uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, `g${no}`, files, "post")); });
             if (uploadPromises.length > 0) await Promise.all(uploadPromises);
-            await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
+            const finalizeRes = await fetch(`${API_BASE}/cbboxpmreport/${finalReportId}/finalize`, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, credentials: "include", body: new URLSearchParams({ station_id: stationId }) });
+            if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));
             await clearDraftLocal(postKey);
