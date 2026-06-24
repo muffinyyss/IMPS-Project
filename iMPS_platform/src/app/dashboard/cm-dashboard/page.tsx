@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { apiFetch } from "@/utils/api";
 
@@ -26,10 +26,10 @@ type CMRow = {
 type Period = "yearly" | "monthly" | "weekly";
 
 type ActiveFilters = {
-  status: string | null;      // label from success rate donut
-  equipment: string | null;   // label from equipment pie
-  severity: string | null;    // label from severity bar
-  station: string | null;     // from station bar
+  status: string | null;
+  equipment: string | null;
+  severity: string | null;
+  station: string | null;
 };
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -37,6 +37,7 @@ type ActiveFilters = {
 const STATUS_LABELS = { completed: "เสร็จสิ้น", in_progress: "รอดำเนินการ", open: "รอจัดซื้อ" } as const;
 const DONUT_COLORS = ["#22c55e", "#f43f5e", "#f97316"];
 const EQUIPMENT_COLORS = ["#3b82f6","#f43f5e","#f97316","#a855f7","#06b6d4","#eab308","#10b981","#64748b","#ec4899","#14b8a6"];
+const TABLE_PAGE_SIZE = 15;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -47,12 +48,19 @@ function normalizeStatus(s: string): keyof typeof STATUS_LABELS {
   return "open";
 }
 
+function statusBadge(status: string) {
+  const s = normalizeStatus(status);
+  if (s === "completed") return { bg: "#dcfce7", text: "#15803d", label: "Closed" };
+  if (s === "in_progress") return { bg: "#fce7f3", text: "#be185d", label: "In Progress" };
+  return { bg: "#ffedd5", text: "#c2410c", label: "Open" };
+}
+
 function filterByPeriod(rows: CMRow[], period: Period): CMRow[] {
   const now = new Date();
   return rows.filter((r) => {
-    if (!r.cm_date) return true;
+    if (!r.cm_date) return period === "yearly"; // undated rows only appear in yearly view
     const d = new Date(r.cm_date);
-    if (isNaN(d.getTime())) return true;
+    if (isNaN(d.getTime())) return period === "yearly";
     if (period === "weekly") return (now.getTime() - d.getTime()) / 86400000 <= 7;
     if (period === "monthly") return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
     return d.getFullYear() === now.getFullYear();
@@ -137,25 +145,27 @@ function PeriodTabs({ value, onChange }: { value: Period; onChange: (p: Period) 
 export default function CMDashboardPage() {
   const [rows, setRows] = useState<CMRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>("yearly");
   const [stationFilter, setStationFilter] = useState<string>("All");
   const [filters, setFilters] = useState<ActiveFilters>({ status: null, equipment: null, severity: null, station: null });
-
-  // refs to reset chart selection programmatically
-  const donutRef = useRef<any>(null);
-  const equipRef = useRef<any>(null);
-  const sevRef  = useRef<any>(null);
-  const stationBarRef = useRef<any>(null);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
+      setError(null);
       try {
         const res = await apiFetch("/cmreport/list-all");
         const json = await res.json();
+        if (!res.ok) throw new Error(json?.detail || `HTTP ${res.status}`);
         setRows(Array.isArray(json?.items) ? json.items : []);
-      } catch { setRows([]); }
-      finally { setLoading(false); }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "โหลดข้อมูลไม่สำเร็จ");
+        setRows([]);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
@@ -173,7 +183,6 @@ export default function CMDashboardPage() {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
-  // Base: period + station dropdown
   const stations = useMemo(() => {
     const names = Array.from(new Set(rows.map((r) => r.station_name || r.station_id))).filter(Boolean);
     return ["All", ...names];
@@ -222,13 +231,7 @@ export default function CMDashboardPage() {
   }, [stRows]);
   const stationNames = Object.keys(stationData);
 
-  // ── Table: all filters applied
-  const tableRows = useMemo(() => {
-    const all = applyFilters(periodRows, filters);
-    return [...all].sort((a, b) => (b.cm_date || "").localeCompare(a.cm_date || "")).slice(0, 15);
-  }, [periodRows, filters]);
-
-  // ── KPI stat cards: apply all filters
+  // ── KPI stat cards + table: all filters applied
   const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
   const kpiStats = useMemo(() => {
     let completed = 0, inProgress = 0, open = 0;
@@ -240,6 +243,12 @@ export default function CMDashboardPage() {
     }
     return { total: allFiltered.length, completed, inProgress, open };
   }, [allFiltered]);
+
+  const sortedRows = useMemo(
+    () => [...allFiltered].sort((a, b) => (b.cm_date || "").localeCompare(a.cm_date || "")),
+    [allFiltered]
+  );
+  const tableRows = showAll ? sortedRows : sortedRows.slice(0, TABLE_PAGE_SIZE);
 
   // ─── Chart options ────────────────────────────────────────────────────────
 
@@ -349,15 +358,6 @@ export default function CMDashboardPage() {
     { name: "Closed", data: stationNames.map((n) => stationData[n].closed) },
   ], [stationNames, stationData]);
 
-  // ─── Status badge ─────────────────────────────────────────────────────────
-
-  const statusBadge = (status: string) => {
-    const s = normalizeStatus(status);
-    if (s === "completed") return { bg: "#dcfce7", text: "#15803d", label: "Closed" };
-    if (s === "in_progress") return { bg: "#fce7f3", text: "#be185d", label: "In Progress" };
-    return { bg: "#ffedd5", text: "#c2410c", label: "Open" };
-  };
-
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -370,6 +370,14 @@ export default function CMDashboardPage() {
 
   return (
     <div className="tw-min-h-screen tw-bg-gray-50/60 tw-p-6">
+
+      {/* ── Error banner ── */}
+      {error && (
+        <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-px-4 tw-py-3 tw-text-sm tw-text-red-700">
+          <span className="tw-text-base">⚠️</span>
+          <span>โหลดข้อมูลไม่สำเร็จ: <strong>{error}</strong></span>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <div className="tw-mb-4 tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
@@ -506,13 +514,25 @@ export default function CMDashboardPage() {
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">
             CM Reports
-            <span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-gray-400">({allFiltered.length} รายการ)</span>
+            <span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-gray-400">
+              ({showAll ? allFiltered.length : Math.min(allFiltered.length, TABLE_PAGE_SIZE)}/{allFiltered.length} รายการ)
+            </span>
           </h2>
-          {activeFilterCount > 0 && (
-            <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
-              Clear filters
-            </button>
-          )}
+          <div className="tw-flex tw-items-center tw-gap-3">
+            {allFiltered.length > TABLE_PAGE_SIZE && (
+              <button
+                onClick={() => setShowAll((v) => !v)}
+                className="tw-text-xs tw-font-semibold tw-text-blue-600 hover:tw-text-blue-800 tw-underline"
+              >
+                {showAll ? "แสดงน้อยลง" : `ดูทั้งหมด (${allFiltered.length})`}
+              </button>
+            )}
+            {activeFilterCount > 0 && (
+              <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
+                Clear filters
+              </button>
+            )}
+          </div>
         </div>
         <div className="tw-overflow-hidden tw-rounded-2xl tw-bg-white tw-shadow-sm">
           <div className="tw-overflow-x-auto">

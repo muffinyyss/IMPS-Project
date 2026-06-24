@@ -101,7 +101,7 @@ FastAPI app defined in `backend/main.py`. All configuration (DB connections, JWT
 - `email_watcher` — polls `FaultStatus` DB every 30 s, sends threshold-based email alerts
 - `auto_cm_watcher` — watches for events that auto-generate CM records
 
-**MongoDB databases** (all on `203.154.130.132:27017`, auth `imps_platform:eds_imps`):
+**MongoDB databases** (all on `<MONGO_HOST>:27017`, auth via `MONGO_URI` env var):
 - `iMPS` — core: `stations`, `charger`, `users`
 - `PLC`, `settingParameter`, `utilizationFactor`, `FaultStatus`, `monitorCBM`
 - `MDB`, `MDB_realtime`, `MDB_history`
@@ -141,6 +141,6 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
-Backend uses `os.getenv()` for `MQTT_BROKER`, `MQTT_PORT`, `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`. Defaults are hardcoded in `config.py` as fallbacks.
+Backend uses `os.getenv()` for `MONGO_URI`, `MQTT_BROKER`, `MQTT_PORT`, `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`. Set these in a `.env` file (never commit credentials).
 
 Pipeline MongoDB URI is set in `pipeline/config/settings.py` (`MongoDBConfig.uri`). Switch between local and remote by editing that field directly.
