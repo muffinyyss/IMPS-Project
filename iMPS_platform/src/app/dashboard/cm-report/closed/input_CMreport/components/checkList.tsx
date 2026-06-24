@@ -5,7 +5,7 @@ import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 
-type Severity = "" | "Low" | "Medium" | "High" | "Critical";
+type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
 type Status = "" | "Closed";
 
 type CorrectiveItem = {
@@ -48,7 +48,7 @@ const STATUS_LABEL: Record<Exclude<Status, "">, string> = {
     Closed: "Closed",
 };
 
-const SEVERITY_OPTIONS: Severity[] = ["", "Low", "Medium", "High", "Critical"];
+const SEVERITY_OPTIONS: Severity[] = ["", "Low", "Medium", "High", "Urgent"];
 // const STATUS_OPTIONS: Status[] = ["",  "In Progress", "Closed"];
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";

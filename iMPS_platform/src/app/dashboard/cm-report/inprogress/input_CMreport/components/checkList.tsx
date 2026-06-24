@@ -132,7 +132,7 @@ function base64ToBlobUrl(base64: string): string {
 }
 
 // ==================== TYPES ====================
-type Severity = "" | "Low" | "Medium" | "High" | "Critical";
+type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
 type Status = "" | "Open" | "In Progress" | "Closed";
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
 type PhotoItem = { id: string; file: File | null; preview: string; isServer?: boolean; serverUrl?: string; createdAt?: string; uploadedAtRaw?: string; location?: string; };
@@ -329,6 +329,7 @@ function PhotoUpload({ photos_problem, onAdd, onRemove, max, disabled, lang }: {
 // ==================== SEVERITY COLOR ====================
 function getSeverityColor(severity: string) {
     switch (severity?.toLowerCase()) {
+        case "urgent":
         case "critical": return { dot: "tw-bg-red-500", text: "tw-text-red-700" };
         case "high": return { dot: "tw-bg-orange-500", text: "tw-text-orange-700" };
         case "medium": return { dot: "tw-bg-amber-500", text: "tw-text-amber-700" };
