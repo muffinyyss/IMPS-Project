@@ -790,7 +790,7 @@ function PhotoMultiInput({
         try {
             const locationText = await getCachedLocation();
             const fileWithTimestamp = await addTimestampToImage(file, locationText);
-            const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
+            const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
             if (!ref) return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "" };
             return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref };
@@ -933,6 +933,14 @@ export default function StationPMReport() {
         })
     ) as Record<string, PhotoItem[]>;
     const [photos, setPhotos] = useState<Record<string, PhotoItem[]>>(initialPhotos);
+
+    const photosRef = useRef(photos);
+    useEffect(() => { photosRef.current = photos; }, [photos]);
+    useEffect(() => () => {
+        Object.values(photosRef.current).flat().forEach((p: any) => {
+            if (typeof p?.preview === "string" && p.preview.startsWith("blob:")) URL.revokeObjectURL(p.preview);
+        });
+    }, []);
 
     const [summary, setSummary] = useState<string>("");
     const [stationId, setStationId] = useState<string | null>(null);
@@ -1574,10 +1582,11 @@ export default function StationPMReport() {
             }
             if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
 
-            await fetch(`${API_BASE}/stationpmreport/${finalReportId}/finalize`, {
+            const finalizeRes = await fetch(`${API_BASE}/stationpmreport/${finalReportId}/finalize`, {
                 method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined,
                 credentials: "include", body: new URLSearchParams({ station_id: stationId }),
             });
+            if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
 
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(postKey, p.id)));

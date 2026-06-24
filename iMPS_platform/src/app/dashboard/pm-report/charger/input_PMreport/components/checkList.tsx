@@ -1433,7 +1433,7 @@ function PhotoMultiInput({
         try {
             const locationText = await getCachedLocation();
             const fileWithTimestamp = await addTimestampToImage(file, locationText);
-            const photoId = `${qNo}-${Date.now()}-0-${file.name}`;
+            const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
 
             // ✅ เช็คว่า ref ได้จริงไหม
