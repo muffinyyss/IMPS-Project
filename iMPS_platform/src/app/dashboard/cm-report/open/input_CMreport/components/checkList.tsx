@@ -69,7 +69,7 @@ const T = {
 const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 
 // ==================== TYPES ====================
-type Severity = "" | "Low" | "Medium" | "High" | "Critical";
+type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
 type Status = "" | "Open" | "In Progress";
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
 type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; createdAt?: string; location?: string; };
@@ -77,7 +77,7 @@ type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: str
 type StationPublic = { station_id: string; station_name: string; };
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
-const SEVERITY_OPTIONS: Severity[] = ["", "Low", "Medium", "High", "Critical"];
+const SEVERITY_OPTIONS: Severity[] = ["", "Low", "Medium", "High", "Urgent"];
 const FIXED_EQUIPMENT = ["MDB", "CCB", "CB-BOX", "Station"] as const;
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
@@ -780,7 +780,7 @@ export default function CMOpenForm() {
                                     <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("severity", lang)} <span className="tw-text-red-500">*</span></label>
                                     <div className="tw-relative">
                                         {severity && (
-                                            <span className={`tw-absolute tw-left-3 tw-top-1/2 tw--translate-y-1/2 tw-w-1.5 tw-h-1.5 tw-rounded-full tw-pointer-events-none ${severity === "Critical" ? "tw-bg-red-400" :
+                                            <span className={`tw-absolute tw-left-3 tw-top-1/2 tw--translate-y-1/2 tw-w-1.5 tw-h-1.5 tw-rounded-full tw-pointer-events-none ${severity === "Urgent" ? "tw-bg-red-400" :
                                                 severity === "High" ? "tw-bg-orange-400" :
                                                     severity === "Medium" ? "tw-bg-yellow-500" :
                                                         "tw-bg-green-400"
@@ -797,7 +797,7 @@ export default function CMOpenForm() {
                                             <option value="Low">Low</option>
                                             <option value="Medium">Medium</option>
                                             <option value="High">High</option>
-                                            <option value="Critical">Critical</option>
+                                            <option value="Urgent">Urgent</option>
                                         </select>
                                     </div>
                                 </div>

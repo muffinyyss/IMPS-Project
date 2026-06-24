@@ -118,7 +118,7 @@ export type CMDraftData = {
     foundDate: string;
     location: string;
     problemDetails: string;
-    severity: "" | "Low" | "Medium" | "High" | "Critical";
+    severity: "" | "Low" | "Medium" | "High" | "Urgent";
     status: "" | "Open" | "In Progress";
     remarks_open: string;
     faultyEquipment: string;

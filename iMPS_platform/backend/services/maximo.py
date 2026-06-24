@@ -40,7 +40,8 @@ _ssl_ctx.verify_mode = ssl.CERT_NONE
 # Priority Mapping: CM severity → Maximo reportedpriority
 # ══════════════════════════════════════════════════════════════════
 SEVERITY_TO_PRIORITY = {
-    "Critical": 1,  # Urgent
+    "Urgent": 1,
+    "Critical": 1,  # legacy alias of Urgent
     "High": 2,
     "Medium": 3,
     "Low": 4,
@@ -63,7 +64,7 @@ async def create_sr(
     Args:
         description:  คำอธิบายปัญหา
         location:     รหัสพื้นที่ Maximo เช่น "EGT0327-EV"
-        severity:     Critical/High/Medium/Low → map เป็น reportedpriority 1-4
+        severity:     Urgent/High/Medium/Low → map เป็น reportedpriority 1-4
         target_start:  วันเป้าหมายเข้าตรวจสอบ (YYYY-MM-DD)
         target_finish: วันเป้าหมายแก้ไขเสร็จ (YYYY-MM-DD)
 

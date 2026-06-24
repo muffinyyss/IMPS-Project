@@ -48,7 +48,7 @@ FAULT_TRIGGERS = [
         "trigger_prefix": "pe_cut",
         "daily_threshold": PE_CUT_DAILY_THRESHOLD,
         "consec_days": PE_CUT_CONSEC_DAYS,
-        "severity_daily": "Critical",
+        "severity_daily": "Urgent",
         "severity_consec": "High",
     },
     {
@@ -57,7 +57,7 @@ FAULT_TRIGGERS = [
         "trigger_prefix": "imd_self_check",
         "daily_threshold": int(os.getenv("IMD_DAILY_THRESHOLD", "5")),
         "consec_days": int(os.getenv("IMD_CONSEC_DAYS", "3")),
-        "severity_daily": "Critical",
+        "severity_daily": "Urgent",
         "severity_consec": "High",
     },
 ]
@@ -298,7 +298,7 @@ async def _check_all_edgebox():
         remarks = f"Auto-generated: Edge Box offline > {OFFLINE_THRESHOLD_MIN} min"
 
         log.info(f"  📝 Edge Box {sn} → Creating CM for station {station_id}...")
-        if await _create_auto_cm(station_id, sn, info, "edgebox_offline", "Critical", problem, remarks):
+        if await _create_auto_cm(station_id, sn, info, "edgebox_offline", "Urgent", problem, remarks):
             created += 1
 
     log.info(f"  ✅ [Edge Box] Done — created {created} new CM report(s)")
@@ -538,7 +538,7 @@ async def _check_all_gun_temp():
         remarks = f"Auto-generated: Gun temp {fields_detail} >= {GUN_TEMP_THRESHOLD}°C"
 
         log.info(f"  📝 Gun {sn} → Creating CM for station {station_id}...")
-        if await _create_auto_cm(station_id, sn, info, "gun_temp_high", "Critical", problem, remarks):
+        if await _create_auto_cm(station_id, sn, info, "gun_temp_high", "Urgent", problem, remarks):
             created += 1
 
     log.info(f"  ✅ [Gun Temp] Done — created {created} new CM report(s)")
