@@ -628,13 +628,20 @@ def create_station_with_chargers(
         raise HTTPException(status_code=409, detail="station_id already exists")
 
     owner_oid = None
+    owner_username = None
     if station_data.user_id:
         owner_oid = to_object_id(station_data.user_id)
+        u = users_collection.find_one({"_id": owner_oid}, {"username": 1})
+        owner_username = u.get("username") if u else None
     elif station_data.owner:
-        user = users_collection.find_one({"username": station_data.owner.strip()}, {"_id": 1})
-        if not user:
-            raise HTTPException(status_code=400, detail="Invalid owner username")
-        owner_oid = user["_id"]
+        owner_name = station_data.owner.strip()
+        user = users_collection.find_one({"username": owner_name}, {"_id": 1, "username": 1})
+        if user:
+            owner_oid = user["_id"]
+            owner_username = user.get("username", owner_name)
+        else:
+            # owner ใหม่ที่ยังไม่มีในระบบ → เก็บชื่อไว้ตรงๆ ไม่ผูก user_id
+            owner_username = owner_name
 
     now = datetime.now(timezone.utc)
     actor = get_actor_id(current)
@@ -643,6 +650,7 @@ def create_station_with_chargers(
         "station_id": station_id,
         "station_name": station_data.station_name.strip(),
         "user_id": owner_oid,
+        "username": owner_username,
         "is_active": station_data.is_active if station_data.is_active is not None else True,
         "maximo_location": station_data.maximo_location.strip() if station_data.maximo_location else "",
         "maximo_desc": station_data.maximo_desc.strip() if station_data.maximo_desc else "",
