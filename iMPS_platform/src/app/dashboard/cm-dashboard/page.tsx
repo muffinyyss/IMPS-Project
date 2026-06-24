@@ -41,7 +41,9 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
   return (
     <span className="tw-inline-flex tw-items-center tw-gap-1.5 tw-rounded-full tw-bg-blue-100 tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-text-blue-700">
       {label}
-      <button onClick={onRemove} className="tw-text-blue-400 hover:tw-text-blue-700 tw-font-bold tw-text-sm tw-leading-none">×</button>
+      <button onClick={onRemove} aria-label={`ลบตัวกรอง ${label}`} className="tw-text-blue-400 hover:tw-text-blue-700 tw-font-bold tw-text-sm tw-leading-none">
+        <span aria-hidden="true">×</span>
+      </button>
     </span>
   );
 }
@@ -91,17 +93,20 @@ function Pagination({ page, total, pageSize, onChange }: {
         <button
           onClick={() => onChange(page - 1)}
           disabled={page === 0}
+          aria-label="หน้าก่อนหน้า"
           className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 tw-transition-colors hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
         >
           ‹
         </button>
         {pages.map((p, idx) =>
           p === "…" ? (
-            <span key={`el${idx}`} className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-text-xs tw-text-gray-400">…</span>
+            <span key={`el${idx}`} aria-hidden="true" className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-text-xs tw-text-gray-400">…</span>
           ) : (
             <button
               key={p}
               onClick={() => onChange(p as number)}
+              aria-label={`หน้า ${(p as number) + 1}`}
+              aria-current={p === page ? "page" : undefined}
               className={`tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-text-xs tw-font-medium tw-transition-colors ${
                 p === page
                   ? "tw-bg-blue-600 tw-text-white tw-shadow-sm"
@@ -115,6 +120,7 @@ function Pagination({ page, total, pageSize, onChange }: {
         <button
           onClick={() => onChange(page + 1)}
           disabled={page >= totalPages - 1}
+          aria-label="หน้าถัดไป"
           className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 tw-transition-colors hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
         >
           ›
@@ -363,14 +369,14 @@ export default function CMDashboardPage() {
 
   if (loading) {
     return (
-      <div className="tw-flex tw-min-h-64 tw-items-center tw-justify-center">
-        <div className="tw-h-10 tw-w-10 tw-animate-spin tw-rounded-full tw-border-4 tw-border-blue-500 tw-border-t-transparent" />
+      <div role="status" aria-label="กำลังโหลด" className="tw-flex tw-min-h-64 tw-items-center tw-justify-center">
+        <div aria-hidden="true" className="tw-h-10 tw-w-10 tw-animate-spin tw-rounded-full tw-border-4 tw-border-blue-500 tw-border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="tw-min-h-screen tw-bg-gray-50/60 tw-p-6">
+    <main className="tw-min-h-screen tw-bg-gray-50/60 tw-p-6">
 
       {/* ── Volume warning (> FETCH_LIMIT records) ── */}
       {totalInDB > FETCH_LIMIT && (
@@ -414,7 +420,7 @@ export default function CMDashboardPage() {
           {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} onRemove={() => clearFilter("equipment")} />}
           {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} onRemove={() => clearFilter("severity")} />}
           {filters.station && <FilterChip label={`Station: ${filters.station}`} onRemove={() => clearFilter("station")} />}
-          <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
+          <button onClick={clearAll} aria-label="ลบตัวกรองทั้งหมด" className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
             Clear all
           </button>
         </div>
@@ -427,7 +433,9 @@ export default function CMDashboardPage() {
             สัดส่วนความสำเร็จงาน CM
             {filters.status && <span className="tw-ml-2 tw-text-xs tw-font-normal tw-text-blue-500">(คลิกอีกครั้งเพื่อยกเลิก)</span>}
           </h2>
+          <label className="tw-sr-only" htmlFor="station-filter">กรองตามสถานี</label>
           <select
+            id="station-filter"
             value={stationFilter}
             onChange={(e) => { setStationFilter(e.target.value); setPage(0); }}
             className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
@@ -550,9 +558,10 @@ export default function CMDashboardPage() {
           {search && (
             <button
               onClick={() => { setSearch(""); setPage(0); }}
+              aria-label="ล้างคำค้นหา"
               className="tw-absolute tw-right-3 tw-top-1/2 -tw-translate-y-1/2 tw-text-gray-400 hover:tw-text-gray-600 tw-text-lg tw-leading-none"
             >
-              ×
+              <span aria-hidden="true">×</span>
             </button>
           )}
         </div>
@@ -631,6 +640,6 @@ export default function CMDashboardPage() {
           />
         </div>
       </section>
-    </div>
+    </main>
   );
 }
