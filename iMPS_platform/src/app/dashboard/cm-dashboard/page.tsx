@@ -37,7 +37,7 @@ type ActiveFilters = {
 const STATUS_LABELS = { completed: "เสร็จสิ้น", in_progress: "รอดำเนินการ", open: "รอจัดซื้อ" } as const;
 const DONUT_COLORS = ["#22c55e", "#f43f5e", "#f97316"];
 const EQUIPMENT_COLORS = ["#3b82f6","#f43f5e","#f97316","#a855f7","#06b6d4","#eab308","#10b981","#64748b","#ec4899","#14b8a6"];
-const TABLE_PAGE_SIZE = 15;
+const PAGE_SIZE = 15;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ function statusBadge(status: string) {
 function filterByPeriod(rows: CMRow[], period: Period): CMRow[] {
   const now = new Date();
   return rows.filter((r) => {
-    if (!r.cm_date) return period === "yearly"; // undated rows only appear in yearly view
+    if (!r.cm_date) return period === "yearly";
     const d = new Date(r.cm_date);
     if (isNaN(d.getTime())) return period === "yearly";
     if (period === "weekly") return (now.getTime() - d.getTime()) / 86400000 <= 7;
@@ -83,6 +83,16 @@ function applyFilters(rows: CMRow[], filters: ActiveFilters, exclude?: keyof Act
     }
     return true;
   });
+}
+
+function applySearch(rows: CMRow[], q: string): CMRow[] {
+  if (!q.trim()) return rows;
+  const lq = q.trim().toLowerCase();
+  return rows.filter((r) =>
+    [r.station_name, r.station_id, r.issue_id, r.faulty_equipment,
+     r.severity, r.cause, r.inspector, r.reported_by, r.status]
+      .some((v) => (v || "").toLowerCase().includes(lq))
+  );
 }
 
 function groupCount(rows: CMRow[], key: keyof CMRow): { keys: string[]; vals: number[] } {
@@ -140,6 +150,69 @@ function PeriodTabs({ value, onChange }: { value: Period; onChange: (p: Period) 
   );
 }
 
+function Pagination({ page, total, pageSize, onChange }: {
+  page: number; total: number; pageSize: number; onChange: (p: number) => void;
+}) {
+  const totalPages = Math.ceil(total / pageSize);
+  if (totalPages <= 1) return null;
+
+  const from = page * pageSize + 1;
+  const to = Math.min((page + 1) * pageSize, total);
+
+  // Build page numbers with ellipsis
+  const pages: (number | "…")[] = [];
+  if (totalPages <= 7) {
+    for (let i = 0; i < totalPages; i++) pages.push(i);
+  } else {
+    pages.push(0);
+    if (page > 2) pages.push("…");
+    for (let i = Math.max(1, page - 1); i <= Math.min(totalPages - 2, page + 1); i++) pages.push(i);
+    if (page < totalPages - 3) pages.push("…");
+    pages.push(totalPages - 1);
+  }
+
+  return (
+    <div className="tw-flex tw-flex-col tw-items-center tw-gap-3 tw-border-t tw-border-gray-100 tw-px-4 tw-py-4 sm:tw-flex-row sm:tw-justify-between">
+      <p className="tw-text-xs tw-text-gray-500">
+        แสดง <span className="tw-font-semibold tw-text-gray-700">{from}–{to}</span> จาก <span className="tw-font-semibold tw-text-gray-700">{total}</span> รายการ
+      </p>
+      <div className="tw-flex tw-items-center tw-gap-1">
+        <button
+          onClick={() => onChange(page - 1)}
+          disabled={page === 0}
+          className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 tw-transition-colors hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
+        >
+          ‹
+        </button>
+        {pages.map((p, idx) =>
+          p === "…" ? (
+            <span key={`el${idx}`} className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-text-xs tw-text-gray-400">…</span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onChange(p as number)}
+              className={`tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-text-xs tw-font-medium tw-transition-colors ${
+                p === page
+                  ? "tw-bg-blue-600 tw-text-white tw-shadow-sm"
+                  : "tw-border tw-border-gray-200 tw-text-gray-600 hover:tw-bg-gray-50"
+              }`}
+            >
+              {(p as number) + 1}
+            </button>
+          )
+        )}
+        <button
+          onClick={() => onChange(page + 1)}
+          disabled={page >= totalPages - 1}
+          className="tw-flex tw-h-8 tw-w-8 tw-items-center tw-justify-center tw-rounded-lg tw-border tw-border-gray-200 tw-text-sm tw-text-gray-600 tw-transition-colors hover:tw-bg-gray-50 disabled:tw-cursor-not-allowed disabled:tw-opacity-40"
+        >
+          ›
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function CMDashboardPage() {
@@ -149,7 +222,8 @@ export default function CMDashboardPage() {
   const [period, setPeriod] = useState<Period>("yearly");
   const [stationFilter, setStationFilter] = useState<string>("All");
   const [filters, setFilters] = useState<ActiveFilters>({ status: null, equipment: null, severity: null, station: null });
-  const [showAll, setShowAll] = useState(false);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -171,14 +245,18 @@ export default function CMDashboardPage() {
 
   const toggleFilter = useCallback((dim: keyof ActiveFilters, value: string) => {
     setFilters((prev) => ({ ...prev, [dim]: prev[dim] === value ? null : value }));
+    setPage(0);
   }, []);
 
   const clearFilter = useCallback((dim: keyof ActiveFilters) => {
     setFilters((prev) => ({ ...prev, [dim]: null }));
+    setPage(0);
   }, []);
 
   const clearAll = () => {
     setFilters({ status: null, equipment: null, severity: null, station: null });
+    setSearch("");
+    setPage(0);
   };
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -231,7 +309,7 @@ export default function CMDashboardPage() {
   }, [stRows]);
   const stationNames = Object.keys(stationData);
 
-  // ── KPI stat cards + table: all filters applied
+  // ── KPI stat cards: all chart-filters applied
   const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
   const kpiStats = useMemo(() => {
     let completed = 0, inProgress = 0, open = 0;
@@ -244,11 +322,19 @@ export default function CMDashboardPage() {
     return { total: allFiltered.length, completed, inProgress, open };
   }, [allFiltered]);
 
+  // ── Table: chart-filters + search + sort + paginate
+  const searchFiltered = useMemo(() => applySearch(allFiltered, search), [allFiltered, search]);
   const sortedRows = useMemo(
-    () => [...allFiltered].sort((a, b) => (b.cm_date || "").localeCompare(a.cm_date || "")),
-    [allFiltered]
+    () => [...searchFiltered].sort((a, b) => (b.cm_date || "").localeCompare(a.cm_date || "")),
+    [searchFiltered]
   );
-  const tableRows = showAll ? sortedRows : sortedRows.slice(0, TABLE_PAGE_SIZE);
+  const tableRows = useMemo(
+    () => sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [sortedRows, page]
+  );
+
+  // Reset page when filters or search change
+  useEffect(() => { setPage(0); }, [allFiltered, search]);
 
   // ─── Chart options ────────────────────────────────────────────────────────
 
@@ -418,7 +504,7 @@ export default function CMDashboardPage() {
           </h2>
           <select
             value={stationFilter}
-            onChange={(e) => setStationFilter(e.target.value)}
+            onChange={(e) => { setStationFilter(e.target.value); setPage(0); }}
             className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400"
           >
             {stations.map((s) => <option key={s}>{s}</option>)}
@@ -511,29 +597,41 @@ export default function CMDashboardPage() {
 
       {/* ── Section 4: Table ── */}
       <section>
-        <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
+        {/* Table header */}
+        <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">
             CM Reports
             <span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-gray-400">
-              ({showAll ? allFiltered.length : Math.min(allFiltered.length, TABLE_PAGE_SIZE)}/{allFiltered.length} รายการ)
+              ({searchFiltered.length} รายการ{search && ` · "${search}"`})
             </span>
           </h2>
-          <div className="tw-flex tw-items-center tw-gap-3">
-            {allFiltered.length > TABLE_PAGE_SIZE && (
-              <button
-                onClick={() => setShowAll((v) => !v)}
-                className="tw-text-xs tw-font-semibold tw-text-blue-600 hover:tw-text-blue-800 tw-underline"
-              >
-                {showAll ? "แสดงน้อยลง" : `ดูทั้งหมด (${allFiltered.length})`}
-              </button>
-            )}
-            {activeFilterCount > 0 && (
-              <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
-                Clear filters
-              </button>
-            )}
-          </div>
+          {activeFilterCount > 0 && (
+            <button onClick={clearAll} className="tw-self-start tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline sm:tw-self-auto">
+              Clear filters
+            </button>
+          )}
         </div>
+
+        {/* Search bar */}
+        <div className="tw-mb-3 tw-relative">
+          <span className="tw-absolute tw-left-3 tw-top-1/2 -tw-translate-y-1/2 tw-text-gray-400 tw-text-sm">🔍</span>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหา station, issue ID, equipment, severity, inspector…"
+            className="tw-w-full tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-py-2.5 tw-pl-9 tw-pr-4 tw-text-sm tw-text-gray-700 tw-shadow-sm tw-transition-all focus:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-100"
+          />
+          {search && (
+            <button
+              onClick={() => { setSearch(""); setPage(0); }}
+              className="tw-absolute tw-right-3 tw-top-1/2 -tw-translate-y-1/2 tw-text-gray-400 hover:tw-text-gray-600 tw-text-lg tw-leading-none"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
         <div className="tw-overflow-hidden tw-rounded-2xl tw-bg-white tw-shadow-sm">
           <div className="tw-overflow-x-auto">
             <table className="tw-w-full tw-min-w-[700px] tw-table-auto tw-text-left tw-text-sm">
@@ -546,12 +644,16 @@ export default function CMDashboardPage() {
               </thead>
               <tbody>
                 {tableRows.length === 0 ? (
-                  <tr><td colSpan={7} className="tw-p-8 tw-text-center tw-text-gray-400">ไม่พบรายงาน</td></tr>
+                  <tr>
+                    <td colSpan={7} className="tw-p-8 tw-text-center tw-text-gray-400">
+                      {search ? `ไม่พบรายการที่ตรงกับ "${search}"` : "ไม่พบรายงาน"}
+                    </td>
+                  </tr>
                 ) : tableRows.map((r, i) => {
                   const badge = statusBadge(r.status);
                   return (
                     <tr key={r.id} className="tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30">
-                      <td className="tw-px-4 tw-py-3 tw-text-gray-400">{i + 1}</td>
+                      <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * PAGE_SIZE + i + 1}</td>
                       <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
                       <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.issue_id || "-"}</td>
                       <td className="tw-px-4 tw-py-3">
@@ -596,6 +698,12 @@ export default function CMDashboardPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={page}
+            total={searchFiltered.length}
+            pageSize={PAGE_SIZE}
+            onChange={setPage}
+          />
         </div>
       </section>
     </div>
