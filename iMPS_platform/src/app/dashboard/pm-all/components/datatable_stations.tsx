@@ -198,6 +198,75 @@ const TableRowSkeleton = ({ cols }: { cols: number }) => (
     </tr>
 );
 
+/** Custom month dropdown — dark pill trigger (เข้าชุดกับการ์ด PM) + styled popover list */
+const MonthSelect = ({ value, onChange, options }: {
+    value: string;
+    onChange: (v: string) => void;
+    options: { value: string; label: string }[];
+}) => {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const onDoc = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+        };
+        const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+        document.addEventListener("mousedown", onDoc);
+        document.addEventListener("keydown", onEsc);
+        return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onEsc); };
+    }, [open]);
+
+    const current = options.find((o) => o.value === value);
+
+    return (
+        <div ref={ref} className="tw-relative tw-w-full sm:tw-w-56">
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="tw-w-full tw-flex tw-items-center tw-gap-2.5 tw-rounded-xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-3 tw-py-2.5 tw-text-sm tw-font-semibold tw-text-white tw-shadow-lg tw-ring-1 tw-ring-white/10 tw-transition-all tw-duration-200 hover:tw-shadow-xl hover:tw-ring-white/20"
+            >
+                <span className="tw-flex tw-h-6 tw-w-6 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-lg tw-bg-white/10 tw-text-white/70">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-3.5 tw-w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zM4 8h12v8H4V8z" clipRule="evenodd" />
+                    </svg>
+                </span>
+                <span className="tw-flex-1 tw-text-left tw-truncate">{current?.label ?? value}</span>
+                <svg xmlns="http://www.w3.org/2000/svg" className={`tw-h-4 tw-w-4 tw-text-white/50 tw-transition-transform tw-duration-200 ${open ? "tw-rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+            </button>
+
+            {open && (
+                <div className="tw-absolute tw-right-0 tw-z-50 tw-mt-2 tw-w-full sm:tw-w-60 tw-overflow-hidden tw-rounded-xl tw-bg-white tw-shadow-2xl tw-ring-1 tw-ring-black/5">
+                    <ul className="tw-max-h-72 tw-overflow-y-auto tw-p-1.5">
+                        {options.map((o) => {
+                            const active = o.value === value;
+                            return (
+                                <li key={o.value}>
+                                    <button
+                                        type="button"
+                                        onClick={() => { onChange(o.value); setOpen(false); }}
+                                        className={`tw-flex tw-w-full tw-items-center tw-justify-between tw-gap-2 tw-rounded-lg tw-px-3 tw-py-2 tw-text-sm tw-transition-colors ${active ? "tw-bg-gray-900 tw-text-white tw-font-semibold" : "tw-text-blue-gray-700 hover:tw-bg-blue-gray-50"}`}
+                                    >
+                                        <span className="tw-truncate">{o.label}</span>
+                                        {active && (
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-4 tw-w-4 tw-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+};
+
 export function SearchDataTables() {
     const router = useRouter();
     const [me, setMe] = useState<{ user_id: string; username: string; role: string } | null>(null);
@@ -237,6 +306,21 @@ export function SearchDataTables() {
         const d = new Date();
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     });
+    // เดือนที่มีเอกสาร PM จริง (YYYY-MM, ใหม่→เก่า) — ใช้สร้างตัวเลือก dropdown
+    const [availableMonths, setAvailableMonths] = useState<string[]>([]);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await apiFetch(`/pm-reports/months`);
+                if (!res.ok) return;
+                const json = await res.json();
+                if (Array.isArray(json?.months)) setAvailableMonths(json.months);
+            } catch (e) {
+                console.error("Failed to fetch PM months:", e);
+            }
+        })();
+    }, []);
 
     // นับจำนวนเอกสาร PM (ต่อสถานี + แยกตาม type) — รองรับกรองตามเดือน
     useEffect(() => {
@@ -354,22 +438,25 @@ export function SearchDataTables() {
         return () => { window.removeEventListener("language:change", handleLangChange as EventListener); };
     }, []);
 
-    // ตัวเลือกเดือน: "ทุกเดือน" + ย้อนหลัง 12 เดือน (วางหลัง lang เพื่อหลีกเลี่ยง TDZ)
+    // ตัวเลือกเดือน: "ทุกเดือน" + เฉพาะเดือนที่มีเอกสารจริง (เริ่มจากเดือนล่าสุดที่มีเอกสาร)
     const monthOptions = useMemo(() => {
-        const opts: { value: string; label: string }[] = [{ value: "all", label: lang === "th" ? "ทุกเดือน" : "All months" }];
         const thMonths = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
         const enMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const now = new Date();
-        for (let i = 0; i < 12; i++) {
-            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const y = d.getFullYear();
-            const m = d.getMonth();
-            const value = `${y}-${String(m + 1).padStart(2, "0")}`;
-            const label = lang === "th" ? `${thMonths[m]} ${y + 543}` : `${enMonths[m]} ${y}`;
-            opts.push({ value, label });
-        }
+        const labelOf = (ym: string) => {
+            const [ys, ms] = ym.split("-");
+            const y = parseInt(ys, 10);
+            const m = parseInt(ms, 10) - 1;
+            if (isNaN(y) || m < 0 || m > 11) return ym;
+            return lang === "th" ? `${thMonths[m]} ${y + 543}` : `${enMonths[m]} ${y}`;
+        };
+        // เผื่อเดือนที่เลือกอยู่ (เช่น เดือนปัจจุบันที่ยังไม่มีเอกสาร) ให้แสดงในรายการเสมอ
+        const set = new Set(availableMonths);
+        if (selectedMonth !== "all") set.add(selectedMonth);
+        const months = Array.from(set).sort().reverse();
+        const opts: { value: string; label: string }[] = [{ value: "all", label: lang === "th" ? "ทุกเดือน" : "All months" }];
+        for (const ym of months) opts.push({ value: ym, label: labelOf(ym) });
         return opts;
-    }, [lang]);
+    }, [lang, availableMonths, selectedMonth]);
 
     const handleDeleteReport = async (report: PMReportData, stationId: string) => {
         if (!confirm(lang === "th" ? `ลบรายงาน "${report.document_name}" ใช่หรือไม่?` : `Delete report "${report.document_name}"?`)) return;
@@ -945,17 +1032,11 @@ export function SearchDataTables() {
             cell: (info: any) => {
                 const n = (info.getValue() as number) ?? 0;
                 return (
-                    <span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-lg tw-text-xs tw-font-bold ${n > 0 ? "tw-bg-blue-50 tw-text-blue-700" : "tw-bg-blue-gray-50 tw-text-blue-gray-400"}`}>
-                        <i className="fa fa-file-alt tw-text-[10px]" />
+                    <span className={`tw-text-sm tw-font-bold tw-tabular-nums ${n > 0 ? "tw-text-blue-gray-800" : "tw-text-blue-gray-400"}`}>
                         {n}
                     </span>
                 );
             },
-        },
-        {
-            id: "username", header: () => t.owner,
-            accessorFn: (row: StationRow) => row.username ?? "-",
-            cell: (info: any) => <span className="tw-text-blue-gray-600">{info.getValue()}</span>,
         },
     ], [me, isAdmin, t, pmCounts, typeFilter]);
 
@@ -1141,31 +1222,27 @@ export function SearchDataTables() {
                         </>
                     )}
                 </div>
-                <div className="tw-mt-3 tw-flex tw-flex-col sm:tw-flex-row sm:tw-items-center sm:tw-justify-between tw-gap-2">
-                    <span className="tw-text-sm tw-font-semibold tw-text-blue-gray-700">
-                        {lang === "th" ? "สรุปเอกสาร PM" : "PM Document Summary"}
-                        {selectedMonth !== "all" && (
-                            <span className="tw-ml-2 tw-text-xs tw-font-normal tw-text-blue-gray-400">
-                                ({monthOptions.find((o) => o.value === selectedMonth)?.label ?? selectedMonth} · {pmTotal} {lang === "th" ? "เอกสาร" : "docs"})
-                            </span>
-                        )}
-                    </span>
-                    <div className="tw-flex tw-items-center tw-gap-2">
-                        <i className="fa fa-calendar tw-text-blue-gray-400 tw-text-sm" />
-                        <select
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            className="tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-1.5 tw-text-sm tw-text-blue-gray-700 tw-shadow-sm focus:tw-border-blue-400 focus:tw-outline-none tw-cursor-pointer"
-                        >
-                            {monthOptions.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
             </div>
 
             <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4">
+                <CardHeader floated={false} shadow={false} className="tw-!px-4 sm:tw-!px-6 tw-!py-5 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30 tw-rounded-t-xl">
+                    <div className="tw-flex tw-items-start tw-justify-between tw-gap-3">
+                        <div className="tw-min-w-0 tw-flex-1">
+                            <Typography color="blue-gray" variant="h5" className="tw-text-lg sm:tw-text-xl">
+                                {lang === "th" ? "สรุปเอกสาร PM" : "PM Document Summary"}
+                                {selectedMonth !== "all" && (
+                                    <span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-blue-gray-400">
+                                        ({monthOptions.find((o) => o.value === selectedMonth)?.label ?? selectedMonth} · {pmTotal} {lang === "th" ? "เอกสาร" : "docs"})
+                                    </span>
+                                )}
+                            </Typography>
+                            <Typography variant="small" className="!tw-text-blue-gray-500 !tw-font-normal tw-mt-1 tw-text-xs sm:tw-text-sm">
+                                {lang === "th" ? "จำนวนเอกสาร PM แต่ละสถานี — เลือกชนิดจากการ์ดด้านบน และกรองตามเดือนได้" : "PM document counts per station — pick a type from the cards above and filter by month"}
+                            </Typography>
+                        </div>
+                        <div className="tw-w-40 sm:tw-w-56 tw-flex-shrink-0"><MonthSelect value={selectedMonth} onChange={setSelectedMonth} options={monthOptions} /></div>
+                    </div>
+                </CardHeader>
                 {notice && (<div className="tw-px-4 tw-pt-4"><Alert color={notice.type === "success" ? "green" : "red"} onClose={() => setNotice(null)}>{notice.msg}</Alert></div>)}
 
                 <CardBody className="tw-flex tw-items-center tw-justify-between tw-gap-3 tw-px-4">
@@ -1176,13 +1253,13 @@ export function SearchDataTables() {
                     {loading ? (
                         <div className="tw-overflow-x-auto tw-w-full">
                             <table className="tw-w-full tw-border-separate tw-border-spacing-0 tw-min-w-[900px]">
-                                <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800"><tr>{["", "Station", "Chargers", "Available", "Owner", "Status", ""].map((h, i) => (<th key={i} className="tw-px-3 tw-py-3"><div className="tw-h-3 tw-rounded tw-bg-white/20 tw-animate-pulse" style={{ width: h ? `${h.length * 8}px` : 32 }} /></th>))}</tr></thead>
-                                <tbody>{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} cols={7} />)}</tbody>
+                                <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800"><tr>{["", "Station", "PM"].map((h, i) => (<th key={i} className="tw-px-3 tw-py-3"><div className="tw-h-3 tw-rounded tw-bg-white/20 tw-animate-pulse" style={{ width: h ? `${h.length * 8}px` : 32 }} /></th>))}</tr></thead>
+                                <tbody>{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} cols={3} />)}</tbody>
                             </table>
                         </div>
                     ) : err ? (<div className="tw-p-4 tw-text-red-600">{err}</div>) : (
                         <div className="tw-overflow-x-auto tw-w-full"><table className="tw-w-full tw-border-separate tw-border-spacing-0 tw-min-w-[900px]">
-                            <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800">{table.getHeaderGroups().map((hg) => (<tr key={hg.id}>{hg.headers.map((h) => (<th key={h.id} onClick={h.column.getCanSort() ? h.column.getToggleSortingHandler() : undefined} className="tw-px-3 tw-py-3 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-text-left tw-whitespace-nowrap"><Typography color="blue-gray" className={`tw-flex tw-items-center tw-gap-2 tw-text-[11px] !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${h.column.getCanSort() ? "tw-cursor-pointer" : ""}`}>{flexRender(h.column.columnDef.header, h.getContext())}{h.column.getCanSort() && <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4 tw-text-white/60" />}</Typography></th>))}</tr>))}</thead>
+                            <thead className="tw-bg-gradient-to-r tw-from-gray-900 tw-to-gray-800">{table.getHeaderGroups().map((hg) => (<tr key={hg.id}>{hg.headers.map((h) => (<th key={h.id} onClick={h.column.getCanSort() ? h.column.getToggleSortingHandler() : undefined} className={`tw-px-3 tw-py-3 tw-uppercase !tw-text-blue-gray-500 !tw-font-medium tw-whitespace-nowrap ${h.column.id === "pm_count" ? "tw-text-center" : h.column.id === "station_name" ? "tw-text-left tw-w-full" : "tw-text-left"}`}><Typography color="blue-gray" className={`tw-flex tw-items-center tw-gap-2 tw-text-[11px] !tw-font-bold tw-leading-none tw-opacity-80 tw-tracking-wider !tw-text-white ${h.column.getCanSort() ? "tw-cursor-pointer" : ""} ${h.column.id === "pm_count" ? "tw-justify-center" : ""}`}>{flexRender(h.column.columnDef.header, h.getContext())}{h.column.getCanSort() && <ChevronUpDownIcon strokeWidth={2} className="tw-h-4 tw-w-4 tw-text-white/60" />}</Typography></th>))}</tr>))}</thead>
                             <tbody>{table.getRowModel().rows.length ? (table.getRowModel().rows.map((row) => {
                                 const hasChargers = row.original.chargers.length > 0; const canEdit = isAdmin || row.original.user_id === me?.user_id; const canExpand = hasChargers || canEdit; // ในส่วน row render เพิ่ม onExpand trigger
                                 return (
@@ -1199,8 +1276,8 @@ export function SearchDataTables() {
                                             className={`tw-transition-colors ${canExpand ? "tw-cursor-pointer" : ""} ${row.getIsExpanded() ? "tw-bg-blue-50/60 tw-shadow-sm" : "odd:tw-bg-white even:tw-bg-blue-gray-50/30 hover:tw-bg-blue-50/40 hover:tw-shadow-[inset_3px_0_0_0_#2196F3]"}`}
                                         >
                                             {row.getVisibleCells().map((cell) => (
-                                                <td key={cell.id} className="!tw-border-y !tw-border-x-0 tw-px-3 tw-py-3">
-                                                    <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-600">
+                                                <td key={cell.id} className={`!tw-border-y !tw-border-x-0 tw-px-3 tw-py-3 ${cell.column.id === "pm_count" ? "tw-text-center" : cell.column.id === "station_name" ? "tw-w-full" : ""}`}>
+                                                    <Typography variant="small" className={`!tw-font-normal !tw-text-blue-gray-600 ${cell.column.id === "pm_count" ? "tw-text-center" : ""}`}>
                                                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                                     </Typography>
                                                 </td>

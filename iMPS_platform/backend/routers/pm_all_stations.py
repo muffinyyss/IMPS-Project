@@ -408,6 +408,73 @@ async def get_pm_report_counts(
     }
 
 
+async def _distinct_pm_dates(coll) -> list:
+    """distinct('pm_date') รองรับทั้ง Motor (awaitable) และ PyMongo (sync list)"""
+    try:
+        maybe = coll.distinct("pm_date")
+        if hasattr(maybe, "__await__"):
+            return list(await maybe)
+        return list(maybe)
+    except Exception:
+        return []
+
+
+@router.get("/pm-reports/months")
+async def get_pm_report_months(current: UserClaims = Depends(get_current_user)):
+    """
+    คืนรายการเดือน (YYYY-MM) ที่มีเอกสาร PM อยู่จริง เรียงจากใหม่ → เก่า
+    ใช้สร้างตัวเลือกใน dropdown ให้เริ่มตั้งแต่เดือนที่มีเอกสารเท่านั้น
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        stations = await loop.run_in_executor(
+            None,
+            lambda: list(station_collection.find({}, {"_id": 0, "station_id": 1})),
+        )
+    except Exception:
+        traceback.print_exc()
+        stations = []
+
+    station_ids = [s["station_id"] for s in stations if s.get("station_id")]
+    if not station_ids:
+        return {"months": []}
+
+    try:
+        chargers = await loop.run_in_executor(
+            None,
+            lambda: list(charger_collection.find(
+                {"station_id": {"$in": station_ids}},
+                {"_id": 0, "SN": 1},
+            )),
+        )
+    except Exception:
+        traceback.print_exc()
+        chargers = []
+
+    sns = [c["SN"] for c in chargers if c.get("SN") and c["SN"] not in ("-", "", None)]
+
+    months: set[str] = set()
+
+    async def _collect(coll):
+        for d in await _distinct_pm_dates(coll):
+            if isinstance(d, str) and re.match(r"^\d{4}-\d{2}", d):
+                months.add(d[:7])
+
+    tasks = []
+    for _label, getters, mode in _PM_TYPE_SOURCES:
+        keys = sns if mode == "sn" else station_ids
+        for key in keys:
+            for fn in getters:
+                try:
+                    tasks.append(_collect(fn(key)))
+                except Exception:
+                    pass
+
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    return {"months": sorted(months, reverse=True)}
+
+
 @router.delete("/pmreport/{report_id}")
 async def delete_pmreport(
     report_id: str,
