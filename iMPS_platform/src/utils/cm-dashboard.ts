@@ -38,8 +38,8 @@ export function normalizeStatus(s: string): keyof typeof STATUS_LABELS {
 export function statusBadge(status: string) {
   const s = normalizeStatus(status);
   if (s === "completed") return { bg: "#dcfce7", text: "#15803d", label: "Closed" };
-  if (s === "in_progress") return { bg: "#fce7f3", text: "#be185d", label: "In Progress" };
-  return { bg: "#ffedd5", text: "#c2410c", label: "Open" };
+  if (s === "in_progress") return { bg: "#fff7ed", text: "#ea580c", label: "In Progress" };
+  return { bg: "#fee2e2", text: "#dc2626", label: "Open" };
 }
 
 export function filterByPeriod(rows: CMRow[], period: Period): CMRow[] {

@@ -8,27 +8,29 @@ import theme from "@/theme";
 import { MaterialTailwindControllerProvider } from "@/context";
 import InnerContent from "./content";
 import { Kanit, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
-import "@fortawesome/fontawesome-free/css/all.min.css";
+import "@fortawesome/fontawesome-free/css/fontawesome.min.css";
+import "@fortawesome/fontawesome-free/css/solid.min.css";
+import "@fortawesome/fontawesome-free/css/brands.min.css";
 import "react-calendar/dist/Calendar.css";
 import "./globals.css";
 
 const kanit = Kanit({
   subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["400", "600", "700"],
   variable: "--font-kanit",
   display: "swap",
 });
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  weight: ["400", "600", "700"],
   variable: "--font-jakarta",
   display: "swap",
 });
 
 const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400"],
   variable: "--font-mono",
   display: "swap",
 });

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { Card, CardHeader, CardBody, Typography } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
 import {
   CMRow, Period, ActiveFilters, STATUS_LABELS,
@@ -12,8 +13,10 @@ const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const DONUT_COLORS = ["#22c55e", "#f43f5e", "#f97316"];
-const EQUIPMENT_COLORS = ["#3b82f6","#f43f5e","#f97316","#a855f7","#06b6d4","#eab308","#10b981","#64748b","#ec4899","#14b8a6"];
+// RAG semantics: completed=green, in_progress=orange (watch), open=red (action needed)
+const DONUT_COLORS = ["#22c55e", "#f97316", "#ef4444"];
+// Categorical palette for equipment — blue/cool family, no RAG meaning
+const EQUIPMENT_COLORS = ["#3b82f6","#06b6d4","#8b5cf6","#0ea5e9","#a855f7","#14b8a6","#64748b","#6366f1","#0284c7","#7c3aed"];
 const PAGE_SIZE = 15;
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -320,7 +323,15 @@ export default function CMDashboardPage() {
     tooltip: { y: { formatter: (v: number) => `${v} case${v !== 1 ? "s" : ""}` } },
   }), [eqData, toggleFilter]);
 
-  const sevOptions = useMemo<ApexCharts.ApexOptions>(() => ({
+  const sevOptions = useMemo<ApexCharts.ApexOptions>(() => {
+    const sevColors = sevData.keys.map((k) => {
+      const lk = k.toLowerCase();
+      if (lk.includes("high") || lk.includes("critical")) return "#ef4444";
+      if (lk.includes("medium") || lk.includes("moderate")) return "#f97316";
+      if (lk.includes("low")) return "#22c55e";
+      return "#64748b";
+    });
+    return ({
     chart: {
       type: "bar", toolbar: { show: false },
       events: {
@@ -330,7 +341,7 @@ export default function CMDashboardPage() {
         },
       },
     },
-    colors: EQUIPMENT_COLORS,
+    colors: sevColors.length ? sevColors : EQUIPMENT_COLORS,
     plotOptions: { bar: { horizontal: true, borderRadius: 4, distributed: true } },
     xaxis: { categories: sevData.keys.length ? sevData.keys : ["No data"] },
     legend: { show: false },
@@ -338,7 +349,8 @@ export default function CMDashboardPage() {
     grid: { borderColor: "#f1f5f9" },
     states: { active: { filter: { type: "darken", value: 0.7 } } },
     tooltip: { y: { formatter: (v: number) => `${v} items` } },
-  }), [sevData, toggleFilter]);
+  });
+  }, [sevData, toggleFilter]);
 
   const stationBarOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     chart: {
@@ -350,7 +362,7 @@ export default function CMDashboardPage() {
         },
       },
     },
-    colors: ["#f97316", "#f43f5e", "#22c55e"],
+    colors: ["#ef4444", "#f97316", "#22c55e"],
     xaxis: { categories: stationNames.length ? stationNames : ["No data"], labels: { rotate: -20, style: { fontSize: "11px" } } },
     legend: { position: "top" },
     dataLabels: { enabled: false },
@@ -446,22 +458,28 @@ export default function CMDashboardPage() {
 
         <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
           {/* Donut */}
-          <div className="tw-relative tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-sm">
+          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
             {filters.status && (
               <div className="tw-absolute tw-right-3 tw-top-3 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
                 🔍 {filters.status}
               </div>
             )}
-            <p className="tw-mb-1 tw-text-xs tw-text-gray-400">คลิกที่ส่วนของกราฟเพื่อกรอง</p>
-            <Chart type="donut" options={donutOptions} series={[srStats.completed, srStats.inProgress, srStats.open]} width="100%" height={280} />
-          </div>
+            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
+              <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+                คลิกที่ส่วนของกราฟเพื่อกรอง
+              </Typography>
+            </CardHeader>
+            <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
+              <Chart type="donut" options={donutOptions} series={[srStats.completed, srStats.inProgress, srStats.open]} width="100%" height={280} />
+            </CardBody>
+          </Card>
 
           {/* KPI cards */}
           <div className="tw-grid tw-grid-cols-2 tw-gap-4">
             {[
               { label: "งาน CM ทั้งหมด", value: kpiStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", icon: "📋", dim: false },
-              { label: "รอดำเนินการ", value: kpiStats.inProgress, color: "linear-gradient(135deg,#f43f5e,#be123c)", icon: "⏰", dim: filters.status !== null && filters.status !== STATUS_LABELS.in_progress },
-              { label: "รอจัดซื้อจ้าง", value: kpiStats.open, color: "linear-gradient(135deg,#f97316,#c2410c)", icon: "⏳", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
+              { label: "รอดำเนินการ", value: kpiStats.inProgress, color: "linear-gradient(135deg,#f97316,#ea580c)", icon: "⏰", dim: filters.status !== null && filters.status !== STATUS_LABELS.in_progress },
+              { label: "รอจัดซื้อจ้าง", value: kpiStats.open, color: "linear-gradient(135deg,#ef4444,#dc2626)", icon: "⏳", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
               { label: "งานเสร็จสิ้นแล้ว", value: kpiStats.completed, color: "linear-gradient(135deg,#22c55e,#15803d)", icon: "✅", dim: filters.status !== null && filters.status !== STATUS_LABELS.completed },
             ].map((c) => <StatCard key={c.label} {...c} />)}
           </div>
@@ -477,38 +495,51 @@ export default function CMDashboardPage() {
         <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
 
           {/* Equipment pie */}
-          <div className="tw-relative tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-sm">
+          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
             {filters.equipment && (
               <div className="tw-absolute tw-right-3 tw-top-3 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
                 🔍 {filters.equipment}
               </div>
             )}
-            <p className="tw-mb-3 tw-text-sm tw-font-semibold tw-text-gray-600">
-              Count of Cause of Issue (Grand Total: {eqData.vals.reduce((s, v) => s + v, 0)})
-            </p>
-            <Chart
-              type="donut"
-              options={equipOptions}
-              series={eqData.vals.length ? eqData.vals : [0]}
-              width="100%" height={260}
-            />
-          </div>
+            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
+              <Typography variant="h6" color="blue-gray">
+                Count of Cause of Issue
+              </Typography>
+              <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+                Grand Total: {eqData.vals.reduce((s, v) => s + v, 0)}
+              </Typography>
+            </CardHeader>
+            <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
+              <Chart
+                type="donut"
+                options={equipOptions}
+                series={eqData.vals.length ? eqData.vals : [0]}
+                width="100%" height={260}
+              />
+            </CardBody>
+          </Card>
 
           {/* Severity bar */}
-          <div className="tw-relative tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-sm">
+          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
             {filters.severity && (
               <div className="tw-absolute tw-right-3 tw-top-3 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
                 🔍 {filters.severity}
               </div>
             )}
-            <p className="tw-mb-3 tw-text-sm tw-font-semibold tw-text-gray-600">Severity Distribution</p>
-            <Chart
-              type="bar"
-              options={sevOptions}
-              series={[{ name: "Count", data: sevData.vals.length ? sevData.vals : [0] }]}
-              width="100%" height={260}
-            />
-          </div>
+            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
+              <Typography variant="h6" color="blue-gray">
+                Severity Distribution
+              </Typography>
+            </CardHeader>
+            <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
+              <Chart
+                type="bar"
+                options={sevOptions}
+                series={[{ name: "Count", data: sevData.vals.length ? sevData.vals : [0] }]}
+                width="100%" height={260}
+              />
+            </CardBody>
+          </Card>
         </div>
       </section>
 
@@ -522,10 +553,16 @@ export default function CMDashboardPage() {
             </div>
           )}
         </div>
-        <div className="tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-sm">
-          <p className="tw-mb-2 tw-text-xs tw-text-gray-400">คลิกที่แท่งกราฟเพื่อกรองตามสถานี</p>
-          <Chart type="bar" options={stationBarOptions} series={stationBarSeries} width="100%" height={280} />
-        </div>
+        <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
+          <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
+            <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-400">
+              คลิกที่แท่งกราฟเพื่อกรองตามสถานี
+            </Typography>
+          </CardHeader>
+          <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
+            <Chart type="bar" options={stationBarOptions} series={stationBarSeries} width="100%" height={280} />
+          </CardBody>
+        </Card>
       </section>
 
       {/* ── Section 4: Table ── */}
@@ -566,7 +603,7 @@ export default function CMDashboardPage() {
           )}
         </div>
 
-        <div className="tw-overflow-hidden tw-rounded-2xl tw-bg-white tw-shadow-sm">
+        <Card className="tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-shadow-sm">
           <div className="tw-overflow-x-auto">
             <table className="tw-w-full tw-min-w-[700px] tw-table-auto tw-text-left tw-text-sm">
               <thead>
@@ -638,7 +675,7 @@ export default function CMDashboardPage() {
             pageSize={PAGE_SIZE}
             onChange={setPage}
           />
-        </div>
+        </Card>
       </section>
     </main>
   );
