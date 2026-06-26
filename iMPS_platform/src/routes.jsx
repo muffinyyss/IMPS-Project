@@ -56,13 +56,6 @@ const baseRoutes = [
       },
       {
         layout: "dashboard",
-        icon: <i className="far fa-file" />,
-        name: "CM report (All)",        // รวมทุกสถานี
-        path: "/dashboard/cm-all",
-        allow: ["admin", "owner"],
-      },
-      {
-        layout: "dashboard",
         icon: <i className="fa fa-chart-pie" />,
         name: "CM Dashboard",
         path: "/dashboard/cm-dashboard",
