@@ -651,10 +651,11 @@ from typing import List, Dict, Any, Optional
 from zoneinfo import ZoneInfo
 import json, re, asyncio
 import aiosmtplib
+import paho.mqtt.client as mqtt
 
 from config import (
-    get_mdb_collection_for, to_json, _to_utc_dt, to_float,
-    floor_bin, MDB_DB, errorDB, th_tz,
+    get_mdb_collection_for, _validate_station_id_th, to_json, _to_utc_dt, to_float,
+    floor_bin, MDB_DB, errorDB, th_tz, mqtt_client, BROKER_HOST, BROKER_PORT,
     stations_coll_async, users_coll_async, email_log_coll,
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SENDER_EMAIL,
 )
@@ -1057,8 +1058,7 @@ async def send_error_email_once(to_email: str | None, chargebox_id: str | None, 
         raise
 
 def get_errorCode_collection_for(station_id: str):
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
-        raise HTTPException(status_code=400, detail="Bad station_id")
+    _validate_station_id_th(station_id)
     return errorDB.get_collection(str(station_id))
 
 @router.get("/error/{station_id}")
@@ -1117,16 +1117,159 @@ class EquipmentCreate(BaseModel):
 
 @router.post("/MDB/equipment")
 async def add_equipment(body: EquipmentCreate, current: UserClaims = Depends(get_current_user)):
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", body.station_id):
-        raise HTTPException(400, "Bad station_id")
+    _validate_station_id_th(body.station_id)
+    now_iso = datetime.now(th_tz).isoformat()
+    await MDB_DB[body.station_id].update_one(
+        {"_id": "config"},
+        {
+            "$set": {
+                "topic": body.topic,
+                "broker": body.broker,
+                "updated_by": current.user_id,
+                "updated_at": now_iso,
+            },
+            "$setOnInsert": {
+                "created_by": current.user_id,
+                "created_at": now_iso,
+            },
+        },
+        upsert=True,
+    )
+    return {"message": "saved", "station_id": body.station_id}
+
+
+@router.get("/MDB/equipment/{station_id}")
+async def get_equipment(station_id: str, current: UserClaims = Depends(get_current_user)):
+    _validate_station_id_th(station_id)
+    doc = await MDB_DB[station_id].find_one({"_id": "config"})
+    return {
+        "station_id": station_id,
+        "topic": (doc or {}).get("topic", ""),
+        "broker": (doc or {}).get("broker", ""),
+    }
+
+
+class RelayTopicsIn(BaseModel):
+    station_id: str
+    relay1_topic: str = ""
+    relay2_topic: str = ""
+
+
+@router.post("/MDB/relay-topics")
+async def save_relay_topics(body: RelayTopicsIn, current: UserClaims = Depends(get_current_user)):
+    _validate_station_id_th(body.station_id)
+    now_iso = datetime.now(th_tz).isoformat()
+    await MDB_DB[body.station_id].update_one(
+        {"_id": "config"},
+        {
+            "$set": {
+                "relay1_topic": body.relay1_topic,
+                "relay2_topic": body.relay2_topic,
+                "relay_updated_by": current.user_id,
+                "relay_updated_at": now_iso,
+            },
+            "$setOnInsert": {
+                "created_by": current.user_id,
+                "created_at": now_iso,
+            },
+        },
+        upsert=True,
+    )
+    return {"message": "saved", "station_id": body.station_id}
+
+
+@router.get("/MDB/relay-topics/{station_id}")
+async def get_relay_topics(station_id: str, current: UserClaims = Depends(get_current_user)):
+    _validate_station_id_th(station_id)
+    doc = await MDB_DB[station_id].find_one({"_id": "config"})
+    doc = doc or {}
+    return {
+        "station_id": station_id,
+        # relay1_topic = สั่ง ON, relay2_topic = สั่ง OFF
+        "relay1_topic": doc.get("relay1_topic", ""),
+        "relay2_topic": doc.get("relay2_topic", ""),
+        "state": doc.get("breaker_state", ""),
+    }
+
+
+class RelayCommandIn(BaseModel):
+    station_id: str
+    action: str          # "on" -> relay1_topic, "off" -> relay2_topic
+
+
+# cache MQTT client ต่อ broker (host:port) เพื่อใช้ซ้ำ ไม่ต้อง connect ใหม่ทุกครั้ง
+_mqtt_clients: Dict[str, "mqtt.Client"] = {}
+
+
+def _get_mqtt_client_for(broker: str):
+    """คืน MQTT client ที่เชื่อมกับ broker ที่ตั้งไว้ในหน้า MDB (รูปแบบ host:port)."""
+    broker = (broker or "").strip()
+    if not broker:
+        return None
+    client = _mqtt_clients.get(broker)
+    if client is None:
+        host, _, port_s = broker.partition(":")
+        port = int(port_s) if port_s.isdigit() else 1883
+        client = mqtt.Client()
+        client.connect(host, port, 60)
+        client.loop_start()
+        _mqtt_clients[broker] = client
+    elif not client.is_connected():
+        try:
+            client.reconnect()
+        except Exception as e:
+            print(f"[MQTT] reconnect to {broker} failed: {e}")
+    return client
+
+
+@router.post("/MDB/relay-control")
+async def relay_control(body: RelayCommandIn, current: UserClaims = Depends(get_current_user)):
+    _validate_station_id_th(body.station_id)
+    action = body.action.lower()
+    if action not in ("on", "off"):
+        raise HTTPException(400, "action must be 'on' or 'off'")
+
+    doc = await MDB_DB[body.station_id].find_one({"_id": "config"}) or {}
+    # ON ใช้ relay1_topic, OFF ใช้ relay2_topic
+    topic_key = "relay1_topic" if action == "on" else "relay2_topic"
+    topic = doc.get(topic_key, "")
+    if not topic:
+        raise HTTPException(400, f"No topic configured for '{action}' ({topic_key})")
+
+    now_iso = datetime.now(th_tz).isoformat()
+    msg = {
+        "station_id": body.station_id,
+        "command": action,
+        "timestamp": now_iso,
+    }
+    payload_str = json.dumps(msg, ensure_ascii=False)
+
+    # ใช้ broker เดียวกับที่ตั้งไว้ตอนเพิ่ม topic MDB (fallback เป็น global ถ้าไม่ได้ตั้ง)
+    broker = doc.get("broker", "")
+    published = False
+    try:
+        client = _get_mqtt_client_for(broker) or mqtt_client
+        pub = client.publish(topic, payload_str, qos=1, retain=False)
+        pub.wait_for_publish(timeout=2.0)
+        published = pub.is_published()
+    except Exception as e:
+        print(f"[MQTT] relay publish error: {e}")
+        published = False
+
     await MDB_DB[body.station_id].update_one(
         {"_id": "config"},
         {"$set": {
-            "topic": body.topic,
-            "broker": body.broker,
-            "created_by": current.user_id,
-            "created_at": datetime.now(th_tz).isoformat(),
+            "breaker_state": action,
+            "breaker_state_at": now_iso,
+            "breaker_state_by": current.user_id,
         }},
-        upsert=True,
     )
-    return {"message": "created", "station_id": body.station_id}
+
+    return {
+        "ok": True,
+        "station_id": body.station_id,
+        "action": action,
+        "topic": topic,
+        "broker": broker or f"{BROKER_HOST}:{BROKER_PORT} (global)",
+        "published": bool(published),
+    }

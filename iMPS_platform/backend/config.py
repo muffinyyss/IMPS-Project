@@ -131,7 +131,7 @@ def _validate_station_id_th(station_id: str):
         raise HTTPException(status_code=400, detail="Bad station_id")
 
 def get_mdb_collection_for(station_id: str):
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+    if not re.fullmatch(r"[A-Za-z0-9_\-฀-๿]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return MDB_DB.get_collection(str(station_id))
 

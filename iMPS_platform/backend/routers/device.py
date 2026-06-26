@@ -11,7 +11,7 @@ router = APIRouter()
 
 # ----------------------------------------------------------------------- helpers
 def get_device_collection_for(station_id: str):
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+    if not re.fullmatch(r"[A-Za-z0-9_\-฀-๿]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return deviceDB.get_collection(str(station_id))
 

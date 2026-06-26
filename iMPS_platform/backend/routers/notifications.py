@@ -117,7 +117,7 @@ def to_json(obj) -> str:
 
 def validate_station_id(station_id: str):
     """Validate station_id format"""
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+    if not re.fullmatch(r"[A-Za-z0-9_\-฀-๿]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
 
 
