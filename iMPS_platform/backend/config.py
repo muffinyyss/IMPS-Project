@@ -6,8 +6,11 @@ from datetime import datetime, timedelta, timezone
 from bson.objectid import ObjectId
 from bson.decimal128 import Decimal128
 from jose import jwt
+from dotenv import load_dotenv
 import json, os, re
 import paho.mqtt.client as mqtt
+
+load_dotenv()
 
 BROKER_HOST = os.getenv("MQTT_BROKER", "192.168.100.14")
 BROKER_PORT = int(os.getenv("MQTT_PORT", "1883"))
@@ -35,16 +38,15 @@ ACCESS_COOKIE_NAME = "access_token"
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "eds194655@gmail.com")
-SMTP_PASS = os.getenv("SMTP_PASS", "depllvpufjwtpysc")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
 # ─── MongoDB ─────────────────────────────────────────────────
-# Local dev (server 203.154.130.132 decommissioned). Override with MONGO_URI env var.
-# Original remote URI:
-#   "mongodb://imps_platform:eds_imps@203.154.130.132:27017/?authSource=admin&directConnection=true"
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-client1 = MongoClient(MONGO_URI)
-client = AsyncIOMotorClient(MONGO_URI)
+_MONGO_URI = os.getenv("MONGO_URI")
+if not _MONGO_URI:
+    raise RuntimeError("MONGO_URI environment variable is not set")
+client1 = MongoClient(_MONGO_URI)
+client = AsyncIOMotorClient(_MONGO_URI)
 
 deviceDB = client["utilizationFactor"]
 settingDB = client["settingParameter"]
