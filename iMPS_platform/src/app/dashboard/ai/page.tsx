@@ -7,6 +7,8 @@ import { useAutoRefresh } from "./hooks/useAutoRefresh";
 import { useStation } from "./hooks/useStation";
 import { HealthGaugeSvg, StatusBadge, RefreshBar } from "./components/ui";
 import NoData from "@/app/dashboard/components/NoData";
+import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import { useAiNav } from "./ai-nav-context";
 import "./ai-theme.css";
 
 // ── Module Card ───────────────────────────────────────────────────────────
@@ -97,15 +99,23 @@ export default function AiDashboardPage() {
     const [lastUpdate, setLastUpdate] = useState("");
     const { tick, countdown, refresh } = useAutoRefresh(120);
     const { activeSn, activeName } = useStation();
+    const { setHideNav } = useAiNav();
 
 
     const loadData = useCallback(async () => {
         setLoading(true); setError(null);
         try {
-            const res = await aiApi.dashboardAll();
+            // กัน fetch ค้างรอ connection timeout นาน ๆ เมื่อ AI server ติดต่อไม่ได้
+            // → ล้มภายใน 6 วิ แล้วตกไปแสดง No data
+            const res = await Promise.race([
+                aiApi.dashboardAll(),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error("AI server timeout")), 6000)
+                ),
+            ]);
             setData(res);
             setLastUpdate(new Date().toLocaleTimeString("th-TH"));
-        } catch { setError("ไม่สามารถเชื่อมต่อ AI Server"); }
+        } catch { setError("ไม่สามารถเชื่อมต่อ AI Server"); setData(null); }
         finally { setLoading(false); }
     }, []);
 
@@ -136,10 +146,28 @@ export default function AiDashboardPage() {
         return { ok, warn, crit };
     }, [data]);
 
-    // ── ยังไม่ได้เลือกตู้ชาร์จ → ขึ้น No data เหมือนหน้า Device ─────────────
+    // ── คำนวณสถานะ No data ────────────────────────────────────────────────
     const selectedSn =
         activeSn || (typeof window !== "undefined" ? localStorage.getItem("selected_sn") : "") || "";
-    if (!selectedSn) {
+    // dashboardAll() คืน module ครบ 7 ตัวเสมอ (ตู้ที่ไม่ได้ config จะ error/health=null)
+    // จึงเช็คว่า "มีอย่างน้อย 1 module ที่มีข้อมูลจริง" แทนการเช็คจำนวน key
+    const hasAnyModuleData =
+        !!data?.modules &&
+        Object.values(data.modules).some(
+            (m: any) => m && !m.error && m.health != null
+        );
+    const showNoStation = !selectedSn;
+    const showLoading = !showNoStation && loading && !data;
+    const showNoData = !showNoStation && !loading && !hasAnyModuleData;
+
+    // ซ่อนแท็บด้านบน (Dashboard/Monitor/...) เมื่อหน้านี้ขึ้น loading / No data
+    useEffect(() => {
+        setHideNav(showNoStation || showLoading || showNoData);
+        return () => setHideNav(false);
+    }, [showNoStation, showLoading, showNoData, setHideNav]);
+
+    // ── ยังไม่ได้เลือกตู้ชาร์จ → ขึ้น No data เหมือนหน้า Device ─────────────
+    if (showNoStation) {
         return (
             <div className="ai-root tw-min-h-screen">
                 <NoData variant="no-station" />
@@ -147,8 +175,17 @@ export default function AiDashboardPage() {
         );
     }
 
+    // ── กำลังโหลดข้อมูลครั้งแรก → ขึ้นหน้า loading ─────────────────────────
+    if (showLoading) {
+        return (
+            <div className="ai-root tw-min-h-screen">
+                <LoadingOverlay show text="กำลังโหลดข้อมูล..." />
+            </div>
+        );
+    }
+
     // ── เลือกตู้แล้วแต่ไม่มีข้อมูล (ยังไม่ได้ config pipeline) → No data ──────
-    if (!loading && (!data || !data.modules || Object.keys(data.modules).length === 0)) {
+    if (showNoData) {
         return (
             <div className="ai-root tw-min-h-screen">
                 <NoData variant="no-data" stationId={selectedSn} />

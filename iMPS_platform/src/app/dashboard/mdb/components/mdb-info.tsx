@@ -185,7 +185,7 @@ export default function MDBInfo(props: MDBType) {
                         <button type="button" onClick={() => setOpenRelay(true)}
                             title={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
                             aria-label={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
-                            style={{ background: 'linear-gradient(135deg, #1a1a1a, #2d2d2d)' }}
+                            style={{ background: 'linear-gradient(135deg, #9ca3af, #6b7280)' }}
                             className="tw-absolute tw-top-1.5 tw-right-1.5 tw-z-10 tw-flex tw-items-center tw-justify-center tw-h-5 tw-w-5 tw-rounded-md tw-text-white tw-shadow hover:tw-shadow-md tw-transition-all">
                             {hasAnyRelay
                                 ? <PencilSquareIcon className="tw-h-3 tw-w-3" />

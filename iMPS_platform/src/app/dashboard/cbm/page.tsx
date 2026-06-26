@@ -150,7 +150,11 @@ export default function SalesPage() {
       { withCredentials: true }
     );
 
+    // กันค้างหน้า loading: ถ้าเชื่อมต่อได้แต่ไม่มีข้อมูลส่งมาภายใน 5 วิ → เลิก loading แล้วตกไป No data
+    const noDataTimer = setTimeout(() => setLoading(false), 5000);
+
     const onInit = (e: MessageEvent) => {
+      clearTimeout(noDataTimer);
       try {
         const obj = JSON.parse(e.data);
         setData(obj);
@@ -167,18 +171,22 @@ export default function SalesPage() {
     es.onopen = () => setErr(null);
 
     es.onmessage = (e) => {
+      clearTimeout(noDataTimer);
       try {
         const obj = JSON.parse(e.data);
         setData(obj);
+        setLoading(false);
       } catch { }
     };
 
     es.onerror = () => {
+      clearTimeout(noDataTimer);
       setErr("SSE หลุดการเชื่อมต่อ (กำลังพยายามเชื่อมใหม่อัตโนมัติ)");
       setLoading(false);
     };
 
     return () => {
+      clearTimeout(noDataTimer);
       es.removeEventListener("init", onInit);
       es.close();
     };
