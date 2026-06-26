@@ -9,11 +9,13 @@ import PowerModule from "./components/PowerModule";
 import InfoPanel from "./components/InfoPanel";
 import { useSearchParams } from "next/navigation";
 import { apiFetch } from "@/utils/api"; // ← ปรับ path ตามโปรเจกต์
+import NoData from "@/app/dashboard/components/NoData";
 import BarProgress from "./components/BarProgress";
 const POLL_INTERVAL_MS = 30_000;
 
 export default function SettingPage() {
   const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const searchParams = useSearchParams();
   const abortRef = useRef<AbortController | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -33,14 +35,20 @@ export default function SettingPage() {
       } catch (err: any) {
         if (err?.name === "AbortError") return;
         console.error("Setting fetch error:", err);
+      } finally {
+        setLoading(false);
       }
     },
     [SN]
   );
 
   useEffect(() => {
-    if (!SN) return;
+    if (!SN) {
+      setLoading(false);
+      return;
+    }
 
+    setLoading(true);
     abortRef.current?.abort();
     if (pollRef.current) clearInterval(pollRef.current);
 
@@ -91,6 +99,16 @@ export default function SettingPage() {
       {children}
     </div>
   );
+
+  // ── ยังไม่ได้เลือกตู้ชาร์จ → ขึ้น No data เหมือนหน้า Device ─────────────
+  if (!SN) {
+    return <NoData variant="no-station" />;
+  }
+
+  // ── เลือกตู้แล้วแต่ไม่มีข้อมูล (ยังไม่ได้ config pipeline) → No data ──────
+  if (!loading && (!data || Object.keys(data).length === 0)) {
+    return <NoData variant="no-data" stationId={SN} />;
+  }
 
   return (
     <div className="tw-space-y-6 tw-mt-8">

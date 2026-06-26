@@ -12,6 +12,7 @@ import InsuContactorStatusCard from "@/app/dashboard/cbm/components/InsuContacto
 import DCContactorsTimesCard from "@/app/dashboard/cbm/components/DCContactorsCard";
 import ACMagneticContactorsCard from "@/app/dashboard/cbm/components/ACMagneticContactorsCard";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import NoData from "@/app/dashboard/components/NoData";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -278,6 +279,16 @@ export default function SalesPage() {
         </div>
       </div>
     );
+  }
+
+  // ── ยังไม่ได้เลือกตู้ชาร์จ → ขึ้น No data เหมือนหน้า Device ─────────────
+  if (!SN || SN === "-") {
+    return <NoData variant="no-station" />;
+  }
+
+  // ── เลือกตู้แล้วแต่ไม่มีข้อมูล (ยังไม่ได้ config pipeline) → No data ──────
+  if (!loading && (!data || Object.keys(data).length === 0)) {
+    return <NoData variant="no-data" stationId={SN} />;
   }
 
   return (

@@ -553,6 +553,7 @@ export default function StationInfo({
   };
 
   // ===== Computed helpers =====
+  const isFlexxFast = (brand ?? "").trim().toLowerCase() === "flexxfast";
   const statusColor = status === true ? "tw-bg-green-100 tw-text-green-700" : "tw-bg-red-100 tw-text-red-700";
   const statusText = status === true ? t.online : t.offline;
 
@@ -694,7 +695,7 @@ export default function StationInfo({
               <InfoRow label={t.stationName} value={station_name} />
               <InfoRow label={t.brand} value={brand} />
               <InfoRow label={t.serialNumber} value={SN} />
-              <InfoRow label={t.workOrder} value={WO} />
+              {isFlexxFast && <InfoRow label={t.workOrder} value={WO} />}
               <InfoRow label={t.model} value={model} />
               <InfoRow label={t.power} value={power} />
               <InfoRow label={t.status} badge={{ text: statusText, className: statusColor }} />
@@ -715,13 +716,15 @@ export default function StationInfo({
               <InfoRow label={t.daysRemaining} badge={{ text: remainingWarrantyDays, className: getWarrantyColor(remainingWarrantyDays) }} />
             </div>
 
-            {/* Firmware */}
-            <div className={displayedItems.length > 0 ? "tw-border-b tw-border-blue-gray-200 tw-pb-4" : "tw-pb-4"}>
-              <h3 className="tw-text-sm tw-font-semibold tw-text-blue-gray-700 tw-mb-4">{t.firmware}</h3>
-              <InfoRow label="PLC" value={PLCFirmware} truncate />
-              <InfoRow label="PI" value={PIFirmware} truncate />
-              <InfoRow label="Router" value={RTFirmware} truncate />
-            </div>
+            {/* Firmware — show only for FlexxFast brand */}
+            {isFlexxFast && (
+              <div className={displayedItems.length > 0 ? "tw-border-b tw-border-blue-gray-200 tw-pb-4" : "tw-pb-4"}>
+                <h3 className="tw-text-sm tw-font-semibold tw-text-blue-gray-700 tw-mb-4">{t.firmware}</h3>
+                <InfoRow label="PLC" value={PLCFirmware} truncate />
+                <InfoRow label="PI" value={PIFirmware} truncate />
+                <InfoRow label="Router" value={RTFirmware} truncate />
+              </div>
+            )}
 
             {/* CBM Monitoring */}
             {displayedItems.length > 0 && (

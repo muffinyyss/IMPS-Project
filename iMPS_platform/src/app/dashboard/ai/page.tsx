@@ -6,6 +6,7 @@ import { MODULES, getHealthColor } from "./lib/constants";
 import { useAutoRefresh } from "./hooks/useAutoRefresh";
 import { useStation } from "./hooks/useStation";
 import { HealthGaugeSvg, StatusBadge, RefreshBar } from "./components/ui";
+import NoData from "@/app/dashboard/components/NoData";
 import "./ai-theme.css";
 
 // ── Module Card ───────────────────────────────────────────────────────────
@@ -134,6 +135,26 @@ export default function AiDashboardPage() {
         });
         return { ok, warn, crit };
     }, [data]);
+
+    // ── ยังไม่ได้เลือกตู้ชาร์จ → ขึ้น No data เหมือนหน้า Device ─────────────
+    const selectedSn =
+        activeSn || (typeof window !== "undefined" ? localStorage.getItem("selected_sn") : "") || "";
+    if (!selectedSn) {
+        return (
+            <div className="ai-root tw-min-h-screen">
+                <NoData variant="no-station" />
+            </div>
+        );
+    }
+
+    // ── เลือกตู้แล้วแต่ไม่มีข้อมูล (ยังไม่ได้ config pipeline) → No data ──────
+    if (!loading && (!data || !data.modules || Object.keys(data.modules).length === 0)) {
+        return (
+            <div className="ai-root tw-min-h-screen">
+                <NoData variant="no-data" stationId={selectedSn} />
+            </div>
+        );
+    }
 
     return (
         <div className="ai-root tw-min-h-screen">
