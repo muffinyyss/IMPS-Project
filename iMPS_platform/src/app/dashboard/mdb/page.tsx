@@ -29,6 +29,7 @@ import { timeStamp } from "console";
 import { Button } from "@/components/MaterialTailwind";
 import { PlusIcon, PencilSquareIcon } from "@heroicons/react/24/solid";
 import AddEquipmentDialog from "./components/add-equipment-dialog";
+import NoData from "@/app/dashboard/components/NoData";
 
 type HistoryRow = {
     timestamp: string; // ISO time
@@ -611,6 +612,11 @@ export default function MDBPage() {
     console.log("547", history)
 
     const charts = useMemo(() => buildChartsFromHistory(MDB, history, startDate, endDate), [MDB, history, startDate, endDate]);
+
+    // ── ยังไม่ได้เลือกตู้ชาร์จ → ขึ้น No data เหมือนหน้า Device ─────────────
+    if (!stationId) {
+        return <NoData variant="no-station" />;
+    }
 
     return (
         <div className="tw-mt-4 tw-mb-4">

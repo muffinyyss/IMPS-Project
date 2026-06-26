@@ -158,9 +158,13 @@ export default function MDBInfo(props: MDBType) {
 
     const hasAnyRelay = !!relayCfg.relay1 || !!relayCfg.relay2;
 
-    // สถานะ Main Breaker: ใช้ค่า breaker_main จริง, ถ้า null/ว่าง = "ON"; สีแดงเมื่อ Off
-    const mbLabel = main_breaker == null || main_breaker === "" ? "ON" : String(main_breaker);
-    const mbOn = !/off/i.test(mbLabel);
+    // สถานะ Main Breaker: ถ้า null/ว่าง = ON; ค่า 0/"off"/"false" = OFF, นอกนั้น = ON
+    const mbOn = (() => {
+        if (main_breaker == null || main_breaker === "") return true;
+        const s = String(main_breaker).trim().toLowerCase();
+        return !(s === "0" || s === "off" || s === "false");
+    })();
+    const mbLabel = mbOn ? "ON" : "OFF";
 
     const items = [
         { icon: <WaveSawIcon className="tw-text-amber-400" />, label: "Total Current", value: formatComma(totalCurrentA), unit: "A", accent: "#f59e0b" },
@@ -182,10 +186,10 @@ export default function MDBInfo(props: MDBType) {
                             title={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
                             aria-label={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
                             style={{ background: 'linear-gradient(135deg, #1a1a1a, #2d2d2d)' }}
-                            className="tw-absolute tw-top-2 tw-right-2 tw-z-10 tw-flex tw-items-center tw-justify-center tw-h-6 tw-w-6 tw-rounded-lg tw-text-white tw-shadow-md hover:tw-shadow-lg tw-transition-all">
+                            className="tw-absolute tw-top-1.5 tw-right-1.5 tw-z-10 tw-flex tw-items-center tw-justify-center tw-h-5 tw-w-5 tw-rounded-md tw-text-white tw-shadow hover:tw-shadow-md tw-transition-all">
                             {hasAnyRelay
-                                ? <PencilSquareIcon className="tw-h-4 tw-w-4" />
-                                : <PlusIcon className="tw-h-4 tw-w-4" />}
+                                ? <PencilSquareIcon className="tw-h-3 tw-w-3" />
+                                : <PlusIcon className="tw-h-3 tw-w-3" />}
                         </button>
                     )}
                     <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2.5">
