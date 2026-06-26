@@ -1,8 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Typography, Tooltip } from "@/components/MaterialTailwind";
-import { PowerIcon } from "@heroicons/react/24/solid";
+import { PowerIcon, PlusIcon, PencilSquareIcon } from "@heroicons/react/24/solid";
+import RelayTopicDialog from "./relay-topic-dialog";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export type MDBType = {
     tempc: number;
@@ -40,8 +43,8 @@ export type MDBType = {
     thdiL2: number;
     thdiL3: number;
     className?: string;
-    main_breaker: boolean;
-    breaker_charger: boolean;
+    main_breaker?: string | boolean | null;
+    breaker_charger?: string | boolean | null;
     VL1N_loss?: number;
     VL2N_loss?: number;
     VL3N_loss?: number;
@@ -50,6 +53,8 @@ export type MDBType = {
     PL2N_peak?: number | string;
     PL3N_peak?: number | string;
     PL123N_peak?: number | string;
+    stationId?: string | null;
+    canManage?: boolean;
 };
 
 const formatComma = (val: number | string | undefined) => {
@@ -94,7 +99,68 @@ export default function MDBInfo(props: MDBType) {
         main_breaker, breaker_charger,
         VL1N_loss, VL2N_loss, VL3N_loss, VL123_loss,
         PL1N_peak, PL2N_peak, PL3N_peak, PL123N_peak,
+        stationId, canManage = false,
     } = props;
+
+    const [openRelay, setOpenRelay] = useState(false);
+    // relay1 = topic สั่ง ON, relay2 = topic สั่ง OFF, state = สถานะ breaker ล่าสุด
+    const [relayCfg, setRelayCfg] = useState<{
+        relay1: string; relay2: string; state: string;
+    }>({ relay1: "", relay2: "", state: "" });
+    const [relayBusy, setRelayBusy] = useState(false);
+
+    const authHeaders = () => {
+        const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    };
+
+    const loadRelayCfg = React.useCallback(async () => {
+        if (!stationId) return;
+        try {
+            const res = await fetch(`${API_BASE}/MDB/relay-topics/${encodeURIComponent(stationId)}`, {
+                headers: authHeaders(),
+                credentials: "include",
+            });
+            if (res.ok) {
+                const d = await res.json();
+                setRelayCfg({
+                    relay1: d.relay1_topic || "",
+                    relay2: d.relay2_topic || "",
+                    state: d.state || "",
+                });
+            }
+        } catch (e) {
+            console.error("load relay topics failed", e);
+        }
+    }, [stationId]);
+
+    React.useEffect(() => { loadRelayCfg(); }, [loadRelayCfg]);
+
+    const sendBreaker = async (action: "on" | "off") => {
+        if (!stationId) return;
+        setRelayBusy(true);
+        try {
+            const res = await fetch(`${API_BASE}/MDB/relay-control`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...authHeaders() },
+                credentials: "include",
+                body: JSON.stringify({ station_id: stationId, action }),
+            });
+            if (res.ok) {
+                setRelayCfg(prev => ({ ...prev, state: action }));
+            }
+        } catch (e) {
+            console.error("relay control failed", e);
+        } finally {
+            setRelayBusy(false);
+        }
+    };
+
+    const hasAnyRelay = !!relayCfg.relay1 || !!relayCfg.relay2;
+
+    // สถานะ Main Breaker: ใช้ค่า breaker_main จริง, ถ้า null/ว่าง = "ON"; สีแดงเมื่อ Off
+    const mbLabel = main_breaker == null || main_breaker === "" ? "ON" : String(main_breaker);
+    const mbOn = !/off/i.test(mbLabel);
 
     const items = [
         { icon: <WaveSawIcon className="tw-text-amber-400" />, label: "Total Current", value: formatComma(totalCurrentA), unit: "A", accent: "#f59e0b" },
@@ -111,6 +177,17 @@ export default function MDBInfo(props: MDBType) {
 
                 {/* Main Breaker */}
                 <div className="tw-relative tw-overflow-hidden tw-rounded-xl tw-px-4 tw-py-4 tw-border tw-border-gray-200 tw-bg-white tw-shadow-md hover:tw-shadow-lg tw-transition-all tw-duration-200">
+                    {canManage && stationId && (
+                        <button type="button" onClick={() => setOpenRelay(true)}
+                            title={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
+                            aria-label={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
+                            style={{ background: 'linear-gradient(135deg, #1a1a1a, #2d2d2d)' }}
+                            className="tw-absolute tw-top-2 tw-right-2 tw-z-10 tw-flex tw-items-center tw-justify-center tw-h-6 tw-w-6 tw-rounded-lg tw-text-white tw-shadow-md hover:tw-shadow-lg tw-transition-all">
+                            {hasAnyRelay
+                                ? <PencilSquareIcon className="tw-h-4 tw-w-4" />
+                                : <PlusIcon className="tw-h-4 tw-w-4" />}
+                        </button>
+                    )}
                     <div className="tw-flex tw-items-center tw-gap-2 tw-mb-2.5">
                         <div className="tw-h-7 tw-w-7 tw-rounded-lg tw-flex tw-items-center tw-justify-center tw-bg-gray-100">
                             <PowerIcon className="tw-h-4 tw-w-4 tw-text-gray-500" />
@@ -120,12 +197,27 @@ export default function MDBInfo(props: MDBType) {
                         </p>
                     </div>
                     <div className="tw-flex tw-items-center tw-gap-2">
-                        {/* <span className={`tw-h-2.5 tw-w-2.5 tw-rounded-full ${main_breaker ? "tw-bg-green-500 tw-shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "tw-bg-red-500 tw-shadow-[0_0_8px_rgba(239,68,68,0.5)]"}`} />
-                        <span className={`tw-text-xl tw-font-black tw-tracking-tight ${main_breaker ? "tw-text-green-600" : "tw-text-red-500"}`}> */}
-                        <span className={`tw-h-2.5 tw-w-2.5 tw-rounded-full ${main_breaker ? "tw-bg-green-500 tw-shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "tw-bg-green-500 tw-shadow-[0_0_8px_rgba(34,197,94,0.5)]"}`} />
-                        <span className={`tw-text-xl tw-font-black tw-tracking-tight ${main_breaker ? "tw-text-green-600" : "tw-text-green-600"}`}>
-                            {main_breaker ? "ON" : "ON"}
+                        <span className={`tw-h-2.5 tw-w-2.5 tw-rounded-full ${mbOn ? "tw-bg-green-500 tw-shadow-[0_0_8px_rgba(34,197,94,0.5)]" : "tw-bg-red-500 tw-shadow-[0_0_8px_rgba(239,68,68,0.5)]"}`} />
+                        <span className={`tw-text-xl tw-font-black tw-tracking-tight ${mbOn ? "tw-text-green-600" : "tw-text-red-500"}`}>
+                            {mbLabel}
                         </span>
+
+                        {hasAnyRelay && (
+                            <div className="tw-ml-auto tw-flex tw-items-center tw-gap-1">
+                                {/* กด ON ได้เมื่อสถานะปัจจุบันเป็น OFF เท่านั้น */}
+                                <button type="button" disabled={relayBusy || !canManage || !relayCfg.relay1 || mbOn}
+                                    onClick={() => sendBreaker("on")}
+                                    className={`tw-px-2 tw-py-0.5 tw-rounded tw-text-[10px] tw-font-bold tw-transition-all disabled:tw-opacity-50 ${mbOn ? "tw-bg-green-500 tw-text-white tw-shadow" : "tw-bg-gray-100 tw-text-gray-500 hover:tw-bg-green-50"}`}>
+                                    ON
+                                </button>
+                                {/* กด OFF ได้เมื่อสถานะปัจจุบันเป็น ON เท่านั้น */}
+                                <button type="button" disabled={relayBusy || !canManage || !relayCfg.relay2 || !mbOn}
+                                    onClick={() => sendBreaker("off")}
+                                    className={`tw-px-2 tw-py-0.5 tw-rounded tw-text-[10px] tw-font-bold tw-transition-all disabled:tw-opacity-50 ${!mbOn ? "tw-bg-red-500 tw-text-white tw-shadow" : "tw-bg-gray-100 tw-text-gray-500 hover:tw-bg-red-50"}`}>
+                                    OFF
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -236,6 +328,15 @@ export default function MDBInfo(props: MDBType) {
                     <Row label="Total Peak" value={formatComma(PL123N_peak)} unit="kW" />
                 </DataCard>
             </div>
+
+            <RelayTopicDialog
+                open={openRelay}
+                onClose={() => setOpenRelay(false)}
+                stationId={stationId ?? null}
+                initialRelay1={relayCfg.relay1}
+                initialRelay2={relayCfg.relay2}
+                onSuccess={loadRelayCfg}
+            />
         </div>
     );
 }

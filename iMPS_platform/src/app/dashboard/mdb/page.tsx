@@ -27,7 +27,7 @@ import { timeStamp } from "console";
 
 // เพิ่มใต้ import อื่นๆ
 import { Button } from "@/components/MaterialTailwind";
-import { PlusIcon } from "@heroicons/react/24/solid";
+import { PlusIcon, PencilSquareIcon } from "@heroicons/react/24/solid";
 import AddEquipmentDialog from "./components/add-equipment-dialog";
 
 type HistoryRow = {
@@ -186,9 +186,31 @@ export default function MDBPage() {
     const [peakPower, setPeakPower] = useState<{ PL1N_peak?: number, PL2N_peak?: number, PL3N_peak?: number } | null>(null);
 
     const [openAddEquip, setOpenAddEquip] = useState(false);
+    const [openEditEquip, setOpenEditEquip] = useState(false);
+    const [editInit, setEditInit] = useState<{ topic: string; broker: string }>({ topic: "", broker: "" });
     const hasPermission = userLogin?.role === "admin" || userLogin?.role === "owner";
     const hasMdbData = !!mdb && !loading;
     const canAddEquipment = hasPermission && !hasMdbData;
+    const canEditEquipment = hasPermission && hasMdbData;
+
+    const handleOpenEdit = async () => {
+        if (!stationId) return;
+        setEditInit({ topic: "", broker: "" });
+        try {
+            const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
+            const res = await fetch(`${API_BASE}/MDB/equipment/${encodeURIComponent(stationId)}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                credentials: "include",
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setEditInit({ topic: data.topic || "", broker: data.broker || "" });
+            }
+        } catch (e) {
+            console.error("load equipment config failed", e);
+        }
+        setOpenEditEquip(true);
+    };
 
     // default: ล่าสุด 30 วัน
     const today = useMemo(() => new Date(), []);
@@ -652,6 +674,13 @@ export default function MDBPage() {
                                 <span className="tw-inline sm:tw-hidden">+ เพิ่ม</span>
                             </button>
                         )}
+                        {canEditEquipment && (
+                            <button onClick={handleOpenEdit} title="แก้ไข Topic" aria-label="แก้ไข Topic"
+                                className="tw-flex tw-items-center tw-justify-center tw-p-2 sm:tw-p-2.5 tw-rounded-xl tw-shadow-lg tw-transition-all tw-duration-200 hover:tw-scale-[1.03]"
+                                style={{ background: 'linear-gradient(135deg, #ffffff, #f1f5f9)', color: '#1e293b' }}>
+                                <PencilSquareIcon className="tw-h-4 tw-w-4" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -664,7 +693,7 @@ export default function MDBPage() {
                     {/* MDB Info — ใส่ border สีเทาอ่อนให้เข้ากับธีม */}
                     <Card className="tw-mb-6 tw-border tw-border-gray-200 tw-shadow-sm tw-rounded-2xl">
                         <CardBody className="tw-p-4 md:tw-p-6">
-                            <MDBInfo {...MDB} />
+                            <MDBInfo {...MDB} stationId={stationId} canManage={hasPermission} />
                         </CardBody>
                     </Card>
 
@@ -728,6 +757,16 @@ export default function MDBPage() {
                 onClose={() => setOpenAddEquip(false)}
                 stationId={stationId}
                 stationName={typeof window !== "undefined" ? localStorage.getItem("selected_station_name") || undefined : undefined}
+            />
+
+            <AddEquipmentDialog
+                open={openEditEquip}
+                mode="edit"
+                onClose={() => setOpenEditEquip(false)}
+                stationId={stationId}
+                stationName={typeof window !== "undefined" ? localStorage.getItem("selected_station_name") || undefined : undefined}
+                initialTopic={editInit.topic}
+                initialBroker={editInit.broker}
             />
         </div>
     );

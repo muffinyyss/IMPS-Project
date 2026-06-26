@@ -6,7 +6,7 @@ import {
     Dialog, DialogHeader, DialogBody, DialogFooter,
     Input,
 } from "@material-tailwind/react";
-import { PlusIcon, PencilSquareIcon, CheckCircleIcon, ExclamationCircleIcon } from "@heroicons/react/24/solid";
+import { BoltIcon, CheckCircleIcon, ExclamationCircleIcon } from "@heroicons/react/24/solid";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -21,34 +21,28 @@ const Spinner = () => (
 
 const translations = {
     th: {
-        title: "เพิ่มอุปกรณ์ MDB",
-        editTitle: "แก้ไข Topic / Broker",
+        title: "ตั้งค่า Topic Relay",
         stationId: "Station ID",
-        topic: "Topic",
-        topicPlaceholder: "เช่น PW/Pakchong2",
-        broker: "Broker",
-        brokerPlaceholder: "เช่น 212.80.215.42:1883",
+        relay1: "Topic Relay 1 (สั่ง ON)",
+        relay2: "Topic Relay 2 (สั่ง OFF)",
+        relayPlaceholder: "เช่น MDB/Relay1",
         cancel: "ยกเลิก",
         save: "บันทึก",
         saving: "กำลังบันทึก...",
-        requiredTopic: "กรุณากรอก Topic",
-        requiredBroker: "กรุณากรอก Broker",
+        required: "กรุณากรอก Topic อย่างน้อย 1 ช่อง",
         success: "บันทึกเรียบร้อยแล้ว",
         error: "บันทึกไม่สำเร็จ",
     },
     en: {
-        title: "Add MDB Equipment",
-        editTitle: "Edit Topic / Broker",
+        title: "Set Relay Topics",
         stationId: "Station ID",
-        topic: "Topic",
-        topicPlaceholder: "e.g. PW/Pakchong2",
-        broker: "Broker",
-        brokerPlaceholder: "e.g. 212.80.215.42:1883",
+        relay1: "Topic Relay 1 (ON)",
+        relay2: "Topic Relay 2 (OFF)",
+        relayPlaceholder: "e.g. MDB/Relay1",
         cancel: "Cancel",
         save: "Save",
         saving: "Saving...",
-        requiredTopic: "Please enter Topic",
-        requiredBroker: "Please enter Broker",
+        required: "Please fill at least one Topic",
         success: "Saved successfully",
         error: "Save failed",
     },
@@ -56,40 +50,36 @@ const translations = {
 
 type Toast = { type: "success" | "error"; message: string } | null;
 
-export type AddEquipmentDialogProps = {
+export type RelayTopicDialogProps = {
     open: boolean;
     onClose: () => void;
     stationId: string | null;
     stationName?: string;
     lang?: Lang;
     onSuccess?: () => void;
-    mode?: "add" | "edit";
-    initialTopic?: string;
-    initialBroker?: string;
+    initialRelay1?: string;
+    initialRelay2?: string;
 };
 
-export default function AddEquipmentDialog({
+export default function RelayTopicDialog({
     open, onClose, stationId, stationName, lang = "th", onSuccess,
-    mode = "add", initialTopic = "", initialBroker = "",
-}: AddEquipmentDialogProps) {
-
-    const isEdit = mode === "edit";
+    initialRelay1 = "", initialRelay2 = "",
+}: RelayTopicDialogProps) {
 
     const t = translations[lang];
     const [saving, setSaving] = useState(false);
-    const [topic, setTopic] = useState("");
-    const [broker, setBroker] = useState("");
+    const [relay1, setRelay1] = useState("");
+    const [relay2, setRelay2] = useState("");
     const [toast, setToast] = useState<Toast>(null);
 
     useEffect(() => {
         if (open) {
-            setTopic(initialTopic);
-            setBroker(initialBroker);
+            setRelay1(initialRelay1);
+            setRelay2(initialRelay2);
             setToast(null);
         }
-    }, [open, initialTopic, initialBroker]);
+    }, [open, initialRelay1, initialRelay2]);
 
-    // auto-hide toast
     useEffect(() => {
         if (!toast) return;
         const timer = setTimeout(() => setToast(null), 3000);
@@ -98,16 +88,19 @@ export default function AddEquipmentDialog({
 
     const handleSubmit = async () => {
         if (!stationId) return setToast({ type: "error", message: "Station ID not found" });
-        if (!topic.trim()) return setToast({ type: "error", message: t.requiredTopic });
-        if (!broker.trim()) return setToast({ type: "error", message: t.requiredBroker });
+        if (!relay1.trim() && !relay2.trim()) return setToast({ type: "error", message: t.required });
 
         setSaving(true);
         setToast(null);
         try {
             const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
 
-            const payload = { station_id: stationId, topic: topic.trim(), broker: broker.trim() };
-            const res = await fetch(`${API_BASE}/MDB/equipment`, {
+            const payload = {
+                station_id: stationId,
+                relay1_topic: relay1.trim(),
+                relay2_topic: relay2.trim(),
+            };
+            const res = await fetch(`${API_BASE}/MDB/relay-topics`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -119,13 +112,10 @@ export default function AddEquipmentDialog({
             if (!res.ok) throw new Error(`${t.error}: ${res.status}`);
 
             setToast({ type: "success", message: t.success });
-
-            // รอให้เห็น toast แล้วค่อยปิด
             setTimeout(() => {
                 onSuccess?.();
                 onClose();
             }, 1200);
-
         } catch (err: any) {
             console.error(err);
             setToast({ type: "error", message: err?.message || t.error });
@@ -145,13 +135,11 @@ export default function AddEquipmentDialog({
                     <div className="tw-flex tw-items-center tw-gap-3">
                         <div className="tw-h-10 tw-w-10 tw-rounded-xl tw-flex tw-items-center tw-justify-center"
                             style={{ background: 'rgba(59,130,246,0.2)' }}>
-                            {isEdit
-                                ? <PencilSquareIcon className="tw-h-5 tw-w-5 tw-text-blue-400" />
-                                : <PlusIcon className="tw-h-5 tw-w-5 tw-text-blue-400" />}
+                            <BoltIcon className="tw-h-5 tw-w-5 tw-text-blue-400" />
                         </div>
                         <div>
                             <Typography variant="h5" className="!tw-text-white !tw-font-bold !tw-tracking-tight !tw-text-base sm:!tw-text-lg">
-                                {isEdit ? t.editTitle : t.title}
+                                {t.title}
                             </Typography>
                             {stationName && (
                                 <Typography variant="small" className="!tw-text-white/40 !tw-text-xs">
@@ -172,7 +160,6 @@ export default function AddEquipmentDialog({
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="tw-flex tw-flex-col">
                 <DialogBody className="tw-px-5 sm:tw-px-6 tw-py-5 sm:tw-py-6 tw-bg-gray-50/60">
                     <div className="tw-space-y-4">
-                        {/* Toast notification */}
                         {toast && (
                             <div className={`tw-flex tw-items-center tw-gap-2.5 tw-px-4 tw-py-3 tw-rounded-xl tw-text-sm tw-font-medium tw-animate-fade-in ${
                                 toast.type === "success"
@@ -188,7 +175,6 @@ export default function AddEquipmentDialog({
                             </div>
                         )}
 
-                        {/* Station ID (read-only) */}
                         <div className="tw-px-3 tw-py-2.5 tw-rounded-lg tw-bg-gray-100 tw-border tw-border-gray-200">
                             <span className="tw-text-xs tw-text-gray-500 tw-font-medium">{t.stationId}</span>
                             <p className="tw-text-sm tw-font-semibold tw-text-gray-800 tw-mt-0.5">
@@ -196,15 +182,15 @@ export default function AddEquipmentDialog({
                             </p>
                         </div>
 
-                        <Input label={t.broker} required
-                            placeholder={t.brokerPlaceholder}
-                            value={broker}
-                            onChange={(e) => setBroker(e.target.value)}
+                        <Input label={t.relay1}
+                            placeholder={t.relayPlaceholder}
+                            value={relay1}
+                            onChange={(e) => setRelay1(e.target.value)}
                             crossOrigin={undefined} />
-                        <Input label={t.topic} required
-                            placeholder={t.topicPlaceholder}
-                            value={topic}
-                            onChange={(e) => setTopic(e.target.value)}
+                        <Input label={t.relay2}
+                            placeholder={t.relayPlaceholder}
+                            value={relay2}
+                            onChange={(e) => setRelay2(e.target.value)}
                             crossOrigin={undefined} />
                     </div>
                 </DialogBody>

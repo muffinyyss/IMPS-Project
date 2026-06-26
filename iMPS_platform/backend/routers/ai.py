@@ -40,7 +40,7 @@ async def get_latest_health(
 # -------------------------------------------------------------- AI
 def get_outputModule6_collection_for(station_id: str):
     # กันชื่อคอลเลกชันแปลก ๆ / injection: อนุญาต a-z A-Z 0-9 _ -
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+    if not re.fullmatch(r"[A-Za-z0-9_\-฀-๿]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
     return outputModule6.get_collection(str(station_id))
 
@@ -111,7 +111,7 @@ async def get_module_detail(
     if module_id not in MODULES:
         raise HTTPException(status_code=400, detail="Unknown module_id")
 
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+    if not re.fullmatch(r"[A-Za-z0-9_\-฀-๿]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
 
     input_doc = None
@@ -166,7 +166,7 @@ async def get_all_modules_progress(
     current: UserClaims = Depends(get_current_user),
 ):
     """ดึงค่า progress ของทุก modules พร้อมกัน"""
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", str(station_id)):
+    if not re.fullmatch(r"[A-Za-z0-9_\-฀-๿]+", str(station_id)):
         raise HTTPException(status_code=400, detail="Bad station_id")
     
     result = {}
@@ -249,7 +249,7 @@ async def patch_module_toggle(
     current: UserClaims = Depends(get_current_user),
 ):
     # ตรวจสอบว่า station_id ถูกต้อง
-    if not re.fullmatch(r"[A-Za-z0-9_\-]+", station_id):
+    if not re.fullmatch(r"[A-Za-z0-9_\-฀-๿]+", station_id):
         raise HTTPException(status_code=400, detail="Bad station_id")
 
     # ตรวจสอบว่า module_id เป็นโมดูลที่ถูกต้อง
