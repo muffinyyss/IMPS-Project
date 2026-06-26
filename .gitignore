@@ -16,3 +16,6 @@ venv/
 .venv/
 IMPS_platform/backend/venv/
 iMPS_platform/backend/uploads/
+
+# Claude Code local settings (machine-specific, not for sharing)
+.claude/settings.local.json
