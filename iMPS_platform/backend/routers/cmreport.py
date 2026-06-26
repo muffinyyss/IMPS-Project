@@ -339,6 +339,8 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
 async def cmreport_list_all(
     status: str | None = Query(None),
     station_id: str | None = Query(None),
+    limit: int = Query(10000, ge=1, le=50000, description="Max items to return"),
+    skip: int = Query(0, ge=0, description="Items to skip (for pagination)"),
     current: UserClaims = Depends(get_current_user),
 ):
     """รวม CM report จากทุกสถานี (สำหรับหน้า CM report (All))"""
@@ -372,7 +374,14 @@ async def cmreport_list_all(
             items.extend(r)
 
     items.sort(key=lambda x: x.get("createdAt") or x.get("cm_date") or "", reverse=True)
-    return {"items": items, "total": len(items), "stations_count": len(stations)}
+    total = len(items)
+    return {
+        "items": items[skip : skip + limit],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "stations_count": len(stations),
+    }
 
 
 # ตำแหน่งโฟลเดอร์บนเครื่องเซิร์ฟเวอร์

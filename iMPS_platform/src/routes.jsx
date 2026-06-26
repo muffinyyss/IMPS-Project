@@ -61,6 +61,13 @@ const baseRoutes = [
         path: "/dashboard/cm-all",
         allow: ["admin", "owner"],
       },
+      {
+        layout: "dashboard",
+        icon: <i className="fa fa-chart-pie" />,
+        name: "CM Dashboard",
+        path: "/dashboard/cm-dashboard",
+        allow: ["admin", "owner"],
+      },
       // {
       //   layout: "dashboard",
       //   icon: <i className="fa fa-check-square" />,
