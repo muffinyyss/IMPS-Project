@@ -1237,15 +1237,15 @@ async def relay_control(body: RelayCommandIn, current: UserClaims = Depends(get_
         raise HTTPException(400, f"No topic configured for '{action}' ({topic_key})")
 
     now_iso = datetime.now(th_tz).isoformat()
-    # ON -> "1", OFF -> "0"
-    payload_str = "1" if action == "on" else "0"
+    # ON -> 0, OFF -> 1 (ส่งเป็น int)
+    payload = 0 if action == "on" else 1
 
     # ใช้ broker เดียวกับที่ตั้งไว้ตอนเพิ่ม topic MDB (fallback เป็น global ถ้าไม่ได้ตั้ง)
     broker = doc.get("broker", "")
     published = False
     try:
         client = _get_mqtt_client_for(broker) or mqtt_client
-        pub = client.publish(topic, payload_str, qos=1, retain=False)
+        pub = client.publish(topic, payload, qos=1, retain=False)
         pub.wait_for_publish(timeout=2.0)
         published = pub.is_published()
     except Exception as e:
