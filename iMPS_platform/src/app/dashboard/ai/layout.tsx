@@ -1,6 +1,7 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { AiNavContext } from "./ai-nav-context";
 
 function AiSubNav() {
     const router = useRouter();
@@ -27,10 +28,11 @@ function AiSubNav() {
 }
 
 export default function AiLayout({ children }: { children: React.ReactNode }) {
+    const [hideNav, setHideNav] = useState(false);
     return (
-        <>
-            <AiSubNav />
+        <AiNavContext.Provider value={{ hideNav, setHideNav }}>
+            {!hideNav && <AiSubNav />}
             {children}
-        </>
+        </AiNavContext.Provider>
     );
 }
