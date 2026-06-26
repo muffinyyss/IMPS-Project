@@ -1237,12 +1237,8 @@ async def relay_control(body: RelayCommandIn, current: UserClaims = Depends(get_
         raise HTTPException(400, f"No topic configured for '{action}' ({topic_key})")
 
     now_iso = datetime.now(th_tz).isoformat()
-    msg = {
-        "station_id": body.station_id,
-        "command": action,
-        "timestamp": now_iso,
-    }
-    payload_str = json.dumps(msg, ensure_ascii=False)
+    # ON -> "1", OFF -> "0"
+    payload_str = "1" if action == "on" else "0"
 
     # ใช้ broker เดียวกับที่ตั้งไว้ตอนเพิ่ม topic MDB (fallback เป็น global ถ้าไม่ได้ตั้ง)
     broker = doc.get("broker", "")

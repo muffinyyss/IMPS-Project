@@ -204,14 +204,12 @@ export default function MDBInfo(props: MDBType) {
 
                         {hasAnyRelay && (
                             <div className="tw-ml-auto tw-flex tw-items-center tw-gap-1">
-                                {/* กด ON ได้เมื่อสถานะปัจจุบันเป็น OFF เท่านั้น */}
-                                <button type="button" disabled={relayBusy || !canManage || !relayCfg.relay1 || mbOn}
+                                <button type="button" disabled={relayBusy || !canManage || !relayCfg.relay1}
                                     onClick={() => sendBreaker("on")}
                                     className={`tw-px-2 tw-py-0.5 tw-rounded tw-text-[10px] tw-font-bold tw-transition-all disabled:tw-opacity-50 ${mbOn ? "tw-bg-green-500 tw-text-white tw-shadow" : "tw-bg-gray-100 tw-text-gray-500 hover:tw-bg-green-50"}`}>
                                     ON
                                 </button>
-                                {/* กด OFF ได้เมื่อสถานะปัจจุบันเป็น ON เท่านั้น */}
-                                <button type="button" disabled={relayBusy || !canManage || !relayCfg.relay2 || !mbOn}
+                                <button type="button" disabled={relayBusy || !canManage || !relayCfg.relay2}
                                     onClick={() => sendBreaker("off")}
                                     className={`tw-px-2 tw-py-0.5 tw-rounded tw-text-[10px] tw-font-bold tw-transition-all disabled:tw-opacity-50 ${!mbOn ? "tw-bg-red-500 tw-text-white tw-shadow" : "tw-bg-gray-100 tw-text-gray-500 hover:tw-bg-red-50"}`}>
                                     OFF
