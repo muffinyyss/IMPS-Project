@@ -103,11 +103,30 @@ export default function MDBInfo(props: MDBType) {
     } = props;
 
     const [openRelay, setOpenRelay] = useState(false);
-    // relay1 = topic สั่ง ON, relay2 = topic สั่ง OFF, state = สถานะ breaker ล่าสุด
-    const [relayCfg, setRelayCfg] = useState<{
-        relay1: string; relay2: string; state: string;
-    }>({ relay1: "", relay2: "", state: "" });
+    // topic เดียวสำหรับสั่ง ON(0)/OFF(1), state = สถานะ breaker ล่าสุด
+    const [relayCfg, setRelayCfg] = useState<{ topic: string; state: string }>({ topic: "", state: "" });
     const [relayBusy, setRelayBusy] = useState(false);
+    const [confirmAction, setConfirmAction] = useState<"on" | "off" | null>(null);
+    const [cooldownSec, setCooldownSec] = useState(0);
+    const cooldownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const startCooldown = (secs = 5) => {
+        setCooldownSec(secs);
+        if (cooldownRef.current) clearInterval(cooldownRef.current);
+        cooldownRef.current = setInterval(() => {
+            setCooldownSec(prev => {
+                if (prev <= 1) {
+                    if (cooldownRef.current) clearInterval(cooldownRef.current);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+    };
+
+    React.useEffect(() => () => {
+        if (cooldownRef.current) clearInterval(cooldownRef.current);
+    }, []);
 
     const authHeaders = () => {
         const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
@@ -124,8 +143,7 @@ export default function MDBInfo(props: MDBType) {
             if (res.ok) {
                 const d = await res.json();
                 setRelayCfg({
-                    relay1: d.relay1_topic || "",
-                    relay2: d.relay2_topic || "",
+                    topic: d.relay_topic || "",
                     state: d.state || "",
                 });
             }
@@ -148,6 +166,7 @@ export default function MDBInfo(props: MDBType) {
             });
             if (res.ok) {
                 setRelayCfg(prev => ({ ...prev, state: action }));
+                startCooldown(5);
             }
         } catch (e) {
             console.error("relay control failed", e);
@@ -156,13 +175,19 @@ export default function MDBInfo(props: MDBType) {
         }
     };
 
-    const hasAnyRelay = !!relayCfg.relay1 || !!relayCfg.relay2;
+    const handleConfirmBreaker = async () => {
+        const action = confirmAction;
+        setConfirmAction(null);
+        if (action) await sendBreaker(action);
+    };
 
-    // สถานะ Main Breaker: ถ้า null/ว่าง = ON; ค่า 0/"off"/"false" = OFF, นอกนั้น = ON
+    const hasAnyRelay = !!relayCfg.topic;
+
+    // สถานะ Main Breaker: ถ้า null/ว่าง = ON; ค่า 1/"off"/"false" = OFF, นอกนั้น (0/"on") = ON
     const mbOn = (() => {
         if (main_breaker == null || main_breaker === "") return true;
         const s = String(main_breaker).trim().toLowerCase();
-        return !(s === "0" || s === "off" || s === "false");
+        return !(s === "1" || s === "off" || s === "false");
     })();
     const mbLabel = mbOn ? "ON" : "OFF";
 
@@ -185,8 +210,7 @@ export default function MDBInfo(props: MDBType) {
                         <button type="button" onClick={() => setOpenRelay(true)}
                             title={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
                             aria-label={hasAnyRelay ? "แก้ไข Topic Relay" : "เพิ่ม Topic Relay"}
-                            style={{ background: 'linear-gradient(135deg, #9ca3af, #6b7280)' }}
-                            className="tw-absolute tw-top-1.5 tw-right-1.5 tw-z-10 tw-flex tw-items-center tw-justify-center tw-h-5 tw-w-5 tw-rounded-md tw-text-white tw-shadow hover:tw-shadow-md tw-transition-all">
+                            className="tw-absolute tw-top-1.5 tw-right-1.5 tw-z-10 tw-flex tw-items-center tw-justify-center tw-h-5 tw-w-5 tw-rounded-md tw-bg-gray-100 hover:tw-bg-gray-200 tw-text-gray-400 hover:tw-text-gray-600 tw-transition-all">
                             {hasAnyRelay
                                 ? <PencilSquareIcon className="tw-h-3 tw-w-3" />
                                 : <PlusIcon className="tw-h-3 tw-w-3" />}
@@ -208,13 +232,18 @@ export default function MDBInfo(props: MDBType) {
 
                         {hasAnyRelay && (
                             <div className="tw-ml-auto tw-flex tw-items-center tw-gap-1">
-                                <button type="button" disabled={relayBusy || !canManage || !relayCfg.relay1}
-                                    onClick={() => sendBreaker("on")}
+                                {cooldownSec > 0 && (
+                                    <span className="tw-text-[10px] tw-font-bold tw-text-gray-400 tw-tabular-nums tw-mr-0.5">
+                                        {cooldownSec}s
+                                    </span>
+                                )}
+                                <button type="button" disabled={relayBusy || cooldownSec > 0 || !canManage || !relayCfg.topic}
+                                    onClick={() => setConfirmAction("on")}
                                     className={`tw-px-2 tw-py-0.5 tw-rounded tw-text-[10px] tw-font-bold tw-transition-all disabled:tw-opacity-50 ${mbOn ? "tw-bg-green-500 tw-text-white tw-shadow" : "tw-bg-gray-100 tw-text-gray-500 hover:tw-bg-green-50"}`}>
                                     ON
                                 </button>
-                                <button type="button" disabled={relayBusy || !canManage || !relayCfg.relay2}
-                                    onClick={() => sendBreaker("off")}
+                                <button type="button" disabled={relayBusy || cooldownSec > 0 || !canManage || !relayCfg.topic}
+                                    onClick={() => setConfirmAction("off")}
                                     className={`tw-px-2 tw-py-0.5 tw-rounded tw-text-[10px] tw-font-bold tw-transition-all disabled:tw-opacity-50 ${!mbOn ? "tw-bg-red-500 tw-text-white tw-shadow" : "tw-bg-gray-100 tw-text-gray-500 hover:tw-bg-red-50"}`}>
                                     OFF
                                 </button>
@@ -335,10 +364,53 @@ export default function MDBInfo(props: MDBType) {
                 open={openRelay}
                 onClose={() => setOpenRelay(false)}
                 stationId={stationId ?? null}
-                initialRelay1={relayCfg.relay1}
-                initialRelay2={relayCfg.relay2}
+                initialTopic={relayCfg.topic}
                 onSuccess={loadRelayCfg}
             />
+
+            {/* กล่องยืนยันสั่ง ON/OFF */}
+            {confirmAction && (() => {
+                const isOnAct = confirmAction === "on";
+                return (
+                    <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-p-4">
+                        <div className="tw-absolute tw-inset-0 tw-bg-black/50 tw-backdrop-blur-sm"
+                            onClick={() => setConfirmAction(null)} />
+                        <div className="tw-relative tw-w-full tw-max-w-[280px] tw-rounded-xl tw-bg-white tw-shadow-2xl tw-overflow-hidden tw-animate-fade-in">
+                            <div className="tw-px-4 tw-py-3 tw-flex tw-items-center tw-gap-2.5"
+                                style={{ background: 'linear-gradient(135deg, #1a1a1a, #2d2d2d, #1a1a1a)' }}>
+                                <div className="tw-h-7 tw-w-7 tw-rounded-lg tw-flex tw-items-center tw-justify-center"
+                                    style={{ background: 'rgba(59,130,246,0.2)' }}>
+                                    <PowerIcon className="tw-h-4 tw-w-4 tw-text-blue-400" />
+                                </div>
+                                <Typography variant="h6" className="!tw-text-white !tw-font-bold !tw-text-sm">
+                                    ยืนยันการสั่งงาน
+                                </Typography>
+                            </div>
+
+                            <div className="tw-px-4 tw-py-4 tw-text-center">
+                                <p className="tw-text-sm tw-text-gray-600">
+                                    สั่ง <span className="tw-font-semibold tw-text-gray-800">Main Breaker</span> เป็น{" "}
+                                    <span className={`tw-font-black ${isOnAct ? "tw-text-green-600" : "tw-text-red-500"}`}>
+                                        {isOnAct ? "ON" : "OFF"}
+                                    </span> ใช่หรือไม่?
+                                </p>
+                            </div>
+
+                            <div className="tw-px-4 tw-py-3 tw-flex tw-gap-2 tw-justify-end tw-border-t tw-border-gray-200/80">
+                                <button type="button" onClick={() => setConfirmAction(null)}
+                                    className="tw-rounded-lg tw-border tw-border-gray-300 tw-text-gray-600 hover:tw-bg-gray-50 tw-font-semibold tw-text-xs tw-px-4 tw-py-2 tw-transition-all">
+                                    ยกเลิก
+                                </button>
+                                <button type="button" onClick={handleConfirmBreaker}
+                                    className="tw-rounded-lg tw-text-white tw-font-semibold tw-text-xs tw-px-5 tw-py-2 tw-shadow-lg hover:tw-shadow-xl tw-transition-all"
+                                    style={{ background: 'linear-gradient(135deg, #1a1a1a, #2d2d2d)' }}>
+                                    ยืนยัน
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 }

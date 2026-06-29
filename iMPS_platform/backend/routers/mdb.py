@@ -1151,8 +1151,7 @@ async def get_equipment(station_id: str, current: UserClaims = Depends(get_curre
 
 class RelayTopicsIn(BaseModel):
     station_id: str
-    relay1_topic: str = ""
-    relay2_topic: str = ""
+    relay_topic: str = ""
 
 
 @router.post("/MDB/relay-topics")
@@ -1163,8 +1162,7 @@ async def save_relay_topics(body: RelayTopicsIn, current: UserClaims = Depends(g
         {"_id": "config"},
         {
             "$set": {
-                "relay1_topic": body.relay1_topic,
-                "relay2_topic": body.relay2_topic,
+                "relay_topic": body.relay_topic,
                 "relay_updated_by": current.user_id,
                 "relay_updated_at": now_iso,
             },
@@ -1183,18 +1181,18 @@ async def get_relay_topics(station_id: str, current: UserClaims = Depends(get_cu
     _validate_station_id_th(station_id)
     doc = await MDB_DB[station_id].find_one({"_id": "config"})
     doc = doc or {}
+    # รองรับค่าเก่า: ถ้ายังไม่มี relay_topic ให้ fallback ไป relay1_topic
+    relay_topic = doc.get("relay_topic") or doc.get("relay1_topic", "")
     return {
         "station_id": station_id,
-        # relay1_topic = สั่ง ON, relay2_topic = สั่ง OFF
-        "relay1_topic": doc.get("relay1_topic", ""),
-        "relay2_topic": doc.get("relay2_topic", ""),
+        "relay_topic": relay_topic,
         "state": doc.get("breaker_state", ""),
     }
 
 
 class RelayCommandIn(BaseModel):
     station_id: str
-    action: str          # "on" -> relay1_topic, "off" -> relay2_topic
+    action: str          # "on" -> ส่ง 0, "off" -> ส่ง 1 (topic เดียวกัน)
 
 
 # cache MQTT client ต่อ broker (host:port) เพื่อใช้ซ้ำ ไม่ต้อง connect ใหม่ทุกครั้ง
@@ -1230,11 +1228,10 @@ async def relay_control(body: RelayCommandIn, current: UserClaims = Depends(get_
         raise HTTPException(400, "action must be 'on' or 'off'")
 
     doc = await MDB_DB[body.station_id].find_one({"_id": "config"}) or {}
-    # ON ใช้ relay1_topic, OFF ใช้ relay2_topic
-    topic_key = "relay1_topic" if action == "on" else "relay2_topic"
-    topic = doc.get(topic_key, "")
+    # ON และ OFF ใช้ topic เดียวกัน (fallback ค่าเก่า relay1_topic)
+    topic = doc.get("relay_topic") or doc.get("relay1_topic", "")
     if not topic:
-        raise HTTPException(400, f"No topic configured for '{action}' ({topic_key})")
+        raise HTTPException(400, "No relay topic configured")
 
     now_iso = datetime.now(th_tz).isoformat()
     # ON -> 0, OFF -> 1 (ส่งเป็น int)
