@@ -81,7 +81,7 @@ function resetBgUpload() {
     _bgNotify();
 }
 
-async function _bgCompressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
+async function _bgCompressImage(file: File, maxWidth = 1600, quality = 0.8): Promise<File> {
     if (!file.type.startsWith("image/") || file.size < 500 * 1024) return file;
     return new Promise((resolve) => {
         const img = document.createElement("img");
@@ -697,6 +697,53 @@ function InputWithUnit<U extends string>({ label, value, unit, units, onValueCha
 }
 
 // ==================== PHOTO INPUT (matches Charger) ====================
+// บีบรูปก่อนอัปโหลด — การันตีว่าผลลัพธ์เล็กกว่า targetBytes เพื่อกัน nginx 413 (limit ~1MB)
+// ไฟล์ที่เล็กกว่าเป้าอยู่แล้วจะคืนค่าเดิมทันที (nginx จำกัดที่ "ขนาดไฟล์" ไม่ใช่ความละเอียด)
+async function compressImage(
+    file: File,
+    maxWidth = 1600,
+    quality = 0.8,
+    targetBytes = 900 * 1024,
+): Promise<File> {
+    if (!file.type.startsWith("image/") || file.size <= targetBytes) return file;
+
+    const img = await new Promise<HTMLImageElement | null>((resolve) => {
+        const im = document.createElement("img");
+        im.onload = () => resolve(im);
+        im.onerror = () => resolve(null);
+        im.src = URL.createObjectURL(file);
+    });
+    if (!img) return file;
+    URL.revokeObjectURL(img.src);
+
+    let { width, height } = img;
+    if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const toBlob = (q: number) =>
+        new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", q));
+
+    // วนลดคุณภาพทีละขั้นจนกว่าไฟล์จะเล็กกว่าเป้า (หรือถึงคุณภาพต่ำสุดที่ยอมรับได้)
+    let q = quality;
+    let blob = await toBlob(q);
+    while (blob && blob.size > targetBytes && q > 0.4) {
+        q = Math.round((q - 0.1) * 10) / 10;
+        blob = await toBlob(q);
+    }
+
+    if (!blob || blob.size >= file.size) return file; // toBlob ล้มเหลว หรือไม่เล็กลง → ใช้ไฟล์เดิม
+    return new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" });
+}
+
 function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id }: {
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string;
@@ -708,13 +755,27 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id 
 
     const processFile = async (file: File): Promise<PhotoItem | null> => {
         try {
+            // กันไฟล์ว่าง (size=0) ตั้งแต่ต้นทาง — เป็นต้นเหตุของ error "Empty file (size=0)" ตอนอัปโหลด
+            if (!file || file.size === 0) {
+                console.warn("processFile: empty source file", file?.name);
+                return null;
+            }
             const locationText = await getCachedLocation();
-            const fileWithTimestamp = await addTimestampToImage(file, locationText);
+            const stamped = await addTimestampToImage(file, locationText);
+            // ถ้า encode แล้วได้ไฟล์ว่าง (เช่น canvas ล้มเหลวบางเครื่อง) ให้ fallback ไฟล์เดิม แล้วเช็กซ้ำ
+            const fileWithTimestamp = (stamped && stamped.size > 0) ? stamped : file;
+            if (fileWithTimestamp.size === 0) {
+                console.warn("processFile: empty file after timestamp", file.name);
+                return null;
+            }
+            // บีบรูปก่อนเก็บลง IndexedDB — ลดพื้นที่จัดเก็บ (กัน quota เต็มบนมือถือ) + ได้รูปที่พร้อมอัปโหลดเลย
+            const compressed = await compressImage(fileWithTimestamp);
+            const finalFile = (compressed && compressed.size > 0) ? compressed : fileWithTimestamp;
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
-            const ref = await putPhoto(draftKey, photoId, fileWithTimestamp);
-            if (!ref) return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "" };
+            const ref = await putPhoto(draftKey, photoId, finalFile);
+            if (!ref) return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "" };
             const now = new Date().toLocaleString("th-TH", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-            return { id: photoId, file: fileWithTimestamp, preview: URL.createObjectURL(fileWithTimestamp), remark: "", ref, createdAt: now, location: locationText };
+            return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "", ref, createdAt: now, location: locationText };
         } catch (err) { console.error("processFile error:", err); return null; }
     };
 
@@ -735,7 +796,14 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id 
         }
         const results = await Promise.all(validFiles.map(f => processFile(f)));
         const accepted = results.filter(Boolean) as PhotoItem[];
+        const rejected = validFiles.length - accepted.length;
         if (accepted.length > 0) setPhotos(prev => [...prev, ...accepted]);
+        // แจ้งเตือนถ้ามีรูปว่าง/เสียหายถูกข้าม — กันผู้ใช้เข้าใจผิดว่าแนบครบแล้ว
+        if (rejected > 0) {
+            alert(lang === "th"
+                ? `มีรูปว่าง/เสียหาย ${rejected} รูป ใช้ไม่ได้ กรุณาถ่ายหรือเลือกใหม่อีกครั้ง`
+                : `${rejected} photo(s) are empty/corrupted and were skipped. Please retake or reselect.`);
+        }
         if (hasLandscape) setLandscapeWarning(true);
         if (cameraRef.current) cameraRef.current.value = "";
         if (fileRef.current) fileRef.current.value = "";
@@ -1088,6 +1156,10 @@ export default function MDBPMForm() {
                         if ('isNA' in ref && ref.isNA) { items.push({ id: `na-${photoKey}`, isNA: true }); }
                         else if ('dbKey' in ref) {
                             const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
+                            if (!file || file.size === 0) {
+                                console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
+                                continue;
+                            }
                             if (file && !canceled) items.push({
                                 id: (ref as PhotoRef).id,
                                 file,
@@ -1133,6 +1205,10 @@ export default function MDBPMForm() {
                         if ('isNA' in ref && ref.isNA) { items.push({ id: `na-${photoKey}`, isNA: true }); }
                         else if ('dbKey' in ref) {
                             const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
+                            if (!file || file.size === 0) {
+                                console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
+                                continue;
+                            }
                             if (file && !canceled) items.push({
                                 id: (ref as PhotoRef).id,
                                 file,
@@ -1336,24 +1412,6 @@ export default function MDBPMForm() {
     }, [postKey, stationId, rows, m4State, m5State, m6State, m7State, summary, summaryCheck, dustFilterChanged, photoRefs, isPostMode, editId]);
 
     // ==================== UPLOAD HELPERS ====================
-    async function compressImage(file: File, maxWidth = 1920, quality = 0.8): Promise<File> {
-        if (!file.type.startsWith("image/") || file.size < 500 * 1024) return file;
-        return new Promise(resolve => {
-            const img = document.createElement("img");
-            img.onload = () => {
-                URL.revokeObjectURL(img.src);
-                let { width, height } = img;
-                if (width > maxWidth) { height = (height * maxWidth) / width; width = maxWidth; }
-                const canvas = document.createElement("canvas");
-                canvas.width = width; canvas.height = height;
-                canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-                canvas.toBlob(blob => { resolve(blob && blob.size < file.size ? new File([blob], ensureJpgFilename(file.name), { type: "image/jpeg" }) : file); }, "image/jpeg", quality);
-            };
-            img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); };
-            img.src = URL.createObjectURL(file);
-        });
-    }
-
     async function uploadSinglePhoto(reportId: string, stationId: string, group: string, file: File, side: TabId) {
         if (!file || file.size === 0) throw new Error(`Empty file: ${file?.name ?? "unknown"}`);
         const normalizedGroup = (() => {
@@ -1378,6 +1436,8 @@ export default function MDBPMForm() {
         if (!res.ok) { const e = await res.text().catch(() => ""); throw new Error(`[${res.status}] ${normalizedGroup}: ${e || res.statusText}`); }
         const resJson = await res.json().catch(() => null);
         if (!resJson) throw new Error(`[upload empty] group ${normalizedGroup}: no response`);
+        // group_full = ข้อนี้มีรูปครบ 10 รูปฝั่ง server แล้ว → ถือว่าสำเร็จ ไม่ใช่ error (กัน retry วน + ขึ้น "อัปโหลดไม่สำเร็จ" ทั้งที่รูปครบ)
+        if (resJson?.skipped === "group_full") return;
         if (resJson.count === 0 && resJson.skipped === "group_full") return; // เต็มแล้ว = ok
         if (resJson.count === 0) throw new Error(`[upload empty] group ${normalizedGroup}: backend saved 0 files`);
     }
