@@ -57,6 +57,7 @@ type StationRow = {
     stationImage?: string;
     mdbImages?: string[];   // ✅ เพิ่ม mdb images
     chargers: ChargerData[];
+    _pmCount?: number;      // จำนวนเอกสาร PM (ตาม type ที่เลือก) — พับลง row เพื่อให้ react-table คำนวณใหม่
 };
 
 export type StationUpdatePayload = {
@@ -875,6 +876,17 @@ export function SearchDataTables() {
         });
     }, [data, statusFilter]);
 
+    // พับจำนวนเอกสาร PM (ตาม type/ช่วงเวลาที่เลือก) ลงในแต่ละแถว
+    // เพื่อให้ reference ของ data เปลี่ยนเมื่อ pmCounts/typeFilter เปลี่ยน →
+    // react-table จะ rebuild row model และคำนวณค่าใหม่ (แก้บั๊กคอลัมน์นับค้างที่ 0)
+    const tableData = useMemo(
+        () => filteredDataByStatus.map((r) => ({
+            ...r,
+            _pmCount: pmCounts.get(r.station_id)?.[typeFilter] ?? 0,
+        })),
+        [filteredDataByStatus, pmCounts, typeFilter]
+    );
+
     const handleEditStation = (station: StationRow, e: React.MouseEvent) => { e.stopPropagation(); if (!isAdmin && station.user_id !== me?.user_id) { alert("You don't have permission to edit this station"); return; } setEditingStation(station); setOpenEditStation(true); };
     const handleEditCharger = (stationId: string, charger: ChargerData, e: React.MouseEvent) => { e.stopPropagation(); setEditingCharger({ stationId, charger }); setOpenEditCharger(true); };
 
@@ -1058,7 +1070,7 @@ export function SearchDataTables() {
         },
         {
             id: "pm_count", header: () => `${t.pmReportCount} · ${typeFilter}`, size: 140,
-            accessorFn: (row: StationRow) => pmCounts.get(row.station_id)?.[typeFilter] ?? 0,
+            accessorFn: (row: StationRow) => row._pmCount ?? 0,
             cell: (info: any) => {
                 const n = (info.getValue() as number) ?? 0;
                 return (
@@ -1071,7 +1083,7 @@ export function SearchDataTables() {
     ], [me, isAdmin, t, pmCounts, typeFilter]);
 
     const table = useReactTable({
-        data: filteredDataByStatus, columns,
+        data: tableData, columns,
         getRowId: (row) => row.station_id,
         state: { globalFilter: filtering, sorting, expanded },
         onSortingChange: setSorting, onGlobalFilterChange: setFiltering, onExpandedChange: setExpanded,
