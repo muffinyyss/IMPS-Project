@@ -23,26 +23,24 @@ const translations = {
     th: {
         title: "ตั้งค่า Topic Relay",
         stationId: "Station ID",
-        relay1: "Topic Relay 1 (สั่ง ON)",
-        relay2: "Topic Relay 2 (สั่ง OFF)",
-        relayPlaceholder: "เช่น MDB/Relay1",
+        topic: "Topic",
+        relayPlaceholder: "เช่น MDB/Breaker",
         cancel: "ยกเลิก",
         save: "บันทึก",
         saving: "กำลังบันทึก...",
-        required: "กรุณากรอก Topic อย่างน้อย 1 ช่อง",
+        required: "กรุณากรอก Topic",
         success: "บันทึกเรียบร้อยแล้ว",
         error: "บันทึกไม่สำเร็จ",
     },
     en: {
-        title: "Set Relay Topics",
+        title: "Set Relay Topic",
         stationId: "Station ID",
-        relay1: "Topic Relay 1 (ON)",
-        relay2: "Topic Relay 2 (OFF)",
-        relayPlaceholder: "e.g. MDB/Relay1",
+        topic: "Topic",
+        relayPlaceholder: "e.g. MDB/Breaker",
         cancel: "Cancel",
         save: "Save",
         saving: "Saving...",
-        required: "Please fill at least one Topic",
+        required: "Please fill the Topic",
         success: "Saved successfully",
         error: "Save failed",
     },
@@ -57,28 +55,25 @@ export type RelayTopicDialogProps = {
     stationName?: string;
     lang?: Lang;
     onSuccess?: () => void;
-    initialRelay1?: string;
-    initialRelay2?: string;
+    initialTopic?: string;
 };
 
 export default function RelayTopicDialog({
     open, onClose, stationId, stationName, lang = "th", onSuccess,
-    initialRelay1 = "", initialRelay2 = "",
+    initialTopic = "",
 }: RelayTopicDialogProps) {
 
     const t = translations[lang];
     const [saving, setSaving] = useState(false);
-    const [relay1, setRelay1] = useState("");
-    const [relay2, setRelay2] = useState("");
+    const [topic, setTopic] = useState("");
     const [toast, setToast] = useState<Toast>(null);
 
     useEffect(() => {
         if (open) {
-            setRelay1(initialRelay1);
-            setRelay2(initialRelay2);
+            setTopic(initialTopic);
             setToast(null);
         }
-    }, [open, initialRelay1, initialRelay2]);
+    }, [open, initialTopic]);
 
     useEffect(() => {
         if (!toast) return;
@@ -88,7 +83,7 @@ export default function RelayTopicDialog({
 
     const handleSubmit = async () => {
         if (!stationId) return setToast({ type: "error", message: "Station ID not found" });
-        if (!relay1.trim() && !relay2.trim()) return setToast({ type: "error", message: t.required });
+        if (!topic.trim()) return setToast({ type: "error", message: t.required });
 
         setSaving(true);
         setToast(null);
@@ -97,8 +92,7 @@ export default function RelayTopicDialog({
 
             const payload = {
                 station_id: stationId,
-                relay1_topic: relay1.trim(),
-                relay2_topic: relay2.trim(),
+                relay_topic: topic.trim(),
             };
             const res = await fetch(`${API_BASE}/MDB/relay-topics`, {
                 method: "POST",
@@ -182,15 +176,10 @@ export default function RelayTopicDialog({
                             </p>
                         </div>
 
-                        <Input label={t.relay1}
+                        <Input label={t.topic}
                             placeholder={t.relayPlaceholder}
-                            value={relay1}
-                            onChange={(e) => setRelay1(e.target.value)}
-                            crossOrigin={undefined} />
-                        <Input label={t.relay2}
-                            placeholder={t.relayPlaceholder}
-                            value={relay2}
-                            onChange={(e) => setRelay2(e.target.value)}
+                            value={topic}
+                            onChange={(e) => setTopic(e.target.value)}
                             crossOrigin={undefined} />
                     </div>
                 </DialogBody>
