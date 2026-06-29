@@ -66,8 +66,9 @@ function PeriodTabs({ value, onChange }: { value: Period; onChange: (p: Period) 
   );
 }
 
-function Pagination({ page, total, pageSize, onChange }: {
+function Pagination({ page, total, pageSize, onChange, formatRange }: {
   page: number; total: number; pageSize: number; onChange: (p: number) => void;
+  formatRange?: (from: number, to: number, total: number) => string;
 }) {
   const totalPages = Math.ceil(total / pageSize);
   if (totalPages <= 1) return null;
@@ -90,7 +91,7 @@ function Pagination({ page, total, pageSize, onChange }: {
   return (
     <div className="tw-flex tw-flex-col tw-items-center tw-gap-3 tw-border-t tw-border-gray-100 tw-px-4 tw-py-4 sm:tw-flex-row sm:tw-justify-between">
       <p className="tw-text-xs tw-text-gray-500">
-        แสดง <span className="tw-font-semibold tw-text-gray-700">{from}–{to}</span> จาก <span className="tw-font-semibold tw-text-gray-700">{total}</span> รายการ
+        {formatRange ? formatRange(from, to, total) : `${from}–${to} / ${total}`}
       </p>
       <div className="tw-flex tw-items-center tw-gap-1">
         <button
@@ -147,6 +148,17 @@ export default function CMDashboardPage() {
   const [filters, setFilters] = useState<ActiveFilters>({ status: null, equipment: null, severity: null, station: null });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+
+  // ── Language ──────────────────────────────────────────────────────────────
+  type Lang = "th" | "en";
+  const [lang, setLang] = useState<Lang>("th");
+  useEffect(() => {
+    const saved = localStorage.getItem("app_language") as Lang | null;
+    if (saved === "th" || saved === "en") setLang(saved);
+    const handler = (e: CustomEvent<{ lang: Lang }>) => setLang(e.detail.lang);
+    window.addEventListener("language:change", handler as EventListener);
+    return () => window.removeEventListener("language:change", handler as EventListener);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -260,6 +272,83 @@ export default function CMDashboardPage() {
   // Reset page when filters or search change
   useEffect(() => { setPage(0); }, [allFiltered, search]);
 
+  // ── Translations ─────────────────────────────────────────────────────────
+  const t = useMemo(() => ({
+    th: {
+      pageTitle: "Corrective Maintenance (CM)",
+      subtitle: (n: number) => `ข้อมูลจาก iMPS · ${n} รายการทั้งหมด`,
+      afterFilter: (n: number) => `→ ${n} รายการหลังกรอง`,
+      s1Title: "สัดส่วนความสำเร็จงาน CM",
+      stationFilterLabel: "กรองตามสถานี",
+      clickToFilter: "คลิกที่ส่วนของกราฟเพื่อกรอง",
+      cancelHint: "(คลิกอีกครั้งเพื่อยกเลิก)",
+      kpiTotal: "งาน CM ทั้งหมด",
+      kpiInProgress: "รอดำเนินการ",
+      kpiOpen: "รอจัดซื้อจ้าง",
+      kpiCompleted: "งานเสร็จสิ้นแล้ว",
+      s2Title: "Failure Mode Analysis",
+      chartClickHint: "คลิกที่กราฟเพื่อกรองข้อมูล",
+      eqTitle: "Count of Cause of Issue",
+      eqSubtitle: (n: number) => `Grand Total: ${n}`,
+      sevTitle: "Severity Distribution",
+      s3Title: "Overall Status by Station",
+      barHint: "คลิกที่แท่งกราฟเพื่อกรองตามสถานี",
+      tableTitle: "CM Reports",
+      tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
+      searchPlaceholder: "ค้นหา station, issue ID, equipment, severity, inspector…",
+      filterLabel: "Filters:",
+      clearAll: "Clear all",
+      clearFilters: "Clear filters",
+      pagination: (from: number, to: number, total: number) => `แสดง ${from}–${to} จาก ${total} รายการ`,
+      loading: "กำลังโหลด",
+      errorPrefix: "โหลดข้อมูลไม่สำเร็จ",
+      noResults: (q?: string) => q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ไม่พบรายงาน",
+      volumeWarning: (total: number, limit: number) => `ฐานข้อมูลมี ${total.toLocaleString()} รายการ — แสดงผล ${limit.toLocaleString()} รายการล่าสุด กราฟอาจไม่ครบทั้งหมด`,
+      statusLabel: { completed: "เสร็จสิ้น", in_progress: "รอดำเนินการ", open: "รอจัดซื้อ" },
+      taskUnit: "งาน",
+    },
+    en: {
+      pageTitle: "Corrective Maintenance (CM)",
+      subtitle: (n: number) => `Data from iMPS · ${n} total records`,
+      afterFilter: (n: number) => `→ ${n} after filters`,
+      s1Title: "CM Success Rate",
+      stationFilterLabel: "Filter by station",
+      clickToFilter: "Click on the chart to filter",
+      cancelHint: "(click again to cancel)",
+      kpiTotal: "Total CM Tasks",
+      kpiInProgress: "In Progress",
+      kpiOpen: "Pending Purchase",
+      kpiCompleted: "Completed",
+      s2Title: "Failure Mode Analysis",
+      chartClickHint: "Click on a chart to filter data",
+      eqTitle: "Count of Cause of Issue",
+      eqSubtitle: (n: number) => `Grand Total: ${n}`,
+      sevTitle: "Severity Distribution",
+      s3Title: "Overall Status by Station",
+      barHint: "Click on a bar to filter by station",
+      tableTitle: "CM Reports",
+      tableCount: (n: number, q?: string) => `${n} records${q ? ` · "${q}"` : ""}`,
+      searchPlaceholder: "Search by station, issue ID, equipment, severity, inspector…",
+      filterLabel: "Filters:",
+      clearAll: "Clear all",
+      clearFilters: "Clear filters",
+      pagination: (from: number, to: number, total: number) => `Showing ${from}–${to} of ${total} records`,
+      loading: "Loading",
+      errorPrefix: "Failed to load data",
+      noResults: (q?: string) => q ? `No records matching "${q}"` : "No reports found",
+      volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()}. Charts may be incomplete.`,
+      statusLabel: { completed: "Closed", in_progress: "In Progress", open: "Open" },
+      taskUnit: "tasks",
+    },
+  }[lang]), [lang]);
+
+  // Maps STATUS_LABELS value (Thai key) → translated display string for filter chips
+  const displayStatus = useMemo(() => (s: string | null) => {
+    if (!s) return s;
+    const key = Object.entries(STATUS_LABELS).find(([, v]) => v === s)?.[0] as keyof typeof t.statusLabel | undefined;
+    return key ? t.statusLabel[key] : s;
+  }, [t]);
+
   // ─── Chart options ────────────────────────────────────────────────────────
 
   const donutOptions = useMemo<ApexCharts.ApexOptions>(() => ({
@@ -273,7 +362,7 @@ export default function CMDashboardPage() {
       },
     },
     colors: DONUT_COLORS,
-    labels: [STATUS_LABELS.completed, STATUS_LABELS.in_progress, STATUS_LABELS.open],
+    labels: [t.statusLabel.completed, t.statusLabel.in_progress, t.statusLabel.open],
     legend: { show: true, position: "bottom", fontSize: "13px" },
     states: { active: { filter: { type: "darken", value: 0.7 } } },
     plotOptions: {
@@ -291,8 +380,8 @@ export default function CMDashboardPage() {
       },
     },
     dataLabels: { enabled: false },
-    tooltip: { y: { formatter: (v: number) => `${v} งาน` } },
-  }), [successRate, toggleFilter]);
+    tooltip: { y: { formatter: (v: number) => `${v} ${t.taskUnit}` } },
+  }), [successRate, toggleFilter, t]);
 
   const equipOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     chart: {
@@ -372,16 +461,16 @@ export default function CMDashboardPage() {
   }), [stationNames, toggleFilter]);
 
   const stationBarSeries = useMemo(() => [
-    { name: "Open", data: stationNames.map((n) => stationData[n].open) },
-    { name: "In Progress", data: stationNames.map((n) => stationData[n].inProgress) },
-    { name: "Closed", data: stationNames.map((n) => stationData[n].closed) },
-  ], [stationNames, stationData]);
+    { name: t.statusLabel.open, data: stationNames.map((n) => stationData[n].open) },
+    { name: t.statusLabel.in_progress, data: stationNames.map((n) => stationData[n].inProgress) },
+    { name: t.statusLabel.completed, data: stationNames.map((n) => stationData[n].closed) },
+  ], [stationNames, stationData, t]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <div role="status" aria-label="กำลังโหลด" className="tw-flex tw-min-h-64 tw-items-center tw-justify-center">
+      <div role="status" aria-label={t.loading} className="tw-flex tw-min-h-64 tw-items-center tw-justify-center">
         <div aria-hidden="true" className="tw-h-10 tw-w-10 tw-animate-spin tw-rounded-full tw-border-4 tw-border-blue-500 tw-border-t-transparent" />
       </div>
     );
@@ -395,7 +484,7 @@ export default function CMDashboardPage() {
         <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-amber-200 tw-bg-amber-50 tw-px-4 tw-py-3 tw-text-sm tw-text-amber-700">
           <span className="tw-text-base">⚡</span>
           <span>
-            ฐานข้อมูลมี <strong>{totalInDB.toLocaleString()}</strong> รายการ — แสดงผล {FETCH_LIMIT.toLocaleString()} รายการล่าสุด กราฟอาจไม่ครบทั้งหมด
+            {t.volumeWarning(totalInDB, FETCH_LIMIT)}
           </span>
         </div>
       )}
@@ -404,19 +493,19 @@ export default function CMDashboardPage() {
       {error && (
         <div className="tw-mb-4 tw-flex tw-items-center tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-px-4 tw-py-3 tw-text-sm tw-text-red-700">
           <span className="tw-text-base">⚠️</span>
-          <span>โหลดข้อมูลไม่สำเร็จ: <strong>{error}</strong></span>
+          <span>{t.errorPrefix}: <strong>{error}</strong></span>
         </div>
       )}
 
       {/* ── Header ── */}
       <div className="tw-mb-4 tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
         <div>
-          <h1 className="tw-text-2xl tw-font-bold tw-text-gray-800">Corrective Maintenance (CM)</h1>
+          <h1 className="tw-text-2xl tw-font-bold tw-text-gray-800">{t.pageTitle}</h1>
           <p className="tw-mt-0.5 tw-text-sm tw-text-gray-500">
-            ข้อมูลจาก iMPS · {rows.length} รายการทั้งหมด
+            {t.subtitle(rows.length)}
             {activeFilterCount > 0 && (
               <span className="tw-ml-2 tw-font-semibold tw-text-blue-600">
-                → {allFiltered.length} รายการหลังกรอง
+                {t.afterFilter(allFiltered.length)}
               </span>
             )}
           </p>
@@ -427,13 +516,13 @@ export default function CMDashboardPage() {
       {/* ── Active filter chips ── */}
       {activeFilterCount > 0 && (
         <div className="tw-mb-4 tw-flex tw-flex-wrap tw-items-center tw-gap-2">
-          <span className="tw-text-xs tw-font-medium tw-text-gray-500">Filters:</span>
-          {filters.status && <FilterChip label={`Status: ${filters.status}`} onRemove={() => clearFilter("status")} />}
+          <span className="tw-text-xs tw-font-medium tw-text-gray-500">{t.filterLabel}</span>
+          {filters.status && <FilterChip label={`Status: ${displayStatus(filters.status)}`} onRemove={() => clearFilter("status")} />}
           {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} onRemove={() => clearFilter("equipment")} />}
           {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} onRemove={() => clearFilter("severity")} />}
           {filters.station && <FilterChip label={`Station: ${filters.station}`} onRemove={() => clearFilter("station")} />}
           <button onClick={clearAll} aria-label="ลบตัวกรองทั้งหมด" className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
-            Clear all
+            {t.clearAll}
           </button>
         </div>
       )}
@@ -442,10 +531,10 @@ export default function CMDashboardPage() {
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">
-            สัดส่วนความสำเร็จงาน CM
-            {filters.status && <span className="tw-ml-2 tw-text-xs tw-font-normal tw-text-blue-500">(คลิกอีกครั้งเพื่อยกเลิก)</span>}
+            {t.s1Title}
+            {filters.status && <span className="tw-ml-2 tw-text-xs tw-font-normal tw-text-blue-500">{t.cancelHint}</span>}
           </h2>
-          <label className="tw-sr-only" htmlFor="station-filter">กรองตามสถานี</label>
+          <label className="tw-sr-only" htmlFor="station-filter">{t.stationFilterLabel}</label>
           <select
             id="station-filter"
             value={stationFilter}
@@ -466,7 +555,7 @@ export default function CMDashboardPage() {
             )}
             <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
               <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
-                คลิกที่ส่วนของกราฟเพื่อกรอง
+                {t.clickToFilter}
               </Typography>
             </CardHeader>
             <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
@@ -477,10 +566,10 @@ export default function CMDashboardPage() {
           {/* KPI cards */}
           <div className="tw-grid tw-grid-cols-2 tw-gap-4">
             {[
-              { label: "งาน CM ทั้งหมด", value: kpiStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", icon: "📋", dim: false },
-              { label: "รอดำเนินการ", value: kpiStats.inProgress, color: "linear-gradient(135deg,#f97316,#ea580c)", icon: "⏰", dim: filters.status !== null && filters.status !== STATUS_LABELS.in_progress },
-              { label: "รอจัดซื้อจ้าง", value: kpiStats.open, color: "linear-gradient(135deg,#ef4444,#dc2626)", icon: "⏳", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
-              { label: "งานเสร็จสิ้นแล้ว", value: kpiStats.completed, color: "linear-gradient(135deg,#22c55e,#15803d)", icon: "✅", dim: filters.status !== null && filters.status !== STATUS_LABELS.completed },
+              { label: t.kpiTotal, value: kpiStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", icon: "📋", dim: false },
+              { label: t.kpiInProgress, value: kpiStats.inProgress, color: "linear-gradient(135deg,#f97316,#ea580c)", icon: "⏰", dim: filters.status !== null && filters.status !== STATUS_LABELS.in_progress },
+              { label: t.kpiOpen, value: kpiStats.open, color: "linear-gradient(135deg,#ef4444,#dc2626)", icon: "⏳", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
+              { label: t.kpiCompleted, value: kpiStats.completed, color: "linear-gradient(135deg,#22c55e,#15803d)", icon: "✅", dim: filters.status !== null && filters.status !== STATUS_LABELS.completed },
             ].map((c) => <StatCard key={c.label} {...c} />)}
           </div>
         </div>
@@ -489,8 +578,8 @@ export default function CMDashboardPage() {
       {/* ── Section 2: Failure Mode ── */}
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
-          <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">Failure Mode Analysis</h2>
-          <p className="tw-text-xs tw-text-gray-400">คลิกที่กราฟเพื่อกรองข้อมูล</p>
+          <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s2Title}</h2>
+          <p className="tw-text-xs tw-text-gray-400">{t.chartClickHint}</p>
         </div>
         <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
 
@@ -503,10 +592,10 @@ export default function CMDashboardPage() {
             )}
             <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
               <Typography variant="h6" color="blue-gray">
-                Count of Cause of Issue
+                {t.eqTitle}
               </Typography>
               <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
-                Grand Total: {eqData.vals.reduce((s, v) => s + v, 0)}
+                {t.eqSubtitle(eqData.vals.reduce((s, v) => s + v, 0))}
               </Typography>
             </CardHeader>
             <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
@@ -528,7 +617,7 @@ export default function CMDashboardPage() {
             )}
             <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
               <Typography variant="h6" color="blue-gray">
-                Severity Distribution
+                {t.sevTitle}
               </Typography>
             </CardHeader>
             <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
@@ -546,7 +635,7 @@ export default function CMDashboardPage() {
       {/* ── Section 3: Overall Status by Station ── */}
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
-          <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">Overall Status by Station</h2>
+          <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s3Title}</h2>
           {filters.station && (
             <div className="tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
               🔍 {filters.station}
@@ -556,7 +645,7 @@ export default function CMDashboardPage() {
         <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm">
           <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
             <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-400">
-              คลิกที่แท่งกราฟเพื่อกรองตามสถานี
+              {t.barHint}
             </Typography>
           </CardHeader>
           <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
@@ -570,14 +659,14 @@ export default function CMDashboardPage() {
         {/* Table header */}
         <div className="tw-mb-3 tw-flex tw-flex-col tw-gap-3 sm:tw-flex-row sm:tw-items-center sm:tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">
-            CM Reports
+            {t.tableTitle}
             <span className="tw-ml-2 tw-text-sm tw-font-normal tw-text-gray-400">
-              ({searchFiltered.length} รายการ{search && ` · "${search}"`})
+              ({t.tableCount(searchFiltered.length, search || undefined)})
             </span>
           </h2>
           {activeFilterCount > 0 && (
             <button onClick={clearAll} className="tw-self-start tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline sm:tw-self-auto">
-              Clear filters
+              {t.clearFilters}
             </button>
           )}
         </div>
@@ -589,7 +678,7 @@ export default function CMDashboardPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหา station, issue ID, equipment, severity, inspector…"
+            placeholder={t.searchPlaceholder}
             className="tw-w-full tw-rounded-xl tw-border tw-border-gray-200 tw-bg-white tw-py-2.5 tw-pl-9 tw-pr-4 tw-text-sm tw-text-gray-700 tw-shadow-sm tw-transition-all focus:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-100"
           />
           {search && (
@@ -617,7 +706,7 @@ export default function CMDashboardPage() {
                 {tableRows.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="tw-p-8 tw-text-center tw-text-gray-400">
-                      {search ? `ไม่พบรายการที่ตรงกับ "${search}"` : "ไม่พบรายงาน"}
+                      {t.noResults(search || undefined)}
                     </td>
                   </tr>
                 ) : tableRows.map((r, i) => {
@@ -674,6 +763,7 @@ export default function CMDashboardPage() {
             total={searchFiltered.length}
             pageSize={PAGE_SIZE}
             onChange={setPage}
+            formatRange={t.pagination}
           />
         </Card>
       </section>
