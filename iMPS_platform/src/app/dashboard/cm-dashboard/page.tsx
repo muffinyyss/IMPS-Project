@@ -549,7 +549,7 @@ export default function CMDashboardPage() {
           {/* Donut */}
           <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
             {filters.status && (
-              <div className="tw-absolute tw-right-3 tw-top-3 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
+              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
                 🔍 {filters.status}
               </div>
             )}
@@ -586,7 +586,7 @@ export default function CMDashboardPage() {
           {/* Equipment pie */}
           <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
             {filters.equipment && (
-              <div className="tw-absolute tw-right-3 tw-top-3 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
+              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
                 🔍 {filters.equipment}
               </div>
             )}
@@ -611,7 +611,7 @@ export default function CMDashboardPage() {
           {/* Severity bar */}
           <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
             {filters.severity && (
-              <div className="tw-absolute tw-right-3 tw-top-3 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
+              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
                 🔍 {filters.severity}
               </div>
             )}
