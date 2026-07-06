@@ -178,7 +178,14 @@ async def export_pdf(
         raise HTTPException(status_code=404, detail="ไม่พบข้อมูลเอกสารนี้")
 
     # เช็ค cache ก่อน gen
-    cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / (coll_key or "unknown") / f"{id}_{lang}.pdf"
+    # cm: ผูกชื่อ cache กับ updatedAt เพื่อให้ regenerate ทันทีเมื่อข้อมูลใบงานเปลี่ยน
+    if template == "cm":
+        ver = data.get("updatedAt") or data.get("createdAt") or ""
+        ver_str = "".join(ch for ch in str(ver) if ch.isalnum())[:20] or "0"
+        cache_name = f"{id}_{lang}_{ver_str}.pdf"
+    else:
+        cache_name = f"{id}_{lang}.pdf"
+    cache_path = pathlib.Path(UPLOADS_ROOT) / "pdf_cache" / (coll_key or "unknown") / cache_name
     cache_path.parent.mkdir(parents=True, exist_ok=True)
 
     if cache_path.exists():

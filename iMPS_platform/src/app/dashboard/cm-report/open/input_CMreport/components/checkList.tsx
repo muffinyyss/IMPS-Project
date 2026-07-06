@@ -24,14 +24,12 @@ const T = {
     cmDate: { th: "วันที่แจ้ง", en: "Found Date" },
     location: { th: "สถานที่", en: "Location" },
     reporteed_by: { th: "ผู้แจ้งปัญหา", en: "Reported by" },
-    faultyEquipment: { th: "ตำแหน่งจุดที่มีปัญหา", en: "Problem Location" },
+    faultyEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "FAILURECODE DESCRIPTION" },
     selectEquipmentPlaceholder: { th: "เลือกตำแหน่ง...", en: "Select location..." },
-    chargersGroup: { th: "Chargers", en: "Chargers" },
-    otherEquipmentGroup: { th: "อุปกรณ์อื่นๆ", en: "Other Equipment" },
     loadingChargers: { th: "กำลังโหลด...", en: "Loading..." },
     noChargersFound: { th: "ไม่พบ Charger", en: "No chargers found" },
     problemDetails: { th: "รายละเอียดปัญหา", en: "Problem Details" },
-    severity: { th: "ความรุนแรง", en: "Severity" },
+    severity: { th: "ความเร่งด่วน", en: "Urgency" },
     severityPlaceholder: { th: "เลือก...", en: "Select..." },
     problemFound: { th: "ปัญหาที่พบ", en: "Problem Found" },
     jobStatus: { th: "สถานะงาน", en: "Job Status" },
@@ -50,8 +48,8 @@ const T = {
     allComplete: { th: "กรอกข้อมูลครบถ้วน พร้อมบันทึก ✓", en: "All fields completed. Ready to save ✓" },
     remaining: { th: "ยังขาดอีก", en: "Missing" },
     items: { th: "รายการ", en: "items" },
-    validEquipment: { th: "ตำแหน่งจุดที่มีปัญหา", en: "Problem Location" },
-    validSeverity: { th: "ความรุนแรง", en: "Severity" },
+    validEquipment: { th: "ตำแหน่งจุดที่มีความผิดปกติ", en: "FAILURECODE DESCRIPTION" },
+    validSeverity: { th: "ความเร่งด่วน", en: "Urgency" },
     validProblemFound: { th: "ปัญหาที่พบ", en: "Problem Found" },
     validPhotos: { th: "รูปภาพ", en: "Photos" },
     notFilled: { th: "ยังไม่ได้กรอก", en: "Not filled" },
@@ -73,12 +71,11 @@ type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
 type Status = "" | "Open" | "In Progress";
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
 type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; createdAt?: string; location?: string; };
-type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; };
+type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; };
 type StationPublic = { station_id: string; station_name: string; };
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
 const SEVERITY_OPTIONS: Severity[] = ["", "Low", "Medium", "High", "Urgent"];
-const FIXED_EQUIPMENT = ["MDB", "CCB", "CB-BOX", "Station"] as const;
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
 const MAX_PHOTOS = 5;
@@ -288,6 +285,7 @@ export default function CMOpenForm() {
 
     const [summary, setSummary] = useState("");
     const [reported_by, setReportedBy] = useState("");
+    const [currentUsername, setCurrentUsername] = useState("");
     const [saving, setSaving] = useState(false);
     const [chargers, setChargers] = useState<ChargerInfo[]>([]);
     const [loadingChargers, setLoadingChargers] = useState(false);
@@ -304,11 +302,24 @@ export default function CMOpenForm() {
 
     const editId = searchParams.get("edit_id") ?? "";
     const isEdit = !!editId;
+    // คนเปิดใบงาน (reported_by) แก้ไขใบงานที่ยัง Open ได้ — คนอื่นเห็นแบบอ่านอย่างเดียว
+    const isOwner = isEdit && !!currentUsername.trim() && currentUsername.trim() === reported_by.trim();
+    const fieldsLocked = isEdit && !isOwner;
     const draftKey = useMemo(() => getDraftKey(stationId), [stationId]);
     const STATUS_OPTIONS: Status[] = ["Open", "In Progress"];
 
     useEffect(() => { if (!isEdit && !status) setStatus("Open"); }, [isEdit, status]);
     const headerLabel = useMemo(() => (isEdit ? t("headerEdit", lang) : t("headerAdd", lang)), [isEdit, lang]);
+
+    // FAILURECODE options — สถานีเป็น DC หรือ AC ดูจาก chargerType ของ charger ในสถานี
+    const failureCodeOptions = useMemo(() => {
+        const types = new Set(chargers.map(c => (c.chargerType || "DC").toUpperCase()));
+        const opts: { value: string; label: string }[] = [];
+        if (chargers.length === 0 || types.has("DC")) opts.push({ value: "DCCHARFC", label: "DC Charger Failure" });
+        if (types.has("AC")) opts.push({ value: "ACCHARFC", label: "AC Charger Failure" });
+        opts.push({ value: "STATFC", label: "Station Failure" });
+        return opts;
+    }, [chargers]);
 
     // ==================== VALIDATION ====================
     const validations = useMemo<ValidationItem[]>(() => [
@@ -384,7 +395,7 @@ export default function CMOpenForm() {
     }, [fetchGpsLocation]);
 
     // Pre-fetch GPS ตอนเปิดหน้า
-    useEffect(() => { if (!isEdit) getGpsCached(); }, [isEdit, getGpsCached]);
+    useEffect(() => { if (!fieldsLocked) getGpsCached(); }, [fieldsLocked, getGpsCached]);
 
     const handleAddPhotos = useCallback(async (files: FileList) => {
         const remain = MAX_PHOTOS - photos_open.length;
@@ -486,9 +497,8 @@ export default function CMOpenForm() {
     }, [stationId]);
 
     useEffect(() => {
-        if (isEdit) return; // skip ถ้าเป็น edit mode
         let alive = true;
-        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive && !reported_by) setReportedBy(data.username || ""); } } catch { } })();
+        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive) { setCurrentUsername(data.username || ""); if (!isEdit && !reported_by) setReportedBy(data.username || ""); } } } catch { } })();
         return () => { alive = false; };
     }, [isEdit]);
 
@@ -585,27 +595,51 @@ export default function CMOpenForm() {
         setUploadState({ show: true, total: newPhotos.length, completed: newPhotos.length });
     }
 
-    const onFinalSave = async () => {
+    const onFinalSave = async (nextStatus: "Open" | "In Progress" = "In Progress") => {
         if (!stationId) { alert(t("alertNoStationId", lang)); return; }
-        if (!canSave && !isEdit) return;
+        if (!canSave && (!isEdit || isOwner)) return;
         setSaving(true);
         setOverlayText(lang === "th" ? "กำลังบันทึก..." : "Saving...");
         try {
             if (isEdit && editId) {
+                const payload: Record<string, any> = { station_id: stationId, status: nextStatus };
+                if (isOwner) {
+                    // คนเปิดใบงานแก้ไขข้อมูลได้ — ส่งค่าที่แก้ไปพร้อมกัน
+                    payload.job = {
+                        faulty_equipment: faultyEquipment,
+                        severity,
+                        problem_details: problemDetails,
+                        remarks_open,
+                        location,
+                    };
+                }
                 const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
                     credentials: "include",
-                    body: JSON.stringify({ station_id: stationId, status: "In Progress" })
+                    body: JSON.stringify(payload)
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || `HTTP ${res.status}`);
 
-                const p = new URLSearchParams();
-                if (stationId) p.set("station_id", stationId);
-                p.set("tab", "in-progress");
-                p.set("view", "form");
-                p.set("edit_id", editId);
-                router.push(`${LIST_ROUTE}?${p.toString()}`);
+                if (isOwner) {
+                    // อัปโหลดรูปที่เพิ่มใหม่ระหว่างแก้ไข
+                    setOverlayText(lang === "th" ? "กำลังอัปโหลดรูปภาพ..." : "Uploading photos...");
+                    await uploadPhotosForReport(editId);
+                    setUploadState({ show: false, total: 0, completed: 0 });
+                }
+
+                if (nextStatus === "In Progress") {
+                    const p = new URLSearchParams();
+                    if (stationId) p.set("station_id", stationId);
+                    p.set("tab", "in-progress");
+                    p.set("view", "form");
+                    p.set("edit_id", editId);
+                    router.push(`${LIST_ROUTE}?${p.toString()}`);
+                } else {
+                    setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
+                    await new Promise(r => setTimeout(r, 1200));
+                    router.push(buildListUrl("open"));
+                }
 
             } else {
                 const submitRes = await apiFetch(`${API_BASE}/cmreport/submit`, {
@@ -760,16 +794,15 @@ export default function CMOpenForm() {
                                 {/* Problem Location (ตำแหน่งจุดที่มีปัญหา) */}
                                 <div id="cm-equipment">
                                     <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("faultyEquipment", lang)} <span className="tw-text-red-500">*</span></label>
-                                    <select value={faultyEquipment} disabled={isEdit} onChange={e => setFaultyEquipment(e.target.value)}
-                                        style={isEdit ? { backgroundColor: '#f3f4f6', color: '#455a64' } : {}}
-                                        className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-4 tw-text-sm tw-font-medium tw-transition-colors focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${isEdit ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}>
+                                    <select value={faultyEquipment} disabled={fieldsLocked} onChange={e => setFaultyEquipment(e.target.value)}
+                                        style={fieldsLocked ? { backgroundColor: '#f3f4f6', color: '#455a64' } : {}}
+                                        className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-px-4 tw-text-sm tw-font-medium tw-transition-colors focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${fieldsLocked ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}>
                                         <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
-                                        {chargers.length > 0 && (
-                                            <optgroup label={t("chargersGroup", lang)}>
-                                                {chargers.map((c, i) => { const id = c.chargerNo ?? c.charger_id ?? i + 1; const sn = c.SN ?? c.sn ?? ""; const label = c.charger_name || `Charger ${c.chargerNo ?? i + 1}`; return <option key={id} value={`charger_${id}`}>{sn ? `${label} (${sn})` : label}</option>; })}
-                                            </optgroup>
+                                        {failureCodeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        {/* ค่าเดิมของรายงานเก่าที่ไม่ใช่ failure code — ให้แสดงได้ตอน edit */}
+                                        {faultyEquipment && !failureCodeOptions.some(o => o.value === faultyEquipment) && (
+                                            <option value={faultyEquipment}>{faultyEquipment}</option>
                                         )}
-                                        <optgroup label={t("otherEquipmentGroup", lang)}>{FIXED_EQUIPMENT.map(eq => <option key={eq} value={eq.toLowerCase()}>{eq}</option>)}</optgroup>
                                     </select>
                                     {loadingChargers && <p className="tw-text-xs tw-text-blue-gray-400 tw-mt-2">{t("loadingChargers", lang)}</p>}
                                     {!loadingChargers && chargers.length === 0 && <p className="tw-text-xs tw-text-orange-600 tw-mt-2">{t("noChargersFound", lang)}</p>}
@@ -788,10 +821,10 @@ export default function CMOpenForm() {
                                         )}
                                         <select
                                             value={severity}
-                                            disabled={isEdit}
+                                            disabled={fieldsLocked}
                                             onChange={e => setSeverity(e.target.value as Severity)}
-                                            style={isEdit ? { backgroundColor: '#f3f4f6', color: '#455a64' } : {}}
-                                            className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-pr-4 tw-text-sm tw-font-medium tw-transition-all tw-duration-200 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${severity ? "tw-pl-6" : "tw-pl-4"} ${isEdit ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}
+                                            style={fieldsLocked ? { backgroundColor: '#f3f4f6', color: '#455a64' } : {}}
+                                            className={`tw-w-full tw-h-10 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-pr-4 tw-text-sm tw-font-medium tw-transition-all tw-duration-200 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-500 focus:tw-border-transparent ${severity ? "tw-pl-6" : "tw-pl-4"} ${fieldsLocked ? "tw-bg-gray-100 tw-text-blue-gray-700 tw-cursor-not-allowed tw-opacity-100" : "tw-bg-white tw-text-blue-gray-700 hover:tw-border-blue-gray-300"}`}
                                         >
                                             <option value="">{t("severityPlaceholder", lang)}</option>
                                             <option value="Low">Low</option>
@@ -806,7 +839,7 @@ export default function CMOpenForm() {
                             {/* Problem Found (ปัญหาที่พบ) */}
                             <div id="cm-problem-found">
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("problemFound", lang)} <span className="tw-text-red-500">*</span></label>
-                                <Textarea value={problemDetails} onChange={e => setProblemDetails(e.target.value)} readOnly={isEdit} rows={2} className={`!tw-w-full !tw-border-blue-gray-200 ${isEdit ? "!tw-bg-gray-100 !tw-text-blue-gray-700" : "!tw-bg-white"}`} containerProps={{ className: "!tw-min-w-0" }} />
+                                <Textarea value={problemDetails} onChange={e => setProblemDetails(e.target.value)} readOnly={fieldsLocked} rows={2} className={`!tw-w-full !tw-border-blue-gray-200 ${fieldsLocked ? "!tw-bg-gray-100 !tw-text-blue-gray-700" : "!tw-bg-white"}`} containerProps={{ className: "!tw-min-w-0" }} />
                             </div>
 
                             {/* Job Status */}
@@ -820,21 +853,21 @@ export default function CMOpenForm() {
                             {/* Photos */}
                             <div id="cm-photos">
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("photos", lang)} <span className="tw-text-red-500">*</span></label>
-                                <PhotoUpload photos_open={photos_open} onAdd={handleAddPhotos} onRemove={handleRemovePhoto} max={MAX_PHOTOS} disabled={isEdit} lang={lang} />
+                                <PhotoUpload photos_open={photos_open} onAdd={handleAddPhotos} onRemove={handleRemovePhoto} max={MAX_PHOTOS} disabled={fieldsLocked} lang={lang} />
                             </div>
                         </div>
                     </div>
 
-                    {/* RemarksOpen Section - ซ่อนเมื่อ edit และไม่มีหมายเหตุ */}
-                    {(!isEdit || (remarks_open.trim() && remarks_open.trim() !== "-")) && (
+                    {/* RemarksOpen Section - ซ่อนเมื่อดูแบบอ่านอย่างเดียวและไม่มีหมายเหตุ */}
+                    {(!fieldsLocked || (remarks_open.trim() && remarks_open.trim() !== "-")) && (
                         <div className="tw-mb-6">
                             <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks_open", lang)}</label>
-                            <Textarea value={remarks_open} onChange={e => setRemarksOpen(e.target.value)} readOnly={isEdit} rows={1} className={`!tw-w-full !tw-border-blue-gray-200 ${isEdit ? "!tw-bg-gray-100 !tw-text-blue-gray-700" : "!tw-bg-white"}`} containerProps={{ className: "!tw-min-w-0" }} />
+                            <Textarea value={remarks_open} onChange={e => setRemarksOpen(e.target.value)} readOnly={fieldsLocked} rows={1} className={`!tw-w-full !tw-border-blue-gray-200 ${fieldsLocked ? "!tw-bg-gray-100 !tw-text-blue-gray-700" : "!tw-bg-white"}`} containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                     )}
 
                     {/* Validation Card */}
-                    {!isEdit && <div className="tw-mb-6"><CMValidationCard validations={validations} lang={lang} /></div>}
+                    {!fieldsLocked && <div className="tw-mb-6"><CMValidationCard validations={validations} lang={lang} /></div>}
 
                     {/* Actions */}
                     <div className="tw-flex tw-items-center tw-justify-between tw-pt-6 tw-border-t tw-border-blue-gray-100">
@@ -843,7 +876,12 @@ export default function CMOpenForm() {
                             <Button variant="outlined" onClick={goBackToList} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
                                 Cancel
                             </Button>
-                            <Button onClick={onFinalSave} disabled={saving || showSuccessBanner || (!isEdit && !canSave)} className={`tw-text-white hover:tw-shadow-lg disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none ${isEdit ? "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30" : "tw-bg-gray-800 hover:tw-bg-gray-900 hover:tw-shadow-gray-500/30"}`}>
+                            {isEdit && isOwner && (
+                                <Button onClick={() => onFinalSave("Open")} disabled={saving || showSuccessBanner || !canSave} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                                    {saving ? t("saving", lang) : t("save", lang)}
+                                </Button>
+                            )}
+                            <Button onClick={() => onFinalSave()} disabled={saving || showSuccessBanner || ((!isEdit || isOwner) && !canSave)} className={`tw-text-white hover:tw-shadow-lg disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none ${isEdit ? "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30" : "tw-bg-gray-800 hover:!tw-bg-blue-600 hover:!tw-shadow-blue-500/30"}`}>
                                 {saving ? t("saving", lang) : isEdit ? t("inProgress", lang) : t("save", lang)}
                             </Button>
                         </div>

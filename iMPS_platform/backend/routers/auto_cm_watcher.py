@@ -214,6 +214,15 @@ async def _create_auto_cm(
             f"  ✅ CM created → id: {insert_result.inserted_id}, "
             f"issue_id: {issue_id}, doc_name: {doc_name}"
         )
+
+        # ── ส่งอีเมลแจ้ง "เปิดใบงาน CM" (auto) ──
+        try:
+            from routers.notifications import send_cm_open_email
+            cm_doc["chargebox_id"] = info.get("chargebox_id", "")
+            await send_cm_open_email(cm_doc, source="auto")
+        except Exception as mail_err:
+            log.error(f"  ✉️  send_cm_open_email failed: {mail_err}")
+
         return True
     except Exception as e:
         log.error(f"  ❌ Insert failed: {e}")

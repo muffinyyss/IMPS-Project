@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import CMForm from "@/app/dashboard/cm-report/closed/input_CMreport/components/checkList";
+import CMForm from "@/app/dashboard/cm-report/inprogress/input_CMreport/components/checkList";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -122,8 +122,6 @@ type Me = {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-const PM_TYPE_CODE = "CM";
-
 export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
   const [loading, setLoading] = useState(false);
@@ -159,23 +157,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const searchParams = useSearchParams();
   const [stationId, setStationId] = useState<string | null>(null);
 
-  function makePrefix(stationId: string, dateISO: string) {
-    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-    const yy = String(d.getFullYear()).slice(2);
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    return `CM-${stationId}-${yy}${mm}-`;
-  }
-
-  function nextIssueIdFor(stationId: string, dateISO: string, latestFromDb?: string) {
-    const prefix = makePrefix(stationId, dateISO);
-    const s = String(latestFromDb || "").trim();
-    if (!s || !s.startsWith(prefix)) return `${prefix}01`;
-    const m = s.match(/(\d+)$/);
-    const pad = m ? m[1].length : 2;
-    const n = (m ? parseInt(m[1], 10) : 0) + 1;
-    return `${prefix}${n.toString().padStart(pad, "0")}`;
-  }
-
   function nextDocNameFor(stationId: string, dateISO: string, latestFromDb?: string) {
     const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
     const year = d.getFullYear();
@@ -186,67 +167,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     const inside = s.slice(prefix.length, s.length - suffix.length);
     const cur = parseInt(inside, 10);
     return `${prefix}${isNaN(cur) ? 1 : cur + 1}${suffix}`;
-  }
-
-  async function fetchLatestIssueIdAcrossLists(stationId: string, dateISO: string, apiBase: string) {
-    const build = (path: string) => {
-      const u = new URL(`${apiBase}${path}`);
-      u.searchParams.set("station_id", stationId);
-      u.searchParams.set("page", "1");
-      u.searchParams.set("pageSize", "50");
-      u.searchParams.set("_ts", String(Date.now()));
-      return u.toString();
-    };
-    const [a, b] = await Promise.allSettled([
-      apiFetch(build("/cmreport/list")),
-      apiFetch(build("/cmurl/list")),
-    ]);
-    let ids: string[] = [];
-    for (const r of [a, b]) {
-      if (r.status === "fulfilled" && r.value.ok) {
-        const j = await r.value.json();
-        ids = ids.concat(
-          (Array.isArray(j?.items) ? j.items : [])
-            .map((it: any) => String(it?.issue_id || ""))
-            .filter(Boolean)
-        );
-      }
-    }
-    const prefix = makePrefix(stationId, dateISO); // ← ใช้ stationId
-    const same = ids.filter(x => x.startsWith(prefix));
-    if (!same.length) return null;
-    const toTail = (s: string) => { const m = s.match(/(\d+)$/); return m ? parseInt(m[1], 10) : -1; };
-    return same.reduce((acc, cur) => toTail(cur) > toTail(acc) ? cur : acc, same[0]);
-  }
-
-  async function fetchLatestDocName(stationId: string, dateISO: string, apiBase: string) {
-    const build = (path: string) => {
-      const u = new URL(`${apiBase}${path}`);
-      u.searchParams.set("station_id", stationId);
-      u.searchParams.set("page", "1");
-      u.searchParams.set("pageSize", "50");
-      u.searchParams.set("_ts", String(Date.now()));
-      return u.toString();
-    };
-    const [a, b] = await Promise.allSettled([
-      apiFetch(build("/cmreport/list")),
-      apiFetch(build("/cmurl/list")),
-    ]);
-    let docNames: string[] = [];
-    for (const r of [a, b]) {
-      if (r.status === "fulfilled" && r.value.ok) {
-        const j = await r.value.json();
-        docNames = docNames.concat((Array.isArray(j?.items) ? j.items : []).map((it: any) => String(it?.doc_name || "")).filter(Boolean));
-      }
-    }
-    const d = new Date(dateISO || new Date().toISOString().slice(0, 10));
-    const year = d.getFullYear();
-    const prefix = `${stationId}_`;
-    const suffix = `/${year}`;
-    const same = docNames.filter(x => x.startsWith(prefix) && x.endsWith(suffix));
-    if (!same.length) return null;
-    const toNum = (s: string) => { const inside = s.slice(prefix.length, s.length - suffix.length); const n = parseInt(inside, 10); return isNaN(n) ? -1 : n; };
-    return same.reduce((acc, cur) => toNum(cur) > toNum(acc) ? cur : acc, same[0]);
   }
 
   useEffect(() => {
@@ -760,17 +680,23 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     let canceled = false;
     (async () => {
       try {
-        const [latestIssue, latestDoc] = await Promise.all([
-          fetchLatestIssueIdAcrossLists(stationId, reportDate, apiBase),
-          fetchLatestDocName(stationId, reportDate, apiBase),
-        ]);
-        if (!canceled) {
-          setIssueId(nextIssueIdFor(stationId, reportDate, latestIssue || "")); // ← stationId แทน PM_TYPE_CODE
-          setDocName(nextDocNameFor(stationId, reportDate, latestDoc || undefined));
+        const res = await apiFetch(
+          `${apiBase}/cmreport/preview-docname?station_id=${encodeURIComponent(stationId)}&found_date=${encodeURIComponent(reportDate)}`,
+          { credentials: "include" }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (!canceled) {
+            setIssueId(data.issue_id || "");
+            setDocName(data.doc_name || "");
+          }
+        } else if (!canceled) {
+          setIssueId("");
+          setDocName(nextDocNameFor(stationId, reportDate));
         }
       } catch {
         if (!canceled) {
-          setIssueId(nextIssueIdFor(stationId, reportDate, ""));
+          setIssueId("");
           setDocName(nextDocNameFor(stationId, reportDate));
         }
       }

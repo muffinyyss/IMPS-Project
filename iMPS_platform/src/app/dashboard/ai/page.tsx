@@ -106,11 +106,11 @@ export default function AiDashboardPage() {
         setLoading(true); setError(null);
         try {
             // กัน fetch ค้างรอ connection timeout นาน ๆ เมื่อ AI server ติดต่อไม่ได้
-            // → ล้มภายใน 6 วิ แล้วตกไปแสดง No data
+            // → ล้มภายใน 20 วิ แล้วตกไปแสดง No data
             const res = await Promise.race([
                 aiApi.dashboardAll(),
                 new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error("AI server timeout")), 6000)
+                    setTimeout(() => reject(new Error("AI server timeout")), 20000)
                 ),
             ]);
             setData(res);
