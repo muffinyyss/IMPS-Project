@@ -2,181 +2,28 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from config import errorDB, client
-import asyncio
 
 # ===== Auto CM Watcher =====
 from routers.auto_cm_watcher import start_watcher, stop_watcher
 
-# ===== Background Email Watcher =====
+# ===== Background Email Watcher (ยกเลิกแล้ว) =====
+# เดิมส่งอีเมลตาม fault ดิบครบ threshold — ตอนนี้ย้ายไปส่งตอน "เปิดใบงาน CM" แทน
+# (auto_cm_watcher / cmreport submit → routers.notifications.send_cm_open_email)
+# คงตัวแปรไว้เป็น None เพื่อไม่ให้ /notifications/debug/watcher-status พัง
 email_watcher_task = None
-
-
-async def email_watcher():
-    """Background task: เช็ค fault ใหม่ทุก 30 วิ แล้วส่ง email ตาม rules"""
-    from routers.notifications import (
-        parse_fault_message, _get_timestamp,
-        send_email_smtp,
-        _cleanup_old_counters, _increment_fault,
-        _get_threshold, _reset_fault,
-    )
-    from bson import ObjectId
-
-    last_ids: dict = {}
-    sn_cache: dict = {}
-
-    print("[email-watcher] ✅ Started")
-
-    while True:
-        try:
-            collection_names = await errorDB.list_collection_names()
-            collection_names = [c for c in collection_names if not c.startswith("system.")]
-
-            for sn in collection_names:
-                try:
-                    coll = errorDB[sn]
-                    latest = await coll.find_one({}, sort=[("_id", -1)])
-
-                    if not latest:
-                        continue
-
-                    # ครั้งแรกที่เห็น SN → จำ ID ไว้ ไม่ส่ง
-                    if sn not in last_ids:
-                        last_ids[sn] = latest.get("_id")
-                        continue
-
-                    # ไม่มีอะไรใหม่
-                    if latest.get("_id") == last_ids.get(sn):
-                        continue
-
-                    last_ids[sn] = latest.get("_id")
-
-                    # Lookup station info (cache)
-                    if sn not in sn_cache:
-                        charger = await client["iMPS"]["charger"].find_one({"SN": sn})
-                        if charger:
-                            sid = charger.get("station_id", "")
-                            station = await client["iMPS"]["stations"].find_one({"station_id": sid})
-                            sn_cache[sn] = {
-                                "station_id": sid,
-                                "station_name": station.get("station_name", sid) if station else sid,
-                                "chargebox_id": charger.get("chargeBoxID", ""),
-                                "charger_no": charger.get("chargerNo"),
-                                "sn": sn,
-                            }
-                        else:
-                            sn_cache[sn] = {"sn": sn}
-
-                    station_info = sn_cache[sn]
-                    raw_message = latest.get("message") or latest.get("error") or ""
-                    parsed = parse_fault_message(raw_message)
-                    error_msg = parsed.get("error") or raw_message
-
-                    # เช็ค threshold ก่อนส่ง
-                    _cleanup_old_counters()
-                    current_count = _increment_fault(sn, error_msg)
-                    threshold = _get_threshold(error_msg)
-
-                    if current_count < threshold:
-                        print(f"[email-watcher] {current_count}/{threshold} SN={sn} — ยังไม่ส่ง")
-                        continue
-
-                    print(f"[email-watcher] threshold reached ({current_count}/{threshold}) SN={sn} → sending")
-                    _reset_fault(sn, error_msg)
-
-                    station_id = station_info.get("station_id", sn)
-                    chargebox_id = station_info.get("chargebox_id", "")
-
-                    # Query ครอบ "all" เสมอ
-                    query_conditions = [{"station_id": "all"}]
-                    if station_id:
-                        query_conditions.append({"station_id": station_id})
-
-                    rules_coll = client["iMPS"]["email_notification_rules"]
-                    users_coll = client["iMPS"]["users"]
-
-                    rules = await rules_coll.find({
-                        "$or": query_conditions,
-                        "enabled": True,
-                    }).to_list(length=100)
-
-                    if not rules:
-                        print(f"[email-watcher] No rules for station={station_id or 'unknown'}, skip")
-                        continue
-
-                    # dedup recipients ข้าม rules ทั้งหมด
-                    all_recipients: set[str] = set()
-
-                    for rule in rules:
-                        rule_cb = rule.get("chargebox_id", "all")
-                        if rule_cb != "all" and rule_cb != chargebox_id and rule_cb != sn:
-                            continue
-
-                        user_oids = []
-                        for uid in rule.get("user_ids", []):
-                            try:
-                                user_oids.append(ObjectId(uid))
-                            except Exception:
-                                continue
-
-                        if not user_oids:
-                            continue
-
-                        users = await users_coll.find(
-                            {"_id": {"$in": user_oids}}, {"email": 1}
-                        ).to_list(length=200)
-
-                        for u in users:
-                            if u.get("email"):
-                                all_recipients.add(u["email"])
-
-                    if not all_recipients:
-                        print(f"[email-watcher] No recipient emails found, skip")
-                        continue
-
-                    station_name = station_info.get("station_name") or parsed.get("source") or sn
-                    head = parsed.get("head", "")
-
-                    subject = f"[{station_name}] FAULT: {error_msg}"
-                    body = f"Station: {station_name}\nSN: {sn}\n"
-                    if head:
-                        body += f"Head: {head}\n"
-                    if chargebox_id:
-                        body += f"ChargeBox ID: {chargebox_id}\n"
-                    body += f"Message: {error_msg}\nTime: {_get_timestamp(latest) or '-'}\n"
-
-                    await send_email_smtp(to=list(all_recipients), subject=subject, body=body)
-
-                except Exception as e:
-                    print(f"[email-watcher] Error for SN={sn}: {e}")
-                    continue
-
-        except Exception as e:
-            print(f"[email-watcher] Loop error: {e}")
-
-        await asyncio.sleep(30)
 
 
 # ===== Lifespan =====
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global email_watcher_task
-
     app.state.errorDB = errorDB
     app.state.mongo_client = client
 
-    email_watcher_task = asyncio.create_task(email_watcher())
     start_watcher()
 
     yield
 
     await stop_watcher()
-    if email_watcher_task:
-        email_watcher_task.cancel()
-        try:
-            await email_watcher_task
-        except asyncio.CancelledError:
-            pass
-    print("[email-watcher] ■ Stopped")
 
 
 app = FastAPI(lifespan=lifespan)

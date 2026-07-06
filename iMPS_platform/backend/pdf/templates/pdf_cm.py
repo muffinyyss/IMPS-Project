@@ -2,6 +2,7 @@
 import os
 import re
 import math
+import base64
 
 from fpdf import FPDF, HTMLMixin
 from pathlib import Path
@@ -94,6 +95,15 @@ def _fmt_date_thai_full(val) -> str:
         return str(val) if val else "-"
     year_be = d.year + 543
     return d.strftime(f"%d/%m/{year_be}")
+
+
+def _fmt_date_time_thai(date_val, time_val) -> str:
+    """วันที่ (พ.ศ.) + เวลา HH:MM น. ถ้ามีเวลา"""
+    d = _fmt_date_thai_full(date_val)
+    t = str(time_val).strip() if time_val else ""
+    if t and d and d != "-":
+        return f"{d} {t} น."
+    return d
 
 
 # -------------------- Font loader --------------------
@@ -827,6 +837,17 @@ def _draw_placeholder(pdf: FPDF, base_font: str, x: float, y: float, w: float, h
 
 
 # -------------------- Signature block --------------------
+def _decode_data_url_image(data_url) -> Optional[BytesIO]:
+    """แปลง dataURL (data:image/png;base64,...) เป็น BytesIO สำหรับ pdf.image()"""
+    if not data_url or not isinstance(data_url, str) or "," not in data_url:
+        return None
+    try:
+        b64 = data_url.split(",", 1)[1]
+        return BytesIO(base64.b64decode(b64))
+    except Exception:
+        return None
+
+
 def _draw_signature_block(
     pdf: FPDF,
     base_font: str,
@@ -835,8 +856,15 @@ def _draw_signature_block(
     w: float,
     date_text: str = "",
     labels: Optional[List[str]] = None,
+    signatures: Optional[List[Optional[str]]] = None,
+    names: Optional[List[Optional[str]]] = None,
+    dates: Optional[List[Optional[str]]] = None,
 ) -> float:
-    """วาดช่องลายเซ็นท้ายเอกสาร 3 ช่อง"""
+    """วาดช่องลายเซ็นท้ายเอกสาร 3 ช่อง
+    - signatures[i]: dataURL รูปลายเซ็น (ฝังในกล่อง)
+    - names[i]:      ชื่อในวงเล็บ (ถ้าไม่มีจะเว้นว่างให้เขียนมือ)
+    - dates[i]:      วันที่ต่อช่อง (ถ้าไม่มีใช้ date_text)
+    """
     if labels is None:
         labels = ["ผู้แจ้ง", "ผู้ซ่อม", "ผู้ตรวจสอบ"]
     col_w = w / len(labels)
@@ -858,28 +886,57 @@ def _draw_signature_block(
         pdf.set_xy(cx, y + 0.3)
         pdf.cell(col_w, row_h_header - 0.6, label, border=0, align="C")
 
-    # กล่องลายเซ็น (ว่าง)
+    # กล่องลายเซ็น + วาดรูปลายเซ็นถ้ามี (จัดกึ่งกลาง คงสัดส่วน)
     cy = y + row_h_header
+    pad = 1.5
     for i in range(len(labels)):
         cx = x + i * col_w
         pdf.rect(cx, cy, col_w, row_h_sig)
+        sig = signatures[i] if signatures and i < len(signatures) else None
+        bio = _decode_data_url_image(sig)
+        if bio is not None:
+            try:
+                box_w = col_w - 2 * pad
+                box_h = row_h_sig - 2 * pad
+                draw_w, draw_h = box_w, box_h
+                if Image is not None:
+                    try:
+                        bio.seek(0)
+                        im = Image.open(bio)
+                        iw, ih = im.size
+                        if iw and ih:
+                            scale = min(box_w / iw, box_h / ih)
+                            draw_w = iw * scale
+                            draw_h = ih * scale
+                    except Exception:
+                        pass
+                    finally:
+                        bio.seek(0)
+                ix = cx + (col_w - draw_w) / 2
+                iy = cy + (row_h_sig - draw_h) / 2
+                pdf.image(bio, x=ix, y=iy, w=draw_w, h=draw_h)
+            except Exception:
+                pass
 
-    # แถวชื่อ
+    # แถวชื่อ (มีชื่อ → ใส่ในวงเล็บ, ไม่มี → เว้นว่างให้เขียนมือ)
     cy += row_h_sig
     pdf.set_font(base_font, "", FONT_MAIN)
     for i in range(len(labels)):
         cx = x + i * col_w
         pdf.rect(cx, cy, col_w, row_h_name)
         pdf.set_xy(cx, cy)
-        pdf.cell(col_w, row_h_name, "(                                                     )", border=0, align="C")
+        name = (names[i] if names and i < len(names) and names[i] else "").strip()
+        name_text = f"( {name} )" if name else "(                                                     )"
+        pdf.cell(col_w, row_h_name, name_text, border=0, align="C")
 
-    # แถววันที่
+    # แถววันที่ (มี dates ต่อช่อง → ใช้, ไม่มี → ใช้ date_text)
     cy += row_h_name
     for i in range(len(labels)):
         cx = x + i * col_w
         pdf.rect(cx, cy, col_w, row_h_date)
         pdf.set_xy(cx, cy)
-        pdf.cell(col_w, row_h_date, f"วันที่ :  {date_text}" if date_text else "วันที่ :", border=0, align="C")
+        d = dates[i] if dates and i < len(dates) and dates[i] else date_text
+        pdf.cell(col_w, row_h_date, f"วันที่ :  {d}" if d else "วันที่ :", border=0, align="C")
 
     return y + total_h
 
@@ -1012,7 +1069,7 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
             "kind": "info",
             "data": [
                 ("อุปกรณ์ที่เสียหาย", doc.get("faulty_equipment", "-") or "-"),
-                ("ความรุนแรง", doc.get("severity", "-") or "-"),
+                ("ความเร่งด่วน", doc.get("severity", "-") or "-"),
             ],
             "cols": 2,
         },
@@ -1055,7 +1112,7 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     section3_parts: List[Dict[str, Any]] = [
         {
             "kind": "info",
-            "data": [("ประเภทปัญหา", doc.get("problem_type", "-") or "-")],
+            "data": [("ปัญหา", doc.get("problem_type", "-") or "-")],
             "cols": 1,
         },
     ]
@@ -1083,9 +1140,9 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
         {
             "kind": "info",
             "data": [
-                ("วันที่เริ่มแก้ไข", _fmt_date_thai_full(doc.get("start_repair_date"))),
-                ("วันที่แก้ไขเสร็จ", _fmt_date_thai_full(doc.get("resolved_date"))),
-                ("อุปกรณ์ที่แก้ไข", repaired_eq_text),
+                ("วันที่เริ่มแก้ไข", _fmt_date_time_thai(doc.get("start_repair_date"), doc.get("start_repair_time"))),
+                ("วันที่แก้ไขเสร็จ", _fmt_date_time_thai(doc.get("resolved_date"), doc.get("resolved_time"))),
+                ("การแก้ไข", repaired_eq_text),
                 ("ผู้ตรวจสอบ", doc.get("inspector", "-") or "-"),
                 ("ผลการซ่อม", doc.get("repair_result", "-") or "-"),
                 ("", ""),
@@ -1173,11 +1230,18 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     pdf.cell(page_w, LINE_H + 1, "ลายเซ็นผู้เกี่ยวข้อง", border=0, align="C")
     y += LINE_H + 2
 
-    resolved_date_th = _fmt_date_thai_full(doc.get("resolved_date"))
+    # วันที่ใต้ช่องผู้ซ่อม: แก้ไขเสร็จ → เริ่มแก้ไข → วันที่แจ้ง (กรณีไม่พบปัญหาจะไม่มี resolved_date)
+    repair_date_raw = doc.get("resolved_date") or doc.get("start_repair_date") or doc.get("found_date")
+    resolved_date_th = _fmt_date_thai_full(repair_date_raw)
+    resolved_date_text = resolved_date_th if resolved_date_th != "-" else ""
+    repairer_name = (doc.get("inspector") or "").strip()  # ผู้ซ่อม = ช่างที่ทำการซ่อม
     _draw_signature_block(
         pdf, base_font, x0, y, page_w,
-        date_text=resolved_date_th if resolved_date_th != "-" else "",
+        date_text=resolved_date_text,
         labels=["ผู้แจ้ง", "ผู้ซ่อม", "ผู้ตรวจสอบ"],
+        signatures=[None, doc.get("signature"), None],   # ผู้ซ่อม (ช่องกลาง)
+        names=[None, repairer_name, None],               # ชื่อผู้ซ่อมในวงเล็บ
+        dates=[None, resolved_date_text, None],          # วันที่แก้ไขเสร็จ ใต้ช่องผู้ซ่อม
     )
 
     return _output_pdf_bytes(pdf)

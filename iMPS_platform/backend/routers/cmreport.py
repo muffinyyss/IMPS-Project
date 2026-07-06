@@ -5,6 +5,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from datetime import datetime, timezone, date
 from bson.objectid import ObjectId
+from pymongo import ReturnDocument
 from typing import List, Dict, Any, Optional, Literal
 import re, json, uuid, pathlib, secrets, os
 
@@ -35,64 +36,36 @@ def get_cmurl_coll_upload(station_id: str):
 
 # ==================== ISSUE_ID & DOC_NAME HELPERS ====================
 
-def make_cm_issue_prefix(station_id: str, date_iso: str) -> str:
-    """สร้าง prefix สำหรับ issue_id: CM-{station_id}-{yymm}-"""
-    d = datetime.fromisoformat(date_iso) if date_iso else datetime.now(th_tz)
-    yy = str(d.year)[2:]  # 2 หลักท้าย
-    mm = str(d.month).zfill(2)
-    return f"CM-{station_id}-{yy}{mm}-"
-
 def make_cm_doc_prefix(station_id: str) -> str:
     """สร้าง prefix สำหรับ doc_name: {station_id}_"""
     return f"{station_id}_"
 
-async def get_next_cm_issue_id(station_id: str, found_date: str) -> str:
+# counter กลางสำหรับ running number ของ CM issue_id (เลขเดียวทั้งระบบ ไม่แยกสถานี)
+CM_ISSUE_COUNTER_COLL = CMReportDB.get_collection("_cm_issue_counter")
+CM_ISSUE_COUNTER_KEY = "cm_issue_id"
+
+def _format_cm_issue_id(seq: int) -> str:
+    return f"CM-{seq:03d}"
+
+async def get_next_cm_issue_id(station_id: str = "", found_date: str = "") -> str:
     """
-    หา issue_id ถัดไปจากทั้ง cmreport และ cmurl collections
-    Format: CM-{station_id}-{yymm}-{xx}
+    ออก issue_id ถัดไปแบบ atomic ($inc บน counter เดียว) — เลขไม่ซ้ำแม้สร้างพร้อมกัน
+    Format: CM-001, CM-002, ... (เกิน 999 จะเป็น CM-1000 ต่อเนื่อง)
+    station_id/found_date คงไว้เพื่อ backward compatibility ของผู้เรียกเดิม
     """
-    prefix = make_cm_issue_prefix(station_id, found_date)
-    
-    report_coll = get_cmreport_collection_for(station_id)
-    url_coll = get_cmurl_coll_upload(station_id)
-    
-    # หาจากทั้งสอง collections
-    all_ids = []
-    
-    # จาก cmreport
-    cursor1 = report_coll.find(
-        {"issue_id": {"$regex": f"^{re.escape(prefix)}"}},
-        {"issue_id": 1}
+    doc = await CM_ISSUE_COUNTER_COLL.find_one_and_update(
+        {"_id": CM_ISSUE_COUNTER_KEY},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
     )
-    async for doc in cursor1:
-        if doc.get("issue_id"):
-            all_ids.append(doc["issue_id"])
-    
-    # จาก cmurl
-    cursor2 = url_coll.find(
-        {"issue_id": {"$regex": f"^{re.escape(prefix)}"}},
-        {"issue_id": 1}
-    )
-    async for doc in cursor2:
-        if doc.get("issue_id"):
-            all_ids.append(doc["issue_id"])
-    
-    if not all_ids:
-        return f"{prefix}01"
-    
-    # หาเลขสูงสุด
-    max_num = 0
-    for issue_id in all_ids:
-        if issue_id.startswith(prefix):
-            tail = issue_id[len(prefix):]
-            match = re.match(r"(\d+)", tail)
-            if match:
-                num = int(match.group(1))
-                if num > max_num:
-                    max_num = num
-    
-    next_num = max_num + 1
-    return f"{prefix}{str(next_num).zfill(2)}"
+    return _format_cm_issue_id(int(doc["seq"]))
+
+async def peek_next_cm_issue_id() -> str:
+    """ดู issue_id ถัดไปโดยไม่ขยับ counter (สำหรับ preview เท่านั้น)"""
+    doc = await CM_ISSUE_COUNTER_COLL.find_one({"_id": CM_ISSUE_COUNTER_KEY})
+    seq = int(doc.get("seq", 0)) if doc else 0
+    return _format_cm_issue_id(seq + 1)
 
 async def get_next_cm_doc_name(station_id: str, found_date: str) -> str:
     """
@@ -145,7 +118,7 @@ async def cmreport_preview_docname(
     
     found_date_normalized = normalize_pm_date(found_date)
     doc_name = await get_next_cm_doc_name(station_id, found_date_normalized)
-    issue_id = await get_next_cm_issue_id(station_id, found_date_normalized)
+    issue_id = await peek_next_cm_issue_id()
     
     return {
         "doc_name": doc_name,
@@ -780,8 +753,16 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         import logging
         logging.getLogger("cmreport").warning(f"Maximo SR failed: {e}")
 
+    # ── ส่งอีเมลแจ้ง "เปิดใบงาน CM" (manual) ──
+    try:
+        from routers.notifications import send_cm_open_email
+        await send_cm_open_email(doc, source="manual")
+    except Exception as mail_err:
+        import logging
+        logging.getLogger("cmreport").warning(f"send_cm_open_email failed: {mail_err}")
+
     return {
-        "ok": True, 
+        "ok": True,
         "report_id": str(res.inserted_id),
         "doc_name": doc_name,
         "issue_id": issue_id,
@@ -835,7 +816,10 @@ async def cmreport_detail_path(
         "repair_result_remark": doc.get("repair_result_remark") or "",
         "resolved_date": doc.get("resolved_date") or "",
         "start_repair_date": doc.get("start_repair_date") or "",
-        
+        "signature": doc.get("signature") or "",
+        "start_repair_time": doc.get("start_repair_time") or "",
+        "resolved_time": doc.get("resolved_time") or "",
+
         "photos_problem": doc.get("photos_problem", {}),
         "photos_repair": doc.get("photos_repair", {}),
         "createdAt": _ensure_utc_iso(doc.get("createdAt")),
@@ -894,8 +878,9 @@ async def cmreport_update_status(
             "repaired_equipment",
             "inprogress_remarks",
             "cause", "problem_type_other","repair_result_remark","start_repair_date",
+            "signature", "start_repair_time", "resolved_time",
         }
-        
+
         if "status" in body.job:
             js = body.job["status"]
             if js not in ALLOWED_STATUS:
@@ -905,11 +890,6 @@ async def cmreport_update_status(
         for k, v in body.job.items():
             if k in allowed_job_keys:
                 updates[k] = v
-
-        if "start_repair_date" in updates:
-            existing = await coll.find_one({"_id": oid}, {"start_repair_date": 1})
-            if existing and existing.get("start_repair_date"):
-                del updates["start_repair_date"]
 
         if "found_date" in body.job and body.job.get("found_date"):
             try:

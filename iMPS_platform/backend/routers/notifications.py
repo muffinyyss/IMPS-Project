@@ -95,6 +95,12 @@ def _increment_fault(sn: str, error: str) -> int:
     _fault_counters[key] = _fault_counters.get(key, 0) + 1
     return _fault_counters[key]
 
+def _reset_fault(sn: str, error: str):
+    """รีเซ็ต counter ของ (sn, error, วันนี้) หลังส่งอีเมลครบ threshold แล้ว — กันส่งซ้ำรัว ๆ"""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = (sn, error.strip().lower(), today)
+    _fault_counters.pop(key, None)
+
 def _cleanup_old_counters():
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for k in [k for k in _fault_counters if k[2] != today]:
@@ -313,138 +319,99 @@ async def send_email_smtp(to: list[str], subject: str, body: str):
         return False
 
 
-async def check_and_send_email(request: Request, notification: dict):
+async def send_cm_open_email(cm_doc: dict, source: str = "auto") -> bool:
+    """ส่งอีเมลแจ้งเตือน "เมื่อมีการเปิดใบงาน CM" (status = Open)
+
+    ใช้ email_notification_rules เดิมเป็นตัวกำหนดผู้รับ (ครอบ station นั้น + "all")
+    source: 'auto' = ระบบสร้างอัตโนมัติ, 'manual' = ช่างกดเปิดผ่านฟอร์ม
+    """
     try:
-        rules_coll = get_email_rules_collection(request)
-        users_coll = get_users_collection(request)
+        from config import client
 
-        station_id = notification.get("station_id", "")
-        sn = notification.get("sn", "")
-        chargebox_id = notification.get("chargebox_id", "")
-        error_msg = notification.get("error", "")
+        station_id = cm_doc.get("station_id", "")
+        sn = cm_doc.get("charger_sn", "") or ""
+        chargebox_id = cm_doc.get("chargebox_id", "") or ""
 
-        # นับ fault และเช็ค threshold
-        _cleanup_old_counters()
-        current_count = _increment_fault(sn, error_msg)
-        threshold = _get_threshold(error_msg)
-
-        if current_count < threshold:
-            print(f"[email-notify] fault count {current_count}/{threshold} SN={sn} — ยังไม่ส่ง")
-            return
-
-        # ✅ เช็คว่าส่งไปแล้ววันนี้หรือยัง
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        sent_key = (sn, error_msg.strip().lower(), today)
-
-        if sent_key in _fault_sent:
-            print(f"[email-notify] already sent today SN={sn} error='{error_msg}' — skip")
-            return
-
-        print(f"[email-notify] threshold reached ({current_count}/{threshold}) SN={sn} → sending email")
-
-
-        # Lookup station จาก SN ถ้ายังไม่มี
-        if not station_id or station_id == sn:
-            try:
-                charger_coll = get_charger_collection(request)
-                charger = await charger_coll.find_one({"SN": sn})
-                if charger:
-                    station_id = charger.get("station_id", "")
-                    if not chargebox_id:
-                        chargebox_id = charger.get("chargeBoxID", "")
-            except Exception as e:
-                print(f"[email-notify] SN lookup fallback error: {e}")
-
-        # FIX (all station): ไม่ return ถ้า station_id ว่าง — ยังหา rule "all" ได้
-        if not station_id:
-            print(f"[email-notify] No station_id for SN={sn}, will only match 'all' rules")
+        rules_coll = client["iMPS"]["email_notification_rules"]
+        users_coll = client["iMPS"]["users"]
 
         # Build query ให้ครอบ "all" เสมอ
         query_conditions = [{"station_id": "all"}]
         if station_id:
             query_conditions.append({"station_id": station_id})
 
-        query = {
+        rules = await rules_coll.find({
             "$or": query_conditions,
             "enabled": True,
-        }
-
-        cursor = rules_coll.find(query)
-        rules = await cursor.to_list(length=100)
+        }).to_list(length=100)
 
         if not rules:
-            print(f"[email-notify] No rules for station={station_id or 'unknown'}, skip")
-            return
+            print(f"[cm-email] No rules for station={station_id or 'unknown'}, skip")
+            return False
 
-        # FIX #3: dedup recipients ข้าม rules ทั้งหมด ก่อนส่ง
+        # dedup recipients ข้าม rules ทั้งหมด
         all_recipients: set[str] = set()
-
         for rule in rules:
-            # เช็ค chargebox/SN filter
             rule_chargebox = rule.get("chargebox_id", "all")
             if rule_chargebox != "all":
                 if rule_chargebox != chargebox_id and rule_chargebox != sn:
                     continue
 
-            user_ids = rule.get("user_ids", [])
-            if not user_ids:
-                continue
-
             user_oids = []
-            for uid in user_ids:
+            for uid in rule.get("user_ids", []):
                 try:
                     user_oids.append(ObjectId(uid))
                 except Exception:
                     continue
+            if not user_oids:
+                continue
 
-            users_cursor = users_coll.find(
-                {"_id": {"$in": user_oids}},
-                {"email": 1, "username": 1}
-            )
-            users = await users_cursor.to_list(length=200)
-
+            users = await users_coll.find(
+                {"_id": {"$in": user_oids}}, {"email": 1}
+            ).to_list(length=200)
             for u in users:
-                email = u.get("email")
-                if email:
-                    all_recipients.add(email)
+                if u.get("email"):
+                    all_recipients.add(u["email"])
 
         if not all_recipients:
-            print(f"[email-notify] No recipient emails found, skip")
-            return
+            print("[cm-email] No recipient emails found, skip")
+            return False
 
-        # สร้าง email และส่งครั้งเดียว
-        station_name = notification.get("station_name", station_id)
-        head = notification.get("head", "")
-        final_error_msg = notification.get("error", "New notification")
+        # สร้างเนื้อหาอีเมลจากใบงาน CM
+        station_name = cm_doc.get("location") or station_id
+        doc_name = cm_doc.get("doc_name", "")
+        issue_id = cm_doc.get("issue_id", "")
+        severity = cm_doc.get("severity", "")
+        faulty = cm_doc.get("faulty_equipment", "")
+        problem = cm_doc.get("problem_details", "")
+        reported_by = cm_doc.get("reported_by", "")
+        found_date = cm_doc.get("found_date", "")
 
-        subject = f"[{station_name}] FAULT: {final_error_msg}"
-        body_text = f"Station: {station_name}\nSN: {sn}\n"
-        if head:
-            body_text += f"Head: {head}\n"
-        if chargebox_id:
-            body_text += f"ChargeBox ID: {chargebox_id}\n"
-        ts = notification.get('timestamp', '')
-        try:
-            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-            formatted_time = dt.strftime("%d/%m/%Y %H:%M:%S")
-        except Exception:
-            formatted_time = ts or "-"
-
-        body_text += (
-            f"Message: {final_error_msg} (เกิดขึ้น {current_count} ครั้งวันนี้)\n"
-            f"Time: {formatted_time}\n"
+        tag = "Auto CM" if source == "auto" else "CM"
+        subject = f"[{station_name}] เปิดใบงาน {tag}: {doc_name or issue_id or '-'}"
+        body_text = (
+            f"มีการเปิดใบงาน CM ใหม่ ({'อัตโนมัติ' if source == 'auto' else 'โดยผู้ใช้'})\n"
+            f"Station: {station_name}\n"
+            f"เลขที่ใบงาน: {doc_name or '-'}\n"
+            f"Issue ID: {issue_id or '-'}\n"
+            f"อุปกรณ์: {faulty or '-'}\n"
+            f"ความรุนแรง: {severity or '-'}\n"
+            f"วันที่พบ: {found_date or '-'}\n"
+            f"ผู้แจ้ง: {reported_by or '-'}\n"
         )
+        if sn:
+            body_text += f"SN: {sn}\n"
+        body_text += f"รายละเอียดปัญหา:\n{problem or '-'}\n"
 
-        success = await send_email_smtp(
+        return await send_email_smtp(
             to=list(all_recipients),
             subject=subject,
             body=body_text,
         )
-        if success:
-            _fault_sent.add(sent_key)
 
     except Exception as e:
-        print(f"[email-notify] Error: {e}")
+        print(f"[cm-email] Error: {e}")
+        return False
 
 
 # ===== Station Lookup =====
@@ -609,7 +576,7 @@ async def get_notification_count(request: Request):
 
 @router.get("/stream")
 async def notifications_stream(request: Request):
-    """SSE stream สำหรับ real-time notifications จากทุก stations — พร้อมส่ง email"""
+    """SSE stream สำหรับ real-time notifications จากทุก stations (ไม่ส่ง email — ย้ายไปตอนเปิดใบงาน CM)"""
     errorDB = get_error_db(request)
 
     headers = {
@@ -699,12 +666,9 @@ async def notifications_stream(request: Request):
                             "read": latest.get("read", False),
                         }
 
+                        # NOTE: ไม่ส่งอีเมลจาก fault ดิบแล้ว — ย้ายไปส่งตอน "เปิดใบงาน CM"
+                        # (auto_cm_watcher / cmreport submit → send_cm_open_email)
                         yield f"event: new\ndata: {to_json(notification)}\n\n"
-
-                        try:
-                            await check_and_send_email(request, notification)
-                        except Exception as email_err:
-                            print(f"[email-notify] Error in SSE: {email_err}")
 
                 except Exception as e:
                     print(f"[notifications] Watch error for {station_id}: {e}")

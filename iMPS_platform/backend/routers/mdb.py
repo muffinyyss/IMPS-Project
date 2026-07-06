@@ -656,7 +656,7 @@ import paho.mqtt.client as mqtt
 from config import (
     get_mdb_collection_for, _validate_station_id_th, to_json, _to_utc_dt, to_float,
     floor_bin, MDB_DB, errorDB, th_tz, mqtt_client, BROKER_HOST, BROKER_PORT,
-    stations_coll_async, users_coll_async, email_log_coll,
+    stations_coll_async, users_coll_async, email_log_coll, charger_coll_async,
     SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SENDER_EMAIL,
 )
 from deps import UserClaims, get_current_user
@@ -1135,7 +1135,25 @@ async def add_equipment(body: EquipmentCreate, current: UserClaims = Depends(get
         },
         upsert=True,
     )
-    return {"message": "saved", "station_id": body.station_id}
+
+    # Sync MDB topic เข้า iMPS.charger -> pipeline_config.topics.mdbRaw
+    # เพื่อให้ pipeline (hot-reload ทุก 30 วิ) subscribe topic นี้และเขียนข้อมูลลง MDB db เอง
+    # ครอบคลุมเคสสถานีที่ charger doc ยังไม่มี pipeline_config (จะถูกสร้างให้)
+    pipeline_synced = False
+    try:
+        res = await charger_coll_async.update_one(
+            {"station_id": body.station_id},
+            {"$set": {"pipeline_config.topics.mdbRaw": body.topic}},
+        )
+        pipeline_synced = res.matched_count > 0
+    except Exception as e:
+        print(f"[MDB] sync pipeline_config topic failed for {body.station_id}: {e}")
+
+    return {
+        "message": "saved",
+        "station_id": body.station_id,
+        "pipeline_synced": pipeline_synced,
+    }
 
 
 @router.get("/MDB/equipment/{station_id}")

@@ -22,6 +22,7 @@ type Job = {
     equipment_list: string[];
     problem_details: string;
     problem_type: string;
+    problem_type_other: string;
     severity: Severity;
     reported_by: string[];
     assignee: string;
@@ -32,6 +33,14 @@ type Job = {
     preventive_action: string[];
     status: Status;
     remarks: string;
+    // fields ใหม่จาก InProgress
+    faulty_equipment: string;
+    cause: string;
+    correction: string;
+    start_repair_date: string;
+    start_repair_time: string;
+    resolved_time: string;
+    signature: string;
 };
 
 type RepairOption = typeof REPAIR_OPTIONS[number];
@@ -63,6 +72,7 @@ const INITIAL_JOB: Job = {
     equipment_list: [""],
     problem_details: "",
     problem_type: "",
+    problem_type_other: "",
     severity: "",
     reported_by: [""],
     assignee: "",
@@ -73,6 +83,13 @@ const INITIAL_JOB: Job = {
     preventive_action: [""],
     status: "",
     remarks: "",
+    faulty_equipment: "",
+    cause: "",
+    correction: "",
+    start_repair_date: "",
+    start_repair_time: "",
+    resolved_time: "",
+    signature: "",
 };
 
 type StationPublic = {
@@ -703,58 +720,59 @@ export default function CMForm() {
                 }
                 const data = await res.json();
 
-                // map ข้อมูลจาก backend → job state
+                // map ข้อมูลจาก backend (flat fields) → job state
+                const correctionList = Array.isArray(data.repaired_equipment) ? data.repaired_equipment : [];
                 setJob(prev => ({
                     ...prev,
-                    issue_id: data.issue_id ?? data.job?.issue_id ?? prev.issue_id,
-                    found_date: data.cm_date ?? data.job?.found_date ?? prev.found_date, // YYYY-MM-DD
-                    location: data.job?.location ?? prev.location,
-                    wo: data.job?.wo ?? prev.wo,
-                    sn: data.job?.sn ?? prev.sn,
-                    problem_details: data.job?.problem_details ?? prev.problem_details,
-                    problem_type: data.job?.problem_type ?? prev.problem_type,
-                    severity: (data.job?.severity ?? "") as Severity,
-                    // ถ้าฟรอนต์คุณกำหนด Status ให้เลือกได้เฉพาะ "Closed",
-                    // แต่ backend อาจเป็น "Open"/"In Progress" ก็จับให้ว่างหรือแปลงเองตามนโยบาย
-                    status: (data.job?.status ?? "") as Status,
-                    initial_cause: data.job?.initial_cause ?? prev.initial_cause,
-                    remarks: data.job?.remarks ?? prev.remarks,
-                    // ถ้าอยากเติม lists อื่น ๆ ด้วย (equipment_list, reported_by, ฯลฯ)
-                    equipment_list: Array.isArray(data.job?.equipment_list) && data.job.equipment_list.length ? data.job.equipment_list : prev.equipment_list,
-                    reported_by: Array.isArray(data.job?.reported_by) && data.job.reported_by.length ? data.job.reported_by : prev.reported_by,
-                    preventive_action: Array.isArray(data.job?.preventive_action) && data.job.preventive_action.length ? data.job.preventive_action : prev.preventive_action,
-                    resolved_date: (data.job?.resolved_date ?? "") as string,
-                    repair_result: (data.job?.repair_result ?? "") as Job["repair_result"],
-                    corrective_actions: Array.isArray(data.job?.corrective_actions) && data.job.corrective_actions.length
-                        ? data.job.corrective_actions.map((c: any) => ({
-                            text: c?.text ?? "",
-                            // ฝั่ง backend เก็บแค่ metadata; ส่วนไฟล์จริงอยู่ที่ /uploads/... แล้ว
-                            images: [], // ในฟอร์มนี้ใช้สำหรับไฟล์ใหม่ที่ผู้ใช้จะอัปโหลด
-                        }))
+                    issue_id: data.issue_id ?? prev.issue_id,
+                    found_date: data.cm_date ?? data.found_date ?? prev.found_date, // YYYY-MM-DD
+                    location: data.location ?? prev.location,
+                    problem_details: data.problem_details ?? prev.problem_details,
+                    problem_type: data.problem_type ?? prev.problem_type,
+                    problem_type_other: data.problem_type_other ?? prev.problem_type_other,
+                    severity: (data.severity ?? "") as Severity,
+                    status: (data.status ?? "") as Status,
+                    initial_cause: data.cause ?? prev.initial_cause,
+                    remarks: data.inprogress_remarks ?? prev.remarks,
+                    reported_by: data.reported_by ? [String(data.reported_by)] : prev.reported_by,
+                    preventive_action: Array.isArray(data.preventive_action) && data.preventive_action.length ? data.preventive_action : prev.preventive_action,
+                    resolved_date: (data.resolved_date ?? "") as string,
+                    repair_result: (data.repair_result ?? "") as Job["repair_result"],
+                    corrective_actions: Array.isArray(data.corrective_actions) && data.corrective_actions.length
+                        ? data.corrective_actions.map((c: any) => ({ text: c?.text ?? "", images: [] }))
                         : prev.corrective_actions,
+                    // fields ใหม่
+                    faulty_equipment: data.faulty_equipment ?? prev.faulty_equipment,
+                    cause: data.cause ?? prev.cause,
+                    correction: correctionList.length ? String(correctionList[0]) : prev.correction,
+                    start_repair_date: data.start_repair_date ?? prev.start_repair_date,
+                    start_repair_time: data.start_repair_time ?? prev.start_repair_time,
+                    resolved_time: data.resolved_time ?? prev.resolved_time,
+                    signature: data.signature ?? prev.signature,
                 }));
 
                 setSummary(data.summary ?? "");
 
-                // เก็บ photos ที่ backend มีอยู่แล้ว (อ่านจาก data.photos)
-                // data.photos มีรูปเป็นกลุ่ม g1,g2,... แต่ละรายการจะมี { url, remark, uploadedAt }
-                const ph = data.photos || {};
-                const normalized: Record<string, PhotoItem[]> = {};
-                Object.keys(ph).forEach((groupKey) => {
-                    const arr = Array.isArray(ph[groupKey]) ? ph[groupKey] : [];
-                    // normalized[groupKey] = arr.map((x: any) => ({
-                    //     url: x?.url,
-                    //     remark: x?.remark,
-                    //     uploadedAt: x?.uploadedAt,
-                    // })).filter((x: PhotoItem) => !!x.url);
-                    normalized[groupKey] = arr
-                        .map((x: any) => ({
-                            url: absUrl(x?.url),        // ← สำคัญ
-                            remark: x?.remark,
-                            uploadedAt: x?.uploadedAt,
-                        }))
+                // รวมรูป: photos_repair (before_/after_ ต่อข้อ) + photos_problem → map เป็นกลุ่ม g{i+1}
+                const normalizeArr = (arr: any): PhotoItem[] =>
+                    (Array.isArray(arr) ? arr : [])
+                        .map((x: any) => ({ url: absUrl(x?.url), remark: x?.remark, uploadedAt: x?.uploadedAt }))
                         .filter((x: PhotoItem) => !!x.url);
-                });
+
+                const repairPh = data.photos_repair || {};
+                const problemPh = data.photos_problem || {};
+                const normalized: Record<string, PhotoItem[]> = {};
+                const nActions = Array.isArray(data.corrective_actions) ? data.corrective_actions.length : 0;
+                for (let i = 0; i < Math.max(nActions, 1); i++) {
+                    const merged = [
+                        ...normalizeArr(repairPh[`before_${i}`]),
+                        ...normalizeArr(repairPh[`after_${i}`]),
+                    ];
+                    if (merged.length) normalized[`g${i + 1}`] = merged;
+                }
+                // รูปปัญหา (จากตอน Open) — รวมทุกกลุ่มไว้ใต้คีย์ "problem"
+                const problemImgs = Object.values(problemPh).flatMap((v: any) => normalizeArr(v));
+                if (problemImgs.length) normalized["problem"] = problemImgs;
                 setPhotos(normalized);
 
             } catch (e: any) {
@@ -1049,7 +1067,7 @@ export default function CMForm() {
                             <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4">
                                 <div>
                                     <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-3">
-                                        ความรุนแรง
+                                        ความเร่งด่วน
                                     </div>
                                     <select
                                         value={job.severity}
@@ -1067,10 +1085,10 @@ export default function CMForm() {
                                     </select>
                                 </div>
                                 <div className="tw-text-sm tw-font-medium tw-text-blue-gray-800 tw-mb-3">
-                                    ประเภทปัญหา
+                                    ปัญหา
                                 </div>
                                 <Input
-                                    label="ประเภทปัญหา"
+                                    label="ปัญหา"
                                     value={job.problem_type}
                                     onChange={(e) => setJob({ ...job, problem_type: e.target.value })}
                                     crossOrigin=""
@@ -1346,6 +1364,53 @@ export default function CMForm() {
                             </div>
                         </div>
 
+
+                        {/* ข้อมูลการซ่อม (การแก้ไข / วันที่-เวลา / ลายเซ็น) */}
+                        <div>
+                            <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">
+                                ข้อมูลการซ่อม
+                            </div>
+                            <div className="tw-border tw-border-blue-gray-100 tw-rounded-lg tw-p-4 tw-space-y-4">
+                                <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-4">
+                                    <div>
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">ตำแหน่งจุดที่มีความผิดปกติ</div>
+                                        <Input value={job.faulty_equipment || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
+                                    </div>
+                                    <div>
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">การแก้ไข</div>
+                                        <Input value={job.correction || "-"} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
+                                    </div>
+                                    <div>
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">วันที่/เวลา เริ่มแก้ไข</div>
+                                        <Input value={`${(job.start_repair_date || "").slice(0, 10) || "-"}${job.start_repair_time ? " " + job.start_repair_time + " น." : ""}`} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
+                                    </div>
+                                    <div>
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">วันที่/เวลา แก้ไขเสร็จ</div>
+                                        <Input value={`${(job.resolved_date || "").slice(0, 10) || "-"}${job.resolved_time ? " " + job.resolved_time + " น." : ""}`} readOnly crossOrigin="" className="!tw-w-full !tw-bg-blue-gray-50" containerProps={{ className: "!tw-min-w-0" }} />
+                                    </div>
+                                </div>
+                                {job.signature && (
+                                    <div>
+                                        <div className="tw-text-xs tw-text-blue-gray-500 tw-mb-1">ลายเซ็นผู้ซ่อม</div>
+                                        <img src={job.signature} alt="signature" className="tw-h-28 tw-border tw-border-blue-gray-100 tw-rounded-lg tw-bg-white tw-object-contain" />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* รูปภาพปัญหา (จากตอนแจ้ง) */}
+                        {(photos["problem"]?.length ?? 0) > 0 && (
+                            <div>
+                                <div className="tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">รูปภาพปัญหา</div>
+                                <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 md:tw-grid-cols-4 tw-gap-3">
+                                    {photos["problem"].map((p, k) => (
+                                        <a key={`problem-${k}`} href={p.url} target="_blank" rel="noreferrer" className="tw-relative tw-aspect-video tw-rounded-md tw-overflow-hidden tw-border tw-border-blue-gray-100 hover:tw-shadow">
+                                            <img src={p.url} alt={`problem-${k}`} className="tw-w-full tw-h-full tw-object-cover" />
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* หมายเหตุ */}
                         <div>

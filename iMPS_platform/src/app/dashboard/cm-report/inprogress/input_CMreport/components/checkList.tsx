@@ -38,7 +38,7 @@ const T = {
     reportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported by" },
     inspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
     faultyEquipment: { th: "อุปกรณ์ที่พัง", en: "Faulty Equipment" },
-    repairedEquipment: { th: "อุปกรณ์ที่แก้ไข", en: "Repaired Equipment" },
+    repairedEquipment: { th: "การแก้ไข", en: "Correction" },
     selectEquipmentPlaceholder: { th: "เลือกอุปกรณ์...", en: "Select equipment..." },
     chargersGroup: { th: "Chargers", en: "Chargers" },
     devicesGroup: { th: "อุปกรณ์ในตู้", en: "Cabinet Devices" },
@@ -47,8 +47,8 @@ const T = {
     loadingDevices: { th: "กำลังโหลดอุปกรณ์...", en: "Loading devices..." },
     noChargersFound: { th: "ไม่พบ Charger", en: "No chargers found" },
     problemDetails: { th: "รายละเอียดปัญหา", en: "Problem Details" },
-    severity: { th: "ความรุนแรง", en: "Severity" },
-    problemType: { th: "ประเภทปัญหา", en: "Problem Type" },
+    severity: { th: "ความเร่งด่วน", en: "Urgency" },
+    problemType: { th: "ปัญหา", en: "Problem Description" },
     details: { th: "รายละเอียด", en: "Details" },
     jobStatus: { th: "สถานะงาน", en: "Job Status" },
     remarks: { th: "หมายเหตุ", en: "Remarks" },
@@ -93,7 +93,7 @@ const T = {
     validBeforePhoto: { th: "รูปก่อนแก้ไข", en: "Before Photo" },
     validAfterPhoto: { th: "รูปหลังแก้ไข", en: "After Photo" },
     validRepairResult: { th: "ผลหลังซ่อม", en: "Repair Result" },
-    validProblemType: { th: "ประเภทปัญหา", en: "Problem Type" },
+    validProblemType: { th: "ปัญหา", en: "Problem Description" },
     validCause: { th: "สาเหตุ", en: "Cause" },
     notFilled: { th: "ยังไม่ได้กรอก", en: "Not filled" },
     notSelected: { th: "ยังไม่ได้เลือก", en: "Not selected" },
@@ -163,14 +163,16 @@ type Job = {
     repair_result_remark: string; // หมายเหตุผลหลังซ่อม (ติดตามผล/รออะไหล่)
     cause: string; // NEW: สาเหตุ
     problem_type_other: string; // ระบุเมื่อเลือก อื่นๆ
+    signature: string; // ลายเซ็นผู้ซ่อม (dataURL PNG) — แสดง/บันทึกเมื่อแก้ไขสำเร็จ
+    start_repair_time: string; // เวลาเริ่มแก้ไข (HH:MM)
+    resolved_time: string; // เวลาแก้ไขสำเร็จ (HH:MM)
 };
 
-type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; };
+type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; };
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
 const REPAIR_OPTIONS = [
     { value: "แก้ไขสำเร็จ", th: "แก้ไขสำเร็จ", en: "Fixed Successfully" },
-    { value: "แก้ไขไม่สำเร็จ", th: "แก้ไขไม่สำเร็จ", en: "Fix Unsuccessful" },
     { value: "อยู่ระหว่างการติดตามผล", th: "อยู่ระหว่างการติดตามผล", en: "Monitoring" },
     { value: "อยู่ระหว่างการรออะไหล่", th: "อยู่ระหว่างการรออะไหล่", en: "Waiting for Parts" },
 ] as const;
@@ -181,6 +183,475 @@ const PROBLEM_TYPE_OPTIONS = [
     { value: "Network", th: "Network (เครือข่าย)", en: "Network" },
     { value: "Other", th: "อื่นๆ", en: "Other" },
 ] as const;
+
+// ตัวเลือกท้าย dropdown ปัญหา — แสดงเสมอทุก failure code
+const NO_PROBLEM_OPTION = { value: "NOPROBLM", th: "ไม่พบปัญหา", en: "No Problem Found" } as const;
+
+// ตัวเลือก "ปัญหา" (Problem Description) ตาม FAILURECODE ของใบงาน (faulty_equipment)
+// failure code ที่ยังไม่มีลิสต์กำหนด จะ fallback ไปใช้ PROBLEM_TYPE_OPTIONS เดิม
+const PROBLEM_OPTIONS_BY_FAILURECODE: Record<string, { value: string; label: string }[]> = {
+    DCCHARFC: [
+        { value: "POWERDRP", label: "Power Drop" },
+        { value: "UN2STCHG", label: "Unable to Start Charging" },
+        { value: "SCRFREEZ", label: "The Screen Freezes" },
+        { value: "NOINTSIG", label: "No Internet Signal" },
+        { value: "DATATRAN", label: "Data Transmission" },
+        { value: "HMISCREE", label: "HMI Touch Screen" },
+        { value: "CONBOARD", label: "Control Board" },
+        { value: "BILLINGU", label: "Wrong Billing Unit" },
+        { value: "NOCONSTD", label: "Not Conform to Standard" },
+    ],
+    ACCHARFC: [
+        { value: "POWERDRP", label: "Power Drop" },
+        { value: "UN2STCHG", label: "Unable to Start Charging" },
+        { value: "SCRFREEZ", label: "The Screen Freezes" },
+        { value: "NOINTSIG", label: "No Internet Signal" },
+        { value: "DATATRAN", label: "Data Transmission" },
+        { value: "HMISCREE", label: "HMI Touch Screen" },
+        { value: "CONBOARD", label: "Control Board" },
+        { value: "BILLINGU", label: "Wrong Billing Unit" },
+    ],
+    STATFC: [
+        { value: "HVPROBLM", label: "HV Side" },
+        { value: "EVDBPROB", label: "EVDB" },
+        { value: "POWERMET", label: "Power Meter" },
+        { value: "FUSEPROB", label: "Fuse" },
+        { value: "PHPROTPB", label: "Phase Protection" },
+        { value: "RELAYPRO", label: "Relay" },
+        { value: "FANPROBL", label: "Fan" },
+        { value: "ROUTERPB", label: "Router" },
+        { value: "UPSSBPOB", label: "UPS Supply" },
+        { value: "NVRPROBL", label: "NVR" },
+        { value: "CCTVPROB", label: "CCTV" },
+        { value: "QRCDPROB", label: "QR Code" },
+        { value: "LIGTPROB", label: "Station Lighting" },
+        { value: "PARKPROB", label: "Parking Space" },
+        { value: "STRUPROB", label: "Structure" },
+        { value: "FIREEXPB", label: "Fire Extinguisher" },
+    ],
+};
+
+// ตัวเลือก "สาเหตุ" ตามปัญหา (problem_type) ที่เลือก
+// ปัญหาที่ยังไม่มีลิสต์กำหนด จะ fallback เป็นช่องกรอกข้อความเหมือนเดิม
+const CAUSE_OPTIONS_BY_PROBLEM: Record<string, { value: string; label: string }[]> = {
+    POWERDRP: [
+        { value: "OVERHEAT", label: "Overheat" },
+        { value: "POWMODUL", label: "Power Module Failed" },
+        { value: "PMCMFAIL", label: "Power Module Communication Fail" },
+        { value: "POWSUPPL", label: "Power Supply AC-DC 24Vdc Failed (Fan)" },
+        { value: "CBPOWTRP", label: "CB Power Module Trip" },
+        { value: "RCDPROTS", label: "RCD Leakage Protection System (Charger)" },
+    ],
+    UN2STCHG: [
+        { value: "DCCTR1FC", label: "DC Contactor No.1 Fail" },
+        { value: "DCCTR2FC", label: "DC Contactor No.2 Fail" },
+        { value: "DCCTR3FC", label: "DC Contactor No.3 Fail" },
+        { value: "DCCTR4FC", label: "DC Contactor No.4 Fail" },
+        { value: "DCCTR5FC", label: "DC Contactor No.5 Fail" },
+        { value: "DCCTR6FC", label: "DC Contactor No.6 Fail" },
+        { value: "ACCTR1FC", label: "AC Contactor No.1 Fail" },
+        { value: "ACCTR2FC", label: "AC Contactor No.2 Fail" },
+        { value: "ACCTR3FC", label: "AC Contactor No.3 Fail" },
+        { value: "IMD1FC", label: "Insulation Monitoring Divce Fail No.1" },
+        { value: "IMD2FC", label: "Insulation Monitoring Divce Fail No.2" },
+        { value: "CTL1FC", label: "Controller Fail No.1" },
+        { value: "CTL2FC", label: "Controller Fail No.2" },
+        { value: "EMERBUTP", label: "Emergency Button Pressed" },
+        { value: "CPCBMISS", label: "CP Cable is Missing" },
+    ],
+    SCRFREEZ: [
+        { value: "OVERHEAT", label: "Overheat" },
+    ],
+    NOINTSIG: [
+        { value: "SIMCARDP", label: "SIM Card Problem" },
+        { value: "CHSTARTC", label: "Charger Does Not Send StartTransaction" },
+        { value: "CHSTOPTC", label: "Charger Does Not Send StopTransaction" },
+        { value: "DISCONFR", label: "Disconnect Frequently" },
+    ],
+    DATATRAN: [
+        { value: "CONBOANC", label: "Control Board Cable is Not Connected" },
+    ],
+    HMISCREE: [
+        { value: "HMISCROF", label: "Touch Screen Off" },
+    ],
+    CONBOARD: [
+        { value: "CONBOAFA", label: "Control Board Failed" },
+    ],
+    BILLINGU: [
+        { value: "CONBOAFA", label: "Control Board Failed" },
+        { value: "METERFAI", label: "Power Meter Failed" },
+    ],
+    NOCONSTD: [
+        { value: "PECUTFAI", label: "PE Cut Test Failed" },
+        { value: "CPSHTFAI", label: "CP Short Test Failed" },
+    ],
+};
+
+// override สาเหตุแบบเจาะจงตาม FAILURECODE + ปัญหา (ใช้ก่อน CAUSE_OPTIONS_BY_PROBLEM)
+// เช่น ACCHARFC กับ DCCHARFC มีปัญหาชื่อเดียวกัน แต่สาเหตุต่างกัน
+const CAUSE_OPTIONS_BY_FC_PROBLEM: Record<string, Record<string, { value: string; label: string }[]>> = {
+    ACCHARFC: {
+        POWERDRP: [
+            { value: "POWBOAFA", label: "Power Board Failed" },
+        ],
+        UN2STCHG: [
+            { value: "EMERBUTP", label: "Emergency Button Pressed" },
+            { value: "CPCBMISS", label: "CP Cable is Missing" },
+        ],
+        SCRFREEZ: [
+            { value: "OVERHEAT", label: "Overheat" },
+        ],
+        NOINTSIG: [
+            { value: "SIMCARDP", label: "SIM Card Problem" },
+            { value: "CHSTARTC", label: "Charger Does Not Send StartTransaction" },
+            { value: "CHSTOPTC", label: "Charger Does Not Send StopTransaction" },
+            { value: "DISCONFR", label: "Disconnect Frequently" },
+        ],
+        DATATRAN: [
+            { value: "CONBOANC", label: "Control Board Cable is not Connected" },
+        ],
+        CONBOARD: [
+            { value: "CONBOAFA", label: "Control Board Failed" },
+        ],
+        BILLINGU: [
+            { value: "CONBOAFA", label: "Control Board Failed" },
+        ],
+    },
+    STATFC: {
+        HVPROBLM: [
+            { value: "HVFUSEDR", label: "HV Fuse Drop" },
+            { value: "GROUNDIN", label: "Grounding" },
+            { value: "MCBTRIPF", label: "MCB Trip" },
+            { value: "FUSELAMP", label: "Fuse or Pilot Lamp" },
+        ],
+        EVDBPROB: [
+            { value: "CUBUSBAR", label: "Copper Busbar Burnt" },
+            { value: "WATERENT", label: "There is Water Entering." },
+            { value: "MCCBTRIP", label: "MCCB Trip" },
+            { value: "MCBTRIPF", label: "MCB Trip" },
+            { value: "RCDTRIPF", label: "RCD Trip" },
+        ],
+        POWERMET: [
+            { value: "METERFAI", label: "Power Meter Failed" },
+        ],
+        FUSEPROB: [
+            { value: "FUSESURG", label: "Fuse Surge Protection" },
+            { value: "FUSEPHAS", label: "Fuse Phase Protection" },
+            { value: "FUSELAMP", label: "Fuse or Pilot Lamp" },
+        ],
+        PHPROTPB: [
+            { value: "PHASEALT", label: "Phase Alternation" },
+            { value: "OVERVOLT", label: "Over Voltage" },
+            { value: "UNDEVOLT", label: "Under Voltage" },
+            { value: "INCVMISS", label: "Incoming Voltage is Missing" },
+        ],
+        RELAYPRO: [
+            { value: "RELAYFAI", label: "Relay Failed" },
+        ],
+        FANPROBL: [
+            { value: "EXHTFANF", label: "Exhaust Fan Failed" },
+        ],
+        ROUTERPB: [
+            { value: "ROUTFAIL", label: "Router Failed" },
+        ],
+        UPSSBPOB: [
+            { value: "UPSFAILU", label: "UPS Failed" },
+        ],
+        NVRPROBL: [
+            { value: "NVRFAILE", label: "NVR Failed" },
+        ],
+        CCTVPROB: [
+            { value: "CCTVFAIL", label: "CCTV Failed" },
+        ],
+        QRCDPROB: [
+            { value: "QRCDFAIL", label: "QR Code Failed" },
+        ],
+        LIGTPROB: [
+            { value: "LIGTFAIL", label: "Lighting Failed" },
+        ],
+        PARKPROB: [
+            { value: "PRKPAINT", label: "Peeling Paint" },
+        ],
+        STRUPROB: [
+            { value: "STRUDAMA", label: "Structure Damaged" },
+        ],
+        FIREEXPB: [
+            { value: "GUAGUNOV", label: "Gauge Undered/Overed" },
+        ],
+    },
+};
+
+// ตัวเลือก "การแก้ไข" ตาม FAILURECODE + ปัญหา + สาเหตุ (คีย์ = "fc:problem:cause")
+// combo ที่ยังไม่มีลิสต์ จะ fallback ไปใช้รายการอุปกรณ์ภายใน (devices) เหมือนเดิม
+const CORRECTION_OPTIONS_BY_FC_PROBLEM_CAUSE: Record<string, { value: string; label: string }[]> = {
+    "DCCHARFC:POWERDRP:OVERHEAT": [
+        { value: "REPLACE", label: "Replace (Filter)" },
+    ],
+    "DCCHARFC:POWERDRP:POWMODUL": [
+        { value: "REPLACE", label: "Replace (Power Module)" },
+    ],
+    "DCCHARFC:POWERDRP:PMCMFAIL": [
+        { value: "REPLACE", label: "Replace (Power Module)" },
+        { value: "RECHECK", label: "Recheck (Power Module)" },
+        { value: "REPAIR", label: "Repair (Power Module)" },
+    ],
+    "DCCHARFC:POWERDRP:POWSUPPL": [
+        { value: "REPLACE", label: "Replace (Power Supply)" },
+    ],
+    "DCCHARFC:POWERDRP:CBPOWTRP": [
+        { value: "REPLACE", label: "Replace (CB)" },
+        { value: "RESET", label: "Reset (CB)" },
+    ],
+    "DCCHARFC:POWERDRP:RCDPROTS": [
+        { value: "REPLACE", label: "Replace (RCD)" },
+        { value: "RESET", label: "Reset (RCD)" },
+    ],
+    "DCCHARFC:UN2STCHG:DCCTR1FC": [
+        { value: "REPLACE", label: "Replace (DC Contactor No.1)" },
+        { value: "RECHECK", label: "Recheck (DC Contactor No.1)" },
+        { value: "REPAIR", label: "Repair (DC Contactor No.1)" },
+    ],
+    "DCCHARFC:UN2STCHG:DCCTR2FC": [
+        { value: "REPLACE", label: "Replace (DC Contactor No.2)" },
+        { value: "RECHECK", label: "Recheck (DC Contactor No.2)" },
+        { value: "REPAIR", label: "Repair (DC Contactor No.2)" },
+    ],
+    "DCCHARFC:UN2STCHG:DCCTR3FC": [
+        { value: "REPLACE", label: "Replace (DC Contactor No.3)" },
+        { value: "RECHECK", label: "Recheck (DC Contactor No.3)" },
+        { value: "REPAIR", label: "Repair (DC Contactor No.3)" },
+    ],
+    "DCCHARFC:UN2STCHG:DCCTR4FC": [
+        { value: "REPLACE", label: "Replace (DC Contactor No.4)" },
+        { value: "RECHECK", label: "Recheck (DC Contactor No.4)" },
+        { value: "REPAIR", label: "Repair (DC Contactor No.4)" },
+    ],
+    "DCCHARFC:UN2STCHG:DCCTR5FC": [
+        { value: "REPLACE", label: "Replace (DC Contactor No.5)" },
+        { value: "RECHECK", label: "Recheck (DC Contactor No.5)" },
+        { value: "REPAIR", label: "Repair (DC Contactor No.5)" },
+    ],
+    "DCCHARFC:UN2STCHG:DCCTR6FC": [
+        { value: "REPLACE", label: "Replace (DC Contactor No.6)" },
+        { value: "RECHECK", label: "Recheck (DC Contactor No.6)" },
+        { value: "REPAIR", label: "Repair (DC Contactor No.6)" },
+    ],
+    "DCCHARFC:UN2STCHG:ACCTR1FC": [
+        { value: "REPLACE", label: "Replace (AC Contactor No.1)" },
+        { value: "RECHECK", label: "Recheck (AC Contactor No.1)" },
+        { value: "REPAIR", label: "Repair (AC Contactor No.1)" },
+    ],
+    "DCCHARFC:UN2STCHG:ACCTR2FC": [
+        { value: "REPLACE", label: "Replace (AC Contactor No.2)" },
+        { value: "RECHECK", label: "Recheck (AC Contactor No.2)" },
+        { value: "REPAIR", label: "Repair (AC Contactor No.2)" },
+    ],
+    "DCCHARFC:UN2STCHG:ACCTR3FC": [
+        { value: "REPLACE", label: "Replace (AC Contactor No.3)" },
+        { value: "RECHECK", label: "Recheck (AC Contactor No.3)" },
+        { value: "REPAIR", label: "Repair (AC Contactor No.3)" },
+    ],
+    "DCCHARFC:UN2STCHG:IMD1FC": [
+        { value: "REPLACE", label: "Replace (Insulation Monitoring Divce Fail No.1)" },
+        { value: "RECHECK", label: "Recheck (Insulation Monitoring Divce Fail No.1)" },
+        { value: "REPAIR", label: "Repair (Insulation Monitoring Divce Fail No.1)" },
+    ],
+    "DCCHARFC:UN2STCHG:IMD2FC": [
+        { value: "REPLACE", label: "Replace (Insulation Monitoring Divce Fail No.2)" },
+        { value: "RECHECK", label: "Recheck (Insulation Monitoring Divce Fail No.2)" },
+        { value: "REPAIR", label: "Repair (Insulation Monitoring Divce Fail No.2)" },
+    ],
+    "DCCHARFC:UN2STCHG:CTL1FC": [
+        { value: "REPLACE", label: "Replace (Controller No.1)" },
+        { value: "RECHECK", label: "Recheck (Controller No.1)" },
+        { value: "REPAIR", label: "Repair (Controller No.1)" },
+    ],
+    "DCCHARFC:UN2STCHG:CTL2FC": [
+        { value: "REPLACE", label: "Replace (Controller No.2)" },
+        { value: "RECHECK", label: "Recheck (Controller No.2)" },
+        { value: "REPAIR", label: "Repair (Controller No.2)" },
+    ],
+    "DCCHARFC:UN2STCHG:EMERBUTP": [
+        { value: "RESET", label: "Reset (Emergency)" },
+    ],
+    "DCCHARFC:UN2STCHG:CPCBMISS": [
+        { value: "REPLACE", label: "Replace (Charging Cable)" },
+    ],
+    "DCCHARFC:SCRFREEZ:OVERHEAT": [
+        { value: "REPLACE", label: "Replace (Filter)" },
+    ],
+    "DCCHARFC:NOINTSIG:SIMCARDP": [
+        { value: "REPLACE", label: "Replace (SIM)" },
+    ],
+    "DCCHARFC:NOINTSIG:CHSTARTC": [
+        { value: "REPLACE", label: "Replace (SIM)" },
+    ],
+    "DCCHARFC:NOINTSIG:CHSTOPTC": [
+        { value: "REPLACE", label: "Replace (SIM)" },
+    ],
+    "DCCHARFC:NOINTSIG:DISCONFR": [
+        { value: "REPLACE", label: "Replace (SIM)" },
+        { value: "REPLACE", label: "Replace (Router)" },
+    ],
+    "DCCHARFC:DATATRAN:CONBOANC": [
+        { value: "RECHECK", label: "Recheck (Cable)" },
+    ],
+    "DCCHARFC:HMISCREE:HMISCROF": [
+        { value: "REPLACE", label: "Replace (HMI Touch Screen Board)" },
+        { value: "RECHECK", label: "Recheck (HMI Touch Screen Board)" },
+        { value: "REPAIR", label: "Repair (HMI Touch Screen Board)" },
+        { value: "REBOOT", label: "Reboot (HMI Touch Screen Board)" },
+    ],
+    "DCCHARFC:CONBOARD:CONBOAFA": [
+        { value: "REPLACE", label: "Replace (Control Board)" },
+        { value: "UPDATEFW", label: "Update Firmware" },
+    ],
+    "DCCHARFC:BILLINGU:CONBOAFA": [
+        { value: "RESTORE", label: "Restore Charger" },
+        { value: "REPLACE", label: "Replace (Control Board)" },
+        { value: "REPLACE", label: "Replace (Power Meter)" },
+        { value: "RESTORE", label: "Restore (Power Meter)" },
+    ],
+    "DCCHARFC:NOCONSTD:PECUTFAI": [
+        { value: "NOTIFYMF", label: "Notify the Manufacturer" },
+    ],
+    "DCCHARFC:NOCONSTD:CPSHTFAI": [
+        { value: "NOTIFYMF", label: "Notify the Manufacturer" },
+    ],
+    // ── AC Charger Failure ──
+    "ACCHARFC:POWERDRP:POWBOAFA": [
+        { value: "REPLACE", label: "Replace (Power Board)" },
+    ],
+    "ACCHARFC:UN2STCHG:EMERBUTP": [
+        { value: "RESET", label: "Reset (Emergency)" },
+    ],
+    "ACCHARFC:UN2STCHG:CPCBMISS": [
+        { value: "REPLACE", label: "Replace (Charging Cable)" },
+    ],
+    "ACCHARFC:SCRFREEZ:OVERHEAT": [
+        { value: "REBOOT", label: "Reboot (Charger)" },
+    ],
+    "ACCHARFC:NOINTSIG:SIMCARDP": [
+        { value: "REPLACE", label: "Replace (SIM)" },
+    ],
+    "ACCHARFC:NOINTSIG:CHSTARTC": [
+        { value: "REPLACE", label: "Replace (SIM)" },
+    ],
+    "ACCHARFC:NOINTSIG:CHSTOPTC": [
+        { value: "REPLACE", label: "Replace (SIM)" },
+    ],
+    "ACCHARFC:NOINTSIG:DISCONFR": [
+        { value: "REPLACE", label: "Replace (SIM)" },
+        { value: "REPLACE", label: "Replace (Router)" },
+    ],
+    "ACCHARFC:DATATRAN:CONBOANC": [
+        { value: "RECHECK", label: "Recheck (Cable)" },
+    ],
+    "ACCHARFC:HMISCREE:HMISCROF": [
+        { value: "REPLACE", label: "Replace (HMI Touch Screen Board)" },
+    ],
+    "ACCHARFC:CONBOARD:CONBOAFA": [
+        { value: "REPLACE", label: "Replace (Control Board)" },
+        { value: "UPDATEFW", label: "Update Firmware" },
+    ],
+    "ACCHARFC:BILLINGU:CONBOAFA": [
+        { value: "RESTORE", label: "Restore Charger" },
+        { value: "REPLACE", label: "Replace (Control Board)" },
+    ],
+    // ── Station Failure ──
+    "STATFC:HVPROBLM:HVFUSEDR": [
+        { value: "REPLACE", label: "Replace (HV Fuse)" },
+    ],
+    "STATFC:HVPROBLM:GROUNDIN": [
+        { value: "FIX", label: "Fix (Grounding)" },
+    ],
+    "STATFC:HVPROBLM:MCBTRIPF": [
+        { value: "RESET", label: "Reset (MCB)" },
+        { value: "REPLACE", label: "Replace (MCB)" },
+    ],
+    "STATFC:HVPROBLM:FUSELAMP": [
+        { value: "REPLACE", label: "Replace (Fuse or Lamp)" },
+    ],
+    "STATFC:EVDBPROB:CUBUSBAR": [
+        { value: "REPLACE", label: "Replace (Busbar)" },
+    ],
+    "STATFC:EVDBPROB:WATERENT": [
+        { value: "FIX", label: "Fix (Sealing)" },
+    ],
+    "STATFC:EVDBPROB:MCCBTRIP": [
+        { value: "RESET", label: "Reset (MCCB)" },
+        { value: "REPLACE", label: "Replace (MCCB)" },
+    ],
+    "STATFC:EVDBPROB:MCBTRIPF": [
+        { value: "RESET", label: "Reset (MCB)" },
+        { value: "REPLACE", label: "Replace (MCB)" },
+    ],
+    "STATFC:EVDBPROB:RCDTRIPF": [
+        { value: "RESET", label: "Reset (RCD)" },
+        { value: "REPLACE", label: "Replace (RCD)" },
+    ],
+    "STATFC:POWERMET:METERFAI": [
+        { value: "REPLACE", label: "Replace (Power Meter)" },
+        { value: "REPLACE", label: "Replace (CT)" },
+    ],
+    "STATFC:FUSEPROB:FUSESURG": [
+        { value: "REPLACE", label: "Replace (Fuse)" },
+    ],
+    "STATFC:FUSEPROB:FUSEPHAS": [
+        { value: "REPLACE", label: "Replace (Fuse)" },
+    ],
+    "STATFC:FUSEPROB:FUSELAMP": [
+        { value: "REPLACE", label: "Replace (Fuse or Lamp)" },
+    ],
+    "STATFC:PHPROTPB:PHASEALT": [
+        { value: "FIX", label: "Fix (Phase Sequence)" },
+    ],
+    "STATFC:PHPROTPB:OVERVOLT": [
+        { value: "RECHECK", label: "Recheck (Voltage)" },
+        { value: "ADJUST", label: "Adjust (Protection Setting)" },
+    ],
+    "STATFC:PHPROTPB:UNDEVOLT": [
+        { value: "RECHECK", label: "Recheck (Voltage)" },
+        { value: "ADJUST", label: "Adjust (Protection Setting)" },
+    ],
+    "STATFC:PHPROTPB:INCVMISS": [
+        { value: "RECHECK", label: "Recheck (Voltage)" },
+    ],
+    "STATFC:RELAYPRO:RELAYFAI": [
+        { value: "REPLACE", label: "Replace (Relay)" },
+    ],
+    "STATFC:FANPROBL:EXHTFANF": [
+        { value: "REPLACE", label: "Replace (Fan)" },
+    ],
+    "STATFC:ROUTERPB:ROUTFAIL": [
+        { value: "REPLACE", label: "Replace (Router)" },
+        { value: "REBOOT", label: "Reboot (Router)" },
+    ],
+    "STATFC:UPSSBPOB:UPSFAILU": [
+        { value: "REPLACE", label: "Replace (UPS)" },
+    ],
+    "STATFC:NVRPROBL:NVRFAILE": [
+        { value: "REPLACE", label: "Replace (NVR)" },
+    ],
+    "STATFC:CCTVPROB:CCTVFAIL": [
+        { value: "REPLACE", label: "Replace (CCTV)" },
+    ],
+    "STATFC:QRCDPROB:QRCDFAIL": [
+        { value: "REPLACE", label: "Replace (QR Code)" },
+    ],
+    "STATFC:LIGTPROB:LIGTFAIL": [
+        { value: "REPLACE", label: "Replace (Lighting)" },
+    ],
+    "STATFC:PARKPROB:PRKPAINT": [
+        { value: "FIX", label: "Fix (Floor)" },
+    ],
+    "STATFC:STRUPROB:STRUDAMA": [
+        { value: "FIX", label: "Fix (Structure)" },
+    ],
+    "STATFC:FIREEXPB:GUAGUNOV": [
+        { value: "REPLACE", label: "Replace (Fire Extinguisher)" },
+    ],
+};
 
 const LOGO_SRC = "/img/logo_egat.png";
 const LIST_ROUTE = "/dashboard/cm-report";
@@ -208,9 +679,106 @@ const INITIAL_JOB: Job = {
     repair_result_remark: "",
     cause: "", // NEW
     problem_type_other: "",
+    signature: "",
+    start_repair_time: "",
+    resolved_time: "",
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+// ==================== SIGNATURE PAD (วาดลายเซ็นบน canvas, ไม่ใช้ dependency) ====================
+function SignaturePad({ value, onChange, lang, disabled }: { value: string; onChange: (dataUrl: string) => void; lang: Lang; disabled?: boolean }) {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const drawing = useRef(false);
+    const last = useRef<{ x: number; y: number } | null>(null);
+    const hasDrawn = useRef(false);
+
+    // ตั้งค่าขนาด canvas ตาม devicePixelRatio + พื้นหลังขาว + วาดค่าเดิม (ถ้ามี) ครั้งเดียวตอน mount
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        const ratio = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * ratio;
+        canvas.height = rect.height * ratio;
+        ctx.scale(ratio, ratio);
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "#111827";
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, rect.width, rect.height);
+        if (value) {
+            const img = new window.Image();
+            img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+            img.src = value;
+            hasDrawn.current = true;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const posOf = (e: React.PointerEvent) => {
+        const rect = canvasRef.current!.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+    const start = (e: React.PointerEvent) => {
+        e.preventDefault();
+        drawing.current = true;
+        last.current = posOf(e);
+        try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { }
+    };
+    const move = (e: React.PointerEvent) => {
+        if (!drawing.current) return;
+        const ctx = canvasRef.current?.getContext("2d");
+        if (!ctx || !last.current) return;
+        const p = posOf(e);
+        ctx.beginPath();
+        ctx.moveTo(last.current.x, last.current.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        last.current = p;
+        hasDrawn.current = true;
+    };
+    const end = () => {
+        if (!drawing.current) return;
+        drawing.current = false;
+        last.current = null;
+        if (hasDrawn.current && canvasRef.current) onChange(canvasRef.current.toDataURL("image/png"));
+    };
+    const clear = () => {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext("2d");
+        if (!canvas || !ctx) return;
+        const rect = canvas.getBoundingClientRect();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, rect.width, rect.height);
+        hasDrawn.current = false;
+        onChange("");
+    };
+
+    return (
+        <div className="tw-space-y-2">
+            <canvas
+                ref={canvasRef}
+                onPointerDown={disabled ? undefined : start}
+                onPointerMove={disabled ? undefined : move}
+                onPointerUp={disabled ? undefined : end}
+                onPointerLeave={disabled ? undefined : end}
+                className={`tw-w-full md:tw-w-96 tw-h-40 tw-border tw-border-gray-300 tw-rounded-xl tw-bg-white ${disabled ? "tw-pointer-events-none" : "tw-cursor-crosshair"}`}
+                style={{ touchAction: "none" }}
+            />
+            {!disabled && (
+                <div className="tw-flex tw-justify-start">
+                    <button type="button" onClick={clear} className="tw-text-sm tw-font-medium tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-1.5 tw-text-gray-600 hover:tw-bg-gray-50 tw-transition-colors">
+                        {lang === "th" ? "ล้างลายเซ็น" : "Clear"}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
 
 // ==================== VALIDATION CARD ====================
 function CMValidationCard({ validations, lang }: { validations: ValidationItem[]; lang: Lang; }) {
@@ -359,6 +927,9 @@ export default function CMInProgressForm() {
     const editId = searchParams.get("edit_id") ?? "";
     const isEdit = !!editId;
 
+    // เปิดใบงานที่ปิดแล้ว (Closed) = โหมดดูอย่างเดียว (อ่านไม่แก้, ปิดฟีเจอร์ร่าง)
+    const viewOnly = job.status === "Closed";
+
     const currentTab = searchParams.get("tab") ?? "in-progress";
 
     // ==================== NAVIGATION HELPERS ====================
@@ -383,7 +954,7 @@ export default function CMInProgressForm() {
     const [pendingDraft, setPendingDraft] = useState<DraftData | null>(null);
 
     useEffect(() => {
-        if (!editId || !stationId) return;
+        if (!editId || !stationId || viewOnly) return; // โหมดดูอย่างเดียว: ไม่ถามกู้ร่าง
         (async () => {
             const draft = await loadDraft();
             if (draft) {
@@ -391,7 +962,7 @@ export default function CMInProgressForm() {
                 setShowDraftPrompt(true);
             }
         })();
-    }, [editId, stationId, loadDraft]);
+    }, [editId, stationId, loadDraft, viewOnly]);
 
     const applyDraft = () => {
         if (pendingDraft) {
@@ -507,7 +1078,7 @@ export default function CMInProgressForm() {
 
     const draftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     useEffect(() => {
-        if (!editId || !stationId) return;
+        if (!editId || !stationId || viewOnly) return; // โหมดดูอย่างเดียว: ไม่ auto-save ร่าง
 
         if (draftTimeoutRef.current) {
             clearTimeout(draftTimeoutRef.current);
@@ -522,7 +1093,7 @@ export default function CMInProgressForm() {
                 clearTimeout(draftTimeoutRef.current);
             }
         };
-    }, [saveDraftWithImages, editId, stationId]);
+    }, [saveDraftWithImages, editId, stationId, viewOnly]);
 
     // ==================== VALIDATION ====================
     const isClosedResult = useMemo(() => {
@@ -533,21 +1104,28 @@ export default function CMInProgressForm() {
         return job.repair_result === "อยู่ระหว่างการติดตามผล" || job.repair_result === "อยู่ระหว่างการรออะไหล่";
     }, [job.repair_result]);
 
+    // เลือกปัญหา = "ไม่พบปัญหา" → ปิดงานได้เลย ไม่ต้องกรอกรายละเอียดการซ่อม
+    const isNoProblem = job.problem_type === NO_PROBLEM_OPTION.value;
+
     const validations = useMemo<ValidationItem[]>(() => [
         { key: "problemType", label: t("validProblemType", lang), isValid: !!job.problem_type.trim(), message: t("notSelected", lang), isRequired: true, scrollId: "cm-problem-type" },
-        { key: "problemTypeOther", label: lang === "th" ? "ระบุประเภทปัญหา (อื่นๆ)" : "Specify Problem Type (Other)", isValid: !!job.problem_type_other.trim(), message: t("notFilled", lang), isRequired: job.problem_type === "Other", scrollId: "cm-problem-type" },
-        { key: "cause", label: t("validCause", lang), isValid: !!job.cause.trim(), message: t("notFilled", lang), isRequired: true, scrollId: "cm-cause" },
-        { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: job.corrective_actions.some((a: CorrectiveItem) => a.text.trim() !== ""), message: t("notFilled", lang), isRequired: true, scrollId: "cm-corrective" },
-        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.beforeImages.length > 0), message: t("notFilled", lang), isRequired: true, scrollId: "cm-corrective" },
-        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.afterImages.length > 0), message: t("notFilled", lang), isRequired: isClosedResult, scrollId: "cm-corrective" },
-        { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: true, scrollId: "cm-repair-result" },
-        { key: "preventiveAction", label: t("preventiveAction", lang), isValid: job.preventive_action.some((p: string) => p.trim() !== ""), message: t("notFilled", lang), isRequired: isClosedResult, scrollId: "cm-preventive" },
+        { key: "problemTypeOther", label: lang === "th" ? "ระบุปัญหา (อื่นๆ)" : "Specify Problem (Other)", isValid: !!job.problem_type_other.trim(), message: t("notFilled", lang), isRequired: job.problem_type === "Other", scrollId: "cm-problem-type" },
+        { key: "cause", label: t("validCause", lang), isValid: !!job.cause.trim(), message: t("notFilled", lang), isRequired: !isNoProblem, scrollId: "cm-cause" },
+        { key: "correctiveAction", label: t("validCorrectiveAction", lang), isValid: job.corrective_actions.some((a: CorrectiveItem) => a.text.trim() !== ""), message: t("notFilled", lang), isRequired: !isNoProblem, scrollId: "cm-corrective" },
+        { key: "beforePhoto", label: t("validBeforePhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.beforeImages.length > 0), message: t("notFilled", lang), isRequired: !isNoProblem, scrollId: "cm-corrective" },
+        { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.afterImages.length > 0), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-corrective" },
+        { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: !isNoProblem, scrollId: "cm-repair-result" },
+        { key: "preventiveAction", label: t("preventiveAction", lang), isValid: job.preventive_action.some((p: string) => p.trim() !== ""), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-preventive" },
         { key: "inprogressRemarks", label: lang === "th" ? "หมายเหตุผลหลังซ่อม" : "Repair Result Remark", isValid: !!job.repair_result_remark.trim(), message: t("notFilled", lang), isRequired: isMonitoringResult, scrollId: "cm-repair-result" },
-    ], [job, lang, isClosedResult, isMonitoringResult]);
+        { key: "noProblemPhoto", label: lang === "th" ? "รูปภาพ" : "Photo", isValid: (job.corrective_actions[0]?.afterImages.length ?? 0) > 0, message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-noproblem-photo" },
+        { key: "noProblemRemarks", label: t("remarks", lang), isValid: !!job.inprogress_remarks.trim(), message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-remarks" },
+    ], [job, lang, isClosedResult, isMonitoringResult, isNoProblem]);
     const canSave = useMemo(() => validations.filter(v => v.isRequired).every(v => v.isValid), [validations]);
 
-    const targetStatus = isClosedResult ? "Closed" : "In Progress";
-    const targetTab = isClosedResult ? "closed" : "in-progress";
+    // ปิดงานเมื่อ "แก้ไขสำเร็จ" หรือ "ไม่พบปัญหา"
+    const isClosing = isClosedResult || isNoProblem;
+    const targetStatus = isClosing ? "Closed" : "In Progress";
+    const targetTab = isClosing ? "closed" : "in-progress";
 
     // ==================== HELPERS ====================
     const localTodayFormatted = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
@@ -766,13 +1344,22 @@ export default function CMInProgressForm() {
 
         (async () => {
             try {
-                if (faultyEq.startsWith("charger_")) {
-                    // Charger → ดึง device-keys จาก SN ของ charger ตัวนั้น
-                    const chargerId = faultyEq.replace("charger_", "");
-                    const charger = chargers.find(c =>
-                        String(c.chargerNo) === chargerId ||
-                        String(c.charger_id) === chargerId
-                    );
+                const isChargerFailure = faultyEq.startsWith("charger_") || faultyEq === "DCCHARFC" || faultyEq === "ACCHARFC";
+                if (isChargerFailure) {
+                    // Charger → ดึง device-keys จาก SN ของ charger
+                    let charger: ChargerInfo | undefined;
+                    if (faultyEq.startsWith("charger_")) {
+                        // รายงานเก่าที่ระบุ charger ตัวนั้นตรงๆ
+                        const chargerId = faultyEq.replace("charger_", "");
+                        charger = chargers.find(c =>
+                            String(c.chargerNo) === chargerId ||
+                            String(c.charger_id) === chargerId
+                        );
+                    } else {
+                        // failure code ระดับสถานี (DCCHARFC/ACCHARFC) → ใช้ charger ตัวแรกที่ตรงประเภท
+                        const wantType = faultyEq === "DCCHARFC" ? "DC" : "AC";
+                        charger = chargers.find(c => (c.chargerType || "DC").toUpperCase() === wantType) || chargers[0];
+                    }
                     const sn = charger?.SN || charger?.sn;
                     if (!sn) { if (alive) setDevices([]); return; }
 
@@ -784,8 +1371,9 @@ export default function CMInProgressForm() {
                         if (alive) setDevices([]);
                     }
                 } else {
-                    // Non-charger (MDB, CCB, CB-BOX, Station) → ใช้ข้อมูล static ที่ frontend
-                    const deviceList = NON_CHARGER_DEVICES[faultyEq.toLowerCase()] || [];
+                    // Non-charger → ใช้ข้อมูล static ที่ frontend (STATFC = station)
+                    const key = faultyEq === "STATFC" ? "station" : faultyEq.toLowerCase();
+                    const deviceList = NON_CHARGER_DEVICES[key] || [];
                     if (alive) setDevices(deviceList);
                 }
             } catch {
@@ -849,6 +1437,9 @@ export default function CMInProgressForm() {
                     inprogress_remarks: data.inprogress_remarks ?? "",
                     repair_result_remark: data.repair_result_remark ?? "",
                     resolved_date: data.resolved_date ? isoToDisplay(data.resolved_date) : "",
+                    signature: data.signature ?? "",
+                    start_repair_time: data.start_repair_time ?? "",
+                    resolved_time: data.resolved_time ?? "",
 
                     repaired_equipment: Array.isArray(data.repaired_equipment)
                         ? data.repaired_equipment
@@ -1195,6 +1786,9 @@ export default function CMInProgressForm() {
                         repair_result_remark: job.repair_result_remark,
                         start_repair_date: job.start_repair_date || localTodayISO(),
                         resolved_date: isClosedResult ? (job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()) : "",
+                        signature: (isClosedResult || isNoProblem) ? job.signature : "",
+                        start_repair_time: isClosedResult ? job.start_repair_time : "",
+                        resolved_time: isClosedResult ? job.resolved_time : "",
                     }
                 })
             });
@@ -1214,11 +1808,56 @@ export default function CMInProgressForm() {
 
     const severityColor = getSeverityColor(job.severity);
 
+    // ชุดตัวเลือก "ปัญหา" ตาม FAILURECODE ของใบงาน (ถ้าไม่มีลิสต์กำหนด → ใช้ชุดเดิม)
+    const failureProblemOptions = PROBLEM_OPTIONS_BY_FAILURECODE[job.faulty_equipment] ?? null;
+    const problemTypeInOptions = job.problem_type === NO_PROBLEM_OPTION.value || (failureProblemOptions
+        ? failureProblemOptions.some(o => o.value === job.problem_type)
+        : PROBLEM_TYPE_OPTIONS.some(o => o.value === job.problem_type));
+
+    // ชุดตัวเลือก "สาเหตุ" — เจาะจงตาม FAILURECODE+ปัญหาก่อน แล้วค่อย fallback ตามปัญหาอย่างเดียว
+    // (ถ้าไม่มีลิสต์กำหนดเลย → ช่องกรอกข้อความ)
+    const causeOptions =
+        CAUSE_OPTIONS_BY_FC_PROBLEM[job.faulty_equipment]?.[job.problem_type]
+        ?? CAUSE_OPTIONS_BY_PROBLEM[job.problem_type]
+        ?? null;
+
+    // ล้างสาเหตุที่ค้างมาจากปัญหาอื่น — แต่ละปัญหาต้องเลือกได้เฉพาะสาเหตุในลิสต์ของตัวเอง
+    useEffect(() => {
+        if (causeOptions && job.cause && !causeOptions.some(o => o.value === job.cause)) {
+            setJob(prev => ({ ...prev, cause: "" }));
+        }
+    }, [job.problem_type, job.cause]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ชุดตัวเลือก "การแก้ไข" ตาม FAILURECODE+ปัญหา+สาเหตุ (ถ้าไม่มี combo → ใช้รายการอุปกรณ์เดิม)
+    const correctionOptions =
+        CORRECTION_OPTIONS_BY_FC_PROBLEM_CAUSE[`${job.faulty_equipment}:${job.problem_type}:${job.cause}`] ?? null;
+    const resolveCorrectionLabel = (val: string) =>
+        correctionOptions?.find(o => o.value === val)?.label ?? formatDeviceName(val);
+
+    // ล้างการแก้ไขที่ค้างมาจาก combo อื่น — เก็บเฉพาะค่าที่อยู่ในลิสต์ปัจจุบัน
+    useEffect(() => {
+        if (correctionOptions && job.repaired_equipment.length) {
+            const valid = new Set(correctionOptions.map(o => o.value));
+            const filtered = job.repaired_equipment.filter(v => valid.has(v));
+            if (filtered.length !== job.repaired_equipment.length) {
+                setJob(prev => ({ ...prev, repaired_equipment: filtered }));
+            }
+        }
+    }, [job.faulty_equipment, job.problem_type, job.cause]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ต้องเลือก "การแก้ไข" ก่อน ถึงจะเลือกผลหลังซ่อม = แก้ไขสำเร็จได้
+    const hasCorrection = job.repaired_equipment.length > 0 && !!job.repaired_equipment[0];
+    useEffect(() => {
+        if (job.repair_result === "แก้ไขสำเร็จ" && !hasCorrection) {
+            setJob(prev => ({ ...prev, repair_result: "" }));
+        }
+    }, [hasCorrection, job.repair_result]);
+
     // ==================== RENDER ====================
     return (
         <section className="tw-pb-24">
             {/* Draft Prompt Dialog */}
-            {showDraftPrompt && pendingDraft && (
+            {!viewOnly && showDraftPrompt && pendingDraft && (
                 <div className="tw-fixed tw-inset-0 tw-bg-black/50 tw-flex tw-items-center tw-justify-center tw-z-50">
                     <div className="tw-bg-white tw-rounded-2xl tw-shadow-2xl tw-p-6 tw-mx-4 tw-max-w-md tw-w-full">
                         <div className="tw-flex tw-items-center tw-gap-3 tw-mb-4">
@@ -1259,7 +1898,7 @@ export default function CMInProgressForm() {
             )}
 
             {/* Draft Status Indicator */}
-            {draftStatus && (
+            {!viewOnly && draftStatus && (
                 <div className={`tw-fixed tw-bottom-4 tw-right-4 tw-px-4 tw-py-2.5 tw-rounded-xl tw-shadow-lg tw-text-sm tw-font-medium tw-z-40 tw-flex tw-items-center tw-gap-2 tw-transition-all ${draftStatus === "saving" ? "tw-bg-gray-50 tw-text-gray-700 tw-border tw-border-gray-200" :
                     draftStatus === "saved" || draftStatus === "saved-local" ? "tw-bg-green-50 tw-text-green-700 tw-border tw-border-green-200" :
                         "tw-bg-red-50 tw-text-red-700 tw-border tw-border-red-200"
@@ -1304,6 +1943,8 @@ export default function CMInProgressForm() {
             <form noValidate onSubmit={e => e.preventDefault()} onKeyDown={e => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-md tw-shadow-blue-gray-500/5 tw-p-6 md:tw-p-8">
 
+                    {/* fieldset disabled = โหมดดูอย่างเดียวเมื่อใบงานปิดแล้ว */}
+                    <fieldset disabled={viewOnly} className="tw-border-0 tw-p-0 tw-m-0 tw-min-w-0">
                     {/* Header */}
                     <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start tw-justify-between tw-gap-6 tw-mb-6">
                         <div className="tw-flex tw-items-start tw-gap-4">
@@ -1371,6 +2012,12 @@ export default function CMInProgressForm() {
                                         style={{ backgroundColor: '#f3f4f6', color: '#455a64' }}
                                     >
                                         <option value="">{t("selectEquipmentPlaceholder", lang)}</option>
+                                        <optgroup label="Failure Code">
+                                            <option value="DCCHARFC">DC Charger Failure</option>
+                                            <option value="ACCHARFC">AC Charger Failure</option>
+                                            <option value="STATFC">Station Failure</option>
+                                        </optgroup>
+                                        {/* กลุ่มเดิม — ให้รายงานเก่าที่บันทึกเป็น charger_x / mdb / ccb ฯลฯ ยังแสดงผลได้ */}
                                         {chargers.length > 0 && (
                                             <optgroup label={t("chargersGroup", lang)}>
                                                 {chargers.map((c, i) => {
@@ -1444,15 +2091,26 @@ export default function CMInProgressForm() {
                                 <div className="tw-flex tw-flex-col md:tw-flex-row tw-items-start tw-gap-3">
                                     <select
                                         value={job.problem_type}
-                                        onChange={(e) => setJob(prev => ({ ...prev, problem_type: e.target.value, problem_type_other: e.target.value === "Other" ? prev.problem_type_other : "" }))}
+                                        onChange={(e) => setJob(prev => ({ ...prev, problem_type: e.target.value, problem_type_other: e.target.value === "Other" ? prev.problem_type_other : "", cause: "" }))}
                                         className="tw-w-full md:tw-w-96 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-blue-500/20 focus:tw-border-blue-500 tw-transition-all tw-cursor-pointer tw-flex-shrink-0"
                                     >
-                                        <option value="">{lang === "th" ? "-- เลือกประเภทปัญหา --" : "-- Select problem type --"}</option>
-                                        {PROBLEM_TYPE_OPTIONS.map((opt) => (
-                                            <option key={opt.value} value={opt.value}>
-                                                {lang === "en" ? opt.en : opt.th}
-                                            </option>
-                                        ))}
+                                        <option value="">{lang === "th" ? "-- เลือกปัญหา --" : "-- Select problem --"}</option>
+                                        {failureProblemOptions
+                                            ? failureProblemOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))
+                                            : PROBLEM_TYPE_OPTIONS.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                    {lang === "en" ? opt.en : opt.th}
+                                                </option>
+                                            ))}
+                                        <option value={NO_PROBLEM_OPTION.value}>
+                                            {lang === "en" ? NO_PROBLEM_OPTION.en : NO_PROBLEM_OPTION.th}
+                                        </option>
+                                        {/* ค่าเดิมที่ไม่อยู่ในลิสต์ปัจจุบัน — ให้แสดงได้ */}
+                                        {job.problem_type && !problemTypeInOptions && job.problem_type !== NO_PROBLEM_OPTION.value && (
+                                            <option value={job.problem_type}>{job.problem_type}</option>
+                                        )}
                                     </select>
                                     {job.problem_type === "Other" && (
                                         <div className="tw-flex-1 tw-w-full">
@@ -1468,24 +2126,35 @@ export default function CMInProgressForm() {
                                 </div>
                             </div>
 
-                            {/* Cause */}
-                            <div id="cm-cause" className="tw-space-y-2">
-                                <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
-                                    <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
-                                    {t("cause", lang)} <span className="tw-text-red-500">*</span>
-                                </label>
-                                <textarea
-                                    value={job.cause}
-                                    onChange={e => setJob({ ...job, cause: e.target.value })}
-                                    rows={3}
-                                    placeholder={lang === "th" ? "กรอกสาเหตุของปัญหา..." : "Enter the cause of the problem..."}
-                                    className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-gray-300 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-blue-400 tw-transition-colors tw-resize-y"
-                                />
-                            </div>
+                            {/* Cause — ซ่อนเมื่อเลือก "ไม่พบปัญหา" */}
+                            {!isNoProblem && (
+                                <div id="cm-cause" className="tw-space-y-2">
+                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
+                                        {t("cause", lang)} <span className="tw-text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={job.cause}
+                                        onChange={e => setJob({ ...job, cause: e.target.value })}
+                                        disabled={!causeOptions}
+                                        className={`tw-w-full md:tw-w-96 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-transition-all focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-blue-500/20 focus:tw-border-blue-500 ${!causeOptions ? "tw-bg-gray-100 tw-text-gray-400 tw-cursor-not-allowed" : "tw-bg-white tw-text-gray-700 hover:tw-border-blue-400 tw-cursor-pointer"}`}
+                                    >
+                                        <option value="">{lang === "th" ? "-- เลือกสาเหตุ --" : "-- Select cause --"}</option>
+                                        {causeOptions?.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                        {/* ค่าเดิมของรายงานเก่าที่ไม่อยู่ในลิสต์ปัจจุบัน — ให้แสดงได้ */}
+                                        {job.cause && !causeOptions?.some(o => o.value === job.cause) && (
+                                            <option value={job.cause}>{job.cause}</option>
+                                        )}
+                                    </select>
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    {/* Section 3: Corrective Actions (Editable) */}
+                    {/* Section 3: Corrective Actions (Editable) — ซ่อนเมื่อเลือก "ไม่พบปัญหา" */}
+                    {!isNoProblem && (
                     <div className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
                         <div className="tw-flex tw-items-center tw-gap-3 tw-bg-amber-600 hover:tw-bg-amber-700 tw-px-4 tw-py-3 tw-text-white tw-cursor-pointer tw-transition-colors">
                             <div className="tw-w-8 tw-h-8 tw-rounded-full tw-bg-white tw-text-amber-600 tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-sm">3</div>
@@ -1493,49 +2162,24 @@ export default function CMInProgressForm() {
                         </div>
 
                         <div className="tw-p-6 tw-space-y-6">
-                            {/* Row 1: Resolved Date & Repaired Equipment */}
+                            {/* Row 1: Start Date (readonly, เฉพาะยังไม่สำเร็จ) & Repaired Equipment */}
                             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-3 tw-gap-5">
-                                {/* วันที่เริ่มแก้ไข — readonly */}
-                                <div className="tw-space-y-2">
-                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
-                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
-                                        {t("resolvedDate", lang)}
-                                    </label>
-                                    <Input
-                                        type="text"
-                                        value={job.start_repair_date ? isoToDisplay(job.start_repair_date) : localTodayFormatted()}
-                                        readOnly
-                                        crossOrigin=""
-                                        className="!tw-w-full !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-lg"
-                                        style={{ backgroundColor: "#f3f4f6", color: "#374151" }}
-                                        containerProps={{ className: "!tw-min-w-0" }}
-                                    />
-                                    {/* {!job.start_repair_date && (
-                                        <p className="tw-text-xs tw-text-amber-500">
-                                            {lang === "th" ? "* บันทึกอัตโนมัติเมื่อกดบันทึก" : "* Auto-set on first save"}
-                                        </p>
-                                    )} */}
-                                </div>
-
-                                {/* วันที่แก้ไขเสร็จ — readonly, แสดงเฉพาะ Closed */}
-                                {isClosedResult && (
+                                {/* วันที่เริ่มแก้ไข — readonly (เมื่อสำเร็จจะย้ายไปกรอกใต้ผลหลังซ่อม) */}
+                                {!isClosedResult && (
                                     <div className="tw-space-y-2">
                                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
-                                            <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-green-500"></span>
-                                            {t("completedDate", lang)}
+                                            <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
+                                            {t("resolvedDate", lang)}
                                         </label>
                                         <Input
                                             type="text"
-                                            value={job.resolved_date ? job.resolved_date : localTodayFormatted()}
+                                            value={job.start_repair_date ? isoToDisplay(job.start_repair_date) : localTodayFormatted()}
                                             readOnly
                                             crossOrigin=""
-                                            className="!tw-w-full !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-lg"
+                                            className="!tw-w-full !tw-h-12 !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-xl"
                                             style={{ backgroundColor: "#f3f4f6", color: "#374151" }}
-                                            containerProps={{ className: "!tw-min-w-0" }}
+                                            containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
                                         />
-                                        {/* <p className="tw-text-xs tw-text-green-600">
-                                            {lang === "th" ? "* บันทึกอัตโนมัติเมื่อปิดงาน" : "* Auto-set on close"}
-                                        </p> */}
                                     </div>
                                 )}
 
@@ -1544,57 +2188,21 @@ export default function CMInProgressForm() {
                                         <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
                                         {t("repairedEquipment", lang)}
                                     </label>
-                                    <CreatableSelect
-                                        isMulti
-                                        isClearable
-                                        isSearchable
-                                        isLoading={loadingDevices}
-                                        placeholder={t("selectEquipmentPlaceholder", lang)}
-                                        noOptionsMessage={() => job.faulty_equipment
-                                            ? (lang === "th" ? "ไม่พบอุปกรณ์ภายในอุปกรณ์นี้" : "No internal devices found")
-                                            : (lang === "th" ? "กรุณาเลือกอุปกรณ์ที่พังก่อน" : "Please select faulty equipment first")
-                                        }
-                                        formatCreateLabel={(inputValue) => lang === "th" ? `เพิ่ม "${inputValue}"` : `Add "${inputValue}"`}
-                                        value={job.repaired_equipment.map(val => ({ value: val, label: formatDeviceName(val) }))}
-                                        onChange={(options) => setJob({ ...job, repaired_equipment: options ? options.map(opt => opt.value) : [] })}
-                                        options={devices.map(key => ({ value: key, label: formatDeviceName(key) }))}
-                                        isDisabled={!job.faulty_equipment}
-                                        styles={{
-                                            control: (base, state) => ({
-                                                ...base,
-                                                minHeight: "42px",
-                                                borderColor: state.isFocused ? "#f59e0b" : "#e5e7eb",
-                                                backgroundColor: !job.faulty_equipment ? "#f9fafb" : "#ffffff",
-                                                borderRadius: "8px",
-                                                boxShadow: state.isFocused ? "0 0 0 3px rgba(245, 158, 11, 0.15)" : "none",
-                                                "&:hover": { borderColor: "#f59e0b" },
-                                            }),
-                                            option: (base, state) => ({
-                                                ...base,
-                                                backgroundColor: state.isSelected ? "#f59e0b" : state.isFocused ? "#fef3c7" : "white",
-                                                color: state.isSelected ? "white" : "#374151",
-                                                "&:active": { backgroundColor: "#fbbf24" },
-                                            }),
-                                            multiValue: (base) => ({
-                                                ...base,
-                                                backgroundColor: "#fef3c7",
-                                                borderRadius: "6px",
-                                            }),
-                                            multiValueLabel: (base) => ({
-                                                ...base,
-                                                color: "#92400e",
-                                                fontWeight: 500,
-                                            }),
-                                            multiValueRemove: (base) => ({
-                                                ...base,
-                                                color: "#92400e",
-                                                "&:hover": { backgroundColor: "#fbbf24", color: "#78350f" },
-                                            }),
-                                            placeholder: (base) => ({ ...base, color: "#9ca3af" }),
-                                        }}
-                                        classNamePrefix="react-select"
-                                    />
-                                    {loadingDevices && <p className="tw-text-xs tw-text-amber-600 tw-mt-1">{t("loadingDevices", lang)}</p>}
+                                    <select
+                                        value={job.repaired_equipment[0] ?? ""}
+                                        onChange={e => setJob({ ...job, repaired_equipment: e.target.value ? [e.target.value] : [] })}
+                                        disabled={!correctionOptions}
+                                        className={`tw-w-full tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-transition-all focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-blue-500/20 focus:tw-border-blue-500 ${!correctionOptions ? "tw-bg-gray-100 tw-text-gray-400 tw-cursor-not-allowed" : "tw-bg-white tw-text-gray-700 hover:tw-border-blue-400 tw-cursor-pointer"}`}
+                                    >
+                                        <option value="">{lang === "th" ? "-- เลือกการแก้ไข --" : "-- Select correction --"}</option>
+                                        {correctionOptions?.map((opt, i) => (
+                                            <option key={`${opt.value}-${i}`} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                        {/* ค่าเดิมของรายงานเก่าที่ไม่อยู่ในลิสต์ปัจจุบัน — ให้แสดงได้ */}
+                                        {job.repaired_equipment[0] && !correctionOptions?.some(o => o.value === job.repaired_equipment[0]) && (
+                                            <option value={job.repaired_equipment[0]}>{resolveCorrectionLabel(job.repaired_equipment[0])}</option>
+                                        )}
+                                    </select>
                                 </div>
                             </div>
 
@@ -1772,11 +2380,13 @@ export default function CMInProgressForm() {
                                         className="tw-w-full md:tw-w-96 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer tw-flex-shrink-0"
                                     >
                                         <option value="">{lang === "th" ? "-- เลือกผลหลังซ่อม --" : "-- Select repair result --"}</option>
-                                        {REPAIR_OPTIONS.map((opt) => (
-                                            <option key={opt.value} value={opt.value}>
-                                                {lang === "en" ? opt.en : opt.th}
-                                            </option>
-                                        ))}
+                                        {REPAIR_OPTIONS
+                                            .filter((opt) => !(opt.value === "แก้ไขสำเร็จ" && !hasCorrection))
+                                            .map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                    {lang === "en" ? opt.en : opt.th}
+                                                </option>
+                                            ))}
                                     </select>
                                     {/* Inline remarks - แสดงเมื่อเลือก ติดตามผล / รออะไหล่ */}
                                     {(job.repair_result === "อยู่ระหว่างการติดตามผล" || job.repair_result === "อยู่ระหว่างการรออะไหล่") && (
@@ -1792,14 +2402,129 @@ export default function CMInProgressForm() {
                                     )}
                                 </div>
                             </div>
+
+                            {/* วันที่/เวลา เริ่มแก้ไข & แก้ไขเสร็จ — ย้ายมาไว้ใต้ผลหลังซ่อม เมื่อแก้ไขสำเร็จ */}
+                            {isClosedResult && (
+                                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-5">
+                                    <div className="tw-space-y-2">
+                                        <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                            <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
+                                            {t("resolvedDate", lang)}
+                                        </label>
+                                        <div className="tw-flex tw-gap-2">
+                                            <input
+                                                type="date"
+                                                value={job.start_repair_date || localTodayISO()}
+                                                onChange={e => setJob({ ...job, start_repair_date: e.target.value })}
+                                                className="tw-flex-1 tw-min-w-0 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer"
+                                            />
+                                            <input
+                                                type="time"
+                                                value={job.start_repair_time}
+                                                onChange={e => setJob({ ...job, start_repair_time: e.target.value })}
+                                                className="tw-w-28 tw-flex-shrink-0 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-3 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="tw-space-y-2">
+                                        <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                            <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-green-500"></span>
+                                            {t("completedDate", lang)}
+                                        </label>
+                                        <div className="tw-flex tw-gap-2">
+                                            <input
+                                                type="date"
+                                                value={job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()}
+                                                onChange={e => setJob({ ...job, resolved_date: e.target.value ? isoToDisplay(e.target.value) : "" })}
+                                                className="tw-flex-1 tw-min-w-0 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-green-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-green-500/20 focus:tw-border-green-500 tw-transition-all tw-cursor-pointer"
+                                            />
+                                            <input
+                                                type="time"
+                                                value={job.resolved_time}
+                                                onChange={e => setJob({ ...job, resolved_time: e.target.value })}
+                                                className="tw-w-28 tw-flex-shrink-0 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-3 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-green-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-green-500/20 focus:tw-border-green-500 tw-transition-all tw-cursor-pointer"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ลายเซ็นผู้ซ่อม — แสดงเมื่อแก้ไขสำเร็จ */}
+                            {isClosedResult && (
+                                <div id="cm-signature" className="tw-space-y-2">
+                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
+                                        {lang === "th" ? "ลายเซ็นผู้ซ่อม" : "Repairer Signature"}
+                                    </label>
+                                    <p className="tw-text-xs tw-text-gray-400">
+                                        {lang === "th" ? "เซ็นด้วยเมาส์หรือนิ้ว — จะถูกนำไปแสดงในช่อง \"ผู้ซ่อม\" ของ PDF" : "Draw with mouse or finger — shown in the \"Repairer\" box of the PDF"}
+                                    </p>
+                                    <SignaturePad value={job.signature} onChange={sig => setJob(prev => ({ ...prev, signature: sig }))} lang={lang} disabled={viewOnly} />
+                                </div>
+                            )}
                         </div>
                     </div>
+                    )}
+
+                    {/* ถ่ายรูป — แสดงเมื่อเลือก "ไม่พบปัญหา" (เก็บใน corrective_actions[0].afterImages → upload เป็น after_0) */}
+                    {isNoProblem && (
+                        <div id="cm-noproblem-photo" className="tw-mb-6 tw-rounded-lg tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-bg-white tw-shadow-sm">
+                            <div className="tw-flex tw-items-center tw-gap-3 tw-bg-amber-600 tw-px-4 tw-py-3 tw-text-white">
+                                <PhotoIcon className="tw-w-5 tw-h-5" />
+                                <span className="tw-font-semibold tw-text-base">{lang === "th" ? "รูปภาพ" : "Photos"}</span>
+                            </div>
+                            <div className="tw-p-6 tw-space-y-3">
+                                <div className="tw-flex tw-items-center tw-justify-between">
+                                    <span className="tw-text-sm tw-font-semibold tw-text-gray-700">{lang === "th" ? "แนบรูปถ่าย" : "Attach photo"} <span className="tw-text-red-500">*</span></span>
+                                    <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-amber-300 tw-text-amber-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-amber-50 tw-shadow-sm tw-transition-all">
+                                        <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addCorrectiveAfterImages(0, e.target.files)} />
+                                        <PhotoIcon className="tw-w-4 tw-h-4" />
+                                        <span>{t("attachPhoto", lang)}</span>
+                                    </label>
+                                </div>
+                                {(job.corrective_actions[0]?.afterImages.length ?? 0) > 0 ? (
+                                    <div className="tw-grid tw-grid-cols-3 tw-gap-2">
+                                        {job.corrective_actions[0].afterImages.map((img) => (
+                                            <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-amber-200 tw-bg-white tw-shadow-sm">
+                                                <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                {(img.createdAt || img.location) && (
+                                                    <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
+                                                        {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
+                                                        {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
+                                                    </span>
+                                                )}
+                                                <button type="button" onClick={() => removeCorrectiveAfterImage(0, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all">
+                                                    <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="tw-text-center tw-py-6 tw-text-gray-400 tw-text-sm tw-font-medium">
+                                        {lang === "th" ? "ยังไม่มีรูป" : "No photo yet"}
+                                    </div>
+                                )}
+
+                                {/* ลายเซ็นผู้ซ่อม */}
+                                <div id="cm-signature-noproblem" className="tw-space-y-2 tw-pt-2">
+                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
+                                        {lang === "th" ? "ลายเซ็นผู้ซ่อม" : "Repairer Signature"}
+                                    </label>
+                                    <p className="tw-text-xs tw-text-gray-400">
+                                        {lang === "th" ? "เซ็นด้วยเมาส์หรือนิ้ว — จะถูกนำไปแสดงในช่อง \"ผู้ซ่อม\" ของ PDF" : "Draw with mouse or finger — shown in the \"Repairer\" box of the PDF"}
+                                    </p>
+                                    <SignaturePad value={job.signature} onChange={sig => setJob(prev => ({ ...prev, signature: sig }))} lang={lang} disabled={viewOnly} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Remarks (Editable) */}
-                    <div className="tw-mb-6">
+                    <div id="cm-remarks" className="tw-mb-6">
                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700 tw-mb-3">
                             <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-gray-400"></span>
-                            {t("remarks", lang)}
+                            {t("remarks", lang)} {isNoProblem && <span className="tw-text-red-500">*</span>}
                         </label>
                         <textarea
                             value={job.inprogress_remarks}
@@ -1810,21 +2535,32 @@ export default function CMInProgressForm() {
                         />
                     </div>
 
-                    {/* Validation Card */}
-                    <div className="tw-mb-6"><CMValidationCard validations={validations} lang={lang} /></div>
+                    {/* Validation Card — ซ่อนในโหมดดูอย่างเดียว */}
+                    {!viewOnly && <div className="tw-mb-6"><CMValidationCard validations={validations} lang={lang} /></div>}
+                    </fieldset>
 
                     {/* Actions */}
                     <div className="tw-flex tw-items-center tw-justify-end tw-pt-6 tw-border-t tw-border-gray-200">
-                        <Button
-                            onClick={onFinalSave}
-                            disabled={saving || !canSave}
-                            className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosedResult
-                                ? "tw-bg-gray-700 hover:tw-bg-red-800 hover:tw-shadow-red-500/30"
-                                : "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30"
-                                }`}
-                        >
-                            {saving ? t("saving", lang) : (isClosedResult ? t("closed", lang) : t("save", lang))}
-                        </Button>
+                        {viewOnly ? (
+                            <Button
+                                type="button"
+                                onClick={() => router.back()}
+                                className="tw-bg-blue-gray-700 hover:tw-bg-blue-gray-800 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl tw-transition-all"
+                            >
+                                {lang === "th" ? "กลับ" : "Back"}
+                            </Button>
+                        ) : (
+                            <Button
+                                onClick={onFinalSave}
+                                disabled={saving || !canSave}
+                                className={`tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none tw-transition-all tw-transform hover:tw-scale-[1.02] ${isClosing
+                                    ? "tw-bg-gray-700 hover:tw-bg-red-800 hover:tw-shadow-red-500/30"
+                                    : "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30"
+                                    }`}
+                            >
+                                {saving ? t("saving", lang) : (isClosing ? t("closed", lang) : t("save", lang))}
+                            </Button>
+                        )}
                     </div>
                 </div>
             </form>
