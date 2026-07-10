@@ -263,6 +263,99 @@ function PhotoUpload({ photos_open, onAdd, onRemove, max, disabled, lang, id }: 
     );
 }
 
+// ==================== SIGNATURE PAD (วาดลายเซ็นบน canvas, ไม่ใช้ dependency) ====================
+function SignaturePad({ value, onChange, lang, disabled }: { value: string; onChange: (dataUrl: string) => void; lang: Lang; disabled?: boolean }) {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const drawing = useRef(false);
+    const last = useRef<{ x: number; y: number } | null>(null);
+    const hasDrawn = useRef(false);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        const ratio = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * ratio;
+        canvas.height = rect.height * ratio;
+        ctx.scale(ratio, ratio);
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = "#111827";
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, rect.width, rect.height);
+        if (value) {
+            const img = new window.Image();
+            img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+            img.src = value;
+            hasDrawn.current = true;
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const posOf = (e: React.PointerEvent) => {
+        const rect = canvasRef.current!.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+    const start = (e: React.PointerEvent) => {
+        e.preventDefault();
+        drawing.current = true;
+        last.current = posOf(e);
+        try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { }
+    };
+    const move = (e: React.PointerEvent) => {
+        if (!drawing.current) return;
+        const ctx = canvasRef.current?.getContext("2d");
+        if (!ctx || !last.current) return;
+        const p = posOf(e);
+        ctx.beginPath();
+        ctx.moveTo(last.current.x, last.current.y);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        last.current = p;
+        hasDrawn.current = true;
+    };
+    const end = () => {
+        if (!drawing.current) return;
+        drawing.current = false;
+        last.current = null;
+        if (hasDrawn.current && canvasRef.current) onChange(canvasRef.current.toDataURL("image/png"));
+    };
+    const clear = () => {
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext("2d");
+        if (!canvas || !ctx) return;
+        const rect = canvas.getBoundingClientRect();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, rect.width, rect.height);
+        hasDrawn.current = false;
+        onChange("");
+    };
+
+    return (
+        <div className="tw-space-y-2">
+            <canvas
+                ref={canvasRef}
+                onPointerDown={disabled ? undefined : start}
+                onPointerMove={disabled ? undefined : move}
+                onPointerUp={disabled ? undefined : end}
+                onPointerLeave={disabled ? undefined : end}
+                className={`tw-w-full md:tw-w-96 tw-h-40 tw-border tw-border-gray-300 tw-rounded-xl tw-bg-white ${disabled ? "tw-pointer-events-none" : "tw-cursor-crosshair"}`}
+                style={{ touchAction: "none" }}
+            />
+            {!disabled && (
+                <div className="tw-flex tw-justify-start">
+                    <button type="button" onClick={clear} className="tw-text-sm tw-font-medium tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-1.5 tw-text-gray-600 hover:tw-bg-gray-50 tw-transition-colors">
+                        {lang === "th" ? "ล้างลายเซ็น" : "Clear"}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ==================== MAIN COMPONENT ====================
 export default function CMOpenForm() {
     const { lang } = useLanguage();
@@ -285,7 +378,9 @@ export default function CMOpenForm() {
 
     const [summary, setSummary] = useState("");
     const [reported_by, setReportedBy] = useState("");
+    const [reporterSignature, setReporterSignature] = useState("");
     const [currentUsername, setCurrentUsername] = useState("");
+    const [userRole, setUserRole] = useState("");
     const [saving, setSaving] = useState(false);
     const [chargers, setChargers] = useState<ChargerInfo[]>([]);
     const [loadingChargers, setLoadingChargers] = useState(false);
@@ -305,6 +400,8 @@ export default function CMOpenForm() {
     // คนเปิดใบงาน (reported_by) แก้ไขใบงานที่ยัง Open ได้ — คนอื่นเห็นแบบอ่านอย่างเดียว
     const isOwner = isEdit && !!currentUsername.trim() && currentUsername.trim() === reported_by.trim();
     const fieldsLocked = isEdit && !isOwner;
+    // เฉพาะช่าง (technician) เท่านั้นที่กด "In Progress" ได้
+    const isTechnician = userRole.toLowerCase() === "technician";
     const draftKey = useMemo(() => getDraftKey(stationId), [stationId]);
     const STATUS_OPTIONS: Status[] = ["Open", "In Progress"];
 
@@ -327,7 +424,8 @@ export default function CMOpenForm() {
         { key: "severity", label: t("validSeverity", lang), isValid: !!severity, message: t("notSelected", lang), isRequired: true, scrollId: "cm-severity" },
         { key: "problemFound", label: t("validProblemFound", lang), isValid: !!problemDetails.trim(), message: t("notFilled", lang), isRequired: true, scrollId: "cm-problem-found" },
         { key: "photos", label: t("validPhotos", lang), isValid: photos_open.length > 0, message: t("notAttached", lang), isRequired: true, scrollId: "cm-photos" },
-    ], [faultyEquipment, severity, problemDetails, photos_open, lang]);
+        { key: "reporterSignature", label: lang === "th" ? "ลายเซ็นผู้แจ้ง" : "Reporter Signature", isValid: !!reporterSignature, message: lang === "th" ? "ยังไม่ได้เซ็น" : "Not signed", isRequired: true, scrollId: "cm-reporter-signature" },
+    ], [faultyEquipment, severity, problemDetails, photos_open, reporterSignature, lang]);
     const canSave = useMemo(() => validations.filter(v => v.isRequired).every(v => v.isValid), [validations]);
 
     // ==================== HELPERS ====================
@@ -498,7 +596,7 @@ export default function CMOpenForm() {
 
     useEffect(() => {
         let alive = true;
-        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive) { setCurrentUsername(data.username || ""); if (!isEdit && !reported_by) setReportedBy(data.username || ""); } } } catch { } })();
+        (async () => { try { const res = await apiFetch(`${API_BASE}/me`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive) { setCurrentUsername(data.username || ""); setUserRole(data.role || ""); if (!isEdit && !reported_by) setReportedBy(data.username || ""); } } } catch { } })();
         return () => { alive = false; };
     }, [isEdit]);
 
@@ -533,6 +631,7 @@ export default function CMOpenForm() {
                 setFaultyEquipment(data.faulty_equipment ?? "");
                 setSummary(data.summary ?? "");
                 setReportedBy(data.reported_by ?? "");
+                setReporterSignature(data.reporter_signature ?? "");
 
                 // ═══ แสดง Maximo ticket ถ้ามี (edit mode) ═══
                 if (data.maximo_ticket_id) {
@@ -611,6 +710,7 @@ export default function CMOpenForm() {
                         problem_details: problemDetails,
                         remarks_open,
                         location,
+                        reporter_signature: reporterSignature,
                     };
                 }
                 const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
@@ -655,6 +755,7 @@ export default function CMOpenForm() {
                         remarks_open,
                         location,
                         reported_by,
+                        reporter_signature: reporterSignature,
                     })
                 });
                 if (!submitRes.ok) throw new Error((await submitRes.json()).detail || `HTTP ${submitRes.status}`);
@@ -866,6 +967,19 @@ export default function CMOpenForm() {
                         </div>
                     )}
 
+                    {/* ลายเซ็นผู้แจ้ง — บังคับเซ็นก่อนบันทึก */}
+                    {(!fieldsLocked || reporterSignature) && (
+                        <div id="cm-reporter-signature" className="tw-mb-6">
+                            <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">
+                                {lang === "th" ? "ลายเซ็นผู้แจ้ง" : "Reporter Signature"} <span className="tw-text-red-500">*</span>
+                            </label>
+                            <p className="tw-text-xs tw-text-blue-gray-400 tw-mb-2">
+                                {lang === "th" ? "เซ็นด้วยเมาส์หรือนิ้ว — จะแสดงในช่อง \"ผู้แจ้ง\" ของ PDF" : "Draw with mouse or finger — shown in the \"Reporter\" box of the PDF"}
+                            </p>
+                            <SignaturePad value={reporterSignature} onChange={setReporterSignature} lang={lang} disabled={fieldsLocked} />
+                        </div>
+                    )}
+
                     {/* Validation Card */}
                     {!fieldsLocked && <div className="tw-mb-6"><CMValidationCard validations={validations} lang={lang} /></div>}
 
@@ -881,6 +995,7 @@ export default function CMOpenForm() {
                                     {saving ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
+                            {/* ปุ่ม In Progress: ตอนสร้างใหม่เป็นปุ่มบันทึก / ตอน edit เป็น In Progress — กดได้ทุกคน (รวมคนเปิดใบงาน) */}
                             <Button onClick={() => onFinalSave()} disabled={saving || showSuccessBanner || ((!isEdit || isOwner) && !canSave)} className={`tw-text-white hover:tw-shadow-lg disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none ${isEdit ? "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30" : "tw-bg-gray-800 hover:!tw-bg-blue-600 hover:!tw-shadow-blue-500/30"}`}>
                                 {saving ? t("saving", lang) : isEdit ? t("inProgress", lang) : t("save", lang)}
                             </Button>

@@ -12,7 +12,6 @@ import {
     Typography,
     Select,
     Option,
-    Tooltip,
 } from "@material-tailwind/react";
 
 // ===== Types =====
@@ -187,6 +186,13 @@ const Spinner = () => (
 /** Maximo location option from API */
 export type MaximoLocation = { location: string; description: string };
 
+/** Maximo charger under a station (from /maximo/locations/{code}/chargers) */
+export type MaximoCharger = { location: string; name: string; description: string; charger_type: string; power_kw: string };
+
+/** ชื่อตู้ชาร์จ = segment ท้ายของ Maximo location เช่น "PTG0001-EV-BTL01GU201" → "BTL01GU201" */
+const chargerShortName = (location: string): string =>
+    location.includes("-EV-") ? location.split("-EV-").pop()! : "";
+
 /**
  * Searchable Maximo-location dropdown.
  * Selecting an option fills both location + description (via onSelect).
@@ -328,6 +334,9 @@ export default function AddStationModal({
                 enterOwner: "ระบุชื่อเจ้าของ",
                 maximoSearch: "ค้นหา location...",
                 maximoEmpty: "ไม่พบ location",
+                pleaseSelectMaximo: "กรุณาเลือก Maximo Location",
+                loadingChargers: "กำลังดึงข้อมูลตู้ชาร์จจาก Maximo...",
+                noChargersFound: "ไม่พบตู้ชาร์จใน Maximo สำหรับ location นี้",
             },
             en: {
                 addNewStation: "Add New Station", subtitle: "Fill in station and charger details",
@@ -358,6 +367,9 @@ export default function AddStationModal({
                 enterOwner: "Enter owner name",
                 maximoSearch: "Search location...",
                 maximoEmpty: "No location found",
+                pleaseSelectMaximo: "Please select Maximo Location",
+                loadingChargers: "Loading chargers from Maximo...",
+                noChargersFound: "No chargers found in Maximo for this location",
             },
         };
         return tr[lang];
@@ -370,33 +382,29 @@ export default function AddStationModal({
     });
     const [stationPreviews, setStationPreviews] = useState<Record<StationImageKind, string[]>>({ station: [], mdb: [] });
     const [chargerPreviews, setChargerPreviews] = useState<Record<string, { charger: string[]; device: string[] }>>({});
-    const [chargers, setChargers] = useState<ChargerForm[]>([createEmptyCharger(1)]);
+    // ตู้ชาร์จถูก auto-fill จาก Maximo หลังเลือก station location — เริ่มต้นว่างเสมอ
+    const [chargers, setChargers] = useState<ChargerForm[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [isOtherOwner, setIsOtherOwner] = useState(false);
 
-    /* ── Maximo locations (for dropdowns) ── */
-    // station = location ไม่มี -EV ต่อท้าย (เช่น HMP0002), charger = มี -EV (เช่น HMP0002-EV-BTL01...)
+    /* ── Maximo locations (station dropdown) ── */
+    // station = location ไม่มี -EV ต่อท้าย (เช่น HMP0002)
     const [stationLocations, setStationLocations] = useState<MaximoLocation[]>([]);
-    const [chargerLocations, setChargerLocations] = useState<MaximoLocation[]>([]);
     const [maximoLoading, setMaximoLoading] = useState(false);
+    // โหลดรายการตู้ชาร์จใต้ station ที่เลือก (auto-fill จาก Maximo)
+    const [chargersLoading, setChargersLoading] = useState(false);
+    const chargersFetchSeq = useRef(0);
 
     useEffect(() => {
-        if (!open || stationLocations.length || chargerLocations.length || maximoLoading) return;
+        if (!open || stationLocations.length || maximoLoading) return;
         let cancelled = false;
         (async () => {
             setMaximoLoading(true);
             try {
-                const [stRes, chRes] = await Promise.all([
-                    apiFetch(`/maximo/locations?level=station`),
-                    apiFetch(`/maximo/locations?level=charger`),
-                ]);
-                if (!cancelled && stRes.ok) {
-                    const json = await stRes.json();
+                const res = await apiFetch(`/maximo/locations?level=station`);
+                if (!cancelled && res.ok) {
+                    const json = await res.json();
                     if (Array.isArray(json?.locations)) setStationLocations(json.locations);
-                }
-                if (!cancelled && chRes.ok) {
-                    const json = await chRes.json();
-                    if (Array.isArray(json?.locations)) setChargerLocations(json.locations);
                 }
             } catch (e) {
                 console.error("Failed to fetch Maximo locations:", e);
@@ -406,15 +414,6 @@ export default function AddStationModal({
         })();
         return () => { cancelled = true; };
     }, [open]);
-
-    // charger dropdown: เอาเฉพาะ location ที่อยู่ใต้ station ที่เลือก และลงท้าย -EV พอดี (ไม่มี segment ต่อท้าย)
-    // ถ้ายังไม่เลือก station จะไม่มี option (และ dropdown ถูก disable)
-    const filteredChargerLocations = useMemo(() => {
-        const st = station.maximo_location?.trim();
-        if (!st) return [];
-        const prefix = `${st}-`;
-        return chargerLocations.filter((o) => o.location.startsWith(prefix) && /-EV$/i.test(o.location));
-    }, [chargerLocations, station.maximo_location]);
 
     const isFlexxfast = (brand: string) => brand.trim().toLowerCase() === "flexxfast";
 
@@ -431,6 +430,40 @@ export default function AddStationModal({
     const onStationChange = (key: keyof StationForm, value: any) => setStation((s) => ({ ...s, [key]: value }));
     const onChargerChange = (id: string, key: keyof ChargerForm, value: any) =>
         setChargers((prev) => prev.map((c) => (c.id === id ? { ...c, [key]: value } : c)));
+
+    /** เลือก Maximo station → ดึงตู้ชาร์จใต้ station นั้นจาก Maximo มา auto-fill (แทนที่ชุดเดิมทั้งหมด) */
+    const handleMaximoStationSelect = async (loc: string, desc: string) => {
+        setStation((s) => ({
+            ...s,
+            maximo_location: loc,
+            maximo_desc: desc,
+            // ใช้ description เป็นชื่อสถานี (fallback เป็นรหัส location ถ้า desc ว่าง)
+            station_name: desc || loc,
+        }));
+        // ล้าง preview รูปของตู้ชาร์จชุดเดิมก่อนแทนที่
+        Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
+        setChargerPreviews({});
+        setChargers([]);
+        const seq = ++chargersFetchSeq.current;
+        setChargersLoading(true);
+        try {
+            const res = await apiFetch(`/maximo/locations/${encodeURIComponent(loc)}/chargers`);
+            const json = res.ok ? await res.json() : null;
+            if (seq !== chargersFetchSeq.current) return; // user เลือก station ใหม่กว่าแล้ว
+            const list: MaximoCharger[] = Array.isArray(json?.chargers) ? json.chargers : [];
+            setChargers(list.map((mc, i) => ({
+                ...createEmptyCharger(i + 1),
+                maximo_location: mc.location,
+                maximo_desc: mc.description,
+                chargerType: mc.charger_type === "AC" ? "AC" : "DC",
+                power: mc.power_kw || "",
+            })));
+        } catch (e) {
+            console.error("Failed to fetch Maximo chargers:", e);
+        } finally {
+            if (seq === chargersFetchSeq.current) setChargersLoading(false);
+        }
+    };
 
     /* ── file validation ── */
     const pickValid = (files: FileList | null): File[] =>
@@ -607,22 +640,14 @@ export default function AddStationModal({
         setChargerPreviews((p) => ({ ...p, [cid]: { ...p[cid], [kind]: (p[cid]?.[kind] || []).filter((_, i) => i !== idx) } }));
     };
 
-    /* ── add / remove charger ── */
-    const addCharger = () => setChargers((prev) => [...prev, createEmptyCharger(prev.length + 1)]);
-    const removeCharger = (id: string) => {
-        if (chargers.length <= 1) { alert(t.atLeastOneCharger); return; }
-        const p = chargerPreviews[id];
-        if (p) { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); }
-        setChargerPreviews((prev) => { const n = { ...prev }; delete n[id]; return n; });
-        setChargers((prev) => prev.filter((c) => c.id !== id).map((c, i) => ({ ...c, chargerNo: i + 1 })));
-    };
-
     /* ── submit ── */
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (submitting) return;
         setSubmitting(true);
+        if (!station.maximo_location.trim()) { alert(t.pleaseSelectMaximo); setSubmitting(false); return; }
         if (!station.station_name.trim()) { alert(t.pleaseEnterStationName); setSubmitting(false); return; }
+        if (!chargers.length) { alert(t.atLeastOneCharger); setSubmitting(false); return; }
         if (chargers.some((c) => isFlexxfast(c.brand) && !c.chargeBoxID.trim())) { alert(t.pleaseFillChargerBoxId); setSubmitting(false); return; }
 
         const payload: NewStationPayload = {
@@ -684,7 +709,7 @@ export default function AddStationModal({
         setStation({ station_id: "", station_name: "", owner: isAdmin ? "" : currentUser, is_active: true, maximo_location: "", maximo_desc: "", stationImages: [], mdbImages: [] });
         setStationPreviews({ station: [], mdb: [] });
         setChargerPreviews({});
-        setChargers([createEmptyCharger(1)]);
+        setChargers([]);
         setIsOtherOwner(false);
         onClose();
     };
@@ -739,19 +764,7 @@ export default function AddStationModal({
                                         disabled={false}
                                         searchPlaceholder={t.maximoSearch}
                                         emptyLabel={t.maximoEmpty}
-                                        onSelect={(loc, desc) => {
-                                            onStationChange("maximo_location", loc);
-                                            onStationChange("maximo_desc", desc);
-                                            // เลือก maximo แล้ว → ใช้ description เป็นชื่อสถานี (fallback เป็นรหัส location ถ้า desc ว่าง)
-                                            onStationChange("station_name", desc || loc);
-                                            // ล้าง charger location ที่ไม่อยู่ใต้ station ใหม่
-                                            const prefix = `${loc}-`;
-                                            setChargers((prev) => prev.map((c) =>
-                                                c.maximo_location && !c.maximo_location.startsWith(prefix)
-                                                    ? { ...c, maximo_location: "", maximo_desc: "" }
-                                                    : c
-                                            ));
-                                        }}
+                                        onSelect={handleMaximoStationSelect}
                                     />
                                     {station.maximo_location?.trim() && (
                                         <Input label={t.maximoDesc} value={station.maximo_desc} readOnly disabled crossOrigin={undefined} />
@@ -823,7 +836,8 @@ export default function AddStationModal({
                             </div>
                         </section>
 
-                        {/* ══════ CHARGERS ══════ */}
+                        {/* ══════ CHARGERS — แสดงหลังเลือก Maximo Location เท่านั้น (auto-fill จาก Maximo) ══════ */}
+                        {station.maximo_location?.trim() && (
                         <section className="tw-space-y-3 sm:tw-space-y-4">
                             <div className="tw-flex tw-items-center tw-justify-between">
                                 <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3">
@@ -832,15 +846,18 @@ export default function AddStationModal({
                                         {t.chargers} <span className="tw-text-blue-gray-400 tw-font-normal">({chargers.length})</span>
                                     </Typography>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={addCharger}
-                                    className="tw-inline-flex tw-items-center tw-gap-1 sm:tw-gap-1.5 tw-px-3 sm:tw-px-4 tw-py-1.5 sm:tw-py-2 tw-rounded-xl tw-bg-gray-900 tw-text-white tw-text-[11px] sm:tw-text-xs tw-font-semibold tw-tracking-wide tw-shadow-lg tw-shadow-gray-900/20 hover:tw-bg-black tw-transition-all tw-duration-200 hover:tw-shadow-xl hover:tw--translate-y-0.5"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-3 tw-w-3 sm:tw-h-3.5 sm:tw-w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
-                                    {t.addCharger}
-                                </button>
                             </div>
+
+                            {chargersLoading && (
+                                <div className="tw-flex tw-items-center tw-gap-2 tw-px-4 tw-py-5 tw-rounded-xl tw-bg-white tw-ring-1 tw-ring-black/[.06] tw-text-sm tw-text-blue-gray-400">
+                                    <Spinner /> {t.loadingChargers}
+                                </div>
+                            )}
+                            {!chargersLoading && chargers.length === 0 && (
+                                <div className="tw-px-4 tw-py-5 tw-rounded-xl tw-bg-amber-50/60 tw-ring-1 tw-ring-amber-200/70 tw-text-sm tw-text-amber-700">
+                                    {t.noChargersFound}
+                                </div>
+                            )}
 
                             {chargers.map((charger, index) => (
                                 <div key={charger.id} className="tw-rounded-xl sm:tw-rounded-2xl tw-bg-white tw-shadow-sm tw-ring-1 tw-ring-black/[.06] tw-overflow-hidden tw-transition-shadow tw-duration-300 hover:tw-shadow-md">
@@ -850,42 +867,22 @@ export default function AddStationModal({
                                             <span className="tw-inline-flex tw-items-center tw-justify-center tw-h-6 tw-w-6 sm:tw-h-7 sm:tw-w-7 tw-rounded-lg tw-bg-gradient-to-br tw-from-amber-400 tw-to-orange-500 tw-shadow tw-text-white tw-text-[10px] sm:tw-text-xs tw-font-bold tw-shrink-0">
                                                 {index + 1}
                                             </span>
-                                            <span className="tw-text-xs sm:tw-text-sm tw-font-bold tw-text-gray-700 tw-truncate">{t.chargerNo}{index + 1}</span>
+                                            <span className="tw-text-xs sm:tw-text-sm tw-font-bold tw-text-gray-700 tw-truncate">
+                                                {chargerShortName(charger.maximo_location) || `${t.chargerNo}${index + 1}`}
+                                            </span>
                                             {charger.brand && (
                                                 <span className="tw-hidden sm:tw-inline tw-px-2 tw-py-0.5 tw-rounded-md tw-bg-white/90 tw-text-[10px] tw-font-semibold tw-text-blue-gray-500 tw-ring-1 tw-ring-black/5 tw-shadow-sm tw-truncate tw-max-w-[120px]">
                                                     {charger.brand}{charger.model ? ` ${charger.model}` : ""}
                                                 </span>
                                             )}
                                         </div>
-                                        {chargers.length > 1 && (
-                                            <Tooltip content={t.removeCharger}>
-                                                <button type="button" onClick={() => removeCharger(charger.id)} className="tw-p-1 sm:tw-p-1.5 tw-rounded-lg tw-text-red-400 hover:tw-text-red-600 hover:tw-bg-red-50 tw-transition-colors tw-shrink-0">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="tw-h-4 tw-w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                                                </button>
-                                            </Tooltip>
-                                        )}
                                     </div>
 
                                     <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">
                                         <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-2.5 sm:tw-gap-3">
-                                            {station.maximo_location?.trim() && (
-                                                <MaximoLocationSelect
-                                                    label={t.maximoLocation}
-                                                    value={charger.maximo_location}
-                                                    options={filteredChargerLocations}
-                                                    loading={maximoLoading}
-                                                    disabled={false}
-                                                    searchPlaceholder={t.maximoSearch}
-                                                    emptyLabel={t.maximoEmpty}
-                                                    onSelect={(loc, desc) => {
-                                                        onChargerChange(charger.id, "maximo_location", loc);
-                                                        onChargerChange(charger.id, "maximo_desc", desc);
-                                                    }}
-                                                />
-                                            )}
-                                            {station.maximo_location?.trim() && charger.maximo_location?.trim() && (
-                                                <Input label={t.maximoDesc} value={charger.maximo_desc} readOnly disabled crossOrigin={undefined} />
-                                            )}
+                                            {/* auto-fill จาก Maximo — แก้ไขไม่ได้ */}
+                                            <Input label={t.maximoLocation} value={charger.maximo_location} readOnly disabled className="!tw-bg-gray-50" crossOrigin={undefined} />
+                                            <Input label={t.maximoDesc} value={charger.maximo_desc} readOnly disabled className="!tw-bg-gray-50" crossOrigin={undefined} />
                                             <div className="tw-relative">
                                                 <Input label={t.chargerNoAuto} type="number" value={charger.chargerNo} readOnly className="!tw-bg-gray-50" crossOrigin={undefined} />
                                                 <span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span>
@@ -928,7 +925,8 @@ export default function AddStationModal({
                                         <div className="tw-pt-3 sm:tw-pt-4 tw-border-t tw-border-gray-100">
                                             <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-purple-500 tw-uppercase tw-tracking-widest tw-mb-2.5 sm:tw-mb-3">🔌 {t.ocppSection}</p>
                                             <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-2.5 sm:tw-gap-3">
-                                                <Input label={t.chargerBoxId} required value={charger.chargeBoxID} onChange={(e) => onChargerChange(charger.id, "chargeBoxID", e.target.value)} crossOrigin={undefined} />
+                                                {/* Charge Box ID บังคับเฉพาะ Flexxfast — ให้ตรงกับ validation ตอน submit */}
+                                                <Input label={t.chargerBoxId} required={isFlexxfast(charger.brand)} value={charger.chargeBoxID} onChange={(e) => onChargerChange(charger.id, "chargeBoxID", e.target.value)} crossOrigin={undefined} />
                                                 <Input label={t.ocppUrl} value={charger.ocppUrl} onChange={(e) => onChargerChange(charger.id, "ocppUrl", e.target.value)} crossOrigin={undefined} />
                                             </div>
                                         </div>
@@ -946,6 +944,7 @@ export default function AddStationModal({
                                 </div>
                             ))}
                         </section>
+                        )}
                     </DialogBody>
 
                     {/* ══════ FOOTER ══════ */}

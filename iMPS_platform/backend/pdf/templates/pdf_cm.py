@@ -1109,14 +1109,25 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     y = pdf.get_y() + 2
 
     # ===== ส่วนที่ 3: ประเภทและสาเหตุของปัญหา =====
+    # problem_type อาจเป็น list (เลือกได้หลายอัน) หรือ string
+    pt_raw = doc.get("problem_type")
+    if isinstance(pt_raw, list):
+        problem_type_text = ", ".join(str(p) for p in pt_raw if p) or "-"
+    else:
+        problem_type_text = (pt_raw or "-") or "-"
     section3_parts: List[Dict[str, Any]] = [
         {
             "kind": "info",
-            "data": [("ปัญหา", doc.get("problem_type", "-") or "-")],
+            "data": [("ปัญหา", problem_type_text)],
             "cols": 1,
         },
     ]
-    cause = (doc.get("cause") or "").strip()
+    # cause อาจเป็น list (เลือกได้หลายอัน) หรือ string
+    cause_raw = doc.get("cause")
+    if isinstance(cause_raw, list):
+        cause = ", ".join(str(c) for c in cause_raw if c)
+    else:
+        cause = (cause_raw or "").strip()
     if cause and cause != "-":
         section3_parts.append({
             "kind": "text", "label": "สาเหตุของปัญหา", "text": cause, "min_h": 10,
@@ -1235,13 +1246,16 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
     resolved_date_th = _fmt_date_thai_full(repair_date_raw)
     resolved_date_text = resolved_date_th if resolved_date_th != "-" else ""
     repairer_name = (doc.get("inspector") or "").strip()  # ผู้ซ่อม = ช่างที่ทำการซ่อม
+    reporter_name = (doc.get("reported_by") or "").strip()  # ผู้แจ้ง
+    found_date_th = _fmt_date_thai_full(doc.get("found_date") or doc.get("cm_date"))
+    found_date_text = found_date_th if found_date_th != "-" else ""
     _draw_signature_block(
         pdf, base_font, x0, y, page_w,
         date_text=resolved_date_text,
         labels=["ผู้แจ้ง", "ผู้ซ่อม", "ผู้ตรวจสอบ"],
-        signatures=[None, doc.get("signature"), None],   # ผู้ซ่อม (ช่องกลาง)
-        names=[None, repairer_name, None],               # ชื่อผู้ซ่อมในวงเล็บ
-        dates=[None, resolved_date_text, None],          # วันที่แก้ไขเสร็จ ใต้ช่องผู้ซ่อม
+        signatures=[doc.get("reporter_signature"), doc.get("signature"), None],  # ผู้แจ้ง / ผู้ซ่อม
+        names=[reporter_name, repairer_name, None],      # ชื่อในวงเล็บ
+        dates=[found_date_text, resolved_date_text, None],  # ผู้แจ้ง=วันที่แจ้ง, ผู้ซ่อม=วันที่แก้ไขเสร็จ
     )
 
     return _output_pdf_bytes(pdf)
