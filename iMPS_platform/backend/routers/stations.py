@@ -124,6 +124,49 @@ async def get_maximo_locations(
     return {"enabled": True, "locations": locations}
 
 
+# description ของตู้ชาร์จใน Maximo เช่น "DC Charger 150kW", "AC Charger 22kW 1"
+MAXIMO_CHARGER_DESC_RE = re.compile(r"^(AC|DC)\s*Charger\s*([\d.]+)\s*kW", re.IGNORECASE)
+
+
+def maximo_charger_name(location: str) -> str:
+    """ชื่อตู้ชาร์จ = segment ท้ายของ Maximo location เช่น "PTG0001-EV-BTL01GU201" → "BTL01GU201" """
+    loc = (location or "").strip()
+    return loc.split("-EV-")[-1] if "-EV-" in loc else ""
+
+
+@router.get("/maximo/locations/{station_code}/chargers")
+async def get_maximo_station_chargers(
+    station_code: str = Path(..., description="Maximo station code เช่น 'PTG0001' หรือ 'PTG0001-EV'"),
+    current: UserClaims = Depends(get_current_user),
+):
+    """
+    ดึงรายการตู้ชาร์จ (…-EV-BTLxxGUxxx) ใต้ station ที่เลือก สำหรับ auto-fill
+    ฟอร์ม Add Station — พร้อม charger_type (AC/DC) และ power_kw ที่ parse จาก description
+    """
+    from services.maximo import query_charger_locations, MAXIMO_ENABLED
+
+    if not MAXIMO_ENABLED:
+        return {"enabled": False, "chargers": []}
+
+    members = await query_charger_locations(station_code)
+    if members is None:
+        raise HTTPException(status_code=502, detail="Maximo query failed")
+
+    chargers = []
+    for m in members:
+        desc = (m.get("description") or "").strip()
+        match = MAXIMO_CHARGER_DESC_RE.match(desc)
+        location = m.get("location", "")
+        chargers.append({
+            "location": location,
+            "name": maximo_charger_name(location),  # เช่น BTL01GU201
+            "description": desc,
+            "charger_type": match.group(1).upper() if match else "",
+            "power_kw": match.group(2) if match else "",
+        })
+    return {"enabled": True, "chargers": chargers}
+
+
 async def latest_onoff(sn: str) -> Dict[str, Any]:
     try:
         coll = charger_onoff[sn]
@@ -219,6 +262,7 @@ class ChargerOut(BaseModel):
     station_id: str
     chargeBoxID: Optional[str] = ""
     chargerNo: Optional[int] = None
+    charger_name: Optional[str] = ""
     brand: str
     model: str
     SN: str
@@ -416,6 +460,7 @@ def format_charger(doc: dict, include_status: bool = True) -> ChargerOut:
         station_id=station_id,
         chargeBoxID=doc.get("chargeBoxID", ""),
         chargerNo=doc.get("chargerNo"),
+        charger_name=doc.get("charger_name", ""),
         brand=doc.get("brand", ""),
         model=doc.get("model", ""),
         SN=doc.get("SN", ""),
@@ -671,6 +716,8 @@ def create_station_with_chargers(
             "station_id": station_id,
             "chargeBoxID": charger.chargeBoxID.strip() if charger.chargeBoxID else "",
             "chargerNo": charger_no,
+            # ชื่อตู้ชาร์จ = segment ท้ายของ maximo_location (เช่น BTL01GU201) — ไม่ใช่ทั้ง chain
+            "charger_name": maximo_charger_name(charger.maximo_location),
             "brand": charger.brand.strip(),
             "model": charger.model.strip(),
             "SN": charger.SN.strip(),
