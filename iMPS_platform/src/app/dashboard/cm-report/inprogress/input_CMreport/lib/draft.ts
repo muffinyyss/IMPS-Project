@@ -25,9 +25,9 @@ export interface DraftData {
     inprogress_remarks: string;
     // ✅ เพิ่มใหม่
     repair_result_remark: string;
-    problem_type: string;
+    problem_type: string[];
     problem_type_other: string;
-    cause: string;
+    cause: string[];
     // metadata
     savedAt?: string;
     savedBy?: string;

@@ -636,6 +636,7 @@ class CMSubmitIn(BaseModel):
     remarks_open: str = ""
     location: str = ""
     reported_by: Optional[str] = None
+    reporter_signature: str = ""  # ลายเซ็นผู้แจ้ง (dataURL PNG)
 
 
 async def _ensure_cm_indexes(coll):
@@ -675,6 +676,7 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "severity": body.severity,
         "problem_details": body.problem_details,
         "remarks_open": body.remarks_open,
+        "reporter_signature": body.reporter_signature,
         "status": "Open",
         "photos_problem": {},
         "createdAt": datetime.now(timezone.utc),
@@ -817,6 +819,7 @@ async def cmreport_detail_path(
         "resolved_date": doc.get("resolved_date") or "",
         "start_repair_date": doc.get("start_repair_date") or "",
         "signature": doc.get("signature") or "",
+        "reporter_signature": doc.get("reporter_signature") or "",
         "start_repair_time": doc.get("start_repair_time") or "",
         "resolved_time": doc.get("resolved_time") or "",
 
@@ -837,11 +840,11 @@ async def cmreport_detail_query(
 
 class CMStatusUpdateIn(BaseModel):
     station_id: str
-    status: Literal["Open", "In Progress", "Closed"]
+    status: Literal["Open", "In Progress", "Pending", "Closed"]
     job: Optional[Dict[str, Any]] = None
     inspector: Optional[str] = None
 
-ALLOWED_STATUS: set[str] = {"Open", "In Progress", "Closed"}
+ALLOWED_STATUS: set[str] = {"Open", "In Progress", "Pending", "Closed"}
 
 @router.patch("/cmreport/{report_id}/status")
 async def cmreport_update_status(
@@ -878,7 +881,7 @@ async def cmreport_update_status(
             "repaired_equipment",
             "inprogress_remarks",
             "cause", "problem_type_other","repair_result_remark","start_repair_date",
-            "signature", "start_repair_time", "resolved_time",
+            "signature", "start_repair_time", "resolved_time", "reporter_signature",
         }
 
         if "status" in body.job:
