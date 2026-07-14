@@ -6,6 +6,7 @@ import { DashboardNavbar, Configurator } from "@/widgets/layout";
 import Sidenav from "@/widgets/layout/sidenav";
 import { usePathname } from "next/navigation";
 import { useMaterialTailwindController } from "@/context";
+import { installDomSafetyPatch } from "@/utils/dom-safety";
 
 
 export default function InnerContent({ children }: { children: React.ReactNode }) {
@@ -13,9 +14,10 @@ export default function InnerContent({ children }: { children: React.ReactNode }
   const [routes, setRoutes] = useState<any[]>([]);
 
   const [controller] = useMaterialTailwindController();
-  const pathname = usePathname(); 
+  const pathname = usePathname();
 
   useEffect(() => {
+    installDomSafetyPatch();
     setIsMounted(true);
     setRoutes(getRoutes());
   }, []);
