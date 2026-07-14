@@ -186,6 +186,9 @@ const Spinner = () => (
 /** Maximo location option from API */
 export type MaximoLocation = { location: string; description: string };
 
+/** แหล่งข้อมูลชื่อสถานี: "maximo" = เลือกจาก Maximo location, "name" = กรอกชื่อเอง */
+type StationSource = "" | "maximo" | "name";
+
 /** Maximo charger under a station (from /maximo/locations/{code}/chargers) */
 export type MaximoCharger = { location: string; name: string; description: string; charger_type: string; power_kw: string };
 
@@ -309,7 +312,7 @@ export default function AddStationModal({
                 addNewStation: "เพิ่มสถานีใหม่", subtitle: "กรอกข้อมูลสถานีและตู้ชาร์จ",
                 stationInfo: "ข้อมูลสถานี", stationName: "ชื่อสถานี", owner: "เจ้าของ",
                 status: "สถานะ", active: "เปิดใช้งาน", inactive: "ปิดใช้งาน",
-                maximoLocation: "Maximo Location", maximoDesc: "Maximo Description",
+                maximoLocation: "Location", maximoDesc: "Description",
                 stationImages: "รูปภาพสถานี", station: "สถานี", mdb: "MDB",
                 chargers: "ตู้ชาร์จ", addCharger: "เพิ่มตู้ชาร์จ", chargerNo: "ตู้ชาร์จ #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
@@ -334,7 +337,10 @@ export default function AddStationModal({
                 enterOwner: "ระบุชื่อเจ้าของ",
                 maximoSearch: "ค้นหา location...",
                 maximoEmpty: "ไม่พบ location",
-                pleaseSelectMaximo: "กรุณาเลือก Maximo Location",
+                locationTitle: "Source",
+                sourceName: "กรอกชื่อสถานี",
+                selectSourceFirst: "เลือกแหล่งข้อมูลก่อน — Maximo หรือกรอกชื่อสถานี",
+                pleaseSelectMaximo: "กรุณาเลือก Location",
                 loadingChargers: "กำลังดึงข้อมูลตู้ชาร์จจาก Maximo...",
                 noChargersFound: "ไม่พบตู้ชาร์จใน Maximo สำหรับ location นี้",
             },
@@ -342,7 +348,7 @@ export default function AddStationModal({
                 addNewStation: "Add New Station", subtitle: "Fill in station and charger details",
                 stationInfo: "Station Information", stationName: "Station Name", owner: "Owner",
                 status: "Status", active: "Active", inactive: "Inactive",
-                maximoLocation: "Maximo Location", maximoDesc: "Maximo Description",
+                maximoLocation: "Location", maximoDesc: "Description",
                 stationImages: "Station Images", station: "Station", mdb: "MDB",
                 chargers: "Chargers", addCharger: "Add Charger", chargerNo: "Charger #",
                 chargerBoxId: "Charge Box ID", ocppUrl: "OCPP URL", ocppSection: "OCPP",
@@ -367,7 +373,10 @@ export default function AddStationModal({
                 enterOwner: "Enter owner name",
                 maximoSearch: "Search location...",
                 maximoEmpty: "No location found",
-                pleaseSelectMaximo: "Please select Maximo Location",
+                locationTitle: "Source",
+                sourceName: "Enter name",
+                selectSourceFirst: "Select a source first — Maximo or enter the name",
+                pleaseSelectMaximo: "Please select a Location",
                 loadingChargers: "Loading chargers from Maximo...",
                 noChargersFound: "No chargers found in Maximo for this location",
             },
@@ -390,13 +399,16 @@ export default function AddStationModal({
     /* ── Maximo locations (station dropdown) ── */
     // station = location ไม่มี -EV ต่อท้าย (เช่น HMP0002)
     const [stationLocations, setStationLocations] = useState<MaximoLocation[]>([]);
+    // แหล่งข้อมูล (checkbox): "maximo" = เลือกจาก Maximo, "name" = กรอกชื่อสถานีเอง
+    const [selectedSource, setSelectedSource] = useState<StationSource>("");
     const [maximoLoading, setMaximoLoading] = useState(false);
     // โหลดรายการตู้ชาร์จใต้ station ที่เลือก (auto-fill จาก Maximo)
     const [chargersLoading, setChargersLoading] = useState(false);
     const chargersFetchSeq = useRef(0);
 
+    // โหลดรายการ location เมื่อผู้ใช้ติ๊กแหล่ง Maximo (lazy)
     useEffect(() => {
-        if (!open || stationLocations.length || maximoLoading) return;
+        if (!open || selectedSource !== "maximo" || stationLocations.length || maximoLoading) return;
         let cancelled = false;
         (async () => {
             setMaximoLoading(true);
@@ -413,7 +425,34 @@ export default function AddStationModal({
             }
         })();
         return () => { cancelled = true; };
-    }, [open]);
+    }, [open, selectedSource]);
+
+    /** ล้าง location + ตู้ชาร์จที่เลือกไว้ (ใช้ตอนเปลี่ยนแหล่งข้อมูล) */
+    const clearSelectedLocation = () => {
+        setStation((s) => ({ ...s, maximo_location: "", maximo_desc: "", station_name: "" }));
+        Object.values(chargerPreviews).forEach((p) => { p.charger?.forEach((u) => URL.revokeObjectURL(u)); p.device?.forEach((u) => URL.revokeObjectURL(u)); });
+        setChargerPreviews({});
+        setChargers([]);
+        chargersFetchSeq.current++; // ยกเลิกผล fetch ตู้ชาร์จที่ค้างอยู่
+        setChargersLoading(false);
+    };
+
+    /** ติ๊กเลือกแหล่งข้อมูล (เลือกได้ทีละแหล่ง — ติ๊กซ้ำเพื่อยกเลิก) */
+    const handleSourceToggle = (source: StationSource) => {
+        const next = selectedSource === source ? "" : source;
+        setSelectedSource(next);
+        clearSelectedLocation();
+    };
+
+    /** เพิ่ม/ลบตู้ชาร์จเอง (เฉพาะโหมดกรอกชื่อเอง — โหมด Maximo auto-fill เท่านั้น) */
+    const addManualCharger = () => setChargers((prev) => [...prev, createEmptyCharger(prev.length + 1)]);
+    const removeManualCharger = (id: string) => {
+        const p = chargerPreviews[id];
+        p?.charger?.forEach((u) => URL.revokeObjectURL(u));
+        p?.device?.forEach((u) => URL.revokeObjectURL(u));
+        setChargerPreviews((prev) => { const { [id]: _removed, ...rest } = prev; return rest; });
+        setChargers((prev) => prev.filter((c) => c.id !== id).map((c, i) => ({ ...c, chargerNo: i + 1 })));
+    };
 
     const isFlexxfast = (brand: string) => brand.trim().toLowerCase() === "flexxfast";
 
@@ -645,7 +684,7 @@ export default function AddStationModal({
         e.preventDefault();
         if (submitting) return;
         setSubmitting(true);
-        if (!station.maximo_location.trim()) { alert(t.pleaseSelectMaximo); setSubmitting(false); return; }
+        if (selectedSource !== "name" && !station.maximo_location.trim()) { alert(t.pleaseSelectMaximo); setSubmitting(false); return; }
         if (!station.station_name.trim()) { alert(t.pleaseEnterStationName); setSubmitting(false); return; }
         if (!chargers.length) { alert(t.atLeastOneCharger); setSubmitting(false); return; }
         if (chargers.some((c) => isFlexxfast(c.brand) && !c.chargeBoxID.trim())) { alert(t.pleaseFillChargerBoxId); setSubmitting(false); return; }
@@ -711,6 +750,7 @@ export default function AddStationModal({
         setChargerPreviews({});
         setChargers([]);
         setIsOtherOwner(false);
+        setSelectedSource("");
         onClose();
     };
 
@@ -755,7 +795,37 @@ export default function AddStationModal({
                                 <Typography variant="h6" className="!tw-text-gray-800 !tw-font-bold !tw-tracking-tight !tw-text-sm sm:!tw-text-base">{t.stationInfo}</Typography>
                             </div>
                             <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-4 sm:tw-space-y-5">
+                                {/* Source — ติ๊กเลือกแหล่งข้อมูล: Maximo (เลือกจากรายการ) หรือ Name (กรอกชื่อเอง) */}
+                                <div className="tw-space-y-2">
+                                    <p className="tw-text-[10px] sm:tw-text-[11px] tw-font-bold tw-text-blue-gray-500 tw-uppercase tw-tracking-wider">{t.locationTitle}</p>
+                                    <div className="tw-flex tw-flex-wrap tw-gap-2">
+                                        {([{ id: "maximo", label: "Maximo" }, { id: "name", label: t.sourceName }] as { id: StationSource; label: string }[]).map((s) => {
+                                            const checked = selectedSource === s.id;
+                                            return (
+                                                <label
+                                                    key={s.id}
+                                                    className={`tw-inline-flex tw-items-center tw-gap-2 tw-px-3 tw-py-2 tw-rounded-xl tw-border tw-cursor-pointer tw-select-none tw-text-xs sm:tw-text-sm tw-font-semibold tw-transition-all tw-duration-150 ${checked
+                                                        ? "tw-border-gray-900 tw-bg-gray-900 tw-text-white tw-shadow-md"
+                                                        : "tw-border-blue-gray-200 tw-bg-white tw-text-blue-gray-600 hover:tw-border-gray-400 hover:tw-bg-gray-50"}`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={() => handleSourceToggle(s.id)}
+                                                        className="tw-h-3.5 tw-w-3.5 tw-rounded tw-accent-gray-900 tw-cursor-pointer"
+                                                    />
+                                                    {s.label}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                    {!selectedSource && (
+                                        <p className="tw-text-[11px] tw-text-blue-gray-400">{t.selectSourceFirst}</p>
+                                    )}
+                                </div>
+
                                 <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 tw-gap-3 sm:tw-gap-4">
+                                    {selectedSource === "maximo" && (
                                     <MaximoLocationSelect
                                         label={t.maximoLocation}
                                         value={station.maximo_location}
@@ -766,10 +836,11 @@ export default function AddStationModal({
                                         emptyLabel={t.maximoEmpty}
                                         onSelect={handleMaximoStationSelect}
                                     />
-                                    {station.maximo_location?.trim() && (
+                                    )}
+                                    {selectedSource === "maximo" && station.maximo_location?.trim() && (
                                         <Input label={t.maximoDesc} value={station.maximo_desc} readOnly disabled crossOrigin={undefined} />
                                     )}
-                                    {!station.maximo_location?.trim() && (
+                                    {selectedSource === "name" && (
                                         <Input label={t.stationName} required value={station.station_name} onChange={(e) => onStationChange("station_name", e.target.value)} crossOrigin={undefined} />
                                     )}
                                     {isAdmin ? (
@@ -836,8 +907,8 @@ export default function AddStationModal({
                             </div>
                         </section>
 
-                        {/* ══════ CHARGERS — แสดงหลังเลือก Maximo Location เท่านั้น (auto-fill จาก Maximo) ══════ */}
-                        {station.maximo_location?.trim() && (
+                        {/* ══════ CHARGERS — โหมด Maximo: auto-fill หลังเลือก location / โหมดกรอกชื่อเอง: เพิ่มตู้เอง ══════ */}
+                        {(station.maximo_location?.trim() || selectedSource === "name") && (
                         <section className="tw-space-y-3 sm:tw-space-y-4">
                             <div className="tw-flex tw-items-center tw-justify-between">
                                 <div className="tw-flex tw-items-center tw-gap-2 sm:tw-gap-3">
@@ -846,6 +917,16 @@ export default function AddStationModal({
                                         {t.chargers} <span className="tw-text-blue-gray-400 tw-font-normal">({chargers.length})</span>
                                     </Typography>
                                 </div>
+                                {selectedSource === "name" && (
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={addManualCharger}
+                                        className="tw-rounded-xl tw-bg-gray-900 hover:tw-bg-black tw-normal-case tw-font-semibold tw-text-[11px] sm:tw-text-xs tw-px-3 sm:tw-px-4 tw-py-2"
+                                    >
+                                        + {t.addCharger}
+                                    </Button>
+                                )}
                             </div>
 
                             {chargersLoading && (
@@ -853,7 +934,7 @@ export default function AddStationModal({
                                     <Spinner /> {t.loadingChargers}
                                 </div>
                             )}
-                            {!chargersLoading && chargers.length === 0 && (
+                            {!chargersLoading && chargers.length === 0 && selectedSource !== "name" && (
                                 <div className="tw-px-4 tw-py-5 tw-rounded-xl tw-bg-amber-50/60 tw-ring-1 tw-ring-amber-200/70 tw-text-sm tw-text-amber-700">
                                     {t.noChargersFound}
                                 </div>
@@ -876,13 +957,27 @@ export default function AddStationModal({
                                                 </span>
                                             )}
                                         </div>
+                                        {selectedSource === "name" && (
+                                            <button
+                                                type="button"
+                                                onClick={() => removeManualCharger(charger.id)}
+                                                title={t.removeCharger}
+                                                className="tw-h-7 tw-w-7 tw-rounded-lg tw-flex tw-items-center tw-justify-center tw-text-red-400 hover:tw-text-white hover:tw-bg-red-500 tw-transition-colors tw-shrink-0"
+                                            >
+                                                ✕
+                                            </button>
+                                        )}
                                     </div>
 
                                     <div className="tw-p-3.5 sm:tw-p-5 tw-space-y-3 sm:tw-space-y-4">
                                         <div className="tw-grid tw-grid-cols-1 sm:tw-grid-cols-2 lg:tw-grid-cols-3 tw-gap-2.5 sm:tw-gap-3">
-                                            {/* auto-fill จาก Maximo — แก้ไขไม่ได้ */}
-                                            <Input label={t.maximoLocation} value={charger.maximo_location} readOnly disabled className="!tw-bg-gray-50" crossOrigin={undefined} />
-                                            <Input label={t.maximoDesc} value={charger.maximo_desc} readOnly disabled className="!tw-bg-gray-50" crossOrigin={undefined} />
+                                            {/* auto-fill จาก Maximo — แก้ไขไม่ได้ (ซ่อนในโหมดกรอกชื่อเองเพราะไม่มีข้อมูล Maximo) */}
+                                            {!!charger.maximo_location && (
+                                                <>
+                                                    <Input label={t.maximoLocation} value={charger.maximo_location} readOnly disabled className="!tw-bg-gray-50" crossOrigin={undefined} />
+                                                    <Input label={t.maximoDesc} value={charger.maximo_desc} readOnly disabled className="!tw-bg-gray-50" crossOrigin={undefined} />
+                                                </>
+                                            )}
                                             <div className="tw-relative">
                                                 <Input label={t.chargerNoAuto} type="number" value={charger.chargerNo} readOnly className="!tw-bg-gray-50" crossOrigin={undefined} />
                                                 <span className="tw-absolute tw-right-3 tw-top-1/2 tw--translate-y-1/2 tw-text-[9px] tw-text-blue-gray-300 tw-font-medium">({t.auto})</span>
