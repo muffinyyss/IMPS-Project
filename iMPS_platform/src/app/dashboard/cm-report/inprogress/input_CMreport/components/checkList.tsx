@@ -1390,13 +1390,10 @@ export default function CMInProgressForm() {
     ], [job, lang, isClosedResult, isMonitoringResult, isNoProblem]);
     const canSave = useMemo(() => validations.filter(v => v.isRequired).every(v => v.isValid), [validations]);
 
-    // ปิดงานเมื่อ "แก้ไขสำเร็จ" หรือ "ไม่พบปัญหา"
-    // "แก้ไขสำเร็จ" หรือ "ไม่พบปัญหา" → Pending | ติดตามผล/รออะไหล่ (และอื่นๆ) → In Progress
-    // (ไม่มีเส้นทางปิดงาน Closed จากฟอร์มนี้ — ปิดผ่านขั้นตอนอื่น)
-    const isClosing = false;
-    const isPending = isClosedResult || isNoProblem;
-    const targetStatus = isPending ? "Pending" : "In Progress";
-    const targetTab = isPending ? "pending" : "in-progress";
+    // ปิดงานเมื่อ "แก้ไขสำเร็จ" หรือ "ไม่พบปัญหา" → Closed | ติดตามผล/รออะไหล่ (และอื่นๆ) → In Progress
+    const isClosing = isClosedResult || isNoProblem;
+    const targetStatus = isClosing ? "Closed" : "In Progress";
+    const targetTab = isClosing ? "closed" : "in-progress";
 
     // ==================== HELPERS ====================
     const localTodayFormatted = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };

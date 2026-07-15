@@ -164,6 +164,13 @@ async def get_maximo_station_chargers(
             "charger_type": match.group(1).upper() if match else "",
             "power_kw": match.group(2) if match else "",
         })
+
+    # เรียงตามหมายเลขตู้แบบ natural sort (BTL01GU101 → 1, BTL01GU102 → 2, ...)
+    # เพื่อให้ chargerNo ในฟอร์ม Add Station ตรงกับหมายเลขตู้จริงเสมอ
+    def charger_order(c: dict):
+        return ([int(n) for n in re.findall(r"\d+", c["name"])], c["location"])
+
+    chargers.sort(key=charger_order)
     return {"enabled": True, "chargers": chargers}
 
 
