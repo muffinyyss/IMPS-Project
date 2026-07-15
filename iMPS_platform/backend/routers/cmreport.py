@@ -263,7 +263,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
         ]
 
     cursor = coll.find(mongo_filter, {
-        "_id": 1, "doc_name": 1, "issue_id": 1, "cm_date": 1, "status": 1,
+        "_id": 1, "doc_name": 1, "issue_id": 1, "cm_date": 1, "found_date": 1, "status": 1,
         "reported_by": 1, "inspector": 1, "faulty_equipment": 1, "severity": 1,
         "problem_details": 1, "location": 1, "job": 1, "repair_result": 1,
         "repair_result_remark": 1, "maximo_ticket_id": 1, "createdAt": 1,
@@ -282,6 +282,19 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             if day and first_url and day not in url_by_day:
                 url_by_day[day] = first_url
 
+    def resolve_cm_date(it: dict, job: dict) -> str | None:
+        # เอกสารจาก /cmreport/submit เก็บวันที่ใน found_date (ไม่มี cm_date) —
+        # fallback: cm_date → found_date → วันที่จาก createdAt (เขตเวลาไทย)
+        for v in (it.get("cm_date"), it.get("found_date"), job.get("cm_date"), job.get("found_date")):
+            if isinstance(v, str) and re.match(r"^\d{4}-\d{2}-\d{2}", v):
+                return v[:10]
+        created = it.get("createdAt")
+        if isinstance(created, datetime):
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            return created.astimezone(th_tz).date().isoformat()
+        return None
+
     out = []
     for it in items_raw:
         job = it.get("job", {})
@@ -291,7 +304,7 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "station_name": station_name,
             "doc_name": it.get("doc_name") or "",
             "issue_id": it.get("issue_id") or job.get("issue_id") or "",
-            "cm_date": it.get("cm_date"),
+            "cm_date": resolve_cm_date(it, job),
             "reported_by": it.get("reported_by") or job.get("reported_by") or "",
             "inspector": it.get("inspector") or job.get("inspector") or "",
             "status": it.get("status") or job.get("status") or "",
