@@ -614,7 +614,7 @@ export function SearchDataTables() {
   useEffect(() => {
     if (data.length === 0) return;
     let stopped = false;
-    const poll = async () => { if (stopped) return; try { await fetchAvailability(data); } catch (e: any) { if (e?.status === 401 || e?.message?.includes("401")) { stopped = true; return; } console.error("[availability poll] error:", e); } };
+    const poll = async () => { if (stopped) return; try { await fetchAvailability(); } catch (e: any) { if (e?.status === 401 || e?.message?.includes("401")) { stopped = true; return; } console.error("[availability poll] error:", e); } };
     const interval = setInterval(poll, 10000);
     return () => { stopped = true; clearInterval(interval); };
   }, [data]);
@@ -654,40 +654,46 @@ export function SearchDataTables() {
   useEffect(() => { (async () => { if (me?.role !== "admin") return; const res = await apiFetch(`/username`); if (!res.ok) return; const json: UsernamesResp = await res.json(); setUsernames(Array.isArray(json.username) ? json.username : []); })(); }, [me?.role]);
   useEffect(() => { (async () => { try { const res = await apiFetch(`/all-users/`); if (!res.ok) return; const json = await res.json(); const users = Array.isArray(json?.users) ? json.users : []; const technicianMap = new Map<string, string[]>(); users.forEach((user: any) => { if (user.role === "technician" && user.station_id && Array.isArray(user.station_id)) { user.station_id.forEach((stationId: string) => { if (!technicianMap.has(stationId)) technicianMap.set(stationId, []); technicianMap.get(stationId)!.push(user.username); }); } }); setTechnicians(technicianMap); } catch (e) { console.error("Failed to fetch technicians:", e); } })(); }, []);
 
-  const fetchChargerStatuses = async (stations: StationRow[]) => {
+  // สถานะ on/off ของตู้ทุกตัวในคำขอเดียว (แทนการยิง /charger-onoff/{sn} ทีละตู้)
+  const fetchChargerStatusesBulk = async (): Promise<Record<string, { status: boolean | null }> | null> => {
     try {
-      return await Promise.all(stations.map(async (station) => {
-        if (station.chargers.length === 0) return station;
-        const updatedChargers = await Promise.all(station.chargers.map(async (charger) => {
-          try { const sn = charger.SN; if (!sn || sn === "-") return charger; const res = await apiFetch(`/charger-onoff/${sn}`); if (res.ok) { const d = await res.json(); return { ...charger, status: !!d.status }; } } catch (e) { console.error(`Failed to fetch status for charger SN ${charger.SN}:`, e); }
-          return charger;
-        }));
-        return { ...station, chargers: updatedChargers };
-      }));
-    } catch (e) { console.error("Failed to fetch charger statuses:", e); return stations; }
+      const res = await apiFetch(`/charger-onoff/bulk`);
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json?.statuses ?? null;
+    } catch (e) { console.error("Failed to fetch charger statuses:", e); return null; }
   };
 
-  const fetchAvailability = async (stations: StationRow[]) => {
-    const avMap = new Map<string, { total: number; available: number }>();
-    const cMap = new Map<string, { total: number; available: number }>();
-    await Promise.all(stations.map(async (station) => {
-      try {
-        const res = await apiFetch(`/station-availability/${station.station_id}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        avMap.set(station.station_id, { total: data.total, available: data.available });
-        if (Array.isArray(data.chargers)) { data.chargers.forEach((c: any) => { cMap.set(c.sn, { total: c.total, available: c.available }); }); }
-      } catch (e) { console.error(`Failed availability for ${station.station_id}:`, e); }
+  const applyChargerStatuses = (stations: StationRow[], statuses: Record<string, { status: boolean | null }>): StationRow[] =>
+    stations.map((station) => station.chargers.length === 0 ? station : ({
+      ...station,
+      chargers: station.chargers.map((charger) => {
+        const d = charger.SN && charger.SN !== "-" ? statuses[charger.SN] : undefined;
+        return d ? { ...charger, status: !!d.status } : charger;
+      }),
     }));
-    setAvailability(avMap);
-    setChargerAvailability(cMap);
+
+  // availability ของทุกสถานีในคำขอเดียว (แทนการยิง /station-availability/{id} ทีละสถานี)
+  const fetchAvailability = async () => {
+    try {
+      const res = await apiFetch(`/station-availability/bulk`);
+      if (!res.ok) return;
+      const json = await res.json();
+      const avMap = new Map<string, { total: number; available: number }>();
+      const cMap = new Map<string, { total: number; available: number }>();
+      Object.values(json?.stations ?? {}).forEach((data: any) => {
+        avMap.set(data.station_id, { total: data.total, available: data.available });
+        if (Array.isArray(data.chargers)) { data.chargers.forEach((c: any) => { cMap.set(c.sn, { total: c.total, available: c.available }); }); }
+      });
+      setAvailability(avMap);
+      setChargerAvailability(cMap);
+    } catch (e) { console.error("Failed to fetch availability:", e); }
   };
 
   const mapCharger = (c: any, index: number): ChargerData => {
     const imgs = c.images || {};
 
     const norm = (v: any): string[] => Array.isArray(v) ? v : (typeof v === "string" && v ? [v] : []);
-    console.log("API_BASE:", process.env.NEXT_PUBLIC_API_BASE);
 
     return {
       id: c.id, charger_id: c.charger_id, station_id: c.station_id,
@@ -716,7 +722,7 @@ export function SearchDataTables() {
     };
   };
 
-  const refetchStations = async () => { try { const res = await apiFetch(`/all-stations/`); if (!res.ok) return; const json = await res.json(); const list = Array.isArray(json?.stations) ? json.stations : []; const rows = list.map(mapStation); const rowsWithStatus = await fetchChargerStatuses(rows); setData(rowsWithStatus); fetchAvailability(rowsWithStatus); } catch (e) { console.error("Failed to refetch stations:", e); } };
+  const refetchStations = async () => { try { const statusesPromise = fetchChargerStatusesBulk(); const availabilityPromise = fetchAvailability(); const res = await apiFetch(`/all-stations/`); if (!res.ok) return; const json = await res.json(); const list = Array.isArray(json?.stations) ? json.stations : []; const rows = list.map(mapStation); const statuses = await statusesPromise; setData(statuses ? applyChargerStatuses(rows, statuses) : rows); await availabilityPromise; } catch (e) { console.error("Failed to refetch stations:", e); } };
 
   useEffect(() => {
     (async () => {
@@ -724,15 +730,18 @@ export function SearchDataTables() {
         const token = localStorage.getItem("access_token") || localStorage.getItem("accessToken") || "";
         const claims = decodeJwt(token);
         if (claims) setMe({ user_id: claims.user_id ?? "-", username: claims.username ?? "-", role: claims.role ?? "user" });
+        // ยิง 3 คำขอพร้อมกัน — statuses/availability ไม่ต้องรอ all-stations
+        const statusesPromise = fetchChargerStatusesBulk();
+        const availabilityPromise = fetchAvailability();
         const res = await apiFetch(`/all-stations/`);
         if (!res.ok) { setErr(`Fetch failed: ${res.status}`); setData([]); return; }
         const json = await res.json();
         const list = Array.isArray(json?.stations) ? json.stations : [];
         const rows = list.map(mapStation);
         setData(rows);
-        const rowsWithStatus = await fetchChargerStatuses(rows);
-        setData(rowsWithStatus);
-        fetchAvailability(rowsWithStatus);
+        const statuses = await statusesPromise;
+        if (statuses) setData(applyChargerStatuses(rows, statuses));
+        await availabilityPromise;
       } catch (e) { console.error(e); setErr("Network/Server error"); setData([]); } finally { setLoading(false); }
     })();
   }, []);

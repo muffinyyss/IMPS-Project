@@ -9,7 +9,7 @@ from bson.errors import InvalidId
 from zoneinfo import ZoneInfo
 from pymongo.errors import DuplicateKeyError
 from typing import List, Dict, Any, Optional
-import json, re, uuid, pathlib, secrets
+import asyncio, json, re, uuid, pathlib, secrets
 from PIL import Image
 import io
 from config import (
@@ -195,6 +195,49 @@ async def latest_onoff(sn: str) -> Dict[str, Any]:
     except Exception as e:
         print(f"[latest_onoff] Error for SN {sn}: {e}")
         return {"status": None, "statusAt": None}
+
+
+@router.get("/charger-onoff/bulk")
+async def station_onoff_bulk(current: UserClaims = Depends(get_current_user)):
+    """
+    สถานะ on/off ล่าสุดของตู้ทุกตัวที่ user มองเห็น ในคำขอเดียว
+    (แทนการยิง /charger-onoff/{sn} ทีละตู้จากหน้า Stations — ช้ามากเมื่อมีหลายร้อยตู้)
+    """
+    match_query = station_match_query(current)
+    if match_query is None:
+        return {"statuses": {}}
+
+    charger_query: Dict[str, Any] = {}
+    if match_query:  # ไม่ใช่ admin — จำกัดเฉพาะสถานีที่มองเห็น
+        station_ids = [
+            s["station_id"]
+            for s in station_collection.find(match_query, {"_id": 0, "station_id": 1})
+        ]
+        if not station_ids:
+            return {"statuses": {}}
+        charger_query = {"station_id": {"$in": station_ids}}
+
+    sns = sorted({
+        (c.get("SN") or "").strip()
+        for c in charger_collection.find(charger_query, {"_id": 0, "SN": 1})
+    } - {"", "-"})
+
+    sem = asyncio.Semaphore(40)
+
+    async def fetch_one(sn: str):
+        async with sem:
+            return sn, await latest_onoff(sn)
+
+    results = await asyncio.gather(*(fetch_one(sn) for sn in sns))
+
+    statuses = {}
+    for sn, data in results:
+        status_at = data["statusAt"]
+        statuses[sn] = {
+            "status": data["status"],
+            "statusAt": status_at.astimezone(ZoneInfo("Asia/Bangkok")).isoformat() if status_at else None,
+        }
+    return {"statuses": statuses}
 
 
 @router.get("/charger-onoff/{sn}")
@@ -614,34 +657,43 @@ def to_object_id_safe(s: str):
     except:
         return s
 
+def station_match_query(current: UserClaims) -> Optional[Dict[str, Any]]:
+    """match query ของ stations ตาม role — คืน None ถ้า user มองไม่เห็นสถานีเลย"""
+    if current.role == "admin":
+        return {}
+    if current.role == "technician":
+        if current.station_ids and len(current.station_ids) > 0:
+            return {"station_id": {"$in": current.station_ids}}
+        return None
+    return {
+        "$or": [
+            {"user_id": current.user_id},
+            {"user_id": to_object_id_safe(current.user_id)}
+        ]
+    }
+
+
 @router.get("/all-stations/")
 def get_all_stations(current: UserClaims = Depends(get_current_user)):
-    print(f"=== DEBUG ===")
-    print(f"user_id: {current.user_id}, role: {current.role}")
+    match_query = station_match_query(current)
+    if match_query is None:
+        return {"stations": []}
 
-    if current.role == "admin":
-        match_query = {}
-    elif current.role == "technician":
-        if current.station_ids and len(current.station_ids) > 0:
-            match_query = {"station_id": {"$in": current.station_ids}}
-        else:
-            return {"stations": []}
-    else:
-        match_query = {
-            "$or": [
-                {"user_id": current.user_id},
-                {"user_id": to_object_id_safe(current.user_id)}
-            ]
-        }
+    stations_list = list(station_collection.find(match_query))
 
-    stations_cursor = station_collection.find(match_query)
-    stations_list = list(stations_cursor)
+    # ดึง chargers ทั้งหมดในคำสั่งเดียว (แทนการ query ทีละสถานี — ช้ามากเมื่อมีหลายร้อยสถานี)
+    station_ids = [s.get("station_id") for s in stations_list if s.get("station_id")]
+    chargers_by_station: Dict[str, list] = {}
+    if station_ids:
+        chargers_cursor = charger_collection.find(
+            {"station_id": {"$in": station_ids}}
+        ).sort("chargerNo", 1)
+        for charger_doc in chargers_cursor:
+            chargers_by_station.setdefault(charger_doc.get("station_id"), []).append(charger_doc)
 
     result = []
     for station_doc in stations_list:
-        station_id = station_doc.get("station_id")
-        chargers_cursor = charger_collection.find({"station_id": station_id}).sort("chargerNo", 1)
-        charger_docs = list(chargers_cursor)
+        charger_docs = chargers_by_station.get(station_doc.get("station_id"), [])
         station_out = format_station_with_chargers(station_doc, charger_docs)
         result.append(station_out.dict())
 
@@ -1270,6 +1322,81 @@ class AvailabilityOut(BaseModel):
     total: int
     available: int
 
+async def charger_heads(sn: str) -> Optional[Dict[str, int]]:
+    """นับหัวชาร์จ total/available จากเอกสาร settingParameter ล่าสุดของ SN นั้น"""
+    try:
+        doc = await settingDB[sn].find_one({}, {"_id": 0}, sort=[("_id", -1)])
+    except Exception as e:
+        print(f"[availability] Error for SN {sn}: {e}")
+        return None
+    if not doc:
+        return None
+
+    total = 0
+    available = 0
+    n = 1
+    while f"icp{n}" in doc:
+        total += 1
+        try:
+            icp = int(doc.get(f"icp{n}", 0))
+            usl = int(doc.get(f"usl{n}", 1))
+        except (ValueError, TypeError):
+            n += 1
+            continue
+        if icp == 1 and usl == 0:
+            available += 1
+        n += 1
+    return {"total": total, "available": available}
+
+
+@router.get("/station-availability/bulk")
+async def get_station_availability_bulk(current: UserClaims = Depends(get_current_user)):
+    """
+    Availability (หัวชาร์จว่าง/ทั้งหมด) ของทุกสถานีที่ user มองเห็น ในคำขอเดียว
+    — หน้า Stations ใช้แทนการยิง /station-availability/{station_id} ทีละสถานี
+    """
+    match_query = station_match_query(current)
+    if match_query is None:
+        return {"stations": {}}
+
+    station_ids = [
+        s["station_id"]
+        for s in station_collection.find(match_query, {"_id": 0, "station_id": 1})
+    ]
+    if not station_ids:
+        return {"stations": {}}
+
+    pairs = [
+        (c["station_id"], c["SN"].strip())
+        for c in charger_collection.find(
+            {"station_id": {"$in": station_ids}}, {"_id": 0, "station_id": 1, "SN": 1}
+        )
+        if c.get("SN") and c["SN"].strip() and c["SN"].strip() != "-"
+    ]
+
+    sem = asyncio.Semaphore(40)
+
+    async def fetch_one(sn: str):
+        async with sem:
+            return await charger_heads(sn)
+
+    results = await asyncio.gather(*(fetch_one(sn) for _, sn in pairs))
+
+    stations: Dict[str, Dict[str, Any]] = {
+        sid: {"station_id": sid, "total": 0, "available": 0, "chargers": []}
+        for sid in station_ids
+    }
+    for (sid, sn), heads in zip(pairs, results):
+        if not heads:
+            continue
+        st = stations[sid]
+        st["total"] += heads["total"]
+        st["available"] += heads["available"]
+        st["chargers"].append({"sn": sn, "total": heads["total"], "available": heads["available"]})
+
+    return {"stations": stations}
+
+
 @router.get("/station-availability/{station_id}")
 async def get_station_availability(station_id: str):
     station = station_collection.find_one({"station_id": station_id})
@@ -1286,31 +1413,12 @@ async def get_station_availability(station_id: str):
         sn = charger.get("SN", "")
         if not sn or sn == "-":
             continue
-        try:
-            coll = settingDB[sn]
-            doc = await coll.find_one({}, {"_id": 0}, sort=[("_id", -1)])
-            if not doc:
-                continue
-            c_total = 0
-            c_available = 0
-            n = 1
-            while f"icp{n}" in doc:
-                c_total += 1
-                try:
-                    icp = int(doc.get(f"icp{n}", 0))
-                    usl = int(doc.get(f"usl{n}", 1))
-                except (ValueError, TypeError):
-                    n += 1
-                    continue
-                if icp == 1 and usl == 0:
-                    c_available += 1
-                n += 1
-            total += c_total
-            available += c_available
-            per_charger.append({"sn": sn, "total": c_total, "available": c_available})
-        except Exception as e:
-            print(f"[availability] Error for SN {sn}: {e}")
+        heads = await charger_heads(sn)
+        if not heads:
             continue
+        total += heads["total"]
+        available += heads["available"]
+        per_charger.append({"sn": sn, "total": heads["total"], "available": heads["available"]})
 
     return {
         "station_id": station_id,
