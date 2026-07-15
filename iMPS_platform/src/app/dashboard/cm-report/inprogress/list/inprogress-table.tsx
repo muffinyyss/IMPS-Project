@@ -122,10 +122,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     setStationId(sidLocal);
   }, [searchParams]);
 
-  // ใช้ list ตัวเดียวกันได้ทั้ง tab In Progress และ Pending — filter ตาม tab
-  const isPendingTab = (searchParams.get("tab") ?? "").toLowerCase() === "pending";
-  const statusFromTab = isPendingTab ? "pending" : "in progress";
-  const statusLabel = isPendingTab ? "Pending" : "In Progress";
+  const statusFromTab = "in progress";
 
   const router = useRouter();
   const pathname = usePathname();
