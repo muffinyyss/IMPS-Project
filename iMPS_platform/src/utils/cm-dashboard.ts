@@ -21,6 +21,8 @@ export type ActiveFilters = {
   equipment: string | null;
   severity: string | null;
   station: string | null;
+  /** กรองตาม bucket ของ KPI (คลิกการ์ด KPI ด้านบน) — ละเอียดกว่า status 3 กลุ่ม */
+  workStatus: WorkStatus | null;
 };
 
 export const STATUS_LABELS = {
@@ -156,6 +158,9 @@ export function applyFilters(
     }
     if (filters.station && exclude !== "station") {
       if ((r.station_name || r.station_id || "Unknown") !== filters.station) return false;
+    }
+    if (filters.workStatus && exclude !== "workStatus") {
+      if (normalizeWorkStatus(r.status) !== filters.workStatus) return false;
     }
     return true;
   });

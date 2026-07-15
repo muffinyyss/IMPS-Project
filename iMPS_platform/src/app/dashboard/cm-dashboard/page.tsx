@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { Card, CardHeader, CardBody, Typography } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
 import {
-  CMRow, ActiveFilters, DateSel, STATUS_LABELS,
+  CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatus,
   normalizeStatus, normalizeWorkStatus, statusBadge, filterByDate, listYears,
   weeksInMonth, applyFilters, applySearch, groupCount, groupByMonth,
 } from "@/utils/cm-dashboard";
@@ -18,18 +18,25 @@ const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 const DONUT_COLORS = ["#22c55e", "#f97316", "#ef4444"];
 // Categorical palette for equipment — blue/cool family, no RAG meaning
 const EQUIPMENT_COLORS = ["#3b82f6","#06b6d4","#8b5cf6","#0ea5e9","#a855f7","#14b8a6","#64748b","#6366f1","#0284c7","#7c3aed"];
-const DEFAULT_PAGE_SIZE = 15;
+const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-// การ์ด KPI แบบกะทัดรัด — วางเรียงแถวเดียว 8 ใบด้านบน
-function StatCard({ label, value, color, icon, dim }: {
+// การ์ด KPI แบบกะทัดรัด — วางเรียงแถวเดียว 8 ใบด้านบน คลิกเพื่อกรองแดชบอร์ด
+function StatCard({ label, value, color, icon, dim, active, onClick }: {
   label: string; value: number | string; color: string; icon: string; dim: boolean;
+  active?: boolean; onClick?: () => void;
 }) {
   return (
-    <div
-      className="tw-flex tw-min-w-0 tw-items-center tw-justify-between tw-gap-2 tw-rounded-xl tw-p-3 tw-text-white tw-shadow-md tw-transition-all"
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      aria-pressed={onClick ? !!active : undefined}
+      className={`tw-flex tw-min-w-0 tw-items-center tw-justify-between tw-gap-2 tw-rounded-xl tw-p-3 tw-text-left tw-text-white tw-shadow-md tw-transition-all ${
+        onClick ? "hover:tw-shadow-lg hover:tw-brightness-110 focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-400 focus-visible:tw-ring-offset-2" : "tw-cursor-default"
+      } ${active ? "tw-ring-2 tw-ring-blue-500 tw-ring-offset-2" : ""}`}
       style={{ background: color, opacity: dim ? 0.45 : 1 }}
     >
       <div className="tw-min-w-0">
@@ -39,7 +46,7 @@ function StatCard({ label, value, color, icon, dim }: {
       <div className="tw-flex tw-h-8 tw-w-8 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-full tw-bg-white/20 tw-text-sm">
         {icon}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -156,7 +163,7 @@ export default function CMDashboardPage() {
   const [monthSel, setMonthSel] = useState<DateSel>("all");
   const [weekSel, setWeekSel] = useState<DateSel>("all");
   const [stationFilter, setStationFilter] = useState<string>("All");
-  const [filters, setFilters] = useState<ActiveFilters>({ status: null, equipment: null, severity: null, station: null });
+  const [filters, setFilters] = useState<ActiveFilters>({ status: null, equipment: null, severity: null, station: null, workStatus: null });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -192,7 +199,7 @@ export default function CMDashboardPage() {
   }, []);
 
   const toggleFilter = useCallback((dim: keyof ActiveFilters, value: string) => {
-    setFilters((prev) => ({ ...prev, [dim]: prev[dim] === value ? null : value }));
+    setFilters((prev) => ({ ...prev, [dim]: prev[dim] === value ? null : value } as ActiveFilters));
     setPage(0);
   }, []);
 
@@ -202,7 +209,7 @@ export default function CMDashboardPage() {
   }, []);
 
   const clearAll = () => {
-    setFilters({ status: null, equipment: null, severity: null, station: null });
+    setFilters({ status: null, equipment: null, severity: null, station: null, workStatus: null });
     setSearch("");
     setPage(0);
   };
@@ -266,13 +273,15 @@ export default function CMDashboardPage() {
 
   // ── KPI stat cards (7 ใบ + completion rate): all chart-filters applied
   const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
+  // แถว KPI ไม่กรองด้วย workStatus ของตัวเอง — ตัวเลขครบทุก bucket เสมอ (เหมือน donut กับ status)
+  const kpiRows = useMemo(() => applyFilters(periodRows, filters, "workStatus"), [periodRows, filters]);
   const kpiStats = useMemo(() => {
     const counts = {
-      total: allFiltered.length,
+      total: kpiRows.length,
       newSr: 0, waitManpower: 0, waitSparepart: 0, waitApprove: 0,
       waitSiteAccess: 0, inProgress: 0, completed: 0,
     };
-    for (const r of allFiltered) {
+    for (const r of kpiRows) {
       const s = normalizeWorkStatus(r.status);
       if (s === "new") counts.newSr++;
       else if (s === "wait_manpower") counts.waitManpower++;
@@ -286,7 +295,7 @@ export default function CMDashboardPage() {
     const denom = counts.total - counts.waitSparepart - counts.waitSiteAccess;
     const completionRate = denom > 0 ? Math.round((counts.completed / denom) * 100) : 0;
     return { ...counts, completionRate };
-  }, [allFiltered]);
+  }, [kpiRows]);
 
   // ── Table: chart-filters + search + sort + paginate
   const searchFiltered = useMemo(() => applySearch(allFiltered, search), [allFiltered, search]);
@@ -344,6 +353,7 @@ export default function CMDashboardPage() {
       s3Title: "สถานะรวมรายเดือน (Overall Status by Month)",
       barHint: "คลิกที่แท่งกราฟเพื่อเลือกเดือน",
       rowsPerPage: "แถวต่อหน้า",
+      statusFilterLabel: "กรองตามสถานะ",
       tableTitle: "CM Reports",
       tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "ค้นหา station, issue ID, equipment, severity, inspector…",
@@ -391,6 +401,7 @@ export default function CMDashboardPage() {
       s3Title: "Overall Status by Month",
       barHint: "Click on a bar to select the month",
       rowsPerPage: "Rows per page",
+      statusFilterLabel: "Filter by status",
       tableTitle: "CM Reports",
       tableCount: (n: number, q?: string) => `${n} records${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "Search by station, issue ID, equipment, severity, inspector…",
@@ -413,6 +424,33 @@ export default function CMDashboardPage() {
     const key = Object.entries(STATUS_LABELS).find(([, v]) => v === s)?.[0] as keyof typeof t.statusLabel | undefined;
     return key ? t.statusLabel[key] : s;
   }, [t]);
+
+  // การ์ด KPI — ws = bucket ที่คลิกแล้วกรอง, coarse = สถานะ 3 กลุ่มไว้หรี่การ์ดตอนกรองจาก donut
+  type KpiCard = {
+    label: string; value: number | string; color: string; icon: string;
+    ws?: WorkStatus; coarse?: string; clearsWorkStatus?: boolean;
+  };
+  const kpiCards: KpiCard[] = [
+    { label: t.kpiTotalSR, value: kpiStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", icon: "📋", clearsWorkStatus: true },
+    { label: t.kpiNewSR, value: kpiStats.newSr, color: "linear-gradient(135deg,#06b6d4,#0e7490)", icon: "🆕", ws: "new", coarse: STATUS_LABELS.open },
+    { label: t.kpiWaitManpower, value: kpiStats.waitManpower, color: "linear-gradient(135deg,#f59e0b,#b45309)", icon: "👷", ws: "wait_manpower", coarse: STATUS_LABELS.open },
+    { label: t.kpiWaitSparepart, value: kpiStats.waitSparepart, color: "linear-gradient(135deg,#f43f5e,#be123c)", icon: "🔩", ws: "wait_sparepart", coarse: STATUS_LABELS.open },
+    { label: t.kpiWaitApprove, value: kpiStats.waitApprove, color: "linear-gradient(135deg,#8b5cf6,#6d28d9)", icon: "✍️", ws: "wait_approve", coarse: STATUS_LABELS.open },
+    { label: t.kpiCompleted, value: kpiStats.completed, color: "linear-gradient(135deg,#22c55e,#15803d)", icon: "✅", ws: "completed", coarse: STATUS_LABELS.completed },
+    { label: t.kpiWaitSiteAccess, value: kpiStats.waitSiteAccess, color: "linear-gradient(135deg,#0ea5e9,#0369a1)", icon: "🚧", ws: "wait_site_access", coarse: STATUS_LABELS.open },
+    { label: t.kpiCompletionRate, value: `${kpiStats.completionRate}%`, color: "linear-gradient(135deg,#334155,#0f172a)", icon: "🎯" },
+  ];
+
+  // ป้ายชื่อ bucket สำหรับ filter chip (คลิกการ์ด KPI)
+  const workStatusLabel: Record<WorkStatus, string> = {
+    new: t.kpiNewSR,
+    wait_manpower: t.kpiWaitManpower,
+    wait_sparepart: t.kpiWaitSparepart,
+    wait_approve: t.kpiWaitApprove,
+    wait_site_access: t.kpiWaitSiteAccess,
+    in_progress: t.statusLabel.in_progress,
+    completed: t.kpiCompleted,
+  };
 
   // ─── Chart options ────────────────────────────────────────────────────────
 
@@ -603,18 +641,24 @@ export default function CMDashboardPage() {
         </div>
       </div>
 
-      {/* ── KPI row: 7 ตัวนับ + completion rate ── */}
+      {/* ── KPI row: 7 ตัวนับ + completion rate — คลิกการ์ดเพื่อกรองทั้งแดชบอร์ด ── */}
       <section className="tw-mb-6 tw-grid tw-grid-cols-2 tw-gap-3 sm:tw-grid-cols-4 xl:tw-grid-cols-8">
-        {[
-          { label: t.kpiTotalSR, value: kpiStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", icon: "📋", dim: false },
-          { label: t.kpiNewSR, value: kpiStats.newSr, color: "linear-gradient(135deg,#06b6d4,#0e7490)", icon: "🆕", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
-          { label: t.kpiWaitManpower, value: kpiStats.waitManpower, color: "linear-gradient(135deg,#f59e0b,#b45309)", icon: "👷", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
-          { label: t.kpiWaitSparepart, value: kpiStats.waitSparepart, color: "linear-gradient(135deg,#f43f5e,#be123c)", icon: "🔩", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
-          { label: t.kpiWaitApprove, value: kpiStats.waitApprove, color: "linear-gradient(135deg,#8b5cf6,#6d28d9)", icon: "✍️", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
-          { label: t.kpiCompleted, value: kpiStats.completed, color: "linear-gradient(135deg,#22c55e,#15803d)", icon: "✅", dim: filters.status !== null && filters.status !== STATUS_LABELS.completed },
-          { label: t.kpiWaitSiteAccess, value: kpiStats.waitSiteAccess, color: "linear-gradient(135deg,#0ea5e9,#0369a1)", icon: "🚧", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
-          { label: t.kpiCompletionRate, value: `${kpiStats.completionRate}%`, color: "linear-gradient(135deg,#334155,#0f172a)", icon: "🎯", dim: false },
-        ].map((c) => <StatCard key={c.label} {...c} />)}
+        {kpiCards.map((c) => (
+          <StatCard
+            key={c.label}
+            label={c.label} value={c.value} color={c.color} icon={c.icon}
+            active={c.ws !== undefined && filters.workStatus === c.ws}
+            dim={
+              (filters.workStatus !== null && c.ws !== undefined && filters.workStatus !== c.ws) ||
+              (filters.status !== null && c.coarse !== undefined && filters.status !== c.coarse)
+            }
+            onClick={
+              c.ws !== undefined
+                ? () => toggleFilter("workStatus", c.ws!)
+                : c.clearsWorkStatus ? () => clearFilter("workStatus") : undefined
+            }
+          />
+        ))}
       </section>
 
       {/* ── Active filter chips ── */}
@@ -622,6 +666,7 @@ export default function CMDashboardPage() {
         <div className="tw-mb-4 tw-flex tw-flex-wrap tw-items-center tw-gap-2">
           <span className="tw-text-xs tw-font-medium tw-text-gray-500">{t.filterLabel}</span>
           {filters.status && <FilterChip label={`Status: ${displayStatus(filters.status)}`} onRemove={() => clearFilter("status")} />}
+          {filters.workStatus && <FilterChip label={`KPI: ${workStatusLabel[filters.workStatus]}`} onRemove={() => clearFilter("workStatus")} />}
           {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} onRemove={() => clearFilter("equipment")} />}
           {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} onRemove={() => clearFilter("severity")} />}
           {filters.station && <FilterChip label={`Station: ${filters.station}`} onRemove={() => clearFilter("station")} />}
@@ -663,7 +708,8 @@ export default function CMDashboardPage() {
           </CardHeader>
           <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
             <div className="tw-mx-auto tw-max-w-md">
-              <Chart type="donut" options={donutOptions} series={[srStats.completed, srStats.inProgress, srStats.open]} width="100%" height={280} />
+              {/* key บังคับ remount ตอนเปอร์เซ็นต์เปลี่ยน — ApexCharts ไม่รีเฟรช formatter ของ total label ผ่าน updateOptions */}
+              <Chart key={`sr-${successRate}`} type="donut" options={donutOptions} series={[srStats.completed, srStats.inProgress, srStats.open]} width="100%" height={280} />
             </div>
           </CardBody>
         </Card>
@@ -758,12 +804,34 @@ export default function CMDashboardPage() {
               ({t.tableCount(searchFiltered.length, search || undefined)})
             </span>
           </h2>
-          <div className="tw-flex tw-items-center tw-gap-4">
+          <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
             {activeFilterCount > 0 && (
               <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
                 {t.clearFilters}
               </button>
             )}
+            {/* ปุ่มกรองสถานะด่วน Open / In Progress / Closed — ป้ายเดียวกับ badge ในตาราง */}
+            <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
+              {([
+                { key: "open", label: "Open", color: "#dc2626", bg: "#fee2e2", count: srStats.open },
+                { key: "in_progress", label: "In Progress", color: "#ea580c", bg: "#fff7ed", count: srStats.inProgress },
+                { key: "completed", label: "Closed", color: "#15803d", bg: "#dcfce7", count: srStats.completed },
+              ] as const).map(({ key, label, color, bg, count }) => {
+                const isActive = filters.status === STATUS_LABELS[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleFilter("status", STATUS_LABELS[key])}
+                    aria-pressed={isActive}
+                    className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${isActive ? "tw-shadow-sm" : "hover:tw-brightness-95"}`}
+                    style={isActive ? { background: color, color: "#fff" } : { background: bg, color }}
+                  >
+                    {label} ({count})
+                  </button>
+                );
+              })}
+            </div>
             {/* ผู้ใช้พิมพ์จำนวนแถวต่อหน้าเองได้ */}
             <div className="tw-flex tw-items-center tw-gap-1.5">
               <label htmlFor="rows-per-page" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.rowsPerPage}</label>

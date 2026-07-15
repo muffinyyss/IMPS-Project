@@ -36,7 +36,7 @@ function makeRow(overrides: Partial<CMRow> = {}): CMRow {
 }
 
 const noFilters: ActiveFilters = {
-  status: null, equipment: null, severity: null, station: null,
+  status: null, equipment: null, severity: null, station: null, workStatus: null,
 };
 
 // ─── normalizeStatus ─────────────────────────────────────────────────────────
@@ -198,6 +198,39 @@ describe("applyFilters", () => {
   it("returns empty when no rows match combined filters", () => {
     const filters = { ...noFilters, equipment: "fan", severity: "High" };
     expect(applyFilters([closedRow, openRow], filters)).toHaveLength(0);
+  });
+
+  // ── workStatus (คลิกการ์ด KPI) ──
+  it("filters by workStatus bucket (completed)", () => {
+    const filters = { ...noFilters, workStatus: "completed" as const };
+    const out = applyFilters([closedRow, openRow], filters);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toBe(closedRow);
+  });
+
+  it("filters by workStatus bucket (new) — plain open rows count as new", () => {
+    const filters = { ...noFilters, workStatus: "new" as const };
+    const out = applyFilters([closedRow, openRow], filters);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toBe(openRow);
+  });
+
+  it("filters by workStatus bucket (wait_sparepart) via keyword", () => {
+    const spareRow = makeRow({ status: "WO wait for spare part" });
+    const filters = { ...noFilters, workStatus: "wait_sparepart" as const };
+    const out = applyFilters([closedRow, openRow, spareRow], filters);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toBe(spareRow);
+  });
+
+  it("workStatus combines with other filters (AND logic)", () => {
+    const filters = { ...noFilters, workStatus: "completed" as const, severity: "High" };
+    expect(applyFilters([closedRow, openRow], filters)).toHaveLength(0);
+  });
+
+  it('exclude "workStatus" skips that dimension', () => {
+    const filters = { ...noFilters, workStatus: "completed" as const };
+    expect(applyFilters([closedRow, openRow], filters, "workStatus")).toHaveLength(2);
   });
 });
 
