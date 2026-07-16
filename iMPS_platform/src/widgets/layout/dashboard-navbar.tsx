@@ -129,6 +129,7 @@ export function DashboardNavbar() {
   else if (segs[1] === "pm-report") title = "PM Report";
   else if (segs[1] === "input_PMreport") title = "Add PM Report";
   else if (segs[1] === "cm-report") title = "CM Report";
+  else if (segs[1] === "cm-dashboard") title = "CM Dashboard";
   else if (segs[1] === "cbm") title = "Condition-base";
   else if (segs[1] === "stations") title = "Stations";
   else if (segs[1] === "solar-plant") title = "Solar Plant";

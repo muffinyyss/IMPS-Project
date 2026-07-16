@@ -173,10 +173,14 @@ type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: str
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
 const REPAIR_OPTIONS = [
-    { value: "แก้ไขสำเร็จ", th: "แก้ไขสำเร็จ", en: "Fixed Successfully" },
-    { value: "อยู่ระหว่างการติดตามผล", th: "อยู่ระหว่างการติดตามผล", en: "Monitoring" },
-    { value: "อยู่ระหว่างการรออะไหล่", th: "อยู่ระหว่างการรออะไหล่", en: "Waiting for Parts" },
+    { value: "WO - wait for manpower", th: "WO - wait for manpower", en: "WO - wait for manpower" },
+    { value: "WO - wait for spare part", th: "WO - wait for spare part", en: "WO - wait for spare part" },
+    { value: "WO - wait for site access", th: "WO - wait for site access", en: "WO - wait for site access" },
+    { value: "WO - wait for approve", th: "WO - wait for approve", en: "WO - wait for approve" },
 ] as const;
+
+// ค่าผลหลังซ่อมที่ถือว่าเป็นสถานะ "รอ" (WO waiting) — ยังคงอยู่ In Progress
+const WO_WAITING_RESULTS = ["WO - wait for manpower", "WO - wait for spare part", "WO - wait for site access", "WO - wait for approve"];
 
 const PROBLEM_TYPE_OPTIONS = [
     { value: "Hardware", th: "Hardware (ฮาร์ดแวร์)", en: "Hardware" },
@@ -756,8 +760,8 @@ function RowSelect({ values, options, onChange, resolveLabel, accent, placeholde
                 const avail = options.filter(o => !others.has(o.value));
                 const isLast = i === rows.length - 1;
                 return (
-                    <div key={i} className="tw-flex tw-items-start tw-gap-2 md:tw-w-96">
-                        <div className="tw-flex-1 tw-min-w-0">
+                    <div key={i} className="tw-flex tw-items-start tw-gap-2">
+                        <div className="tw-flex-1 tw-min-w-0 md:tw-flex-none md:tw-w-96">
                             <CreatableSelect
                                 isClearable
                                 isDisabled={disabled}
@@ -777,107 +781,13 @@ function RowSelect({ values, options, onChange, resolveLabel, accent, placeholde
                                 <XMarkIcon className="tw-w-5 tw-h-5" />
                             </button>
                         )}
-                        {isLast && !disabled && (
+                        {isLast && !disabled && options.length > 1 && (
                             <button type="button" onClick={addRow} disabled={lastEmpty} title={addLabel} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-flex tw-items-center tw-justify-center hover:tw-brightness-95 disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-transition-all tw-text-xl tw-font-bold tw-leading-none"
                                 style={{ borderColor: accent.border, backgroundColor: accent.pill, color: accent.pillText }}>+</button>
                         )}
                     </div>
                 );
             })}
-        </div>
-    );
-}
-
-// ==================== SIGNATURE PAD (วาดลายเซ็นบน canvas, ไม่ใช้ dependency) ====================
-function SignaturePad({ value, onChange, lang, disabled }: { value: string; onChange: (dataUrl: string) => void; lang: Lang; disabled?: boolean }) {
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const drawing = useRef(false);
-    const last = useRef<{ x: number; y: number } | null>(null);
-    const hasDrawn = useRef(false);
-
-    // ตั้งค่าขนาด canvas ตาม devicePixelRatio + พื้นหลังขาว + วาดค่าเดิม (ถ้ามี) ครั้งเดียวตอน mount
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        const ratio = window.devicePixelRatio || 1;
-        const rect = canvas.getBoundingClientRect();
-        canvas.width = rect.width * ratio;
-        canvas.height = rect.height * ratio;
-        ctx.scale(ratio, ratio);
-        ctx.lineWidth = 2;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.strokeStyle = "#111827";
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, rect.width, rect.height);
-        if (value) {
-            const img = new window.Image();
-            img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
-            img.src = value;
-            hasDrawn.current = true;
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const posOf = (e: React.PointerEvent) => {
-        const rect = canvasRef.current!.getBoundingClientRect();
-        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    };
-    const start = (e: React.PointerEvent) => {
-        e.preventDefault();
-        drawing.current = true;
-        last.current = posOf(e);
-        try { (e.target as Element).setPointerCapture?.(e.pointerId); } catch { }
-    };
-    const move = (e: React.PointerEvent) => {
-        if (!drawing.current) return;
-        const ctx = canvasRef.current?.getContext("2d");
-        if (!ctx || !last.current) return;
-        const p = posOf(e);
-        ctx.beginPath();
-        ctx.moveTo(last.current.x, last.current.y);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-        last.current = p;
-        hasDrawn.current = true;
-    };
-    const end = () => {
-        if (!drawing.current) return;
-        drawing.current = false;
-        last.current = null;
-        if (hasDrawn.current && canvasRef.current) onChange(canvasRef.current.toDataURL("image/png"));
-    };
-    const clear = () => {
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext("2d");
-        if (!canvas || !ctx) return;
-        const rect = canvas.getBoundingClientRect();
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, rect.width, rect.height);
-        hasDrawn.current = false;
-        onChange("");
-    };
-
-    return (
-        <div className="tw-space-y-2">
-            <canvas
-                ref={canvasRef}
-                onPointerDown={disabled ? undefined : start}
-                onPointerMove={disabled ? undefined : move}
-                onPointerUp={disabled ? undefined : end}
-                onPointerLeave={disabled ? undefined : end}
-                className={`tw-w-full md:tw-w-96 tw-h-40 tw-border tw-border-gray-300 tw-rounded-xl tw-bg-white ${disabled ? "tw-pointer-events-none" : "tw-cursor-crosshair"}`}
-                style={{ touchAction: "none" }}
-            />
-            {!disabled && (
-                <div className="tw-flex tw-justify-start">
-                    <button type="button" onClick={clear} className="tw-text-sm tw-font-medium tw-rounded-lg tw-border tw-border-gray-300 tw-px-3 tw-py-1.5 tw-text-gray-600 hover:tw-bg-gray-50 tw-transition-colors">
-                        {lang === "th" ? "ล้างลายเซ็น" : "Clear"}
-                    </button>
-                </div>
-            )}
         </div>
     );
 }
@@ -1009,14 +919,16 @@ function getSeverityColor(severity: string) {
 }
 
 // ==================== PROBLEM GROUP (ชุดกรอกเพิ่ม: ปัญหา→สาเหตุ→การแก้ไข→การดำเนินการ) ====================
-type PGroup = { kind: "full" | "cause"; problem_type: string[]; cause: string[]; repaired_equipment: string[]; corrective_actions: CorrectiveItem[] };
-const newGroup = (kind: "full" | "cause"): PGroup => ({ kind, problem_type: [], cause: [], repaired_equipment: [], corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }] });
+type PGroup = { kind: "full" | "cause" | "correction"; problem_type: string[]; cause: string[]; repaired_equipment: string[]; corrective_actions: CorrectiveItem[] };
+const newGroup = (kind: "full" | "cause" | "correction"): PGroup => ({ kind, problem_type: [], cause: [], repaired_equipment: [], corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }] });
 
-function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGroup, onAddCauseGroup, mainProblem, lang, index }: {
-    faultyEquipment: string; value: PGroup; onChange: (g: PGroup) => void; onRemove: () => void; onAddGroup: () => void; onAddCauseGroup: () => void; mainProblem: string[]; lang: Lang; index: number;
+function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGroup, onAddCauseGroup, onAddCorrectionGroup, mainProblem, mainCause, takenCauses, takenCorrections, lang, index }: {
+    faultyEquipment: string; value: PGroup; onChange: (g: PGroup) => void; onRemove: () => void; onAddGroup: () => void; onAddCauseGroup: () => void; onAddCorrectionGroup: () => void; mainProblem: string[]; mainCause: string[]; takenCauses: string[]; takenCorrections: string[]; lang: Lang; index: number;
 }) {
-    const isCauseOnly = value.kind === "cause";      // บล็อกสาเหตุ: ไม่มีช่องปัญหา ใช้ปัญหาหลักคำนวณ
-    const effProblems = isCauseOnly ? mainProblem : value.problem_type;
+    const isCauseOnly = value.kind === "cause";            // บล็อกสาเหตุ: ไม่มีช่องปัญหา ใช้ปัญหาหลักคำนวณ
+    const isCorrectionOnly = value.kind === "correction";  // บล็อกการแก้ไข: มีแค่การแก้ไข→การดำเนินการ ใช้ปัญหา+สาเหตุหลัก
+    const effProblems = (isCauseOnly || isCorrectionOnly) ? mainProblem : value.problem_type;
+    const effCauses = isCorrectionOnly ? mainCause : value.cause;
 
     const failureProblemOptions = PROBLEM_OPTIONS_BY_FAILURECODE[faultyEquipment] ?? null;
     const problemSelectOptions = [
@@ -1034,16 +946,35 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
         return all.length ? all : null;
     })();
     const resolveCauseLabel = (v: string) => causeOptions?.find(o => o.value === v)?.label ?? v;
+    // ตัด "สาเหตุ" ที่ถูกเลือกไว้ในช่องอื่นออก (กันเลือกซ้ำ) — เก็บค่าของตัวเองไว้
+    const causeOptionsAvail = causeOptions
+        ? causeOptions.filter(o => !takenCauses.includes(o.value) || value.cause.includes(o.value))
+        : null;
+
+    // ถ้าสาเหตุที่เหลือให้เลือกมีแค่อันเดียว → เลือกให้อัตโนมัติ
+    useEffect(() => {
+        if (causeOptionsAvail && causeOptionsAvail.length === 1) {
+            const only = causeOptionsAvail[0].value;
+            if (value.cause.length !== 1 || value.cause[0] !== only) {
+                onChange({ ...value, cause: [only] });
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [takenCauses.join(","), effProblems.join(","), faultyEquipment]);
 
     const correctionOptions = (() => {
         const seen = new Set<string>(); const all: { value: string; label: string }[] = [];
-        for (const p of effProblems) for (const c of value.cause) {
+        for (const p of effProblems) for (const c of effCauses) {
             const opts = CORRECTION_OPTIONS_BY_FC_PROBLEM_CAUSE[`${faultyEquipment}:${p}:${c}`];
             if (opts) for (const o of opts) if (!seen.has(o.value)) { seen.add(o.value); all.push(o); }
         }
         return all.length ? all : null;
     })();
     const resolveCorrectionLabel = (v: string) => correctionOptions?.find(o => o.value === v)?.label ?? formatDeviceName(v);
+    // ตัด "การแก้ไข" ที่ถูกเลือกไว้ในช่องอื่นออก (กันเลือกซ้ำ) — เก็บค่าของตัวเองไว้
+    const correctionOptionsAvail = correctionOptions
+        ? correctionOptions.filter(o => !takenCorrections.includes(o.value) || value.repaired_equipment.includes(o.value))
+        : null;
 
     // auto-sync การดำเนินการแก้ไข ตามการแก้ไขที่เลือก
     useEffect(() => {
@@ -1074,13 +1005,13 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
     return (
         <div className="tw-pt-5 tw-mt-1 tw-border-t tw-border-dashed tw-border-blue-gray-200 tw-space-y-5">
             <div className="tw-flex tw-items-center tw-justify-between tw-gap-3">
-                <span className="tw-inline-flex tw-items-center tw-gap-2 tw-font-semibold tw-text-sm tw-text-blue-gray-700"><span className="tw-w-6 tw-h-6 tw-rounded-full tw-bg-blue-100 tw-text-blue-700 tw-flex tw-items-center tw-justify-center tw-text-xs tw-font-bold">{index + 2}</span>{isCauseOnly ? (th ? `สาเหตุเพิ่มเติม (ชุดที่ ${index + 2})` : `Additional cause (Set ${index + 2})`) : (th ? `ชุดที่ ${index + 2}` : `Set ${index + 2}`)}</span>
+                <span className="tw-inline-flex tw-items-center tw-gap-2 tw-font-semibold tw-text-sm tw-text-blue-gray-700"><span className="tw-w-6 tw-h-6 tw-rounded-full tw-bg-blue-100 tw-text-blue-700 tw-flex tw-items-center tw-justify-center tw-text-xs tw-font-bold">{index + 2}</span>{isCauseOnly ? (th ? `สาเหตุเพิ่มเติม (ชุดที่ ${index + 2})` : `Additional cause (Set ${index + 2})`) : isCorrectionOnly ? (th ? `การแก้ไขเพิ่มเติม (ชุดที่ ${index + 2})` : `Additional correction (Set ${index + 2})`) : (th ? `ชุดที่ ${index + 2}` : `Set ${index + 2}`)}</span>
                 <button type="button" onClick={onRemove} className="tw-w-8 tw-h-8 tw-rounded-lg tw-text-red-400 hover:tw-text-white hover:tw-bg-red-500 tw-flex tw-items-center tw-justify-center tw-transition-all" title={th ? "ลบชุดนี้" : "Remove set"}>
                     <XMarkIcon className="tw-w-5 tw-h-5" />
                 </button>
             </div>
                 {/* ปัญหา (เฉพาะบล็อกชุดปัญหาเต็ม) */}
-                {!isCauseOnly && (
+                {!isCauseOnly && !isCorrectionOnly && (
                 <div className="tw-space-y-2">
                     <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700"><span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>{th ? "ปัญหา" : "Problem"}</label>
                     <div className="tw-flex tw-items-start tw-gap-2 md:tw-w-96">
@@ -1098,66 +1029,122 @@ function ProblemGroupBlock({ faultyEquipment, value, onChange, onRemove, onAddGr
                 </div>
                 )}
                 {/* สาเหตุ */}
+                {!isCorrectionOnly && (
                 <div className="tw-space-y-2">
                     <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700"><span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>{th ? "สาเหตุ" : "Cause"}</label>
-                    <div className="tw-flex tw-items-start tw-gap-2 md:tw-w-96">
-                        <div className="tw-flex-1 tw-min-w-0">
+                    <div className="tw-flex tw-items-start tw-gap-2">
+                        <div className="tw-flex-1 tw-min-w-0 md:tw-flex-none md:tw-w-96">
                             <CreatableSelect isClearable
                                 placeholder={th ? "เลือกสาเหตุ..." : "Select cause..."}
-                                options={causeOptions ?? []}
-                                isDisabled={!causeOptions}
+                                options={causeOptionsAvail ?? []}
+                                isDisabled={!causeOptionsAvail}
                                 value={value.cause[0] ? { value: value.cause[0], label: resolveCauseLabel(value.cause[0]) } : null}
-                                onChange={(opt: any) => onChange({ ...value, cause: opt ? [opt.value] : [] })}
+                                onChange={(opt: any) => onChange(opt ? { ...value, cause: [opt.value] } : { ...value, cause: [], repaired_equipment: [] })}
                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                 menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.blue)} />
                         </div>
-                        <button type="button" onClick={onAddCauseGroup} title={th ? "เพิ่มสาเหตุ" : "Add cause"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-border-blue-300 tw-bg-blue-50 tw-text-blue-600 tw-flex tw-items-center tw-justify-center hover:tw-bg-blue-100 tw-transition-all tw-text-xl tw-font-bold tw-leading-none">+</button>
+                        {(causeOptionsAvail?.length ?? 0) > 1 && (
+                            <button type="button" onClick={onAddCauseGroup} title={th ? "เพิ่มสาเหตุ" : "Add cause"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-border-blue-300 tw-bg-blue-50 tw-text-blue-600 tw-flex tw-items-center tw-justify-center hover:tw-bg-blue-100 tw-transition-all tw-text-xl tw-font-bold tw-leading-none">+</button>
+                        )}
                     </div>
                 </div>
+                )}
                 {/* การแก้ไข */}
                 <div className="tw-space-y-2">
                     <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700"><span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>{th ? "การแก้ไข" : "Correction"}</label>
-                    <RowSelect
-                        values={value.repaired_equipment}
-                        options={correctionOptions ?? []}
-                        resolveLabel={resolveCorrectionLabel}
-                        accent={SELECT_ACCENT.amber}
-                        placeholder={th ? "เลือกการแก้ไข..." : "Select correction..."}
-                        disabled={!correctionOptions}
-                        addLabel={th ? "เพิ่มการแก้ไข" : "Add correction"}
-                        onChange={(vals) => onChange({ ...value, repaired_equipment: vals })}
-                    />
+                    <div className="tw-flex tw-items-start tw-gap-2">
+                        <div className="tw-flex-1 tw-min-w-0 md:tw-flex-none md:tw-w-96">
+                            <CreatableSelect isClearable
+                                placeholder={th ? "เลือกการแก้ไข..." : "Select correction..."}
+                                options={correctionOptionsAvail ?? []}
+                                isDisabled={!correctionOptionsAvail}
+                                value={value.repaired_equipment[0] ? { value: value.repaired_equipment[0], label: resolveCorrectionLabel(value.repaired_equipment[0]) } : null}
+                                onChange={(opt: any) => onChange({ ...value, repaired_equipment: opt ? [opt.value] : [] })}
+                                formatCreateLabel={(v: string) => `+ "${v}"`}
+                                menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.amber)} />
+                        </div>
+                        {(correctionOptionsAvail?.length ?? 0) > 1 && (
+                            <button type="button" onClick={onAddCorrectionGroup} title={th ? "เพิ่มการแก้ไข" : "Add correction"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-flex tw-items-center tw-justify-center hover:tw-brightness-95 tw-transition-all tw-text-xl tw-font-bold tw-leading-none" style={{ borderColor: SELECT_ACCENT.amber.border, backgroundColor: SELECT_ACCENT.amber.pill, color: SELECT_ACCENT.amber.pillText }}>+</button>
+                        )}
+                    </div>
                 </div>
                 {/* การดำเนินการแก้ไข */}
                 {value.corrective_actions.length > 0 && (
                     <div className="tw-space-y-4">
                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700"><span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>{th ? "การดำเนินการแก้ไข" : "Corrective Actions"}</label>
                         {value.corrective_actions.map((action, i) => (
-                            <div key={i} className="tw-border tw-border-gray-100 tw-rounded-xl tw-p-4 tw-space-y-3">
-                                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
-                                    {(["beforeImages", "afterImages"] as const).map((kind) => (
-                                        <div key={kind} className={`tw-border tw-rounded-xl tw-p-3 ${kind === "beforeImages" ? "tw-border-red-200 tw-bg-red-50/30" : "tw-border-green-200 tw-bg-green-50/30"}`}>
-                                            <div className="tw-flex tw-items-center tw-justify-between tw-mb-2">
-                                                <span className={`tw-text-xs tw-font-semibold ${kind === "beforeImages" ? "tw-text-red-700" : "tw-text-green-700"}`}>{kind === "beforeImages" ? (th ? "รูปก่อน" : "Before") : (th ? "รูปหลัง" : "After")}</span>
-                                                <label className="tw-inline-flex tw-items-center tw-gap-1 tw-px-2 tw-py-1 tw-rounded-lg tw-bg-white tw-border tw-text-xs tw-cursor-pointer hover:tw-bg-gray-50">
-                                                    <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addImgs(i, kind, e.target.files)} />
-                                                    <PhotoIcon className="tw-w-4 tw-h-4" /><span>{th ? "แนบ" : "Add"}</span>
-                                                </label>
+                            <div key={i}>
+                                {i > 0 && <hr className="tw-border-gray-200 tw-my-5" />}
+                                <div className="tw-flex tw-gap-4">
+                                    <div className="tw-flex-1 tw-space-y-4">
+                                        {value.corrective_actions.length > 1 && (
+                                            <div className="tw-flex tw-justify-end">
+                                                <button type="button" onClick={() => onChange({ ...value, corrective_actions: value.corrective_actions.filter((_, j) => j !== i) })} className="tw-w-10 tw-h-10 tw-rounded-lg tw-text-red-400 hover:tw-text-white hover:tw-bg-red-500 tw-flex tw-items-center tw-justify-center tw-transition-all">
+                                                    <XMarkIcon className="tw-w-5 tw-h-5" />
+                                                </button>
                                             </div>
-                                            {action[kind].length > 0 && (
-                                                <div className="tw-grid tw-grid-cols-3 tw-gap-2">
-                                                    {action[kind].map((img) => (
-                                                        <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-bg-white">
-                                                            <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
-                                                            <button type="button" onClick={() => removeImg(i, kind, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-5 tw-h-5 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600"><XMarkIcon className="tw-w-3 tw-h-3" /></button>
-                                                        </div>
-                                                    ))}
+                                        )}
+                                        <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                                            {/* Before Images */}
+                                            <div className="tw-border tw-border-red-200 tw-rounded-xl tw-p-4 tw-bg-red-50/30">
+                                                <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                                    <span className="tw-text-sm tw-font-semibold tw-text-red-700 tw-flex tw-items-center tw-gap-2"><span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-500"></span>{t("beforePhoto", lang)} <span className="tw-text-red-500">*</span></span>
+                                                    <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-red-300 tw-text-red-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-red-50 tw-shadow-sm tw-transition-all">
+                                                        <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addImgs(i, "beforeImages", e.target.files)} />
+                                                        <PhotoIcon className="tw-w-4 tw-h-4" /><span>{t("attachPhoto", lang)}</span>
+                                                    </label>
                                                 </div>
-                                            )}
+                                                {action.beforeImages.length > 0 ? (
+                                                    <div className="tw-grid tw-grid-cols-3 tw-gap-2">
+                                                        {action.beforeImages.map((img) => (
+                                                            <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-red-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
+                                                                <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                                {(img.createdAt || img.location) && (
+                                                                    <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
+                                                                        {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
+                                                                        {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
+                                                                    </span>
+                                                                )}
+                                                                <button type="button" onClick={() => removeImg(i, "beforeImages", img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all"><XMarkIcon className="tw-w-3.5 tw-h-3.5" /></button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="tw-text-center tw-py-6 tw-text-red-500 tw-text-sm tw-font-medium">{th ? "⚠️ กรุณาแนบรูปก่อนแก้ไข" : "⚠️ Please attach before image"}</div>
+                                                )}
+                                            </div>
+                                            {/* After Images */}
+                                            <div className="tw-border tw-border-green-200 tw-rounded-xl tw-p-4 tw-bg-green-50/30">
+                                                <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
+                                                    <span className="tw-text-sm tw-font-semibold tw-text-green-700 tw-flex tw-items-center tw-gap-2"><span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-green-500"></span>{t("afterPhoto", lang)}</span>
+                                                    <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-green-300 tw-text-green-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-green-50 tw-shadow-sm tw-transition-all">
+                                                        <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addImgs(i, "afterImages", e.target.files)} />
+                                                        <PhotoIcon className="tw-w-4 tw-h-4" /><span>{t("attachPhoto", lang)}</span>
+                                                    </label>
+                                                </div>
+                                                {action.afterImages.length > 0 ? (
+                                                    <div className="tw-grid tw-grid-cols-3 tw-gap-2">
+                                                        {action.afterImages.map((img) => (
+                                                            <div key={img.id} className="tw-relative tw-aspect-square tw-rounded-lg tw-overflow-hidden tw-border tw-border-green-200 tw-bg-white tw-shadow-sm hover:tw-shadow-md tw-transition-shadow">
+                                                                <img src={img.preview} alt="" className="tw-w-full tw-h-full tw-object-cover" />
+                                                                {(img.createdAt || img.location) && (
+                                                                    <span className="tw-absolute tw-bottom-1 tw-right-1 tw-text-[8px] tw-leading-tight tw-bg-black/60 tw-text-white tw-px-1.5 tw-py-1 tw-rounded tw-pointer-events-none tw-text-right tw-max-w-[90%] tw-truncate">
+                                                                        {img.createdAt && <span className="tw-block tw-font-mono">{img.createdAt}</span>}
+                                                                        {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
+                                                                    </span>
+                                                                )}
+                                                                <button type="button" onClick={() => removeImg(i, "afterImages", img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all"><XMarkIcon className="tw-w-3.5 tw-h-3.5" /></button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="tw-text-center tw-py-6 tw-text-green-600 tw-text-sm tw-font-medium">{th ? "ยังไม่มีรูปหลังแก้ไข" : "No after image yet"}</div>
+                                                )}
+                                            </div>
                                         </div>
-                                    ))}
+                                        <textarea value={action.text} onChange={(e) => setText(i, e.target.value)} rows={3} placeholder={th ? "กรอกรายละเอียดการดำเนินการ..." : "Enter action details..."} className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-gray-300 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-amber-400 tw-transition-colors tw-resize-y" />
+                                    </div>
                                 </div>
-                                <textarea value={action.text} onChange={(e) => setText(i, e.target.value)} rows={2} placeholder={th ? "กรอกรายละเอียดการดำเนินการ..." : "Enter action details..."} className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-gray-300 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-amber-400 tw-resize-y" />
                             </div>
                         ))}
                     </div>
@@ -1183,6 +1170,7 @@ export default function CMInProgressForm() {
     const [extraGroups, setExtraGroups] = useState<PGroup[]>([]);
     const addProblemGroup = () => setExtraGroups(g => [...g, newGroup("full")]);
     const addCauseGroup = () => setExtraGroups(g => [...g, newGroup("cause")]);
+    const addCorrectionGroup = () => setExtraGroups(g => [...g, newGroup("correction")]);
     const [reportedBy, setReportedBy] = useState("");
     const [inspector, setInspector] = useState("");
     const [saving, setSaving] = useState(false);
@@ -1369,7 +1357,12 @@ export default function CMInProgressForm() {
     }, [job.repair_result]);
 
     const isMonitoringResult = useMemo(() => {
-        return job.repair_result === "อยู่ระหว่างการติดตามผล" || job.repair_result === "อยู่ระหว่างการรออะไหล่";
+        return WO_WAITING_RESULTS.includes(job.repair_result);
+    }, [job.repair_result]);
+
+    // ต้องกรอกหมายเหตุเฉพาะ spare part / site access — manpower / approve ไม่ต้อง
+    const needsRepairRemark = useMemo(() => {
+        return job.repair_result === "WO - wait for spare part" || job.repair_result === "WO - wait for site access";
     }, [job.repair_result]);
 
     // เลือกปัญหา = "ไม่พบปัญหา" → ปิดงานได้เลย ไม่ต้องกรอกรายละเอียดการซ่อม
@@ -1384,10 +1377,10 @@ export default function CMInProgressForm() {
         { key: "afterPhoto", label: t("validAfterPhoto", lang), isValid: job.corrective_actions.every((a: CorrectiveItem) => a.afterImages.length > 0), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-corrective" },
         { key: "repairResult", label: t("validRepairResult", lang), isValid: !!job.repair_result, message: t("notSelected", lang), isRequired: !isNoProblem, scrollId: "cm-repair-result" },
         // { key: "preventiveAction", label: t("preventiveAction", lang), isValid: job.preventive_action.some((p: string) => p.trim() !== ""), message: t("notFilled", lang), isRequired: isClosedResult && !isNoProblem, scrollId: "cm-preventive" },
-        { key: "inprogressRemarks", label: lang === "th" ? "หมายเหตุผลหลังซ่อม" : "Repair Result Remark", isValid: !!job.repair_result_remark.trim(), message: t("notFilled", lang), isRequired: isMonitoringResult, scrollId: "cm-repair-result" },
+        { key: "inprogressRemarks", label: lang === "th" ? "หมายเหตุผลหลังซ่อม" : "Repair Result Remark", isValid: !!job.repair_result_remark.trim(), message: t("notFilled", lang), isRequired: needsRepairRemark, scrollId: "cm-repair-result" },
         { key: "noProblemPhoto", label: lang === "th" ? "รูปภาพ" : "Photo", isValid: (job.corrective_actions[0]?.afterImages.length ?? 0) > 0, message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-noproblem-photo" },
         { key: "noProblemRemarks", label: t("remarks", lang), isValid: !!job.inprogress_remarks.trim(), message: t("notFilled", lang), isRequired: isNoProblem, scrollId: "cm-remarks" },
-    ], [job, lang, isClosedResult, isMonitoringResult, isNoProblem]);
+    ], [job, lang, isClosedResult, isMonitoringResult, needsRepairRemark, isNoProblem]);
     const canSave = useMemo(() => validations.filter(v => v.isRequired).every(v => v.isValid), [validations]);
 
     // ปิดงานเมื่อ "แก้ไขสำเร็จ" หรือ "ไม่พบปัญหา" → Closed | ติดตามผล/รออะไหล่ (และอื่นๆ) → In Progress
@@ -2061,7 +2054,7 @@ export default function CMInProgressForm() {
                         start_repair_date: job.start_repair_date || localTodayISO(),
                         resolved_date: isClosedResult ? (job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()) : "",
                         signature: (isClosedResult || isNoProblem) ? job.signature : "",
-                        start_repair_time: isClosedResult ? job.start_repair_time : "",
+                        start_repair_time: job.start_repair_time,
                         resolved_time: isClosedResult ? job.resolved_time : "",
                     }
                 })
@@ -2102,6 +2095,12 @@ export default function CMInProgressForm() {
         return all.length ? all : null;
     })();
 
+    // สาเหตุที่ถูกเลือกในบล็อกเพิ่มเติม — ตัดออกจากช่องสาเหตุหลัก (กันเลือกซ้ำ)
+    const causesInGroups = extraGroups.flatMap(g => g.cause).filter(Boolean);
+    const mainCauseOptions = causeOptions
+        ? causeOptions.filter(o => !causesInGroups.includes(o.value) || job.cause.includes(o.value))
+        : null;
+
     // ล้างสาเหตุที่ค้างมาจากปัญหาอื่น — เก็บเฉพาะค่าที่อยู่ในลิสต์ปัจจุบัน
     useEffect(() => {
         if (causeOptions && job.cause.length) {
@@ -2112,6 +2111,17 @@ export default function CMInProgressForm() {
             }
         }
     }, [job.problem_type, job.cause]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ถ้าปัญหานั้นมีสาเหตุให้เลือกแค่อันเดียว → ใส่ให้อัตโนมัติเลย
+    useEffect(() => {
+        if (viewOnly) return;
+        if (causeOptions && causeOptions.length === 1) {
+            const only = causeOptions[0].value;
+            if (job.cause.length !== 1 || job.cause[0] !== only) {
+                setJob(prev => ({ ...prev, cause: [only] }));
+            }
+        }
+    }, [job.problem_type, job.faulty_equipment]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ตัวช่วยหา label ของสาเหตุ
     const resolveCauseLabel = (val: string) =>
@@ -2131,6 +2141,12 @@ export default function CMInProgressForm() {
     })();
     const resolveCorrectionLabel = (val: string) =>
         correctionOptions?.find(o => o.value === val)?.label ?? formatDeviceName(val);
+
+    // การแก้ไขที่ถูกเลือกในบล็อกเพิ่มเติม — ตัดออกจากช่องการแก้ไขหลัก (กันเลือกซ้ำ)
+    const correctionsInGroups = extraGroups.flatMap(g => g.repaired_equipment).filter(Boolean);
+    const mainCorrectionOptions = correctionOptions
+        ? correctionOptions.filter(o => !correctionsInGroups.includes(o.value) || job.repaired_equipment.includes(o.value))
+        : null;
 
     // ล้างการแก้ไขที่ค้างมาจาก combo อื่น — เก็บเฉพาะค่าที่อยู่ในลิสต์ปัจจุบัน
     useEffect(() => {
@@ -2429,15 +2445,19 @@ export default function CMInProgressForm() {
                                     <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
                                     {t("problemType", lang)} <span className="tw-text-red-500">*</span>
                                 </label>
-                                <div className="tw-flex tw-items-start tw-gap-2 md:tw-w-96">
-                                    <div className="tw-flex-1 tw-min-w-0">
+                                <div className="tw-flex tw-items-start tw-gap-2">
+                                    <div className="tw-flex-1 tw-min-w-0 md:tw-flex-none md:tw-w-96">
                                         <CreatableSelect
                                             isClearable
                                             isDisabled={viewOnly}
                                             placeholder={lang === "th" ? "เลือกปัญหา..." : "Select problem..."}
                                             options={problemSelectOptions}
                                             value={job.problem_type[0] ? { value: job.problem_type[0], label: resolveProblemLabel(job.problem_type[0]) } : null}
-                                            onChange={(opt: any) => setJob(prev => ({ ...prev, problem_type: opt ? [opt.value] : [] }))}
+                                            onChange={(opt: any) => {
+                                                // เปลี่ยน/ลบปัญหา → ล้างค่าช่องอื่นด้วย (สาเหตุ/การแก้ไข/ชุดที่เพิ่ม)
+                                                setJob(prev => ({ ...prev, problem_type: opt ? [opt.value] : [], cause: [], repaired_equipment: [] }));
+                                                setExtraGroups([]);
+                                            }}
                                             formatCreateLabel={(v: string) => `+ "${v}"`}
                                             menuPlacement="auto"
                                             menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
@@ -2445,9 +2465,6 @@ export default function CMInProgressForm() {
                                             styles={makeSelectStyles(SELECT_ACCENT.blue)}
                                         />
                                     </div>
-                                    {!viewOnly && (
-                                        <button type="button" onClick={addProblemGroup} title={lang === "th" ? "เพิ่มชุดปัญหาใหม่" : "Add new problem set"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-border-blue-300 tw-bg-blue-50 tw-text-blue-600 tw-flex tw-items-center tw-justify-center hover:tw-bg-blue-100 hover:tw-border-blue-400 tw-transition-all tw-text-xl tw-font-bold tw-leading-none">+</button>
-                                    )}
                                 </div>
                             </div>
 
@@ -2458,18 +2475,18 @@ export default function CMInProgressForm() {
                                         <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-blue-500"></span>
                                         {t("cause", lang)} <span className="tw-text-red-500">*</span>
                                     </label>
-                                    <div className="tw-flex tw-items-start tw-gap-2 md:tw-w-96">
-                                        <div className="tw-flex-1 tw-min-w-0">
+                                    <div className="tw-flex tw-items-start tw-gap-2">
+                                        <div className="tw-flex-1 tw-min-w-0 md:tw-flex-none md:tw-w-96">
                                             <CreatableSelect isClearable
                                                 placeholder={lang === "th" ? "เลือกสาเหตุ..." : "Select cause..."}
-                                                options={causeOptions ?? []}
-                                                isDisabled={viewOnly || !causeOptions}
+                                                options={mainCauseOptions ?? []}
+                                                isDisabled={viewOnly || !mainCauseOptions}
                                                 value={job.cause[0] ? { value: job.cause[0], label: resolveCauseLabel(job.cause[0]) } : null}
-                                                onChange={(opt: any) => setJob({ ...job, cause: opt ? [opt.value] : [] })}
+                                                onChange={(opt: any) => setJob(prev => opt ? { ...prev, cause: [opt.value] } : { ...prev, cause: [], repaired_equipment: [] })}
                                                 formatCreateLabel={(v: string) => `+ "${v}"`}
                                                 menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.blue)} />
                                         </div>
-                                        {!viewOnly && (
+                                        {!viewOnly && (mainCauseOptions?.length ?? 0) > 1 && (
                                             <button type="button" onClick={addCauseGroup} title={lang === "th" ? "เพิ่มสาเหตุ" : "Add cause"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-border-blue-300 tw-bg-blue-50 tw-text-blue-600 tw-flex tw-items-center tw-justify-center hover:tw-bg-blue-100 hover:tw-border-blue-400 tw-transition-all tw-text-xl tw-font-bold tw-leading-none">+</button>
                                         )}
                                     </div>
@@ -2487,16 +2504,21 @@ export default function CMInProgressForm() {
                                         <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
                                         {t("repairedEquipment", lang)}
                                     </label>
-                                    <RowSelect
-                                        values={job.repaired_equipment}
-                                        options={correctionOptions ?? []}
-                                        resolveLabel={resolveCorrectionLabel}
-                                        accent={SELECT_ACCENT.amber}
-                                        placeholder={lang === "th" ? "เลือกการแก้ไข..." : "Select correction..."}
-                                        disabled={viewOnly || !correctionOptions}
-                                        addLabel={lang === "th" ? "เพิ่มการแก้ไข" : "Add correction"}
-                                        onChange={(vals) => setJob({ ...job, repaired_equipment: vals })}
-                                    />
+                                    <div className="tw-flex tw-items-start tw-gap-2">
+                                        <div className="tw-flex-1 tw-min-w-0 md:tw-flex-none md:tw-w-96">
+                                            <CreatableSelect isClearable
+                                                placeholder={lang === "th" ? "เลือกการแก้ไข..." : "Select correction..."}
+                                                options={mainCorrectionOptions ?? []}
+                                                isDisabled={viewOnly || !mainCorrectionOptions}
+                                                value={job.repaired_equipment[0] ? { value: job.repaired_equipment[0], label: resolveCorrectionLabel(job.repaired_equipment[0]) } : null}
+                                                onChange={(opt: any) => setJob({ ...job, repaired_equipment: opt ? [opt.value] : [] })}
+                                                formatCreateLabel={(v: string) => `+ "${v}"`}
+                                                menuPlacement="auto" menuPortalTarget={typeof document !== "undefined" ? document.body : undefined} classNamePrefix="react-select" styles={makeSelectStyles(SELECT_ACCENT.amber)} />
+                                        </div>
+                                        {!viewOnly && (mainCorrectionOptions?.length ?? 0) > 1 && (
+                                            <button type="button" onClick={addCorrectionGroup} title={lang === "th" ? "เพิ่มการแก้ไข" : "Add correction"} className="tw-flex-shrink-0 tw-w-12 tw-h-12 tw-rounded-xl tw-border tw-flex tw-items-center tw-justify-center hover:tw-brightness-95 tw-transition-all tw-text-xl tw-font-bold tw-leading-none" style={{ borderColor: SELECT_ACCENT.amber.border, backgroundColor: SELECT_ACCENT.amber.pill, color: SELECT_ACCENT.amber.pillText }}>+</button>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -2515,10 +2537,6 @@ export default function CMInProgressForm() {
                                             {i > 0 && <hr className="tw-border-gray-200 tw-my-5" />}
 
                                             <div className="tw-flex tw-gap-4">
-                                                <div className="tw-flex-shrink-0 tw-w-10 tw-h-10 tw-rounded-full tw-bg-gradient-to-br tw-from-amber-400 tw-to-amber-600 tw-text-white tw-flex tw-items-center tw-justify-center tw-font-bold tw-text-base tw-shadow-md">
-                                                    {i + 1}
-                                                </div>
-
                                                 <div className="tw-flex-1 tw-space-y-4">
                                                     {/* Delete button */}
                                                     {job.corrective_actions.length > 1 && (
@@ -2668,7 +2686,11 @@ export default function CMInProgressForm() {
                                     onRemove={() => setExtraGroups(prev => prev.filter((_, j) => j !== i))}
                                     onAddGroup={addProblemGroup}
                                     onAddCauseGroup={addCauseGroup}
+                                    onAddCorrectionGroup={addCorrectionGroup}
                                     mainProblem={job.problem_type}
+                                    mainCause={job.cause}
+                                    takenCauses={[...job.cause, ...extraGroups.filter((_, j) => j !== i).flatMap(x => x.cause)].filter(Boolean)}
+                                    takenCorrections={[...job.repaired_equipment, ...extraGroups.filter((_, j) => j !== i).flatMap(x => x.repaired_equipment)].filter(Boolean)}
                                     lang={lang}
                                     index={i}
                                 />
@@ -2694,16 +2716,14 @@ export default function CMInProgressForm() {
                                         className="tw-w-full md:tw-w-96 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer tw-flex-shrink-0"
                                     >
                                         <option value="">{lang === "th" ? "-- เลือกผลหลังซ่อม --" : "-- Select repair result --"}</option>
-                                        {REPAIR_OPTIONS
-                                            .filter((opt) => !(opt.value === "แก้ไขสำเร็จ" && !hasCorrection))
-                                            .map((opt) => (
-                                                <option key={opt.value} value={opt.value}>
-                                                    {lang === "en" ? opt.en : opt.th}
-                                                </option>
-                                            ))}
+                                        {REPAIR_OPTIONS.map((opt) => (
+                                            <option key={opt.value} value={opt.value}>
+                                                {lang === "en" ? opt.en : opt.th}
+                                            </option>
+                                        ))}
                                     </select>
-                                    {/* Inline remarks - แสดงเมื่อเลือก ติดตามผล / รออะไหล่ */}
-                                    {(job.repair_result === "อยู่ระหว่างการติดตามผล" || job.repair_result === "อยู่ระหว่างการรออะไหล่") && (
+                                    {/* Inline remarks - แสดงเมื่อเลือกสถานะ WO waiting (ยกเว้น wait for manpower) */}
+                                    {needsRepairRemark && (
                                         <div className="tw-flex-1 tw-w-full">
                                             <input
                                                 type="text"
@@ -2717,29 +2737,9 @@ export default function CMInProgressForm() {
                                 </div>
                             </div>
 
-                            {/* วันที่/เวลา เริ่มแก้ไข & แก้ไขเสร็จ — ย้ายมาไว้ใต้ผลหลังซ่อม เมื่อแก้ไขสำเร็จ */}
+                            {/* วันที่/เวลา — วันที่แก้ไขเสร็จแสดงเฉพาะเมื่อ "แก้ไขสำเร็จ" */}
                             {isClosedResult && (
-                                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-5">
-                                    <div className="tw-space-y-2">
-                                        <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
-                                            <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
-                                            {t("resolvedDate", lang)}
-                                        </label>
-                                        <div className="tw-flex tw-gap-2">
-                                            <input
-                                                type="date"
-                                                value={job.start_repair_date || localTodayISO()}
-                                                onChange={e => setJob({ ...job, start_repair_date: e.target.value })}
-                                                className="tw-flex-1 tw-min-w-0 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-4 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer"
-                                            />
-                                            <input
-                                                type="time"
-                                                value={job.start_repair_time}
-                                                onChange={e => setJob({ ...job, start_repair_time: e.target.value })}
-                                                className="tw-w-28 tw-flex-shrink-0 tw-h-12 tw-border tw-border-gray-200 tw-rounded-xl tw-px-3 tw-text-sm tw-font-medium tw-bg-white tw-text-gray-700 hover:tw-border-amber-400 focus:tw-outline-none focus:tw-ring-3 focus:tw-ring-amber-500/20 focus:tw-border-amber-500 tw-transition-all tw-cursor-pointer"
-                                            />
-                                        </div>
-                                    </div>
+                            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-5">
                                     <div className="tw-space-y-2">
                                         <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
                                             <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-green-500"></span>
@@ -2763,19 +2763,6 @@ export default function CMInProgressForm() {
                                 </div>
                             )}
 
-                            {/* ลายเซ็นผู้ซ่อม — แสดงเมื่อแก้ไขสำเร็จ */}
-                            {isClosedResult && (
-                                <div id="cm-signature" className="tw-space-y-2">
-                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
-                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
-                                        {lang === "th" ? "ลายเซ็นผู้ซ่อม" : "Repairer Signature"}
-                                    </label>
-                                    <p className="tw-text-xs tw-text-gray-400">
-                                        {lang === "th" ? "เซ็นด้วยเมาส์หรือนิ้ว — จะถูกนำไปแสดงในช่อง \"ผู้ซ่อม\" ของ PDF" : "Draw with mouse or finger — shown in the \"Repairer\" box of the PDF"}
-                                    </p>
-                                    <SignaturePad value={job.signature} onChange={sig => setJob(prev => ({ ...prev, signature: sig }))} lang={lang} disabled={viewOnly} />
-                                </div>
-                            )}
                         </div>
                     </div>
                     )}
@@ -2818,18 +2805,6 @@ export default function CMInProgressForm() {
                                         {lang === "th" ? "ยังไม่มีรูป" : "No photo yet"}
                                     </div>
                                 )}
-
-                                {/* ลายเซ็นผู้ซ่อม */}
-                                <div id="cm-signature-noproblem" className="tw-space-y-2 tw-pt-2">
-                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
-                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
-                                        {lang === "th" ? "ลายเซ็นผู้ซ่อม" : "Repairer Signature"}
-                                    </label>
-                                    <p className="tw-text-xs tw-text-gray-400">
-                                        {lang === "th" ? "เซ็นด้วยเมาส์หรือนิ้ว — จะถูกนำไปแสดงในช่อง \"ผู้ซ่อม\" ของ PDF" : "Draw with mouse or finger — shown in the \"Repairer\" box of the PDF"}
-                                    </p>
-                                    <SignaturePad value={job.signature} onChange={sig => setJob(prev => ({ ...prev, signature: sig }))} lang={lang} disabled={viewOnly} />
-                                </div>
                             </div>
                         </div>
                     )}

@@ -5,8 +5,9 @@ import dynamic from "next/dynamic";
 import { Card, CardHeader, CardBody, Typography } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
 import {
-  CMRow, Period, ActiveFilters, STATUS_LABELS,
-  normalizeStatus, statusBadge, filterByPeriod, applyFilters, applySearch, groupCount,
+  CMRow, ActiveFilters, DateSel, STATUS_LABELS, WorkStatus,
+  normalizeStatus, normalizeWorkStatus, statusBadge, filterByDate, listYears,
+  weeksInMonth, applyFilters, applySearch, groupCount, groupByMonth,
 } from "@/utils/cm-dashboard";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
@@ -17,26 +18,35 @@ const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 const DONUT_COLORS = ["#22c55e", "#f97316", "#ef4444"];
 // Categorical palette for equipment — blue/cool family, no RAG meaning
 const EQUIPMENT_COLORS = ["#3b82f6","#06b6d4","#8b5cf6","#0ea5e9","#a855f7","#14b8a6","#64748b","#6366f1","#0284c7","#7c3aed"];
-const PAGE_SIZE = 15;
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 500;
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color, icon, dim }: {
-  label: string; value: number; color: string; icon: string; dim: boolean;
+// การ์ด KPI แบบกะทัดรัด — วางเรียงแถวเดียว 8 ใบด้านบน คลิกเพื่อกรองแดชบอร์ด
+function StatCard({ label, value, color, icon, dim, active, onClick }: {
+  label: string; value: number | string; color: string; icon: string; dim: boolean;
+  active?: boolean; onClick?: () => void;
 }) {
   return (
-    <div
-      className="tw-flex tw-items-center tw-justify-between tw-rounded-2xl tw-p-5 tw-text-white tw-shadow-md tw-transition-all"
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      aria-pressed={onClick ? !!active : undefined}
+      className={`tw-flex tw-min-w-0 tw-items-center tw-justify-between tw-gap-2 tw-rounded-xl tw-p-3 tw-text-left tw-text-white tw-shadow-md tw-transition-all ${
+        onClick ? "hover:tw-shadow-lg hover:tw-brightness-110 focus:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-blue-400 focus-visible:tw-ring-offset-2" : "tw-cursor-default"
+      } ${active ? "tw-ring-2 tw-ring-blue-500 tw-ring-offset-2" : ""}`}
       style={{ background: color, opacity: dim ? 0.45 : 1 }}
     >
-      <div>
-        <p className="tw-text-sm tw-font-medium tw-opacity-90">{label}</p>
-        <p className="tw-mt-1 tw-text-3xl tw-font-bold">{value}</p>
+      <div className="tw-min-w-0">
+        <p className="tw-truncate tw-text-[11px] tw-font-medium tw-leading-tight tw-opacity-90" title={label}>{label}</p>
+        <p className="tw-mt-0.5 tw-text-2xl tw-font-bold">{value}</p>
       </div>
-      <div className="tw-flex tw-h-12 tw-w-12 tw-items-center tw-justify-center tw-rounded-full tw-bg-white/20 tw-text-xl">
+      <div className="tw-flex tw-h-8 tw-w-8 tw-shrink-0 tw-items-center tw-justify-center tw-rounded-full tw-bg-white/20 tw-text-sm">
         {icon}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -51,17 +61,23 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
   );
 }
 
-function PeriodTabs({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+// สามดรอปดาวน์เลือกช่วงวิเคราะห์: ปี / เดือน / สัปดาห์ของเดือน
+function DateSelect({ id, label, value, onChange, options, disabled }: {
+  id: string; label: string; value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[]; disabled?: boolean;
+}) {
   return (
-    <div className="tw-flex tw-gap-1 tw-rounded-xl tw-bg-gray-100 tw-p-1">
-      {(["yearly", "monthly", "weekly"] as Period[]).map((t) => (
-        <button key={t} onClick={() => onChange(t)}
-          className={`tw-rounded-lg tw-px-4 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-all tw-capitalize ${
-            value === t ? "tw-bg-white tw-text-blue-700 tw-shadow-sm" : "tw-text-gray-500 hover:tw-text-gray-700"
-          }`}>
-          {t.charAt(0).toUpperCase() + t.slice(1)}
-        </button>
-      ))}
+    <div className="tw-flex tw-items-center tw-gap-1.5">
+      <label htmlFor={id} className="tw-text-xs tw-font-medium tw-text-gray-500">{label}</label>
+      <select
+        id={id}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-2.5 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-400 disabled:tw-cursor-not-allowed disabled:tw-bg-gray-50 disabled:tw-text-gray-400"
+      >
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
     </div>
   );
 }
@@ -143,11 +159,14 @@ export default function CMDashboardPage() {
   const [totalInDB, setTotalInDB] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<Period>("yearly");
+  const [yearSel, setYearSel] = useState<DateSel>(new Date().getFullYear());
+  const [monthSel, setMonthSel] = useState<DateSel>("all");
+  const [weekSel, setWeekSel] = useState<DateSel>("all");
   const [stationFilter, setStationFilter] = useState<string>("All");
-  const [filters, setFilters] = useState<ActiveFilters>({ status: null, equipment: null, severity: null, station: null });
+  const [filters, setFilters] = useState<ActiveFilters>({ status: null, equipment: null, severity: null, station: null, workStatus: null });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   // ── Language ──────────────────────────────────────────────────────────────
   type Lang = "th" | "en";
@@ -180,7 +199,7 @@ export default function CMDashboardPage() {
   }, []);
 
   const toggleFilter = useCallback((dim: keyof ActiveFilters, value: string) => {
-    setFilters((prev) => ({ ...prev, [dim]: prev[dim] === value ? null : value }));
+    setFilters((prev) => ({ ...prev, [dim]: prev[dim] === value ? null : value } as ActiveFilters));
     setPage(0);
   }, []);
 
@@ -190,7 +209,7 @@ export default function CMDashboardPage() {
   }, []);
 
   const clearAll = () => {
-    setFilters({ status: null, equipment: null, severity: null, station: null });
+    setFilters({ status: null, equipment: null, severity: null, station: null, workStatus: null });
     setSearch("");
     setPage(0);
   };
@@ -202,10 +221,33 @@ export default function CMDashboardPage() {
     return ["All", ...names];
   }, [rows]);
 
-  const periodRows = useMemo(() => {
-    const pr = filterByPeriod(rows, period);
-    return stationFilter === "All" ? pr : pr.filter((r) => (r.station_name || r.station_id) === stationFilter);
-  }, [rows, period, stationFilter]);
+  const years = useMemo(() => listYears(rows), [rows]);
+  const weekCount = useMemo(
+    () => (yearSel !== "all" && monthSel !== "all" ? weeksInMonth(yearSel, monthSel) : 0),
+    [yearSel, monthSel]
+  );
+
+  const setYear = (v: string) => { setYearSel(v === "all" ? "all" : Number(v)); setWeekSel("all"); setPage(0); };
+  const setMonth = (v: string) => { setMonthSel(v === "all" ? "all" : Number(v)); setWeekSel("all"); setPage(0); };
+  const setWeek = (v: string) => { setWeekSel(v === "all" ? "all" : Number(v)); setPage(0); };
+
+  const stationRows = useMemo(
+    () => (stationFilter === "All" ? rows : rows.filter((r) => (r.station_name || r.station_id) === stationFilter)),
+    [rows, stationFilter]
+  );
+
+  const periodRows = useMemo(
+    () => filterByDate(stationRows, yearSel, monthSel, weekSel),
+    [stationRows, yearSel, monthSel, weekSel]
+  );
+
+  // ── Monthly stacked chart: filtre année + station + chart-filters, mais PAS le mois/semaine
+  // (เห็นครบ 12 เดือนเสมอ — คลิกแท่งเพื่อเลือกเดือน)
+  const monthRows = useMemo(
+    () => applyFilters(filterByDate(stationRows, yearSel, "all", "all"), filters),
+    [stationRows, yearSel, filters]
+  );
+  const monthData = useMemo(() => groupByMonth(monthRows), [monthRows]);
 
   // ── Success Rate: ignores its own status filter so donut shows context
   const srRows = useMemo(() => applyFilters(periodRows, filters, "status"), [periodRows, filters]);
@@ -229,34 +271,31 @@ export default function CMDashboardPage() {
   const sevRows = useMemo(() => applyFilters(periodRows, filters, "severity"), [periodRows, filters]);
   const sevData = useMemo(() => groupCount(sevRows, "severity"), [sevRows]);
 
-  // ── Station bar: ignores own station filter
-  const stRows = useMemo(() => applyFilters(periodRows, filters, "station"), [periodRows, filters]);
-  const stationData = useMemo(() => {
-    const map: Record<string, { open: number; inProgress: number; closed: number }> = {};
-    for (const r of stRows) {
-      const name = r.station_name || r.station_id || "Unknown";
-      if (!map[name]) map[name] = { open: 0, inProgress: 0, closed: 0 };
-      const s = normalizeStatus(r.status);
-      if (s === "completed") map[name].closed++;
-      else if (s === "in_progress") map[name].inProgress++;
-      else map[name].open++;
-    }
-    return map;
-  }, [stRows]);
-  const stationNames = Object.keys(stationData);
-
-  // ── KPI stat cards: all chart-filters applied
+  // ── KPI stat cards (7 ใบ + completion rate): all chart-filters applied
   const allFiltered = useMemo(() => applyFilters(periodRows, filters), [periodRows, filters]);
+  // แถว KPI ไม่กรองด้วย workStatus ของตัวเอง — ตัวเลขครบทุก bucket เสมอ (เหมือน donut กับ status)
+  const kpiRows = useMemo(() => applyFilters(periodRows, filters, "workStatus"), [periodRows, filters]);
   const kpiStats = useMemo(() => {
-    let completed = 0, inProgress = 0, open = 0;
-    for (const r of allFiltered) {
-      const s = normalizeStatus(r.status);
-      if (s === "completed") completed++;
-      else if (s === "in_progress") inProgress++;
-      else open++;
+    const counts = {
+      total: kpiRows.length,
+      newSr: 0, waitManpower: 0, waitSparepart: 0, waitApprove: 0,
+      waitSiteAccess: 0, inProgress: 0, completed: 0,
+    };
+    for (const r of kpiRows) {
+      const s = normalizeWorkStatus(r.status);
+      if (s === "new") counts.newSr++;
+      else if (s === "wait_manpower") counts.waitManpower++;
+      else if (s === "wait_sparepart") counts.waitSparepart++;
+      else if (s === "wait_approve") counts.waitApprove++;
+      else if (s === "wait_site_access") counts.waitSiteAccess++;
+      else if (s === "in_progress") counts.inProgress++;
+      else counts.completed++;
     }
-    return { total: allFiltered.length, completed, inProgress, open };
-  }, [allFiltered]);
+    // Completion rate = WO completed ÷ (Total SR − wait spare part − wait site access) × 100
+    const denom = counts.total - counts.waitSparepart - counts.waitSiteAccess;
+    const completionRate = denom > 0 ? Math.round((counts.completed / denom) * 100) : 0;
+    return { ...counts, completionRate };
+  }, [kpiRows]);
 
   // ── Table: chart-filters + search + sort + paginate
   const searchFiltered = useMemo(() => applySearch(allFiltered, search), [allFiltered, search]);
@@ -265,12 +304,19 @@ export default function CMDashboardPage() {
     [searchFiltered]
   );
   const tableRows = useMemo(
-    () => sortedRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
-    [sortedRows, page]
+    () => sortedRows.slice(page * pageSize, (page + 1) * pageSize),
+    [sortedRows, page, pageSize]
   );
 
   // Reset page when filters or search change
   useEffect(() => { setPage(0); }, [allFiltered, search]);
+
+  const commitPageSize = (raw: string) => {
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n) || n < 1) return;
+    setPageSize(Math.min(n, MAX_PAGE_SIZE));
+    setPage(0);
+  };
 
   // ── Translations ─────────────────────────────────────────────────────────
   const t = useMemo(() => ({
@@ -282,17 +328,32 @@ export default function CMDashboardPage() {
       stationFilterLabel: "กรองตามสถานี",
       clickToFilter: "คลิกที่ส่วนของกราฟเพื่อกรอง",
       cancelHint: "(คลิกอีกครั้งเพื่อยกเลิก)",
-      kpiTotal: "งาน CM ทั้งหมด",
-      kpiInProgress: "รอดำเนินการ",
-      kpiOpen: "รอจัดซื้อจ้าง",
-      kpiCompleted: "งานเสร็จสิ้นแล้ว",
+      kpiTotalSR: "SR ทั้งหมด",
+      kpiNewSR: "SR ใหม่",
+      kpiWaitManpower: "WO รอช่าง",
+      kpiWaitSparepart: "WO รออะไหล่",
+      kpiWaitApprove: "WO รออนุมัติ",
+      kpiCompleted: "WO เสร็จสิ้น",
+      kpiWaitSiteAccess: "WO รอเข้าพื้นที่",
+      kpiCompletionRate: "อัตรางานเสร็จ",
+      yearLabel: "ปี",
+      monthLabel: "เดือน",
+      weekLabel: "สัปดาห์",
+      allYears: "ทุกปี",
+      allMonths: "ทุกเดือน",
+      allWeeks: "ทุกสัปดาห์",
+      weekOption: (n: number) => `สัปดาห์ที่ ${n}`,
+      monthsShort: ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."],
+      monthsLong: ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"],
       s2Title: "Failure Mode Analysis",
       chartClickHint: "คลิกที่กราฟเพื่อกรองข้อมูล",
       eqTitle: "Count of Cause of Issue",
       eqSubtitle: (n: number) => `Grand Total: ${n}`,
       sevTitle: "Severity Distribution",
-      s3Title: "Overall Status by Station",
-      barHint: "คลิกที่แท่งกราฟเพื่อกรองตามสถานี",
+      s3Title: "สถานะรวมรายเดือน (Overall Status by Month)",
+      barHint: "คลิกที่แท่งกราฟเพื่อเลือกเดือน",
+      rowsPerPage: "แถวต่อหน้า",
+      statusFilterLabel: "กรองตามสถานะ",
       tableTitle: "CM Reports",
       tableCount: (n: number, q?: string) => `${n} รายการ${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "ค้นหา station, issue ID, equipment, severity, inspector…",
@@ -315,17 +376,32 @@ export default function CMDashboardPage() {
       stationFilterLabel: "Filter by station",
       clickToFilter: "Click on the chart to filter",
       cancelHint: "(click again to cancel)",
-      kpiTotal: "Total CM Tasks",
-      kpiInProgress: "In Progress",
-      kpiOpen: "Pending Purchase",
-      kpiCompleted: "Completed",
+      kpiTotalSR: "Total service requests",
+      kpiNewSR: "New service requests",
+      kpiWaitManpower: "WO wait for manpower",
+      kpiWaitSparepart: "WO wait for spare part",
+      kpiWaitApprove: "WO wait for approve",
+      kpiCompleted: "WO completed",
+      kpiWaitSiteAccess: "WO wait for site access",
+      kpiCompletionRate: "Completion rate",
+      yearLabel: "Year",
+      monthLabel: "Month",
+      weekLabel: "Week",
+      allYears: "All years",
+      allMonths: "All months",
+      allWeeks: "All weeks",
+      weekOption: (n: number) => `Week ${n}`,
+      monthsShort: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+      monthsLong: ["January","February","March","April","May","June","July","August","September","October","November","December"],
       s2Title: "Failure Mode Analysis",
       chartClickHint: "Click on a chart to filter data",
       eqTitle: "Count of Cause of Issue",
       eqSubtitle: (n: number) => `Grand Total: ${n}`,
       sevTitle: "Severity Distribution",
-      s3Title: "Overall Status by Station",
-      barHint: "Click on a bar to filter by station",
+      s3Title: "Overall Status by Month",
+      barHint: "Click on a bar to select the month",
+      rowsPerPage: "Rows per page",
+      statusFilterLabel: "Filter by status",
       tableTitle: "CM Reports",
       tableCount: (n: number, q?: string) => `${n} records${q ? ` · "${q}"` : ""}`,
       searchPlaceholder: "Search by station, issue ID, equipment, severity, inspector…",
@@ -348,6 +424,33 @@ export default function CMDashboardPage() {
     const key = Object.entries(STATUS_LABELS).find(([, v]) => v === s)?.[0] as keyof typeof t.statusLabel | undefined;
     return key ? t.statusLabel[key] : s;
   }, [t]);
+
+  // การ์ด KPI — ws = bucket ที่คลิกแล้วกรอง, coarse = สถานะ 3 กลุ่มไว้หรี่การ์ดตอนกรองจาก donut
+  type KpiCard = {
+    label: string; value: number | string; color: string; icon: string;
+    ws?: WorkStatus; coarse?: string; clearsWorkStatus?: boolean;
+  };
+  const kpiCards: KpiCard[] = [
+    { label: t.kpiTotalSR, value: kpiStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", icon: "📋", clearsWorkStatus: true },
+    { label: t.kpiNewSR, value: kpiStats.newSr, color: "linear-gradient(135deg,#06b6d4,#0e7490)", icon: "🆕", ws: "new", coarse: STATUS_LABELS.open },
+    { label: t.kpiWaitManpower, value: kpiStats.waitManpower, color: "linear-gradient(135deg,#f59e0b,#b45309)", icon: "👷", ws: "wait_manpower", coarse: STATUS_LABELS.open },
+    { label: t.kpiWaitSparepart, value: kpiStats.waitSparepart, color: "linear-gradient(135deg,#f43f5e,#be123c)", icon: "🔩", ws: "wait_sparepart", coarse: STATUS_LABELS.open },
+    { label: t.kpiWaitApprove, value: kpiStats.waitApprove, color: "linear-gradient(135deg,#8b5cf6,#6d28d9)", icon: "✍️", ws: "wait_approve", coarse: STATUS_LABELS.open },
+    { label: t.kpiCompleted, value: kpiStats.completed, color: "linear-gradient(135deg,#22c55e,#15803d)", icon: "✅", ws: "completed", coarse: STATUS_LABELS.completed },
+    { label: t.kpiWaitSiteAccess, value: kpiStats.waitSiteAccess, color: "linear-gradient(135deg,#0ea5e9,#0369a1)", icon: "🚧", ws: "wait_site_access", coarse: STATUS_LABELS.open },
+    { label: t.kpiCompletionRate, value: `${kpiStats.completionRate}%`, color: "linear-gradient(135deg,#334155,#0f172a)", icon: "🎯" },
+  ];
+
+  // ป้ายชื่อ bucket สำหรับ filter chip (คลิกการ์ด KPI)
+  const workStatusLabel: Record<WorkStatus, string> = {
+    new: t.kpiNewSR,
+    wait_manpower: t.kpiWaitManpower,
+    wait_sparepart: t.kpiWaitSparepart,
+    wait_approve: t.kpiWaitApprove,
+    wait_site_access: t.kpiWaitSiteAccess,
+    in_progress: t.statusLabel.in_progress,
+    completed: t.kpiCompleted,
+  };
 
   // ─── Chart options ────────────────────────────────────────────────────────
 
@@ -441,30 +544,34 @@ export default function CMDashboardPage() {
   });
   }, [sevData, toggleFilter]);
 
-  const stationBarOptions = useMemo<ApexCharts.ApexOptions>(() => ({
+  // ── กราฟแท่งซ้อนรายเดือน (ม.ค.–ธ.ค.) — คลิกแท่งเพื่อเลือก/ยกเลิกเดือนนั้น
+  const monthlyBarOptions = useMemo<ApexCharts.ApexOptions>(() => ({
     chart: {
       type: "bar", stacked: true, toolbar: { show: false },
       events: {
         dataPointSelection: (_e: any, _ctx: any, { dataPointIndex }: any) => {
-          const label = stationNames[dataPointIndex];
-          if (label) toggleFilter("station", label);
+          if (dataPointIndex < 0 || dataPointIndex > 11) return;
+          setMonthSel((prev) => (prev === dataPointIndex ? "all" : dataPointIndex));
+          setWeekSel("all");
+          setPage(0);
         },
       },
     },
     colors: ["#ef4444", "#f97316", "#22c55e"],
-    xaxis: { categories: stationNames.length ? stationNames : ["No data"], labels: { rotate: -20, style: { fontSize: "11px" } } },
+    xaxis: { categories: t.monthsShort, labels: { rotate: 0, style: { fontSize: "12px" } } },
     legend: { position: "top" },
     dataLabels: { enabled: false },
     grid: { borderColor: "#f1f5f9" },
     states: { active: { filter: { type: "darken", value: 0.7 } } },
-    plotOptions: { bar: { borderRadius: 3 } },
-  }), [stationNames, toggleFilter]);
+    plotOptions: { bar: { borderRadius: 3, columnWidth: "55%" } },
+    tooltip: { y: { formatter: (v: number) => `${v} ${t.taskUnit}` } },
+  }), [t]);
 
-  const stationBarSeries = useMemo(() => [
-    { name: t.statusLabel.open, data: stationNames.map((n) => stationData[n].open) },
-    { name: t.statusLabel.in_progress, data: stationNames.map((n) => stationData[n].inProgress) },
-    { name: t.statusLabel.completed, data: stationNames.map((n) => stationData[n].closed) },
-  ], [stationNames, stationData, t]);
+  const monthlyBarSeries = useMemo(() => [
+    { name: t.statusLabel.open, data: monthData.open },
+    { name: t.statusLabel.in_progress, data: monthData.inProgress },
+    { name: t.statusLabel.completed, data: monthData.completed },
+  ], [monthData, t]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -510,14 +617,56 @@ export default function CMDashboardPage() {
             )}
           </p>
         </div>
-        <PeriodTabs value={period} onChange={setPeriod} />
+        {/* เลือกช่วงวิเคราะห์: ปี → เดือน → สัปดาห์ของเดือน */}
+        <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
+          <DateSelect
+            id="year-select" label={t.yearLabel}
+            value={String(yearSel)} onChange={setYear}
+            options={[{ value: "all", label: t.allYears }, ...years.map((y) => ({ value: String(y), label: String(y) }))]}
+          />
+          <DateSelect
+            id="month-select" label={t.monthLabel}
+            value={String(monthSel)} onChange={setMonth}
+            options={[{ value: "all", label: t.allMonths }, ...t.monthsLong.map((m, i) => ({ value: String(i), label: m }))]}
+          />
+          <DateSelect
+            id="week-select" label={t.weekLabel}
+            value={String(weekSel)} onChange={setWeek}
+            disabled={weekCount === 0}
+            options={[
+              { value: "all", label: t.allWeeks },
+              ...Array.from({ length: weekCount }, (_, i) => ({ value: String(i + 1), label: t.weekOption(i + 1) })),
+            ]}
+          />
+        </div>
       </div>
+
+      {/* ── KPI row: 7 ตัวนับ + completion rate — คลิกการ์ดเพื่อกรองทั้งแดชบอร์ด ── */}
+      <section className="tw-mb-6 tw-grid tw-grid-cols-2 tw-gap-3 sm:tw-grid-cols-4 xl:tw-grid-cols-8">
+        {kpiCards.map((c) => (
+          <StatCard
+            key={c.label}
+            label={c.label} value={c.value} color={c.color} icon={c.icon}
+            active={c.ws !== undefined && filters.workStatus === c.ws}
+            dim={
+              (filters.workStatus !== null && c.ws !== undefined && filters.workStatus !== c.ws) ||
+              (filters.status !== null && c.coarse !== undefined && filters.status !== c.coarse)
+            }
+            onClick={
+              c.ws !== undefined
+                ? () => toggleFilter("workStatus", c.ws!)
+                : c.clearsWorkStatus ? () => clearFilter("workStatus") : undefined
+            }
+          />
+        ))}
+      </section>
 
       {/* ── Active filter chips ── */}
       {activeFilterCount > 0 && (
         <div className="tw-mb-4 tw-flex tw-flex-wrap tw-items-center tw-gap-2">
           <span className="tw-text-xs tw-font-medium tw-text-gray-500">{t.filterLabel}</span>
           {filters.status && <FilterChip label={`Status: ${displayStatus(filters.status)}`} onRemove={() => clearFilter("status")} />}
+          {filters.workStatus && <FilterChip label={`KPI: ${workStatusLabel[filters.workStatus]}`} onRemove={() => clearFilter("workStatus")} />}
           {filters.equipment && <FilterChip label={`Equipment: ${filters.equipment}`} onRemove={() => clearFilter("equipment")} />}
           {filters.severity && <FilterChip label={`Severity: ${filters.severity}`} onRemove={() => clearFilter("severity")} />}
           {filters.station && <FilterChip label={`Station: ${filters.station}`} onRemove={() => clearFilter("station")} />}
@@ -545,34 +694,25 @@ export default function CMDashboardPage() {
           </select>
         </div>
 
-        <div className="tw-grid tw-grid-cols-1 tw-gap-6 lg:tw-grid-cols-2">
-          {/* Donut */}
-          <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
-            {filters.status && (
-              <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
-                🔍 {filters.status}
-              </div>
-            )}
-            <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
-              <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
-                {t.clickToFilter}
-              </Typography>
-            </CardHeader>
-            <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
-              <Chart type="donut" options={donutOptions} series={[srStats.completed, srStats.inProgress, srStats.open]} width="100%" height={280} />
-            </CardBody>
-          </Card>
-
-          {/* KPI cards */}
-          <div className="tw-grid tw-grid-cols-2 tw-gap-4">
-            {[
-              { label: t.kpiTotal, value: kpiStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", icon: "📋", dim: false },
-              { label: t.kpiInProgress, value: kpiStats.inProgress, color: "linear-gradient(135deg,#f97316,#ea580c)", icon: "⏰", dim: filters.status !== null && filters.status !== STATUS_LABELS.in_progress },
-              { label: t.kpiOpen, value: kpiStats.open, color: "linear-gradient(135deg,#ef4444,#dc2626)", icon: "⏳", dim: filters.status !== null && filters.status !== STATUS_LABELS.open },
-              { label: t.kpiCompleted, value: kpiStats.completed, color: "linear-gradient(135deg,#22c55e,#15803d)", icon: "✅", dim: filters.status !== null && filters.status !== STATUS_LABELS.completed },
-            ].map((c) => <StatCard key={c.label} {...c} />)}
-          </div>
-        </div>
+        {/* Donut เต็มความกว้าง (กราฟอยู่กึ่งกลาง) — ไม่เหลือช่องว่างข้างขวา */}
+        <Card className="tw-relative tw-border tw-border-blue-gray-100 tw-shadow-sm">
+          {filters.status && (
+            <div className="tw-absolute tw-right-3 tw-top-3 tw-z-10 tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
+              🔍 {filters.status}
+            </div>
+          )}
+          <CardHeader floated={false} shadow={false} className="tw-m-4 tw-mb-0">
+            <Typography variant="small" className="!tw-font-normal !tw-text-blue-gray-500">
+              {t.clickToFilter}
+            </Typography>
+          </CardHeader>
+          <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
+            <div className="tw-mx-auto tw-max-w-md">
+              {/* key บังคับ remount ตอนเปอร์เซ็นต์เปลี่ยน — ApexCharts ไม่รีเฟรช formatter ของ total label ผ่าน updateOptions */}
+              <Chart key={`sr-${successRate}`} type="donut" options={donutOptions} series={[srStats.completed, srStats.inProgress, srStats.open]} width="100%" height={280} />
+            </div>
+          </CardBody>
+        </Card>
       </section>
 
       {/* ── Section 2: Failure Mode ── */}
@@ -632,13 +772,13 @@ export default function CMDashboardPage() {
         </div>
       </section>
 
-      {/* ── Section 3: Overall Status by Station ── */}
+      {/* ── Section 3: Overall Status by Month (แท่งซ้อนรายเดือน) ── */}
       <section className="tw-mb-6">
         <div className="tw-mb-3 tw-flex tw-items-center tw-justify-between">
           <h2 className="tw-text-base tw-font-semibold tw-text-gray-700">{t.s3Title}</h2>
-          {filters.station && (
+          {monthSel !== "all" && (
             <div className="tw-rounded-full tw-bg-blue-50 tw-px-2 tw-py-0.5 tw-text-[10px] tw-font-bold tw-text-blue-600 tw-ring-1 tw-ring-blue-200">
-              🔍 {filters.station}
+              🔍 {t.monthsLong[monthSel as number]}
             </div>
           )}
         </div>
@@ -649,7 +789,7 @@ export default function CMDashboardPage() {
             </Typography>
           </CardHeader>
           <CardBody className="!tw-px-4 !tw-pt-2 !tw-pb-4">
-            <Chart type="bar" options={stationBarOptions} series={stationBarSeries} width="100%" height={280} />
+            <Chart type="bar" options={monthlyBarOptions} series={monthlyBarSeries} width="100%" height={280} />
           </CardBody>
         </Card>
       </section>
@@ -664,11 +804,52 @@ export default function CMDashboardPage() {
               ({t.tableCount(searchFiltered.length, search || undefined)})
             </span>
           </h2>
-          {activeFilterCount > 0 && (
-            <button onClick={clearAll} className="tw-self-start tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline sm:tw-self-auto">
-              {t.clearFilters}
-            </button>
-          )}
+          <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-3">
+            {activeFilterCount > 0 && (
+              <button onClick={clearAll} className="tw-text-xs tw-font-semibold tw-text-red-500 hover:tw-text-red-700 tw-underline">
+                {t.clearFilters}
+              </button>
+            )}
+            {/* ปุ่มกรองสถานะด่วน Open / In Progress / Closed — ป้ายเดียวกับ badge ในตาราง */}
+            <div className="tw-flex tw-items-center tw-gap-1.5" role="group" aria-label={t.statusFilterLabel}>
+              {([
+                { key: "open", label: "Open", color: "#dc2626", bg: "#fee2e2", count: srStats.open },
+                { key: "in_progress", label: "In Progress", color: "#ea580c", bg: "#fff7ed", count: srStats.inProgress },
+                { key: "completed", label: "Closed", color: "#15803d", bg: "#dcfce7", count: srStats.completed },
+              ] as const).map(({ key, label, color, bg, count }) => {
+                const isActive = filters.status === STATUS_LABELS[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleFilter("status", STATUS_LABELS[key])}
+                    aria-pressed={isActive}
+                    className={`tw-rounded-full tw-px-3 tw-py-1 tw-text-xs tw-font-semibold tw-transition-all ${isActive ? "tw-shadow-sm" : "hover:tw-brightness-95"}`}
+                    style={isActive ? { background: color, color: "#fff" } : { background: bg, color }}
+                  >
+                    {label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+            {/* ผู้ใช้พิมพ์จำนวนแถวต่อหน้าเองได้ */}
+            <div className="tw-flex tw-items-center tw-gap-1.5">
+              <label htmlFor="rows-per-page" className="tw-text-xs tw-font-medium tw-text-gray-500">{t.rowsPerPage}</label>
+              <input
+                id="rows-per-page"
+                type="number"
+                min={1}
+                max={MAX_PAGE_SIZE}
+                value={pageSize}
+                onChange={(e) => commitPageSize(e.target.value)}
+                list="rows-per-page-presets"
+                className="tw-w-20 tw-rounded-lg tw-border tw-border-gray-200 tw-bg-white tw-px-2.5 tw-py-1.5 tw-text-sm tw-text-gray-700 tw-shadow-sm focus:tw-border-blue-400 focus:tw-outline-none focus:tw-ring-2 focus:tw-ring-blue-100"
+              />
+              <datalist id="rows-per-page-presets">
+                {[10, 15, 25, 50, 100].map((n) => <option key={n} value={n} />)}
+              </datalist>
+            </div>
+          </div>
         </div>
 
         {/* Search bar */}
@@ -694,10 +875,10 @@ export default function CMDashboardPage() {
 
         <Card className="tw-overflow-hidden tw-border tw-border-blue-gray-100 tw-shadow-sm">
           <div className="tw-overflow-x-auto">
-            <table className="tw-w-full tw-min-w-[700px] tw-table-auto tw-text-left tw-text-sm">
+            <table className="tw-w-full tw-min-w-[860px] tw-table-auto tw-text-left tw-text-sm">
               <thead>
                 <tr className="tw-bg-gray-50 tw-text-xs tw-font-semibold tw-uppercase tw-tracking-wide tw-text-gray-500">
-                  {["#","Station","Issue ID","Faulty Equipment","Severity","Date","Status"].map((h) => (
+                  {["#","Station","Issue ID","Faulty Equipment","Problem Found","Severity","Date","Status"].map((h) => (
                     <th key={h} className="tw-px-4 tw-py-3 tw-whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -705,7 +886,7 @@ export default function CMDashboardPage() {
               <tbody>
                 {tableRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="tw-p-8 tw-text-center tw-text-gray-400">
+                    <td colSpan={8} className="tw-p-8 tw-text-center tw-text-gray-400">
                       {t.noResults(search || undefined)}
                     </td>
                   </tr>
@@ -713,7 +894,7 @@ export default function CMDashboardPage() {
                   const badge = statusBadge(r.status);
                   return (
                     <tr key={r.id} className="tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30">
-                      <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * PAGE_SIZE + i + 1}</td>
+                      <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
                       <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
                       <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.issue_id || "-"}</td>
                       <td className="tw-px-4 tw-py-3">
@@ -727,6 +908,11 @@ export default function CMDashboardPage() {
                         >
                           {r.faulty_equipment || "-"}
                         </button>
+                      </td>
+                      <td className="tw-px-4 tw-py-3 tw-text-gray-600">
+                        <span className="tw-block tw-max-w-[260px] tw-truncate tw-text-xs" title={r.problem_details || ""}>
+                          {r.problem_details || "-"}
+                        </span>
                       </td>
                       <td className="tw-px-4 tw-py-3">
                         <button
@@ -761,7 +947,7 @@ export default function CMDashboardPage() {
           <Pagination
             page={page}
             total={searchFiltered.length}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             onChange={setPage}
             formatRange={t.pagination}
           />
