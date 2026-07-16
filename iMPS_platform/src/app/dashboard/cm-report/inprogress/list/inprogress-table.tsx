@@ -15,7 +15,7 @@ import {
 import {
   Button, Card, CardBody, CardHeader, Typography, CardFooter, Input,
 } from "@material-tailwind/react";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon, DocumentArrowDownIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
@@ -93,12 +93,24 @@ type Props = {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+// Sub-tabs ของหน้า In Progress (มุมขวา) — ตอนนี้เป็น UI อย่างเดียว ยังไม่ filter ข้อมูล
+const WO_SUBTABS = [
+  { id: "all", th: "ทั้งหมด", en: "All" },
+  { id: "manpower", th: "WO - wait for manpower", en: "WO - wait for manpower" },
+  { id: "spare", th: "WO - wait for spare part", en: "WO - wait for spare part" },
+  { id: "site", th: "WO - wait for site access", en: "WO - wait for site access" },
+  { id: "approve", th: "WO - wait for approve", en: "WO - wait for approve" },
+] as const;
+
 export default function CMInProgressReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
+  const [woSubTab, setWoSubTab] = useState<string>("all"); // sub-tab มุมขวา (UI only)
+  const [currentUsername, setCurrentUsername] = useState("");
+  const canDelete = currentUsername.trim().toLowerCase() === "thatsawan"; // เฉพาะบัญชี thatsawan ลบใบงานได้
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -330,6 +342,46 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     }
   };
 
+  // ดึงบัญชีผู้ใช้ปัจจุบัน (ใช้ตัดสินสิทธิ์ลบใบงาน)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${apiBase}/me`, fetchOpts);
+        if (res.ok) {
+          const d = await res.json();
+          if (alive) setCurrentUsername(d?.username ?? "");
+        }
+      } catch { /* noop */ }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase]);
+
+  // ลบใบงาน (เฉพาะบัญชี thatsawan)
+  const handleDelete = async (row: TData) => {
+    if (!canDelete) return;
+    if (!row.id || !stationId) return;
+    const label = row.doc_name || row.issue_id || row.id;
+    const ok = window.confirm(
+      lang === "th"
+        ? `ต้องการลบใบงาน "${label}" ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้`
+        : `Delete work order "${label}"? This cannot be undone.`
+    );
+    if (!ok) return;
+    try {
+      const url = `${apiBase}/cmreport/${encodeURIComponent(row.id)}?station_id=${encodeURIComponent(stationId)}`;
+      const res = await fetch(url, { method: "DELETE", ...fetchOpts });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.detail || `HTTP ${res.status}`);
+      }
+      await fetchRows();
+    } catch (err: any) {
+      alert((lang === "th" ? "ลบไม่สำเร็จ: " : "Delete failed: ") + (err?.message ?? err));
+    }
+  };
+
   // ✅ Auto-refresh: refetch เมื่อกลับจาก form → list
   useEffect(() => {
     if (mode !== "list") return;
@@ -491,10 +543,37 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       maxSize: 160,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-  ], [lang]);
+    ...(canDelete ? [{
+      id: "actions",
+      header: () => (lang === "th" ? "ลบ" : "Delete"),
+      enableSorting: false,
+      size: 70,
+      minSize: 60,
+      maxSize: 90,
+      cell: (info: CellContext<TData, unknown>) => (
+        <button
+          type="button"
+          onClick={() => handleDelete(info.row.original)}
+          title={lang === "th" ? "ลบใบงาน" : "Delete work order"}
+          className="tw-inline-flex tw-items-center tw-justify-center tw-w-8 tw-h-8 tw-rounded-lg tw-text-red-500 hover:tw-text-white hover:tw-bg-red-500 tw-transition-all"
+        >
+          <TrashIcon className="tw-w-4 tw-h-4" />
+        </button>
+      ),
+      meta: { headerAlign: "center", cellAlign: "center" },
+    } as ColumnDef<TData, unknown>] : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [lang, canDelete, stationId]);
+
+  // กรองตาม sub-tab WO ที่มุมขวา — label ของแต่ละ tab = ค่า repair_result
+  const filteredData = useMemo(() => {
+    if (woSubTab === "all") return data;
+    const target = WO_SUBTABS.find((s) => s.id === woSubTab)?.en ?? "";
+    return data.filter((r) => (r.repair_result ?? "") === target);
+  }, [data, woSubTab]);
 
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns,
     state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting,
@@ -505,6 +584,12 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     getPaginationRowModel: getPaginationRowModel(),
     columnResizeMode: "onChange",
   });
+
+  // เปลี่ยน sub-tab แล้วกลับไปหน้าแรกของตาราง
+  useEffect(() => {
+    table.setPageIndex(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [woSubTab]);
 
 
   const goList = () => {
@@ -561,6 +646,26 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
               >
                 {t("pageSubtitle", lang)}
               </Typography>
+            </div>
+
+            {/* Sub-tabs (มุมขวา) — UI only */}
+            <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-1.5 tw-flex-shrink-0 sm:tw-justify-end">
+              {WO_SUBTABS.map((st) => {
+                const active = woSubTab === st.id;
+                return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => setWoSubTab(st.id)}
+                    className={`tw-rounded-lg tw-px-3 tw-py-1.5 tw-text-[11px] sm:tw-text-xs tw-font-medium tw-whitespace-nowrap tw-transition-all tw-border ${active
+                      ? "tw-bg-gray-900 tw-text-white tw-border-gray-900 tw-shadow-sm"
+                      : "tw-bg-white tw-text-blue-gray-600 tw-border-blue-gray-200 hover:tw-bg-blue-gray-50 hover:tw-text-blue-gray-800"
+                      }`}
+                  >
+                    {lang === "en" ? st.en : st.th}
+                  </button>
+                );
+              })}
             </div>
 
           </div>

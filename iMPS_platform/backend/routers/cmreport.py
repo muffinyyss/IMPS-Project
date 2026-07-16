@@ -920,3 +920,37 @@ async def cmreport_update_status(
         raise HTTPException(status_code=404, detail="Report not found")
 
     return {"ok": True, "status": updates["status"]}
+
+
+# บัญชีที่อนุญาตให้ลบใบงาน CM ได้
+CM_DELETE_ALLOWED_USERS: set[str] = {"thatsawan"}
+
+
+@router.delete("/cmreport/{report_id}")
+async def cmreport_delete(
+    report_id: str,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    # อนุญาตเฉพาะบัญชีที่กำหนดเท่านั้น
+    if (current.username or "").strip().lower() not in CM_DELETE_ALLOWED_USERS:
+        raise HTTPException(status_code=403, detail="Not allowed to delete")
+
+    station_id = station_id.strip()
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    # ลองลบจาก CM report ก่อน (จับคู่ station_id) → ถ้าไม่เจอลองแบบไม่ผูก station → สุดท้ายลองจาก cmurl (ไฟล์อัปโหลด)
+    coll = get_cmreport_collection_for(station_id)
+    res = await coll.delete_one({"_id": oid, "station_id": station_id})
+    if res.deleted_count == 0:
+        res = await coll.delete_one({"_id": oid})
+    if res.deleted_count == 0:
+        url_coll = get_cmurl_coll_upload(station_id)
+        res = await url_coll.delete_one({"_id": oid})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    return {"ok": True}

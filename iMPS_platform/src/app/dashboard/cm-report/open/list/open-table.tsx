@@ -15,7 +15,7 @@ import {
 import {
   Button, Card, CardBody, CardHeader, Typography, CardFooter, Input,
 } from "@material-tailwind/react";
-import { ArrowUpTrayIcon, DocumentArrowDownIcon } from "@heroicons/react/24/outline";
+import { ArrowUpTrayIcon, DocumentArrowDownIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { ChevronLeftIcon, ChevronRightIcon, ChevronUpDownIcon } from "@heroicons/react/24/solid";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from "@material-tailwind/react";
@@ -143,6 +143,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
   const [username, setUsername] = useState<string>("");
+  const canDelete = username.trim().toLowerCase() === "thatsawan"; // เฉพาะบัญชี thatsawan ลบใบงานได้
   const [pageLoading, setPageLoading] = useState(true);
   const [issueId, setIssueId] = useState<string>("");
   const [sn, setSn] = useState<string | null>(null);
@@ -457,6 +458,30 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBase, stationId, mode, statusFromTab]);
 
+  // ลบใบงาน (เฉพาะบัญชี thatsawan)
+  const handleDelete = async (row: TData) => {
+    if (!canDelete) return;
+    if (!row.id || !stationId) return;
+    const label = row.doc_name || row.issue_id || row.id;
+    const ok = window.confirm(
+      lang === "th"
+        ? `ต้องการลบใบงาน "${label}" ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้`
+        : `Delete work order "${label}"? This cannot be undone.`
+    );
+    if (!ok) return;
+    try {
+      const url = `${apiBase}/cmreport/${encodeURIComponent(row.id)}?station_id=${encodeURIComponent(stationId)}`;
+      const res = await apiFetch(url, { method: "DELETE", credentials: "include" });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.detail || `HTTP ${res.status}`);
+      }
+      await fetchRows();
+    } catch (err: any) {
+      alert((lang === "th" ? "ลบไม่สำเร็จ: " : "Delete failed: ") + (err?.message ?? err));
+    }
+  };
+
 
 
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
@@ -583,7 +608,27 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-  ], [lang]);
+    ...(canDelete ? [{
+      id: "actions",
+      header: () => (lang === "th" ? "ลบ" : "Delete"),
+      enableSorting: false,
+      size: 70,
+      minSize: 60,
+      maxSize: 90,
+      cell: (info: CellContext<TData, unknown>) => (
+        <button
+          type="button"
+          onClick={() => handleDelete(info.row.original)}
+          title={lang === "th" ? "ลบใบงาน" : "Delete work order"}
+          className="tw-inline-flex tw-items-center tw-justify-center tw-w-8 tw-h-8 tw-rounded-lg tw-text-red-500 hover:tw-text-white hover:tw-bg-red-500 tw-transition-all"
+        >
+          <TrashIcon className="tw-w-4 tw-h-4" />
+        </button>
+      ),
+      meta: { headerAlign: "center", cellAlign: "center" },
+    } as ColumnDef<TData, unknown>] : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [lang, canDelete, stationId]);
 
   function sameUser(a?: string, b?: string) {
     return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
