@@ -41,6 +41,9 @@ SMTP_USER = os.getenv("SMTP_USER", "eds194655@gmail.com")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL", "eds194655@gmail.com")
 
+# ─── Frontend (ใช้สร้างลิงก์ในอีเมล เช่น reset password) ─────
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3001")
+
 # ─── MongoDB ─────────────────────────────────────────────────
 _MONGO_URI = os.getenv("MONGO_URI")
 if not _MONGO_URI:

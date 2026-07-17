@@ -8,11 +8,12 @@ from bson.objectid import ObjectId
 from pymongo.errors import DuplicateKeyError
 from jose import jwt, ExpiredSignatureError, JWTError
 from typing import List, Optional, Union
-import bcrypt, uuid, json
+import bcrypt, uuid, json, secrets
 from typing import Literal
+from urllib.parse import quote
 
 from config import (
-    SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME,
+    SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME, FRONTEND_BASE_URL,
     ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN, ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT,
     SESSION_IDLE_MINUTES_TECHNICIAN, SESSION_IDLE_MINUTES_DEFAULT,
     REFRESH_TOKEN_EXPIRE_DAYS,
@@ -121,6 +122,73 @@ def login(body: LoginRequest, response: Response):
             "ai_package": user.get("ai_package", {"enabled": False}),
         }
     }
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    token: str
+    new_password: str = Field(min_length=8)
+
+RESET_TOKEN_EXPIRE_MINUTES = 30
+
+@router.post("/forgot-password/")
+async def forgot_password(body: ForgotPasswordRequest):
+    """ส่งอีเมลลิงก์ reset password (ตอบแบบ generic เสมอ — ไม่เปิดเผยว่ามี email ในระบบหรือไม่)"""
+    user = users_collection.find_one({"email": body.email}, {"_id": 1, "email": 1, "username": 1})
+    if user:
+        token = secrets.token_urlsafe(32)
+        users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"passwordReset": {
+                "token": token,
+                "expiresAt": datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES),
+            }}}
+        )
+        reset_link = f"{FRONTEND_BASE_URL}/auth/reset/new-password?token={token}&email={quote(user['email'])}"
+        display_name = user.get("username") or user["email"]
+        email_body = (
+            f"Hello {display_name},\n\n"
+            f"We received a request to reset your iMPS password.\n"
+            f"Click the link below to choose a new password (valid for {RESET_TOKEN_EXPIRE_MINUTES} minutes):\n\n"
+            f"{reset_link}\n\n"
+            f"If you did not request this, you can safely ignore this email.\n\n"
+            f"— iMPS Platform"
+        )
+        # import ภายในฟังก์ชัน กัน import วนถ้า notifications ต้อง import users ในอนาคต
+        from routers.notifications import send_email_smtp
+        sent = await send_email_smtp([user["email"]], "iMPS — Reset your password", email_body)
+        if not sent:
+            raise HTTPException(status_code=502, detail="Failed to send reset email. Please try again later.")
+    return {"message": "If this email is registered, a reset link has been sent."}
+
+@router.post("/reset-password/")
+def reset_password(body: ResetPasswordRequest):
+    """ตั้งรหัสผ่านใหม่จาก token ที่ส่งไปทางอีเมล (token ใช้ได้ครั้งเดียว)"""
+    user = users_collection.find_one({"email": body.email}, {"_id": 1, "passwordReset": 1})
+    pr = (user or {}).get("passwordReset") or {}
+    stored_token = pr.get("token") or ""
+    expires_at = pr.get("expiresAt")
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)  # pymongo คืน naive UTC
+    token_valid = (
+        user is not None
+        and stored_token
+        and secrets.compare_digest(stored_token, body.token)
+        and expires_at is not None
+        and expires_at > datetime.now(timezone.utc)
+    )
+    if not token_valid:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    hashed = bcrypt.hashpw(body.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    users_collection.update_one(
+        {"_id": user["_id"]},
+        # ล้าง refreshTokens ด้วย → บังคับ login ใหม่ทุก session เดิม
+        {"$set": {"password": hashed, "refreshTokens": []}, "$unset": {"passwordReset": ""}},
+    )
+    return {"message": "Password reset successful"}
 
 @router.get("/me/ai-package")
 def get_ai_package(current: UserClaims = Depends(get_current_user)):
