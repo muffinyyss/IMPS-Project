@@ -168,6 +168,9 @@ export default function CMDashboardPage() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
+  // เคลียร์ charger ที่เลือกไว้ → sidenav กลับสู่เมนูปกติ (เหมือนหน้า Stations/PM-all)
+  useEffect(() => { localStorage.removeItem("selected_sn"); localStorage.removeItem("selected_charger_no"); window.dispatchEvent(new CustomEvent("charger:deselected")); }, []);
+
   // ── Language ──────────────────────────────────────────────────────────────
   type Lang = "th" | "en";
   const [lang, setLang] = useState<Lang>("th");
