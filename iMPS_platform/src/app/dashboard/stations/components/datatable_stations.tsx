@@ -433,7 +433,7 @@ export function SearchDataTables() {
   const [deletedExistingDeviceIdxs, setDeletedExistingDeviceIdxs] = useState<Set<number>>(new Set());
   const chargerImageInputRef = useRef<HTMLInputElement | null>(null);
   const deviceImageInputRef = useRef<HTMLInputElement | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "notConfigured">("all");
 
   const [lang, setLang] = useState<Lang>("en");
   useEffect(() => {
@@ -750,13 +750,14 @@ export function SearchDataTables() {
   const filteredDataByStatus = useMemo(() => {
     if (statusFilter === "all") return data;
     return data.filter((station) => {
+      if (statusFilter === "notConfigured") { const av = availability.get(station.station_id); return !av || av.total === 0; }
       const onlineCount = station.chargers.filter((c) => c.status).length;
       const offlineCount = station.chargers.filter((c) => !c.status).length;
       if (statusFilter === "online") return onlineCount > 0;
       if (statusFilter === "offline") return offlineCount > 0;
       return true;
     });
-  }, [data, statusFilter]);
+  }, [data, statusFilter, availability]);
 
   const handleEditStation = (station: StationRow, e: React.MouseEvent) => { e.stopPropagation(); if (!isAdmin && station.user_id !== me?.user_id) { alert("You don't have permission to edit this station"); return; } setEditingStation(station); setOpenEditStation(true); };
   const handleEditCharger = (stationId: string, charger: ChargerData, e: React.MouseEvent) => { e.stopPropagation(); setEditingCharger({ stationId, charger }); setOpenEditCharger(true); };
@@ -1043,12 +1044,12 @@ export function SearchDataTables() {
       <div className="tw-mt-4 tw-mb-4">
         {statusFilter !== "all" && (
           <div className="tw-mb-3 tw-flex tw-items-center tw-gap-2">
-            <span className="tw-text-sm tw-text-blue-gray-600">{lang === "th" ? `ตัวกรอง: ${statusFilter === "online" ? "ออนไลน์" : "ออฟไลน์"}` : `Filter: ${statusFilter === "online" ? "Online" : "Offline"}`}</span>
+            <span className="tw-text-sm tw-text-blue-gray-600">{lang === "th" ? `ตัวกรอง: ${statusFilter === "online" ? "ออนไลน์" : statusFilter === "offline" ? "ออฟไลน์" : "ยังไม่ได้ตั้งค่า"}` : `Filter: ${statusFilter === "online" ? "Online" : statusFilter === "offline" ? "Offline" : "Not configured"}`}</span>
             <button type="button" onClick={() => setStatusFilter("all")} className="tw-text-sm tw-text-blue-600 hover:tw-underline">{lang === "th" ? "ล้างตัวกรอง" : "Clear"}</button>
           </div>
         )}
-        <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-4 tw-gap-2.5 sm:tw-gap-3">
-          {loading ? (<>{Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)}</>) : (
+        <div className="tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 lg:tw-grid-cols-5 tw-gap-2.5 sm:tw-gap-3">
+          {loading ? (<>{Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)}</>) : (
             <>
               <div className="tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-ring-white/10 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5">
                 <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
@@ -1065,6 +1066,10 @@ export function SearchDataTables() {
               <div onClick={() => setStatusFilter((prev) => (prev === "offline" ? "all" : "offline"))} className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "offline" ? "tw-ring-red-400 tw-scale-[1.02]" : "tw-ring-white/10"}`}>
                 <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
                 <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.25)' }}><span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#f87171' }} /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ออฟไลน์" : "Offline"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#f87171' }}>{data.reduce((sum, s) => sum + s.chargers.filter(c => !c.status).length, 0)}</div></div>
+              </div>
+              <div onClick={() => setStatusFilter((prev) => (prev === "notConfigured" ? "all" : "notConfigured"))} className={`tw-group tw-relative tw-overflow-hidden tw-rounded-2xl tw-bg-gradient-to-br tw-from-gray-900 tw-via-gray-800 tw-to-gray-900 tw-px-4 sm:tw-px-5 tw-py-3.5 sm:tw-py-4 tw-ring-1 tw-shadow-lg hover:tw-shadow-xl tw-transition-all tw-duration-300 hover:tw--translate-y-0.5 tw-cursor-pointer ${statusFilter === "notConfigured" ? "tw-ring-gray-300 tw-scale-[1.02]" : "tw-ring-white/10"}`}>
+                <div className="tw-absolute tw-inset-0 tw-opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+                <div className="tw-relative tw-z-10"><div className="tw-flex tw-items-center tw-gap-2 tw-mb-2"><div className="tw-h-8 tw-w-8 tw-rounded-xl tw-flex tw-items-center tw-justify-center tw-ring-1" style={{ background: 'rgba(148,163,184,0.15)', borderColor: 'rgba(148,163,184,0.25)' }}><span className="tw-h-2.5 tw-w-2.5 tw-rounded-full" style={{ background: '#94a3b8' }} /></div><span className="tw-text-[10px] sm:tw-text-[11px] tw-font-semibold tw-uppercase tw-tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === "th" ? "ยังไม่ได้ตั้งค่า" : "Not Configured"}</span></div><div className="tw-text-2xl sm:tw-text-3xl tw-font-black tw-tabular-nums tw-tracking-tight tw-leading-none" style={{ color: '#94a3b8' }}>{data.filter((s) => { const av = availability.get(s.station_id); return !av || av.total === 0; }).length}</div></div>
               </div>
             </>
           )}
