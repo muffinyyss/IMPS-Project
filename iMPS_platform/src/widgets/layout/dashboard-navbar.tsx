@@ -163,6 +163,12 @@ export function DashboardNavbar() {
 
   const hasChargerSelected = !!selectedSN;
 
+  // บนหน้า CM Report: CM เป็นราย "สถานี" (ไม่ผูกกับตู้ชาร์จ) → โชว์ชื่อสถานีแทน badge ตู้ชาร์จ
+  const isCmReportPage = pathname.startsWith("/dashboard/cm-report");
+  const stationDisplay = selectedStationName || selectedStationId;
+  const showStationPill = hasChargerSelected || (isCmReportPage && !!stationDisplay);
+  const showChargerPill = hasChargerSelected && !isCmReportPage;
+
   // useEffect สำหรับปิด tooltip เมื่อกดที่อื่น
   useEffect(() => {
     const handleClickOutside = () => setShowStationTooltip(false);
@@ -318,7 +324,7 @@ export function DashboardNavbar() {
               {/* ===== Station & Charger Pills ===== */}
               {!isStationsPage && !isEnergyPage && (
                 <>
-                  {hasChargerSelected ? (
+                  {showStationPill ? (
                     <>
                       {/* Desktop: Full Pills */}
                       <div className="tw-hidden sm:tw-flex tw-items-center tw-gap-2">
@@ -336,17 +342,19 @@ export function DashboardNavbar() {
                         </div>
 
                         {/* Charger Pill */}
-                        <div className="
-                          tw-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1
-                          tw-bg-gray-900
-                          tw-rounded-full
-                          tw-shadow-sm
-                        ">
-                          <ChargerBoxIcon className="tw-h-3.5 tw-w-3.5 tw-text-white" />
-                          <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[80px] lg:tw-max-w-[120px] tw-truncate">
-                            {selectedChargerNo ? `#${selectedChargerNo}` : ""} {selectedSN}
-                          </span>
-                        </div>
+                        {showChargerPill && (
+                          <div className="
+                            tw-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1
+                            tw-bg-gray-900
+                            tw-rounded-full
+                            tw-shadow-sm
+                          ">
+                            <ChargerBoxIcon className="tw-h-3.5 tw-w-3.5 tw-text-white" />
+                            <span className="tw-text-xs tw-font-medium tw-text-white tw-max-w-[80px] lg:tw-max-w-[120px] tw-truncate">
+                              {selectedChargerNo ? `#${selectedChargerNo}` : ""} {selectedSN}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Mobile: Consistent Icon Buttons with Tap Tooltip */}
@@ -361,15 +369,17 @@ export function DashboardNavbar() {
                           <MapPinIcon className="tw-h-4 tw-w-4 tw-text-white" />
                         </NavIconButton>
 
-                        <NavIconButton
-                          onClick={(e) => {
-                            e?.stopPropagation();
-                            setShowStationTooltip(!showStationTooltip);
-                          }}
-                          title={t.currentCharger}
-                        >
-                          <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
-                        </NavIconButton>
+                        {showChargerPill && (
+                          <NavIconButton
+                            onClick={(e) => {
+                              e?.stopPropagation();
+                              setShowStationTooltip(!showStationTooltip);
+                            }}
+                            title={t.currentCharger}
+                          >
+                            <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                          </NavIconButton>
+                        )}
 
                         {/* Tooltip Popup */}
                         {showStationTooltip && (
@@ -387,7 +397,7 @@ export function DashboardNavbar() {
                             <div className="tw-absolute tw--top-2 tw-right-6 tw-w-4 tw-h-4 tw-bg-white tw-border-l tw-border-t tw-border-gray-100 tw-rotate-45" />
 
                             {/* Station Info */}
-                            <div className="tw-flex tw-items-center tw-gap-3 tw-mb-3 tw-pb-3 tw-border-b tw-border-gray-100">
+                            <div className={`tw-flex tw-items-center tw-gap-3 ${showChargerPill ? "tw-mb-3 tw-pb-3 tw-border-b tw-border-gray-100" : ""}`}>
                               <div className="tw-p-2 tw-bg-gray-900 tw-rounded-lg">
                                 <MapPinIcon className="tw-h-4 tw-w-4 tw-text-white" />
                               </div>
@@ -402,20 +412,22 @@ export function DashboardNavbar() {
                             </div>
 
                             {/* Charger Info */}
-                            <div className="tw-flex tw-items-center tw-gap-3">
-                              <div className="tw-p-2 tw-bg-gray-900 tw-rounded-lg">
-                                <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                            {showChargerPill && (
+                              <div className="tw-flex tw-items-center tw-gap-3">
+                                <div className="tw-p-2 tw-bg-gray-900 tw-rounded-lg">
+                                  <ChargerBoxIcon className="tw-h-4 tw-w-4 tw-text-white" />
+                                </div>
+                                <div className="tw-min-w-0 tw-flex-1">
+                                  <p className="tw-text-[10px] tw-font-medium tw-text-gray-400 tw-uppercase tw-tracking-wider">
+                                    {t.currentCharger}
+                                  </p>
+                                  <p className="tw-font-medium tw-text-gray-800 tw-text-sm tw-truncate">
+                                    {selectedChargerNo ? `${lang === "th" ? "ตู้" : "Box"} ${selectedChargerNo} • ` : ""}
+                                    {selectedSN}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="tw-min-w-0 tw-flex-1">
-                                <p className="tw-text-[10px] tw-font-medium tw-text-gray-400 tw-uppercase tw-tracking-wider">
-                                  {t.currentCharger}
-                                </p>
-                                <p className="tw-font-medium tw-text-gray-800 tw-text-sm tw-truncate">
-                                  {selectedChargerNo ? `${lang === "th" ? "ตู้" : "Box"} ${selectedChargerNo} • ` : ""}
-                                  {selectedSN}
-                                </p>
-                              </div>
-                            </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -443,7 +455,7 @@ export function DashboardNavbar() {
               )}
 
               {/* Divider - Only show when has selection */}
-              {!isStationsPage && !isEnergyPage && hasChargerSelected && (
+              {!isStationsPage && !isEnergyPage && showStationPill && (
                 <div className="tw-hidden sm:tw-block tw-w-px tw-h-6 tw-bg-gray-200" />
               )}
 
