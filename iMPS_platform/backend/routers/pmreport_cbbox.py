@@ -484,6 +484,8 @@ async def cbboxpmreport_pre_submit(
     }
 
     res = await coll.insert_one(doc)
+
+
     return {
         "ok": True,
         "report_id": str(res.inserted_id),

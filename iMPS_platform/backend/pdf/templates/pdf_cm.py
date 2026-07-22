@@ -1052,7 +1052,7 @@ def make_cm_report_pdf_bytes(doc: dict) -> bytes:
             {
                 "kind": "info",
                 "data": [
-                    ("วันที่แจ้ง", _fmt_date_thai_full(doc.get("found_date"))),
+                    ("วันที่แจ้ง", _fmt_date_time_thai(doc.get("found_date"), doc.get("found_time"))),
                     ("ผู้แจ้ง", doc.get("reported_by", "-") or "-"),
                     ("สถานที่", doc.get("location", "-") or "-"),
                     ("สถานะ", doc.get("status", "-") or "-"),

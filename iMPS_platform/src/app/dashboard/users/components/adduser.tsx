@@ -15,12 +15,13 @@ import {
 } from "@material-tailwind/react";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
 import { apiFetch } from "@/utils/api";
+import { UserRole } from "@/utils/roles";
 
 export type NewUserPayload = {
     username: string;
     password: string;
     email: string;
-    role: "owner" | "admin" | "technician";
+    role: UserRole;
     company_name?: string;
     payment: "y" | "n";
     tel: string;
@@ -187,7 +188,7 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                 <Select
                                     value={form.role}
                                     onChange={(v) => {
-                                        onChange("role", String(v ?? form.role) as "owner" | "technician" | "admin");
+                                        onChange("role", String(v ?? form.role) as UserRole);
                                         if (v !== "technician") {
                                             setForm((s) => ({ ...s, station_id: undefined }));
                                         }
@@ -197,6 +198,10 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     <Option value="owner">Owner</Option>
                                     <Option value="admin">Admin</Option>
                                     <Option value="technician">Technician</Option>
+                                    <Option value="cs">CS</Option>
+                                    <Option value="head_cs">Head CS</Option>
+                                    <Option value="planner">Planner</Option>
+                                    <Option value="engineer">Engineer</Option>
 
                                 </Select>
 
@@ -215,12 +220,13 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                             ...s,
                                             ai_package: { enabled: !(s.ai_package?.enabled ?? false) }
                                         }))}
+                                        crossOrigin={undefined}
                                     />
                                 </div>
                             </div>
                         )}
 
-                        {/* แสดง Station Search เฉพาะเมื่อ role = technician */}
+                        {/* แสดง Station Search เฉพาะเมื่อ role = technician (cs/engineer เห็นทุกสถานี ไม่ต้องเลือก) */}
                         {form.role === "technician" && (
                             <div className="tw-relative">
                                 <div className="tw-flex tw-items-center tw-gap-1">

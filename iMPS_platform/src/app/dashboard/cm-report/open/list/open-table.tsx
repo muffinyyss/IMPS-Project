@@ -144,6 +144,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [filtering, setFiltering] = useState("");
   const [username, setUsername] = useState<string>("");
   const canDelete = username.trim().toLowerCase() === "thatsawan"; // เฉพาะบัญชี thatsawan ลบใบงานได้
+  // head cs (หรือ admin) อนุมัติใบงานที่ cs เพิ่งเปิด → เดินหน้าเป็น In Progress
+  const canCsApprove = ["head_cs", "admin"].includes(userRole.trim().toLowerCase());
   const [pageLoading, setPageLoading] = useState(true);
   const [issueId, setIssueId] = useState<string>("");
   const [sn, setSn] = useState<string | null>(null);
@@ -484,6 +486,30 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
 
 
+  const handleCsApprove = async (row: TData) => {
+    if (!canCsApprove) return;
+    if (!row.id || !stationId) return;
+    const label = row.doc_name || row.issue_id || row.id;
+    const ok = window.confirm(
+      lang === "th"
+        ? `อนุมัติใบงาน "${label}" ใช่หรือไม่? ใบงานจะเดินหน้าเป็น In Progress`
+        : `Approve work order "${label}"? It will move to In Progress.`
+    );
+    if (!ok) return;
+    try {
+      const url = `${apiBase}/cmreport/${encodeURIComponent(row.id)}/cs-approve?station_id=${encodeURIComponent(stationId)}`;
+      const res = await apiFetch(url, { method: "POST", credentials: "include" });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.detail || `HTTP ${res.status}`);
+      }
+      setToast({ show: true, type: "success", message: lang === "th" ? "อนุมัติใบงานแล้ว" : "Work order approved" });
+      await fetchRows();
+    } catch (err: any) {
+      alert((lang === "th" ? "อนุมัติไม่สำเร็จ: " : "Approve failed: ") + (err?.message ?? err));
+    }
+  };
+
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
       id: "no",
@@ -608,6 +634,29 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
+    ...(canCsApprove ? [{
+      id: "cs_approve",
+      header: () => (lang === "th" ? "อนุมัติ" : "Approve"),
+      enableSorting: false,
+      size: 90,
+      minSize: 80,
+      maxSize: 120,
+      cell: (info: CellContext<TData, unknown>) => {
+        const s = String(info.row.original.status ?? "").toLowerCase();
+        if (s !== "open") return <span className="tw-text-blue-gray-300">—</span>;
+        return (
+          <button
+            type="button"
+            onClick={() => handleCsApprove(info.row.original)}
+            title={lang === "th" ? "อนุมัติใบงาน" : "Approve work order"}
+            className="tw-inline-flex tw-items-center tw-justify-center tw-px-2.5 tw-h-8 tw-rounded-lg tw-text-xs tw-font-medium tw-text-green-600 tw-border tw-border-green-500 hover:tw-text-white hover:tw-bg-green-500 tw-transition-all"
+          >
+            {lang === "th" ? "อนุมัติ" : "Approve"}
+          </button>
+        );
+      },
+      meta: { headerAlign: "center", cellAlign: "center" },
+    } as ColumnDef<TData, unknown>] : []),
     ...(canDelete ? [{
       id: "actions",
       header: () => (lang === "th" ? "ลบ" : "Delete"),
@@ -628,7 +677,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     } as ColumnDef<TData, unknown>] : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [lang, canDelete, stationId]);
+  ], [lang, canDelete, canCsApprove, stationId]);
 
   function sameUser(a?: string, b?: string) {
     return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();

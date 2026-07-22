@@ -29,6 +29,7 @@ import CBBOXPMForm from "@/app/dashboard/pm-report/cb-box/input_PMreport/compone
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import MaximoWorkOrders from "@/app/dashboard/pm-report/components/MaximoWorkOrders";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -575,6 +576,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
         </div>
       )}
+      {/* PM work orders received from Maximo */}
+      <MaximoWorkOrders source="cbbox" identifier={stationId} />
+
       <Card className="tw-border tw-border-blue-gray-100 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-xl lg:tw-rounded-2xl tw-overflow-hidden">
         {/* <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0"> */}
         <CardHeader floated={false} shadow={false} className="tw-p-3 sm:tw-p-4 lg:tw-p-6 tw-rounded-none tw-m-0 tw-bg-gradient-to-r tw-from-white tw-to-blue-gray-50/30">

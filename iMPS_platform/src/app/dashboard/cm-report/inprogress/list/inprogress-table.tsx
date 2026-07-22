@@ -84,6 +84,7 @@ type TData = {
   problem_details?: string;
   status: string;
   inspector?: string;
+  source?: "cm" | "url"; // cm = ใบงานจากฟอร์ม (กดอนุมัติได้), url = ไฟล์ PDF ที่อัปโหลด
 };
 
 type Props = {
@@ -93,7 +94,7 @@ type Props = {
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-// Sub-tabs ของหน้า In Progress (มุมขวา) — ตอนนี้เป็น UI อย่างเดียว ยังไม่ filter ข้อมูล
+// Sub-tabs ของหน้า In Progress (มุมขวา) — filter ตาม repair_result ยกเว้น tab approve ที่ใช้ status "Wait for approve"
 const WO_SUBTABS = [
   { id: "all", th: "ทั้งหมด", en: "All" },
   { id: "manpower", th: "WO - wait for manpower", en: "WO - wait for manpower" },
@@ -108,9 +109,12 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
-  const [woSubTab, setWoSubTab] = useState<string>("all"); // sub-tab มุมขวา (UI only)
+  const [woSubTab, setWoSubTab] = useState<string>("all"); // sub-tab มุมขวา
   const [currentUsername, setCurrentUsername] = useState("");
+  const [currentRole, setCurrentRole] = useState("");
   const canDelete = currentUsername.trim().toLowerCase() === "thatsawan"; // เฉพาะบัญชี thatsawan ลบใบงานได้
+  // planner (หรือ admin) ยกเลิกใบงานที่หัวหน้า cs อนุมัติแล้ว → Cancelled
+  const canCancel = ["planner", "admin"].includes(currentRole.trim().toLowerCase());
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -134,7 +138,8 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     setStationId(sidLocal);
   }, [searchParams]);
 
-  const statusFromTab = "in progress";
+  // หน้า WO แสดงทั้งงานที่กำลังซ่อมและงานที่รออนุมัติ (backend รองรับหลายค่า คั่นด้วย ,)
+  const statusFromTab = "in progress,wait for approve";
 
   const router = useRouter();
   const pathname = usePathname();
@@ -252,10 +257,10 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
 
-      // Filter by "in progress" status
+      // Filter by "in progress" / "wait for approve" status
       const filterByStatus = (it: any) => {
         const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
-        return s === "in progress";
+        return s === "in progress" || s === "wait for approve";
       };
 
       cmItems = cmItems.filter(filterByStatus);
@@ -298,6 +303,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           location: it.faulty_equipment || "",
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
+          source: "cm" as const,
         };
       });
 
@@ -322,6 +328,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           location: it.faulty_equipment || "",
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
+          source: "url" as const,
         };
       });
 
@@ -342,7 +349,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
     }
   };
 
-  // ดึงบัญชีผู้ใช้ปัจจุบัน (ใช้ตัดสินสิทธิ์ลบใบงาน)
+  // ดึงบัญชีผู้ใช้ปัจจุบัน (ใช้ตัดสินสิทธิ์ลบใบงาน / อนุมัติปิดใบงาน)
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -350,7 +357,10 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
         const res = await fetch(`${apiBase}/me`, fetchOpts);
         if (res.ok) {
           const d = await res.json();
-          if (alive) setCurrentUsername(d?.username ?? "");
+          if (alive) {
+            setCurrentUsername(d?.username ?? "");
+            setCurrentRole(d?.role ?? "");
+          }
         }
       } catch { /* noop */ }
     })();
@@ -379,6 +389,35 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       await fetchRows();
     } catch (err: any) {
       alert((lang === "th" ? "ลบไม่สำเร็จ: " : "Delete failed: ") + (err?.message ?? err));
+    }
+  };
+
+  const handleCancel = async (row: TData) => {
+    if (!canCancel) return;
+    if (!row.id || !stationId) return;
+    const label = row.doc_name || row.issue_id || row.id;
+    const remark = window.prompt(
+      lang === "th"
+        ? `ยกเลิกใบงาน "${label}" — ระบุเหตุผล (ถ้ามี):`
+        : `Cancel work order "${label}" — reason (optional):`,
+      ""
+    );
+    if (remark === null) return; // กด cancel ใน prompt = ไม่ทำอะไร
+    try {
+      const url = `${apiBase}/cmreport/${encodeURIComponent(row.id)}/cancel?station_id=${encodeURIComponent(stationId)}`;
+      const res = await fetch(url, {
+        method: "POST",
+        ...fetchOpts,
+        headers: { ...(fetchOpts as any).headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ remark: remark || "" }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.detail || `HTTP ${res.status}`);
+      }
+      await fetchRows();
+    } catch (err: any) {
+      alert((lang === "th" ? "ยกเลิกไม่สำเร็จ: " : "Cancel failed: ") + (err?.message ?? err));
     }
   };
 
@@ -516,8 +555,9 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
         const color =
           sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
             sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
-              sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
-                "tw-bg-blue-gray-100 tw-text-blue-gray-800";
+              sl === "wait for approve" ? "tw-bg-purple-100 tw-text-purple-800" :
+                sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
+                  "tw-bg-blue-gray-100 tw-text-blue-gray-800";
         return (
           <span className={`tw-inline-block tw-whitespace-nowrap tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-text-[10px] sm:tw-text-xs tw-font-medium ${color}`}>
             {s}
@@ -543,6 +583,30 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       maxSize: 160,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
+    // ปุ่มอนุมัติย้ายไปอยู่ในฟอร์มแล้ว (เปิดใบงานเพื่ออ่านรายละเอียดก่อนอนุมัติ) — ไม่มีคอลัมน์อนุมัติในตาราง
+    ...(canCancel ? [{
+      id: "cancel",
+      header: () => (lang === "th" ? "ยกเลิก" : "Cancel"),
+      enableSorting: false,
+      size: 90,
+      minSize: 80,
+      maxSize: 120,
+      cell: (info: CellContext<TData, unknown>) => {
+        const s = String(info.row.original.status ?? "").toLowerCase();
+        if (s === "closed" || s === "cancelled") return <span className="tw-text-blue-gray-300">—</span>;
+        return (
+          <button
+            type="button"
+            onClick={() => handleCancel(info.row.original)}
+            title={lang === "th" ? "ยกเลิกใบงาน" : "Cancel work order"}
+            className="tw-inline-flex tw-items-center tw-justify-center tw-px-2.5 tw-h-8 tw-rounded-lg tw-text-xs tw-font-medium tw-text-red-600 tw-border tw-border-red-500 hover:tw-text-white hover:tw-bg-red-500 tw-transition-all"
+          >
+            {lang === "th" ? "ยกเลิก" : "Cancel"}
+          </button>
+        );
+      },
+      meta: { headerAlign: "center", cellAlign: "center" },
+    } as ColumnDef<TData, unknown>] : []),
     ...(canDelete ? [{
       id: "actions",
       header: () => (lang === "th" ? "ลบ" : "Delete"),
@@ -563,11 +627,19 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       meta: { headerAlign: "center", cellAlign: "center" },
     } as ColumnDef<TData, unknown>] : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [lang, canDelete, stationId]);
+  ], [lang, canDelete, canCancel, stationId]);
 
   // กรองตาม sub-tab WO ที่มุมขวา — label ของแต่ละ tab = ค่า repair_result
+  // ยกเว้น tab "approve" = คิวรออนุมัติจริง (status Wait for approve หรือใบเก่าที่ mark repair_result ไว้)
   const filteredData = useMemo(() => {
     if (woSubTab === "all") return data;
+    if (woSubTab === "approve") {
+      return data.filter(
+        (r) =>
+          r.status.trim().toLowerCase() === "wait for approve" ||
+          (r.repair_result ?? "") === "WO - wait for approve"
+      );
+    }
     const target = WO_SUBTABS.find((s) => s.id === woSubTab)?.en ?? "";
     return data.filter((r) => (r.repair_result ?? "") === target);
   }, [data, woSubTab]);

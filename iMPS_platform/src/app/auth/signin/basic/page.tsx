@@ -161,6 +161,17 @@ export default function BasicPage() {
               />
             </div>
 
+            <div className="tw-flex tw-justify-end tw-mt-2">
+              <Link href="/auth/reset/basic-reset">
+                <Typography
+                  variant="small"
+                  className="!tw-font-medium !tw-text-blue-gray-500 hover:!tw-text-blue-gray-900 tw-transition-colors"
+                >
+                  Forgot password?
+                </Typography>
+              </Link>
+            </div>
+
             {/* <Button className="tw-mt-6" fullWidth type="submit">
               Sign In
             </Button>

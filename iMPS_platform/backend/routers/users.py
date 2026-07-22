@@ -8,18 +8,19 @@ from bson.objectid import ObjectId
 from pymongo.errors import DuplicateKeyError
 from jose import jwt, ExpiredSignatureError, JWTError
 from typing import List, Optional, Union
-import bcrypt, uuid, json
+import bcrypt, uuid, json, secrets
 from typing import Literal
+from urllib.parse import quote
 
 from config import (
-    SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME,
+    SECRET_KEY, ALGORITHM, ACCESS_COOKIE_NAME, FRONTEND_BASE_URL,
     ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN, ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT,
     SESSION_IDLE_MINUTES_TECHNICIAN, SESSION_IDLE_MINUTES_DEFAULT,
-    REFRESH_TOKEN_EXPIRE_DAYS,
+    REFRESH_TOKEN_EXPIRE_DAYS, STAFF_ROLES, ALL_STATIONS_ROLES,
     users_collection, station_collection, charger_collection,
     create_access_token,
 )
-from deps import UserClaims, get_current_user
+from deps import UserClaims, get_current_user, get_user_station_ids
 
 router = APIRouter()
 
@@ -66,7 +67,7 @@ def login(body: LoginRequest, response: Response):
     
     # กำหนด token expire time ตามบทบาท
     user_role = user.get("role", "user")
-    if user_role == "technician":
+    if user_role in STAFF_ROLES:
         token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN  # 24 ชั่วโมง
     else:
         token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
@@ -121,6 +122,73 @@ def login(body: LoginRequest, response: Response):
             "ai_package": user.get("ai_package", {"enabled": False}),
         }
     }
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    token: str
+    new_password: str = Field(min_length=8)
+
+RESET_TOKEN_EXPIRE_MINUTES = 30
+
+@router.post("/forgot-password/")
+async def forgot_password(body: ForgotPasswordRequest):
+    """ส่งอีเมลลิงก์ reset password (ตอบแบบ generic เสมอ — ไม่เปิดเผยว่ามี email ในระบบหรือไม่)"""
+    user = users_collection.find_one({"email": body.email}, {"_id": 1, "email": 1, "username": 1})
+    if user:
+        token = secrets.token_urlsafe(32)
+        users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"passwordReset": {
+                "token": token,
+                "expiresAt": datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES),
+            }}}
+        )
+        reset_link = f"{FRONTEND_BASE_URL}/auth/reset/new-password?token={token}&email={quote(user['email'])}"
+        display_name = user.get("username") or user["email"]
+        email_body = (
+            f"Hello {display_name},\n\n"
+            f"We received a request to reset your iMPS password.\n"
+            f"Click the link below to choose a new password (valid for {RESET_TOKEN_EXPIRE_MINUTES} minutes):\n\n"
+            f"{reset_link}\n\n"
+            f"If you did not request this, you can safely ignore this email.\n\n"
+            f"— iMPS Platform"
+        )
+        # import ภายในฟังก์ชัน กัน import วนถ้า notifications ต้อง import users ในอนาคต
+        from routers.notifications import send_email_smtp
+        sent = await send_email_smtp([user["email"]], "iMPS — Reset your password", email_body)
+        if not sent:
+            raise HTTPException(status_code=502, detail="Failed to send reset email. Please try again later.")
+    return {"message": "If this email is registered, a reset link has been sent."}
+
+@router.post("/reset-password/")
+def reset_password(body: ResetPasswordRequest):
+    """ตั้งรหัสผ่านใหม่จาก token ที่ส่งไปทางอีเมล (token ใช้ได้ครั้งเดียว)"""
+    user = users_collection.find_one({"email": body.email}, {"_id": 1, "passwordReset": 1})
+    pr = (user or {}).get("passwordReset") or {}
+    stored_token = pr.get("token") or ""
+    expires_at = pr.get("expiresAt")
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)  # pymongo คืน naive UTC
+    token_valid = (
+        user is not None
+        and stored_token
+        and secrets.compare_digest(stored_token, body.token)
+        and expires_at is not None
+        and expires_at > datetime.now(timezone.utc)
+    )
+    if not token_valid:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    hashed = bcrypt.hashpw(body.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    users_collection.update_one(
+        {"_id": user["_id"]},
+        # ล้าง refreshTokens ด้วย → บังคับ login ใหม่ทุก session เดิม
+        {"$set": {"password": hashed, "refreshTokens": []}, "$unset": {"passwordReset": ""}},
+    )
+    return {"message": "Password reset successful"}
 
 @router.get("/me/ai-package")
 def get_ai_package(current: UserClaims = Depends(get_current_user)):
@@ -179,19 +247,21 @@ def me(current: UserClaims = Depends(get_current_user)):
 def my_stations_detail(current: UserClaims = Depends(get_current_user)):
     proj = {"_id": 0, "station_id": 1, "station_name": 1}
 
-    if current.role == "admin":
+    # Admin/CS/Engineer → เห็นทุกสถานี
+    if current.role in ALL_STATIONS_ROLES:
         docs = list(station_collection.find({}, proj))
         return {"stations": docs}
 
     # Technician → ดึง stations จาก station_id ใน user profile
     if current.role == "technician":
-        # station_ids มาจาก JWT token ของผู้ใช้
-        if not current.station_ids or len(current.station_ids) == 0:
+        # อ่านจาก DB ไม่ใช่ JWT — สถานีที่เพิ่งถูก assign ผ่านงาน CM ต้องเห็นทันที
+        station_ids = get_user_station_ids(current)
+        if not station_ids:
             return {"stations": []}
-        
+
         # ค้นหา stations ที่มี station_id ตรงกับ station_ids ของ user
         docs = list(station_collection.find(
-            {"station_id": {"$in": current.station_ids}},
+            {"station_id": {"$in": station_ids}},
             proj
         ))
         return {"stations": docs}
@@ -379,10 +449,10 @@ def get_history(
     station_id: str = Query(...),
     start: str = Query(...),
     end: str = Query(...),
-    current: UserClaims = Depends(get_current_user),  # ← อ่านสิทธิ์จาก JWT
+    current: UserClaims = Depends(get_current_user),
 ):
-    # ✅ เช็คสิทธิ์ก่อนคิวรีทุกครั้ง
-    if station_id not in set(current.station_ids):
+    # ✅ เช็คสิทธิ์ก่อนคิวรีทุกครั้ง — อ่านจาก DB ไม่ใช่ JWT ให้ตรงกับสถานีที่เห็นในหน้า EV Station
+    if station_id not in set(get_user_station_ids(current)):
         raise HTTPException(status_code=403, detail="Forbidden station_id")
 
 class RefreshIn(BaseModel):
@@ -410,7 +480,7 @@ def refresh(body: RefreshIn, response: Response):
 
         # กำหนด idle timeout ตามบทบาท
         user_role = user.get("role", "user")
-        if user_role == "technician":
+        if user_role in STAFF_ROLES:
             idle_timeout = SESSION_IDLE_MINUTES_TECHNICIAN  # None = ไม่มี idle timeout
         else:
             idle_timeout = SESSION_IDLE_MINUTES_DEFAULT  # 15 นาที
@@ -421,7 +491,7 @@ def refresh(body: RefreshIn, response: Response):
             raise HTTPException(status_code=401, detail="session_idle_timeout")
 
         # กำหนด token expire time ตามบทบาท
-        if user_role == "technician":
+        if user_role in STAFF_ROLES:
             token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN  # 24 ชั่วโมง
         else:
             token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
@@ -484,7 +554,31 @@ async def users():
         raise HTTPException(status_code=404, detail="owners not found")
 
     return {"username": usernames}
-    
+
+
+# ผู้ที่วางแผนงาน CM ได้ (เลือกช่างในขั้น Planning) — engineer ตาม flow, admin/owner คุมภาพรวม
+ASSIGNER_ROLES: set[str] = {"admin", "owner", "engineer"}
+
+@router.get("/users/by-role")
+def users_by_role(
+    role: str = Query(..., description="role to filter by, e.g. technician"),
+    current: UserClaims = Depends(get_current_user),
+):
+    """รายชื่อ user ตาม role — ใช้เติม dropdown เลือกช่างในขั้น Planning ของ CM"""
+    if (current.role or "").lower() not in ASSIGNER_ROLES:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    cursor = users_collection.find(
+        {"role": role.strip().lower()},
+        {"_id": 1, "username": 1, "email": 1},
+    ).sort("username", 1)
+    return {
+        "users": [
+            {"id": str(u["_id"]), "username": u.get("username", ""), "email": u.get("email", "")}
+            for u in cursor
+        ]
+    }
+
 class register(BaseModel):
     username: str
     email: EmailStr
@@ -494,7 +588,11 @@ class register(BaseModel):
     role: Literal["admin", "owner"]
 
 @router.post("/insert_users/")
-async def create_users(users: register):
+async def create_users(users: register, current: UserClaims = Depends(get_current_user)):
+    # ปิด public signup: เฉพาะ admin เท่านั้นที่สร้างผู้ใช้ได้ (กันการสมัคร admin เองจากภายนอก)
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="forbidden")
+
     # ✅ เช็ค email ซ้ำ
     if users_collection.find_one({"email": users.email}):
         raise HTTPException(status_code=400, detail="อีเมลนี้ถูกใช้งานแล้ว")

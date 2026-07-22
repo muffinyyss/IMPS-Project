@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { Card, CardHeader, CardBody, Typography } from "@material-tailwind/react";
 import { apiFetch } from "@/utils/api";
 import {
@@ -20,6 +21,12 @@ const DONUT_COLORS = ["#22c55e", "#f97316", "#ef4444"];
 const EQUIPMENT_COLORS = ["#3b82f6","#06b6d4","#8b5cf6","#0ea5e9","#a855f7","#14b8a6","#64748b","#6366f1","#0284c7","#7c3aed"];
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
+
+// สถานะ (raw) → slug ของแท็บในหน้า CM Report (open / in-progress / closed)
+function statusSlug(status: string): "open" | "in-progress" | "closed" {
+  const s = normalizeStatus(status);
+  return s === "completed" ? "closed" : s === "in_progress" ? "in-progress" : "open";
+}
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -167,6 +174,29 @@ export default function CMDashboardPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  const router = useRouter();
+
+  // คลิกแถวในตาราง → เปิดใบงาน CM ในหน้า CM Report (แท็บตามสถานะ) + โชว์ชื่อสถานีบน navbar แทน badge ตู้ชาร์จ
+  const openReport = useCallback((r: CMRow) => {
+    if (!r.id) return;
+    const stationName = r.station_name || r.station_id;
+    if (r.station_id) localStorage.setItem("selected_station_id", r.station_id);
+    localStorage.setItem("selected_station_name", stationName);
+    localStorage.removeItem("selected_sn");
+    localStorage.removeItem("selected_charger_no");
+    window.dispatchEvent(new CustomEvent("station:selected"));
+    const params = new URLSearchParams({
+      tab: statusSlug(r.status),
+      station_id: r.station_id || "",
+      view: "form",
+      edit_id: r.id,
+    });
+    router.push(`/dashboard/cm-report?${params.toString()}`);
+  }, [router]);
+
+  // เคลียร์ charger ที่เลือกไว้ → sidenav กลับสู่เมนูปกติ (เหมือนหน้า Stations/PM-all)
+  useEffect(() => { localStorage.removeItem("selected_sn"); localStorage.removeItem("selected_charger_no"); window.dispatchEvent(new CustomEvent("charger:deselected")); }, []);
 
   // ── Language ──────────────────────────────────────────────────────────────
   type Lang = "th" | "en";
@@ -893,13 +923,18 @@ export default function CMDashboardPage() {
                 ) : tableRows.map((r, i) => {
                   const badge = statusBadge(r.status);
                   return (
-                    <tr key={r.id} className="tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30">
+                    <tr
+                      key={r.id}
+                      onClick={() => openReport(r)}
+                      title={`เปิดใบงาน CM · ${r.station_name || r.station_id}`}
+                      className="tw-cursor-pointer tw-border-t tw-border-gray-100 hover:tw-bg-blue-50/30"
+                    >
                       <td className="tw-px-4 tw-py-3 tw-text-gray-400">{page * pageSize + i + 1}</td>
                       <td className="tw-px-4 tw-py-3 tw-font-medium tw-text-gray-800">{r.station_name || r.station_id}</td>
                       <td className="tw-px-4 tw-py-3 tw-text-gray-600">{r.issue_id || "-"}</td>
                       <td className="tw-px-4 tw-py-3">
                         <button
-                          onClick={() => r.faulty_equipment && toggleFilter("equipment", r.faulty_equipment)}
+                          onClick={(e) => { e.stopPropagation(); r.faulty_equipment && toggleFilter("equipment", r.faulty_equipment); }}
                           className={`tw-rounded tw-px-1.5 tw-py-0.5 tw-text-xs tw-transition-colors ${
                             filters.equipment === r.faulty_equipment
                               ? "tw-bg-blue-100 tw-text-blue-700 tw-font-bold"
@@ -916,7 +951,7 @@ export default function CMDashboardPage() {
                       </td>
                       <td className="tw-px-4 tw-py-3">
                         <button
-                          onClick={() => r.severity && toggleFilter("severity", r.severity)}
+                          onClick={(e) => { e.stopPropagation(); r.severity && toggleFilter("severity", r.severity); }}
                           className={`tw-rounded tw-px-1.5 tw-py-0.5 tw-text-xs tw-transition-colors ${
                             filters.severity === r.severity
                               ? "tw-bg-blue-100 tw-text-blue-700 tw-font-bold"
@@ -931,7 +966,7 @@ export default function CMDashboardPage() {
                       </td>
                       <td className="tw-px-4 tw-py-3">
                         <button
-                          onClick={() => toggleFilter("status", badge.label === "Closed" ? STATUS_LABELS.completed : badge.label === "In Progress" ? STATUS_LABELS.in_progress : STATUS_LABELS.open)}
+                          onClick={(e) => { e.stopPropagation(); toggleFilter("status", badge.label === "Closed" ? STATUS_LABELS.completed : badge.label === "In Progress" ? STATUS_LABELS.in_progress : STATUS_LABELS.open); }}
                           className="tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
                           style={{ background: badge.bg, color: badge.text, outline: filters.status ? `2px solid ${badge.text}` : "none" }}
                         >
