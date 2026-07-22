@@ -16,6 +16,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/utils/api";
+import { isStaffRole, staffChargerPath } from "@/utils/roles";
 import { DocumentArrowDownIcon } from "@heroicons/react/24/outline";
 
 // const API_BASE = "http://localhost:8000";
@@ -901,7 +902,7 @@ export function SearchDataTables() {
         if (charger.chargerNo) localStorage.setItem("selected_charger_no", String(charger.chargerNo));
         const params = new URLSearchParams(); if (sn) params.set("sn", sn); if (stationId) params.set("station_id", stationId);
         const qs = params.toString();
-        if (me?.role === "technician") { router.push(`/dashboard/pm-report${qs ? `?${qs}` : ""}`); } else { router.push(`/dashboard/chargers${qs ? `?${qs}` : ""}`); }
+        if (isStaffRole(me?.role)) { router.push(`${staffChargerPath(me?.role)}${qs ? `?${qs}` : ""}`); } else { router.push(`/dashboard/chargers${qs ? `?${qs}` : ""}`); }
     };
 
     // ✅ handleUpdateStation เพิ่มการ upload MDB

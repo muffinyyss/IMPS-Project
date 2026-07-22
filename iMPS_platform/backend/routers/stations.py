@@ -15,9 +15,9 @@ import io
 from config import (
     users_collection, station_collection, charger_collection,
     charger_onoff, charger_onoff_sync, _validate_station_id, th_tz, settingDB,
-    CBM_DB,
+    CBM_DB, ALL_STATIONS_ROLES,
 )
-from deps import UserClaims, get_current_user
+from deps import UserClaims, get_current_user, get_user_station_ids
 from routers.pm_helpers import (
     UPLOADS_ROOT,
 )
@@ -71,7 +71,9 @@ def to_object_id_or_400(s: str) -> ObjectId:
 
 
 @router.get("/owners")
-async def get_owners():
+async def get_owners(current: UserClaims = Depends(get_current_user)):
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="forbidden")
     cursor = users_collection.find({"role": "owner"}, {"_id": 1, "username": 1})
     owners = [{"user_id": str(u["_id"]), "username": u["username"]} for u in cursor]
     if not owners:
@@ -659,11 +661,14 @@ def to_object_id_safe(s: str):
 
 def station_match_query(current: UserClaims) -> Optional[Dict[str, Any]]:
     """match query ของ stations ตาม role — คืน None ถ้า user มองไม่เห็นสถานีเลย"""
-    if current.role == "admin":
+    # Admin/CS/Engineer → เห็นทุกสถานี
+    if current.role in ALL_STATIONS_ROLES:
         return {}
     if current.role == "technician":
-        if current.station_ids and len(current.station_ids) > 0:
-            return {"station_id": {"$in": current.station_ids}}
+        # อ่านจาก DB — สถานีที่เพิ่งถูก assign ผ่านงาน CM ต้องเห็นทันทีโดยไม่ต้อง login ใหม่
+        station_ids = get_user_station_ids(current)
+        if station_ids:
+            return {"station_id": {"$in": station_ids}}
         return None
     return {
         "$or": [

@@ -40,7 +40,7 @@ PROJECTION = {
     "chargeBoxID": 1,
     "station_id": 1, "createdAt": 1, "timestamp": 1,
     "urls": 1, "url": 1, "file_url": 1,
-}
+    }
 
 
 # ===== Helpers =====

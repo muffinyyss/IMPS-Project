@@ -2,8 +2,9 @@
 services/maximo.py
 ==================
 Maximo IESB API — async client สำหรับเรียกจาก Auto CM Watcher
-- query_locations(): ดึง location list
-- create_sr(): สร้าง Service Request
+- query_locations():  ดึง location list
+- create_sr():        สร้าง Service Request (ใช้ฝั่ง CM)
+- query_workorders(): ดึงใบงาน PM ที่ EGAT เปิดไว้ใน Maximo เข้ามาแสดงใน iMPS
 """
 
 import os
@@ -30,6 +31,11 @@ MAXIMO_SITE_ID = os.getenv("MAXIMO_SITE_ID", "IESB")
 MAXIMO_COST_CENTER = os.getenv("MAXIMO_COST_CENTER", "N402040")
 MAXIMO_CRAFT = os.getenv("MAXIMO_CRAFT", "EVMAINT")
 MAXIMO_ENABLED = os.getenv("MAXIMO_ENABLED", "true").lower() == "true"
+
+# ── Work Order (PM) ──
+# ชื่อ Object Structure สำหรับเปิดใบงาน WO — ปรับได้ผ่าน env ถ้า EGAT ตั้งชื่ออื่น
+MAXIMO_WO_OS = os.getenv("MAXIMO_WO_OS", "ZAPIWO")
+MAXIMO_WO_WORKTYPE = os.getenv("MAXIMO_WO_WORKTYPE", "PM")
 
 # แหล่งข้อมูล location: "api" = Maximo API จริง (default), "db" = MongoDB
 # (collection iMPS.maximo_locations — ข้อมูลอยู่บน server อยู่แล้วแบบเดียวกับ
@@ -129,6 +135,83 @@ async def create_sr(
 
     except Exception as e:
         log.error(f"  ❌ Maximo API error: {e}")
+        return None
+
+
+# field ที่ขอจาก Maximo — ตัวหลักคือ pmtype / location / targstartdate (= pm_date)
+# ถ้า EGAT ตั้งชื่อ attribute ต่างจากนี้ override ได้ด้วย env MAXIMO_WO_SELECT
+WO_SELECT = os.getenv(
+    "MAXIMO_WO_SELECT",
+    "wonum,description,location,status,worktype,pmtype,targstartdate,targcompdate",
+)
+
+
+async def query_workorders(
+    locations: list[str] | None = None,
+    worktype: str | None = None,
+    statuses: list[str] | None = None,
+) -> list[dict] | None:
+    """
+    ดึงใบงาน (Work Order) จาก Maximo — ใช้ดึงใบงาน PM ที่ EGAT เปิดไว้เข้ามาแสดงใน iMPS
+
+    Args:
+        locations: จำกัดเฉพาะ location เหล่านี้ (ว่าง = ทุก location)
+        worktype:  default "PM"
+        statuses:  จำกัดสถานะ เช่น ["APPR", "INPRG"] (ว่าง = ทุกสถานะ)
+
+    Returns:
+        [{"wonum": "...", "description": "...", "location": "...", ...}, ...] หรือ None ถ้า error
+    """
+    if not MAXIMO_ENABLED:
+        return None
+
+    locations = [c for c in dict.fromkeys(locations or []) if c]
+
+    where = [f'worktype="{worktype or MAXIMO_WO_WORKTYPE}"']
+    if locations:
+        where.append("location in [" + ",".join(f'"{c}"' for c in locations) + "]")
+    if statuses:
+        where.append("status in [" + ",".join(f'"{s}"' for s in statuses) + "]")
+
+    url = f"{MAXIMO_BASE_URL}/{MAXIMO_WO_OS}"
+    headers = {"apikey": MAXIMO_API_KEY}
+    page_size = 100
+    all_members: list[dict] = []
+    page = 1
+
+    try:
+        async with httpx.AsyncClient(verify=_ssl_ctx, timeout=60) as client:
+            while True:
+                params = {
+                    "Content-Type": "application/json",
+                    "lean": 1,
+                    "oslc.select": WO_SELECT,
+                    "oslc.where": " and ".join(where),
+                    "oslc.pageSize": page_size,
+                    "pageno": page,
+                }
+                resp = await client.get(url, params=params, headers=headers)
+
+                if resp.status_code != 200:
+                    log.error(
+                        f"Maximo WO query failed: {resp.status_code} — {resp.text[:300]}"
+                    )
+                    return None if not all_members else all_members
+
+                members = resp.json().get("member", [])
+                if not members:
+                    break
+
+                all_members.extend(members)
+                if len(members) < page_size:
+                    break
+                page += 1
+
+        log.info(f"  🧾 Maximo work orders: {len(all_members)} found")
+        return all_members
+
+    except Exception as e:
+        log.error(f"  ❌ Maximo WO query error: {e}")
         return None
 
 

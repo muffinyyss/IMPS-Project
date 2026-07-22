@@ -460,7 +460,7 @@ export function DashboardNavbar() {
               )}
 
               {/* Notification Bell - Consistent Style */}
-              {userRole !== "technician" && !isEnergyPage && (
+              {userRole !== "technician" && userRole !== "cs" && !isEnergyPage && (
                 <NavIconButton
                   onClick={() => router.push("/dashboard/notifications")}
                   title={t.notifications}

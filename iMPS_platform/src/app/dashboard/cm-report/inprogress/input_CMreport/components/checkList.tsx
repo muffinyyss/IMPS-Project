@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, ArrowUturnLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import CreatableSelect from "react-select/creatable";
 import { useDraft, type DraftData, type DraftImage, type DraftCorrectiveAction } from "../lib/draft";
@@ -134,7 +134,7 @@ function base64ToBlobUrl(base64: string): string {
 
 // ==================== TYPES ====================
 type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
-type Status = "" | "Open" | "In Progress" | "Closed";
+type Status = "" | "Open" | "In Progress" | "Wait for approve" | "Closed";
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
 type PhotoItem = { id: string; file: File | null; preview: string; isServer?: boolean; serverUrl?: string; createdAt?: string; uploadedAtRaw?: string; location?: string; };
 type CorrectiveItem = { text: string; beforeImages: PhotoItem[]; afterImages: PhotoItem[]; code?: string; };
@@ -151,7 +151,7 @@ function formatPhotoDate(dateStr: string | undefined): string | undefined {
 }
 
 type Job = {
-    issue_id: string; doc_name: string; found_date: string; location: string;
+    issue_id: string; doc_name: string; found_date: string; found_time: string; location: string;
     problem_details: string; problem_type: string[]; severity: Severity;
     initial_cause: string; status: Status; remarks: string; faulty_equipment: string;
     corrective_actions: CorrectiveItem[];
@@ -172,14 +172,16 @@ type Job = {
 type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; };
 type ValidationItem = { key: string; label: string; isValid: boolean; message: string; isRequired: boolean; scrollId?: string; };
 
+// ตัวเลือกผลหลังซ่อมของช่าง — ไม่มี "wait for manpower" เพราะพอช่างมากรอกฟอร์มนี้ก็ไม่ได้รอช่างแล้ว
+// (manpower เป็นสถานะที่ engineer ตั้งตอน assign ไม่ใช่ผลที่ช่างเลือกเอง)
 const REPAIR_OPTIONS = [
-    { value: "WO - wait for manpower", th: "WO - wait for manpower", en: "WO - wait for manpower" },
     { value: "WO - wait for spare part", th: "WO - wait for spare part", en: "WO - wait for spare part" },
     { value: "WO - wait for site access", th: "WO - wait for site access", en: "WO - wait for site access" },
     { value: "WO - wait for approve", th: "WO - wait for approve", en: "WO - wait for approve" },
 ] as const;
 
 // ค่าผลหลังซ่อมที่ถือว่าเป็นสถานะ "รอ" (WO waiting) — ยังคงอยู่ In Progress
+// คง manpower ไว้ที่นี่ เพราะใบที่ engineer เพิ่ง assign ยังถือค่านี้อยู่ ต้องจำแนกให้ถูก
 const WO_WAITING_RESULTS = ["WO - wait for manpower", "WO - wait for spare part", "WO - wait for site access", "WO - wait for approve"];
 
 const PROBLEM_TYPE_OPTIONS = [
@@ -672,7 +674,7 @@ const NON_CHARGER_DEVICES: Record<string, string[]> = {
 };
 
 const INITIAL_JOB: Job = {
-    issue_id: "", doc_name: "", found_date: "", location: "", problem_details: "",
+    issue_id: "", doc_name: "", found_date: "", found_time: "", location: "", problem_details: "",
     problem_type: [], severity: "", initial_cause: "", status: "", remarks: "", faulty_equipment: "",
     corrective_actions: [{ text: "", beforeImages: [], afterImages: [] }],
     resolved_date: "",
@@ -1173,6 +1175,16 @@ export default function CMInProgressForm() {
     const addCorrectionGroup = () => setExtraGroups(g => [...g, newGroup("correction")]);
     const [reportedBy, setReportedBy] = useState("");
     const [inspector, setInspector] = useState("");
+    const [recordInspector, setRecordInspector] = useState(""); // inspector ที่บันทึกในใบงานแล้ว = เจ้าของใบงานเฟสซ่อม
+    const [currentUsername, setCurrentUsername] = useState("");
+    const [currentRole, setCurrentRole] = useState("");
+    const [approving, setApproving] = useState(false);
+    // ตีกลับใบงาน — ต้องกรอกเหตุผลให้ช่างรู้ว่าต้องแก้อะไร
+    const [rejectOpen, setRejectOpen] = useState(false);
+    const [rejectRemark, setRejectRemark] = useState("");
+    const [rejecting, setRejecting] = useState(false);
+    // เหตุผลที่ใบนี้เคยถูกตีกลับ (โหลดจาก server) — แสดงให้ช่างเห็นว่าต้องแก้อะไร
+    const [rejectedInfo, setRejectedInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
     const [saving, setSaving] = useState(false);
     const [photos_problem, setPhotosProblem] = useState<PhotoItem[]>([]);
     const [chargers, setChargers] = useState<ChargerInfo[]>([]);
@@ -1184,7 +1196,20 @@ export default function CMInProgressForm() {
     const isEdit = !!editId;
 
     // เปิดใบงานที่ปิดแล้ว (Closed) = โหมดดูอย่างเดียว (อ่านไม่แก้, ปิดฟีเจอร์ร่าง)
-    const viewOnly = job.status === "Closed";
+    // เจ้าของใบงานเฟสซ่อม = inspector ที่บันทึกไว้ในใบงาน — ใบงานที่ยังไม่มีใครรับ (inspector ว่าง) ใครก็เริ่มกรอกได้ (คน save คนแรกกลายเป็นเจ้าของ)
+    const isJobOwner =
+        !recordInspector.trim() ||
+        (!!currentUsername.trim() && currentUsername.trim() === recordInspector.trim());
+    // Wait for approve = ใบงานถูก freeze รอผลอนุมัติ แก้ไม่ได้ทุกคนรวมถึงเจ้าของ | Closed = ดูอย่างเดียวทุกคน | ไม่ใช่เจ้าของใบงาน = ดูอย่างเดียว
+    const viewOnly =
+        job.status === "Closed" ||
+        job.status === "Wait for approve" ||
+        !isJobOwner;
+
+    // อนุมัติปิดใบงาน (Wait for approve → Closed) — เฉพาะ admin/engineer และเฉพาะใบที่รออนุมัติอยู่จริง
+    const canApprove =
+        job.status === "Wait for approve" &&
+        ["admin", "engineer"].includes(currentRole.trim().toLowerCase());
 
     const currentTab = searchParams.get("tab") ?? "in-progress";
 
@@ -1383,14 +1408,19 @@ export default function CMInProgressForm() {
     ], [job, lang, isClosedResult, isMonitoringResult, needsRepairRemark, isNoProblem]);
     const canSave = useMemo(() => validations.filter(v => v.isRequired).every(v => v.isValid), [validations]);
 
-    // ปิดงานเมื่อ "แก้ไขสำเร็จ" หรือ "ไม่พบปัญหา" → Closed | ติดตามผล/รออะไหล่ (และอื่นๆ) → In Progress
+    // ซ่อมเสร็จ ("แก้ไขสำเร็จ/ไม่สำเร็จ" หรือ "ไม่พบปัญหา") หรือเลือก "WO - wait for approve"
+    // → เข้าคิวรออนุมัติ (Wait for approve) ให้ engineer/admin กดปิดงาน | ติดตามผล/รออะไหล่ → In Progress
     const isClosing = isClosedResult || isNoProblem;
-    const targetStatus = isClosing ? "Closed" : "In Progress";
-    const targetTab = isClosing ? "closed" : "in-progress";
+    const targetStatus = isClosing || job.repair_result === "WO - wait for approve" ? "Wait for approve" : "In Progress";
+    const targetTab = "in-progress";
+    // ใบที่เข้าคิวรออนุมัติ = งานซ่อมจบแล้ว → ต้องมีวันที่แก้ไขเสร็จเสมอ
+    // (ครอบคลุมทั้ง แก้ไขสำเร็จ/ไม่สำเร็จ, ไม่พบปัญหา และ WO - wait for approve)
+    const hasResolvedDate = targetStatus === "Wait for approve";
 
     // ==================== HELPERS ====================
     const localTodayFormatted = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
     const localTodayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    const localNowHHMM = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
     const displayToISO = (s: string) => { if (!s) return localTodayISO(); const p = s.split("/"); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : localTodayISO(); };
     const isoToDisplay = (s: string) => { if (!s) return localTodayFormatted(); const p = s.slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : localTodayFormatted(); };
 
@@ -1655,16 +1685,21 @@ export default function CMInProgressForm() {
     //     }
     // }, [job.faulty_equipment]);
     const prevFaultyRef = useRef<string | null>(null); // เปลี่ยนจาก job.faulty_equipment
+    // ลายเซ็นของ "การแก้ไข" ที่ sync กับ corrective_actions ไปแล้ว — ตัวโหลดจะเซ็ตค่านี้ให้ตรงกับข้อมูล server
+    // เพื่อให้รอบที่ค่ามาจาก server ไม่ถูกนับเป็น "ผู้ใช้เลือกใหม่"
+    const syncedCorrectionsRef = useRef<string | null>(null);
+    const correctionsKey = (arr: string[]) => arr.filter(Boolean).join("|");
 
     useEffect(() => {
-        // ครั้งแรก (โหลดจาก server) → แค่ set ref, ไม่ล้าง
-        if (prevFaultyRef.current === null) {
-            prevFaultyRef.current = job.faulty_equipment;
-            return;
-        }
-        if (prevFaultyRef.current !== job.faulty_equipment) {
-            setJob(prev => ({ ...prev, repaired_equipment: [] }));
-            prevFaultyRef.current = job.faulty_equipment;
+        const prev = prevFaultyRef.current;
+        prevFaultyRef.current = job.faulty_equipment;
+        // ล้างเฉพาะตอน "ผู้ใช้เปลี่ยนอุปกรณ์" เท่านั้น — สองกรณีนี้ไม่ใช่:
+        //   prev === null  → รอบ mount (job ยังเป็น INITIAL_JOB)
+        //   prev === ""    → server เพิ่งโหลดเสร็จ ("" -> "ACCHARFC") ซึ่งเดิมถูกนับเป็นการเปลี่ยน
+        //                    ทำให้ repaired_equipment ที่โหลดมาถูกล้างทิ้งทุกครั้งที่เปิดใบ (และหายจาก DB ถ้าบันทึกซ้ำ)
+        if (prev === null || prev === "") return;
+        if (prev !== job.faulty_equipment) {
+            setJob(p => ({ ...p, repaired_equipment: [] }));
         }
     }, [job.faulty_equipment]);
 
@@ -1682,6 +1717,7 @@ export default function CMInProgressForm() {
                     doc_name: data.doc_name ?? "",
                     issue_id: data.issue_id ?? "",
                     found_date: rawDate ? isoToDisplay(rawDate) : localTodayFormatted(),
+                    found_time: data.found_time ?? "",
                     location: data.location ?? prev.location,
                     problem_details: data.problem_details ?? "",
                     severity: (data.severity ?? "") as Severity,
@@ -1694,7 +1730,9 @@ export default function CMInProgressForm() {
                     problem_type: Array.isArray(data.problem_type) ? data.problem_type : (data.problem_type ? [data.problem_type] : []),
                     problem_type_other: data.problem_type_other ?? "",
                     cause: Array.isArray(data.cause) ? data.cause : (data.cause ? [data.cause] : []),
-                    repair_result: data.repair_result ?? "",
+                    // engineer ตั้ง "wait for manpower" ให้ทุกใบตอน assign แต่ช่างเลือกค่านี้ไม่ได้แล้ว
+                    // ถ้าไม่ล้าง dropdown จะโชว์ว่างทั้งที่ค่าเก่ายังค้างใน state — ล้างเพื่อบังคับให้ช่างเลือกใหม่
+                    repair_result: (data.repair_result === "WO - wait for manpower" ? "" : data.repair_result ?? ""),
                     inprogress_remarks: data.inprogress_remarks ?? "",
                     repair_result_remark: data.repair_result_remark ?? "",
                     resolved_date: data.resolved_date ? isoToDisplay(data.resolved_date) : "",
@@ -1702,9 +1740,13 @@ export default function CMInProgressForm() {
                     start_repair_time: data.start_repair_time ?? "",
                     resolved_time: data.resolved_time ?? "",
 
-                    repaired_equipment: Array.isArray(data.repaired_equipment)
-                        ? data.repaired_equipment
-                        : [],
+                    repaired_equipment: (() => {
+                        const loaded = Array.isArray(data.repaired_equipment) ? data.repaired_equipment : [];
+                        // ข้อมูลจาก server มาพร้อม corrective_actions ของมันเองอยู่แล้ว → ถือว่า sync แล้ว
+                        // ไม่งั้น effect auto-sync จะเห็นเป็น "ผู้ใช้เพิ่งเลือก" แล้วแถมแถวเปล่าเพิ่มให้ทุกครั้งที่เปิดใบ
+                        syncedCorrectionsRef.current = correctionsKey(loaded);
+                        return loaded;
+                    })(),
 
                     preventive_action: Array.isArray(data.preventive_action) && data.preventive_action.length > 0
                         ? data.preventive_action
@@ -1814,8 +1856,10 @@ export default function CMInProgressForm() {
                 }));
 
                 setReportedBy(data.reported_by ?? "");
+                setRejectedInfo({ remark: data.reject_remark ?? "", by: data.rejected_by ?? "" });
 
                 // ✅ ดึง inspector จาก data ถ้ามี (ไม่ override จาก /me)
+                setRecordInspector(data.inspector ?? "");
                 if (data.inspector) {
                     setInspector(data.inspector);
                 }
@@ -1860,6 +1904,8 @@ export default function CMInProgressForm() {
                     // ✅ เฉพาะถ้ายังไม่มี inspector
                     if (alive) {
                         setInspector(prev => prev || data.username || "");
+                        setCurrentUsername(data.username || "");
+                        setCurrentRole(data.role || "");
                     }
                 }
             } catch { }
@@ -1867,6 +1913,66 @@ export default function CMInProgressForm() {
         return () => { alive = false; };
     }, []);
     // ==================== HANDLERS ====================
+    // อนุมัติปิดใบงาน — ย้ายมาจากตาราง In Progress เพื่อให้ผู้อนุมัติเห็นรายละเอียดใบงานก่อนกด
+    const onApprove = async () => {
+        if (!canApprove || !editId || !stationId || approving) return;
+        const label = job.doc_name || job.issue_id || editId;
+        const ok = window.confirm(
+            lang === "th" ? `อนุมัติปิดใบงาน "${label}" ใช่หรือไม่?` : `Approve and close work order "${label}"?`
+        );
+        if (!ok) return;
+        setApproving(true);
+        try {
+            const res = await fetch(
+                `${API_BASE}/cmreport/${encodeURIComponent(editId)}/approve?station_id=${encodeURIComponent(stationId)}`,
+                { method: "POST", credentials: "include" }
+            );
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j?.detail || `HTTP ${res.status}`);
+            }
+            // ปิดแล้วใบงานย้ายไปแท็บ Closed — กลับไปหน้า list ไม่ค้างอยู่ในฟอร์มที่ข้อมูลเก่า
+            const p = new URLSearchParams();
+            if (stationId) p.set("station_id", stationId);
+            p.set("tab", "closed");
+            router.push(`${LIST_ROUTE}?${p.toString()}`);
+        } catch (e: any) {
+            alert((lang === "th" ? "อนุมัติไม่สำเร็จ: " : "Approve failed: ") + (e?.message ?? e));
+            setApproving(false);
+        }
+    };
+
+    // ตีกลับใบงานให้ช่างแก้ไข (Wait for approve → In Progress) พร้อมเหตุผล
+    const onReject = async () => {
+        if (!canApprove || !editId || !stationId || rejecting) return;
+        const remark = rejectRemark.trim();
+        if (!remark) return;
+        setRejecting(true);
+        try {
+            const res = await fetch(
+                `${API_BASE}/cmreport/${encodeURIComponent(editId)}/reject?station_id=${encodeURIComponent(stationId)}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ remark }),
+                }
+            );
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j?.detail || `HTTP ${res.status}`);
+            }
+            // ใบงานกลับไปให้ช่างแก้ → กลับหน้า list ของ In Progress
+            const p = new URLSearchParams();
+            if (stationId) p.set("station_id", stationId);
+            p.set("tab", "in-progress");
+            router.push(`${LIST_ROUTE}?${p.toString()}`);
+        } catch (e: any) {
+            alert((lang === "th" ? "ตีกลับไม่สำเร็จ: " : "Reject failed: ") + (e?.message ?? e));
+            setRejecting(false);
+        }
+    };
+
     const onFinalSave = async () => {
         if (!stationId) { alert(t("alertNoStationId", lang)); return; }
         if (!canSave) return;
@@ -2052,10 +2158,13 @@ export default function CMInProgressForm() {
                         inprogress_remarks: job.inprogress_remarks,
                         repair_result_remark: job.repair_result_remark,
                         start_repair_date: job.start_repair_date || localTodayISO(),
-                        resolved_date: isClosedResult ? (job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()) : "",
+                        // ช่องกรอกวันที่/เวลาเสร็จเองมีเฉพาะตอน "แก้ไขสำเร็จ/ไม่สำเร็จ" — กรอกมาก็เคารพค่านั้น
+                        // กรณีอื่น (รออนุมัติ/ไม่พบปัญหา) ประทับเวลาตอนกดบันทึกเสมอ ไม่ใช้ค่าเก่าที่ค้างจากใบที่เคยถูกตีกลับ
+                        resolved_date: hasResolvedDate ? (isClosedResult && job.resolved_date ? displayToISO(job.resolved_date) : localTodayISO()) : "",
                         signature: (isClosedResult || isNoProblem) ? job.signature : "",
-                        start_repair_time: job.start_repair_time,
-                        resolved_time: isClosedResult ? job.resolved_time : "",
+                        // ประทับเวลาเริ่มแก้ไขครั้งแรกพร้อมวันที่ — ใบเก่าที่มีวันที่แต่ไม่มีเวลา ไม่เติมย้อนหลัง
+                        start_repair_time: job.start_repair_time || (job.start_repair_date ? "" : localNowHHMM()),
+                        resolved_time: hasResolvedDate ? (isClosedResult && job.resolved_time ? job.resolved_time : localNowHHMM()) : "",
                     }
                 })
             });
@@ -2161,10 +2270,13 @@ export default function CMInProgressForm() {
 
     // auto: sync "การดำเนินการแก้ไข" ให้ตรงกับ "การแก้ไข" ที่เลือก (1 รายการต่อ 1 การแก้ไข)
     // เพิ่มเมื่อเลือกการแก้ไข / ลบแถว code เดิมออกเมื่อเอาการแก้ไขออก | ช่องรายละเอียดปล่อยว่างให้ user กรอกเอง
-    // แถวที่ไม่มี code (โหลดมา/เพิ่มเอง) จะถูกเก็บไว้ | ใบงานที่โหลดมา (edit) ข้ามรอบแรก
-    const correctiveSyncInit = useRef(false);
+    // แถวที่ไม่มี code (โหลดมา/เพิ่มเอง) จะถูกเก็บไว้
+    // sync เฉพาะตอน "การแก้ไข" เปลี่ยนค่าจริงเท่านั้น — รอบที่ค่ามาจาก server ตัวโหลดจะเซ็ต ref ไว้ให้ตรงแล้ว
+    // (เดิมใช้ธง "ข้ามรอบแรก" ซึ่งถูกเผาตอน mount ที่ค่ายังว่าง แล้วรอบที่ server โหลดเสร็จกลับถูกนับเป็นผู้ใช้เลือก → แถมแถวเปล่าทุกครั้งที่เปิดใบ)
     useEffect(() => {
-        if (editId && !correctiveSyncInit.current) { correctiveSyncInit.current = true; return; }
+        const key = correctionsKey(job.repaired_equipment);
+        if (syncedCorrectionsRef.current === key) return;
+        syncedCorrectionsRef.current = key;
         const codes = job.repaired_equipment.filter(Boolean);
         const codeSet = new Set(codes);
         setJob(prev => {
@@ -2281,6 +2393,20 @@ export default function CMInProgressForm() {
             <form noValidate onSubmit={e => e.preventDefault()} onKeyDown={e => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
                 <div className="tw-mx-auto tw-max-w-6xl tw-bg-white tw-border tw-border-blue-gray-100 tw-rounded-xl tw-shadow-md tw-shadow-blue-gray-500/5 tw-p-6 md:tw-p-8">
 
+                    {/* ใบงานถูกตีกลับ — ช่างต้องเห็นเหตุผลก่อนแก้ (ซ่อนเมื่อรออนุมัติรอบใหม่แล้ว) */}
+                    {rejectedInfo.remark && job.status !== "Wait for approve" && (
+                        <div className="tw-mb-6 tw-flex tw-gap-3 tw-rounded-xl tw-border tw-border-red-200 tw-bg-red-50 tw-p-4">
+                            <ArrowUturnLeftIcon className="tw-w-5 tw-h-5 tw-text-red-600 tw-flex-shrink-0 tw-mt-0.5" />
+                            <div className="tw-min-w-0">
+                                <p className="tw-text-sm tw-font-bold tw-text-red-800">
+                                    {lang === "th" ? "ใบงานถูกตีกลับให้แก้ไข" : "Work order was rejected"}
+                                    {rejectedInfo.by && <span className="tw-font-normal tw-text-red-600"> — {lang === "th" ? "โดย" : "by"} {rejectedInfo.by}</span>}
+                                </p>
+                                <p className="tw-text-sm tw-text-red-700 tw-mt-1 tw-whitespace-pre-wrap tw-break-words">{rejectedInfo.remark}</p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* fieldset disabled = โหมดดูอย่างเดียวเมื่อใบงานปิดแล้ว */}
                     <fieldset disabled={viewOnly} className="tw-border-0 tw-p-0 tw-m-0 tw-min-w-0">
                     {/* Header */}
@@ -2314,7 +2440,7 @@ export default function CMInProgressForm() {
                         </div>
                         <div>
                             <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("foundDate", lang)}</label>
-                            <Input value={job.found_date || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
+                            <Input value={job.found_time ? `${job.found_date} ${job.found_time}` : (job.found_date || "")} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100 !tw-text-blue-gray-700 !tw-opacity-100" style={{ backgroundColor: "#f3f4f6", color: "#455a64" }} containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                         <div>
                             <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("location", lang)}</label>
@@ -2420,22 +2546,47 @@ export default function CMInProgressForm() {
                         </div>
 
                         <div className="tw-p-6 tw-space-y-5">
-                            {/* วันที่เริ่มแก้ไข — readonly (ย้ายมาไว้บนสุด เหนือปัญหา; เมื่อสำเร็จจะย้ายไปกรอกใต้ผลหลังซ่อม) */}
+                            {/* วันที่เริ่มแก้ไข + วันที่แก้ไขเสร็จ — readonly ทั้งคู่ (ช่องกรอกวันที่เสร็จจริงอยู่ใต้ผลหลังซ่อม เมื่อเลือกแก้ไขสำเร็จ/ไม่สำเร็จ) */}
                             {!isClosedResult && (
-                                <div className="tw-space-y-2 md:tw-w-96">
-                                    <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
-                                        <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
-                                        {t("resolvedDate", lang)}
-                                    </label>
-                                    <Input
-                                        type="text"
-                                        value={job.start_repair_date ? isoToDisplay(job.start_repair_date) : localTodayFormatted()}
-                                        readOnly
-                                        crossOrigin=""
-                                        className="!tw-w-full !tw-h-12 !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-xl"
-                                        style={{ backgroundColor: "#f3f4f6", color: "#374151" }}
-                                        containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
-                                    />
+                                <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-5">
+                                    <div className="tw-space-y-2">
+                                        <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                            <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-amber-500"></span>
+                                            {t("resolvedDate", lang)}
+                                        </label>
+                                        <Input
+                                            type="text"
+                                            value={job.start_repair_date
+                                                ? `${isoToDisplay(job.start_repair_date)}${job.start_repair_time ? ` ${job.start_repair_time}` : ""}`
+                                                : `${localTodayFormatted()} ${localNowHHMM()}`}
+                                            readOnly
+                                            crossOrigin=""
+                                            className="!tw-w-full !tw-h-12 !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-xl"
+                                            style={{ backgroundColor: "#f3f4f6", color: "#374151" }}
+                                            containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
+                                        />
+                                    </div>
+                                    <div className="tw-space-y-2">
+                                        <label className="tw-flex tw-items-center tw-gap-2 tw-text-sm tw-font-semibold tw-text-gray-700">
+                                            <span className="tw-w-1.5 tw-h-1.5 tw-rounded-full tw-bg-green-500"></span>
+                                            {t("completedDate", lang)}
+                                        </label>
+                                        <Input
+                                            type="text"
+                                            // กำลังจะเข้าคิวรออนุมัติ → พรีวิววันเวลาที่จะถูกประทับตอนกดบันทึก
+                                            // | ยังซ่อมไม่จบ → แสดงค่าเดิมถ้ามี ไม่มีก็ "-" (ไม่โชว์วันนี้ กันเข้าใจผิดว่าเสร็จแล้ว)
+                                            value={hasResolvedDate
+                                                ? `${localTodayFormatted()} ${localNowHHMM()}`
+                                                : job.resolved_date
+                                                    ? `${job.resolved_date}${job.resolved_time ? ` ${job.resolved_time}` : ""}`
+                                                    : "-"}
+                                            readOnly
+                                            crossOrigin=""
+                                            className="!tw-w-full !tw-h-12 !tw-bg-gray-100 !tw-text-gray-700 !tw-opacity-100 !tw-border-gray-200 !tw-rounded-xl"
+                                            style={{ backgroundColor: "#f3f4f6", color: "#374151" }}
+                                            containerProps={{ className: "!tw-min-w-0 !tw-h-12" }}
+                                        />
+                                    </div>
                                 </div>
                             )}
 
@@ -2556,11 +2707,14 @@ export default function CMInProgressForm() {
                                                                     <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-red-500"></span>
                                                                     {t("beforePhoto", lang)} <span className="tw-text-red-500">*</span>
                                                                 </span>
-                                                                <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-red-300 tw-text-red-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-red-50 tw-shadow-sm tw-transition-all">
-                                                                    <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addCorrectiveBeforeImages(i, e.target.files)} />
-                                                                    <PhotoIcon className="tw-w-4 tw-h-4" />
-                                                                    <span>{t("attachPhoto", lang)}</span>
-                                                                </label>
+                                                                {/* label ไม่ใช่ form control — fieldset[disabled] block ไม่ได้ และ attribute hidden ก็ถูก tw-inline-flex ทับ จึงต้องไม่ render เลย */}
+                                                                {!viewOnly && (
+                                                                    <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-red-300 tw-text-red-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-red-50 tw-shadow-sm tw-transition-all">
+                                                                        <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addCorrectiveBeforeImages(i, e.target.files)} />
+                                                                        <PhotoIcon className="tw-w-4 tw-h-4" />
+                                                                        <span>{t("attachPhoto", lang)}</span>
+                                                                    </label>
+                                                                )}
                                                             </div>
                                                             {action.beforeImages.length > 0 ? (
                                                                 <div className="tw-grid tw-grid-cols-3 tw-gap-2">
@@ -2573,9 +2727,12 @@ export default function CMInProgressForm() {
                                                                                     {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
                                                                                 </span>
                                                                             )}
-                                                                            <button type="button" onClick={() => removeCorrectiveBeforeImage(i, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all">
-                                                                                <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
-                                                                            </button>
+                                                                            {/* โหมดดูอย่างเดียว (รออนุมัติ/ปิดแล้ว/ไม่ใช่เจ้าของ) → ไม่ต้องมีปุ่มลบรูป */}
+                                                                            {!viewOnly && (
+                                                                                <button type="button" onClick={() => removeCorrectiveBeforeImage(i, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all">
+                                                                                    <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
+                                                                                </button>
+                                                                            )}
                                                                         </div>
                                                                     ))}
                                                                 </div>
@@ -2593,11 +2750,13 @@ export default function CMInProgressForm() {
                                                                     <span className="tw-w-2 tw-h-2 tw-rounded-full tw-bg-green-500"></span>
                                                                     {t("afterPhoto", lang)} {isClosedResult && <span className="tw-text-red-500">*</span>}
                                                                 </span>
-                                                                <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-green-300 tw-text-green-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-green-50 tw-shadow-sm tw-transition-all">
-                                                                    <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addCorrectiveAfterImages(i, e.target.files)} />
-                                                                    <PhotoIcon className="tw-w-4 tw-h-4" />
-                                                                    <span>{t("attachPhoto", lang)}</span>
-                                                                </label>
+                                                                {!viewOnly && (
+                                                                    <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-green-300 tw-text-green-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-green-50 tw-shadow-sm tw-transition-all">
+                                                                        <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addCorrectiveAfterImages(i, e.target.files)} />
+                                                                        <PhotoIcon className="tw-w-4 tw-h-4" />
+                                                                        <span>{t("attachPhoto", lang)}</span>
+                                                                    </label>
+                                                                )}
                                                             </div>
                                                             {action.afterImages.length > 0 ? (
                                                                 <div className="tw-grid tw-grid-cols-3 tw-gap-2">
@@ -2610,9 +2769,11 @@ export default function CMInProgressForm() {
                                                                                     {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
                                                                                 </span>
                                                                             )}
-                                                                            <button type="button" onClick={() => removeCorrectiveAfterImage(i, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all">
-                                                                                <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
-                                                                            </button>
+                                                                            {!viewOnly && (
+                                                                                <button type="button" onClick={() => removeCorrectiveAfterImage(i, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all">
+                                                                                    <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
+                                                                                </button>
+                                                                            )}
                                                                         </div>
                                                                     ))}
                                                                 </div>
@@ -2777,11 +2938,13 @@ export default function CMInProgressForm() {
                             <div className="tw-p-6 tw-space-y-3">
                                 <div className="tw-flex tw-items-center tw-justify-between">
                                     <span className="tw-text-sm tw-font-semibold tw-text-gray-700">{lang === "th" ? "แนบรูปถ่าย" : "Attach photo"} <span className="tw-text-red-500">*</span></span>
-                                    <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-amber-300 tw-text-amber-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-amber-50 tw-shadow-sm tw-transition-all">
-                                        <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addCorrectiveAfterImages(0, e.target.files)} />
-                                        <PhotoIcon className="tw-w-4 tw-h-4" />
-                                        <span>{t("attachPhoto", lang)}</span>
-                                    </label>
+                                    {!viewOnly && (
+                                        <label className="tw-inline-flex tw-items-center tw-gap-1.5 tw-px-3 tw-py-1.5 tw-rounded-lg tw-bg-white tw-border tw-border-amber-300 tw-text-amber-600 tw-font-medium tw-text-xs tw-cursor-pointer hover:tw-bg-amber-50 tw-shadow-sm tw-transition-all">
+                                            <input type="file" accept="image/*" multiple className="tw-hidden" onChange={(e) => addCorrectiveAfterImages(0, e.target.files)} />
+                                            <PhotoIcon className="tw-w-4 tw-h-4" />
+                                            <span>{t("attachPhoto", lang)}</span>
+                                        </label>
+                                    )}
                                 </div>
                                 {(job.corrective_actions[0]?.afterImages.length ?? 0) > 0 ? (
                                     <div className="tw-grid tw-grid-cols-3 tw-gap-2">
@@ -2794,9 +2957,11 @@ export default function CMInProgressForm() {
                                                         {img.location && <span className="tw-block tw-opacity-80 tw-truncate">📍 {img.location}</span>}
                                                     </span>
                                                 )}
-                                                <button type="button" onClick={() => removeCorrectiveAfterImage(0, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all">
-                                                    <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
-                                                </button>
+                                                {!viewOnly && (
+                                                    <button type="button" onClick={() => removeCorrectiveAfterImage(0, img.id)} className="tw-absolute tw-top-1 tw-right-1 tw-w-6 tw-h-6 tw-bg-red-500 tw-text-white tw-rounded-full tw-flex tw-items-center tw-justify-center hover:tw-bg-red-600 tw-shadow-lg tw-transition-all">
+                                                        <XMarkIcon className="tw-w-3.5 tw-h-3.5" />
+                                                    </button>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -2829,15 +2994,40 @@ export default function CMInProgressForm() {
                     </fieldset>
 
                     {/* Actions */}
-                    <div className="tw-flex tw-items-center tw-justify-end tw-pt-6 tw-border-t tw-border-gray-200">
+                    <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-pt-6 tw-border-t tw-border-gray-200">
                         {viewOnly ? (
-                            <Button
-                                type="button"
-                                onClick={() => router.back()}
-                                className="tw-bg-blue-gray-700 hover:tw-bg-blue-gray-800 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl tw-transition-all"
-                            >
-                                {lang === "th" ? "กลับ" : "Back"}
-                            </Button>
+                            <>
+                                <Button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="tw-bg-blue-gray-700 hover:tw-bg-blue-gray-800 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl tw-transition-all"
+                                >
+                                    {lang === "th" ? "กลับ" : "Back"}
+                                </Button>
+                                {/* อนุมัติ / ตีกลับ — เห็นเฉพาะ admin/engineer และเฉพาะใบที่รออนุมัติ */}
+                                {canApprove && (
+                                    <>
+                                        <Button
+                                            type="button"
+                                            onClick={() => { setRejectRemark(""); setRejectOpen(true); }}
+                                            disabled={approving || rejecting}
+                                            className="tw-flex tw-items-center tw-gap-2 tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-red-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+                                        >
+                                            <ArrowUturnLeftIcon className="tw-w-5 tw-h-5" />
+                                            {lang === "th" ? "ตีกลับ" : "Reject"}
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={onApprove}
+                                            disabled={approving || rejecting}
+                                            className="tw-flex tw-items-center tw-gap-2 tw-bg-green-600 hover:tw-bg-green-700 tw-text-white tw-font-semibold tw-text-base tw-px-8 tw-py-3 tw-rounded-xl hover:tw-shadow-xl hover:tw-shadow-green-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed tw-transition-all"
+                                        >
+                                            <CheckCircleIcon className="tw-w-5 tw-h-5" />
+                                            {approving ? (lang === "th" ? "กำลังอนุมัติ..." : "Approving...") : (lang === "th" ? "อนุมัติ" : "Approve")}
+                                        </Button>
+                                    </>
+                                )}
+                            </>
                         ) : (
                             <Button
                                 onClick={onFinalSave}
@@ -2853,6 +3043,46 @@ export default function CMInProgressForm() {
                     </div>
                 </div>
             </form>
+
+            {/* Modal ตีกลับ — บังคับกรอกเหตุผลก่อนส่งกลับให้ช่าง */}
+            {rejectOpen && (
+                <div className="tw-fixed tw-inset-0 tw-z-[9999] tw-flex tw-items-center tw-justify-center tw-bg-black/50 tw-p-4"
+                    onClick={() => { if (!rejecting) setRejectOpen(false); }}>
+                    <div className="tw-w-full tw-max-w-lg tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <h3 className="tw-flex tw-items-center tw-gap-2 tw-text-lg tw-font-bold tw-text-blue-gray-800 tw-mb-1">
+                            <ArrowUturnLeftIcon className="tw-w-5 tw-h-5 tw-text-red-600" />
+                            {lang === "th" ? "ตีกลับใบงาน" : "Reject work order"}
+                        </h3>
+                        <p className="tw-text-sm tw-text-blue-gray-500 tw-mb-4">
+                            {lang === "th"
+                                ? "ใบงานจะกลับไปให้ช่างแก้ไข — ระบุสิ่งที่ต้องแก้ให้ชัดเจน"
+                                : "The work order goes back to the technician — state clearly what needs fixing."}
+                        </p>
+                        <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">
+                            {lang === "th" ? "หมายเหตุ" : "Remark"} <span className="tw-text-red-500">*</span>
+                        </label>
+                        <textarea
+                            value={rejectRemark}
+                            onChange={e => setRejectRemark(e.target.value)}
+                            rows={4}
+                            autoFocus
+                            placeholder={lang === "th" ? "เช่น รูปหลังแก้ไขไม่ชัด กรุณาถ่ายใหม่" : "e.g. After-repair photo is unclear, please retake"}
+                            className="tw-w-full tw-px-3 tw-py-2 tw-border tw-border-blue-gray-200 tw-rounded-lg tw-text-sm tw-bg-white focus:tw-outline-none focus:tw-border-red-400 tw-transition-colors tw-resize-y"
+                        />
+                        <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-mt-5">
+                            <Button type="button" variant="outlined" disabled={rejecting}
+                                onClick={() => setRejectOpen(false)}
+                                className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
+                                {lang === "th" ? "ยกเลิก" : "Cancel"}
+                            </Button>
+                            <Button type="button" onClick={onReject} disabled={rejecting || !rejectRemark.trim()}
+                                className="tw-bg-red-600 hover:tw-bg-red-700 tw-text-white tw-font-semibold disabled:tw-opacity-50 disabled:tw-cursor-not-allowed">
+                                {rejecting ? (lang === "th" ? "กำลังตีกลับ..." : "Rejecting...") : (lang === "th" ? "ยืนยันตีกลับ" : "Confirm reject")}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </section>
     );
 }

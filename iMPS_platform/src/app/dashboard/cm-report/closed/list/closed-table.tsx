@@ -299,7 +299,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         u.searchParams.set("station_id", stationId);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
-        u.searchParams.set("status", statusFromTab);
+        // tab Closed รวมใบงานที่ถูก planner ยกเลิก (Cancelled) ด้วย
+        u.searchParams.set("status", statusFromTab === "closed" ? "closed,cancelled" : statusFromTab);
         return u.toString();
       };
 
@@ -322,7 +323,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
       const matchesTab = (it: any) => {
         const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
-        return s === statusFromTab || (!s && statusFromTab === "closed");
+        if (statusFromTab === "closed") return s === "closed" || s === "cancelled" || !s;
+        return s === statusFromTab;
       };
       cmItems = cmItems.filter(matchesTab);
       urlItems = urlItems.filter(matchesTab);
@@ -528,6 +530,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const sl = s.toLowerCase();
         const color =
           sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
+            sl === "cancelled" ? "tw-bg-gray-300 tw-text-gray-700 tw-line-through" :
             sl === "closed" || sl === "close" ? "tw-bg-red-100 tw-text-red-800" :
               sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
                 "tw-bg-blue-gray-100 tw-text-blue-gray-800";

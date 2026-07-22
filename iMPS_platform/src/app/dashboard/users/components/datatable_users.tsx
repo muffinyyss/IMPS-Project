@@ -499,6 +499,8 @@ export default function SearchDataTables() {
           admin: "tw-bg-purple-50 tw-text-purple-700 tw-ring-1 tw-ring-purple-200",
           owner: "tw-bg-blue-50 tw-text-blue-700 tw-ring-1 tw-ring-blue-200",
           technician: "tw-bg-amber-50 tw-text-amber-700 tw-ring-1 tw-ring-amber-200",
+          cs: "tw-bg-teal-50 tw-text-teal-700 tw-ring-1 tw-ring-teal-200",
+          engineer: "tw-bg-cyan-50 tw-text-cyan-700 tw-ring-1 tw-ring-cyan-200",
         };
         const cls = colorMap[role] || "tw-bg-gray-50 tw-text-gray-600 tw-ring-1 tw-ring-gray-200";
         return (
@@ -791,6 +793,10 @@ export default function SearchDataTables() {
                   <Option value="admin">admin</Option>
                   <Option value="owner">owner</Option>
                   <Option value="technician">Technician</Option>
+                  <Option value="cs">CS</Option>
+                  <Option value="head_cs">Head CS</Option>
+                  <Option value="planner">Planner</Option>
+                  <Option value="engineer">Engineer</Option>
                 </Select>
 
 

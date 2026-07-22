@@ -18,6 +18,7 @@ import {
 import { useRouter } from "next/navigation";
 import AddStation, { type NewStationPayload, MaximoLocationSelect, type MaximoLocation } from "@/app/dashboard/stations/components/addstations";
 import { apiFetch } from "@/utils/api";
+import { isStaffRole, staffChargerPath } from "@/utils/roles";
 
 // const API_BASE = "http://localhost:8000";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
@@ -773,7 +774,7 @@ export function SearchDataTables() {
     if (charger.chargerNo) localStorage.setItem("selected_charger_no", String(charger.chargerNo));
     const params = new URLSearchParams(); if (sn) params.set("sn", sn); if (stationId) params.set("station_id", stationId);
     const qs = params.toString();
-    if (me?.role === "technician") { router.push(`/dashboard/pm-report${qs ? `?${qs}` : ""}`); } else { router.push(`/dashboard/chargers${qs ? `?${qs}` : ""}`); }
+    if (isStaffRole(me?.role)) { router.push(`${staffChargerPath(me?.role)}${qs ? `?${qs}` : ""}`); } else { router.push(`/dashboard/chargers${qs ? `?${qs}` : ""}`); }
   };
 
   // ✅ handleUpdateStation เพิ่มการ upload MDB
@@ -954,7 +955,7 @@ export function SearchDataTables() {
       { id: "username", header: () => t.owner, accessorFn: (row: StationRow) => row.username ?? "-", cell: (info: any) => (<span className="tw-text-blue-gray-600">{info.getValue()}</span>) },
       { id: "is_active", header: () => t.status, size: 100, cell: ({ row }: { row: Row<StationRow> }) => { const on = !!row.original.is_active; return (<span className={`tw-inline-flex tw-items-center tw-gap-1.5 tw-px-2.5 tw-py-1 tw-rounded-md tw-text-xs tw-font-semibold tw-transition-colors ${on ? "tw-bg-green-50 tw-text-green-700 tw-ring-1 tw-ring-green-200" : "tw-bg-red-50 tw-text-red-600 tw-ring-1 tw-ring-red-200"}`}><span className={`tw-h-1.5 tw-w-1.5 tw-rounded-full ${on ? "tw-bg-green-500 tw-animate-pulse" : "tw-bg-red-400"}`} />{on ? t.active : t.inactive}</span>); } },
     ];
-    if (me?.role !== "technician") {
+    if (!isStaffRole(me?.role)) {
       baseColumns.push({ id: "actions", header: () => t.actions, size: 100, enableSorting: false, cell: ({ row }: { row: Row<StationRow> }) => { const canEdit = isAdmin || row.original.user_id === me?.user_id; return (<span className="tw-inline-flex tw-items-center tw-gap-1.5" onClick={(e) => e.stopPropagation()}>{canEdit && (<Tooltip content={t.editStationTooltip}><button onClick={(e) => handleEditStation(row.original, e)} className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-blue-50 tw-ring-1 tw-ring-blue-200/60 hover:tw-bg-blue-600 hover:tw-ring-blue-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"><PencilSquareIcon className="tw-h-4 tw-w-4 tw-text-blue-600 group-hover/btn:tw-text-white tw-transition-colors" /></button></Tooltip>)}{isAdmin && (<Tooltip content={t.deleteStationTooltip}><button onClick={(e) => handleDeleteStation(row.original, e)} className="tw-group/btn tw-rounded-lg tw-p-2 tw-bg-red-50 tw-ring-1 tw-ring-red-200/60 hover:tw-bg-red-600 hover:tw-ring-red-600 tw-transition-all tw-duration-200 tw-shadow-sm hover:tw-shadow-md"><TrashIcon className="tw-h-4 tw-w-4 tw-text-red-500 group-hover/btn:tw-text-white tw-transition-colors" /></button></Tooltip>)}</span>); } } as any);
     }
     return baseColumns;

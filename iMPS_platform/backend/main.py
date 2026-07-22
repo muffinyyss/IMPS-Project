@@ -26,7 +26,38 @@ async def lifespan(app: FastAPI):
     await stop_watcher()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+
+
+# ─── Security headers + hide server banner (pentest #5, #6) ───
+from starlette.middleware.base import BaseHTTPMiddleware
+
+_SECURITY_HEADERS = {
+    "X-XSS-Protection": "1; mode=block",
+    "X-Frame-Options": "SAMEORIGIN",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": (
+        "default-src https:; img-src 'self' data:; "
+        "script-src 'self'; style-src 'self' 'unsafe-inline';"
+    ),
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        for k, v in _SECURITY_HEADERS.items():
+            response.headers.setdefault(k, v)
+        # ซ่อนข้อมูลเวอร์ชัน server/service (X-Powered-By)
+        response.headers["Server"] = "server"
+        if "X-Powered-By" in response.headers:
+            del response.headers["X-Powered-By"]
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -89,6 +120,7 @@ from routers.testreport_dc import router as testreport_dc_router
 from routers.testreport_ac import router as testreport_ac_router
 from routers.notifications import router as notifications_router
 from routers.pm_all_stations import router as pm_all_stations_router
+from routers.pm_maximo import router as pm_maximo_router
 
 app.include_router(users_router)
 app.include_router(stations_router)
@@ -107,3 +139,4 @@ app.include_router(testreport_dc_router)
 app.include_router(testreport_ac_router)
 app.include_router(notifications_router)
 app.include_router(pm_all_stations_router)
+app.include_router(pm_maximo_router)

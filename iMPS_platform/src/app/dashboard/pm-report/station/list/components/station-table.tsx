@@ -32,6 +32,7 @@ import StationPMForm from "@/app/dashboard/pm-report/station/input_PMreport/comp
 import { apiFetch } from "@/utils/api";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
+import MaximoWorkOrders from "@/app/dashboard/pm-report/components/MaximoWorkOrders";
 
 // ==================== TRANSLATIONS ====================
 const T = {
@@ -969,6 +970,9 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
           </div>
         </div>
       )}
+      {/* PM work orders received from Maximo */}
+      <MaximoWorkOrders source="station" identifier={stationId} />
+
       {/* Main Card */}
       <Card className="tw-border tw-border-gray-200 tw-shadow-sm tw-mt-4 sm:tw-mt-6 lg:tw-mt-8 tw-mx-2 sm:tw-mx-4 lg:tw-mx-0 tw-rounded-2xl tw-overflow-hidden">
 

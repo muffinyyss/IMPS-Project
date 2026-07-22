@@ -448,7 +448,14 @@ async def pmreport_pre_submit(body: PMSubmitIn, current: UserClaims = Depends(ge
         "timestamp": datetime.now(timezone.utc),
     }
     res = await coll.insert_one(doc)
-    return {"ok": True, "report_id": str(res.inserted_id), "issue_id": issue_id, "doc_name": doc_name}
+
+
+    return {
+        "ok": True,
+        "report_id": str(res.inserted_id),
+        "issue_id": issue_id,
+        "doc_name": doc_name,
+    }
 
 
 class PMPostIn(BaseModel):

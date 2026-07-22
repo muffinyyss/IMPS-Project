@@ -5,9 +5,10 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SENDER_EMAIL
 
-from fastapi import APIRouter, Request, Query, HTTPException
+from fastapi import APIRouter, Request, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
+from deps import UserClaims, get_current_user
 from datetime import datetime, timezone
 from bson import ObjectId
 from pydantic import BaseModel, Field
@@ -475,6 +476,7 @@ async def get_all_notifications(
     date_from: Optional[str] = Query(None, description="YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
     unread_only: bool = Query(default=False),
+    current: UserClaims = Depends(get_current_user),
 ):
     dt_from = datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc) if date_from else None
     dt_to = datetime.fromisoformat(date_to).replace(hour=23, minute=59, second=59, tzinfo=timezone.utc) if date_to else None

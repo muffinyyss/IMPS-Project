@@ -24,8 +24,18 @@ except Exception:
     pass
 
 # ─── JWT / Auth ──────────────────────────────────────────────
-SECRET_KEY = "supersecret"
+# SECRET_KEY ต้องตั้งผ่าน environment variable เท่านั้น (อย่าง hardcode secret ลงโค้ด)
+# ใช้ค่าที่คาดเดายาก >= 32 ตัวอักษร เช่นสร้างด้วย: python -c "import secrets; print(secrets.token_urlsafe(48))"
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY or len(SECRET_KEY) < 32:
+    raise RuntimeError(
+        "JWT_SECRET_KEY environment variable must be set to a strong secret (>= 32 chars)"
+    )
 ALGORITHM = "HS256"
+# บทบาทสายปฏิบัติงาน — ใช้อายุ session แบบ technician (token 24 ชม. ไม่มี idle timeout)
+STAFF_ROLES = ("technician", "cs", "engineer", "head_cs", "planner")
+# บทบาทที่เห็นทุกสถานี (technician เห็นเฉพาะสถานีที่ถูก assign ผ่าน station_id)
+ALL_STATIONS_ROLES = ("admin", "cs", "engineer", "head_cs", "planner")
 ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN = 1440
 ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT = 1440
 SESSION_IDLE_MINUTES_TECHNICIAN = None

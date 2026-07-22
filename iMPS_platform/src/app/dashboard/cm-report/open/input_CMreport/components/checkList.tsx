@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, useRef, useCallback } from "react"
 import { Button, Input, Textarea } from "@material-tailwind/react";
 import Image from "next/image";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowLeftIcon, PhotoIcon, XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, PhotoIcon, XMarkIcon, PlusIcon, CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { draftKey as getDraftKey, saveDraftLocal, loadDraftLocal, clearDraftLocal, type CMDraftData } from "../lib/draft";
 import { putPhoto, getPhotosByDraftKey, delPhoto, delPhotosByDraftKey, createPreviewUrl, photoRefToFile, type PhotoRef } from "../lib/draftPhotos";
@@ -36,7 +36,16 @@ const T = {
     remarks_open: { th: "หมายเหตุ", en: "Remarks" },
     save: { th: "บันทึก", en: "Save" },
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
-    inProgress: { th: "In Progress", en: "In Progress" },
+    assign: { th: "Assign", en: "Assign" },
+    planningSection: { th: "การวางแผนงาน", en: "Planning" },
+    schedStart: { th: "วันที่เริ่มตามแผน", en: "Scheduled Start" },
+    schedFinish: { th: "วันที่เสร็จตามแผน", en: "Scheduled Finish" },
+    technician: { th: "ช่างผู้รับผิดชอบ", en: "Technician" },
+    selectTechnician: { th: "เลือกช่าง...", en: "Select technician..." },
+    addTechnician: { th: "เพิ่มช่าง", en: "Add technician" },
+    noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
+    waitState: { th: "สถานะรอ", en: "Waiting On" },
+    schedRangeError: { th: "วันที่เสร็จต้องอยู่หลังวันที่เริ่ม", en: "Finish must be after start" },
     backToList: { th: "กลับ", en: "Back" },
     alertNoStationId: { th: "ไม่พบ station_id", en: "Station ID not found" },
     alertSaveFailed: { th: "บันทึกไม่สำเร็จ:", en: "Save failed:" },
@@ -69,6 +78,19 @@ const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 // ==================== TYPES ====================
 type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
 type Status = "" | "Open" | "In Progress";
+
+// ช่างที่เลือกได้ในขั้นวางแผน (มาจาก GET /users/by-role?role=technician)
+type TechnicianOption = { id: string; username: string; email: string };
+
+// สถานะรอที่ engineer เลือกได้ตอนวางแผน — ต้องตรงตัวกับ WO_SUBTABS ใน inprogress-table ที่ filter ด้วย string นี้
+// ("WO - wait for approve" ไม่อยู่ที่นี่ เพราะเกิดหลังซ่อมเสร็จ ไม่ใช่ตอนวางแผน)
+const WAIT_STATES = [
+    "WO - wait for manpower",
+    "WO - wait for spare part",
+    "WO - wait for site access",
+] as const;
+const DEFAULT_WAIT_STATE = WAIT_STATES[0];
+
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
 type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; createdAt?: string; location?: string; };
 type ChargerInfo = { chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; chargerType?: string; };
@@ -277,12 +299,20 @@ export default function CMOpenForm() {
     const [issueId, setIssueId] = useState("");
     const [docName, setDocName] = useState("");
     const [foundDate, setFoundDate] = useState("");
+    const [foundTime, setFoundTime] = useState(""); // เวลาแจ้ง (HH:MM)
     const [location, setLocation] = useState("");
     const [problemDetails, setProblemDetails] = useState("");
     const [severity, setSeverity] = useState<Severity>("");
     const [status, setStatus] = useState<Status>("");
     const [remarks_open, setRemarksOpen] = useState("");
     const [faultyEquipment, setFaultyEquipment] = useState("");
+
+    // ═══ ขั้นวางแผน (เห็นเฉพาะ role ที่วางแผนได้) ═══
+    const [schedStart, setSchedStart] = useState("");
+    const [schedFinish, setSchedFinish] = useState("");
+    const [assignees, setAssignees] = useState<string[]>([""]);   // 1 แถว = 1 ช่าง — เริ่มที่แถวว่าง 1 แถว แล้วกด + เพิ่มเอง
+    const [waitState, setWaitState] = useState<string>(DEFAULT_WAIT_STATE);
+    const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
 
     const [summary, setSummary] = useState("");
     const [reported_by, setReportedBy] = useState("");
@@ -308,8 +338,20 @@ export default function CMOpenForm() {
     // คนเปิดใบงาน (reported_by) แก้ไขใบงานที่ยัง Open ได้ — คนอื่นเห็นแบบอ่านอย่างเดียว
     const isOwner = isEdit && !!currentUsername.trim() && currentUsername.trim() === reported_by.trim();
     const fieldsLocked = isEdit && !isOwner;
-    // เฉพาะช่าง (technician) เท่านั้นที่กด "In Progress" ได้
-    const isTechnician = userRole.toLowerCase() === "technician";
+    // ขั้นวางแผน: engineer วางแผนตาม flow, admin/owner คุมภาพรวม — cs เปิดใบงานอย่างเดียว วางแผนไม่ได้
+    // เห็นทั้งตอนเปิดใบใหม่และตอนเปิดใบเดิม (เปิดงาน + วางแผน รวดเดียวได้)
+    const canPlan = ["admin", "owner", "engineer"].includes(userRole.toLowerCase());
+    // assignees = 1 แถว 1 ช่าง — แถวที่เพิ่งกด + จะยังเป็น "" จนกว่าจะเลือก
+    const pickedAssignees = useMemo(() => assignees.filter(Boolean), [assignees]);
+    // มีการกรอกแผนไว้บ้างหรือยัง — ใช้ตัดสินว่าต้องบันทึกแผนต่อจากการเปิดใบไหม
+    const hasPlanInput = !!schedStart || !!schedFinish || pickedAssignees.length > 0;
+    // ตัวเลือกของแถว i — ตัดคนที่แถวอื่นเลือกไปแล้วออก กันมอบหมายคนเดิมซ้ำ
+    const technicianOptionsFor = (i: number) =>
+        technicians.map(x => x.username).filter(u => !assignees.some((a, j) => j !== i && a === u));
+    // finish ต้องอยู่หลัง start เสมอ
+    const schedRangeInvalid = !!schedStart && !!schedFinish && schedFinish <= schedStart;
+    // ต้องมีอย่างน้อย 1 แถว และทุกแถวต้องเลือกช่างแล้ว (กันแถวว่างที่กด + ทิ้งไว้)
+    const canSubmitPlan = !!schedStart && !!schedFinish && assignees.length > 0 && assignees.every(Boolean) && !schedRangeInvalid;
     const draftKey = useMemo(() => getDraftKey(stationId), [stationId]);
     const STATUS_OPTIONS: Status[] = ["Open", "In Progress"];
 
@@ -338,6 +380,7 @@ export default function CMOpenForm() {
     // ==================== HELPERS ====================
     const localTodayFormatted = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
     const localTodayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    const localNowHHMM = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
     const displayToISO = (s: string) => { if (!s) return localTodayISO(); const p = s.split("/"); return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : localTodayISO(); };
     const isoToDisplay = (s: string) => { if (!s) return localTodayFormatted(); const p = s.slice(0, 10).split("-"); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : localTodayFormatted(); };
 
@@ -446,7 +489,7 @@ export default function CMOpenForm() {
         const timer = setTimeout(() => {
             setDraftStatus("saving");
             saveDraftLocal(draftKey, {
-                issueId, docName, foundDate, location, problemDetails,
+                issueId, docName, foundDate, foundTime, location, problemDetails,
                 severity, status, remarks_open, faultyEquipment,
                 reported_by,
             });
@@ -454,7 +497,7 @@ export default function CMOpenForm() {
             setTimeout(() => setDraftStatus("idle"), 2000);
         }, 1500);
         return () => clearTimeout(timer);
-    }, [issueId, docName, foundDate, location, problemDetails, severity, status, remarks_open, faultyEquipment, reported_by, draftKey, isEdit, stationId, draftLoaded]);
+    }, [issueId, docName, foundDate, foundTime, location, problemDetails, severity, status, remarks_open, faultyEquipment, reported_by, draftKey, isEdit, stationId, draftLoaded]);
 
     // ==================== DRAFT: LOAD ====================
     useEffect(() => {
@@ -464,6 +507,7 @@ export default function CMOpenForm() {
             if (draft.issueId) setIssueId(draft.issueId);
             if (draft.docName) setDocName(draft.docName);
             if (draft.foundDate) setFoundDate(draft.foundDate);
+            if (draft.foundTime) setFoundTime(draft.foundTime);
             if (draft.location) setLocation(draft.location);
             if (draft.problemDetails) setProblemDetails(draft.problemDetails);
             if (draft.severity) setSeverity(draft.severity as Severity);
@@ -507,8 +551,22 @@ export default function CMOpenForm() {
         return () => { alive = false; };
     }, [isEdit]);
 
+    // รายชื่อช่างสำหรับ dropdown ขั้นวางแผน — endpoint นี้ 403 ถ้า role วางแผนไม่ได้ จึงยิงเฉพาะตอน canPlan
+    useEffect(() => {
+        if (!canPlan) return;
+        let alive = true;
+        (async () => {
+            try {
+                const res = await apiFetch(`${API_BASE}/users/by-role?role=technician`, { credentials: "include" });
+                if (res.ok) { const data = await res.json(); if (alive) setTechnicians(data.users || []); }
+            } catch { if (alive) setTechnicians([]); }
+        })();
+        return () => { alive = false; };
+    }, [canPlan]);
+
     useEffect(() => {
         if (isEdit || !stationId) return; let alive = true;
+        setFoundTime(prev => prev || localNowHHMM()); // เวลาแจ้ง = ตอนเปิดฟอร์ม (ถ้าไม่มีค่าจาก draft)
         (async () => { try { const res = await apiFetch(`${API_BASE}/cmreport/preview-docname?station_id=${encodeURIComponent(stationId)}&found_date=${localTodayISO()}`, { credentials: "include" }); if (res.ok) { const data = await res.json(); if (alive) { setFoundDate(localTodayFormatted()); setIssueId(data.issue_id || ""); setDocName(data.doc_name || ""); } } else if (alive) setFoundDate(localTodayFormatted()); } catch { if (alive) setFoundDate(localTodayFormatted()); } })();
         return () => { alive = false; };
     }, [stationId, isEdit]);
@@ -530,6 +588,7 @@ export default function CMOpenForm() {
                 setDocName(data.doc_name ?? "");
                 setIssueId(data.issue_id ?? "");
                 setFoundDate(rawDate ? isoToDisplay(rawDate) : localTodayFormatted());
+                setFoundTime(data.found_time ?? "");
                 setLocation(data.location ?? "");
                 setProblemDetails(data.problem_details ?? "");
                 setSeverity((data.severity ?? "") as Severity);
@@ -539,6 +598,14 @@ export default function CMOpenForm() {
                 setSummary(data.summary ?? "");
                 setReportedBy(data.reported_by ?? "");
                 setReporterSignature(data.reporter_signature ?? "");
+                // ค่าที่เคยวางแผนไว้ (ถ้ามี) — datetime-local รับได้แค่ "YYYY-MM-DDTHH:MM"
+                setSchedStart((data.sched_start ?? "").slice(0, 16));
+                setSchedFinish((data.sched_finish ?? "").slice(0, 16));
+                // ใบที่ยังไม่เคยวางแผน → คงแถวว่าง 1 แถวไว้ให้เลือกได้เลย
+                const loadedAssignees = Array.isArray(data.assignees) ? data.assignees : [];
+                setAssignees(loadedAssignees.length ? loadedAssignees : [""]);
+                // เก็บเฉพาะสถานะรอที่เลือกตอนวางแผนได้ — ใบที่ซ่อมไปแล้วอาจมี repair_result เป็นค่าอื่น
+                setWaitState(WAIT_STATES.includes(data.repair_result) ? data.repair_result : DEFAULT_WAIT_STATE);
 
                 // ═══ แสดง Maximo ticket ถ้ามี (edit mode) ═══
                 if (data.maximo_ticket_id) {
@@ -620,9 +687,15 @@ export default function CMOpenForm() {
                         reporter_signature: reporterSignature,
                     };
                 }
-                // เมื่อย้ายไป In Progress ให้ตั้งผลหลังซ่อมเริ่มต้นเป็น "WO - wait for manpower"
+                // ส่งเข้า In Progress = จบขั้นวางแผน — แนบแผนงานและตั้งผลหลังซ่อมเริ่มต้นเป็นรอช่าง
                 if (nextStatus === "In Progress") {
-                    payload.job = { ...(payload.job ?? {}), repair_result: "WO - wait for manpower" };
+                    payload.job = {
+                        ...(payload.job ?? {}),
+                        sched_start: schedStart,
+                        sched_finish: schedFinish,
+                        assignees: pickedAssignees,
+                        repair_result: waitState,
+                    };
                 }
                 const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
                     method: "PATCH",
@@ -639,18 +712,10 @@ export default function CMOpenForm() {
                     setUploadState({ show: false, total: 0, completed: 0 });
                 }
 
-                if (nextStatus === "In Progress") {
-                    const p = new URLSearchParams();
-                    if (stationId) p.set("station_id", stationId);
-                    p.set("tab", "in-progress");
-                    p.set("view", "form");
-                    p.set("edit_id", editId);
-                    router.push(`${LIST_ROUTE}?${p.toString()}`);
-                } else {
-                    setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
-                    await new Promise(r => setTimeout(r, 1200));
-                    router.push(buildListUrl("open"));
-                }
+                // Assign แล้วกลับไปหน้า list ของแท็บปลายทาง — ไม่เปิดฟอร์มใบนั้นต่อ (งานเป็นของช่างแล้ว)
+                setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
+                await new Promise(r => setTimeout(r, 1200));
+                router.push(buildListUrl(nextStatus === "In Progress" ? "in-progress" : "open"));
 
             } else {
                 const submitRes = await apiFetch(`${API_BASE}/cmreport/submit`, {
@@ -660,6 +725,7 @@ export default function CMOpenForm() {
                     body: JSON.stringify({
                         station_id: stationId,
                         found_date: displayToISO(foundDate),
+                        found_time: foundTime || localNowHHMM(),
                         faulty_equipment: faultyEquipment,
                         severity,
                         problem_details: problemDetails,
@@ -673,6 +739,23 @@ export default function CMOpenForm() {
 
                 const { report_id, doc_name: newDocName, issue_id: newIssueId, maximo_ticket_id } = await submitRes.json();
 
+                // /cmreport/submit เปิดใบเป็น Open เสมอและไม่รับฟิลด์แผน — ถ้ากรอกแผนมาด้วยต้อง PATCH ต่อ
+                if (canPlan && (hasPlanInput || nextStatus === "In Progress")) {
+                    const planPayload: Record<string, any> = {
+                        station_id: stationId,
+                        status: nextStatus,
+                        job: { sched_start: schedStart, sched_finish: schedFinish, assignees: pickedAssignees },
+                    };
+                    if (nextStatus === "In Progress") planPayload.job.repair_result = waitState;
+                    const planRes = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/status`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify(planPayload),
+                    });
+                    if (!planRes.ok) throw new Error((await planRes.json()).detail || `HTTP ${planRes.status}`);
+                }
+
                 // อัปโหลดรูป
                 setOverlayText(lang === "th" ? "กำลังอัปโหลดรูปภาพ..." : "Uploading photos...");
                 setUploadState({ show: true, total: photos_open.filter(p => !p.isServer).length, completed: 0 });
@@ -683,10 +766,10 @@ export default function CMOpenForm() {
                 clearDraftLocal(draftKey);
                 await delPhotosByDraftKey(draftKey);
 
-                // แสดง "บันทึกสำเร็จ" แล้ว redirect
+                // แสดง "บันทึกสำเร็จ" แล้ว redirect — ใบที่ส่งให้ช่างแล้วไปโผล่แท็บ In Progress
                 setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
                 await new Promise(r => setTimeout(r, 1500));
-                router.push(buildListUrl("open"));
+                router.push(buildListUrl(nextStatus === "In Progress" ? "in-progress" : "open"));
             }
         } catch (e: any) {
             setUploadState({ show: false, total: 0, completed: 0 });
@@ -711,6 +794,10 @@ export default function CMOpenForm() {
         setFaultyEquipment("");
         setPhotosOpen([]);
         setSummary("");
+        setSchedStart("");
+        setSchedFinish("");
+        setAssignees([""]);
+        setWaitState(DEFAULT_WAIT_STATE);
     };
 
     // ==================== RENDER ====================
@@ -779,7 +866,7 @@ export default function CMOpenForm() {
                         </div>
                         <div>
                             <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("cmDate", lang)}</label>
-                            <Input value={foundDate || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                            <Input value={foundTime ? `${foundDate} ${foundTime}` : (foundDate || "")} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                         <div>
                             <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("location", lang)}</label>
@@ -878,6 +965,65 @@ export default function CMOpenForm() {
                         </div>
                     )}
 
+                    {/* Planning Section — เห็นเฉพาะ role ที่วางแผนได้ (admin/owner/engineer) ข้อมูลด้านบนเป็น read-only สำหรับคนกลุ่มนี้อยู่แล้ว */}
+                    {canPlan && (
+                        <div className="tw-mb-6 tw-p-5 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50/40">
+                            <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-800 tw-mb-4">{t("planningSection", lang)}</h3>
+                            <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("schedStart", lang)} <span className="tw-text-red-500">*</span></label>
+                                    <input type="datetime-local" value={schedStart} onChange={e => setSchedStart(e.target.value)}
+                                        className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("schedFinish", lang)} <span className="tw-text-red-500">*</span></label>
+                                    {/* min = ปิดวันก่อนวันเริ่มใน picker เลย — validation ยังต้องมีเพราะ min กันการพิมพ์มือไม่ได้ และยังปล่อยให้เลือกเท่ากับวันเริ่ม */}
+                                    <input type="datetime-local" value={schedFinish} min={schedStart || undefined} onChange={e => setSchedFinish(e.target.value)}
+                                        className={`tw-w-full tw-rounded-lg tw-border tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none ${schedRangeInvalid ? "tw-border-red-400 focus:tw-border-red-500" : "tw-border-blue-gray-200 focus:tw-border-blue-500"}`} />
+                                    {schedRangeInvalid && <p className="tw-mt-1.5 tw-text-xs tw-text-red-600">{t("schedRangeError", lang)}</p>}
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("technician", lang)} <span className="tw-text-red-500">*</span></label>
+                                    <div className="tw-space-y-2">
+                                        {assignees.map((sel, i) => (
+                                            <div key={i} className="tw-flex tw-items-center tw-gap-2">
+                                                <select value={sel} onChange={e => setAssignees(prev => prev.map((v, j) => (j === i ? e.target.value : v)))}
+                                                    className="tw-flex-1 tw-min-w-0 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500">
+                                                    <option value="">{t("selectTechnician", lang)}</option>
+                                                    {technicianOptionsFor(i).map(u => <option key={u} value={u}>{u}</option>)}
+                                                </select>
+                                                {/* แถวเดียวลบไม่ได้ — ช่างเป็นฟิลด์บังคับ อย่างน้อยต้องเหลือ 1 แถวไว้เลือก */}
+                                                {assignees.length > 1 && (
+                                                    <button type="button" aria-label={`remove technician ${i + 1}`} onClick={() => setAssignees(prev => prev.filter((_, j) => j !== i))}
+                                                        className="tw-shrink-0 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-p-2 tw-text-blue-gray-500 hover:tw-border-red-300 hover:tw-bg-red-50 hover:tw-text-red-600 tw-transition-colors">
+                                                        <XMarkIcon className="tw-h-4 tw-w-4" />
+                                                    </button>
+                                                )}
+                                                {/* ปุ่มเพิ่มอยู่แถวล่างสุดแถวเดียว — ทุกแถวให้ผลเหมือนกันอยู่แล้ว */}
+                                                {i === assignees.length - 1 && (
+                                                    <button type="button" aria-label={t("addTechnician", lang)} title={t("addTechnician", lang)}
+                                                        onClick={() => setAssignees(prev => [...prev, ""])}
+                                                        disabled={assignees.length >= technicians.length}
+                                                        className="tw-shrink-0 tw-rounded-lg tw-border tw-border-blue-gray-200 tw-p-2 tw-text-blue-gray-600 hover:tw-border-blue-500 hover:tw-bg-blue-50 hover:tw-text-blue-600 disabled:tw-opacity-40 disabled:tw-cursor-not-allowed tw-transition-colors">
+                                                        <PlusIcon className="tw-h-4 tw-w-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {technicians.length === 0 && <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>}
+                                </div>
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("waitState", lang)} <span className="tw-text-red-500">*</span></label>
+                                    <select value={waitState} onChange={e => setWaitState(e.target.value)}
+                                        className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500">
+                                        {WAIT_STATES.map(w => <option key={w} value={w}>{w}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Validation Card */}
                     {!fieldsLocked && <div className="tw-mb-6"><CMValidationCard validations={validations} lang={lang} /></div>}
 
@@ -888,15 +1034,25 @@ export default function CMOpenForm() {
                             <Button variant="outlined" onClick={goBackToList} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
                                 Cancel
                             </Button>
+                            {/* คนเปิดใบงานแก้ไขแล้วบันทึก — ใบยังคงอยู่สถานะ Open */}
                             {isEdit && isOwner && (
                                 <Button onClick={() => onFinalSave("Open")} disabled={saving || showSuccessBanner || !canSave} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
-                            {/* ปุ่ม In Progress: ตอนสร้างใหม่เป็นปุ่มบันทึก / ตอน edit เป็น In Progress — กดได้ทุกคน (รวมคนเปิดใบงาน) */}
-                            <Button onClick={() => onFinalSave()} disabled={saving || showSuccessBanner || ((!isEdit || isOwner) && !canSave)} className={`tw-text-white hover:tw-shadow-lg disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none ${isEdit ? "tw-bg-amber-500 hover:tw-bg-amber-600 hover:tw-shadow-amber-500/30" : "tw-bg-gray-800 hover:!tw-bg-blue-600 hover:!tw-shadow-blue-500/30"}`}>
-                                {saving ? t("saving", lang) : isEdit ? t("inProgress", lang) : t("save", lang)}
-                            </Button>
+                            {/* เปิดใบงานใหม่ */}
+                            {!isEdit && (
+                                <Button onClick={() => onFinalSave("Open")} disabled={saving || showSuccessBanner || !canSave} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                                    {saving ? t("saving", lang) : t("save", lang)}
+                                </Button>
+                            )}
+                            {/* Assign = จบขั้นวางแผน มอบงานให้ช่าง → ใบงานเข้าสถานะ In Progress
+                                ต้องกรอกแผนครบ (และถ้าเป็นใบใหม่ ต้องกรอกฟอร์มเปิดงานครบด้วย) */}
+                            {canPlan && (
+                                <Button onClick={() => onFinalSave("In Progress")} disabled={saving || showSuccessBanner || !canSubmitPlan || (!isEdit && !canSave)} className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white hover:tw-shadow-lg hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                                    {saving ? t("saving", lang) : t("assign", lang)}
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </div>
