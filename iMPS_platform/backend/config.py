@@ -33,9 +33,14 @@ if not SECRET_KEY or len(SECRET_KEY) < 32:
     )
 ALGORITHM = "HS256"
 # บทบาทสายปฏิบัติงาน — ใช้อายุ session แบบ technician (token 24 ชม. ไม่มี idle timeout)
-STAFF_ROLES = ("technician", "cs", "engineer", "head_cs", "planner")
+STAFF_ROLES = ("technician", "cs", "engineer", "planner")
 # บทบาทที่เห็นทุกสถานี (technician เห็นเฉพาะสถานีที่ถูก assign ผ่าน station_id)
-ALL_STATIONS_ROLES = ("admin", "cs", "engineer", "head_cs", "planner")
+ALL_STATIONS_ROLES = ("admin", "cs", "engineer", "planner")
+# super admin — role จริงใน DB ทำได้เหมือน admin + สิทธิ์พิเศษ (สลับ role, จัดการผู้ใช้, ลบถาวร)
+SUPER_ADMIN_ROLE = "super_admin"
+SUPER_ADMIN_USERNAME = "thatsawan"
+# role ที่ super admin สลับ (impersonate) ไปได้ผ่าน dropdown
+SWITCHABLE_ROLES = ("super_admin", "admin", "owner", "cs", "engineer", "planner", "technician")
 ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN = 1440
 ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT = 1440
 SESSION_IDLE_MINUTES_TECHNICIAN = None

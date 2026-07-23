@@ -104,7 +104,10 @@ function readAuthFromStorage() {
 
 function getRolesFromStorage() {
   const { role } = readAuthFromStorage();
-  return role ? [String(role)] : [];
+  if (!role) return [];
+  // super_admin เห็นเมนู admin ทั้งหมด + เมนูเฉพาะ super_admin (เช่น Users)
+  if (String(role) === "super_admin") return ["super_admin", "admin"];
+  return [String(role)];
 }
 
 /** 3) กรองตาม allow */

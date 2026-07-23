@@ -113,6 +113,57 @@ export function DashboardNavbar() {
     }
   }, []);
 
+  // ===== Super admin: dropdown สลับ role (impersonate) โดยไม่ต้อง login ใหม่ =====
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+  const SWITCH_ROLES = ["super_admin", "admin", "owner", "cs", "engineer", "planner", "technician"];
+  const [isSuperAdminReal, setIsSuperAdminReal] = useState(false);
+  const [effectiveRole, setEffectiveRole] = useState<string>("");
+  const [switching, setSwitching] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/me`, { credentials: "include" });
+        if (!res.ok) return;
+        const d = await res.json();
+        // true_role = role จริงใน DB → เป็น super admin ตัวจริงไหม (โชว์ dropdown แม้กำลัง impersonate)
+        setIsSuperAdminReal((d?.true_role || "") === "super_admin");
+        setEffectiveRole(d?.role || "");
+      } catch { /* ไม่ต้องทำอะไร */ }
+    })();
+  }, [API_BASE]);
+
+  const handleSwitchRole = async (role: string) => {
+    if (!role || role === effectiveRole || switching) return;
+    setSwitching(true);
+    try {
+      const res = await fetch(`${API_BASE}/users/switch-role`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ role }),
+      });
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).detail || `HTTP ${res.status}`);
+      const data = await res.json();
+      // เก็บ localStorage แบบเดียวกับตอน login เป๊ะ (access + refresh + user + userRole) — ให้ session sync
+      try {
+        if (data.access_token) {
+          localStorage.setItem("access_token", data.access_token);
+          localStorage.setItem("accessToken", data.access_token);
+        }
+        if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token);
+        if (data.user) {
+          localStorage.setItem("user", JSON.stringify(data.user));
+          localStorage.setItem("userRole", data.user?.role ?? "");
+        }
+      } catch { /* ignore */ }
+      window.location.reload();
+    } catch (e: any) {
+      alert("สลับ role ไม่สำเร็จ: " + (e?.message || e));
+      setSwitching(false);
+    }
+  };
+
   // tooltip
   const [showStationTooltip, setShowStationTooltip] = useState(false);
 
@@ -468,6 +519,24 @@ export function DashboardNavbar() {
                 >
                   <BellIcon className="tw-h-4 tw-w-4 tw-text-white" />
                 </NavIconButton>
+              )}
+
+              {/* Super Admin: Role switch dropdown (เฉพาะ thatsawan) */}
+              {isSuperAdminReal && (
+                <div className="tw-relative tw-flex tw-items-center">
+                  <span className="tw-hidden lg:tw-inline tw-text-[10px] tw-font-semibold tw-text-amber-600 tw-mr-1" title="Super Admin">👑</span>
+                  <select
+                    value={effectiveRole}
+                    onChange={(e) => handleSwitchRole(e.target.value)}
+                    disabled={switching}
+                    title={lang === "th" ? "สลับ role (Super Admin)" : "Switch role (Super Admin)"}
+                    className="tw-h-8 tw-rounded-full tw-bg-gray-900 hover:tw-bg-gray-700 tw-text-white tw-text-xs tw-font-medium tw-pl-3 tw-pr-2 tw-border-0 focus:tw-outline-none tw-cursor-pointer tw-shadow-sm disabled:tw-opacity-60"
+                  >
+                    {SWITCH_ROLES.map((r) => (
+                      <option key={r} value={r} className="tw-text-black tw-bg-white">{r}</option>
+                    ))}
+                  </select>
+                </div>
               )}
 
               {/* Language Toggle - Consistent Style */}

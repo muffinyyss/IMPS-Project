@@ -49,7 +49,19 @@ export default function BasicPage() {
         body: JSON.stringify({ email, password }) // ★ ตรงกับ LoginRequest(email,password)
       });
 
-      const data = await res.json();
+      // อ่าน body แบบกันพัง: ถ้า backend/reverse-proxy ตอบ HTML (หน้า error 500/502)
+      // การ res.json() ตรงๆ จะโยน "Unexpected token '<', "<html>..." ทำให้ผู้ใช้เห็น error ที่อ่านไม่รู้เรื่อง
+      const rawBody = await res.text();
+      let data: any = null;
+      try {
+        data = rawBody ? JSON.parse(rawBody) : null;
+      } catch {
+        throw new Error(
+          res.ok
+            ? "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง"
+            : `เข้าสู่ระบบไม่สำเร็จ (HTTP ${res.status}) — เซิร์ฟเวอร์มีข้อผิดพลาด กรุณาแจ้งผู้ดูแลระบบ`
+        );
+      }
 
       if (!res.ok) {
         // รองรับ both cases: detail เป็น string หรือเป็น list of errors

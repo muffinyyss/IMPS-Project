@@ -54,6 +54,14 @@ describe("normalizeStatus", () => {
     expect(normalizeStatus("close")).toBe("completed");
   });
 
+  it('maps "Complete" (new closed label) → completed', () => {
+    expect(normalizeStatus("Complete")).toBe("completed");
+  });
+
+  it('maps "completed" → completed', () => {
+    expect(normalizeStatus("completed")).toBe("completed");
+  });
+
   it('maps "in_progress" → in_progress', () => {
     expect(normalizeStatus("in_progress")).toBe("in_progress");
   });
@@ -321,14 +329,26 @@ describe("normalizeWorkStatus", () => {
   it('maps "Closed" → completed', () => {
     expect(normalizeWorkStatus("Closed")).toBe("completed");
   });
+  it('maps "Complete" (new closed label) → completed', () => {
+    expect(normalizeWorkStatus("Complete")).toBe("completed");
+  });
   it('maps "In Progress" → in_progress', () => {
     expect(normalizeWorkStatus("In Progress")).toBe("in_progress");
   });
-  it('maps "wait for manpower" → wait_manpower', () => {
+  it('maps "wait for scheduled" (new) → wait_manpower bucket', () => {
+    expect(normalizeWorkStatus("WO - wait for scheduled")).toBe("wait_manpower");
+  });
+  it('maps "wait for manpower" (legacy) → wait_manpower', () => {
     expect(normalizeWorkStatus("WO - wait for manpower")).toBe("wait_manpower");
   });
-  it('maps "wait for spare part" → wait_sparepart', () => {
+  it('does NOT bucket status "Wait for schedule" as wait_manpower', () => {
+    expect(normalizeWorkStatus("Wait for schedule")).toBe("new");
+  });
+  it('maps "wait for spare part" (legacy) → wait_sparepart', () => {
     expect(normalizeWorkStatus("wait for spare part")).toBe("wait_sparepart");
+  });
+  it('maps "WO - wait for material" (new) → wait_sparepart', () => {
+    expect(normalizeWorkStatus("WO - wait for material")).toBe("wait_sparepart");
   });
   it('maps Maximo "WMATL" (waiting material) → wait_sparepart', () => {
     expect(normalizeWorkStatus("waiting material")).toBe("wait_sparepart");
@@ -336,8 +356,14 @@ describe("normalizeWorkStatus", () => {
   it('maps "wait for approve" → wait_approve', () => {
     expect(normalizeWorkStatus("Wait for Approve")).toBe("wait_approve");
   });
-  it('maps "wait for site access" → wait_site_access', () => {
+  it('maps "wait for site access" (legacy) → wait_site_access', () => {
     expect(normalizeWorkStatus("WO - wait for site access")).toBe("wait_site_access");
+  });
+  it('maps "WO - wait for site condition" (new) → wait_site_access', () => {
+    expect(normalizeWorkStatus("WO - wait for site condition")).toBe("wait_site_access");
+  });
+  it('maps "Wait for schedule" → new', () => {
+    expect(normalizeWorkStatus("Wait for schedule")).toBe("new");
   });
   it('maps unknown/empty → new', () => {
     expect(normalizeWorkStatus("")).toBe("new");
