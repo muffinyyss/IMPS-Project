@@ -3,6 +3,8 @@ export type CMRow = {
   station_id: string;
   station_name: string;
   status: string;
+  stage?: string;
+  reject_remark?: string;
   faulty_equipment: string;
   problem_details: string;
   cause: string;
@@ -33,14 +35,14 @@ export const STATUS_LABELS = {
 
 export function normalizeStatus(s: string): keyof typeof STATUS_LABELS {
   const v = (s || "").trim().toLowerCase().replace(/[-_\s]+/g, " ");
-  if (v === "closed" || v === "close") return "completed";
+  if (v === "complete" || v === "completed" || v === "closed" || v === "close") return "completed";
   if (v === "in progress" || v === "inprogress") return "in_progress";
   return "open";
 }
 
 export function statusBadge(status: string) {
   const s = normalizeStatus(status);
-  if (s === "completed") return { bg: "#dcfce7", text: "#15803d", label: "Closed" };
+  if (s === "completed") return { bg: "#dcfce7", text: "#15803d", label: "Complete" };
   if (s === "in_progress") return { bg: "#fff7ed", text: "#ea580c", label: "In Progress" };
   return { bg: "#fee2e2", text: "#dc2626", label: "Open" };
 }
@@ -73,10 +75,12 @@ export type WorkStatus =
 export function normalizeWorkStatus(s: string): WorkStatus {
   const v = (s || "").trim().toLowerCase().replace(/[-_\s]+/g, " ");
   if (v === "closed" || v === "close" || v.includes("complete") || v.includes("เสร็จ")) return "completed";
-  if (v.includes("manpower") || v.includes("labor") || v.includes("labour") || v.includes("รอช่าง")) return "wait_manpower";
+  // bucket wait_manpower ตอนนี้แทน "wait for scheduled" (เปลี่ยนชื่อจาก manpower) — คงชื่อ bucket เดิมไว้ กัน churn
+  // ใช้ "scheduled" (มี -d) จับ ไม่ชนกับ status "wait for schedule" (ไม่มี -d)
+  if (v.includes("scheduled") || v.includes("manpower") || v.includes("labor") || v.includes("labour") || v.includes("รอช่าง")) return "wait_manpower";
   if (v.includes("spare") || v.includes("material") || v.includes("matl") || v.includes("อะไหล่")) return "wait_sparepart";
   if (v.includes("approv") || v.includes("wappr") || v.includes("อนุมัติ")) return "wait_approve";
-  if (v.includes("site access") || v.includes("access") || v.includes("เข้าพื้นที่") || v.includes("เข้าไซต์")) return "wait_site_access";
+  if (v.includes("site access") || v.includes("site condition") || v.includes("access") || v.includes("condition") || v.includes("เข้าพื้นที่") || v.includes("เข้าไซต์")) return "wait_site_access";
   if (v === "in progress" || v === "inprogress" || v.includes("ดำเนินการ")) return "in_progress";
   return "new";
 }

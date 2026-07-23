@@ -199,7 +199,6 @@ export default function AddUserModal({ open, onClose, onSubmit, loading }: Props
                                     <Option value="admin">Admin</Option>
                                     <Option value="technician">Technician</Option>
                                     <Option value="cs">CS</Option>
-                                    <Option value="head_cs">Head CS</Option>
                                     <Option value="planner">Planner</Option>
                                     <Option value="engineer">Engineer</Option>
 

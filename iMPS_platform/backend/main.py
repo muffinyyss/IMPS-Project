@@ -29,6 +29,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
+# ─── Global error handler: ตอบ JSON เสมอ ไม่ปล่อยให้ 500 หลุดเป็นหน้า HTML ───
+# กันเคส frontend res.json() พังด้วย "Unexpected token '<', "<html>...": ถ้ามี exception ที่ไม่ถูก handle
+# ให้ log traceback ไว้ดูสาเหตุจริง แล้วส่ง JSON กลับแทน (HTTPException/validation ยังทำงานตามเดิม)
+import logging
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+_log = logging.getLogger("uvicorn.error")
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    _log.error("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
+
 # ─── Security headers + hide server banner (pentest #5, #6) ───
 from starlette.middleware.base import BaseHTTPMiddleware
 

@@ -19,6 +19,7 @@ from config import (
     REFRESH_TOKEN_EXPIRE_DAYS, STAFF_ROLES, ALL_STATIONS_ROLES,
     users_collection, station_collection, charger_collection,
     create_access_token,
+    SUPER_ADMIN_ROLE, SUPER_ADMIN_USERNAME, SWITCHABLE_ROLES,
 )
 from deps import UserClaims, get_current_user, get_user_station_ids
 
@@ -54,12 +55,26 @@ def login(body: LoginRequest, response: Response):
         {"email": body.email},
         {"_id": 1, "email": 1, "username": 1, "password": 1, "role": 1, "company": 1, "station_id": 1, "ai_package": 1},
     )
-    if not user or not bcrypt.checkpw(body.password.encode("utf-8"), user["password"].encode("utf-8")):
+    # เช็ครหัสผ่านแบบกันพัง: ถ้า hash ใน DB เสีย/ว่าง/เป็น None/ไม่ใช่ bcrypt (เช่นถูก seed มาเป็น plaintext)
+    # bcrypt.checkpw จะโยน ValueError/TypeError → เดิมกลายเป็น 500 (หน้า HTML จาก nginx) ทำให้ frontend res.json() พัง
+    stored_pw = user.get("password") if user else None
+    try:
+        password_ok = (
+            bool(user)
+            and isinstance(stored_pw, str)
+            and bcrypt.checkpw(body.password.encode("utf-8"), stored_pw.encode("utf-8"))
+        )
+    except (ValueError, TypeError):
+        password_ok = False
+    if not password_ok:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    station_ids = user.get("station_id", [])
-    if not isinstance(station_ids, list):
-        station_ids = [station_ids]
+    # station_id อาจถูกเก็บเป็น ObjectId/ชนิดอื่น → บังคับเป็น string ก่อนใส่ลง JWT และ response
+    # (ObjectId ทำให้ jwt.encode และการ serialize response โยน TypeError → 500 เฉพาะ user ที่มีสถานี เช่น technician)
+    raw_station_ids = user.get("station_id", [])
+    if not isinstance(raw_station_ids, list):
+        raw_station_ids = [raw_station_ids]
+    station_ids = [str(x) for x in raw_station_ids if x is not None and str(x).strip() != ""]
 
     # 👇 สร้าง session id + ตีตราเวลา
     now = datetime.now(timezone.utc)
@@ -72,13 +87,15 @@ def login(body: LoginRequest, response: Response):
     else:
         token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
 
+    # ไม่แนบ station_ids ลง JWT: ช่างที่ถูก assign หลายสถานี (เช่น 40+) จะทำให้ token/คุกกี้ใหญ่จน
+    # response header เกิน proxy_buffer_size ของ nginx → 502 (หน้า HTML) → frontend login พัง
+    # สิทธิ์สถานีอ่านสดจาก DB ผ่าน get_user_station_ids() อยู่แล้ว (ค่าใน token เดิมก็ stale)
     jwt_token = create_access_token({
         "sub": user["email"],
         "user_id": str(user["_id"]),
         "username": user.get("username"),
         "role": user_role,
         "company": user.get("company"),
-        "station_ids": station_ids,
         "sid": sid,  # ⬅️ แนบ session id ไว้ใน access token
     }, expires_delta=timedelta(minutes=token_expire_minutes))
 
@@ -237,11 +254,95 @@ def me(current: UserClaims = Depends(get_current_user)):
         "id": str(u["_id"]),
         "username": u.get("username") or "",
         "email": u.get("email") or "",
-        "role": u.get("role") or "",
+        # role ที่กำลังสวมอยู่ (effective/JWT) — สลับ role ผ่าน dropdown แล้วค่านี้เปลี่ยนตาม
+        "role": current.effective_role or (u.get("role") or ""),
+        "is_super_admin": current.is_super_admin,
+        # role จริงใน DB (ตัวจริง) — ใช้เช็คว่าเป็น super admin ตัวจริงไหม (โชว์ dropdown)
+        "true_role": u.get("role") or "",
         "company": u.get("company") or "",
         "tel": u.get("tel") or "",
         "station_id": u.get("station_id") or [],
     }
+
+
+class SwitchRoleIn(BaseModel):
+    role: str
+
+
+@router.post("/users/switch-role")
+def switch_role(body: SwitchRoleIn, response: Response, current: UserClaims = Depends(get_current_user)):
+    """
+    Super admin (thatsawan) สลับ role ที่กำลังสวม (impersonate) โดยไม่ต้อง login ใหม่ — ออก JWT cookie ใหม่
+    gate ด้วย role จริงใน DB == super_admin (ไม่ใช่ JWT) → ใช้ได้แม้กำลัง impersonate role อื่นอยู่ก็สลับกลับได้
+    """
+    target = (body.role or "").strip()
+    if target not in SWITCHABLE_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role")
+
+    if not current.user_id:
+        raise HTTPException(status_code=401, detail="Missing uid in token")
+    try:
+        u = users_collection.find_one({"_id": ObjectId(current.user_id)}, {"role": 1, "username": 1, "email": 1, "company": 1, "station_id": 1, "ai_package": 1})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad user id")
+    # ตรวจ role จริงใน DB — เฉพาะ super admin ตัวจริงเท่านั้นที่สลับ role ได้
+    if not u or (u.get("role") or "") != SUPER_ADMIN_ROLE:
+        raise HTTPException(status_code=403, detail="Only super admin can switch role")
+
+    # สร้าง session ใหม่ครบชุดเหมือน /login (access + refresh + DB session ใหม่) — กัน session ไม่ sync
+    # (ถ้าออกแค่ access ใหม่ แต่ refresh_token/sid เดิม → apiFetch วน refresh แล้ว role เด้งกลับ/หลุด login)
+    email = u.get("email") or current.sub
+    now = datetime.now(timezone.utc)
+    sid = str(uuid.uuid4())
+    expires_min = ACCESS_TOKEN_EXPIRE_MINUTES_TECHNICIAN
+    new_token = create_access_token({
+        "sub": email,
+        "user_id": current.user_id,
+        "username": u.get("username") or current.username,
+        "role": target,
+        "company": u.get("company"),
+        "sid": sid,
+    }, expires_delta=timedelta(minutes=expires_min))
+    refresh_token = create_access_token({"sub": email}, expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS))
+
+    # แทนที่ session เดิมด้วย session ใหม่ (ผูก sid ใหม่) — ให้ /refresh ทำงานได้ต่อ
+    users_collection.update_one(
+        {"_id": u["_id"]},
+        {"$set": {"refreshTokens": [{
+            "sid": sid,
+            "token": refresh_token,
+            "createdAt": now,
+            "lastActiveAt": now,
+            "expiresAt": now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        }]}},
+    )
+
+    response.set_cookie(
+        key=ACCESS_COOKIE_NAME,
+        value=new_token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=int(timedelta(minutes=expires_min).total_seconds()),
+        path="/",
+    )
+    # ส่ง token + user กลับเหมือน /login ให้ frontend เก็บ localStorage แบบเดียวกันเป๊ะ
+    return {
+        "ok": True,
+        "role": target,
+        "access_token": new_token,
+        "refresh_token": refresh_token,
+        "user": {
+            "user_id": str(u["_id"]),
+            "username": u.get("username") or current.username,
+            "email": email,
+            "role": target,
+            "company": u.get("company"),
+            "station_id": [str(x) for x in (u.get("station_id") or []) if x is not None],
+            "ai_package": u.get("ai_package", {"enabled": False}),
+        },
+    }
+
 
 @router.get("/my-stations/detail")
 def my_stations_detail(current: UserClaims = Depends(get_current_user)):
@@ -496,18 +597,14 @@ def refresh(body: RefreshIn, response: Response):
         else:
             token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES_DEFAULT  # 15 นาที
 
-        # สร้าง access ใหม่ (คง sid เดิม)
-        station_ids = user.get("station_id", [])
-        if not isinstance(station_ids, list):
-            station_ids = [station_ids]
-
+        # สร้าง access ใหม่ (คง sid เดิม) — ไม่แนบ station_ids ลง token เช่นเดียวกับตอน login
+        # (กัน token/คุกกี้ใหญ่เกิน proxy_buffer_size; สิทธิ์สถานีอ่านสดจาก DB ผ่าน get_user_station_ids())
         new_access = create_access_token({
             "sub": user["email"],
             "user_id": str(user["_id"]),
             "username": user.get("username"),
             "role": user_role,
             "company": user.get("company"),
-            "station_ids": station_ids,
             "sid": entry.get("sid"),
         }, expires_delta=timedelta(minutes=token_expire_minutes))
 
@@ -589,7 +686,7 @@ class register(BaseModel):
 
 @router.post("/insert_users/")
 async def create_users(users: register, current: UserClaims = Depends(get_current_user)):
-    # ปิด public signup: เฉพาะ admin เท่านั้นที่สร้างผู้ใช้ได้ (กันการสมัคร admin เองจากภายนอก)
+    # ปิด public signup: เฉพาะ admin เท่านั้นที่สร้างผู้ใช้ได้ (super_admin ถูก normalize เป็น admin จึงผ่านด้วย)
     if current.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
 
@@ -619,7 +716,7 @@ async def create_users(users: register, current: UserClaims = Depends(get_curren
 
 @router.get("/all-users/")
 def all_users(current: UserClaims = Depends(get_current_user)):
-    # อนุญาตเฉพาะ admin (จะเพิ่ม owner ก็ได้ตามนโยบาย)
+    # อนุญาตเฉพาะ admin (super_admin ผ่านด้วยเพราะ normalize เป็น admin)
     if current.role != "admin":
         raise HTTPException(status_code=403, detail="forbidden")
 
