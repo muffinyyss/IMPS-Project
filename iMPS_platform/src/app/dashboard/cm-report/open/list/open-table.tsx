@@ -39,7 +39,8 @@ const T = {
   colNo: { th: "ลำดับ", en: "No." },
   colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
   colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
-  colCmDate: { th: "วันที่แจ้ง", en: "Found Date" },
+  colSr: { th: "เลขที่ SR/WO", en: "SR/WO No." },
+  colCmDate: { th: "วัน/เวลาที่แจ้ง", en: "Found Date/Time" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
   colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
   colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
@@ -102,6 +103,9 @@ type TData = {
   location?: string;
   problem_details?: string;
   status: string;
+  stage?: string;
+  found_time?: string;
+  reject_remark?: string;
 };
 
 type Props = {
@@ -138,14 +142,14 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const { lang } = useLanguage();
   const [userRole, setUserRole] = useState<string>("");
   const isTechnician = userRole.toLowerCase() === "technician";
+  const isEngineer = userRole.trim().toLowerCase() === "engineer";
   const [loading, setLoading] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [data, setData] = useState<TData[]>([]);
   const [filtering, setFiltering] = useState("");
   const [username, setUsername] = useState<string>("");
-  const canDelete = username.trim().toLowerCase() === "thatsawan"; // เฉพาะบัญชี thatsawan ลบใบงานได้
-  // head cs (หรือ admin) อนุมัติใบงานที่ cs เพิ่งเปิด → เดินหน้าเป็น In Progress
-  const canCsApprove = ["head_cs", "admin"].includes(userRole.trim().toLowerCase());
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const canDelete = isSuperAdmin; // ลบถาวรได้เฉพาะ super admin (ซ่อนตอน impersonate role อื่น)
   const [pageLoading, setPageLoading] = useState(true);
   const [issueId, setIssueId] = useState<string>("");
   const [sn, setSn] = useState<string | null>(null);
@@ -240,6 +244,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           if (alive) {
             setUserRole(user.role ?? "");
             setUsername(user.username ?? "");
+            setIsSuperAdmin(!!user.is_super_admin);
           }
         }
       } catch (err) {
@@ -335,12 +340,15 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
     setLoading(true);
 
     try {
+      // แท็บ Open รวม: ใบเปิดใหม่รอ head cs อนุมัติ (Wait for approve/cs_approval),
+      // ใบเก่า/auto ที่เป็น Open, และใบที่รอ engineer วางแผน (Wait for schedule)
+      const requestStatus = "open,wait for approve,wait for schedule";
       const makeURL = (path: string) => {
         const u = new URL(`${apiBase}${path}`);
         u.searchParams.set("station_id", stationId);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
-        u.searchParams.set("status", statusFromTab);
+        u.searchParams.set("status", requestStatus);
         return u.toString();
       };
 
@@ -361,18 +369,25 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
 
+      // แท็บ Open = ด่านก่อนเริ่มซ่อม: รอ head cs อนุมัติ + รอ engineer วางแผน
+      // "wait for approve" ต้องเป็น stage cs_approval เท่านั้น (ด่านปิดงานไปอยู่แท็บ In Progress)
       const isOpen = (it: any) => {
         const hasStatus = it?.status != null || it?.job?.status != null;
         if (!hasStatus) return true;
         const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
-        return s === "open";
+        const stage = String(it?.stage ?? "").trim().toLowerCase();
+        if (s === "open") return true;
+        if (s === "wait for schedule") return true;
+        if (s === "wait for approve") return stage === "cs_approval";
+        return false;
       };
 
       cmItems = cmItems.filter(isOpen);
       urlItems = urlItems.filter(isOpen);
 
       const cmRows: TData[] = cmItems.map((it: any) => {
-        const isoDay = toISODateOnly(it.cm_date ?? it.createdAt ?? "");
+        // "วันที่แจ้ง" มาจาก found_date (วันที่ผู้แจ้งระบุ) ก่อน แล้วค่อย fallback
+        const isoDay = toISODateOnly(it.cm_date ?? it.found_date ?? it.createdAt ?? "");
         const rawUploaded =
           it.file_url
           ?? (Array.isArray(it.urls) ? (it.urls[0]?.url ?? it.urls[0]) : it.url)
@@ -406,6 +421,9 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           location: it.faulty_equipment || "",
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
+          stage: it.stage || "",
+          found_time: it.found_time || "",
+          reject_remark: it.reject_remark || "",
         };
       });
 
@@ -486,30 +504,6 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
 
 
-  const handleCsApprove = async (row: TData) => {
-    if (!canCsApprove) return;
-    if (!row.id || !stationId) return;
-    const label = row.doc_name || row.issue_id || row.id;
-    const ok = window.confirm(
-      lang === "th"
-        ? `อนุมัติใบงาน "${label}" ใช่หรือไม่? ใบงานจะเดินหน้าเป็น In Progress`
-        : `Approve work order "${label}"? It will move to In Progress.`
-    );
-    if (!ok) return;
-    try {
-      const url = `${apiBase}/cmreport/${encodeURIComponent(row.id)}/cs-approve?station_id=${encodeURIComponent(stationId)}`;
-      const res = await apiFetch(url, { method: "POST", credentials: "include" });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.detail || `HTTP ${res.status}`);
-      }
-      setToast({ show: true, type: "success", message: lang === "th" ? "อนุมัติใบงานแล้ว" : "Work order approved" });
-      await fetchRows();
-    } catch (err: any) {
-      alert((lang === "th" ? "อนุมัติไม่สำเร็จ: " : "Approve failed: ") + (err?.message ?? err));
-    }
-  };
-
   const columns: ColumnDef<TData, unknown>[] = useMemo(() => [
     {
       id: "no",
@@ -539,9 +533,15 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
-      accessorFn: (row) => row.issue_id || "—",
-      id: "issue_id",
-      header: () => t("colIssueId", lang),
+      // เลขงาน: ก่อนอนุมัติ = SR, หลังอนุมัติ (Wait for schedule) = WO — อิงลำดับเดียวกับ issue_id
+      accessorFn: (row) => {
+        const m = String(row.issue_id || "").match(/(\d+)/);
+        if (!m) return "—";
+        const isWo = String(row.status || "").trim().toLowerCase() === "wait for schedule";
+        return `${isWo ? "WO" : "SR"}${m[1].padStart(3, "0")}`;
+      },
+      id: "sr_no",
+      header: () => t("colSr", lang),
       cell: (info: CellContext<TData, unknown>) => (
         <span className="tw-block tw-truncate" title={info.getValue() as string}>
           {info.getValue() as React.ReactNode}
@@ -556,14 +556,17 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       accessorFn: (row) => row.cm_date,
       id: "cm_date",
       header: () => t("colCmDate", lang),
-      cell: (info: CellContext<TData, unknown>) => (
-        <span className="tw-whitespace-nowrap">
-          {formatDate(info.getValue() as string, lang)}
-        </span>
-      ),
-      size: 120,
-      minSize: 100,
-      maxSize: 150,
+      cell: (info: CellContext<TData, unknown>) => {
+        const time = info.row.original.found_time || "";
+        return (
+          <span className="tw-whitespace-nowrap">
+            {formatDate(info.getValue() as string, lang)}{time ? ` ${time}` : ""}
+          </span>
+        );
+      },
+      size: 140,
+      minSize: 110,
+      maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
     {
@@ -620,9 +623,11 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const sl = s.toLowerCase();
         const color =
           sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
-            sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
-              sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
-                "tw-bg-blue-gray-100 tw-text-blue-gray-800";
+            sl === "wait for approve" ? "tw-bg-purple-100 tw-text-purple-800" :
+              sl === "wait for schedule" ? "tw-bg-indigo-100 tw-text-indigo-800" :
+                sl === "complete" || sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
+                  sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
+                    "tw-bg-blue-gray-100 tw-text-blue-gray-800";
         return (
           <span className={`tw-inline-block tw-px-2 sm:tw-px-2.5 tw-py-0.5 sm:tw-py-1 tw-rounded-full tw-text-[10px] sm:tw-text-xs tw-font-medium ${color}`}>
             {s}
@@ -634,29 +639,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-    ...(canCsApprove ? [{
-      id: "cs_approve",
-      header: () => (lang === "th" ? "อนุมัติ" : "Approve"),
-      enableSorting: false,
-      size: 90,
-      minSize: 80,
-      maxSize: 120,
-      cell: (info: CellContext<TData, unknown>) => {
-        const s = String(info.row.original.status ?? "").toLowerCase();
-        if (s !== "open") return <span className="tw-text-blue-gray-300">—</span>;
-        return (
-          <button
-            type="button"
-            onClick={() => handleCsApprove(info.row.original)}
-            title={lang === "th" ? "อนุมัติใบงาน" : "Approve work order"}
-            className="tw-inline-flex tw-items-center tw-justify-center tw-px-2.5 tw-h-8 tw-rounded-lg tw-text-xs tw-font-medium tw-text-green-600 tw-border tw-border-green-500 hover:tw-text-white hover:tw-bg-green-500 tw-transition-all"
-          >
-            {lang === "th" ? "อนุมัติ" : "Approve"}
-          </button>
-        );
-      },
-      meta: { headerAlign: "center", cellAlign: "center" },
-    } as ColumnDef<TData, unknown>] : []),
+    // ปุ่มอนุมัติ (cs-approve) ย้ายไปอยู่ในฟอร์มแล้ว — head cs เปิดใบงานเพื่อดูรายละเอียดก่อนอนุมัติ
     ...(canDelete ? [{
       id: "actions",
       header: () => (lang === "th" ? "ลบ" : "Delete"),
@@ -677,14 +660,25 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     } as ColumnDef<TData, unknown>] : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [lang, canDelete, canCsApprove, stationId]);
+  ], [lang, canDelete, stationId]);
 
   function sameUser(a?: string, b?: string) {
     return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
   }
 
+  const visibleData = useMemo(() => {
+    // engineer เป็นผู้อนุมัติ SR → เห็นทั้ง Wait for approve (รออนุมัติ) และ Wait for schedule (วางแผน)
+    // ซ่อนเฉพาะใบที่ตีกลับไปหา CS แล้ว (Wait for approve + reject_remark) — ยังไม่ใช่คิว จนกว่า CS จะแก้แล้วบันทึกกลับ
+    if (isEngineer) {
+      return data.filter(
+        (r) => !(String(r.status || "").trim().toLowerCase() === "wait for approve" && (r.reject_remark || "").trim())
+      );
+    }
+    return data;
+  }, [data, isEngineer]);
+
   const table = useReactTable({
-    data,
+    data: visibleData,
     columns,
     state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting,

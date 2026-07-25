@@ -21,6 +21,8 @@ const T = {
     companyAddressLine2: { th: "จังหวัดนนทบุรี 11130 ศูนย์บริการข้อมูล กฟผ. สายด่วน 1416", en: "Nonthaburi 11130, EGAT Call Center: 1416" },
     docName: { th: "ชื่อเอกสาร", en: "Document Name" },
     issueId: { th: "Issue ID", en: "Issue ID" },
+    srNo: { th: "เลขที่ SR", en: "SR No." },
+    woNo: { th: "เลขที่ WO", en: "WO No." },
     cmDate: { th: "วันที่แจ้ง", en: "Found Date" },
     location: { th: "สถานที่", en: "Location" },
     reporteed_by: { th: "ผู้แจ้งปัญหา", en: "Reported by" },
@@ -37,6 +39,29 @@ const T = {
     save: { th: "บันทึก", en: "Save" },
     saving: { th: "กำลังบันทึก...", en: "Saving..." },
     assign: { th: "Assign", en: "Assign" },
+    cancelJob: { th: "ยกเลิกงาน", en: "Cancel Job" },
+    approve: { th: "อนุมัติ", en: "Approve" },
+    approveTitle: { th: "อนุมัติใบงาน", en: "Approve work order" },
+    approveConfirmText: { th: "ยืนยันอนุมัติใบงานนี้? จะเดินหน้าเป็น Wait for schedule", en: "Approve this work order? It will move to \"Wait for schedule\"." },
+    confirmApprove: { th: "ยืนยันอนุมัติ", en: "Confirm approve" },
+    assignTitle: { th: "มอบหมายงาน", en: "Assign work order" },
+    assignConfirmText: { th: "ยืนยันมอบหมายงานให้ช่าง? ใบงานจะเข้าสถานะ In Progress", en: "Assign to technician? It will move to In Progress." },
+    assignConfirmTextNoSched: { th: "ยืนยันบันทึกใบงาน? จะเข้าสถานะ In Progress (สถานะรอ: วัสดุ/สภาพหน้างาน)", en: "Save this work order? It will move to In Progress (waiting on material/site)." },
+    confirmAssign: { th: "ยืนยันมอบหมาย", en: "Confirm assign" },
+    saveTitle: { th: "บันทึกใบงาน", en: "Save work order" },
+    saveConfirmText: { th: "ยืนยันบันทึกการเปลี่ยนแปลง?", en: "Save changes to this work order?" },
+    confirmSaveBtn: { th: "ยืนยันบันทึก", en: "Confirm save" },
+    reject: { th: "ตีกลับ", en: "Reject" },
+    rejectTitle: { th: "ตีกลับใบงานกลับไปที่ CS", en: "Reject back to CS" },
+    rejectReason: { th: "เหตุผลที่ตีกลับ", en: "Reject reason" },
+    rejectReasonPlaceholder: { th: "ระบุเหตุผลให้ CS ทราบว่าต้องแก้อะไร", en: "Tell CS what needs fixing" },
+    confirmReject: { th: "ยืนยันตีกลับ", en: "Confirm reject" },
+    cancelTitle: { th: "ยกเลิกใบงาน", en: "Cancel work order" },
+    cancelReason: { th: "เหตุผลที่ยกเลิก", en: "Cancel reason" },
+    cancelReasonPlaceholder: { th: "ระบุเหตุผลที่ยกเลิกใบงานนี้", en: "Reason for cancelling this work order" },
+    confirmCancel: { th: "ยืนยันยกเลิก", en: "Confirm cancel" },
+    rejectedBannerTitle: { th: "ใบงานถูกตีกลับจากผู้วางแผน — กรุณาแก้ไขแล้วบันทึก", en: "Returned by planner — please revise and save" },
+    rejectedBy: { th: "โดย", en: "by" },
     planningSection: { th: "การวางแผนงาน", en: "Planning" },
     schedStart: { th: "วันที่เริ่มตามแผน", en: "Scheduled Start" },
     schedFinish: { th: "วันที่เสร็จตามแผน", en: "Scheduled Finish" },
@@ -45,6 +70,8 @@ const T = {
     addTechnician: { th: "เพิ่มช่าง", en: "Add technician" },
     noTechnicians: { th: "ไม่พบช่าง", en: "No technicians found" },
     waitState: { th: "สถานะรอ", en: "Waiting On" },
+    waitRemark: { th: "หมายเหตุ", en: "Remark" },
+    waitRemarkPlaceholder: { th: "ระบุรายละเอียด เช่น วัสดุที่รอ / สภาพหน้างาน", en: "e.g. material awaited / site condition" },
     schedRangeError: { th: "วันที่เสร็จต้องอยู่หลังวันที่เริ่ม", en: "Finish must be after start" },
     backToList: { th: "กลับ", en: "Back" },
     alertNoStationId: { th: "ไม่พบ station_id", en: "Station ID not found" },
@@ -77,7 +104,7 @@ const t = (key: keyof typeof T, lang: Lang): string => T[key][lang];
 
 // ==================== TYPES ====================
 type Severity = "" | "Low" | "Medium" | "High" | "Urgent";
-type Status = "" | "Open" | "In Progress";
+type Status = "" | "Open" | "In Progress" | "Wait for approve" | "Wait for schedule" | "Cancelled";
 
 // ช่างที่เลือกได้ในขั้นวางแผน (มาจาก GET /users/by-role?role=technician)
 type TechnicianOption = { id: string; username: string; email: string };
@@ -85,11 +112,22 @@ type TechnicianOption = { id: string; username: string; email: string };
 // สถานะรอที่ engineer เลือกได้ตอนวางแผน — ต้องตรงตัวกับ WO_SUBTABS ใน inprogress-table ที่ filter ด้วย string นี้
 // ("WO - wait for approve" ไม่อยู่ที่นี่ เพราะเกิดหลังซ่อมเสร็จ ไม่ใช่ตอนวางแผน)
 const WAIT_STATES = [
-    "WO - wait for manpower",
-    "WO - wait for spare part",
-    "WO - wait for site access",
+    "WO - wait for scheduled",
+    "WO - wait for material",
+    "WO - wait for site condition",
 ] as const;
 const DEFAULT_WAIT_STATE = WAIT_STATES[0];
+
+// รองรับข้อมูลเก่า: map ค่าที่เปลี่ยนชื่อแล้ว → ค่าใหม่ (manpower→scheduled, spare part→material, site access→site condition)
+const LEGACY_WAIT_STATE_MAP: Record<string, (typeof WAIT_STATES)[number]> = {
+    "WO - wait for manpower": "WO - wait for scheduled",
+    "WO - wait for spare part": "WO - wait for material",
+    "WO - wait for site access": "WO - wait for site condition",
+};
+const normalizeWaitState = (v: string): (typeof WAIT_STATES)[number] => {
+    if ((WAIT_STATES as readonly string[]).includes(v)) return v as (typeof WAIT_STATES)[number];
+    return LEGACY_WAIT_STATE_MAP[v] ?? DEFAULT_WAIT_STATE;
+};
 
 type ServerPhoto = { filename: string; size: number; url: string; remark?: string; uploadedAt?: string; location?: string; };
 type PhotoItem = { id: string; file: File; preview: string; ref?: PhotoRef; isServer?: boolean; serverUrl?: string; createdAt?: string; location?: string; };
@@ -304,6 +342,18 @@ export default function CMOpenForm() {
     const [problemDetails, setProblemDetails] = useState("");
     const [severity, setSeverity] = useState<Severity>("");
     const [status, setStatus] = useState<Status>("");
+    // แยกด่านของ "Wait for approve": "cs_approval" (รอ head cs) vs "close_approval" (รอปิดงาน)
+    const [stage, setStage] = useState("");
+    // modal ยืนยัน/ใส่ comment: reject & cancel = กรอกเหตุผล; approve/assign/save = ยืนยันเฉย ๆ
+    type CommentMode = "approve" | "reject" | "cancel" | "assign" | "save";
+    const [commentModal, setCommentModal] = useState<{ open: boolean; mode: CommentMode }>({ open: false, mode: "reject" });
+    const [commentText, setCommentText] = useState("");
+    const openCommentModal = (mode: CommentMode) => { setCommentText(""); setCommentModal({ open: true, mode }); };
+    const closeCommentModal = () => setCommentModal((m) => ({ ...m, open: false }));
+    // เหตุผลที่ถูกตีกลับ (engineer ตีกลับมาให้ CS แก้) — โชว์ให้ CS เห็นว่าต้องแก้อะไร
+    const [rejectedInfo, setRejectedInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
+    // เหตุผลที่ยกเลิก — โชว์ในหน้ารายละเอียดใบงาน Cancelled
+    const [cancelledInfo, setCancelledInfo] = useState<{ remark: string; by: string }>({ remark: "", by: "" });
     const [remarks_open, setRemarksOpen] = useState("");
     const [faultyEquipment, setFaultyEquipment] = useState("");
 
@@ -312,6 +362,7 @@ export default function CMOpenForm() {
     const [schedFinish, setSchedFinish] = useState("");
     const [assignees, setAssignees] = useState<string[]>([""]);   // 1 แถว = 1 ช่าง — เริ่มที่แถวว่าง 1 แถว แล้วกด + เพิ่มเอง
     const [waitState, setWaitState] = useState<string>(DEFAULT_WAIT_STATE);
+    const [waitRemark, setWaitRemark] = useState<string>(""); // หมายเหตุ สำหรับ material/site condition
     const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
 
     const [summary, setSummary] = useState("");
@@ -337,10 +388,16 @@ export default function CMOpenForm() {
     const isEdit = !!editId;
     // คนเปิดใบงาน (reported_by) แก้ไขใบงานที่ยัง Open ได้ — คนอื่นเห็นแบบอ่านอย่างเดียว
     const isOwner = isEdit && !!currentUsername.trim() && currentUsername.trim() === reported_by.trim();
-    const fieldsLocked = isEdit && !isOwner;
+    // engineer (อนุมัติ SR/วางแผน) ไม่มีสิทธิแก้ field ใบงานที่ตัวเองไม่ได้แจ้ง
+    // (engineer แก้ได้เฉพาะส่วนการวางแผน ซึ่งอยู่นอก fieldsLocked) — กันเคส impersonate ที่ isOwner เพี้ยนด้วย
+    const isEngineer = userRole.trim().toLowerCase() === "engineer";
+    const isCs = userRole.trim().toLowerCase() === "cs";
+    const canEditFields = isOwner && !isEngineer && !isCs;
+    const isCancelled = status.trim().toLowerCase() === "cancelled";
+    const fieldsLocked = isEdit && (!canEditFields || isCancelled);
     // ขั้นวางแผน: engineer วางแผนตาม flow, admin/owner คุมภาพรวม — cs เปิดใบงานอย่างเดียว วางแผนไม่ได้
     // เห็นทั้งตอนเปิดใบใหม่และตอนเปิดใบเดิม (เปิดงาน + วางแผน รวดเดียวได้)
-    const canPlan = ["admin", "owner", "engineer"].includes(userRole.toLowerCase());
+    const canPlan = !isCancelled && ["admin", "owner", "engineer"].includes(userRole.toLowerCase());
     // assignees = 1 แถว 1 ช่าง — แถวที่เพิ่งกด + จะยังเป็น "" จนกว่าจะเลือก
     const pickedAssignees = useMemo(() => assignees.filter(Boolean), [assignees]);
     // มีการกรอกแผนไว้บ้างหรือยัง — ใช้ตัดสินว่าต้องบันทึกแผนต่อจากการเปิดใบไหม
@@ -350,12 +407,47 @@ export default function CMOpenForm() {
         technicians.map(x => x.username).filter(u => !assignees.some((a, j) => j !== i && a === u));
     // finish ต้องอยู่หลัง start เสมอ
     const schedRangeInvalid = !!schedStart && !!schedFinish && schedFinish <= schedStart;
-    // ต้องมีอย่างน้อย 1 แถว และทุกแถวต้องเลือกช่างแล้ว (กันแถวว่างที่กด + ทิ้งไว้)
-    const canSubmitPlan = !!schedStart && !!schedFinish && assignees.length > 0 && assignees.every(Boolean) && !schedRangeInvalid;
+    // "wait for scheduled" = ต้องกำหนดวันเริ่ม/เสร็จ + ช่าง | material/site condition = รอของ/รอหน้างาน ยังกำหนดไม่ได้ → กรอกแค่สถานะรอ กดบันทึกได้เลย
+    const needsSchedule = waitState === "WO - wait for scheduled";
+    // ต้องมีอย่างน้อย 1 แถว และทุกแถวต้องเลือกช่างแล้ว (กันแถวว่างที่กด + ทิ้งไว้) — เฉพาะเมื่อ needsSchedule
+    const canSubmitPlan = needsSchedule
+        ? (!!schedStart && !!schedFinish && assignees.length > 0 && assignees.every(Boolean) && !schedRangeInvalid)
+        : true;
     const draftKey = useMemo(() => getDraftKey(stationId), [stationId]);
     const STATUS_OPTIONS: Status[] = ["Open", "In Progress"];
 
-    useEffect(() => { if (!isEdit && !status) setStatus("Open"); }, [isEdit, status]);
+    // ── ด่านของใบงาน (ใช้คุมปุ่ม Cancel/Reject) ──
+    const roleLower = userRole.trim().toLowerCase();
+    const statusLower = isCancelled ? "cancelled" : String(status).trim().toLowerCase();
+    const stageLower = String(stage).trim().toLowerCase();
+    // ด่าน cs: เปิดใหม่รอ head cs อนุมัติ (Open เก่า/auto หรือ Wait for approve + cs_approval)
+    const isCsStage = statusLower === "open" || (statusLower === "wait for approve" && stageLower === "cs_approval");
+    // ด่านวางแผน: head cs อนุมัติแล้ว รอ engineer วางแผน
+    const isPlanningStage = statusLower === "wait for schedule";
+    // ใบที่รอ head cs อนุมัติจริง ๆ (ยังไม่ถูกตีกลับ) — ใช้คุมปุ่มอนุมัติ/ตีกลับของ head cs
+    const isCsPending = statusLower === "wait for approve" && stageLower === "cs_approval";
+    const canCancelRole = ["admin", "owner", "engineer", "planner"].includes(roleLower);
+    const canRejectRole = ["admin", "engineer", "planner"].includes(roleLower);
+    // ยกเลิกได้เฉพาะ admin/engineer/planner ตอนรีวิวหรือวางแผน — cs มีหน้าที่เปิดใบงานเท่านั้น
+    const showCancelBtn = isEdit && canCancelRole && (isCsStage || isPlanningStage);
+    const showRejectBtn = isEdit && canRejectRole && isPlanningStage;
+    // engineer (หรือ admin) ตีกลับ SR ด่าน cs ได้ — ไม่มีปุ่มอนุมัติแล้ว (engineer วางแผน/Assign SR ได้เลย)
+    // ใบที่ถูกตีกลับแล้ว (มี reject_remark) = รอ cs ผู้เปิดแก้ → กดตีกลับซ้ำไม่ได้จนกว่า cs จะบันทึกกลับ
+    const canCsApprove = ["admin", "engineer"].includes(roleLower);
+    const isReturnedToCs = isCsStage && !!rejectedInfo.remark;
+    const showCsRejectBtn = isEdit && canCsApprove && isCsPending && !isReturnedToCs;
+
+    // เลขที่งาน — ก่อนอนุมัติเป็น SR (Service Request), หลังอนุมัติ (Wait for schedule ขึ้นไป) เป็น WO (Work Order)
+    // อิงเลขลำดับเดียวกับ issue_id (CM-001 → SR001 / WO001)
+    const isWoStage = isPlanningStage; // head cs อนุมัติแล้ว = ขึ้นเป็นใบสั่งงาน (WO)
+    const srWoNo = useMemo(() => {
+        const m = String(issueId || "").match(/(\d+)/);
+        if (!m) return "";
+        return `${isWoStage ? "WO" : "SR"}${m[1].padStart(3, "0")}`;
+    }, [issueId, isWoStage]);
+
+    // ใบใหม่เริ่มที่ "Wait for approve" (รอ head cs อนุมัติ) — ตรงกับที่ backend /submit บันทึก
+    useEffect(() => { if (!isEdit && !status) setStatus("Wait for approve"); }, [isEdit, status]);
     const headerLabel = useMemo(() => (isEdit ? t("headerEdit", lang) : t("headerAdd", lang)), [isEdit, lang]);
 
     // FAILURECODE options — สถานีเป็น DC หรือ AC ดูจาก chargerType ของ charger ในสถานี
@@ -593,6 +685,9 @@ export default function CMOpenForm() {
                 setProblemDetails(data.problem_details ?? "");
                 setSeverity((data.severity ?? "") as Severity);
                 setStatus((data.status ?? "Open") as Status);
+                setStage(data.stage ?? "");
+                setRejectedInfo({ remark: data.reject_remark ?? "", by: data.rejected_by ?? "" });
+                setCancelledInfo({ remark: data.cancel_remark ?? "", by: data.cancelled_by ?? "" });
                 setRemarksOpen(data.remarks_open ?? "");
                 setFaultyEquipment(data.faulty_equipment ?? "");
                 setSummary(data.summary ?? "");
@@ -605,7 +700,9 @@ export default function CMOpenForm() {
                 const loadedAssignees = Array.isArray(data.assignees) ? data.assignees : [];
                 setAssignees(loadedAssignees.length ? loadedAssignees : [""]);
                 // เก็บเฉพาะสถานะรอที่เลือกตอนวางแผนได้ — ใบที่ซ่อมไปแล้วอาจมี repair_result เป็นค่าอื่น
-                setWaitState(WAIT_STATES.includes(data.repair_result) ? data.repair_result : DEFAULT_WAIT_STATE);
+                // (รองรับค่าเก่าที่เปลี่ยนชื่อแล้วด้วย normalizeWaitState)
+                setWaitState(normalizeWaitState(data.repair_result ?? ""));
+                setWaitRemark(data.repair_result_remark ?? "");
 
                 // ═══ แสดง Maximo ticket ถ้ามี (edit mode) ═══
                 if (data.maximo_ticket_id) {
@@ -668,7 +765,7 @@ export default function CMOpenForm() {
         setUploadState({ show: true, total: newPhotos.length, completed: newPhotos.length });
     }
 
-    const onFinalSave = async (nextStatus: "Open" | "In Progress" = "In Progress") => {
+    const onFinalSave = async (nextStatus: string = "In Progress") => {
         if (!stationId) { alert(t("alertNoStationId", lang)); return; }
         if (!canSave && (!isEdit || isOwner)) return;
         setSaving(true);
@@ -678,6 +775,8 @@ export default function CMOpenForm() {
                 const payload: Record<string, any> = { station_id: stationId, status: nextStatus };
                 if (isOwner) {
                     // คนเปิดใบงานแก้ไขข้อมูลได้ — ส่งค่าที่แก้ไปพร้อมกัน
+                    // ส่ง stage เดิมไปด้วย กัน backend re-stamp เป็น close_approval ตอน status ยังเป็น Wait for approve
+                    // เคลียร์ reject_remark = ยืนยันแก้ไขแล้ว → ใบกลับเข้าคิว head cs อีกครั้ง
                     payload.job = {
                         faulty_equipment: faultyEquipment,
                         severity,
@@ -685,16 +784,19 @@ export default function CMOpenForm() {
                         remarks_open,
                         location,
                         reporter_signature: reporterSignature,
+                        stage,
+                        reject_remark: "",
                     };
                 }
-                // ส่งเข้า In Progress = จบขั้นวางแผน — แนบแผนงานและตั้งผลหลังซ่อมเริ่มต้นเป็นรอช่าง
+                // ส่งเข้า In Progress = จบขั้นวางแผน — แนบแผน+ช่างเฉพาะ needsSchedule (material/site condition ไม่ต้องมี)
                 if (nextStatus === "In Progress") {
                     payload.job = {
                         ...(payload.job ?? {}),
-                        sched_start: schedStart,
-                        sched_finish: schedFinish,
-                        assignees: pickedAssignees,
+                        sched_start: needsSchedule ? schedStart : "",
+                        sched_finish: needsSchedule ? schedFinish : "",
+                        assignees: needsSchedule ? pickedAssignees : [],
                         repair_result: waitState,
+                        repair_result_remark: needsSchedule ? "" : waitRemark.trim(),
                     };
                 }
                 const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/status`, {
@@ -715,7 +817,8 @@ export default function CMOpenForm() {
                 // Assign แล้วกลับไปหน้า list ของแท็บปลายทาง — ไม่เปิดฟอร์มใบนั้นต่อ (งานเป็นของช่างแล้ว)
                 setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
                 await new Promise(r => setTimeout(r, 1200));
-                router.push(buildListUrl(nextStatus === "In Progress" ? "in-progress" : "open"));
+                // Assign แล้วกลับหน้า Open list (ไม่เด้งไป In Progress) — engineer จัดการ SR/WO อื่นต่อได้
+                router.push(buildListUrl("open"));
 
             } else {
                 const submitRes = await apiFetch(`${API_BASE}/cmreport/submit`, {
@@ -739,14 +842,24 @@ export default function CMOpenForm() {
 
                 const { report_id, doc_name: newDocName, issue_id: newIssueId, maximo_ticket_id } = await submitRes.json();
 
-                // /cmreport/submit เปิดใบเป็น Open เสมอและไม่รับฟิลด์แผน — ถ้ากรอกแผนมาด้วยต้อง PATCH ต่อ
+                // /cmreport/submit เปิดใบเป็น "Wait for approve" (cs_approval) และไม่รับฟิลด์แผน — ถ้ากรอกแผนมาด้วยต้อง PATCH ต่อ
                 if (canPlan && (hasPlanInput || nextStatus === "In Progress")) {
                     const planPayload: Record<string, any> = {
                         station_id: stationId,
                         status: nextStatus,
-                        job: { sched_start: schedStart, sched_finish: schedFinish, assignees: pickedAssignees },
+                        job: {
+                            sched_start: needsSchedule ? schedStart : "",
+                            sched_finish: needsSchedule ? schedFinish : "",
+                            assignees: needsSchedule ? pickedAssignees : [],
+                        },
                     };
-                    if (nextStatus === "In Progress") planPayload.job.repair_result = waitState;
+                    if (nextStatus === "In Progress") {
+                        planPayload.job.repair_result = waitState;
+                        planPayload.job.repair_result_remark = needsSchedule ? "" : waitRemark.trim();
+                    } else {
+                        // ยังไม่ Assign — ใบยังอยู่ด่าน cs, คง stage ไว้กัน backend re-stamp เป็น close_approval
+                        planPayload.job.stage = "cs_approval";
+                    }
                     const planRes = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(report_id)}/status`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
@@ -769,7 +882,8 @@ export default function CMOpenForm() {
                 // แสดง "บันทึกสำเร็จ" แล้ว redirect — ใบที่ส่งให้ช่างแล้วไปโผล่แท็บ In Progress
                 setOverlayText(lang === "th" ? "บันทึกสำเร็จ ✓" : "Saved successfully ✓");
                 await new Promise(r => setTimeout(r, 1500));
-                router.push(buildListUrl(nextStatus === "In Progress" ? "in-progress" : "open"));
+                // Assign แล้วกลับหน้า Open list (ไม่เด้งไป In Progress) — engineer จัดการ SR/WO อื่นต่อได้
+                router.push(buildListUrl("open"));
             }
         } catch (e: any) {
             setUploadState({ show: false, total: 0, completed: 0 });
@@ -778,6 +892,76 @@ export default function CMOpenForm() {
             setSaving(false);
         }
     };
+
+    // ── head cs อนุมัติใบงานด่าน cs (ในฟอร์ม ผ่าน modal) → Wait for schedule ──
+    const handleCsApprove = async () => {
+        if (!editId || !stationId) return;
+        setSaving(true);
+        try {
+            const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/cs-approve?station_id=${encodeURIComponent(stationId)}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ remark: commentText.trim() }),
+            });
+            if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).detail || `HTTP ${res.status}`);
+            closeCommentModal();
+            router.push(buildListUrl("open"));
+        } catch (e: any) {
+            alert(`${t("alertSaveFailed", lang)} ${e.message || e}`);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // ── ยกเลิกใบงาน (engineer/planner/admin ตอนรีวิวหรือวางแผน) → Cancelled (ไปแท็บ Closed) ──
+    const handleCancelJob = async () => {
+        if (!editId || !stationId) return;
+        const remark = commentText.trim();
+        if (!remark) return;
+        setSaving(true);
+        try {
+            const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/cancel?station_id=${encodeURIComponent(stationId)}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ remark }),
+            });
+            if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).detail || `HTTP ${res.status}`);
+            closeCommentModal();
+            router.push(buildListUrl("closed"));
+        } catch (e: any) {
+            alert(`${t("alertSaveFailed", lang)} ${e.message || e}`);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // ── ตีกลับใบงานพร้อมเหตุผล — เลือก endpoint ตามด่าน:
+    //    engineer ตอนวางแผน → /planner-reject (กลับไปด่าน cs), head cs ตอนรีวิว → /cs-reject (กลับไปหา cs ผู้เปิด)
+    const handleReject = async () => {
+        if (!editId || !stationId) return;
+        const remark = commentText.trim();
+        if (!remark) return;
+        const endpoint = isPlanningStage ? "planner-reject" : "cs-reject";
+        setSaving(true);
+        try {
+            const res = await apiFetch(`${API_BASE}/cmreport/${encodeURIComponent(editId)}/${endpoint}?station_id=${encodeURIComponent(stationId)}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ remark }),
+            });
+            if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as any).detail || `HTTP ${res.status}`);
+            closeCommentModal();
+            router.push(buildListUrl("open"));
+        } catch (e: any) {
+            alert(`${t("alertSaveFailed", lang)} ${e.message || e}`);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleClearDraft = async () => {
         clearDraftLocal(draftKey);
         await delPhotosByDraftKey(draftKey);
@@ -789,7 +973,7 @@ export default function CMOpenForm() {
         setLocation("");
         setProblemDetails("");
         setSeverity("");
-        setStatus("Open");
+        setStatus("Wait for approve");
         setRemarksOpen("");
         setFaultyEquipment("");
         setPhotosOpen([]);
@@ -798,6 +982,7 @@ export default function CMOpenForm() {
         setSchedFinish("");
         setAssignees([""]);
         setWaitState(DEFAULT_WAIT_STATE);
+        setWaitRemark("");
     };
 
     // ==================== RENDER ====================
@@ -858,11 +1043,37 @@ export default function CMOpenForm() {
                         </div>
                     )}
 
+                    {/* ═══ แจ้งเตือนใบงานถูกตีกลับจากผู้วางแผน (engineer) — โชว์ให้ CS แก้ ═══ */}
+                    {isEdit && isCsStage && rejectedInfo.remark && (
+                        <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-red-50 tw-border tw-border-red-200">
+                            <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-red-500 tw-mt-0.5 tw-flex-shrink-0" />
+                            <div>
+                                <p className="tw-text-sm tw-font-semibold tw-text-red-700">{t("rejectedBannerTitle", lang)}</p>
+                                <p className="tw-text-sm tw-text-red-600 tw-mt-0.5">
+                                    “{rejectedInfo.remark}”{rejectedInfo.by ? ` — ${t("rejectedBy", lang)} ${rejectedInfo.by}` : ""}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ═══ แจ้งเตือนใบงานถูกยกเลิก — โชว์หมายเหตุเหมือนหน้าตีกลับ ═══ */}
+                    {isEdit && isCancelled && cancelledInfo.remark && (
+                        <div className="tw-mb-4 tw-flex tw-items-start tw-gap-3 tw-px-4 tw-py-3 tw-rounded-lg tw-bg-amber-50 tw-border tw-border-amber-200">
+                            <ExclamationTriangleIcon className="tw-w-5 tw-h-5 tw-text-amber-500 tw-mt-0.5 tw-flex-shrink-0" />
+                            <div>
+                                <p className="tw-text-sm tw-font-semibold tw-text-amber-700">{lang === "th" ? "ใบงานถูกยกเลิก" : "Work order cancelled"}</p>
+                                <p className="tw-text-sm tw-text-amber-600 tw-mt-0.5">
+                                    “{cancelledInfo.remark}”{cancelledInfo.by ? ` — ${lang === "th" ? "โดย" : "by"} ${cancelledInfo.by}` : ""}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Meta Info - Readonly Inputs */}
                     <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-4 tw-gap-4 tw-mb-6">
                         <div>
-                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("issueId", lang)}</label>
-                            <Input value={issueId || ""} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
+                            <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{isWoStage ? t("woNo", lang) : t("srNo", lang)}</label>
+                            <Input value={srWoNo} readOnly crossOrigin="" className="!tw-w-full !tw-bg-gray-100" containerProps={{ className: "!tw-min-w-0" }} />
                         </div>
                         <div>
                             <label className="tw-block tw-text-sm tw-text-blue-gray-600 tw-mb-1">{t("cmDate", lang)}</label>
@@ -944,8 +1155,13 @@ export default function CMOpenForm() {
                             {/* Job Status */}
                             <div>
                                 <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-3">{t("jobStatus", lang)}</label>
-                                <div className="tw-inline-flex tw-items-center tw-px-4 tw-py-2.5 tw-rounded-full tw-bg-green-600 tw-text-white tw-font-semibold tw-text-sm tw-shadow-md tw-transition-all">
-                                    <span>Open</span>
+                                <div className={`tw-inline-flex tw-items-center tw-px-4 tw-py-2.5 tw-rounded-full tw-text-white tw-font-semibold tw-text-sm tw-shadow-md tw-transition-all ${
+                                    isPlanningStage ? "tw-bg-indigo-600" :
+                                        statusLower === "wait for approve" ? "tw-bg-purple-600" :
+                                            statusLower === "in progress" ? "tw-bg-amber-600" :
+                                                "tw-bg-green-600"
+                                }`}>
+                                    <span>{status || "Open"}</span>
                                 </div>
                             </div>
 
@@ -957,7 +1173,7 @@ export default function CMOpenForm() {
                         </div>
                     </div>
 
-                    {/* RemarksOpen Section - ซ่อนเมื่อดูแบบอ่านอย่างเดียวและไม่มีหมายเหตุ */}
+                    {/* หมายเหตุที่ CS กรอกตอนเปิดใบ — แสดงเหนือการวางแผน (ถ้ามีเนื้อหา); read-only ไม่มีหมายเหตุ = ซ่อน */}
                     {(!fieldsLocked || (remarks_open.trim() && remarks_open.trim() !== "-")) && (
                         <div className="tw-mb-6">
                             <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("remarks_open", lang)}</label>
@@ -970,6 +1186,24 @@ export default function CMOpenForm() {
                         <div className="tw-mb-6 tw-p-5 tw-rounded-xl tw-border tw-border-blue-gray-100 tw-bg-blue-gray-50/40">
                             <h3 className="tw-text-base tw-font-bold tw-text-blue-gray-800 tw-mb-4">{t("planningSection", lang)}</h3>
                             <div className="tw-grid tw-grid-cols-1 md:tw-grid-cols-2 tw-gap-4">
+                                {/* สถานะรอ — อยู่ช่องแรก */}
+                                <div>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("waitState", lang)} <span className="tw-text-red-500">*</span></label>
+                                    <select value={waitState} onChange={e => setWaitState(e.target.value)}
+                                        className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500">
+                                        {WAIT_STATES.map(w => <option key={w} value={w}>{w}</option>)}
+                                    </select>
+                                </div>
+                                {/* หมายเหตุ — เฉพาะ material/site condition (อยู่ข้างๆ dropdown) */}
+                                {!needsSchedule && (
+                                    <div>
+                                        <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("waitRemark", lang)}</label>
+                                        <input type="text" value={waitRemark} onChange={e => setWaitRemark(e.target.value)} placeholder={t("waitRemarkPlaceholder", lang)}
+                                            className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500" />
+                                    </div>
+                                )}
+                                {/* วันที่เริ่ม/เสร็จ/ช่าง — เฉพาะเมื่อ wait for scheduled (material/site condition ไม่ต้องกรอก) */}
+                                {needsSchedule && (<>
                                 <div>
                                     <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("schedStart", lang)} <span className="tw-text-red-500">*</span></label>
                                     <input type="datetime-local" value={schedStart} onChange={e => setSchedStart(e.target.value)}
@@ -1013,13 +1247,7 @@ export default function CMOpenForm() {
                                     </div>
                                     {technicians.length === 0 && <p className="tw-mt-1.5 tw-text-xs tw-text-orange-600">{t("noTechnicians", lang)}</p>}
                                 </div>
-                                <div>
-                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-800 tw-mb-2">{t("waitState", lang)} <span className="tw-text-red-500">*</span></label>
-                                    <select value={waitState} onChange={e => setWaitState(e.target.value)}
-                                        className="tw-w-full tw-rounded-lg tw-border tw-border-blue-gray-200 tw-bg-white tw-px-3 tw-py-2.5 tw-text-sm tw-text-blue-gray-800 focus:tw-outline-none focus:tw-border-blue-500">
-                                        {WAIT_STATES.map(w => <option key={w} value={w}>{w}</option>)}
-                                    </select>
-                                </div>
+                                </>)}
                             </div>
                         </div>
                     )}
@@ -1032,31 +1260,87 @@ export default function CMOpenForm() {
                         <div className="tw-flex-1" />
                         <div className="tw-flex tw-items-center tw-gap-3">
                             <Button variant="outlined" onClick={goBackToList} className="tw-border-blue-gray-200 tw-text-blue-gray-700 hover:tw-border-blue-gray-300">
-                                Cancel
+                                {t("backToList", lang)}
                             </Button>
-                            {/* คนเปิดใบงานแก้ไขแล้วบันทึก — ใบยังคงอยู่สถานะ Open */}
-                            {isEdit && isOwner && (
-                                <Button onClick={() => onFinalSave("Open")} disabled={saving || showSuccessBanner || !canSave} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                            {/* ยกเลิกใบงาน (cs ยกเลิกใบตัวเอง / engineer ยกเลิกตอนวางแผน) — เรียงก่อนตีกลับ ให้ตรงกับหน้า head cs */}
+                            {showCancelBtn && (
+                                <Button variant="outlined" onClick={() => openCommentModal("cancel")} disabled={saving} className="tw-border-amber-300 tw-text-amber-700 hover:tw-border-amber-400 hover:tw-bg-amber-50">
+                                    {t("cancelJob", lang)}
+                                </Button>
+                            )}
+                            {/* engineer ตีกลับใบขั้นวางแผน → กลับไปหา cs */}
+                            {showRejectBtn && (
+                                <Button variant="outlined" onClick={() => openCommentModal("reject")} disabled={saving} className="tw-border-red-300 tw-text-red-600 hover:tw-border-red-400 hover:tw-bg-red-50">
+                                    {t("reject", lang)}
+                                </Button>
+                            )}
+                            {/* head cs ตีกลับใบงานด่าน cs → คืนให้ cs ผู้เปิดแก้ไข */}
+                            {showCsRejectBtn && (
+                                <Button variant="outlined" onClick={() => openCommentModal("reject")} disabled={saving} className="tw-border-red-300 tw-text-red-600 hover:tw-border-red-400 hover:tw-bg-red-50">
+                                    {t("reject", lang)}
+                                </Button>
+                            )}
+                            {/* คนเปิดใบงานแก้ไขแล้วบันทึก — คงสถานะเดิม (ไม่ downgrade เป็น Open); head cs แก้ไม่ได้ — มี modal ยืนยัน */}
+                            {isEdit && canEditFields && !isCancelled && (
+                                <Button onClick={() => openCommentModal("save")} disabled={saving || showSuccessBanner || !canSave} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
-                            {/* เปิดใบงานใหม่ */}
+                            {/* เปิดใบงานใหม่ — server ตั้งสถานะเป็น Wait for approve (cs_approval) */}
                             {!isEdit && (
-                                <Button onClick={() => onFinalSave("Open")} disabled={saving || showSuccessBanner || !canSave} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                                <Button onClick={() => onFinalSave("Wait for approve")} disabled={saving || showSuccessBanner || !canSave} className="tw-bg-gray-800 hover:!tw-bg-blue-600 tw-text-white hover:tw-shadow-lg hover:!tw-shadow-blue-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
                                     {saving ? t("saving", lang) : t("save", lang)}
                                 </Button>
                             )}
-                            {/* Assign = จบขั้นวางแผน มอบงานให้ช่าง → ใบงานเข้าสถานะ In Progress
-                                ต้องกรอกแผนครบ (และถ้าเป็นใบใหม่ ต้องกรอกฟอร์มเปิดงานครบด้วย) */}
+                            {/* จบขั้นวางแผน → In Progress — needsSchedule = "Assign" (มอบช่าง+กำหนดวัน) / material,site condition = "บันทึก" (รอของ/รอหน้างาน) */}
                             {canPlan && (
-                                <Button onClick={() => onFinalSave("In Progress")} disabled={saving || showSuccessBanner || !canSubmitPlan || (!isEdit && !canSave)} className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white hover:tw-shadow-lg hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
-                                    {saving ? t("saving", lang) : t("assign", lang)}
+                                <Button onClick={() => openCommentModal("assign")} disabled={saving || showSuccessBanner || !canSubmitPlan || (!isEdit && !canSave)} className="tw-bg-amber-500 hover:tw-bg-amber-600 tw-text-white hover:tw-shadow-lg hover:tw-shadow-amber-500/30 disabled:tw-opacity-50 disabled:tw-cursor-not-allowed disabled:tw-shadow-none">
+                                    {saving ? t("saving", lang) : (needsSchedule ? t("assign", lang) : t("save", lang))}
                                 </Button>
                             )}
                         </div>
                     </div>
                 </div>
             </form>
+
+            {/* Modal: อนุมัติ/มอบหมาย/บันทึก = ยืนยันเฉย ๆ | ตีกลับ/ยกเลิก = กรอกเหตุผล */}
+            {commentModal.open && (() => {
+                const mode = commentModal.mode;
+                const isComment = mode === "reject" || mode === "cancel"; // ต้องกรอกเหตุผล
+                // ค่าตาม mode: [title, bodyText/label, confirmLabel, onConfirm, confirmColor]
+                const cfg: Record<typeof mode, { title: string; body: string; confirm: string; onConfirm: () => void; color: string }> = {
+                    approve: { title: t("approveTitle", lang), body: t("approveConfirmText", lang), confirm: t("confirmApprove", lang), onConfirm: handleCsApprove, color: "tw-bg-green-600 hover:tw-bg-green-700" },
+                    assign: { title: needsSchedule ? t("assignTitle", lang) : t("saveTitle", lang), body: needsSchedule ? t("assignConfirmText", lang) : t("assignConfirmTextNoSched", lang), confirm: needsSchedule ? t("confirmAssign", lang) : t("confirmSaveBtn", lang), onConfirm: () => { closeCommentModal(); onFinalSave("In Progress"); }, color: "tw-bg-amber-600 hover:tw-bg-amber-700" },
+                    save: { title: t("saveTitle", lang), body: t("saveConfirmText", lang), confirm: t("confirmSaveBtn", lang), onConfirm: () => { closeCommentModal(); onFinalSave(status || "Wait for approve"); }, color: "tw-bg-gray-800 hover:tw-bg-blue-600" },
+                    reject: { title: t("rejectTitle", lang), body: t("rejectReason", lang), confirm: t("confirmReject", lang), onConfirm: handleReject, color: "tw-bg-red-600 hover:tw-bg-red-700" },
+                    cancel: { title: t("cancelTitle", lang), body: t("cancelReason", lang), confirm: t("confirmCancel", lang), onConfirm: handleCancelJob, color: "tw-bg-amber-600 hover:tw-bg-amber-700" },
+                };
+                const c = cfg[mode];
+                const placeholder = mode === "cancel" ? t("cancelReasonPlaceholder", lang) : t("rejectReasonPlaceholder", lang);
+                return (
+                    <div className="tw-fixed tw-inset-0 tw-z-[100] tw-flex tw-items-center tw-justify-center tw-bg-black/40 tw-p-4" onClick={closeCommentModal}>
+                        <div className="tw-w-full tw-max-w-md tw-rounded-2xl tw-bg-white tw-p-6 tw-shadow-xl" onClick={(e) => e.stopPropagation()}>
+                            <h3 className="tw-text-lg tw-font-bold tw-text-blue-gray-800 tw-mb-3">{c.title}</h3>
+                            {isComment ? (
+                                <>
+                                    <label className="tw-block tw-text-sm tw-font-semibold tw-text-blue-gray-700 tw-mb-2">{c.body} <span className="tw-text-red-500">*</span></label>
+                                    <Textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} rows={3} placeholder={placeholder} className="!tw-w-full !tw-border-blue-gray-200 !tw-bg-white" containerProps={{ className: "!tw-min-w-0" }} />
+                                </>
+                            ) : (
+                                <p className="tw-text-sm tw-text-blue-gray-600">{c.body}</p>
+                            )}
+                            <div className="tw-flex tw-items-center tw-justify-end tw-gap-3 tw-pt-4">
+                                <Button variant="outlined" onClick={closeCommentModal} disabled={saving} className="tw-border-blue-gray-200 tw-text-blue-gray-700">
+                                    {t("backToList", lang)}
+                                </Button>
+                                <Button onClick={c.onConfirm} disabled={saving || (isComment && !commentText.trim())} className={`tw-text-white disabled:tw-opacity-50 disabled:tw-cursor-not-allowed ${c.color}`}>
+                                    {c.confirm}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </section>
     );
 }

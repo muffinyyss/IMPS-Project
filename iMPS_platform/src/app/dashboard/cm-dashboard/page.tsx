@@ -360,7 +360,7 @@ export default function CMDashboardPage() {
       cancelHint: "(คลิกอีกครั้งเพื่อยกเลิก)",
       kpiTotalSR: "SR ทั้งหมด",
       kpiNewSR: "SR ใหม่",
-      kpiWaitManpower: "WO รอช่าง",
+      kpiWaitManpower: "WO รอกำหนดการ",
       kpiWaitSparepart: "WO รออะไหล่",
       kpiWaitApprove: "WO รออนุมัติ",
       kpiCompleted: "WO เสร็จสิ้น",
@@ -408,11 +408,11 @@ export default function CMDashboardPage() {
       cancelHint: "(click again to cancel)",
       kpiTotalSR: "Total service requests",
       kpiNewSR: "New service requests",
-      kpiWaitManpower: "WO wait for manpower",
-      kpiWaitSparepart: "WO wait for spare part",
+      kpiWaitManpower: "WO wait for scheduled",
+      kpiWaitSparepart: "WO wait for material",
       kpiWaitApprove: "WO wait for approve",
       kpiCompleted: "WO completed",
-      kpiWaitSiteAccess: "WO wait for site access",
+      kpiWaitSiteAccess: "WO wait for site condition",
       kpiCompletionRate: "Completion rate",
       yearLabel: "Year",
       monthLabel: "Month",
@@ -443,7 +443,7 @@ export default function CMDashboardPage() {
       errorPrefix: "Failed to load data",
       noResults: (q?: string) => q ? `No records matching "${q}"` : "No reports found",
       volumeWarning: (total: number, limit: number) => `Database has ${total.toLocaleString()} records — showing latest ${limit.toLocaleString()}. Charts may be incomplete.`,
-      statusLabel: { completed: "Closed", in_progress: "In Progress", open: "Open" },
+      statusLabel: { completed: "Complete", in_progress: "In Progress", open: "Open" },
       taskUnit: "tasks",
     },
   }[lang]), [lang]);
@@ -463,7 +463,7 @@ export default function CMDashboardPage() {
   const kpiCards: KpiCard[] = [
     { label: t.kpiTotalSR, value: kpiStats.total, color: "linear-gradient(135deg,#3b82f6,#1d4ed8)", icon: "📋", clearsWorkStatus: true },
     { label: t.kpiNewSR, value: kpiStats.newSr, color: "linear-gradient(135deg,#06b6d4,#0e7490)", icon: "🆕", ws: "new", coarse: STATUS_LABELS.open },
-    { label: t.kpiWaitManpower, value: kpiStats.waitManpower, color: "linear-gradient(135deg,#f59e0b,#b45309)", icon: "👷", ws: "wait_manpower", coarse: STATUS_LABELS.open },
+    { label: t.kpiWaitManpower, value: kpiStats.waitManpower, color: "linear-gradient(135deg,#f59e0b,#b45309)", icon: "📅", ws: "wait_manpower", coarse: STATUS_LABELS.open },
     { label: t.kpiWaitSparepart, value: kpiStats.waitSparepart, color: "linear-gradient(135deg,#f43f5e,#be123c)", icon: "🔩", ws: "wait_sparepart", coarse: STATUS_LABELS.open },
     { label: t.kpiWaitApprove, value: kpiStats.waitApprove, color: "linear-gradient(135deg,#8b5cf6,#6d28d9)", icon: "✍️", ws: "wait_approve", coarse: STATUS_LABELS.open },
     { label: t.kpiCompleted, value: kpiStats.completed, color: "linear-gradient(135deg,#22c55e,#15803d)", icon: "✅", ws: "completed", coarse: STATUS_LABELS.completed },
@@ -845,7 +845,7 @@ export default function CMDashboardPage() {
               {([
                 { key: "open", label: "Open", color: "#dc2626", bg: "#fee2e2", count: srStats.open },
                 { key: "in_progress", label: "In Progress", color: "#ea580c", bg: "#fff7ed", count: srStats.inProgress },
-                { key: "completed", label: "Closed", color: "#15803d", bg: "#dcfce7", count: srStats.completed },
+                { key: "completed", label: "Complete", color: "#15803d", bg: "#dcfce7", count: srStats.completed },
               ] as const).map(({ key, label, color, bg, count }) => {
                 const isActive = filters.status === STATUS_LABELS[key];
                 return (
@@ -966,7 +966,7 @@ export default function CMDashboardPage() {
                       </td>
                       <td className="tw-px-4 tw-py-3">
                         <button
-                          onClick={(e) => { e.stopPropagation(); toggleFilter("status", badge.label === "Closed" ? STATUS_LABELS.completed : badge.label === "In Progress" ? STATUS_LABELS.in_progress : STATUS_LABELS.open); }}
+                          onClick={(e) => { e.stopPropagation(); toggleFilter("status", badge.label === "Complete" ? STATUS_LABELS.completed : badge.label === "In Progress" ? STATUS_LABELS.in_progress : STATUS_LABELS.open); }}
                           className="tw-rounded-full tw-px-2.5 tw-py-0.5 tw-text-xs tw-font-medium tw-transition-all hover:tw-opacity-80"
                           style={{ background: badge.bg, color: badge.text, outline: filters.status ? `2px solid ${badge.text}` : "none" }}
                         >

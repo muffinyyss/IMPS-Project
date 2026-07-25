@@ -9,19 +9,21 @@ import ClosedTables from "@/app/dashboard/cm-report/closed/list/closed-table";
 import { Tabs, TabsHeader, TabsBody, Tab, TabPanel } from "@material-tailwind/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-type TabId = "Open" | "In Progress" | "Closed";
-type TabSlug = "open" | "in-progress" | "closed";
+type TabId = "Open" | "In Progress" | "Closed" | "Cancelled";
+type TabSlug = "open" | "in-progress" | "closed" | "cancelled";
 
 const TABS: { id: TabId; label: string; slug: TabSlug }[] = [
   { id: "Open", label: "Open", slug: "open" },
   { id: "In Progress", label: "In Progress", slug: "in-progress" },
   { id: "Closed", label: "Closed", slug: "closed" },
+  { id: "Cancelled", label: "Cancelled", slug: "cancelled" },
 ];
 
 function slugToTab(slug: string | null): TabId {
   switch (slug) {
     case "in-progress": return "In Progress";
     case "closed": return "Closed";
+    case "cancelled": return "Cancelled";
     case "open":
     default: return "Open";
   }
@@ -138,6 +140,7 @@ export default function DataTablesPage() {
     "Open": "🔴",
     "In Progress": "🟡",
     "Closed": "🟢",
+    "Cancelled": "⚫",
   };
 
   return (
@@ -182,6 +185,9 @@ export default function DataTablesPage() {
           <div className="tw-space-y-5 tw-animate-[fadeIn_0.3s_ease-out]"><InProgressTables /></div>
         )}
         {active === "Closed" && (
+          <div className="tw-space-y-5 tw-animate-[fadeIn_0.3s_ease-out]"><ClosedTables /></div>
+        )}
+        {active === "Cancelled" && (
           <div className="tw-space-y-5 tw-animate-[fadeIn_0.3s_ease-out]"><ClosedTables /></div>
         )}
       </div>

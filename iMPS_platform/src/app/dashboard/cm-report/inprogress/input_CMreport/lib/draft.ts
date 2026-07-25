@@ -28,6 +28,8 @@ export interface DraftData {
     problem_type: string[];
     problem_type_other: string;
     cause: string[];
+    start_repair_date?: string;
+    start_repair_time?: string;
     // metadata
     savedAt?: string;
     savedBy?: string;

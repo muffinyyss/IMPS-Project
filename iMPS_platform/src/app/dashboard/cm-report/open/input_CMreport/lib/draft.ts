@@ -119,7 +119,7 @@ export type CMDraftData = {
     location: string;
     problemDetails: string;
     severity: "" | "Low" | "Medium" | "High" | "Urgent";
-    status: "" | "Open" | "In Progress";
+    status: "" | "Open" | "In Progress" | "Wait for approve" | "Wait for schedule";
     remarks_open: string;
     faultyEquipment: string;
     

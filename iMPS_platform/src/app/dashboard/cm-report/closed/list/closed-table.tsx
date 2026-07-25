@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CMForm from "@/app/dashboard/cm-report/inprogress/input_CMreport/components/checkList";
+import CMOpenForm from "@/app/dashboard/cm-report/open/input_CMreport/components/checkList";
 import {
   getCoreRowModel,
   getPaginationRowModel,
@@ -39,8 +40,10 @@ const T = {
   colNo: { th: "ลำดับ", en: "No." },
   colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
   colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
+  colWo: { th: "เลขที่ WO", en: "WO No." },
   colCmDate: { th: "วันที่แจ้ง", en: "Found Date" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
+  colRepairer: { th: "ผู้เข้าแก้ไข", en: "Repairer" },
   colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
   colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
   colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
@@ -100,6 +103,7 @@ type TData = {
   position: string;
   office: string;
   reported_by?: string;
+  repairer?: string;
   inspector?: string;
   location?: string;
   problem_details?: string;
@@ -134,7 +138,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   const [issueId, setIssueId] = useState<string>("");
   const [docName, setDocName] = useState<string>("");
   const [me, setMe] = useState<Me | null>(null);
-  const canDelete = (me?.username ?? "").trim().toLowerCase() === "thatsawan"; // เฉพาะบัญชี thatsawan ลบใบงานได้
+  const canDelete = !!(me as any)?.is_super_admin; // ลบถาวรได้เฉพาะ super admin (ซ่อนตอน impersonate role อื่น)
   const [inspector, setInspector] = useState<string>("");
   const [toast, setToast] = useState<{ show: boolean; type: "success" | "error" | "warning" | "info"; message: string }>({ show: false, type: "info", message: "" });
   const [chargers, setChargers] = useState<{ chargerNo?: number; charger_id?: string; charger_name?: string; SN?: string; sn?: string; }[]>([]);
@@ -299,8 +303,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         u.searchParams.set("station_id", stationId);
         u.searchParams.set("page", "1");
         u.searchParams.set("pageSize", "50");
-        // tab Closed รวมใบงานที่ถูก planner ยกเลิก (Cancelled) ด้วย
-        u.searchParams.set("status", statusFromTab === "closed" ? "closed,cancelled" : statusFromTab);
+        // tab Closed รวมเฉพาะงานที่เสร็จ (รองรับ Complete เก่า); tab Cancelled แยกงานยกเลิก
+        u.searchParams.set("status", statusFromTab === "closed" ? "complete,closed" : statusFromTab);
         return u.toString();
       };
 
@@ -323,7 +327,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
 
       const matchesTab = (it: any) => {
         const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
-        if (statusFromTab === "closed") return s === "closed" || s === "cancelled" || !s;
+        if (statusFromTab === "closed") return s === "complete" || s === "closed" || !s;
         return s === statusFromTab;
       };
       cmItems = cmItems.filter(matchesTab);
@@ -361,7 +365,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: fileUrl,
           reported_by: it.reported_by || it.technician || "",
-          inspector: it.inspector || "",
+          repairer: it.inspector || "",
+          inspector: it.approved_by || "",
           location: it.faulty_equipment || "",
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
@@ -384,7 +389,8 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
           position: isoDay,
           office: resolveFileHref(raw, apiBase),
           reported_by: it.reported_by || it.technician || "",
-          inspector: it.inspector || "",
+          repairer: "",
+          inspector: it.approved_by || it.inspector || "",
           location: it.faulty_equipment || "",
           problem_details: it.problem_details || "",
           status: getStatusText(it) || "-",
@@ -449,9 +455,13 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
-      accessorFn: (row) => row.issue_id || "—",
-      id: "issue_id",
-      header: () => t("colIssueId", lang),
+      // งานที่ปิด/ยกเลิก = ใบสั่งงาน (WO) — แสดงเลข WO### อิงลำดับเดียวกับ issue_id
+      accessorFn: (row) => {
+        const m = String(row.issue_id || "").match(/(\d+)/);
+        return m ? `WO${m[1].padStart(3, "0")}` : "—";
+      },
+      id: "wo_no",
+      header: () => t("colWo", lang),
       cell: (info: CellContext<TData, unknown>) => (
         <span className="tw-block tw-truncate" title={info.getValue() as string}>
           {info.getValue() as React.ReactNode}
@@ -521,6 +531,36 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       maxSize: 300,
       meta: { headerAlign: "center", cellAlign: "left" },
     },
+    ...(statusFromTab === "cancelled" ? [] : [
+      {
+        accessorFn: (row: TData) => row.repairer || "-",
+        id: "repairer",
+        header: () => t("colRepairer", lang),
+        cell: (info: CellContext<TData, unknown>) => (
+          <span className="tw-block tw-truncate" title={info.getValue() as string}>
+            {info.getValue() as React.ReactNode}
+          </span>
+        ),
+        size: 120,
+        minSize: 80,
+        maxSize: 160,
+        meta: { headerAlign: "center", cellAlign: "center" },
+      },
+      {
+        accessorFn: (row: TData) => row.inspector || "-",
+        id: "inspector",
+        header: () => t("colInspector", lang),
+        cell: (info: CellContext<TData, unknown>) => (
+          <span className="tw-block tw-truncate" title={info.getValue() as string}>
+            {info.getValue() as React.ReactNode}
+          </span>
+        ),
+        size: 120,
+        minSize: 80,
+        maxSize: 160,
+        meta: { headerAlign: "center", cellAlign: "center" },
+      },
+    ] as ColumnDef<TData, unknown>[]),
     {
       accessorFn: (row) => row.status ?? "-",
       id: "status",
@@ -531,6 +571,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
         const color =
           sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
             sl === "cancelled" ? "tw-bg-gray-300 tw-text-gray-700 tw-line-through" :
+            sl === "complete" ? "tw-bg-green-100 tw-text-green-800" :
             sl === "closed" || sl === "close" ? "tw-bg-red-100 tw-text-red-800" :
               sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
                 "tw-bg-blue-gray-100 tw-text-blue-gray-800";
@@ -545,21 +586,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       maxSize: 140,
       meta: { headerAlign: "center", cellAlign: "center" },
     },
-    {
-      accessorFn: (row) => row.inspector || "-",
-      id: "inspector",
-      header: () => t("colInspector", lang),
-      cell: (info: CellContext<TData, unknown>) => (
-        <span className="tw-block tw-truncate" title={info.getValue() as string}>
-          {info.getValue() as React.ReactNode}
-        </span>
-      ),
-      size: 120,
-      minSize: 80,
-      maxSize: 160,
-      meta: { headerAlign: "center", cellAlign: "center" },
-    },
-    {
+    ...(statusFromTab === "cancelled" ? [] : [{
       accessorFn: (row) => row.office,
       id: "pdf",
       header: () => t("colAction", lang),
@@ -593,7 +620,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       minSize: 100,
       maxSize: 180,
       meta: { headerAlign: "center", cellAlign: "center" },
-    },
+    } as ColumnDef<TData, unknown>]),
     ...(canDelete ? [{
       id: "actions",
       header: () => (lang === "th" ? "ลบ" : "Delete"),
@@ -614,7 +641,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
       meta: { headerAlign: "center", cellAlign: "center" },
     } as ColumnDef<TData, unknown>] : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [lang, stationId, canDelete]);
+  ], [lang, stationId, canDelete, statusFromTab]);
 
   const table = useReactTable({
     data,
@@ -825,7 +852,7 @@ export default function CMReportPage({ token, apiBase = BASE }: Props) {
   if (mode === "form") {
     return (
       <div className="tw-mt-4 sm:tw-mt-6 lg:tw-mt-8">
-        <CMForm />
+        {statusFromTab === "cancelled" ? <CMOpenForm /> : <CMForm />}
       </div>
     );
   }
