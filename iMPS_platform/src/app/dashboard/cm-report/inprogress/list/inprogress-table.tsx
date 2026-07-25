@@ -31,13 +31,14 @@ const T = {
   colNo: { th: "ลำดับ", en: "No." },
   colDocName: { th: "ชื่อเอกสาร", en: "Document Name" },
   colIssueId: { th: "รหัสเอกสาร", en: "Issue ID" },
+  colWo: { th: "เลขที่ WO", en: "WO No." },
   colFoundDate: { th: "วันที่แจ้ง", en: "Found Date" },
   colReportedBy: { th: "ผู้แจ้งปัญหา", en: "Reported By" },
   colLocation: { th: "ตำแหน่งที่พบ", en: "Faulty Equipment" },
   colProblemDetails: { th: "ปัญหาที่พบ", en: "Problem Details" },
   colStatus: { th: "สถานะ", en: "Status" },
   colRepairResult: { th: "ผลการซ่อม", en: "Repair Result" },
-  colInspector: { th: "ผู้ตรวจสอบ", en: "Inspector" },
+  colInspector: { th: "ผู้เข้าแก้ไข", en: "Repairer" },
 
   // Pagination
   entriesPerPage: { th: "รายการต่อหน้า", en: "entries per page" },
@@ -95,12 +96,13 @@ type Props = {
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 // Sub-tabs ของหน้า In Progress (มุมขวา) — filter ตาม repair_result ยกเว้น tab approve ที่ใช้ status "Wait for approve"
+// legacy = ค่า repair_result เดิมก่อนเปลี่ยนชื่อ (รองรับข้อมูลเก่า)
 const WO_SUBTABS = [
-  { id: "all", th: "ทั้งหมด", en: "All" },
-  { id: "manpower", th: "WO - wait for manpower", en: "WO - wait for manpower" },
-  { id: "spare", th: "WO - wait for spare part", en: "WO - wait for spare part" },
-  { id: "site", th: "WO - wait for site access", en: "WO - wait for site access" },
-  { id: "approve", th: "WO - wait for approve", en: "WO - wait for approve" },
+  { id: "all", th: "ทั้งหมด", en: "All", legacy: [] as string[] },
+  { id: "scheduled", th: "WO - wait for scheduled", en: "WO - wait for scheduled", legacy: ["WO - wait for manpower"] },
+  { id: "spare", th: "WO - wait for material", en: "WO - wait for material", legacy: ["WO - wait for spare part"] },
+  { id: "site", th: "WO - wait for site condition", en: "WO - wait for site condition", legacy: ["WO - wait for site access"] },
+  { id: "approve", th: "WO - wait for approve", en: "WO - wait for approve", legacy: [] as string[] },
 ] as const;
 
 export default function CMInProgressReportPage({ token, apiBase = BASE }: Props) {
@@ -112,9 +114,11 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
   const [woSubTab, setWoSubTab] = useState<string>("all"); // sub-tab มุมขวา
   const [currentUsername, setCurrentUsername] = useState("");
   const [currentRole, setCurrentRole] = useState("");
-  const canDelete = currentUsername.trim().toLowerCase() === "thatsawan"; // เฉพาะบัญชี thatsawan ลบใบงานได้
-  // planner (หรือ admin) ยกเลิกใบงานที่หัวหน้า cs อนุมัติแล้ว → Cancelled
-  const canCancel = ["planner", "admin"].includes(currentRole.trim().toLowerCase());
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const canDelete = isSuperAdmin; // ลบถาวรได้เฉพาะ super admin (ซ่อนตอน impersonate role อื่น)
+  // engineer/planner (หรือ admin) ยกเลิกใบงานที่ยังไม่ปิด → Cancelled
+  // หน้า In Progress list ไม่มีปุ่มยกเลิกด้านนอกแล้ว (จัดการยกเลิก/ตีกลับตั้งแต่ด่าน SR/วางแผน)
+  const canCancel = false;
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -257,10 +261,14 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
         if (Array.isArray(j?.items)) urlItems = j.items;
       }
 
-      // Filter by "in progress" / "wait for approve" status
+      // แท็บ In Progress = กำลังซ่อม + รออนุมัติปิดงาน
+      // "wait for approve" ต้องเป็นด่านปิดงาน (stage != cs_approval) เท่านั้น — ด่าน cs ไปอยู่แท็บ Open
       const filterByStatus = (it: any) => {
         const s = String(it?.status ?? it?.job?.status ?? "").trim().toLowerCase();
-        return s === "in progress" || s === "wait for approve";
+        const stage = String(it?.stage ?? "").trim().toLowerCase();
+        if (s === "in progress") return true;
+        if (s === "wait for approve") return stage !== "cs_approval";
+        return false;
       };
 
       cmItems = cmItems.filter(filterByStatus);
@@ -360,6 +368,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           if (alive) {
             setCurrentUsername(d?.username ?? "");
             setCurrentRole(d?.role ?? "");
+            setIsSuperAdmin(!!d?.is_super_admin);
           }
         }
       } catch { /* noop */ }
@@ -459,9 +468,13 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       meta: { headerAlign: "center", cellAlign: "left" },
     },
     {
-      accessorFn: (row) => row.issue_id || "—",
-      id: "issue_id",
-      header: () => t("colIssueId", lang),
+      // In Progress = ใบสั่งงาน (WO) — แสดงเลข WO### อิงลำดับเดียวกับ issue_id (CM-001 → WO001)
+      accessorFn: (row) => {
+        const m = String(row.issue_id || "").match(/(\d+)/);
+        return m ? `WO${m[1].padStart(3, "0")}` : "—";
+      },
+      id: "wo_no",
+      header: () => t("colWo", lang),
       cell: (info: CellContext<TData, unknown>) => (
         <span className="tw-block tw-truncate" title={info.getValue() as string}>
           {info.getValue() as React.ReactNode}
@@ -535,11 +548,18 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
       accessorFn: (row) => row.repair_result || "-",
       id: "repair_result",
       header: () => t("colRepairResult", lang),
-      cell: (info: CellContext<TData, unknown>) => (
-        <span className="tw-block tw-truncate" title={info.getValue() as string}>
-          {info.getValue() as React.ReactNode}
-        </span>
-      ),
+      cell: (info: CellContext<TData, unknown>) => {
+        const raw = String(info.getValue() ?? "");
+        // Show friendly label for WO - wait for approve on In Progress page,
+        // but keep the underlying status value unchanged elsewhere.
+        const isApproveWo = raw === "WO - wait for approve" || raw.trim().toLowerCase() === "wait for approve";
+        const display = isApproveWo ? (lang === "th" ? "แก้ไขสำเร็จ" : "Repair completed") : (raw || "-");
+        return (
+          <span className="tw-block tw-truncate" title={raw}>
+            {display as React.ReactNode}
+          </span>
+        );
+      },
       size: 150,
       minSize: 100,
       maxSize: 220,
@@ -554,7 +574,7 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
         const sl = s.toLowerCase();
         const color =
           sl === "open" ? "tw-bg-green-100 tw-text-green-800" :
-            sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
+            sl === "complete" || sl === "closed" || sl === "close" ? "tw-bg-gray-200 tw-text-gray-800" :
               sl === "wait for approve" ? "tw-bg-purple-100 tw-text-purple-800" :
                 sl === "in progress" || sl === "ongoing" ? "tw-bg-amber-100 tw-text-amber-800" :
                   "tw-bg-blue-gray-100 tw-text-blue-gray-800";
@@ -640,8 +660,10 @@ export default function CMInProgressReportPage({ token, apiBase = BASE }: Props)
           (r.repair_result ?? "") === "WO - wait for approve"
       );
     }
-    const target = WO_SUBTABS.find((s) => s.id === woSubTab)?.en ?? "";
-    return data.filter((r) => (r.repair_result ?? "") === target);
+    const sub = WO_SUBTABS.find((s) => s.id === woSubTab);
+    // match ค่าใหม่ + ค่าเก่าที่เปลี่ยนชื่อแล้ว (backward-compat)
+    const targets = [sub?.en ?? "", ...(sub?.legacy ?? [])].filter(Boolean);
+    return data.filter((r) => targets.includes(r.repair_result ?? ""));
   }, [data, woSubTab]);
 
   const table = useReactTable({

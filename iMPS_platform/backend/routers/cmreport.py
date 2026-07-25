@@ -225,10 +225,15 @@ async def cmreport_list(
         "_id": 1, 
         "doc_name": 1,
         "issue_id": 1,
-        "cm_date": 1, 
-        "status": 1, 
+        "cm_date": 1,
+        "found_date": 1,
+        "found_time": 1,
+        "status": 1,
+        "stage": 1,
+        "reject_remark": 1,
         "reported_by": 1,
         "inspector": 1,
+        "approved_by": 1,
         "faulty_equipment": 1,
         "severity": 1,
         "problem_details": 1,
@@ -270,9 +275,14 @@ async def cmreport_list(
             "doc_name": it.get("doc_name") or "",
             "issue_id": it.get("issue_id") or job.get("issue_id") or "",
             "cm_date": it.get("cm_date"),
+            "found_date": it.get("found_date") or job.get("found_date") or "",
+            "found_time": it.get("found_time") or job.get("found_time") or "",
             "reported_by": it.get("reported_by") or job.get("reported_by") or "",
             "inspector": it.get("inspector") or job.get("inspector") or "",
+            "approved_by": it.get("approved_by") or "",
             "status": it.get("status") or job.get("status") or "",
+            "stage": it.get("stage") or "",
+            "reject_remark": it.get("reject_remark") or "",
             "faulty_equipment": it.get("faulty_equipment") or job.get("faulty_equipment") or "",
             "problem_details": it.get("problem_details") or job.get("problem_details") or "",
             "severity": it.get("severity") or job.get("severity") or "",
@@ -308,7 +318,8 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
 
     cursor = coll.find(mongo_filter, {
         "_id": 1, "doc_name": 1, "issue_id": 1, "cm_date": 1, "found_date": 1, "status": 1,
-        "reported_by": 1, "inspector": 1, "faulty_equipment": 1, "severity": 1,
+        "stage": 1, "reject_remark": 1,
+        "reported_by": 1, "inspector": 1, "approved_by": 1, "faulty_equipment": 1, "severity": 1,
         "problem_details": 1, "location": 1, "job": 1, "repair_result": 1,
         "assignees": 1, "sched_start": 1, "sched_finish": 1,
         "repair_result_remark": 1, "maximo_ticket_id": 1, "createdAt": 1,
@@ -352,7 +363,10 @@ async def _cm_items_for_station(station_id: str, station_name: str, status: str 
             "cm_date": resolve_cm_date(it, job),
             "reported_by": it.get("reported_by") or job.get("reported_by") or "",
             "inspector": it.get("inspector") or job.get("inspector") or "",
+            "approved_by": it.get("approved_by") or "",
             "status": it.get("status") or job.get("status") or "",
+            "stage": it.get("stage") or "",
+            "reject_remark": it.get("reject_remark") or "",
             "faulty_equipment": it.get("faulty_equipment") or job.get("faulty_equipment") or "",
             "problem_details": it.get("problem_details") or job.get("problem_details") or "",
             "severity": it.get("severity") or job.get("severity") or "",
@@ -737,7 +751,10 @@ async def cmreport_submit(body: CMSubmitIn, current: UserClaims = Depends(get_cu
         "problem_details": body.problem_details,
         "remarks_open": body.remarks_open,
         "reporter_signature": body.reporter_signature,
-        "status": "Open",
+        # cs เปิดใบงาน → รอ head cs อนุมัติ; ใช้ชื่อ "Wait for approve" ร่วมกับด่านปิดงาน
+        # แยกกันด้วย stage: "cs_approval" (ด่าน cs head) vs "close_approval" (ด่านช่างซ่อมเสร็จ)
+        "status": "Wait for approve",
+        "stage": "cs_approval",
         "photos_problem": {},
         "createdAt": datetime.now(timezone.utc),
         "updatedAt": datetime.now(timezone.utc),
@@ -848,6 +865,8 @@ async def cmreport_detail_path(
     if not doc:
         raise HTTPException(status_code=404, detail="Report not found")
 
+    nested_job = doc.get("job") if isinstance(doc.get("job"), dict) else {}
+
     return {
         "id": str(doc["_id"]),
         "station_id": doc.get("station_id"),
@@ -857,7 +876,9 @@ async def cmreport_detail_path(
         "found_time": doc.get("found_time") or "",
         "cm_date": doc.get("cm_date") or doc.get("found_date") or "",
         "reported_by": doc.get("reported_by") or "",
-        "status": doc.get("status") or "",
+        # รองรับข้อมูลเก่าที่เก็บ status/stage ไว้ใน job
+        "status": doc.get("status") or nested_job.get("status") or "",
+        "stage": doc.get("stage") or nested_job.get("stage") or "",
         "maximo_ticket_id": doc.get("maximo_ticket_id") or "",     # ← D) เพิ่ม
         
         # flat fields จาก Open
@@ -874,6 +895,7 @@ async def cmreport_detail_path(
 
         # flat fields จาก InProgress
         "inspector": doc.get("inspector") or "",
+        "approved_by": doc.get("approved_by") or "",
         "cause": doc.get("cause") or "",
         "problem_type": doc.get("problem_type") or "",
         "problem_type_other": doc.get("problem_type_other") or "",
@@ -893,6 +915,9 @@ async def cmreport_detail_path(
         # เหตุผลที่ถูกตีกลับ — ช่างต้องเห็นว่าต้องแก้อะไร
         "reject_remark": doc.get("reject_remark") or "",
         "rejected_by": doc.get("rejected_by") or "",
+        # เหตุผลที่ยกเลิก — แสดงในหน้ารายละเอียดใบงาน Cancelled
+        "cancel_remark": doc.get("cancel_remark") or "",
+        "cancelled_by": doc.get("cancelled_by") or "",
 
         "photos_problem": doc.get("photos_problem", {}),
         "photos_repair": doc.get("photos_repair", {}),
@@ -911,11 +936,18 @@ async def cmreport_detail_query(
 
 class CMStatusUpdateIn(BaseModel):
     station_id: str
-    status: Literal["Open", "In Progress", "Pending", "Wait for approve", "Closed", "Cancelled"]
+    status: Literal[
+        "Open", "In Progress", "Pending", "Wait for approve",
+        "Wait for schedule", "Complete", "Closed", "Cancelled",
+    ]
     job: Optional[Dict[str, Any]] = None
     inspector: Optional[str] = None
 
-ALLOWED_STATUS: set[str] = {"Open", "In Progress", "Pending", "Wait for approve", "Closed", "Cancelled"}
+# "Complete" คงไว้เพื่ออ่านข้อมูลเก่า — งานปิดใหม่ใช้ "Closed"
+ALLOWED_STATUS: set[str] = {
+    "Open", "In Progress", "Pending", "Wait for approve",
+    "Wait for schedule", "Complete", "Closed", "Cancelled",
+}
 
 @router.patch("/cmreport/{report_id}/status")
 async def cmreport_update_status(
@@ -923,6 +955,9 @@ async def cmreport_update_status(
     body: CMStatusUpdateIn,
     current: UserClaims = Depends(get_current_user),
 ):
+    if (current.role or "").lower() == "cs":
+        raise HTTPException(status_code=403, detail="CS can only open new work orders")
+
     station_id = body.station_id.strip()
     if body.status not in ALLOWED_STATUS:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -954,6 +989,7 @@ async def cmreport_update_status(
             "inprogress_remarks",
             "cause", "problem_type_other","repair_result_remark","start_repair_date",
             "signature", "start_repair_time", "resolved_time", "reporter_signature",
+            "stage", "reject_remark",
         }
 
         if "status" in body.job:
@@ -971,6 +1007,11 @@ async def cmreport_update_status(
                 updates.setdefault("cm_date", normalize_pm_date(body.job["found_date"]))
             except Exception:
                 pass
+
+    # PATCH /status ใช้โดยฟอร์มซ่อม — ถ้าใบขึ้นเป็น "Wait for approve" จากด่านนี้ = ด่านปิดงาน
+    # ปั๊ม stage ให้อัตโนมัติเพื่อแยกจากด่าน cs (คงค่าที่ส่งมาโดยตรงถ้ามี)
+    if str(updates.get("status", "")).strip().lower() == "wait for approve" and "stage" not in updates:
+        updates["stage"] = "close_approval"
 
     updates["updatedAt"] = datetime.now(timezone.utc)
 
@@ -1010,7 +1051,17 @@ async def cmreport_approve(
         {
             "_id": oid,
             "station_id": station_id,
-            "status": {"$regex": "^wait for approve$", "$options": "i"},
+            # รองรับทั้งข้อมูลใหม่ที่เก็บ status แบบ flat และข้อมูลเก่าที่อยู่ใน job
+            "$or": [
+                {"status": {"$regex": "^wait for approve$", "$options": "i"}},
+                {"job.status": {"$regex": "^wait for approve$", "$options": "i"}},
+            ],
+            # เฉพาะด่านปิดงาน (close_approval / ข้อมูลเก่าที่ไม่มี stage)
+            # — กันเผลอปิดใบที่รอ head CS อนุมัติ
+            "$nor": [
+                {"stage": {"$regex": "^cs_approval$", "$options": "i"}},
+                {"job.stage": {"$regex": "^cs_approval$", "$options": "i"}},
+            ],
         },
         {"$set": {
             "status": "Closed",
@@ -1057,6 +1108,8 @@ async def cmreport_reject(
             "_id": oid,
             "station_id": station_id,
             "status": {"$regex": "^wait for approve$", "$options": "i"},
+            # เฉพาะด่านปิดงาน — ด่าน cs ใช้ /planner-reject แทน
+            "stage": {"$ne": "cs_approval"},
         },
         {"$set": {
             "status": "In Progress",
@@ -1074,19 +1127,84 @@ async def cmreport_reject(
     return {"ok": True, "status": "In Progress"}
 
 
-# ── ขั้นตอนใหม่ตาม flow: cs เปิดใบงาน (Open) → head cs อนุมัติ → In Progress ให้ planner จัดการต่อ
-CS_APPROVE_ROLES: set[str] = {"admin", "head_cs"}
+# ── ขั้นตอนตาม flow: cs เปิดใบงาน (Wait for approve/cs_approval) → engineer อนุมัติ SR
+#    → "Wait for schedule" ให้ engineer วางแผนต่อ (ยกเลิก cs head — engineer อนุมัติเอง)
+CS_APPROVE_ROLES: set[str] = {"admin", "engineer"}
+
+
+class CMApproveIn(BaseModel):
+    remark: str = ""  # ความคิดเห็นตอนอนุมัติ (ไม่บังคับ)
 
 
 @router.post("/cmreport/{report_id}/cs-approve")
 async def cmreport_cs_approve(
     report_id: str,
+    body: CMApproveIn | None = None,
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    """head cs อนุมัติใบงานที่ cs เพิ่งเปิด (Open) → เดินหน้าเป็น In Progress"""
+    """engineer อนุมัติ SR ที่ cs เพิ่งเปิด → เดินหน้าเป็น 'Wait for schedule'"""
     if (current.role or "").lower() not in CS_APPROVE_ROLES:
-        raise HTTPException(status_code=403, detail="Only head cs or admin can approve")
+        raise HTTPException(status_code=403, detail="Only engineer or admin can approve")
+
+    approve_remark = (body.remark.strip() if body and body.remark else "")
+    station_id = station_id.strip()
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    now = datetime.now(timezone.utc)
+    res = await coll.update_one(
+        {
+            "_id": oid,
+            "station_id": station_id,
+            # รองรับใบใหม่ (Wait for approve + stage cs_approval) และใบเก่า/auto ที่เป็น Open
+            "$or": [
+                {"status": {"$regex": "^open$", "$options": "i"}},
+                {
+                    "status": {"$regex": "^wait for approve$", "$options": "i"},
+                    "stage": "cs_approval",
+                },
+            ],
+        },
+        {
+            "$set": {
+                "status": "Wait for schedule",
+                "cs_approved_by": current.username,
+                "cs_approved_at": now,
+                "cs_approve_remark": approve_remark,
+                "updatedAt": now,
+            },
+            # เคลียร์ stage และเหตุผลตีกลับด่าน cs (ถ้าเคยถูกตีกลับ) — กันค้างไปโผล่ในฟอร์มขั้นถัดไป
+            "$unset": {"stage": "", "reject_remark": "", "rejected_by": "", "rejected_at": ""},
+        },
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found or not awaiting CS approval")
+
+    return {"ok": True, "status": "Wait for schedule"}
+
+
+# ── engineer ตีกลับใบงานขั้นวางแผน (Wait for schedule) → กลับไปหา cs (Wait for approve/cs_approval)
+PLANNER_REJECT_ROLES: set[str] = {"admin", "engineer", "planner"}
+
+
+@router.post("/cmreport/{report_id}/planner-reject")
+async def cmreport_planner_reject(
+    report_id: str,
+    body: CMRejectIn,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """engineer ตีกลับใบขั้นวางแผน → กลับไปหา cs ให้แก้ไข/ยกเลิก (พร้อมเหตุผล)"""
+    if (current.role or "").lower() not in PLANNER_REJECT_ROLES:
+        raise HTTPException(status_code=403, detail="Only engineer, planner or admin can reject")
+
+    remark = body.remark.strip()
+    if not remark:
+        raise HTTPException(status_code=400, detail="remark is required")
 
     station_id = station_id.strip()
     coll = get_cmreport_collection_for(station_id)
@@ -1100,23 +1218,75 @@ async def cmreport_cs_approve(
         {
             "_id": oid,
             "station_id": station_id,
-            "status": {"$regex": "^open$", "$options": "i"},
+            "status": {"$regex": "^wait for schedule$", "$options": "i"},
         },
         {"$set": {
-            "status": "In Progress",
-            "cs_approved_by": current.username,
-            "cs_approved_at": now,
+            "status": "Wait for approve",
+            "stage": "cs_approval",
+            "reject_remark": remark,
+            "rejected_by": current.username,
+            "rejected_at": now,
             "updatedAt": now,
         }},
     )
     if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Report not found or not in 'Open' status")
+        raise HTTPException(status_code=404, detail="Report not found or not in 'Wait for schedule' status")
 
-    return {"ok": True, "status": "In Progress"}
+    return {"ok": True, "status": "Wait for approve"}
 
 
-# ── planner ยกเลิกใบงานที่หัวหน้า cs อนุมัติแล้ว (In Progress) → Cancelled (ไปแสดงใน tab Closed)
-PLANNER_CANCEL_ROLES: set[str] = {"admin", "planner"}
+# ── head cs ตีกลับใบงานด่าน cs → คืนให้ cs ผู้เปิดแก้ไข (คงสถานะ Wait for approve/cs_approval) พร้อมเหตุผล
+@router.post("/cmreport/{report_id}/cs-reject")
+async def cmreport_cs_reject(
+    report_id: str,
+    body: CMRejectIn,
+    station_id: str = Query(...),
+    current: UserClaims = Depends(get_current_user),
+):
+    """engineer ตีกลับ SR ที่ cs เปิดมา → คืนให้ cs แก้ไข (คงสถานะ Wait for approve) พร้อมเหตุผล"""
+    if (current.role or "").lower() not in CS_APPROVE_ROLES:
+        raise HTTPException(status_code=403, detail="Only engineer or admin can reject")
+
+    remark = body.remark.strip()
+    if not remark:
+        raise HTTPException(status_code=400, detail="remark is required")
+
+    station_id = station_id.strip()
+    coll = get_cmreport_collection_for(station_id)
+    try:
+        oid = ObjectId(report_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Bad report_id")
+
+    now = datetime.now(timezone.utc)
+    res = await coll.update_one(
+        {
+            "_id": oid,
+            "station_id": station_id,
+            "status": {"$regex": "^wait for approve$", "$options": "i"},
+            "stage": "cs_approval",
+        },
+        {
+            "$set": {
+                # คงสถานะ Wait for approve/cs_approval — แค่แนบเหตุผลให้ cs ผู้เปิดเห็นแล้วแก้ไข
+                "status": "Wait for approve",
+                "stage": "cs_approval",
+                "reject_remark": remark,
+                "rejected_by": current.username,
+                "rejected_at": now,
+                "updatedAt": now,
+            },
+        },
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Report not found or not awaiting CS approval")
+
+    return {"ok": True, "status": "Wait for approve"}
+
+
+# ── ยกเลิกใบงานที่ยังไม่ปิด → Cancelled (ไปแสดงใน tab Closed)
+#    engineer/planner/admin ยกเลิกตอนรีวิว/วางแผนได้
+PLANNER_CANCEL_ROLES: set[str] = {"admin", "engineer", "planner"}
 
 
 class CMCancelIn(BaseModel):
@@ -1130,9 +1300,9 @@ async def cmreport_cancel(
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    """planner ยกเลิกใบงานที่ยังไม่ปิด (Open / In Progress / Pending / Wait for approve) → Cancelled"""
+    """ยกเลิกใบงานที่ยังไม่ปิด (ทุกสถานะยกเว้น complete/closed/cancelled) → Cancelled"""
     if (current.role or "").lower() not in PLANNER_CANCEL_ROLES:
-        raise HTTPException(status_code=403, detail="Only planner or admin can cancel")
+        raise HTTPException(status_code=403, detail="Only engineer, planner or admin can cancel")
 
     station_id = station_id.strip()
     coll = get_cmreport_collection_for(station_id)
@@ -1148,7 +1318,7 @@ async def cmreport_cancel(
             "_id": oid,
             "station_id": station_id,
             # ยกเลิกได้เฉพาะใบที่ยังไม่ปิด/ยังไม่ถูกยกเลิก
-            "status": {"$not": {"$regex": "^(closed|cancelled)$", "$options": "i"}},
+            "status": {"$not": {"$regex": "^(complete|closed|cancelled)$", "$options": "i"}},
         },
         {"$set": {
             "status": "Cancelled",
@@ -1164,18 +1334,14 @@ async def cmreport_cancel(
     return {"ok": True, "status": "Cancelled"}
 
 
-# บัญชีที่อนุญาตให้ลบใบงาน CM ได้
-CM_DELETE_ALLOWED_USERS: set[str] = {"thatsawan"}
-
-
 @router.delete("/cmreport/{report_id}")
 async def cmreport_delete(
     report_id: str,
     station_id: str = Query(...),
     current: UserClaims = Depends(get_current_user),
 ):
-    # อนุญาตเฉพาะบัญชีที่กำหนดเท่านั้น
-    if (current.username or "").strip().lower() not in CM_DELETE_ALLOWED_USERS:
+    # ลบถาวร = สิทธิ์ super admin เท่านั้น
+    if not current.is_super_admin:
         raise HTTPException(status_code=403, detail="Not allowed to delete")
 
     station_id = station_id.strip()
