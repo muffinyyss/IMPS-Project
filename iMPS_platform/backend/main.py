@@ -35,6 +35,7 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
 import logging
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 
 _log = logging.getLogger("uvicorn.error")
 
@@ -43,6 +44,25 @@ _log = logging.getLogger("uvicorn.error")
 async def _unhandled_exception_handler(request: Request, exc: Exception):
     _log.error("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
     return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
+
+# ─── Log 422 ของ upload รูป: ดูว่า multipart body มาถึงจริงมั้ย ───
+# เคส "sn/group/files หายพร้อมกันทั้งหมด" = body parse ไม่ออก ไม่ใช่ frontend ไม่ได้ส่ง
+# log content-type/length ไว้เพื่อแยกว่าเป็นชื่อไฟล์เพี้ยน หรือ proxy ตัด body ทิ้ง
+from fastapi.exceptions import RequestValidationError
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(request: Request, exc: RequestValidationError):
+    if request.url.path.endswith("/photos"):
+        _log.warning(
+            "422 on %s | content-type=%r content-length=%r errors=%s",
+            request.url.path,
+            request.headers.get("content-type"),
+            request.headers.get("content-length"),
+            exc.errors(),
+        )
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
 
 
 # ─── Security headers + hide server banner (pentest #5, #6) ───

@@ -19,6 +19,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
+import { isFileReadable, resolveUsableFile, reportMissingDraftPhoto } from "@/utils/upload-safety";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -174,11 +175,13 @@ function resetBgUpload() {
 }
 
 // ==================== IMAGE UTILS ====================
+// ⚡ FIX 422: ชื่อไฟล์จากกล้อง/แกลเลอรีบางเครื่องมี " หรือ newline ปนมา ทำให้ header
+// Content-Disposition ของ multipart เพี้ยน → server parse body ไม่ออก ตอบ 422 โดยที่
+// station_id/group/files หายพร้อมกันทั้งหมด จึงเหลือไว้เฉพาะอักขระที่ปลอดภัยเสมอ
 function ensureJpgFilename(name: string): string {
-    if (!name) return `image_${Date.now()}.jpg`;
-    const dot = name.lastIndexOf(".");
-    if (dot <= 0) return `${name}.jpg`;
-    return `${name.substring(0, dot)}.jpg`;
+    const base = (name || "").replace(/\.[^.]*$/, "");
+    const safe = base.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[._-]+/, "").slice(0, 80);
+    return safe ? `${safe}.jpg` : `image_${Date.now()}.jpg`;
 }
 
 async function addTimestampToImage(file: File, locationText: string): Promise<File> {
@@ -617,6 +620,12 @@ const UNITS = { voltage: ["V"] as const };
 type UnitVoltage = (typeof UNITS.voltage)[number];
 
 type PhotoItem = { id: string; file?: File; preview?: string; remark?: string; uploading?: boolean; uploaded?: boolean; error?: string; ref?: PhotoRef; isNA?: boolean; createdAt?: string; location?: string; };
+
+/** หาไฟล์ที่อัปโหลดได้จริงของรูปหนึ่งใบ — กู้จาก IndexedDB ให้เองถ้าไฟล์ใน memory ใช้ไม่ได้แล้ว */
+function resolveUploadFile(p: PhotoItem): Promise<File> {
+    const dbKey = p.ref?.dbKey;
+    return resolveUsableFile(p.file, dbKey ? () => getPhotoByDbKey(dbKey) : undefined);
+}
 
 type PF = "PASS" | "FAIL" | "NA" | "";
 
@@ -1105,6 +1114,11 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id,
             // บีบรูปก่อนเก็บลง IndexedDB — ลดพื้นที่จัดเก็บ (กัน quota เต็มบนมือถือ) + ได้รูปที่พร้อมอัปโหลดเลย
             const compressed = await compressImage(fileWithTimestamp);
             const finalFile = (compressed && compressed.size > 0) ? compressed : fileWithTimestamp;
+            // ⚡ ดักตั้งแต่ตอนแนบ: .size เชื่อไม่ได้ (iOS คืน backing store แต่ยังรายงาน size เดิม)
+            if (!(await isFileReadable(finalFile))) {
+                console.warn("processFile: ไฟล์อ่านไม่ได้ตั้งแต่ตอนแนบ", file.name);
+                return null;
+            }
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, finalFile);
             if (!ref) return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "" };
@@ -1592,6 +1606,7 @@ export default function CCBPMReport() {
                     const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
                     if (!file || file.size === 0) {
                         console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
+                        reportMissingDraftPhoto(lang);
                         continue;
                     }
                     items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
@@ -1670,6 +1685,7 @@ export default function CCBPMReport() {
                     const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
                     if (!file || file.size === 0) {
                         console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
+                        reportMissingDraftPhoto(lang);
                         continue;
                     }
                     items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
@@ -1681,6 +1697,8 @@ export default function CCBPMReport() {
     }, [stationId, key, isPostMode]);
 
     useEffect(() => { const onInfo = (e: Event) => { const detail = (e as CustomEvent).detail as { info?: StationPublic; station?: StationPublic }; const st = detail.info ?? detail.station; if (!st) return; setJob((prev) => ({ ...prev, station_name: st.station_name ?? prev.station_name })); }; window.addEventListener("station:info", onInfo as EventListener); return () => window.removeEventListener("station:info", onInfo as EventListener); }, []);
+
+    const preReportIdRef = useRef<string | null>(null);
 
     const makePhotoSetter = (photoKey: number): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
         return (action: React.SetStateAction<PhotoItem[]>) => {
@@ -1908,20 +1926,24 @@ export default function CCBPMReport() {
         });
     }, [postKey, stationId, rows, mMain.state, mSub1.state, mSub2.state, mSub3.state, mSub4.state, mSub5.state, mSub6.state, subBreakerCount, summary, summaryCheck, photoRefs, isPostMode, editId]);
 
-    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, files: File[], side: TabId) {
-        if (files.length === 0) return;
-        const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
+    // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
+    // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
+    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string) {
+        const pending = (items || []).filter(p => !p.isNA && !p.uploaded && (p.file || p.ref));
+        if (pending.length === 0) return;
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/${PM_PREFIX}/${reportId}/pre/photos` : `${API_BASE}/${PM_PREFIX}/${reportId}/post/photos`;
         // ส่งทีละรูป (1 request/รูป) เพื่อไม่ให้ body รวมเกิน limit ของ nginx (กัน 413 เมื่อข้อหนึ่งมีหลายรูป)
-        for (const f of compressedFiles) {
+        for (const p of pending) {
+            const compressed = await compressImage(await resolveUploadFile(p));
             const form = new FormData();
             form.append("station_id", stationId);
             form.append("group", group);
             form.append("side", side);
-            form.append("files", f);
+            form.append("files", compressed);
             const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
+            setPhotos(prev => ({ ...prev, [stateKey]: ((prev as any)[stateKey] || []).map((x: PhotoItem) => x.id === p.id ? { ...x, uploaded: true } : x) }));
         }
     }
 
@@ -2006,6 +2028,9 @@ export default function CCBPMReport() {
                 pm_date, doc_name: docName, side: "pre" as TabId, comment_pre: summary, subBreakerCount,
             };
 
+            // กดบันทึกซ้ำหลังอัปรูปหลุด ต้องใช้รายงานใบเดิม ไม่งั้นจะได้รายงานซ้ำอีกใบ
+            let report_id: string = preReportIdRef.current || loadDraftLocal<any>(key)?.pendingReportId || "";
+            if (!report_id) {
             const res = await fetch(`${API_BASE}/${PM_PREFIX}/pre/submit`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -2013,22 +2038,25 @@ export default function CCBPMReport() {
                 body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            const { report_id, doc_name } = await res.json() as { report_id: string; doc_name?: string };
-            setReportId(report_id);
+            const { report_id: newReportId, doc_name } = await res.json() as { report_id: string; doc_name?: string };
+            report_id = newReportId;
             if (doc_name) setDocName(doc_name);
+            saveDraftLocal(key, { ...loadDraftLocal<any>(key), pendingReportId: report_id });
+            }
+            preReportIdRef.current = report_id;
+            setReportId(report_id);
 
             const uploadPromises: Promise<void>[] = [];
-            Object.entries(photos).forEach(([noStr, list]) => {
-                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
-                if (files.length > 0) {
+            for (const [noStr, list] of Object.entries(photos)) {
+                {
                     const no = Number(noStr);
                     let groupKey = `g${no}`;
                     if (no === 90) { groupKey = "g9"; }
                     else if (no >= 101 && no <= 106) { groupKey = `g10_${no - 100}`; }
                     else if (no >= 30 && no < 90) { const qNo = Math.floor(no / 10); const subNo = no % 10; groupKey = `g${qNo}_${subNo}`; }
-                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "pre"));
+                    uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, list, "pre", noStr));
                 }
-            });
+            }
             const totalPhotos = uploadPromises.length;
             if (totalPhotos > 0) {
                 setPreUploadState({ show: true, total: totalPhotos, completed: 0, failed: 0 });
@@ -2038,6 +2066,7 @@ export default function CCBPMReport() {
 
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+            preReportIdRef.current = null;
             await clearDraftLocal(key);
             setPhotos(initialPhotos);
             const nextParams = new URLSearchParams(searchParams.toString());
@@ -2136,17 +2165,16 @@ export default function CCBPMReport() {
             const { report_id } = await res.json() as { report_id: string };
 
             const uploadPromises: Promise<void>[] = [];
-            Object.entries(photos).forEach(([noStr, list]) => {
-                const files = (list || []).map(p => p.file).filter(Boolean) as File[];
-                if (files.length > 0) {
+            for (const [noStr, list] of Object.entries(photos)) {
+                {
                     const no = Number(noStr);
                     let groupKey = `g${no}`;
                     if (no === 90) { groupKey = "g9"; }
                     else if (no >= 101 && no <= 106) { groupKey = `g10_${no - 100}`; }
                     else if (no >= 30 && no < 90) { const qNo = Math.floor(no / 10); const subNo = no % 10; groupKey = `g${qNo}_${subNo}`; }
-                    uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, groupKey, files, "post"));
+                    uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, groupKey, list, "post", noStr));
                 }
-            });
+            }
             const totalPostPhotos = uploadPromises.length;
             if (totalPostPhotos > 0) {
                 setPreUploadState({ show: true, total: totalPostPhotos, completed: 0, failed: 0 });

@@ -13,6 +13,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
+import { isFileReadable, resolveUsableFile, reportMissingDraftPhoto } from "@/utils/upload-safety";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -138,6 +139,12 @@ async function compressImage(
 
 async function _bgCompressImage(file: File, maxWidth = 1600, quality = 0.8): Promise<File> {
     return compressImage(file, maxWidth, quality);
+}
+
+/** ไฟล์ใน state อาจใช้ไม่ได้แล้ว (iOS คืนหน่วยความจำ) → กู้จาก IndexedDB ที่เซฟไว้ตอนแนบ */
+function resolveUploadFile(task: { file?: File; ref?: PhotoRef }): Promise<File> {
+    const dbKey = task.ref?.dbKey;
+    return resolveUsableFile(task.file, dbKey ? () => getPhotoByDbKey(dbKey) : undefined);
 }
 
 async function _bgUploadSingle(reportId: string, sn: string, group: string, file: File, side: "pre" | "post") {
@@ -1320,11 +1327,13 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
 // ==================== ADD TIMESTAMP TO IMAGE ====================
 // ⚡ FIX: แปลงชื่อไฟล์ให้นามสกุลตรงกับ content จริง (JPEG)
 // เช่น "IMG_1234.HEIC" → "IMG_1234.jpg", "photo.PNG" → "photo.jpg"
+// ⚡ FIX 422: ชื่อไฟล์จากกล้อง/แกลเลอรีบางเครื่องมี " หรือ newline ปนมา ทำให้ header
+// Content-Disposition ของ multipart เพี้ยน → server parse body ไม่ออก ตอบ 422 โดยที่
+// sn/group/files หายพร้อมกันทั้งหมด จึงเหลือไว้เฉพาะอักขระที่ปลอดภัยเสมอ
 function ensureJpgFilename(name: string): string {
-    if (!name) return `image_${Date.now()}.jpg`;
-    const dot = name.lastIndexOf(".");
-    if (dot <= 0) return `${name}.jpg`;
-    return `${name.substring(0, dot)}.jpg`;
+    const base = (name || "").replace(/\.[^.]*$/, "");
+    const safe = base.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[._-]+/, "").slice(0, 80);
+    return safe ? `${safe}.jpg` : `image_${Date.now()}.jpg`;
 }
 
 async function addTimestampToImage(file: File, locationText: string): Promise<File> {
@@ -1461,6 +1470,13 @@ function PhotoMultiInput({
             // บีบรูปก่อนเก็บลง IndexedDB — ลดพื้นที่จัดเก็บ (กัน quota เต็มบนมือถือ) + ได้รูปที่พร้อมอัปโหลดเลย
             const compressed = await compressImage(fileWithTimestamp);
             const finalFile = (compressed && compressed.size > 0) ? compressed : fileWithTimestamp;
+
+            // ⚡ ดักตั้งแต่ตอนแนบ: .size เชื่อไม่ได้ (iOS คืน backing store แต่ยังรายงาน size เดิม)
+            // ต้องลองอ่านจริง ไม่งั้นรูปที่เสียจะรอไประเบิดตอนกดบันทึกเป็น 422 ที่อ่านไม่รู้เรื่อง
+            if (!(await isFileReadable(finalFile))) {
+                console.warn("processFile: ไฟล์อ่านไม่ได้ตั้งแต่ตอนแนบ", file.name);
+                return null;
+            }
 
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, finalFile);
@@ -2459,6 +2475,7 @@ export default function ChargerPMForm() {
                             const file = await getPhotoByDbKey(ref.dbKey);
                             if (!file || file.size === 0) {
                                 console.warn("Photo missing/empty in IndexedDB:", ref.dbKey);
+                                reportMissingDraftPhoto(lang);
                                 continue;
                             }
                             if (file && !canceled) {
@@ -2537,6 +2554,7 @@ export default function ChargerPMForm() {
                             const file = await getPhotoByDbKey(ref.dbKey);
                             if (!file || file.size === 0) {
                                 console.warn("Photo missing/empty in IndexedDB:", ref.dbKey);
+                                reportMissingDraftPhoto(lang);
                                 continue;
                             }
                             if (file && !canceled) {
@@ -2988,12 +3006,12 @@ export default function ChargerPMForm() {
             }
 
             // ⚡ สร้าง tasks per-photo + skip รูปที่ upload สำเร็จไปแล้ว (uploaded=true)
-            type UploadTask = { group: string; photoId: string; file: File };
+            type UploadTask = { group: string; photoId: string; file: File; ref?: PhotoRef };
             const allPreTasks: UploadTask[] = [];
             for (const [no, list] of Object.entries(photosRef.current)) {
                 (list || []).forEach(p => {
                     if (p.file && !p.uploaded && !p.isNA) {
-                        allPreTasks.push({ group: no, photoId: p.id, file: p.file });
+                        allPreTasks.push({ group: no, photoId: p.id, file: p.file, ref: p.ref });
                     }
                 });
             }
@@ -3033,7 +3051,8 @@ export default function ChargerPMForm() {
                         const [group, tasks] = groupEntries[myIdx];
                         for (const task of tasks) {
                             try {
-                                const compressed = await compressImage(task.file);
+                                const usable = await resolveUploadFile(task);
+                                const compressed = await compressImage(usable);
                                 await uploadSinglePhotoWithRetry(finalReportId, sn, `g${group}`, compressed, "pre");
                                 setPhotos(prev => ({
                                     ...prev,
@@ -3118,12 +3137,12 @@ export default function ChargerPMForm() {
             }
 
             // ⚡ เตรียม entries สำหรับ upload (เฉพาะกลุ่มที่มี file จริง)
-            type UploadTask = { group: string; photoId: string; file: File };
+            type UploadTask = { group: string; photoId: string; file: File; ref?: PhotoRef };
             const allPostTasks: UploadTask[] = [];
             Object.entries(photosRef.current).forEach(([no, list]) => {
                 (list || []).forEach(p => {
                     if (p.file && !p.uploaded && !p.isNA) {
-                        allPostTasks.push({ group: no, photoId: p.id, file: p.file });
+                        allPostTasks.push({ group: no, photoId: p.id, file: p.file, ref: p.ref });
                     }
                 });
             });
@@ -3153,7 +3172,8 @@ export default function ChargerPMForm() {
                         const [group, tasks] = groupEntries[myIdx];
                         for (const task of tasks) {
                             try {
-                                const compressed = await compressImage(task.file);
+                                const usable = await resolveUploadFile(task);
+                                const compressed = await compressImage(usable);
                                 await uploadSinglePhotoWithRetry(finalReportId, sn, `g${group}`, compressed, "post");
                                 setPhotos(prev => ({
                                     ...prev,

@@ -17,6 +17,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
+import { isFileReadable, resolveUsableFile, reportMissingDraftPhoto } from "@/utils/upload-safety";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 
 // ==================== GPS + IMAGE UTILS ====================
@@ -126,11 +127,13 @@ async function getCachedLocation(): Promise<string> {
     return _cachedLocation?.text || "ไม่สามารถระบุตำแหน่งได้";
 }
 
+// ⚡ FIX 422: ชื่อไฟล์จากกล้อง/แกลเลอรีบางเครื่องมี " หรือ newline ปนมา ทำให้ header
+// Content-Disposition ของ multipart เพี้ยน → server parse body ไม่ออก ตอบ 422 โดยที่
+// station_id/group/files หายพร้อมกันทั้งหมด จึงเหลือไว้เฉพาะอักขระที่ปลอดภัยเสมอ
 function ensureJpgFilename(name: string): string {
-    if (!name) return `image_${Date.now()}.jpg`;
-    const dot = name.lastIndexOf(".");
-    if (dot <= 0) return `${name}.jpg`;
-    return `${name.substring(0, dot)}.jpg`;
+    const base = (name || "").replace(/\.[^.]*$/, "");
+    const safe = base.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[._-]+/, "").slice(0, 80);
+    return safe ? `${safe}.jpg` : `image_${Date.now()}.jpg`;
 }
 
 async function addTimestampToImage(file: File, locationText: string): Promise<File> {
@@ -387,6 +390,12 @@ async function getStationInfoPublic(stationId: string): Promise<StationPublic> {
 }
 
 type PhotoItem = { id: string; file?: File; preview?: string; remark?: string; uploading?: boolean; uploaded?: boolean; error?: string; ref?: PhotoRef; isNA?: boolean; createdAt?: string; location?: string; };
+
+/** หาไฟล์ที่อัปโหลดได้จริงของรูปหนึ่งใบ — กู้จาก IndexedDB ให้เองถ้าไฟล์ใน memory ใช้ไม่ได้แล้ว */
+function resolveUploadFile(p: PhotoItem): Promise<File> {
+    const dbKey = p.ref?.dbKey;
+    return resolveUsableFile(p.file, dbKey ? () => getPhotoByDbKey(dbKey) : undefined);
+}
 type PF = "PASS" | "FAIL" | "NA" | "";
 
 type Question =
@@ -851,6 +860,11 @@ function PhotoMultiInput({
             // บีบรูปก่อนเก็บลง IndexedDB — ลดพื้นที่จัดเก็บ (กัน quota เต็มบนมือถือ) + ได้รูปที่พร้อมอัปโหลดเลย
             const compressed = await compressImage(fileWithTimestamp);
             const finalFile = (compressed && compressed.size > 0) ? compressed : fileWithTimestamp;
+            // ⚡ ดักตั้งแต่ตอนแนบ: .size เชื่อไม่ได้ (iOS คืน backing store แต่ยังรายงาน size เดิม)
+            if (!(await isFileReadable(finalFile))) {
+                console.warn("processFile: ไฟล์อ่านไม่ได้ตั้งแต่ตอนแนบ", file.name);
+                return null;
+            }
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, finalFile);
             if (!ref) return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "" };
@@ -1109,6 +1123,7 @@ export default function StationPMReport() {
                     const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
                     if (!file || file.size === 0) {
                         console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
+                        reportMissingDraftPhoto(lang);
                         continue;
                     }
                     items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
@@ -1190,6 +1205,7 @@ export default function StationPMReport() {
                     const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
                     if (!file || file.size === 0) {
                         console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
+                        reportMissingDraftPhoto(lang);
                         continue;
                     }
                     items.push({ id: ref.id, file, preview: URL.createObjectURL(file), remark: (ref as any).remark ?? "", ref: ref as PhotoRef });
@@ -1210,6 +1226,8 @@ export default function StationPMReport() {
         window.addEventListener("station:info", onInfo as EventListener);
         return () => window.removeEventListener("station:info", onInfo as EventListener);
     }, []);
+
+    const preReportIdRef = useRef<string | null>(null);
 
     const makePhotoSetter = (photoKey: string): React.Dispatch<React.SetStateAction<PhotoItem[]>> => {
         return (action: React.SetStateAction<PhotoItem[]>) => {
@@ -1441,20 +1459,24 @@ export default function StationPMReport() {
         saveDraftLocal(postKey, { rows, summary, summaryCheck, photoRefs });
     }, [postKey, stationId, rows, summary, summaryCheck, photoRefs, isPostMode, editId]);
 
-    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, files: File[], side: TabId) {
-        if (files.length === 0) return;
-        const compressedFiles = await Promise.all(files.map(f => compressImage(f)));
+    // รับ PhotoItem แทน File[] เพื่อให้รู้ว่ารูปไหนอัปสำเร็จแล้ว — ตอนกดบันทึกซ้ำหลังอัปหลุด
+    // จะได้ข้ามรูปเดิม ไม่อัปซ้ำจนรูปโผล่ซ้ำในรายงาน (และไม่ไปชนเพดาน 10 รูป/ข้อ)
+    async function uploadGroupPhotos(reportId: string, stationId: string, group: string, items: PhotoItem[], side: TabId, stateKey: string) {
+        const pending = (items || []).filter(p => !p.isNA && !p.uploaded && (p.file || p.ref));
+        if (pending.length === 0) return;
         const token = localStorage.getItem("access_token");
         const url = side === "pre" ? `${API_BASE}/stationpmreport/${reportId}/pre/photos` : `${API_BASE}/stationpmreport/${reportId}/post/photos`;
         // ส่งทีละรูป (1 request/รูป) เพื่อไม่ให้ body รวมเกิน limit ของ nginx (กัน 413 เมื่อข้อหนึ่งมีหลายรูป)
-        for (const f of compressedFiles) {
+        for (const p of pending) {
+            const compressed = await compressImage(await resolveUploadFile(p));
             const form = new FormData();
             form.append("station_id", stationId);
             form.append("group", group);
             form.append("side", side);
-            form.append("files", f);
+            form.append("files", compressed);
             const res = await fetch(url, { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : undefined, body: form, credentials: "include" });
             if (!res.ok) throw new Error(await res.text());
+            setPhotos(prev => ({ ...prev, [stateKey]: ((prev as any)[stateKey] || []).map((x: PhotoItem) => x.id === p.id ? { ...x, uploaded: true } : x) }));
         }
     }
 
@@ -1517,14 +1539,21 @@ export default function StationPMReport() {
                 rows_pre: flatRows, pm_date, doc_name: docName, side: "pre" as TabId,
                 comment_pre: summary,
             };
+            // กดบันทึกซ้ำหลังอัปรูปหลุด ต้องใช้รายงานใบเดิม ไม่งั้นจะได้รายงานซ้ำอีกใบ
+            let report_id: string = preReportIdRef.current || loadDraftLocal<any>(key)?.pendingReportId || "";
+            if (!report_id) {
             const res = await fetch(`${API_BASE}/stationpmreport/pre/submit`, {
                 method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                 credentials: "include", body: JSON.stringify(payload),
             });
             if (!res.ok) throw new Error(await res.text());
-            const { report_id, doc_name } = await res.json() as { report_id: string; doc_name?: string };
-            setReportId(report_id);
+            const { report_id: newReportId, doc_name } = await res.json() as { report_id: string; doc_name?: string };
+            report_id = newReportId;
             if (doc_name) setDocName(doc_name);
+            saveDraftLocal(key, { ...loadDraftLocal<any>(key), pendingReportId: report_id });
+            }
+            preReportIdRef.current = report_id;
+            setReportId(report_id);
 
             // Upload photos
             const photoKeys = Object.keys(photos);
@@ -1532,8 +1561,7 @@ export default function StationPMReport() {
             for (const photoKey of photoKeys) {
                 const list = photos[photoKey] || [];
                 if (list.length === 0) continue;
-                const files = list.map(p => p.file!).filter(Boolean) as File[];
-                if (files.length === 0) continue;
+
                 let groupKey: string | null = null;
                 if (photoKey.startsWith("q")) {
                     const qNo = Number(photoKey.substring(1));
@@ -1548,12 +1576,13 @@ export default function StationPMReport() {
                     }
                 }
                 if (!groupKey) continue;
-                uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, files, "pre"));
+                uploadPromises.push(uploadGroupPhotos(report_id, stationId, groupKey, list, "pre", photoKey));
             }
             if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
 
             const allPhotos = Object.values(photos).flat();
             await Promise.all(allPhotos.map(p => delPhoto(key, p.id)));
+            preReportIdRef.current = null;
             await clearDraftLocal(key);
             router.replace(`/dashboard/pm-report?station_id=${encodeURIComponent(stationId)}&tab=station`);
         } catch (err: any) {
@@ -1620,8 +1649,7 @@ export default function StationPMReport() {
             for (const photoKey of photoKeys) {
                 const list = photos[photoKey] || [];
                 if (list.length === 0) continue;
-                const files = list.map(p => p.file!).filter(Boolean) as File[];
-                if (files.length === 0) continue;
+
                 let groupKey: string | null = null;
                 if (photoKey.startsWith("q")) {
                     const qNo = Number(photoKey.substring(1));
@@ -1636,7 +1664,7 @@ export default function StationPMReport() {
                     }
                 }
                 if (!groupKey) continue;
-                uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, groupKey, files, "post"));
+                uploadPromises.push(uploadGroupPhotos(finalReportId, stationId, groupKey, list, "post", photoKey));
             }
             if (uploadPromises.length > 0) { await Promise.all(uploadPromises); }
 

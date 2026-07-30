@@ -141,6 +141,10 @@ function refreshOnce(): Promise<boolean> {
 // ✅ จำนวนครั้ง retry เมื่อ network error
 const MAX_RETRIES = 2;
 
+// หมายเหตุ: การกรองชื่อไฟล์ + อ่านไฟล์เข้า memory ก่อนส่ง ทำที่ installUploadSafetyPatch
+// ซึ่ง patch global fetch ไว้ (utils/upload-safety.ts) apiFetch เรียก fetch ตัวนั้น
+// อยู่แล้วจึงได้ผลตามไปด้วย ไม่ต้องทำซ้ำที่นี่
+
 export async function apiFetch(input: string | URL, init: RequestInit = {}) {
   const url = toUrl(input);
 

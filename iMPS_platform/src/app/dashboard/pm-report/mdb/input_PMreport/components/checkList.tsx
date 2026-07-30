@@ -14,6 +14,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Tabs, TabsHeader, Tab } from "@material-tailwind/react";
 import { putPhoto, getPhotoByDbKey, delPhoto, type PhotoRef } from "../lib/draftPhotos";
+import { isFileReadable, resolveUsableFile, reportMissingDraftPhoto } from "@/utils/upload-safety";
 import { useLanguage, type Lang } from "@/utils/useLanguage";
 import { apiFetch } from "@/utils/api";
 import LoadingOverlay from "@/app/dashboard/components/Loadingoverlay";
@@ -79,6 +80,12 @@ function resetBgUpload() {
     _bgProgress = { total: 0, completed: 0, failed: 0, inProgress: false, failures: [] };
     _bgQueue = [];
     _bgNotify();
+}
+
+/** ไฟล์ใน state อาจใช้ไม่ได้แล้ว (iOS คืนหน่วยความจำ) → กู้จาก IndexedDB ที่เซฟไว้ตอนแนบ */
+function resolveUploadFile(task: { file?: File; ref?: PhotoRef }): Promise<File> {
+    const dbKey = task.ref?.dbKey;
+    return resolveUsableFile(task.file, dbKey ? () => getPhotoByDbKey(dbKey) : undefined);
 }
 
 async function _bgCompressImage(file: File, maxWidth = 1600, quality = 0.8): Promise<File> {
@@ -453,11 +460,13 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
 }
 
 // ==================== IMAGE UTILS ====================
+// ⚡ FIX 422: ชื่อไฟล์จากกล้อง/แกลเลอรีบางเครื่องมี " หรือ newline ปนมา ทำให้ header
+// Content-Disposition ของ multipart เพี้ยน → server parse body ไม่ออก ตอบ 422 โดยที่
+// station_id/group/files หายพร้อมกันทั้งหมด จึงเหลือไว้เฉพาะอักขระที่ปลอดภัยเสมอ
 function ensureJpgFilename(name: string): string {
-    if (!name) return `image_${Date.now()}.jpg`;
-    const dot = name.lastIndexOf(".");
-    if (dot <= 0) return `${name}.jpg`;
-    return `${name.substring(0, dot)}.jpg`;
+    const base = (name || "").replace(/\.[^.]*$/, "");
+    const safe = base.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[._-]+/, "").slice(0, 80);
+    return safe ? `${safe}.jpg` : `image_${Date.now()}.jpg`;
 }
 
 async function addTimestampToImage(file: File, locationText: string): Promise<File> {
@@ -771,6 +780,11 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id 
             // บีบรูปก่อนเก็บลง IndexedDB — ลดพื้นที่จัดเก็บ (กัน quota เต็มบนมือถือ) + ได้รูปที่พร้อมอัปโหลดเลย
             const compressed = await compressImage(fileWithTimestamp);
             const finalFile = (compressed && compressed.size > 0) ? compressed : fileWithTimestamp;
+            // ⚡ ดักตั้งแต่ตอนแนบ: .size เชื่อไม่ได้ (iOS คืน backing store แต่ยังรายงาน size เดิม)
+            if (!(await isFileReadable(finalFile))) {
+                console.warn("processFile: ไฟล์อ่านไม่ได้ตั้งแต่ตอนแนบ", file.name);
+                return null;
+            }
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, finalFile);
             if (!ref) return { id: photoId, file: finalFile, preview: URL.createObjectURL(finalFile), remark: "" };
@@ -1158,6 +1172,7 @@ export default function MDBPMForm() {
                             const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
                             if (!file || file.size === 0) {
                                 console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
+                                reportMissingDraftPhoto(lang);
                                 continue;
                             }
                             if (file && !canceled) items.push({
@@ -1207,6 +1222,7 @@ export default function MDBPMForm() {
                             const file = await getPhotoByDbKey((ref as PhotoRef).dbKey);
                             if (!file || file.size === 0) {
                                 console.warn("Photo missing/empty in IndexedDB:", (ref as PhotoRef).dbKey);
+                                reportMissingDraftPhoto(lang);
                                 continue;
                             }
                             if (file && !canceled) items.push({
@@ -1514,12 +1530,12 @@ export default function MDBPMForm() {
             }
 
             // ⚡ per-photo tasks — skip รูปที่ uploaded แล้ว
-            type UploadTask = { group: string; photoId: string; file: File };
+            type UploadTask = { group: string; photoId: string; file: File; ref?: PhotoRef };
             const allPreTasks: UploadTask[] = [];
             for (const [no, list] of Object.entries(photos)) {
                 (list || []).forEach(p => {
                     if (p.file && !p.uploaded && !p.isNA) {
-                        allPreTasks.push({ group: no, photoId: p.id, file: p.file });
+                        allPreTasks.push({ group: no, photoId: p.id, file: p.file, ref: p.ref });
                     }
                 });
             }
@@ -1557,7 +1573,8 @@ export default function MDBPMForm() {
                         const [group, tasks] = groupEntries[myIdx];
                         for (const task of tasks) {
                             try {
-                                const compressed = await compressImage(task.file);
+                                const usable = await resolveUploadFile(task);
+                                const compressed = await compressImage(usable);
                                 await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, compressed, "pre");
                                 setPhotos(prev => ({
                                     ...prev,
@@ -1603,7 +1620,9 @@ export default function MDBPMForm() {
             }
 
             preReportIdRef.current = null;
-            const allPhotos = Object.values(photos).flat();
+            // ใช้ photosRef เพื่ออ่านสถานะล่าสุด — closure ของ handler ถือ photos ค่าเก่าไว้
+            // ทำให้รูปที่เพิ่ม/อัปเดตหลัง render ล่าสุด ไม่ถูกลบ กลายเป็นขยะค้างใน IndexedDB
+            const allPhotos = Object.values(photosRef.current).flat();
             Promise.all(allPhotos.map(p => delPhoto(key, p.id))).catch(() => { });
             clearDraftLocal(key);
             setPhotos({});
@@ -1655,12 +1674,12 @@ export default function MDBPMForm() {
             }
 
             // ⚡ per-photo tasks — skip รูปที่ uploaded แล้ว
-            type UploadTask = { group: string; photoId: string; file: File };
+            type UploadTask = { group: string; photoId: string; file: File; ref?: PhotoRef };
             const allPostTasks: UploadTask[] = [];
             Object.entries(photos).forEach(([no, list]) => {
                 (list || []).forEach(p => {
                     if (p.file && !p.uploaded && !p.isNA) {
-                        allPostTasks.push({ group: no, photoId: p.id, file: p.file });
+                        allPostTasks.push({ group: no, photoId: p.id, file: p.file, ref: p.ref });
                     }
                 });
             });
@@ -1688,7 +1707,8 @@ export default function MDBPMForm() {
                         const [group, tasks] = groupEntries[myIdx];
                         for (const task of tasks) {
                             try {
-                                const compressed = await compressImage(task.file);
+                                const usable = await resolveUploadFile(task);
+                                const compressed = await compressImage(usable);
                                 await uploadSinglePhotoWithRetry(finalReportId, finalStationId, task.group, compressed, "post");
                                 setPhotos(prev => ({
                                     ...prev,
@@ -1739,7 +1759,9 @@ export default function MDBPMForm() {
             });
             if (!finalizeRes.ok) throw new Error(await finalizeRes.text());
             postReportIdRef.current = null;
-            const allPhotos = Object.values(photos).flat();
+            // ใช้ photosRef เพื่ออ่านสถานะล่าสุด — closure ของ handler ถือ photos ค่าเก่าไว้
+            // ทำให้รูปที่เพิ่ม/อัปเดตหลัง render ล่าสุด ไม่ถูกลบ กลายเป็นขยะค้างใน IndexedDB
+            const allPhotos = Object.values(photosRef.current).flat();
             Promise.all(allPhotos.map(p => delPhoto(postKey, p.id))).catch(() => { });
             clearDraftLocal(postKey);
             const listParams = new URLSearchParams();
