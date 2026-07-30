@@ -73,7 +73,10 @@ _SECURITY_HEADERS = {
     "X-Frame-Options": "SAMEORIGIN",
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": (
-        "default-src https:; img-src 'self' data:; "
+        # blob: จำเป็นสำหรับ preview รูปที่ผู้ใช้เพิ่งแนบ — หน้าฟอร์มสร้าง blob URL
+        # จากไฟล์ในเครื่องผู้ใช้เองผ่าน URL.createObjectURL ไม่ได้โหลดจากภายนอก
+        # ถ้าไม่อนุญาต <img src="blob:..."> จะโหลดไม่ขึ้นและโชว์ alt แทนรูปทุกใบ
+        "default-src https:; img-src 'self' data: blob:; "
         "script-src 'self'; style-src 'self' 'unsafe-inline';"
     ),
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
@@ -115,13 +118,29 @@ app.add_middleware(
 )
 
 
-# ─── Static Files ─────────────────────────────────────────────
+# ─── Uploaded Files ───────────────────────────────────────────
+# เดิม mount ด้วย StaticFiles ตรงๆ ทำให้รูป PM/CM และ PDF ทุกไฟล์โหลดได้โดยไม่ต้อง
+# ล็อกอิน ขอแค่รู้ URL — เปลี่ยนเป็น route ที่ต้องมี session และตรวจสิทธิ์สถานีก่อนเสมอ
+#
+# ใช้ cookie ได้เพราะ get_current_user อ่าน access_token cookie ก่อน Bearer header
+# ซึ่งจำเป็น: <img src="/uploads/..."> แนบ Authorization header ไม่ได้ แต่ browser
+# ส่ง cookie ให้อัตโนมัติเมื่อเป็น same-origin
 import os
-from starlette.staticfiles import StaticFiles
+from fastapi import Depends
+from fastapi.responses import FileResponse
 
 from routers.pm_helpers import UPLOADS_ROOT
+from deps import get_current_user, UserClaims
+from uploads_access import assert_upload_access, resolve_upload_path
+
 os.makedirs(UPLOADS_ROOT, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOADS_ROOT, html=False), name="uploads")
+
+
+@app.get("/uploads/{rel_path:path}")
+def serve_upload(rel_path: str, current: UserClaims = Depends(get_current_user)):
+    target = resolve_upload_path(rel_path)   # กัน path traversal + 404 ถ้าไม่ใช่ไฟล์
+    assert_upload_access(current, rel_path)
+    return FileResponse(target)
 
 from config import client1  # re-export for pdf_routes1.py
 

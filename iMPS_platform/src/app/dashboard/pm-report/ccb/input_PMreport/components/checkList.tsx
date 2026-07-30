@@ -1087,9 +1087,29 @@ function PassFailRow({ label, value, onChange, remark, onRemarkChange, labels, a
     );
 }
 
-function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id, hideMaxLabel = false }: {
+/**
+ * ข้อความโควตารูปของข้อย่อย — เพดานจริงลดลงเองเมื่อข้อย่อยอื่นแนบไปแล้ว
+ * (ต่อข้อย่อย 10 แต่รวมทั้งข้อ 20 ตาม PHOTO_MAX_PER_ROW ของ pdf_ccb.py)
+ * ถ้าเขียนแค่ "สูงสุด 10 รูป" ผู้ใช้จะงงว่าทำไมแนบได้ไม่ถึง
+ */
+function subItemQuotaLabel(itemCount: number, groupTotal: number, itemMax: number, groupMax: number, lang: Lang): string {
+    const canAdd = Math.max(0, Math.min(itemMax - itemCount, groupMax - groupTotal));
+    if (canAdd > 0) {
+        return lang === "th"
+            ? `แนบได้อีก ${canAdd} รูป (ข้อย่อยนี้ ${itemCount}/${itemMax})`
+            : `${canAdd} more allowed (this sub-item ${itemCount}/${itemMax})`;
+    }
+    if (itemCount >= itemMax) {
+        return lang === "th" ? `ข้อย่อยนี้ครบ ${itemMax} รูปแล้ว` : `This sub-item is full (${itemMax} photos)`;
+    }
+    return lang === "th"
+        ? `ข้อนี้ครบ ${groupMax} รูปแล้ว (นับรวมทุกข้อย่อย)`
+        : `This question is full (${groupMax} photos across all sub-items)`;
+}
+
+function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id, hideMaxLabel = false, maxLabel }: {
     photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
-    max?: number; draftKey: string; qNo: number; lang: Lang; id?: string; hideMaxLabel?: boolean;
+    max?: number; draftKey: string; qNo: number; lang: Lang; id?: string; hideMaxLabel?: boolean; maxLabel?: string;
 }) {
     const cameraRef = useRef<HTMLInputElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
@@ -1119,11 +1139,11 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id,
                 console.warn("processFile: ไฟล์อ่านไม่ได้ตั้งแต่ตอนแนบ", file.name);
                 return null;
             }
-            // อ่านไบต์ได้ ไม่ได้แปลว่าเบราว์เซอร์ decode ออก — ถ้า decode ไม่ออก preview
-            // จะโชว์ alt เป็นคำว่า "preview" และไฟล์เสียจะถูกอัปขึ้นรายงานไปด้วย
+            // หมายเหตุ: เคย return null ตรงนี้ถ้า decode ไม่ผ่าน แต่ทำให้แนบรูปไม่ได้เลย
+            // เพราะ CSP img-src ไม่อนุญาต blob: การโหลดรูปเลยล้มเหลวทุกใบ
+            // เหลือไว้เป็น log อย่างเดียว ห้ามใช้ block การแนบรูป
             if (!(await isImageDecodable(finalFile))) {
                 console.warn("processFile: เบราว์เซอร์แสดงผลรูปนี้ไม่ได้", file.name, file.type);
-                return null;
             }
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, finalFile);
@@ -1196,7 +1216,7 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id,
             {!isMobile && <input ref={fileRef} type="file" accept="image/*" multiple className="tw-hidden" onChange={e => { void handleFiles(e.target.files, false); }} />}
             {!hideMaxLabel && (
                 <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-                    {t("maxPhotos", lang)} {max} {t("photos", lang)}
+                    {maxLabel ?? `${t("maxPhotos", lang)} ${max} ${t("photos", lang)}`}
                 </Typography>
             )}
             {photos.length > 0 ? (
@@ -2261,7 +2281,7 @@ export default function CCBPMReport() {
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
                         <Typography variant="small" className="!tw-text-blue-gray-500">
-                            {lang === "th" ? "สูงสุด 10 รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน 20)" : "Max 10 photos per sub-item (20 total)"}
+                            {lang === "th" ? `รูปในข้อนี้ ${totalGroupPhotos}/20 — ข้อย่อยละไม่เกิน 10 รูป` : `${totalGroupPhotos}/20 photos in this question — max 10 per sub-item`}
                         </Typography>
                         <div className="tw-divide-y tw-divide-gray-200">
                             {q.items.map((item, idx) => {
@@ -2283,7 +2303,7 @@ export default function CCBPMReport() {
                                         {q.hasPhoto && (
                                             <div className="tw-mb-3">
                                                 <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)}
-                                                    max={itemMax} hideMaxLabel={true} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
+                                                    max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalGroupPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
                                             </div>
                                         )}
                                         <div id={getRemarkIdFromKey(item.key)}>
@@ -2358,7 +2378,7 @@ export default function CCBPMReport() {
                             )}
                         </div>
                         <Typography variant="small" className="!tw-text-blue-gray-500">
-                            {lang === "th" ? "สูงสุด 10 รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน 20)" : "Max 10 photos per sub-item (20 total)"}
+                            {lang === "th" ? `รูปในข้อนี้ ${totalSubPhotos}/20 — ข้อย่อยละไม่เกิน 10 รูป` : `${totalSubPhotos}/20 photos in this question — max 10 per sub-item`}
                         </Typography>
                         <div className="tw-divide-y tw-divide-gray-200">
                             {Array.from({ length: subBreakerCount }, (_, idx) => {
@@ -2394,7 +2414,7 @@ export default function CCBPMReport() {
                                         {q.hasPhoto && (
                                             <div className="tw-mb-3">
                                                 <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)}
-                                                    max={itemMax} hideMaxLabel={true} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
+                                                    max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalSubPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
                                             </div>
                                         )}
                                         <div id={getInputIdFromKey(rowKey)} className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-3 tw-mb-3 ${isItemNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
@@ -2461,7 +2481,7 @@ export default function CCBPMReport() {
                     return (
                         <>
                             <Typography variant="small" className="!tw-text-blue-gray-500">
-                                {lang === "th" ? "สูงสุด 10 รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน 20)" : "Max 10 photos per sub-item (20 total)"}
+                                {lang === "th" ? `รูปในข้อนี้ ${totalGroupPhotos}/20 — ข้อย่อยละไม่เกิน 10 รูป` : `${totalGroupPhotos}/20 photos in this question — max 10 per sub-item`}
                             </Typography>
                             <div className="tw-divide-y tw-divide-gray-200">
                                 {q.items.map((item, idx) => {
@@ -2493,7 +2513,7 @@ export default function CCBPMReport() {
                                                     q.hasPhoto && (
                                                         <div className="tw-pb-4 tw-border-b tw-border-gray-100">
                                                             <PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)}
-                                                                max={itemMax} hideMaxLabel={true} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
+                                                                max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalGroupPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} />
                                                         </div>
                                                     )
                                                 }
@@ -2563,7 +2583,7 @@ export default function CCBPMReport() {
                                 <Typography variant="small" className="tw-font-bold tw-text-blue-600">{subBreakerCount} {t("unit", lang)}</Typography>
                             </div>
                             <Typography variant="small" className="!tw-text-blue-gray-500">
-                                {lang === "th" ? "สูงสุด 10 รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน 20)" : "Max 10 photos per sub-item (20 total)"}
+                                {lang === "th" ? `รูปในข้อนี้ ${totalSubPhotos}/20 — ข้อย่อยละไม่เกิน 10 รูป` : `${totalSubPhotos}/20 photos in this question — max 10 per sub-item`}
                             </Typography>
                             <div className="tw-divide-y tw-divide-gray-200">
                                 {Array.from({ length: subBreakerCount }, (_, idx) => {
@@ -2598,7 +2618,7 @@ export default function CCBPMReport() {
                                                 onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
                                                 remark={rows[rowKey]?.remark || ""} onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
                                                 lang={lang} id={getPfIdFromKey(rowKey)} remarkId={getRemarkIdFromKey(rowKey)}
-                                                aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)} max={itemMax} hideMaxLabel={true} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} /></div> : undefined}
+                                                aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[photoKey] || []} setPhotos={makePhotoSetter(photoKey)} max={itemMax} maxLabel={subItemQuotaLabel(photos[photoKey]?.length ?? 0, totalSubPhotos, 10, 20, lang)} draftKey={currentDraftKey} qNo={photoKey} lang={lang} id={getPhotoIdFromKey(photoKey)} /></div> : undefined}
                                                 beforeRemark={<>
                                                     <div id={getInputIdFromKey(rowKey)} className="tw-mb-3 tw-transition-all tw-duration-300">
                                                         <div className="tw-space-y-3">

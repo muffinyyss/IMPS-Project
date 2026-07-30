@@ -20,6 +20,7 @@ import inspect                                                     # ← รอ�
 ALLOWED_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "pdf", "heic", "heif"}
 MAX_FILE_MB = 20
 from deps import UserClaims, get_current_user
+from uploads_access import assert_station_access, assert_sn_access
 
 router = APIRouter()
 
@@ -456,6 +457,9 @@ async def cmreport_upload_photos(
     created_at: str | None = Form(None),
     current: UserClaims = Depends(get_current_user),
 ):
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_station_access(current, station_id)
     
     if phase not in ("problem", "repair"):
         raise HTTPException(status_code=400, detail="phase must be 'problem' or 'repair'")
@@ -554,6 +558,9 @@ async def cmurl_upload_files(
     status: str = Form(...),  
     current: UserClaims = Depends(get_current_user),
 ):
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_station_access(current, station_id)
     coll = get_cmurl_coll_upload(station_id)
 
     cm_date = normalize_pm_date(reportDate)

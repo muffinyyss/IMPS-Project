@@ -1441,11 +1441,36 @@ function isMobileDevice(): boolean {
         || ("ontouchstart" in window && navigator.maxTouchPoints > 0);
 }
 
+/**
+ * ข้อความโควตารูปของข้อย่อย
+ *
+ * เพดานจริงของแต่ละข้อย่อยลดลงเองเมื่อข้อย่อยอื่นแนบไปแล้ว (ต่อข้อย่อย 10 แต่รวมทั้งข้อ 20)
+ * ถ้าเขียนแค่ "สูงสุด 10 รูป" ผู้ใช้จะงงว่าทำไมแนบได้ไม่ถึง จึงบอกจำนวนที่เหลือจริง
+ * และถ้าเต็มแล้วต้องบอกด้วยว่าเต็มเพราะข้อย่อยนี้เอง หรือเพราะโควตารวมของข้อใหญ่
+ */
+function subItemQuotaLabel(itemCount: number, groupTotal: number, itemMax: number, groupMax: number, lang: Lang): string {
+    const canAdd = Math.max(0, Math.min(itemMax - itemCount, groupMax - groupTotal));
+    if (canAdd > 0) {
+        return lang === "th"
+            ? `แนบได้อีก ${canAdd} รูป (ข้อย่อยนี้ ${itemCount}/${itemMax})`
+            : `${canAdd} more allowed (this sub-item ${itemCount}/${itemMax})`;
+    }
+    if (itemCount >= itemMax) {
+        return lang === "th"
+            ? `ข้อย่อยนี้ครบ ${itemMax} รูปแล้ว`
+            : `This sub-item is full (${itemMax} photos)`;
+    }
+    return lang === "th"
+        ? `ข้อนี้ครบ ${groupMax} รูปแล้ว (นับรวมทุกข้อย่อย)`
+        : `This question is full (${groupMax} photos across all sub-items)`;
+}
+
 function PhotoMultiInput({
-    photos, setPhotos, max = 10, draftKey, qNo, lang, id, hideMaxLabel = false,
+    photos, setPhotos, max = 10, draftKey, qNo, lang, id, hideMaxLabel = false, maxLabel,
 }: {
     label?: string; photos: PhotoItem[]; setPhotos: React.Dispatch<React.SetStateAction<PhotoItem[]>>;
     max?: number; draftKey: string; qNo: number; lang: Lang; id?: string; hideMaxLabel?: boolean;
+    maxLabel?: string;
 }) {
     const cameraRef = useRef<HTMLInputElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
@@ -1477,11 +1502,11 @@ function PhotoMultiInput({
                 console.warn("processFile: ไฟล์อ่านไม่ได้ตั้งแต่ตอนแนบ", file.name);
                 return null;
             }
-            // อ่านไบต์ได้ ไม่ได้แปลว่าเบราว์เซอร์ decode ออก — ถ้า decode ไม่ออก preview
-            // จะโชว์ alt เป็นคำว่า "preview" และไฟล์เสียจะถูกอัปขึ้นรายงานไปด้วย
+            // หมายเหตุ: เคย return null ตรงนี้ถ้า decode ไม่ผ่าน แต่ทำให้แนบรูปไม่ได้เลย
+            // เพราะ CSP img-src ไม่อนุญาต blob: การโหลดรูปเลยล้มเหลวทุกใบ
+            // เหลือไว้เป็น log อย่างเดียว ห้ามใช้ block การแนบรูป
             if (!(await isImageDecodable(finalFile))) {
                 console.warn("processFile: เบราว์เซอร์แสดงผลรูปนี้ไม่ได้", file.name, file.type);
-                return null;
             }
 
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
@@ -1624,7 +1649,7 @@ function PhotoMultiInput({
 
             {!hideMaxLabel && (
                 <Typography variant="small" className="!tw-text-blue-gray-500 tw-flex tw-items-center">
-                    {t("maxPhotos", lang)} {max} {t("photos", lang)}
+                    {maxLabel ?? `${t("maxPhotos", lang)} ${max} ${t("photos", lang)}`}
                 </Typography>
             )}
             {photos.length > 0 ? (
@@ -1714,8 +1739,8 @@ function DynamicItemsSection({
         const ITEM_MAX = 10;
         const GROUP_MAX = 20;
         const groupPhotoLabel = lang === "th"
-            ? `สูงสุด ${ITEM_MAX} รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน ${GROUP_MAX})`
-            : `Max ${ITEM_MAX} photos per sub-item (${GROUP_MAX} total)`;
+            ? `รูปในข้อนี้ ${totalPhotosInGroup}/${GROUP_MAX} — ข้อย่อยละไม่เกิน ${ITEM_MAX} รูป`
+            : `${totalPhotosInGroup}/${GROUP_MAX} photos in this question — max ${ITEM_MAX} per sub-item`;
         return (
             <div className="tw-space-y-0">
                 {/* Count summary row for POST mode */}
@@ -1804,7 +1829,7 @@ function DynamicItemsSection({
                                                     draftKey={draftKey}
                                                     qNo={qNo}
                                                     lang={lang}
-                                                    hideMaxLabel={true}
+                                                    maxLabel={subItemQuotaLabel(photos[`${qNo}_${idx}`]?.length ?? 0, totalPhotosInGroup, ITEM_MAX, GROUP_MAX, lang)}
                                                 />
                                             </div>
                                             {checkboxElement && <div className="sm:tw-hidden tw-mb-3">{checkboxElement}</div>}
@@ -1831,6 +1856,7 @@ function DynamicItemsSection({
     }
 
     // PRE MODE - original layout with count summary
+    const totalPhotosInGroup = items.reduce((sum, _, idx) => sum + (photos[`${qNo}_${idx}`]?.length ?? 0), 0);
     // ITEM_MAX = ต่อข้อย่อย, GROUP_MAX = รวมทั้งข้อใหญ่
     // GROUP_MAX ต้องไม่เกิน PHOTO_MAX_PER_ROW ของ pdf_charger.py เพราะ PDF รวมรูปของ
     // ข้อย่อยทุกอัน (g7, g7_1, g7_2, ...) เข้าเป็นก้อนเดียวของข้อใหญ่แล้วตัดส่วนเกินทิ้งเงียบๆ
@@ -1838,8 +1864,8 @@ function DynamicItemsSection({
     const ITEM_MAX = 10;
     const GROUP_MAX = 20;
     const groupPhotoLabel = lang === "th"
-        ? `สูงสุด ${ITEM_MAX} รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน ${GROUP_MAX})`
-        : `Max ${ITEM_MAX} photos per sub-item (${GROUP_MAX} total)`;
+        ? `รูปในข้อนี้ ${totalPhotosInGroup}/${GROUP_MAX} — ข้อย่อยละไม่เกิน ${ITEM_MAX} รูป`
+        : `${totalPhotosInGroup}/${GROUP_MAX} photos in this question — max ${ITEM_MAX} per sub-item`;
     return (
         <div className="tw-space-y-0">
             {/* Count summary row with optional add button */}
@@ -1876,7 +1902,6 @@ function DynamicItemsSection({
                     const subNo = idx + 1;
                     const photoId = `pm-photo-${qNo}-${subNo}`;
                     const remarkId = `pm-remark-${qNo}-${subNo}`;
-                    const totalPhotosInGroup = items.reduce((sum, _, idx) => sum + (photos[`${qNo}_${idx}`]?.length ?? 0), 0);
                     return (
                         <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isNA ? "tw-bg-amber-50/50" : ""}`}>
                             <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
@@ -1916,7 +1941,7 @@ function DynamicItemsSection({
                                         });
                                     }}
                                     max={Math.min(ITEM_MAX, Math.max(0, GROUP_MAX - (totalPhotosInGroup - (photos[`${qNo}_${idx}`]?.length ?? 0))))}
-                                    draftKey={draftKey} qNo={qNo} lang={lang} hideMaxLabel={true} />
+                                    draftKey={draftKey} qNo={qNo} lang={lang} maxLabel={subItemQuotaLabel(photos[`${qNo}_${idx}`]?.length ?? 0, totalPhotosInGroup, ITEM_MAX, GROUP_MAX, lang)} />
                             </div>
                             {renderAdditionalFields && (
                                 <div id={`pm-input-${qNo}-${subNo}`} className={`tw-mb-3 tw-transition-all tw-duration-300 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>

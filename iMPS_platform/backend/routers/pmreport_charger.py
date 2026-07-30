@@ -21,6 +21,7 @@ from config import (
     CBBOXPMReportDB, CBBOXPMUrlDB, normalize_pm_date, _ensure_utc_iso,
 )
 from deps import UserClaims, get_current_user
+from uploads_access import assert_station_access, assert_sn_access
 from routers.pm_helpers import (
     UPLOADS_ROOT,
     ALLOWED_EXTS,
@@ -546,6 +547,9 @@ async def pmreport_upload_pre_photos(
     current: UserClaims = Depends(get_current_user),
 ):
     """Upload Pre-PM photos for a charger report"""
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_sn_access(current, sn)
     if not re.fullmatch(r"g\d+(_\d+)?", group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
@@ -621,6 +625,9 @@ async def pmreport_upload_post_photos(
     current: UserClaims = Depends(get_current_user),
 ):
     """Upload Post-PM photos for a charger report"""
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_sn_access(current, sn)
     if not re.fullmatch(r"g\d+(_\d+)?", group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
@@ -739,6 +746,9 @@ async def pmurl_upload_files(
     current: UserClaims = Depends(get_current_user),
 ):
     """Upload PM PDF files for a charger"""
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_sn_access(current, sn)
     charger = await _get_charger_by_sn(sn)
     station_id = charger.get("station_id")
 

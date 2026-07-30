@@ -12,6 +12,7 @@ from starlette.staticfiles import StaticFiles
 
 from config import normalize_pm_date, DCTestReportDB, DCUrlDB, station_collection, _validate_station_id_th, th_tz, _ensure_utc_iso, PMUrlDB, ACTestReportDB, ACUrlDB
 from deps import UserClaims, get_current_user
+from uploads_access import assert_station_access, assert_sn_access
 from routers.pm_helpers import (
     UPLOADS_ROOT, ALLOWED_EXTS, MAX_FILE_MB,
     ALLOWED_DOC_EXTS, MAX_DOC_FILE_MB,
@@ -104,6 +105,9 @@ async def dc_testreport_upload_photos(
     remark: str | None = Form(None),
     current: UserClaims = Depends(get_current_user),
 ):
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_sn_access(current, sn)
     # auth
 
     # รายงานต้องอยู่ในสถานีนี้
@@ -183,6 +187,9 @@ async def dcurl_upload_files(
     files: list[UploadFile] = File(...),
     current: UserClaims = Depends(get_current_user),
 ):
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_sn_access(current, sn)
     # auth
 
     # ตรวจ/เตรียมคอลเลกชัน
@@ -355,6 +362,9 @@ async def dc_testreport_upload_test_files(
     - round_index: รอบที่ทดสอบ (0, 1, 2)
     - handgun: "h1" หรือ "h2"
     """
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_sn_access(current, sn)
     # Auth
 
     # Validate handgun

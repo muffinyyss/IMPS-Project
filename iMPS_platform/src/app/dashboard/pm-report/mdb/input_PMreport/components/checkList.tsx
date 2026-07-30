@@ -785,11 +785,11 @@ function PhotoMultiInput({ photos, setPhotos, max = 10, draftKey, qNo, lang, id 
                 console.warn("processFile: ไฟล์อ่านไม่ได้ตั้งแต่ตอนแนบ", file.name);
                 return null;
             }
-            // อ่านไบต์ได้ ไม่ได้แปลว่าเบราว์เซอร์ decode ออก — ถ้า decode ไม่ออก preview
-            // จะโชว์ alt เป็นคำว่า "preview" และไฟล์เสียจะถูกอัปขึ้นรายงานไปด้วย
+            // หมายเหตุ: เคย return null ตรงนี้ถ้า decode ไม่ผ่าน แต่ทำให้แนบรูปไม่ได้เลย
+            // เพราะ CSP img-src ไม่อนุญาต blob: การโหลดรูปเลยล้มเหลวทุกใบ
+            // เหลือไว้เป็น log อย่างเดียว ห้ามใช้ block การแนบรูป
             if (!(await isImageDecodable(finalFile))) {
                 console.warn("processFile: เบราว์เซอร์แสดงผลรูปนี้ไม่ได้", file.name, file.type);
-                return null;
             }
             const photoId = `${qNo}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
             const ref = await putPhoto(draftKey, photoId, finalFile);
