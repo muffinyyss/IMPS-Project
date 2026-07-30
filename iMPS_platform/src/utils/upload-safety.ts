@@ -69,6 +69,41 @@ export async function isFileReadable(file: File | null | undefined): Promise<boo
 }
 
 /**
+ * พิสูจน์ว่าเบราว์เซอร์ "แสดงผล" รูปนี้ได้จริง — คนละเรื่องกับอ่านไบต์ได้
+ *
+ * ไฟล์อาจอ่านไบต์ได้ครบแต่ decode ไม่ออก (เช่น HEIC บนเบราว์เซอร์ที่ไม่รองรับ,
+ * ไฟล์ที่เสียบางส่วน, หรือ canvas คืนรูป 0x0) พอเป็นแบบนั้น <img src={blob}>
+ * จะโหลดไม่ขึ้นแล้วโชว์ alt แทน — ผู้ใช้เห็นเป็นคำว่า "preview" แทนรูป
+ * แถมไฟล์ที่ decode ไม่ได้ยังถูกอัปขึ้น server ไปเป็นรูปเสียในรายงานด้วย
+ *
+ * เช็ค naturalWidth ด้วย เพราะบางเคส onload ยิงแต่ได้รูปขนาด 0
+ */
+export async function isImageDecodable(file: File, timeoutMs = 15000): Promise<boolean> {
+    if (typeof window === "undefined" || typeof URL === "undefined" || !URL.createObjectURL) return true;
+
+    const url = URL.createObjectURL(file);
+    try {
+        return await new Promise<boolean>((resolve) => {
+            const img = new Image();
+            let settled = false;
+            const finish = (ok: boolean) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve(ok);
+            };
+            // กันเคส decode ค้าง ไม่ยิงทั้ง onload/onerror — อย่าให้ผู้ใช้ค้างตรงนี้
+            const timer = setTimeout(() => finish(false), timeoutMs);
+            img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0);
+            img.onerror = () => finish(false);
+            img.src = url;
+        });
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
+/**
  * หาไฟล์ที่ใช้อัปโหลดได้จริง พร้อมกู้จากที่สำรองถ้าตัวใน memory ใช้ไม่ได้แล้ว
  *
  * ฟอร์ม PM เซฟรูปลง IndexedDB ตั้งแต่ตอนแนบ (putPhoto) จึงกู้กลับมาได้เองเงียบๆ
