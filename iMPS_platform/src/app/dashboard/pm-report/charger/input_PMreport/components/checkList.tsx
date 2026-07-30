@@ -1707,10 +1707,15 @@ function DynamicItemsSection({
     // POST MODE - use PassFailRow like MDBPMForm.tsx
     if (isPostMode) {
         const totalPhotosInGroup = items.reduce((sum, _, idx) => sum + (photos[`${qNo}_${idx}`]?.length ?? 0), 0);
-        const GROUP_MAX = 10;
+        // ITEM_MAX = ต่อข้อย่อย, GROUP_MAX = รวมทั้งข้อใหญ่
+        // GROUP_MAX ต้องไม่เกิน PHOTO_MAX_PER_ROW ของ pdf_charger.py เพราะ PDF รวมรูปของ
+        // ข้อย่อยทุกอัน (g7, g7_1, g7_2, ...) เข้าเป็นก้อนเดียวของข้อใหญ่แล้วตัดส่วนเกินทิ้งเงียบๆ
+        // วัดแล้วหน้า A4 ใส่ได้ 5 บรรทัด x 4 รูป = 20 รูป
+        const ITEM_MAX = 10;
+        const GROUP_MAX = 20;
         const groupPhotoLabel = lang === "th"
-            ? `สูงสุด ${GROUP_MAX} รูป (รวมทุกข้อย่อย)`
-            : `Max ${GROUP_MAX} photos (total across sub-items)`;
+            ? `สูงสุด ${ITEM_MAX} รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน ${GROUP_MAX})`
+            : `Max ${ITEM_MAX} photos per sub-item (${GROUP_MAX} total)`;
         return (
             <div className="tw-space-y-0">
                 {/* Count summary row for POST mode */}
@@ -1795,7 +1800,7 @@ function DynamicItemsSection({
                                                     id={photoId}
                                                     photos={photos[`${qNo}_${idx}`] || []}
                                                     setPhotos={makePhotoSetter(`${qNo}_${idx}`)}
-                                                    max={Math.max(0, GROUP_MAX - (totalPhotosInGroup - (photos[`${qNo}_${idx}`]?.length ?? 0)))}
+                                                    max={Math.min(ITEM_MAX, Math.max(0, GROUP_MAX - (totalPhotosInGroup - (photos[`${qNo}_${idx}`]?.length ?? 0))))}
                                                     draftKey={draftKey}
                                                     qNo={qNo}
                                                     lang={lang}
@@ -1826,10 +1831,15 @@ function DynamicItemsSection({
     }
 
     // PRE MODE - original layout with count summary
-    const GROUP_MAX = 10;
+    // ITEM_MAX = ต่อข้อย่อย, GROUP_MAX = รวมทั้งข้อใหญ่
+    // GROUP_MAX ต้องไม่เกิน PHOTO_MAX_PER_ROW ของ pdf_charger.py เพราะ PDF รวมรูปของ
+    // ข้อย่อยทุกอัน (g7, g7_1, g7_2, ...) เข้าเป็นก้อนเดียวของข้อใหญ่แล้วตัดส่วนเกินทิ้งเงียบๆ
+    // วัดแล้วหน้า A4 ใส่ได้ 5 บรรทัด x 4 รูป = 20 รูป
+    const ITEM_MAX = 10;
+    const GROUP_MAX = 20;
     const groupPhotoLabel = lang === "th"
-        ? `สูงสุด ${GROUP_MAX} รูป (รวมทุกข้อย่อย)`
-        : `Max ${GROUP_MAX} photos (total across sub-items)`;
+        ? `สูงสุด ${ITEM_MAX} รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน ${GROUP_MAX})`
+        : `Max ${ITEM_MAX} photos per sub-item (${GROUP_MAX} total)`;
     return (
         <div className="tw-space-y-0">
             {/* Count summary row with optional add button */}
@@ -1905,7 +1915,7 @@ function DynamicItemsSection({
                                             return { ...prev, [photoKey]: next };
                                         });
                                     }}
-                                    max={Math.max(0, GROUP_MAX - (totalPhotosInGroup - (photos[`${qNo}_${idx}`]?.length ?? 0)))}
+                                    max={Math.min(ITEM_MAX, Math.max(0, GROUP_MAX - (totalPhotosInGroup - (photos[`${qNo}_${idx}`]?.length ?? 0))))}
                                     draftKey={draftKey} qNo={qNo} lang={lang} hideMaxLabel={true} />
                             </div>
                             {renderAdditionalFields && (
