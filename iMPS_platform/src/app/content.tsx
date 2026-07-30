@@ -7,6 +7,7 @@ import Sidenav from "@/widgets/layout/sidenav";
 import { usePathname } from "next/navigation";
 import { useMaterialTailwindController } from "@/context";
 import { installDomSafetyPatch } from "@/utils/dom-safety";
+import { installUploadSafetyPatch } from "@/utils/upload-safety";
 
 
 export default function InnerContent({ children }: { children: React.ReactNode }) {
@@ -18,6 +19,7 @@ export default function InnerContent({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     installDomSafetyPatch();
+    installUploadSafetyPatch();
     setIsMounted(true);
     setRoutes(getRoutes());
   }, []);
