@@ -324,9 +324,11 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
         u.searchParams.set("_ts", String(Date.now()));
         return u.toString();
       };
+      // ใช้ apiFetch เหมือนหน้าอื่น — fetch ดิบข้าม logic refresh token ตอน 401
+      // ทำให้พอ token หมดอายุตารางจะว่างเงียบๆ แทนที่จะต่ออายุแล้วโหลดใหม่
       const [pmRes, urlRes] = await Promise.allSettled([
-        fetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
-        fetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
+        apiFetch(makeURL(`/${REPORT_PREFIX}/list`), FetchOpts),
+        apiFetch(makeURL(`/${URL_PREFIX}/list`), FetchOpts),
       ]);
 
       let pmItems: any[] = [], urlItems: any[] = [];
@@ -477,8 +479,21 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
     },
   ], [lang, searchParams, pathname, router, stationId]);
 
+  function sameUser(a?: string, b?: string) { return String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase(); }
+
+  // ใบที่ยังเป็น pre = งานที่ยังทำไม่เสร็จของผู้ตรวจคนนั้น คนอื่นไม่ควรเห็นและไม่ควรกด Post-PM ต่อ
+  // (หน้า ccb/mdb/station/charger ทำแบบนี้อยู่แล้ว cb-box ตกไป)
+  const visibleData = useMemo(() => {
+    const username = me?.username;
+    return data.filter((row) => {
+      if (row.side !== "pre") return true;
+      if (!username) return false;   // ยังไม่รู้ว่าเป็นใคร → ซ่อนใบ pre ไว้ก่อน
+      return sameUser(row.inspector, username);
+    });
+  }, [data, me?.username]);
+
   const table = useReactTable({
-    data, columns,
+    data: visibleData, columns,
     state: { globalFilter: filtering, sorting },
     onSortingChange: setSorting, onGlobalFilterChange: setFiltering,
     getCoreRowModel: getCoreRowModel(), getFilteredRowModel: getFilteredRowModel(),
@@ -491,13 +506,20 @@ export default function SearchDataTables({ token, apiBase = BASE }: Props) {
   const [reportDate, setReportDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
-  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePdfChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.currentTarget.value = "";
     if (!files.length) return;
     const pdfs = files.filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
     if (!pdfs.length) { showToast("error", t("alertPdfOnly", lang)); return; }
-    setPendingFiles(pdfs);
+    // นามสกุล/MIME ปลอมได้ ต้องดู magic byte จริง — ให้ตรงกับหน้าอื่น
+    const validPdfs: File[] = [];
+    for (const f of pdfs) {
+      const header = await f.slice(0, 5).text();
+      if (header.startsWith("%PDF-")) validPdfs.push(f);
+    }
+    if (validPdfs.length === 0) { showToast("error", lang === "th" ? "ไฟล์ที่เลือกไม่ใช่ PDF จริง" : "Selected files are not valid PDFs"); return; }
+    setPendingFiles(validPdfs);
     setDateOpen(true);
   };
 
