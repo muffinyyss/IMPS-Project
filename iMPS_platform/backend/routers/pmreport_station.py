@@ -18,6 +18,7 @@ from config import (
     station_collection, _validate_station_id_th, th_tz, _ensure_utc_iso,
 )
 from deps import UserClaims, get_current_user
+from uploads_access import assert_station_access, assert_sn_access
 from routers.pm_helpers import (
     UPLOADS_ROOT,
     ALLOWED_EXTS,
@@ -564,6 +565,9 @@ async def stationpmreport_upload_pre_photos(
     current: UserClaims = Depends(get_current_user),
 ):
     """Upload Pre-PM photos for a Station report"""
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_station_access(current, station_id)
     if not PHOTO_GROUP_PATTERN.match(group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
@@ -642,6 +646,9 @@ async def stationpmreport_upload_post_photos(
     current: UserClaims = Depends(get_current_user),
 ):
     """Upload Post-PM photos for a Station report"""
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_station_access(current, station_id)
     if not PHOTO_GROUP_PATTERN.match(group):
         raise HTTPException(status_code=400, detail="Bad group key")
 
@@ -766,6 +773,9 @@ async def stationpmurl_upload_files(
     current: UserClaims = Depends(get_current_user),
 ):
     """Upload PM PDF files for a Station"""
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_station_access(current, station_id)
     coll = get_stationpmurl_coll_upload(station_id)
     rep_coll = get_stationpmreport_collection_for(station_id)
 

@@ -10,6 +10,7 @@ import re, json, uuid, pathlib, secrets
 
 from config import normalize_pm_date, ACTestReportDB, ACUrlDB, station_collection, _validate_station_id_th, th_tz, _ensure_utc_iso
 from deps import UserClaims, get_current_user
+from uploads_access import assert_station_access, assert_sn_access
 from routers.pm_helpers import (
     UPLOADS_ROOT, ALLOWED_DOC_EXTS, MAX_DOC_FILE_MB,
     ALLOWED_IMAGE_EXTS, MAX_IMAGE_FILE_MB,
@@ -178,6 +179,9 @@ async def ac_testreport_upload_test_files(
     - round_index: รอบที่ทดสอบ (0, 1, 2)
     - handgun: "h1" (AC ใช้แค่ h1)
     """
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_sn_access(current, sn)
     # Auth
 
     # Validate handgun (AC ใช้แค่ h1)
@@ -324,6 +328,9 @@ async def ac_testreport_upload_photos(
     remark: str | None = Form(None),
     current: UserClaims = Depends(get_current_user),
 ):
+    # ตรวจสิทธิ์สถานีก่อนแตะข้อมูล — เดิมเช็คแค่ว่า field ตรงกับ document
+    # ซึ่งผู้เรียกคุมได้ทั้งคู่ จึงยิงข้ามสถานีได้
+    assert_sn_access(current, sn)
     # auth
 
     # รายงานต้องอยู่ในสถานีนี้
