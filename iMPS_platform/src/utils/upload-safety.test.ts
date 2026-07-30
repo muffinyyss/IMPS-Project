@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { safeUploadName, materializeFormData, isFileReadable, resolveUsableFile } from "./upload-safety";
+import { safeUploadName, materializeFormData, isFileReadable, resolveUsableFile, isImageDecodable } from "./upload-safety";
 
 describe("safeUploadName", () => {
     // เคสที่ทำให้เกิดบัคจริง: อักขระพวกนี้ทำให้ header Content-Disposition เพี้ยน
@@ -158,5 +158,12 @@ describe("resolveUsableFile", () => {
     it("ที่สำรอง throw (เช่น IndexedDB พัง) → ไม่หลุดเป็น error ดิบ", async () => {
         await expect(resolveUsableFile(deadFile(), async () => { throw new Error("IDB closed"); }))
             .rejects.toThrow(/แนบรูปข้อนี้ใหม่/);
+    });
+});
+
+describe("isImageDecodable", () => {
+    // vitest env=node ไม่มี Image/URL.createObjectURL — ฟังก์ชันต้องไม่พังและไม่บล็อกการแนบรูป
+    it("นอกเบราว์เซอร์ → ผ่านไว้ก่อน ไม่ block การแนบรูป", async () => {
+        expect(await isImageDecodable(new File(["x"], "a.jpg"))).toBe(true);
     });
 });
