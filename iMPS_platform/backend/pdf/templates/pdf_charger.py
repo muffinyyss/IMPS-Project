@@ -1056,7 +1056,10 @@ def _draw_signature_block(
 # -------------------------------------
 # 🔸 ค่าคงที่เกี่ยวกับตารางรูปภาพ
 # -------------------------------------
-PHOTO_MAX_PER_ROW = 10
+PHOTO_MAX_PER_ROW = 20   # รวมรูปข้อย่อยทั้งหมดของข้อใหญ่ (g7, g7_1, ...) เข้าด้วยกัน
+                         # 20 = 5 บรรทัด x PHOTO_PER_LINE(4) ซึ่งเป็นจำนวนสูงสุดที่ยังอยู่ใน
+                         # หนึ่งหน้า A4 (พื้นที่ใช้ได้ 242.5mm, ต้องการ 204.8mm)
+                         # ต้องตรงกับ GROUP_MAX ใน charger/input_PMreport/components/checkList.tsx
 PHOTO_PER_LINE    = 4    # จำนวนรูปต่อบรรทัด
 PHOTO_IMG_MAX_H   = 40
 PHOTO_GAP         = 0.7

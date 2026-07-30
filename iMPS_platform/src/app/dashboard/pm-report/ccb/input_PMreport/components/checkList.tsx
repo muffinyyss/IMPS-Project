@@ -2256,12 +2256,12 @@ export default function CCBPMReport() {
                     const pk = getPhotoKeyForQuestion(q, it.key);
                     return sum + (photos[pk]?.length ?? 0);
                 }, 0);
-                const groupRemaining = Math.max(0, 10 - totalGroupPhotos);
+                const groupRemaining = Math.max(0, 20 - totalGroupPhotos);   // 20 = PHOTO_MAX_PER_ROW ของ pdf_ccb.py
 
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
                         <Typography variant="small" className="!tw-text-blue-gray-500">
-                            {t("maxPhotos", lang)} 10 {t("photos", lang)}
+                            {lang === "th" ? "สูงสุด 10 รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน 20)" : "Max 10 photos per sub-item (20 total)"}
                         </Typography>
                         <div className="tw-divide-y tw-divide-gray-200">
                             {q.items.map((item, idx) => {
@@ -2269,7 +2269,7 @@ export default function CCBPMReport() {
                                 const isItemNA = rows[item.key]?.pf === "NA";
                                 const subLabel = `${q.no}.${idx + 1}) ${t(item.labelKey, lang)}`;
                                 // max = รูปที่แนบไว้แล้วใน slot นี้ + ส่วนที่เหลือในกลุ่ม
-                                const itemMax = (photos[photoKey]?.length ?? 0) + groupRemaining;
+                                const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + groupRemaining);
                                 return (
                                     <div key={item.key} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
                                         <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
@@ -2316,7 +2316,7 @@ export default function CCBPMReport() {
                             {q.hasPhoto && (
                                 <div className="tw-mb-3">
                                     <PhotoMultiInput photos={photos[90] || []} setPhotos={makePhotoSetter(90)}
-                                        max={3} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} />
+                                        max={10} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} />
                                 </div>
                             )}
                             <div id={getInputIdFromKey("r9_main")} className={`tw-grid tw-grid-cols-2 sm:tw-grid-cols-3 tw-gap-4 tw-mb-3 ${isNA ? "tw-opacity-50 tw-pointer-events-none" : ""}`}>
@@ -2341,7 +2341,7 @@ export default function CCBPMReport() {
                 const totalSubPhotos = Array.from({ length: subBreakerCount }, (_, i) =>
                     photos[101 + i]?.length ?? 0
                 ).reduce((a, b) => a + b, 0);
-                const subRemaining = Math.max(0, 10 - totalSubPhotos);
+                const subRemaining = Math.max(0, 20 - totalSubPhotos);   // 20 = PHOTO_MAX_PER_ROW ของ pdf_ccb.py
 
                 return (
                     <SectionCard key={q.key} title={getQuestionLabel(q, mode, lang)} tooltip={qTooltip}>
@@ -2358,7 +2358,7 @@ export default function CCBPMReport() {
                             )}
                         </div>
                         <Typography variant="small" className="!tw-text-blue-gray-500">
-                            {t("maxPhotos", lang)} 10 {t("photos", lang)}
+                            {lang === "th" ? "สูงสุด 10 รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน 20)" : "Max 10 photos per sub-item (20 total)"}
                         </Typography>
                         <div className="tw-divide-y tw-divide-gray-200">
                             {Array.from({ length: subBreakerCount }, (_, idx) => {
@@ -2367,7 +2367,7 @@ export default function CCBPMReport() {
                                 const rowKey = `r10_sub${i}`;
                                 const isItemNA = rows[rowKey]?.pf === "NA";
                                 const m = M_SUB_LIST[idx];
-                                const itemMax = (photos[photoKey]?.length ?? 0) + subRemaining;
+                                const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + subRemaining);
                                 return (
                                     <div key={rowKey} className={`tw-py-4 first:tw-pt-2 ${isItemNA ? "tw-bg-amber-50/50" : ""}`}>
                                         <div className="tw-flex tw-items-center tw-justify-between tw-mb-3">
@@ -2456,12 +2456,12 @@ export default function CCBPMReport() {
                         const pk = getPhotoKeyForQuestion(q, it.key);
                         return sum + (photos[pk]?.length ?? 0);
                     }, 0);
-                    const groupRemaining = Math.max(0, 10 - totalGroupPhotos);
+                    const groupRemaining = Math.max(0, 20 - totalGroupPhotos);   // 20 = PHOTO_MAX_PER_ROW ของ pdf_ccb.py
 
                     return (
                         <>
                             <Typography variant="small" className="!tw-text-blue-gray-500">
-                                {t("maxPhotos", lang)} 10 {t("photos", lang)}
+                                {lang === "th" ? "สูงสุด 10 รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน 20)" : "Max 10 photos per sub-item (20 total)"}
                             </Typography>
                             <div className="tw-divide-y tw-divide-gray-200">
                                 {q.items.map((item, idx) => {
@@ -2482,7 +2482,7 @@ export default function CCBPMReport() {
                                         );
                                     }
                                     const photoKey = getPhotoKeyForQuestion(q, item.key);
-                                    const itemMax = (photos[photoKey]?.length ?? 0) + groupRemaining;
+                                    const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + groupRemaining);
                                     return (
                                         <div key={item.key} className="tw-py-4 first:tw-pt-2">
                                             <PassFailRow label={subLabel} value={rows[item.key]?.pf ?? ""}
@@ -2519,7 +2519,7 @@ export default function CCBPMReport() {
                                     onChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], pf: v } })}
                                     remark={rows[rowKey]?.remark || ""} onRemarkChange={(v) => setRows({ ...rows, [rowKey]: { ...rows[rowKey], remark: v } })}
                                     lang={lang} id={getPfIdFromKey(rowKey)} remarkId={getRemarkIdFromKey(rowKey)}
-                                    aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[90] || []} setPhotos={makePhotoSetter(90)} max={3} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} /></div> : undefined}
+                                    aboveRemark={q.hasPhoto ? <div className="tw-pb-4 tw-border-b tw-border-gray-100"><PhotoMultiInput photos={photos[90] || []} setPhotos={makePhotoSetter(90)} max={10} draftKey={currentDraftKey} qNo={90} lang={lang} id={getPhotoIdFromKey(90)} /></div> : undefined}
                                     beforeRemark={<>
                                         <div id={getInputIdFromKey(rowKey)} className="tw-mb-3 tw-transition-all tw-duration-300">
                                             <div className="tw-space-y-3">
@@ -2554,7 +2554,7 @@ export default function CCBPMReport() {
                     const totalSubPhotos = Array.from({ length: subBreakerCount }, (_, i) =>
                         photos[101 + i]?.length ?? 0
                     ).reduce((a, b) => a + b, 0);
-                    const subRemaining = Math.max(0, 10 - totalSubPhotos);
+                    const subRemaining = Math.max(0, 20 - totalSubPhotos);   // 20 = PHOTO_MAX_PER_ROW ของ pdf_ccb.py
 
                     return (
                         <div className="tw-space-y-0">
@@ -2563,7 +2563,7 @@ export default function CCBPMReport() {
                                 <Typography variant="small" className="tw-font-bold tw-text-blue-600">{subBreakerCount} {t("unit", lang)}</Typography>
                             </div>
                             <Typography variant="small" className="!tw-text-blue-gray-500">
-                                {t("maxPhotos", lang)} 10 {t("photos", lang)}
+                                {lang === "th" ? "สูงสุด 10 รูปต่อข้อย่อย (รวมทั้งข้อไม่เกิน 20)" : "Max 10 photos per sub-item (20 total)"}
                             </Typography>
                             <div className="tw-divide-y tw-divide-gray-200">
                                 {Array.from({ length: subBreakerCount }, (_, idx) => {
@@ -2573,7 +2573,7 @@ export default function CCBPMReport() {
                                     const mPre = M_SUB_PRE_LIST[idx];
                                     const m = M_SUB_LIST[idx];
                                     const breakerLabel = `10.${i}) ${lang === "th" ? "เบรกเกอร์วงจรย่อยตัวที่" : "Sub-circuit Breaker"} ${i}`;
-                                    const itemMax = (photos[photoKey]?.length ?? 0) + subRemaining;
+                                    const itemMax = Math.min(10, (photos[photoKey]?.length ?? 0) + subRemaining);
 
                                     if (rowsPre[rowKey]?.pf === "NA") {
                                         return (
